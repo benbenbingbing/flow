@@ -57,36 +57,187 @@
       <!-- ========== 执行人配置（仅用户任务） ========== -->
       <el-tab-pane v-if="isUserTask" label="执行人" name="assignee">
         <el-form :model="assigneeForm" label-width="100px" size="small">
-          <el-form-item label="执行人">
-            <el-input 
-              v-model="assigneeForm.assignee" 
-              placeholder="如：zhangsan 或 ${userId}"
-              @blur="updateProperty('assignee', assigneeForm.assignee)"
-            />
-            <div class="form-tip">直接指定一个用户，支持表达式</div>
+          <el-alert type="info" :closable="false" class="section-alert">
+            支持固定人员、用户组、角色或动态接口指定任务处理人
+          </el-alert>
+          
+          <!-- 执行人选择类型 -->
+          <el-form-item label="指定方式">
+            <el-radio-group v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange">
+              <el-radio-button label="user">固定人员</el-radio-button>
+              <el-radio-button label="group">用户组</el-radio-button>
+              <el-radio-button label="role">角色</el-radio-button>
+              <el-radio-button label="expression">表达式</el-radio-button>
+              <el-radio-button label="interface">接口动态</el-radio-button>
+            </el-radio-group>
           </el-form-item>
           
-          <el-form-item label="候选人">
-            <el-input 
-              v-model="assigneeForm.candidateUsers" 
-              type="textarea"
-              :rows="2"
-              placeholder="多个用户用逗号分隔，如：zhangsan,lisi"
-              @blur="updateProperty('candidateUsers', assigneeForm.candidateUsers)"
-            />
-            <div class="form-tip">多个候选人，任务可被其中任意一人认领</div>
-          </el-form-item>
+          <!-- 固定人员选择 -->
+          <template v-if="assigneeForm.assigneeType === 'user'">
+            <el-form-item label="执行人">
+              <el-select-v2
+                v-model="assigneeForm.assignee"
+                :options="userOptions"
+                placeholder="选择用户"
+                filterable
+                clearable
+                style="width: 100%"
+                @change="updateAssignee"
+              >
+                <template #default="{ item }">
+                  <span>{{ item.label }}</span>
+                  <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname || item.username }})</span>
+                </template>
+              </el-select-v2>
+              <div class="form-tip">指定一个固定用户处理此任务</div>
+            </el-form-item>
+            
+            <el-form-item label="候选人">
+              <el-select-v2
+                v-model="assigneeForm.candidateUserIds"
+                :options="userOptions"
+                placeholder="选择多个候选人"
+                multiple
+                filterable
+                clearable
+                style="width: 100%"
+                @change="updateCandidateUsers"
+              />
+              <div class="form-tip">任务可被其中任意一人认领</div>
+            </el-form-item>
+          </template>
           
-          <el-form-item label="候选组">
-            <el-input 
-              v-model="assigneeForm.candidateGroups" 
-              type="textarea"
-              :rows="2"
-              placeholder="多个组用逗号分隔，如：manager,hr"
-              @blur="updateProperty('candidateGroups', assigneeForm.candidateGroups)"
-            />
-            <div class="form-tip">组成员都可处理任务</div>
-          </el-form-item>
+          <!-- 用户组选择 -->
+          <template v-if="assigneeForm.assigneeType === 'group'">
+            <el-form-item label="用户组">
+              <el-select-v2
+                v-model="assigneeForm.candidateGroupIds"
+                :options="groupOptions"
+                placeholder="选择用户组"
+                multiple
+                filterable
+                clearable
+                style="width: 100%"
+                @change="updateCandidateGroups"
+              >
+                <template #default="{ item }">
+                  <span>{{ item.label }}</span>
+                  <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
+                </template>
+              </el-select-v2>
+              <div class="form-tip">组内所有成员都可处理任务</div>
+            </el-form-item>
+          </template>
+          
+          <!-- 角色选择 -->
+          <template v-if="assigneeForm.assigneeType === 'role'">
+            <el-form-item label="角色">
+              <el-select-v2
+                v-model="assigneeForm.candidateRoleIds"
+                :options="roleOptions"
+                placeholder="选择角色"
+                multiple
+                filterable
+                clearable
+                style="width: 100%"
+                @change="updateCandidateRoles"
+              >
+                <template #default="{ item }">
+                  <span>{{ item.label }}</span>
+                  <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
+                </template>
+              </el-select-v2>
+              <div class="form-tip">拥有该角色的用户都可处理任务</div>
+            </el-form-item>
+          </template>
+          
+          <!-- 表达式 -->
+          <template v-if="assigneeForm.assigneeType === 'expression'">
+            <el-form-item label="执行人表达式">
+              <el-input 
+                v-model="assigneeForm.assignee" 
+                placeholder="如：${submitUser} 或 ${initiator}"
+                @blur="updateProperty('assignee', assigneeForm.assignee)"
+              />
+              <div class="form-tip">使用流程变量动态指定执行人</div>
+            </el-form-item>
+            
+            <el-form-item label="候选人表达式">
+              <el-input 
+                v-model="assigneeForm.candidateUsers" 
+                type="textarea"
+                :rows="2"
+                placeholder="如：${deptManagers}"
+                @blur="updateProperty('candidateUsers', assigneeForm.candidateUsers)"
+              />
+              <div class="form-tip">返回用户ID列表的表达式</div>
+            </el-form-item>
+            
+            <el-form-item label="候选组表达式">
+              <el-input 
+                v-model="assigneeForm.candidateGroups" 
+                type="textarea"
+                :rows="2"
+                placeholder="如：${deptCode}_manager"
+                @blur="updateProperty('candidateGroups', assigneeForm.candidateGroups)"
+              />
+              <div class="form-tip">返回组编码的表达式</div>
+            </el-form-item>
+          </template>
+          
+          <!-- 接口动态 -->
+          <template v-if="assigneeForm.assigneeType === 'interface'">
+            <el-form-item label="接口类型">
+              <el-radio-group v-model="assigneeForm.interfaceType">
+                <el-radio-button label="spring">Spring Bean</el-radio-button>
+                <el-radio-button label="rest">REST接口</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            
+            <el-form-item label="接口名称">
+              <el-input 
+                v-model="assigneeForm.interfaceName" 
+                :placeholder="assigneeForm.interfaceType === 'spring' ? '如：userSelectorService' : '如：https://api.example.com/getAssignee'"
+                @blur="updateAssigneeInterface"
+              />
+            </el-form-item>
+            
+            <el-form-item label="方法名" v-if="assigneeForm.interfaceType === 'spring'">
+              <el-input 
+                v-model="assigneeForm.interfaceMethod" 
+                placeholder="如：selectAssignee"
+                @blur="updateAssigneeInterface"
+              />
+              <div class="form-tip">默认返回用户ID</div>
+            </el-form-item>
+            
+            <el-form-item label="请求方式" v-if="assigneeForm.interfaceType === 'rest'">
+              <el-radio-group v-model="assigneeForm.restMethod">
+                <el-radio-button label="GET">GET</el-radio-button>
+                <el-radio-button label="POST">POST</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            
+            <el-form-item label="请求参数">
+              <el-input 
+                v-model="assigneeForm.interfaceParams" 
+                type="textarea"
+                :rows="3"
+                placeholder='{"processId": "${processId}", "taskId": "${taskId}"}'
+                @blur="updateAssigneeInterface"
+              />
+              <div class="form-tip">传递给接口的参数，支持流程变量</div>
+            </el-form-item>
+            
+            <el-form-item label="返回映射">
+              <el-input 
+                v-model="assigneeForm.resultMapping" 
+                placeholder="如：assignee、assigneeList、groupList"
+                @blur="updateAssigneeInterface"
+              />
+              <div class="form-tip">接口返回结果映射到的流程变量名</div>
+            </el-form-item>
+          </template>
           
           <el-divider>多实例配置（会签/或签）</el-divider>
           
@@ -103,29 +254,47 @@
               <div class="form-tip">并行：多人同时审批；串行：按顺序审批</div>
             </el-form-item>
             
-            <el-form-item label="集合变量">
+            <el-form-item label="集合来源">
+              <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
+                <el-radio-button label="variable">流程变量</el-radio-button>
+                <el-radio-button label="interface">接口动态</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            
+            <el-form-item label="集合变量" v-if="assigneeForm.collectionSource === 'variable'">
               <el-input 
                 v-model="assigneeForm.collection" 
-                placeholder="如：${assigneeList}"
+                placeholder="如：${approverList}"
                 @blur="updateMultiInstance"
               />
+              <div class="form-tip">返回用户ID列表的流程变量</div>
+            </el-form-item>
+            
+            <el-form-item label="接口配置" v-if="assigneeForm.collectionSource === 'interface'">
+              <el-input 
+                v-model="assigneeForm.collectionInterface" 
+                placeholder="如：approverSelector.getApprovers"
+                @blur="updateMultiInstance"
+              />
+              <div class="form-tip">返回用户ID列表的接口</div>
             </el-form-item>
             
             <el-form-item label="元素变量">
               <el-input 
                 v-model="assigneeForm.elementVariable" 
-                placeholder="如：assignee"
+                placeholder="如：approver"
                 @blur="updateMultiInstance"
               />
+              <div class="form-tip">集合中每个元素的变量名</div>
             </el-form-item>
             
             <el-form-item label="完成条件">
               <el-input 
                 v-model="assigneeForm.completionCondition" 
-                placeholder="如：${nrOfCompletedInstances >= 2}"
+                placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
                 @blur="updateMultiInstance"
               />
-              <div class="form-tip">满足此条件时任务完成</div>
+              <div class="form-tip">满足此条件时任务完成，默认全部完成</div>
             </el-form-item>
           </template>
         </el-form>
@@ -731,7 +900,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -876,7 +1045,29 @@ const servicePlaceholder = computed(() => {
 
 // ========== 表单数据 ==========
 const basicForm = ref({ id: '', name: '', documentation: '' })
-const assigneeForm = ref({ assignee: '', candidateUsers: '', candidateGroups: '', isMultiInstance: false, multiInstanceType: 'parallel', collection: '', elementVariable: 'assignee', completionCondition: '' })
+const assigneeForm = ref({
+  assignee: '',
+  candidateUsers: '',
+  candidateGroups: '',
+  candidateUserIds: [],
+  candidateGroupIds: [],
+  candidateRoleIds: [],
+  isMultiInstance: false,
+  multiInstanceType: 'parallel',
+  collection: '',
+  elementVariable: 'assignee',
+  completionCondition: '',
+  // 新增字段
+  assigneeType: 'user', // user/group/role/expression/interface
+  interfaceType: 'spring', // spring/rest
+  interfaceName: '',
+  interfaceMethod: 'selectAssignee',
+  interfaceParams: '',
+  restMethod: 'POST',
+  resultMapping: 'assignee',
+  collectionSource: 'variable', // variable/interface
+  collectionInterface: ''
+})
 const serviceForm = ref({ implementationType: 'class', implementation: '', resultVariable: '' })
 
 // REST接口配置
@@ -901,6 +1092,70 @@ const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParamet
 const conditionForm = ref({ type: '', expression: '' })
 const formConfig = ref({ formKey: '' })
 const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '' })
+
+// 用户、组、角色选项
+const userOptions = ref([])
+const groupOptions = ref([])
+const roleOptions = ref([])
+
+// 加载用户列表
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/system/user/list').then(r => r.json())
+    if (res.code === 200) {
+      userOptions.value = res.data.map(user => ({
+        id: user.id,
+        username: user.username,
+        nickname: user.nickname,
+        label: user.username,
+        value: user.username
+      }))
+    }
+  } catch (e) {
+    console.error('加载用户列表失败:', e)
+  }
+}
+
+// 加载组列表
+async function loadGroups() {
+  try {
+    const res = await fetch('/api/system/group/enabled').then(r => r.json())
+    if (res.code === 200) {
+      groupOptions.value = res.data.map(group => ({
+        id: group.id,
+        code: group.groupCode,
+        label: group.groupName,
+        value: group.groupCode
+      }))
+    }
+  } catch (e) {
+    console.error('加载组列表失败:', e)
+  }
+}
+
+// 加载角色列表
+async function loadRoles() {
+  try {
+    const res = await fetch('/api/system/role/enabled').then(r => r.json())
+    if (res.code === 200) {
+      roleOptions.value = res.data.map(role => ({
+        id: role.id,
+        code: role.roleCode,
+        label: role.roleName,
+        value: role.roleCode
+      }))
+    }
+  } catch (e) {
+    console.error('加载角色列表失败:', e)
+  }
+}
+
+// 在组件挂载时加载数据
+onMounted(() => {
+  loadUsers()
+  loadGroups()
+  loadRoles()
+})
 
 // 子流程列表（模拟）
 const subProcesses = ref([
@@ -1111,6 +1366,95 @@ function updateSkipExpression() {
     const expr = moddle.create('bpmn:FormalExpression', { body: advancedForm.value.skipExpression })
     modeling.updateProperties(props.element, { skipExpression: expr })
   } else modeling.updateProperties(props.element, { skipExpression: undefined })
+  emit('save')
+}
+
+// ========== 执行人配置更新方法 ==========
+function onAssigneeTypeChange(type) {
+  // 切换类型时清空之前的配置
+  assigneeForm.value.assignee = ''
+  assigneeForm.value.candidateUsers = ''
+  assigneeForm.value.candidateGroups = ''
+  assigneeForm.value.candidateUserIds = []
+  assigneeForm.value.candidateGroupIds = []
+  assigneeForm.value.candidateRoleIds = []
+  updateAssigneeConfig()
+}
+
+function onCollectionSourceChange() {
+  assigneeForm.value.collection = ''
+  assigneeForm.value.collectionInterface = ''
+  updateMultiInstance()
+}
+
+function updateAssignee() {
+  updateProperty('assignee', assigneeForm.value.assignee)
+  // 同时保存配置类型
+  updateAssigneeConfig()
+}
+
+function updateCandidateUsers() {
+  // 将用户ID列表转换为逗号分隔的用户名
+  const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.id))
+  assigneeForm.value.candidateUsers = selectedUsers.map(u => u.username).join(',')
+  updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
+  updateAssigneeConfig()
+}
+
+function updateCandidateGroups() {
+  const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.id))
+  assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
+  updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
+  updateAssigneeConfig()
+}
+
+function updateCandidateRoles() {
+  const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.candidateRoleIds?.includes(r.id))
+  // 角色也存储在candidateGroups中，通过前缀区分
+  const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
+  updateProperty('candidateGroups', assigneeForm.value.candidateGroups + ',' + roleCodes)
+  updateAssigneeConfig()
+}
+
+function updateAssigneeInterface() {
+  // 将接口配置存储到扩展属性中
+  const interfaceConfig = {
+    type: assigneeForm.value.assigneeType,
+    interfaceType: assigneeForm.value.interfaceType,
+    interfaceName: assigneeForm.value.interfaceName,
+    interfaceMethod: assigneeForm.value.interfaceMethod,
+    interfaceParams: assigneeForm.value.interfaceParams,
+    restMethod: assigneeForm.value.restMethod,
+    resultMapping: assigneeForm.value.resultMapping
+  }
+  const modeling = getModeling()
+  if (modeling) {
+    modeling.updateProperties(props.element, {
+      extensionProperties: { assigneeInterface: interfaceConfig }
+    })
+  }
+  emit('save')
+}
+
+function updateAssigneeConfig() {
+  // 保存执行人配置类型
+  const config = {
+    assigneeType: assigneeForm.value.assigneeType,
+    interfaceType: assigneeForm.value.interfaceType,
+    interfaceName: assigneeForm.value.interfaceName,
+    interfaceMethod: assigneeForm.value.interfaceMethod,
+    interfaceParams: assigneeForm.value.interfaceParams,
+    restMethod: assigneeForm.value.restMethod,
+    resultMapping: assigneeForm.value.resultMapping,
+    collectionSource: assigneeForm.value.collectionSource,
+    collectionInterface: assigneeForm.value.collectionInterface
+  }
+  const modeling = getModeling()
+  if (modeling) {
+    modeling.updateProperties(props.element, {
+      extensionProperties: { assigneeConfig: config }
+    })
+  }
   emit('save')
 }
 

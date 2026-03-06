@@ -34,6 +34,10 @@
             <el-icon><UserFilled /></el-icon>
             <span>角色管理</span>
           </el-menu-item>
+          <el-menu-item index="/system/group">
+            <el-icon><FolderOpened /></el-icon>
+            <span>用户组管理</span>
+          </el-menu-item>
           <el-menu-item index="/system/menu">
             <el-icon><Menu /></el-icon>
             <span>菜单管理</span>

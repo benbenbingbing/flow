@@ -73,6 +73,12 @@ const routes = [
         name: 'RoleManagement',
         component: () => import('@/views/system/Role.vue'),
         meta: { title: '角色管理' }
+      },
+      {
+        path: '/system/group',
+        name: 'GroupManagement',
+        component: () => import('@/views/system/Group.vue'),
+        meta: { title: '用户组管理' }
       }
     ]
   }
