@@ -11,6 +11,7 @@
         <!-- 撤销/重做按钮 -->
         <el-button-group class="history-actions">
           <el-button 
+            :type="canUndo ? 'primary' : 'default'"
             :disabled="!canUndo" 
             @click="handleUndo"
             title="撤销 (Ctrl+Z)"
@@ -18,6 +19,7 @@
             <el-icon><Back /></el-icon>
           </el-button>
           <el-button 
+            :type="canRedo ? 'primary' : 'default'"
             :disabled="!canRedo" 
             @click="handleRedo"
             title="重做 (Ctrl+Y)"
@@ -75,7 +77,8 @@ const translations = {
   // 小扳手菜单
   'Append end event': '追加结束事件',
   'Append gateway': '追加网关',
-  'Append task': '追加任务',
+  'Append task': '追加用户任务',
+  'Append user task': '追加用户任务',
   'Append intermediate/boundary event': '追加中间/边界事件',
   'Change type': '更改类型',
   'Remove': '删除',
@@ -86,7 +89,8 @@ const translations = {
   'Create start event': '创建开始事件',
   'Create intermediate event': '创建中间事件',
   'Create end event': '创建结束事件',
-  'Create task': '创建任务',
+  'Create task': '创建用户任务',
+  'Create user task': '创建用户任务',
   'Create gateway': '创建网关',
   'Create pool/participant': '创建泳道',
   'Create expanded sub-process': '创建子流程',
@@ -214,7 +218,11 @@ const initBpmnModeler = () => {
   try {
     bpmnModeler.value = new BpmnModeler({
       container: canvasRef.value,
-      additionalModules: [customTranslateModule]
+      additionalModules: [customTranslateModule],
+      // 修改Palette默认条目
+      moddleExtensions: {
+        // 可以在这里添加扩展
+      }
     })
     
     // 尝试通过injector覆盖translate服务
@@ -242,6 +250,77 @@ const initBpmnModeler = () => {
       }
     } catch (e) {
       console.warn('命令栈服务不可用:', e)
+    }
+    
+    // 自定义Palette - 移除通用任务，改为用户任务
+    try {
+      const palette = bpmnModeler.value.get('palette')
+      const originalGetEntries = palette._providers[0].getPaletteEntries
+      palette._providers[0].getPaletteEntries = function() {
+        const entries = originalGetEntries.apply(this, arguments)
+        
+        // 移除默认的通用任务创建按钮
+        delete entries['create-task']
+        
+        // 添加用户任务创建按钮
+        const elementFactory = bpmnModeler.value.get('elementFactory')
+        const create = bpmnModeler.value.get('create')
+        
+        entries['create-user-task'] = {
+          group: 'activity',
+          className: 'bpmn-icon-user-task',
+          title: '创建用户任务',
+          action: {
+            dragstart: function(event) {
+              const userTask = elementFactory.createShape({ type: 'bpmn:UserTask' })
+              create.start(event, userTask)
+            },
+            click: function(event) {
+              const userTask = elementFactory.createShape({ type: 'bpmn:UserTask' })
+              create.start(event, userTask, { hints: { autoActivate: true } })
+            }
+          }
+        }
+        
+        return entries
+      }
+    } catch (e) {
+      console.warn('Palette自定义失败:', e)
+    }
+    
+    // 自定义ContextPad - 修改追加任务为追加用户任务
+    try {
+      const contextPad = bpmnModeler.value.get('contextPad')
+      const elementFactory = bpmnModeler.value.get('elementFactory')
+      const autoPlace = bpmnModeler.value.get('autoPlace')
+      
+      contextPad.registerProvider({
+        getContextPadEntries: function(element) {
+          return function(entries) {
+            // 修改追加任务的默认行为
+            if (entries['append.append-task']) {
+              entries['append.append-task'].title = '追加用户任务'
+              entries['append.append-task'].className = 'bpmn-icon-user-task'
+              entries['append.append-task'].action = {
+                click: function(event, element) {
+                  const modeling = bpmnModeler.value.get('modeling')
+                  const userTask = elementFactory.createShape({
+                    type: 'bpmn:UserTask'
+                  })
+                  if (autoPlace) {
+                    autoPlace.append(element, userTask)
+                  } else {
+                    modeling.appendShape(element, userTask)
+                  }
+                }
+              }
+            }
+            return entries
+          }
+        }
+      })
+    } catch (e) {
+      console.warn('ContextPad自定义失败:', e)
     }
     
     // 监听元素点击事件 - 支持所有可配置节点
