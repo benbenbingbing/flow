@@ -1,0 +1,49 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: workflow-server
+  
+  datasource:
+    url: jdbc:mysql://localhost:3306/workflow?serverTimezone=UTC&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: zhoudawei
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.workflow.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# Flowable 配置
+flowable:
+  database-schema-update: false
+  async-executor-activate: true
+  history-level: full
+  db-history-used: true
+
+# 日志配置
+logging:
+  file:
+    name: logs/workflow-server.log
+  level:
+    root: INFO
+    com.workflow: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+cors:
+  allowed-origins: "*"
+  allowed-methods: "*"
+  allowed-headers: "*"
