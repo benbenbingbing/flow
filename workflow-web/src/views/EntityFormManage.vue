@@ -1,0 +1,310 @@
+<template>
+  <div class="entity-form-manage">
+    <div class="page-header">
+      <h2>实体表单管理</h2>
+      <el-button type="primary" @click="handleCreate">
+        <el-icon><Plus /></el-icon>
+        新建表单
+      </el-button>
+    </div>
+
+    <!-- 实体选择 -->
+    <el-card class="entity-select-card" shadow="never">
+      <el-form inline>
+        <el-form-item label="选择实体">
+          <el-select v-model="selectedEntityId" placeholder="请选择实体" clearable @change="handleEntityChange">
+            <el-option
+              v-for="entity in entityList"
+              :key="entity.id"
+              :label="entity.entityName"
+              :value="entity.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- 表单列表 -->
+    <el-card shadow="never">
+      <el-table :data="formList" v-loading="loading" stripe>
+        <el-table-column type="index" width="50" />
+        <el-table-column prop="formName" label="表单名称" min-width="150" />
+        <el-table-column prop="formKey" label="表单标识" min-width="150" />
+        <el-table-column prop="entityName" label="所属实体" min-width="150">
+          <template #default="{ row }">
+            {{ row.entity?.entityName || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="layoutType" label="布局" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.layoutType === 'vertical'">垂直</el-tag>
+            <el-tag v-else-if="row.layoutType === 'horizontal'" type="success">水平</el-tag>
+            <el-tag v-else-if="row.layoutType === 'grid'" type="warning">网格</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.status === 1" type="success">启用</el-tag>
+            <el-tag v-else type="danger">禁用</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="创建时间" width="160" />
+        <el-table-column label="操作" width="250" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="handleDesign(row)">
+              设计
+            </el-button>
+            <el-button type="primary" link size="small" @click="handleEdit(row)">
+              编辑
+            </el-button>
+            <el-button type="success" link size="small" @click="handlePreview(row)">
+              预览
+            </el-button>
+            <el-button type="danger" link size="small" @click="handleDelete(row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 创建/编辑弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑表单' : '新建表单'"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+        <el-form-item label="所属实体" prop="entityId">
+          <el-select v-model="form.entityId" placeholder="请选择实体" style="width: 100%" :disabled="isEdit">
+            <el-option
+              v-for="entity in entityList"
+              :key="entity.id"
+              :label="entity.entityName"
+              :value="entity.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="表单名称" prop="formName">
+          <el-input v-model="form.formName" placeholder="请输入表单名称" />
+        </el-form-item>
+        <el-form-item label="表单标识" prop="formKey">
+          <el-input v-model="form.formKey" placeholder="请输入表单标识" :disabled="isEdit" />
+        </el-form-item>
+        <el-form-item label="布局类型">
+          <el-radio-group v-model="form.layoutType">
+            <el-radio label="vertical">垂直</el-radio>
+            <el-radio label="horizontal">水平</el-radio>
+            <el-radio label="grid">网格</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-radio-group v-model="form.status">
+            <el-radio :label="1">启用</el-radio>
+            <el-radio :label="0">禁用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请输入描述" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 预览弹窗 -->
+    <el-dialog v-model="previewVisible" title="表单预览" width="800px">
+      <FormPreview v-if="previewForm" :form="previewForm" />
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import FormPreview from '@/components/FormPreview.vue'
+
+const router = useRouter()
+const loading = ref(false)
+const submitLoading = ref(false)
+const dialogVisible = ref(false)
+const previewVisible = ref(false)
+const isEdit = ref(false)
+const formRef = ref(null)
+
+const entityList = ref([])
+const formList = ref([])
+const selectedEntityId = ref('')
+const previewForm = ref(null)
+
+const form = reactive({
+  id: '',
+  entityId: '',
+  formName: '',
+  formKey: '',
+  layoutType: 'vertical',
+  status: 1,
+  description: ''
+})
+
+const rules = {
+  entityId: [{ required: true, message: '请选择实体', trigger: 'change' }],
+  formName: [{ required: true, message: '请输入表单名称', trigger: 'blur' }],
+  formKey: [
+    { required: true, message: '请输入表单标识', trigger: 'blur' },
+    { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '标识必须以字母开头，只能包含字母、数字、下划线', trigger: 'blur' }
+  ]
+}
+
+// 加载实体列表
+async function loadEntities() {
+  try {
+    const res = await fetch('/api/entity/list').then(r => r.json())
+    if (res.code === 200) {
+      entityList.value = res.data || []
+    }
+  } catch (e) {
+    console.error('加载实体列表失败:', e)
+  }
+}
+
+// 加载表单列表
+async function loadForms() {
+  loading.value = true
+  try {
+    let url = '/api/entity-form/list'
+    if (selectedEntityId.value) {
+      url = `/api/entity-form/entity/${selectedEntityId.value}`
+    }
+    const res = await fetch(url).then(r => r.json())
+    if (res.code === 200) {
+      formList.value = res.data || []
+    }
+  } catch (e) {
+    console.error('加载表单列表失败:', e)
+    ElMessage.error('加载表单列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleEntityChange() {
+  loadForms()
+}
+
+function handleCreate() {
+  isEdit.value = false
+  resetForm()
+  dialogVisible.value = true
+}
+
+function handleEdit(row) {
+  isEdit.value = true
+  resetForm()
+  Object.assign(form, row)
+  dialogVisible.value = true
+}
+
+function handleDesign(row) {
+  router.push(`/entity-form/design/${row.id}`)
+}
+
+async function handlePreview(row) {
+  try {
+    const res = await fetch(`/api/entity-form/${row.id}`).then(r => r.json())
+    if (res.code === 200) {
+      previewForm.value = res.data
+      previewVisible.value = true
+    }
+  } catch (e) {
+    console.error('加载表单详情失败:', e)
+  }
+}
+
+async function handleSubmit() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  submitLoading.value = true
+  try {
+    const url = isEdit.value ? `/api/entity-form/${form.id}` : '/api/entity-form'
+    const method = isEdit.value ? 'PUT' : 'POST'
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    }).then(r => r.json())
+
+    if (res.code === 200) {
+      ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
+      dialogVisible.value = false
+      loadForms()
+    } else {
+      ElMessage.error(res.message || '操作失败')
+    }
+  } catch (e) {
+    console.error('提交失败:', e)
+    ElMessage.error('提交失败')
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+function handleDelete(row) {
+  ElMessageBox.confirm(`确定删除表单 "${row.formName}" 吗？`, '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      const res = await fetch(`/api/entity-form/${row.id}`, { method: 'DELETE' }).then(r => r.json())
+      if (res.code === 200) {
+        ElMessage.success('删除成功')
+        loadForms()
+      } else {
+        ElMessage.error(res.message || '删除失败')
+      }
+    } catch (e) {
+      console.error('删除失败:', e)
+      ElMessage.error('删除失败')
+    }
+  }).catch(() => {})
+}
+
+function resetForm() {
+  form.id = ''
+  form.entityId = selectedEntityId.value || ''
+  form.formName = ''
+  form.formKey = ''
+  form.layoutType = 'vertical'
+  form.status = 1
+  form.description = ''
+}
+
+onMounted(() => {
+  loadEntities()
+  loadForms()
+})
+</script>
+
+<style scoped>
+.entity-form-manage {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.entity-select-card {
+  margin-bottom: 20px;
+}
+</style>

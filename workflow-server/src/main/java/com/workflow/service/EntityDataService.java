@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.EntityDefinition;
+import com.workflow.entity.ProcessTask;
 import com.workflow.mapper.EntityDataMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
@@ -16,6 +17,7 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -35,6 +37,7 @@ public class EntityDataService {
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
     private final ObjectMapper objectMapper;
+    private final ProcessTaskService processTaskService;
     
     /**
      * 查询某实体的所有数据
@@ -72,10 +75,16 @@ public class EntityDataService {
      * 保存实体数据
      * 如果绑定了流程且startProcess为true，则同时发起流程
      */
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(EntityDataDTO dto) {
         EntityDefinition definition = definitionMapper.findByEntityCode(dto.getEntityCode())
                 .orElseThrow(() -> new RuntimeException("实体不存在: " + dto.getEntityCode()));
+        
+        // 验证实体是否启用流程
+        if (Boolean.TRUE.equals(dto.getStartProcess()) && 
+            !Boolean.TRUE.equals(definition.getEnableProcess())) {
+            throw new RuntimeException("该实体未启用流程，无法发起流程");
+        }
         
         EntityData data = new EntityData();
         data.setEntityCode(dto.getEntityCode());
@@ -96,47 +105,63 @@ public class EntityDataService {
             Boolean.TRUE.equals(definition.getEnableProcess()) &&
             definition.getProcessDefinitionId() != null) {
             
-            // 先保存数据获取ID
+            // 先保存数据获取ID（草稿状态）
+            data.setStatus(EntityData.DataStatus.DRAFT);
             dataMapper.insert(data);
+            log.info("数据已保存为草稿，数据ID：{}", data.getId());
             
-            // 查询流程定义，获取流程key
-            com.workflow.entity.ProcessDefinitionConfig processConfig = 
-                processDefinitionConfigMapper.selectById(definition.getProcessDefinitionId());
-            if (processConfig == null) {
-                throw new RuntimeException("绑定的流程不存在");
+            try {
+                // 查询流程定义，获取流程key
+                com.workflow.entity.ProcessDefinitionConfig processConfig = 
+                    processDefinitionConfigMapper.selectById(definition.getProcessDefinitionId());
+                if (processConfig == null) {
+                    throw new RuntimeException("绑定的流程配置不存在");
+                }
+                
+                // 查询Flowable最新的流程定义
+                ProcessDefinition flowableProcess = repositoryService.createProcessDefinitionQuery()
+                        .processDefinitionKey(processConfig.getProcessKey())
+                        .latestVersion()
+                        .singleResult();
+                
+                if (flowableProcess == null) {
+                    throw new RuntimeException("流程未部署或已禁用，请先发布流程: " + processConfig.getProcessKey());
+                }
+                
+                // 发起流程
+                Map<String, Object> variables = dto.getData() != null ? dto.getData() : new java.util.HashMap<>();
+                variables.put("entityDataId", data.getId());
+                variables.put("entityCode", data.getEntityCode());
+                variables.put("submitterId", data.getSubmitterId());
+                variables.put("skipNodeEnabled", true);
+                
+                ProcessInstance processInstance = runtimeService.startProcessInstanceById(
+                        flowableProcess.getId(), 
+                        variables
+                );
+                
+                // 更新流程实例ID和状态
+                data.setProcessInstanceId(processInstance.getId());
+                data.setStatus(EntityData.DataStatus.PENDING);
+                dataMapper.updateById(data);
+                
+                // 同步创建流程待办 - 需要等待Flowable创建任务
+                // 由于流程启动后任务可能还未立即创建，尝试多次同步
+                syncTasksWithRetry(processInstance.getId(), 3);
+                
+                log.info("数据保存并发起流程成功，数据ID：{}，流程实例ID：{}", 
+                        data.getId(), processInstance.getId());
+                        
+            } catch (Exception e) {
+                // 流程启动失败，删除已保存的数据，保持数据一致性
+                log.error("流程启动失败，删除已保存的数据: {}", data.getId(), e);
+                dataMapper.deleteById(data.getId());
+                throw new RuntimeException("流程启动失败: " + e.getMessage(), e);
             }
-            
-            // 查询Flowable最新的流程定义
-            ProcessDefinition flowableProcess = repositoryService.createProcessDefinitionQuery()
-                    .processDefinitionKey(processConfig.getProcessKey())
-                    .latestVersion()
-                    .singleResult();
-            
-            if (flowableProcess == null) {
-                throw new RuntimeException("流程未部署或已禁用，请先发布流程");
-            }
-            
-            // 发起流程
-            Map<String, Object> variables = dto.getData();
-            variables.put("entityDataId", data.getId());
-            variables.put("entityCode", data.getEntityCode());
-            variables.put("submitterId", data.getSubmitterId());
-            
-            ProcessInstance processInstance = runtimeService.startProcessInstanceById(
-                    flowableProcess.getId(), 
-                    variables
-            );
-            
-            // 更新流程实例ID
-            data.setProcessInstanceId(processInstance.getId());
-            data.setStatus(EntityData.DataStatus.PENDING);
-            dataMapper.updateById(data);
-            
-            log.info("数据保存并发起流程成功，数据ID：{}，流程实例ID：{}", 
-                    data.getId(), processInstance.getId());
         } else {
             data.setStatus(EntityData.DataStatus.DRAFT);
             dataMapper.insert(data);
+            log.info("数据已保存为草稿（未发起流程），数据ID：{}", data.getId());
         }
         
         return convertToDTO(data);
@@ -209,5 +234,35 @@ public class EntityDataService {
         }
         
         return dto;
+    }
+    
+    /**
+     * 带重试的任务同步
+     * 流程启动后任务可能不会立即创建，需要重试几次
+     */
+    private void syncTasksWithRetry(String processInstanceId, int maxRetries) {
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                // 等待一段时间让Flowable创建任务
+                Thread.sleep(300 * (i + 1));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            
+            processTaskService.syncTasksFromFlowable(processInstanceId);
+            
+            // 检查是否成功创建了待办 - 使用ProcessTaskService的方法
+            List<ProcessTask> tasks = processTaskService.getTasksByProcessInstance(processInstanceId);
+            if (!tasks.isEmpty()) {
+                log.info("成功同步 {} 个待办任务", tasks.size());
+                return;
+            }
+            
+            if (i < maxRetries - 1) {
+                log.warn("第 {} 次同步未找到任务，准备重试...", i + 1);
+            } else {
+                log.warn("同步任务失败，已达到最大重试次数，流程实例ID: {}", processInstanceId);
+            }
+        }
     }
 }

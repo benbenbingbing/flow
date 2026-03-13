@@ -86,4 +86,12 @@ public class EntityDefinitionController {
             @PathVariable String processId) {
         return ApiResponse.success(entityService.bindProcess(entityId, processId));
     }
+
+    /**
+     * 根据流程定义ID查询绑定的实体
+     */
+    @GetMapping("/process/{processId}")
+    public ApiResponse<EntityDefinitionDTO> getByProcessId(@PathVariable String processId) {
+        return ApiResponse.success(entityService.findByProcessDefinitionId(processId));
+    }
 }

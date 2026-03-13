@@ -1,9 +1,11 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysRole;
 import com.workflow.entity.SysUser;
 import com.workflow.entity.SysUserRole;
+import com.workflow.mapper.SysOrganizationMapper;
 import com.workflow.mapper.SysRoleMapper;
 import com.workflow.mapper.SysUserMapper;
 import com.workflow.mapper.SysUserRoleMapper;
@@ -28,6 +30,7 @@ public class SysUserService {
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
     private final SysUserRoleMapper userRoleMapper;
+    private final SysOrganizationMapper orgMapper;
     
     /**
      * 查询用户列表
@@ -37,8 +40,11 @@ public class SysUserService {
             new LambdaQueryWrapper<SysUser>()
                 .orderByDesc(SysUser::getCreateTime)
         );
-        // 填充角色信息
-        users.forEach(this::fillUserRoles);
+        // 填充角色信息和组织部门信息
+        users.forEach(user -> {
+            fillUserRoles(user);
+            fillUserOrgInfo(user);
+        });
         return users;
     }
     
@@ -49,6 +55,7 @@ public class SysUserService {
         SysUser user = userMapper.selectById(id);
         if (user != null) {
             fillUserRoles(user);
+            fillUserOrgInfo(user);
         }
         return user;
     }
@@ -188,5 +195,23 @@ public class SysUserService {
         List<SysRole> roles = roleMapper.selectRolesByUserId(user.getId());
         user.setRoles(roles);
         user.setRoleIds(roles.stream().map(SysRole::getId).collect(Collectors.toList()));
+    }
+    
+    /**
+     * 填充用户组织部门信息
+     */
+    private void fillUserOrgInfo(SysUser user) {
+        if (StringUtils.hasText(user.getOrgId())) {
+            SysOrganization org = orgMapper.selectById(user.getOrgId());
+            if (org != null) {
+                user.setOrgName(org.getOrgName());
+            }
+        }
+        if (StringUtils.hasText(user.getDeptId())) {
+            SysOrganization dept = orgMapper.selectById(user.getDeptId());
+            if (dept != null) {
+                user.setDeptName(dept.getOrgName());
+            }
+        }
     }
 }

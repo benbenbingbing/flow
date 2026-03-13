@@ -1,8 +1,10 @@
 package com.workflow.controller;
 
+import com.workflow.common.Result;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.service.ProcessInstanceService;
+import com.workflow.vo.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,5 +29,16 @@ public class ProcessInstanceController {
     @GetMapping("/{processInstanceId}/progress")
     public ApiResponse<ProcessProgressDTO> getProcessProgress(@PathVariable String processInstanceId) {
         return ApiResponse.success(processInstanceService.getProcessProgress(processInstanceId));
+    }
+    
+    /**
+     * 获取流程实例详情
+     * 
+     * @param instanceId 流程实例ID
+     * @return 流程详情信息
+     */
+    @GetMapping("/{instanceId}/detail")
+    public Result<ProcessDetailVO> getProcessDetail(@PathVariable String instanceId) {
+        return Result.success(processInstanceService.getProcessDetail(instanceId));
     }
 }

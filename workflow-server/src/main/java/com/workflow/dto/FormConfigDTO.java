@@ -44,4 +44,52 @@ public class FormConfigDTO {
      * 是否只读
      */
     private Boolean isReadonly;
+    
+    public String getId() {
+        return id;
+    }
+    
+    public void setId(String id) {
+        this.id = id;
+    }
+    
+    public String getFormName() {
+        return formName;
+    }
+    
+    public void setFormName(String formName) {
+        this.formName = formName;
+    }
+    
+    public String getFormKey() {
+        return formKey;
+    }
+    
+    public void setFormKey(String formKey) {
+        this.formKey = formKey;
+    }
+    
+    public String getDescription() {
+        return description;
+    }
+    
+    public void setDescription(String description) {
+        this.description = description;
+    }
+    
+    public List<FormFieldConfigDTO> getFields() {
+        return fields;
+    }
+    
+    public void setFields(List<FormFieldConfigDTO> fields) {
+        this.fields = fields;
+    }
+    
+    public Boolean getIsReadonly() {
+        return isReadonly;
+    }
+    
+    public void setIsReadonly(Boolean isReadonly) {
+        this.isReadonly = isReadonly;
+    }
 }

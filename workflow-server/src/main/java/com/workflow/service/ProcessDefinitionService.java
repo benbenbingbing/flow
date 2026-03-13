@@ -42,6 +42,17 @@ public class ProcessDefinitionService {
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 查询所有未被实体绑定的流程
+     * 用于实体绑定流程时选择
+     */
+    @Transactional(readOnly = true)
+    public List<ProcessDefinitionDTO> findAllUnbound() {
+        return processMapper.findAllUnbound().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
     
     @Transactional(readOnly = true)
     public ProcessDefinitionDTO findById(String id) {
@@ -164,6 +175,28 @@ public class ProcessDefinitionService {
         
         // 将 processKey 写入 XML 的 process id 属性，确保 Flowable 使用正确的 key
         String bpmnXml = config.getBpmnXml();
+        
+        // 清理前端错误生成的无效属性（这些属性应该用 flowable: 命名空间或在 extensionElements 中）
+        // 清理 extensionProperties
+        bpmnXml = bpmnXml.replaceAll("\\s+extensionProperties=\"[^\"]*\"", "");
+        // 将 candidateGroups="xxx" 转换为 flowable:candidateGroups="xxx"（避免重复添加前缀）
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
+        // 将 candidateUsers="xxx" 转换为 flowable:candidateUsers="xxx"（避免重复添加前缀）
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
+        // 将 assignee="xxx" 转换为 flowable:assignee="xxx"（避免重复添加前缀）
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)assignee=\"([^\"]*)\"", "flowable:assignee=\"$1\"");
+        
+        // 处理 skipNode 配置：为设置了 skipNode=true 的用户任务添加自动完成监听器
+        bpmnXml = processSkipNodeTasks(bpmnXml);
+        
+        // 添加 flowable 命名空间声明（如果不存在）
+        if (!bpmnXml.contains("xmlns:flowable")) {
+            bpmnXml = bpmnXml.replace(
+                "xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"",
+                "xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:flowable=\"http://flowable.org/bpmn\""
+            );
+        }
+        
         // 替换 <bpmn:process id="xxx" 为 <bpmn:process id="{processKey}"
         bpmnXml = bpmnXml.replaceAll("<bpmn:process\\s+id=\"[^\"]+\"", 
                 "<bpmn:process id=\"" + config.getProcessKey() + "\"");
@@ -319,5 +352,49 @@ public class ProcessDefinitionService {
         config.setBpmnXml(dto.getBpmnXml());
         config.setCreatedBy(dto.getCreatedBy());
         return config;
+    }
+    
+    /**
+     * 处理 skipNode 配置：为设置了 skipNode=true 的用户任务添加 skipExpression
+     * 使用 Flowable 的 skipExpression 功能，当表达式为 true 时自动跳过任务
+     */
+    private String processSkipNodeTasks(String bpmnXml) {
+        // 使用正则表达式查找所有用户任务
+        java.util.regex.Pattern taskPattern = java.util.regex.Pattern.compile(
+            "<bpmn:userTask([^>]*)>(.*?)</bpmn:userTask>", 
+            java.util.regex.Pattern.DOTALL
+        );
+        java.util.regex.Matcher taskMatcher = taskPattern.matcher(bpmnXml);
+        
+        StringBuffer result = new StringBuffer();
+        while (taskMatcher.find()) {
+            String taskAttrs = taskMatcher.group(1);
+            String taskContent = taskMatcher.group(2);
+            
+            // 检查是否包含 skipNode=true 的 camunda:Property
+            if (taskContent.contains("<camunda:Property name=\"skipNode\" value=\"true\" />") ||
+                taskContent.contains("<camunda:Property name=\"skipNode\" value=\"true\"/>") ||
+                taskContent.contains("name=\"skipNode\" value=\"true\"")) {
+                
+                // 提取任务ID
+                java.util.regex.Matcher idMatcher = java.util.regex.Pattern.compile("id=\"([^\"]+)\"").matcher(taskAttrs);
+                String taskId = idMatcher.find() ? idMatcher.group(1) : "";
+                
+                // 添加 flowable:skipExpression 属性到任务标签
+                // 使用 ${skipNodeEnabled} 作为统一变量名
+                if (!taskAttrs.contains("flowable:skipExpression")) {
+                    taskAttrs += " flowable:skipExpression=\"${skipNodeEnabled}\"";
+                }
+                
+                // 重新组装任务标签
+                String newTask = "<bpmn:userTask" + taskAttrs + ">" + taskContent + "</bpmn:userTask>";
+                taskMatcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(newTask));
+                
+                log.info("为用户任务 [{}] 添加 skipExpression: ${skipNodeEnabled}", taskId);
+            }
+        }
+        taskMatcher.appendTail(result);
+        
+        return result.toString();
     }
 }

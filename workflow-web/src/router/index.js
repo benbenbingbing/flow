@@ -8,8 +8,15 @@ const routes = [
   {
     path: '/',
     component: Layout,
-    redirect: '/process',
+    redirect: '/home',
     children: [
+      // 首页
+      {
+        path: '/home',
+        name: 'Home',
+        component: () => import('@/views/Home.vue'),
+        meta: { title: '首页' }
+      },
       // 流程管理
       {
         path: '/process',
@@ -55,6 +62,25 @@ const routes = [
         component: () => import('@/views/ProcessProgress.vue'),
         meta: { title: '流程进度' }
       },
+      // 实体表单管理
+      {
+        path: '/entity-form',
+        name: 'EntityFormManage',
+        component: () => import('@/views/EntityFormManage.vue'),
+        meta: { title: '实体表单管理' }
+      },
+      {
+        path: '/entity-form/list-by-entity/:entityId',
+        name: 'EntityFormList',
+        component: () => import('@/views/EntityFormList.vue'),
+        meta: { title: '实体表单列表' }
+      },
+      {
+        path: '/entity-form/design/:id',
+        name: 'EntityFormDesign',
+        component: () => import('@/views/EntityFormDesignByEntity.vue'),
+        meta: { title: '表单设计' }
+      },
       // 系统管理
       {
         path: '/system/menu',
@@ -79,6 +105,12 @@ const routes = [
         name: 'GroupManagement',
         component: () => import('@/views/system/Group.vue'),
         meta: { title: '用户组管理' }
+      },
+      {
+        path: '/system/org',
+        name: 'OrganizationManagement',
+        component: () => import('@/views/system/Organization.vue'),
+        meta: { title: '组织部门管理' }
       }
     ]
   }

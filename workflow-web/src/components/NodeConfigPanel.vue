@@ -52,6 +52,9 @@
             />
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 执行人配置（仅用户任务） ========== -->
@@ -63,13 +66,13 @@
           
           <!-- 执行人选择类型 -->
           <el-form-item label="指定方式">
-            <el-radio-group v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange">
-              <el-radio-button label="user">固定人员</el-radio-button>
-              <el-radio-button label="group">用户组</el-radio-button>
-              <el-radio-button label="role">角色</el-radio-button>
-              <el-radio-button label="expression">表达式</el-radio-button>
-              <el-radio-button label="interface">接口动态</el-radio-button>
-            </el-radio-group>
+            <el-select v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange" style="width: 100%">
+              <el-option label="固定人员" value="user" />
+              <el-option label="用户组" value="group" />
+              <el-option label="角色" value="role" />
+              <el-option label="表达式" value="expression" />
+              <el-option label="接口动态" value="interface" />
+            </el-select>
           </el-form-item>
           
           <!-- 固定人员选择 -->
@@ -298,6 +301,9 @@
             </el-form-item>
           </template>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 服务配置（服务任务） ========== -->
@@ -433,6 +439,9 @@
             />
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 发送配置（发送任务） ========== -->
@@ -481,6 +490,9 @@
             </el-select>
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 接收配置（接收任务） ========== -->
@@ -520,6 +532,9 @@
             </el-form-item>
           </template>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 手动任务配置（手动任务） ========== -->
@@ -600,6 +615,9 @@
             <div class="form-tip">是否将决策结果映射到流程变量</div>
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 脚本配置（脚本任务） ========== -->
@@ -639,6 +657,9 @@
             <div class="form-tip">自动将脚本变量存储到流程上下文</div>
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 调用活动配置（调用活动） ========== -->
@@ -701,6 +722,9 @@
             />
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 条件配置（顺序流） ========== -->
@@ -733,6 +757,9 @@
             默认流：当其他条件都不满足时执行
           </el-alert>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 流程动作（顺序流） ========== -->
@@ -859,15 +886,99 @@
       <!-- ========== 表单配置（任务/开始事件） ========== -->
       <el-tab-pane v-if="isTask || isStartEvent" label="表单" name="form">
         <el-form :model="formConfig" label-width="100px" size="small">
-          <el-form-item label="表单Key">
-            <el-input 
-              v-model="formConfig.formKey" 
-              placeholder="如：leave_apply_form"
-              @blur="updateProperty('formKey', formConfig.formKey)"
-            />
-            <div class="form-tip">关联外部表单，留空表示无表单</div>
+          <el-alert type="info" :closable="false" class="section-alert">
+            绑定实体表单或自定义表单到当前节点
+          </el-alert>
+
+          <!-- 显示绑定的实体信息 -->
+          <el-form-item label="所属实体">
+            <el-tag v-if="boundEntity" type="success" size="large">
+              {{ boundEntity.entityName }} ({{ boundEntity.entityCode }})
+            </el-tag>
+            <el-tag v-else type="warning" size="large">该流程未绑定实体</el-tag>
           </el-form-item>
+
+          <el-form-item label="表单来源">
+            <el-select v-model="formConfig.formSource" @change="onFormSourceChange" style="width: 100%">
+              <el-option label="实体表单" value="entity" />
+              <el-option label="自定义表单" value="custom" />
+              <el-option label="无表单" value="none" />
+            </el-select>
+          </el-form-item>
+
+          <!-- 实体表单选择 -->
+          <template v-if="formConfig.formSource === 'entity'">
+            <el-form-item label="选择表单">
+              <el-select
+                v-model="formConfig.entityFormId"
+                placeholder="请选择实体表单"
+                style="width: 100%"
+                filterable
+                @change="onEntityFormChange"
+              >
+                <el-option
+                  v-for="form in entityFormOptions"
+                  :key="form.id"
+                  :label="form.formName"
+                  :value="form.id"
+                >
+                  <div class="form-option">
+                    <span class="form-name">{{ form.formName }}</span>
+                    <span class="form-key">({{ form.formKey }})</span>
+                    <el-tag size="small" type="info" v-if="form.fields">{{ form.fields?.length }}个字段</el-tag>
+                  </div>
+                </el-option>
+              </el-select>
+              <div class="form-tip" v-if="boundEntity && entityFormOptions.length === 0">
+                暂无可用表单，请先
+                <el-button type="primary" link size="small" @click="goToFormDesign">创建表单</el-button>
+              </div>
+              <div class="form-tip" v-if="!boundEntity">
+                当前流程未绑定实体，无法选择实体表单
+              </div>
+            </el-form-item>
+            
+            <el-form-item label="表单预览" v-if="formConfig.entityFormId">
+              <div class="form-preview" v-if="selectedFormFields.length > 0">
+                <div class="preview-title">{{ selectedForm?.formName }}</div>
+                <div class="preview-fields">
+                  <div 
+                    v-for="field in selectedFormFields" 
+                    :key="field.id"
+                    class="preview-field"
+                    :class="{ required: field.isRequired, readonly: field.isReadonly }"
+                  >
+                    <span class="field-label">{{ field.fieldLabel }}</span>
+                    <span class="field-type">({{ getFieldTypeLabel(field.fieldType) }})</span>
+                    <el-tag size="small" v-if="field.isRequired" type="danger">必填</el-tag>
+                    <el-tag size="small" v-if="field.isReadonly" type="warning">只读</el-tag>
+                  </div>
+                </div>
+              </div>
+              <el-empty v-else description="表单暂无字段" />
+            </el-form-item>
+            
+            <el-form-item label="只读模式">
+              <el-switch v-model="formConfig.isReadonly" @change="updateNodeFormBind" />
+              <div class="form-tip">开启后节点只能查看表单，不能编辑</div>
+            </el-form-item>
+          </template>
+          
+          <!-- 自定义表单 -->
+          <template v-if="formConfig.formSource === 'custom'">
+            <el-form-item label="表单Key">
+              <el-input 
+                v-model="formConfig.formKey" 
+                placeholder="如：leave_apply_form"
+                @blur="updateProperty('formKey', formConfig.formKey)"
+              />
+              <div class="form-tip">关联外部表单标识</div>
+            </el-form-item>
+          </template>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 高级配置 ========== -->
@@ -893,7 +1004,27 @@
               @blur="updateSkipExpression"
             />
           </el-form-item>
+          
+          <el-divider>自动跳过</el-divider>
+          
+          <el-form-item label="是否跳过">
+            <el-switch 
+              v-model="advancedForm.skipNode" 
+              @change="updateSkipNode"
+              active-text="是"
+              inactive-text="否"
+            />
+          </el-form-item>
+          
+          <el-alert v-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
+            <template #title>
+              开启后，流程执行到此节点时将自动跳过，直接流转到下一节点
+            </template>
+          </el-alert>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -901,9 +1032,12 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
+const router = useRouter()
 
 const props = defineProps({
   element: { type: Object, required: true },
@@ -927,6 +1061,29 @@ const isTask = computed(() => props.element?.type?.includes('Task') || props.ele
 const isStartEvent = computed(() => props.element?.type === 'bpmn:StartEvent')
 const isSequenceFlow = computed(() => props.element?.type === 'bpmn:SequenceFlow')
 const isGateway = computed(() => props.element?.type?.includes('Gateway'))
+
+// 字段类型标签
+function getFieldTypeLabel(type) {
+  const typeMap = {
+    'string': '文本',
+    'number': '数字',
+    'date': '日期',
+    'datetime': '日期时间',
+    'select': '下拉选择',
+    'radio': '单选',
+    'checkbox': '多选',
+    'textarea': '多行文本',
+    'file': '文件',
+    'user': '用户选择',
+    'dept': '部门选择'
+  }
+  return typeMap[type] || type
+}
+
+// 跳转到表单设计
+function goToFormDesign() {
+  window.open('/#/entity-form', '_blank')
+}
 
 // ========== 节点类型说明 ==========
 const nodeTypeDesc = computed(() => {
@@ -1090,13 +1247,27 @@ const ruleForm = ref({ decisionRef: '', inputVariables: '', resultVariable: '', 
 const scriptForm = ref({ scriptFormat: 'javascript', script: '', resultVariable: '', autoStoreVariables: false })
 const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParameters: '', outputParameters: '', businessKey: '' })
 const conditionForm = ref({ type: '', expression: '' })
-const formConfig = ref({ formKey: '' })
-const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '' })
+const formConfig = ref({ 
+  formKey: '',
+  formSource: 'entity',  // 默认实体表单
+  entityFormId: '',
+  isReadonly: false,
+  entityCode: ''
+})
+const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '', skipNode: false })
 
 // 用户、组、角色选项
 const userOptions = ref([])
 const groupOptions = ref([])
 const roleOptions = ref([])
+
+// 实体表单选项
+const entityFormOptions = ref([])
+const selectedFormFields = ref([])
+const selectedForm = computed(() => {
+  if (!formConfig.value.entityFormId) return null
+  return entityFormOptions.value.find(f => f.id === formConfig.value.entityFormId)
+})
 
 // 加载用户列表
 async function loadUsers() {
@@ -1150,11 +1321,71 @@ async function loadRoles() {
   }
 }
 
+// 绑定的实体信息
+const boundEntity = ref(null)
+
+// 加载流程绑定的实体及表单列表
+async function loadEntityForms() {
+  if (!props.processId) {
+    console.warn('processId 为空，无法加载实体表单')
+    return
+  }
+  try {
+    // 1. 先获取流程绑定的实体
+    const entityRes = await fetch(`/api/entity/process/${props.processId}`).then(r => r.json())
+    if (entityRes.code === 200) {
+      boundEntity.value = entityRes.data
+      // 2. 加载该实体的表单列表
+      if (boundEntity.value?.id) {
+        const formsRes = await fetch(`/api/entity-form/entity/${boundEntity.value.id}`).then(r => r.json())
+        if (formsRes.code === 200) {
+          entityFormOptions.value = formsRes.data || []
+        }
+      }
+    }
+  } catch (e) {
+    console.error('加载实体表单列表失败:', e)
+  }
+}
+
+// 加载表单字段
+async function loadFormFields(formId) {
+  try {
+    const res = await fetch(`/api/entity-form/${formId}/fields`).then(r => r.json())
+    if (res.code === 200) {
+      selectedFormFields.value = res.data || []
+    }
+  } catch (e) {
+    console.error('加载表单字段失败:', e)
+    selectedFormFields.value = []
+  }
+}
+
 // 在组件挂载时加载数据
 onMounted(() => {
   loadUsers()
   loadGroups()
   loadRoles()
+  loadEntityForms()
+})
+
+// 监听用户/组/角色列表加载完成，重新计算ID映射
+watch(() => userOptions.value.length, () => {
+  if (isUserTask.value && assigneeForm.value.candidateUsers) {
+    assigneeForm.value.candidateUserIds = getUserIdsFromUsernames(assigneeForm.value.candidateUsers)
+  }
+})
+
+watch(() => groupOptions.value.length, () => {
+  if (isUserTask.value && assigneeForm.value.candidateGroups) {
+    assigneeForm.value.candidateGroupIds = getGroupIdsFromCodes(assigneeForm.value.candidateGroups)
+  }
+})
+
+watch(() => roleOptions.value.length, () => {
+  if (isUserTask.value && assigneeForm.value.candidateGroups) {
+    assigneeForm.value.candidateRoleIds = getRoleIdsFromCodes(assigneeForm.value.candidateGroups)
+  }
 })
 
 // 子流程列表（模拟）
@@ -1235,33 +1466,236 @@ watch(() => props.element, (newElement) => {
   if (newElement?.type === 'bpmn:SequenceFlow') loadActions()
 }, { immediate: true })
 
+// 根据用户名列表获取用户ID列表
+function getUserIdsFromUsernames(usernames) {
+  if (!usernames) return []
+  const usernameList = usernames.split(',').filter(Boolean)
+  return usernameList.map(username => {
+    const user = userOptions.value.find(u => u.username === username || u.value === username)
+    return user?.id || username
+  }).filter(Boolean)
+}
+
+// 根据组code列表获取组ID列表
+function getGroupIdsFromCodes(codes) {
+  if (!codes) return []
+  const codeList = codes.split(',').filter(c => c && !c.startsWith('ROLE_'))
+  return codeList.map(code => {
+    const group = groupOptions.value.find(g => g.code === code || g.value === code)
+    return group?.id || code
+  }).filter(Boolean)
+}
+
+// 根据组code列表获取角色ID列表
+function getRoleIdsFromCodes(codes) {
+  if (!codes) return []
+  const roleCodes = codes.split(',').filter(c => c && c.startsWith('ROLE_')).map(c => c.replace('ROLE_', ''))
+  return roleCodes.map(code => {
+    const role = roleOptions.value.find(r => r.code === code || r.value === code)
+    return role?.id || code
+  }).filter(Boolean)
+}
+
 watch(() => props.element, (newElement) => {
   if (newElement?.businessObject) {
     const bo = newElement.businessObject
+    const extProps = getExtensionProperties(bo)
+    
+    console.log('加载节点配置:', bo.id, bo.name, '扩展属性:', extProps)
+    
     basicForm.value = { id: bo.id || '', name: bo.name || '', documentation: bo.documentation?.[0]?.text || '' }
     
     if (isUserTask.value) {
       const loop = bo.loopCharacteristics
-      assigneeForm.value = { assignee: bo.assignee || '', candidateUsers: bo.candidateUsers || '', candidateGroups: bo.candidateGroups || '', isMultiInstance: !!loop, multiInstanceType: loop?.isSequential ? 'sequential' : 'parallel', collection: loop?.collection || '', elementVariable: loop?.elementVariable || 'assignee', completionCondition: loop?.completionCondition?.body || '' }
+      
+      // 解析 assigneeConfig（包含执行人类型、接口配置等）
+      let assigneeConfig = {}
+      if (extProps['assigneeConfig']) {
+        try {
+          assigneeConfig = JSON.parse(extProps['assigneeConfig'])
+        } catch (e) {
+          console.error('解析 assigneeConfig 失败:', e)
+        }
+      }
+      
+      // 解析 multiInstanceConfig（多实例高级配置）
+      let multiInstanceConfig = {}
+      if (extProps['multiInstanceConfig']) {
+        try {
+          multiInstanceConfig = JSON.parse(extProps['multiInstanceConfig'])
+        } catch (e) {
+          console.error('解析 multiInstanceConfig 失败:', e)
+        }
+      }
+      
+      // 处理候选人和候选组
+      const candidateUsers = bo.candidateUsers || ''
+      const candidateGroups = bo.candidateGroups || ''
+      
+      assigneeForm.value = { 
+        // 基础执行人配置
+        assignee: bo.assignee || '', 
+        candidateUsers: candidateUsers, 
+        candidateGroups: candidateGroups, 
+        candidateUserIds: getUserIdsFromUsernames(candidateUsers),
+        candidateGroupIds: getGroupIdsFromCodes(candidateGroups),
+        candidateRoleIds: getRoleIdsFromCodes(candidateGroups),
+        
+        // 多实例配置
+        isMultiInstance: !!loop, 
+        multiInstanceType: loop?.isSequential ? 'sequential' : 'parallel', 
+        collection: loop?.collection || multiInstanceConfig.collection || '', 
+        elementVariable: loop?.elementVariable || multiInstanceConfig.elementVariable || 'assignee', 
+        completionCondition: loop?.completionCondition?.body || multiInstanceConfig.completionCondition || '',
+        
+        // 执行人类型和接口配置（从扩展属性）
+        assigneeType: assigneeConfig.assigneeType || (bo.assignee ? 'user' : candidateGroups ? 'group' : 'user'),
+        interfaceType: assigneeConfig.interfaceType || 'rest',
+        interfaceName: assigneeConfig.interfaceName || '',
+        interfaceMethod: assigneeConfig.interfaceMethod || '',
+        interfaceParams: assigneeConfig.interfaceParams || '',
+        restMethod: assigneeConfig.restMethod || 'GET',
+        resultMapping: assigneeConfig.resultMapping || '',
+        collectionSource: assigneeConfig.collectionSource || multiInstanceConfig.collectionSource || 'interface',
+        collectionInterface: assigneeConfig.collectionInterface || multiInstanceConfig.collectionInterface || ''
+      }
     }
     if (isServiceTask.value) {
-      // 检查是否是REST配置
-      const extensionProps = bo.extensionProperties
-      if (extensionProps?.restConfig) {
-        serviceForm.value = { implementationType: 'rest', implementation: '', resultVariable: bo.resultVariable || '' }
-        restForm.value = { ...restForm.value, ...extensionProps.restConfig }
+      // 检查是否是REST配置（从 camunda:Properties 读取）
+      const restConfigStr = extProps['restConfig']
+      if (restConfigStr) {
+        try {
+          const restConfig = JSON.parse(restConfigStr)
+          serviceForm.value = { implementationType: 'rest', implementation: '', resultVariable: bo.resultVariable || '' }
+          restForm.value = { ...restForm.value, ...restConfig }
+        } catch (e) {
+          console.error('解析 REST 配置失败:', e)
+          serviceForm.value = { implementationType: bo.class ? 'class' : bo.expression ? 'expression' : bo.delegateExpression ? 'delegateExpression' : 'class', implementation: bo.class || bo.expression || bo.delegateExpression || '', resultVariable: bo.resultVariable || '' }
+        }
       } else {
         serviceForm.value = { implementationType: bo.class ? 'class' : bo.expression ? 'expression' : bo.delegateExpression ? 'delegateExpression' : 'class', implementation: bo.class || bo.expression || bo.delegateExpression || '', resultVariable: bo.resultVariable || '' }
+      }
+    }
+    if (isSendTask.value) {
+      // 加载发送任务配置
+      const sendConfigStr = extProps['sendConfig']
+      if (sendConfigStr) {
+        try {
+          const sendConfig = JSON.parse(sendConfigStr)
+          sendForm.value = { ...sendForm.value, ...sendConfig }
+        } catch (e) {
+          console.error('解析 sendConfig 失败:', e)
+        }
+      }
+    }
+    if (isReceiveTask.value) {
+      // 加载接收任务配置
+      const receiveConfigStr = extProps['receiveConfig']
+      if (receiveConfigStr) {
+        try {
+          const receiveConfig = JSON.parse(receiveConfigStr)
+          receiveForm.value = { ...receiveForm.value, ...receiveConfig }
+        } catch (e) {
+          console.error('解析 receiveConfig 失败:', e)
+        }
+      }
+    }
+    if (isManualTask.value) {
+      // 加载手动任务配置
+      const manualConfigStr = extProps['manualConfig']
+      if (manualConfigStr) {
+        try {
+          const manualConfig = JSON.parse(manualConfigStr)
+          manualForm.value = { ...manualForm.value, ...manualConfig }
+        } catch (e) {
+          console.error('解析 manualConfig 失败:', e)
+        }
+      }
+    }
+    if (isBusinessRuleTask.value) {
+      // 加载业务规则任务配置
+      const ruleConfigStr = extProps['ruleConfig']
+      if (ruleConfigStr) {
+        try {
+          const ruleConfig = JSON.parse(ruleConfigStr)
+          ruleForm.value = { ...ruleForm.value, ...ruleConfig }
+        } catch (e) {
+          console.error('解析 ruleConfig 失败:', e)
+        }
+      }
+    }
+    if (isScriptTask.value) {
+      // 加载脚本任务配置
+      const scriptConfigStr = extProps['scriptConfig']
+      if (scriptConfigStr) {
+        try {
+          const scriptConfig = JSON.parse(scriptConfigStr)
+          scriptForm.value = { ...scriptForm.value, ...scriptConfig }
+        } catch (e) {
+          console.error('解析 scriptConfig 失败:', e)
+        }
+      }
+    }
+    if (isCallActivity.value) {
+      // 加载调用活动配置
+      const callConfigStr = extProps['callConfig']
+      if (callConfigStr) {
+        try {
+          const callConfig = JSON.parse(callConfigStr)
+          callForm.value = { ...callForm.value, ...callConfig }
+        } catch (e) {
+          console.error('解析 callConfig 失败:', e)
+        }
       }
     }
     if (isSequenceFlow.value) {
       conditionForm.value = { type: bo.conditionExpression ? 'expression' : bo.sourceRef?.default === bo ? 'default' : '', expression: bo.conditionExpression?.body || '' }
     }
     if (isTask.value || isStartEvent.value) {
-      formConfig.value = { formKey: bo.formKey || '' }
+      // 从扩展属性中读取表单绑定信息
+      const entityFormId = extProps['entityFormId']
+      const entityFormReadonly = extProps['entityFormReadonly'] === 'true'
+      const entityCode = extProps['entityCode'] || ''
+      
+      if (entityFormId) {
+        // 实体表单绑定
+        formConfig.value = {
+          formSource: 'entity',
+          formKey: '',
+          entityFormId: entityFormId,
+          isReadonly: entityFormReadonly,
+          entityCode: entityCode
+        }
+        // 加载表单字段
+        loadFormFields(entityFormId)
+      } else if (bo.formKey) {
+        // 自定义表单
+        formConfig.value = {
+          formSource: 'custom',
+          formKey: bo.formKey,
+          entityFormId: '',
+          isReadonly: false,
+          entityCode: ''
+        }
+      } else {
+        // 无表单
+        formConfig.value = {
+          formSource: 'none',
+          formKey: '',
+          entityFormId: '',
+          isReadonly: false,
+          entityCode: ''
+        }
+      }
     }
     if (isTask.value || isGateway.value) {
-      advancedForm.value = { async: bo.async || bo.asyncBefore || bo.asyncAfter, asyncBefore: bo.asyncBefore || false, asyncAfter: bo.asyncAfter || false, skipExpression: bo.skipExpression?.body || '' }
+      advancedForm.value = { 
+        async: bo.async || bo.asyncBefore || bo.asyncAfter, 
+        asyncBefore: bo.asyncBefore || false, 
+        asyncAfter: bo.asyncAfter || false, 
+        skipExpression: bo.skipExpression?.body || '',
+        skipNode: extProps['skipNode'] === 'true'
+      }
     }
   }
 }, { immediate: true })
@@ -1269,6 +1703,21 @@ watch(() => props.element, (newElement) => {
 // ========== 更新方法 ==========
 function getModeling() { return props.element?._modeler?.get('modeling') }
 function getModdle() { return props.element?._modeler?.get('moddle') }
+
+// 获取扩展属性
+function getExtensionProperties(bo) {
+  const props = {}
+  if (!bo.extensionElements) return props
+  const extElements = bo.extensionElements.get('values') || []
+  const propElement = extElements.find(v => v.$type === 'camunda:Properties')
+  if (propElement) {
+    const values = propElement.get('values') || []
+    values.forEach(p => {
+      props[p.name] = p.value
+    })
+  }
+  return props
+}
 
 function updateProperty(prop, value) {
   const modeling = getModeling()
@@ -1305,6 +1754,17 @@ function updateMultiInstance() {
   const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', { isSequential: assigneeForm.value.multiInstanceType === 'sequential', collection: assigneeForm.value.collection || undefined, elementVariable: assigneeForm.value.elementVariable || 'assignee' })
   if (assigneeForm.value.completionCondition) loop.completionCondition = moddle.create('bpmn:FormalExpression', { body: assigneeForm.value.completionCondition })
   modeling.updateProperties(props.element, { loopCharacteristics: loop })
+  
+  // 保存多实例高级配置到扩展属性（用于回显）
+  const multiInstanceConfig = {
+    collection: assigneeForm.value.collection,
+    elementVariable: assigneeForm.value.elementVariable,
+    completionCondition: assigneeForm.value.completionCondition,
+    collectionSource: assigneeForm.value.collectionSource,
+    collectionInterface: assigneeForm.value.collectionInterface
+  }
+  updateExtensionProperty('multiInstanceConfig', JSON.stringify(multiInstanceConfig))
+  
   emit('save')
 }
 
@@ -1369,6 +1829,12 @@ function updateSkipExpression() {
   emit('save')
 }
 
+function updateSkipNode() {
+  // 使用扩展属性存储跳过节点配置
+  updateExtensionProperty('skipNode', advancedForm.value.skipNode ? 'true' : 'false')
+  emit('save')
+}
+
 // ========== 执行人配置更新方法 ==========
 function onAssigneeTypeChange(type) {
   // 切换类型时清空之前的配置
@@ -1379,6 +1845,135 @@ function onAssigneeTypeChange(type) {
   assigneeForm.value.candidateGroupIds = []
   assigneeForm.value.candidateRoleIds = []
   updateAssigneeConfig()
+}
+
+// ========== 表单配置更新方法 ==========
+function onFormSourceChange(source) {
+  // 切换表单来源时清空之前的配置
+  if (source === 'entity') {
+    formConfig.value.formKey = ''
+    updateProperty('formKey', '')
+  } else if (source === 'custom') {
+    formConfig.value.entityFormId = ''
+    formConfig.value.isReadonly = false
+  } else {
+    // none - 清除所有配置
+    formConfig.value.formKey = ''
+    formConfig.value.entityFormId = ''
+    formConfig.value.isReadonly = false
+    updateProperty('formKey', '')
+  }
+  updateNodeFormBind()
+}
+
+async function onEntityFormChange(formId) {
+  if (formId) {
+    await loadFormFields(formId)
+    const selectedForm = entityFormOptions.value.find(f => f.id === formId)
+    formConfig.value.entityCode = selectedForm?.entityCode || ''
+  } else {
+    selectedFormFields.value = []
+    formConfig.value.entityCode = ''
+  }
+  updateNodeFormBind()
+}
+
+function updateNodeFormBind() {
+  if (!props.element) return
+  const bo = props.element.businessObject
+  
+  if (formConfig.value.formSource === 'entity' && formConfig.value.entityFormId) {
+    // 实体表单绑定
+    bo.set('camunda:formKey', null)
+    bo.set('camunda:formData', null)
+    // 扩展属性存储表单绑定信息
+    updateExtensionProperty('entityFormId', formConfig.value.entityFormId)
+    updateExtensionProperty('entityFormReadonly', formConfig.value.isReadonly ? 'true' : 'false')
+    updateExtensionProperty('entityCode', formConfig.value.entityCode)
+  } else if (formConfig.value.formSource === 'custom' && formConfig.value.formKey) {
+    // 自定义表单使用 formKey
+    updateProperty('formKey', formConfig.value.formKey)
+    bo.set('camunda:formData', null)
+    updateExtensionProperty('entityFormId', null)
+    updateExtensionProperty('entityFormReadonly', null)
+    updateExtensionProperty('entityCode', null)
+  } else {
+    // 无表单
+    updateProperty('formKey', '')
+    updateExtensionProperty('entityFormId', null)
+    updateExtensionProperty('entityFormReadonly', null)
+    updateExtensionProperty('entityCode', null)
+  }
+}
+
+function updateExtensionProperty(name, value) {
+  if (!props.element) {
+    console.warn('updateExtensionProperty: element 为空')
+    return
+  }
+  const moddle = getModdle()
+  if (!moddle) {
+    console.warn('updateExtensionProperty: moddle 为空')
+    return
+  }
+  const bo = props.element.businessObject
+  if (!bo) {
+    console.warn('updateExtensionProperty: businessObject 为空')
+    return
+  }
+  
+  try {
+    // 创建或获取 extensionElements
+    let extensionElements = bo.extensionElements
+    if (!extensionElements) {
+      extensionElements = moddle.create('bpmn:ExtensionElements')
+      bo.extensionElements = extensionElements
+    }
+    
+    // 获取 values 数组
+    let values = extensionElements.get('values')
+    if (!values) {
+      values = []
+      extensionElements.set('values', values)
+    }
+    
+    // 查找或创建 camunda:Properties 元素
+    let propElement = values.find(v => v.$type === 'camunda:Properties')
+    if (!propElement) {
+      propElement = moddle.create('camunda:Properties')
+      values.push(propElement)
+    }
+    
+    // 获取或创建 properties 数组
+    let props = propElement.get('values') || propElement.values
+    if (!props) {
+      props = []
+      propElement.set('values', props)
+    }
+    
+    // 查找或更新属性
+    let prop = props.find(p => p.name === name)
+    
+    if (value !== null && value !== undefined && value !== '') {
+      if (!prop) {
+        prop = moddle.create('camunda:Property', { name: name, value: String(value) })
+        props.push(prop)
+      } else {
+        prop.value = String(value)
+      }
+    } else if (prop) {
+      // 清除空值
+      const idx = props.indexOf(prop)
+      if (idx > -1) props.splice(idx, 1)
+    }
+    
+    // 更新 values
+    propElement.set('values', props)
+    console.log('扩展属性已保存:', name, value)
+  } catch (error) {
+    console.error('updateExtensionProperty 失败:', error)
+    throw error
+  }
 }
 
 function onCollectionSourceChange() {
@@ -1417,7 +2012,7 @@ function updateCandidateRoles() {
 }
 
 function updateAssigneeInterface() {
-  // 将接口配置存储到扩展属性中
+  // 将接口配置存储到扩展属性中（使用 camunda:Properties）
   const interfaceConfig = {
     type: assigneeForm.value.assigneeType,
     interfaceType: assigneeForm.value.interfaceType,
@@ -1427,17 +2022,13 @@ function updateAssigneeInterface() {
     restMethod: assigneeForm.value.restMethod,
     resultMapping: assigneeForm.value.resultMapping
   }
-  const modeling = getModeling()
-  if (modeling) {
-    modeling.updateProperties(props.element, {
-      extensionProperties: { assigneeInterface: interfaceConfig }
-    })
-  }
+  // 使用 updateExtensionProperty 存储 JSON 字符串
+  updateExtensionProperty('assigneeInterface', JSON.stringify(interfaceConfig))
   emit('save')
 }
 
 function updateAssigneeConfig() {
-  // 保存执行人配置类型
+  // 保存执行人配置类型（使用 camunda:Properties）
   const config = {
     assigneeType: assigneeForm.value.assigneeType,
     interfaceType: assigneeForm.value.interfaceType,
@@ -1449,12 +2040,8 @@ function updateAssigneeConfig() {
     collectionSource: assigneeForm.value.collectionSource,
     collectionInterface: assigneeForm.value.collectionInterface
   }
-  const modeling = getModeling()
-  if (modeling) {
-    modeling.updateProperties(props.element, {
-      extensionProperties: { assigneeConfig: config }
-    })
-  }
+  // 使用 updateExtensionProperty 存储 JSON 字符串
+  updateExtensionProperty('assigneeConfig', JSON.stringify(config))
   emit('save')
 }
 
@@ -1462,13 +2049,14 @@ function updateAssigneeConfig() {
 function updateRestConfig() {
   const modeling = getModeling()
   if (!modeling) return
-  // 将REST配置存储到扩展属性中
+  // 将REST配置存储到扩展属性中（使用 camunda:Properties）
   const restConfig = { ...restForm.value }
+  updateExtensionProperty('restConfig', JSON.stringify(restConfig))
+  // 清除其他实现方式
   modeling.updateProperties(props.element, { 
     class: undefined,
     expression: undefined,
-    delegateExpression: undefined,
-    extensionProperties: { restConfig }
+    delegateExpression: undefined
   })
   emit('save')
 }
@@ -1481,6 +2069,83 @@ function getRestBodyPlaceholder() {
     return 'userId=${userId}&status=approved&remark=${comment}'
   }
   return '请求体内容'
+}
+
+// 保存当前 tab 的配置
+function saveCurrentTab() {
+  try {
+    console.log('保存当前 tab:', activeTab.value)
+    
+    // 检查 element 是否有效
+    if (!props.element || !props.element.businessObject) {
+      ElMessage.warning('请先选择流程节点')
+      return
+    }
+    
+    // 根据当前激活的 tab 执行相应的保存逻辑
+    switch (activeTab.value) {
+      case 'basic':
+        updateProperty('name', basicForm.value.name)
+        updateDocumentation()
+        break
+      case 'assignee':
+        updateAssigneeConfig()
+        if (assigneeForm.value.isMultiInstance) {
+          updateMultiInstance()
+        }
+        break
+      case 'service':
+        if (serviceForm.value.implementationType === 'rest') {
+          updateRestConfig()
+        } else {
+          updateServiceImplementation()
+        }
+        break
+      case 'send':
+        // 发送任务配置保存到扩展属性
+        updateExtensionProperty('sendConfig', JSON.stringify(sendForm.value))
+        break
+      case 'receive':
+        updateExtensionProperty('receiveConfig', JSON.stringify(receiveForm.value))
+        break
+      case 'manual':
+        updateExtensionProperty('manualConfig', JSON.stringify(manualForm.value))
+        break
+      case 'rule':
+        updateExtensionProperty('ruleConfig', JSON.stringify(ruleForm.value))
+        break
+      case 'script':
+        updateExtensionProperty('scriptConfig', JSON.stringify(scriptForm.value))
+        break
+      case 'call':
+        updateExtensionProperty('callConfig', JSON.stringify(callForm.value))
+        break
+      case 'condition':
+        updateCondition()
+        break
+      case 'actions':
+        // 流程动作自动保存，无需额外操作
+        break
+      case 'form':
+        updateNodeFormBind()
+        break
+      case 'advanced':
+        updateAsync()
+        updateSkipExpression()
+        updateSkipNode()
+        break
+      default:
+        console.warn('未知的 tab:', activeTab.value)
+        ElMessage.warning('当前页面无需保存')
+        return
+    }
+    
+    ElMessage.success('保存成功')
+    emit('save')
+  } catch (error) {
+    console.error('保存失败:', error)
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+  }
 }
 </script>
 
@@ -1517,4 +2182,27 @@ function getRestBodyPlaceholder() {
 .action-detail { display: flex; align-items: center; gap: 8px; }
 .interface-info { font-size: 12px; color: #909399; font-family: monospace; }
 .action-ops { display: flex; gap: 5px; }
+
+/* 表单选择相关样式 */
+.form-option { display: flex; align-items: center; gap: 8px; }
+.form-name { font-weight: 500; }
+.form-key { color: #909399; font-size: 12px; }
+
+.form-preview { border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px; background-color: #fafafa; }
+.preview-title { font-weight: 500; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #e4e7ed; }
+.preview-fields { display: flex; flex-direction: column; gap: 8px; }
+.preview-field { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background-color: #fff; border-radius: 3px; border: 1px solid #e4e7ed; }
+.preview-field.required { border-left: 3px solid #f56c6c; }
+.preview-field.readonly { border-left: 3px solid #e6a23c; }
+.field-label { font-weight: 500; min-width: 80px; }
+.field-type { color: #909399; font-size: 12px; }
+
+/* Tab 页脚保存按钮 */
+.tab-footer {
+  display: flex;
+  justify-content: center;
+  padding: 15px 0;
+  margin-top: 10px;
+  border-top: 1px solid #e4e7ed;
+}
 </style>

@@ -6,9 +6,14 @@ export const processApi = {
     return request.get('/process')
   },
   
-  // 获取已发布的流程列表（用于绑定流程）
+  // 获取已发布的流程列表
   getPublishedList() {
     return request.get('/process/published')
+  },
+
+  // 获取未被实体绑定的流程列表（用于绑定流程）
+  getUnboundList() {
+    return request.get('/process/unbound')
   },
   
   // 获取流程详情

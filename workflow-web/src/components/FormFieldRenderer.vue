@@ -1,59 +1,63 @@
 <template>
   <div class="form-field-renderer">
-    <!-- 文本 -->
+    <!-- 使用 componentType 或 fieldType 来判断 -->
+    
+    <!-- 文本输入 -->
     <el-input
-      v-if="field.fieldType === 'TEXT'"
+      v-if="renderType === 'input'"
       v-model="fieldValue"
-      :placeholder="`请输入${field.fieldName}`"
+      :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
+      clearable
     />
     
     <!-- 多行文本 -->
     <el-input
-      v-else-if="field.fieldType === 'TEXTAREA'"
+      v-else-if="renderType === 'textarea'"
       v-model="fieldValue"
       type="textarea"
       :rows="3"
-      :placeholder="`请输入${field.fieldName}`"
+      :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
     />
     
     <!-- 数字 -->
     <el-input-number
-      v-else-if="field.fieldType === 'NUMBER'"
+      v-else-if="renderType === 'number'"
       v-model="fieldValue"
-      :placeholder="`请输入${field.fieldName}`"
+      :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
     />
     
     <!-- 日期 -->
     <el-date-picker
-      v-else-if="field.fieldType === 'DATE'"
+      v-else-if="renderType === 'date'"
       v-model="fieldValue"
       type="date"
-      :placeholder="`请选择${field.fieldName}`"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
     />
     
     <!-- 日期时间 -->
     <el-date-picker
-      v-else-if="field.fieldType === 'DATETIME'"
+      v-else-if="renderType === 'datetime'"
       v-model="fieldValue"
       type="datetime"
-      :placeholder="`请选择${field.fieldName}`"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
     />
     
     <!-- 下拉选择 -->
     <el-select
-      v-else-if="field.fieldType === 'SELECT'"
+      v-else-if="renderType === 'select'"
       v-model="fieldValue"
-      :placeholder="`请选择${field.fieldName}`"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
+      clearable
     >
       <el-option
         v-for="opt in options"
@@ -65,7 +69,7 @@
     
     <!-- 单选 -->
     <el-radio-group
-      v-else-if="field.fieldType === 'RADIO'"
+      v-else-if="renderType === 'radio'"
       v-model="fieldValue"
       :disabled="disabled"
     >
@@ -80,7 +84,7 @@
     
     <!-- 多选 -->
     <el-checkbox-group
-      v-else-if="field.fieldType === 'CHECKBOX'"
+      v-else-if="renderType === 'checkbox'"
       v-model="fieldValue"
       :disabled="disabled"
     >
@@ -93,9 +97,16 @@
       </el-checkbox>
     </el-checkbox-group>
     
+    <!-- 开关 -->
+    <el-switch
+      v-else-if="renderType === 'switch'"
+      v-model="fieldValue"
+      :disabled="disabled"
+    />
+    
     <!-- 文件 -->
     <el-upload
-      v-else-if="field.fieldType === 'FILE'"
+      v-else-if="renderType === 'file'"
       action="#"
       :disabled="disabled"
       :auto-upload="false"
@@ -105,29 +116,19 @@
       </el-button>
     </el-upload>
     
-    <!-- 用户选择 -->
-    <el-select
-      v-else-if="field.fieldType === 'USER'"
+    <!-- 默认文本输入 -->
+    <el-input
+      v-else
       v-model="fieldValue"
-      :placeholder="`请选择${field.fieldName}`"
+      :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
-      filterable
-      remote
-      :remote-method="searchUsers"
-      style="width: 100%"
-    >
-      <el-option
-        v-for="user in userOptions"
-        :key="user.value"
-        :label="user.label"
-        :value="user.value"
-      />
-    </el-select>
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { Upload } from '@element-plus/icons-vue'
 
 const props = defineProps({
   field: {
@@ -146,9 +147,20 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
+// 渲染类型：优先使用 componentType，其次使用 fieldType
+const renderType = computed(() => {
+  const type = props.field.componentType || props.field.fieldType || ''
+  return type.toLowerCase()
+})
+
+// 字段显示标签
+const fieldLabel = computed(() => {
+  return props.field.fieldLabel || props.field.fieldName || ''
+})
+
 const fieldValue = computed({
   get() {
-    if (props.field.fieldType === 'CHECKBOX' && !Array.isArray(props.modelValue)) {
+    if (renderType.value === 'checkbox' && !Array.isArray(props.modelValue)) {
       return props.modelValue ? [props.modelValue] : []
     }
     return props.modelValue
@@ -159,6 +171,13 @@ const fieldValue = computed({
 })
 
 const options = computed(() => {
+  // 尝试从 componentProps 或 optionsJson 解析选项
+  if (props.field.componentProps) {
+    try {
+      const props = JSON.parse(props.field.componentProps)
+      if (props.options) return props.options
+    } catch (e) {}
+  }
   if (props.field.optionsJson) {
     try {
       return JSON.parse(props.field.optionsJson)

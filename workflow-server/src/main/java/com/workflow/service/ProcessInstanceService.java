@@ -3,6 +3,7 @@ package com.workflow.service;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.vo.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
@@ -10,6 +11,7 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricActivityInstance;
+import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.Execution;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -17,6 +19,7 @@ import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -303,5 +306,216 @@ public class ProcessInstanceService {
         }
         
         progress.setNodeAssigneeMap(assigneeMap);
+    }
+    
+    /**
+     * 获取流程实例详情
+     * 
+     * @param instanceId 流程实例ID
+     * @return 流程详情
+     */
+    public ProcessDetailVO getProcessDetail(String instanceId) {
+        ProcessDetailVO detail = new ProcessDetailVO();
+        detail.setInstanceId(instanceId);
+        
+        // 1. 获取流程实例信息
+        ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(instanceId)
+                .singleResult();
+        
+        HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(instanceId)
+                .singleResult();
+        
+        if (processInstance != null) {
+            detail.setStatus("RUNNING");
+            detail.setProcessDefinitionId(processInstance.getProcessDefinitionId());
+        } else if (historicInstance != null) {
+            detail.setStatus(historicInstance.getEndTime() != null ? "COMPLETED" : "SUSPENDED");
+            detail.setProcessDefinitionId(historicInstance.getProcessDefinitionId());
+        }
+        
+        // 2. 获取流程定义信息
+        if (detail.getProcessDefinitionId() != null) {
+            ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
+                    .processDefinitionId(detail.getProcessDefinitionId())
+                    .singleResult();
+            if (processDefinition != null) {
+                detail.setProcessName(processDefinition.getName());
+            }
+        }
+        
+        // 3. 获取流程实例基本信息
+        if (historicInstance != null) {
+            detail.setStartUser(historicInstance.getStartUserId());
+            detail.setStartTime(formatDate(historicInstance.getStartTime()));
+            detail.setBusinessKey(historicInstance.getBusinessKey());
+        }
+        
+        // 4. 获取当前活动节点
+        if (processInstance != null) {
+            List<Execution> executions = runtimeService.createExecutionQuery()
+                    .processInstanceId(instanceId)
+                    .list();
+            executions.stream()
+                    .filter(e -> e.getActivityId() != null)
+                    .findFirst()
+                    .ifPresent(e -> {
+                        detail.setCurrentNodeId(e.getActivityId());
+                        // 从流程定义获取节点名称
+                        String activityName = getActivityName(e.getActivityId(), detail.getProcessDefinitionId());
+                        detail.setCurrentNode(activityName);
+                    });
+        }
+        
+        // 5. 获取 BPMN XML
+        detail.setBpmnXml(getBpmnXmlByInstanceId(instanceId));
+        
+        // 6. 获取已完成节点
+        List<HistoricActivityInstance> historicActivities = historyService.createHistoricActivityInstanceQuery()
+                .processInstanceId(instanceId)
+                .orderByHistoricActivityInstanceStartTime().asc()
+                .list();
+        
+        List<String> completedNodes = historicActivities.stream()
+                .filter(h -> h.getEndTime() != null && !"sequenceFlow".equals(h.getActivityType()))
+                .map(HistoricActivityInstance::getActivityId)
+                .distinct()
+                .collect(Collectors.toList());
+        detail.setCompletedNodes(completedNodes);
+        
+        // 7. 构建审批历史
+        List<ProcessDetailVO.HistoryVO> historyList = new ArrayList<>();
+        
+        // 添加流程发起记录
+        if (historicInstance != null) {
+            ProcessDetailVO.HistoryVO startHistory = new ProcessDetailVO.HistoryVO();
+            startHistory.setTaskName("流程发起");
+            startHistory.setAssignee(historicInstance.getStartUserId());
+            startHistory.setAction("发起");
+            startHistory.setStartTime(formatDate(historicInstance.getStartTime()));
+            startHistory.setEndTime(formatDate(historicInstance.getStartTime()));
+            historyList.add(startHistory);
+        }
+        
+        // 添加任务审批记录
+        List<HistoricTaskInstance> historicTasks = historyService.createHistoricTaskInstanceQuery()
+                .processInstanceId(instanceId)
+                .finished()
+                .orderByHistoricTaskInstanceEndTime().asc()
+                .list();
+        
+        for (HistoricTaskInstance task : historicTasks) {
+            ProcessDetailVO.HistoryVO history = new ProcessDetailVO.HistoryVO();
+            history.setTaskName(task.getName());
+            history.setAssignee(task.getAssignee());
+            history.setAction("通过"); // 可根据变量判断实际动作
+            history.setStartTime(formatDate(task.getStartTime()));
+            history.setEndTime(formatDate(task.getEndTime()));
+            history.setDuration(task.getDurationInMillis());
+            historyList.add(history);
+        }
+        
+        detail.setHistory(historyList);
+        
+        // 8. 获取表单数据（流程变量）
+        if (historicInstance != null) {
+            Map<String, Object> variables = historicInstance.getProcessVariables();
+            if (variables != null) {
+                // 过滤掉系统变量
+                Map<String, Object> formData = variables.entrySet().stream()
+                        .filter(e -> !e.getKey().startsWith("flowable_") && !e.getKey().startsWith("_"))
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                detail.setFormData(formData);
+            }
+        }
+        
+        return detail;
+    }
+    
+    /**
+     * 获取活动节点名称
+     */
+    private String getActivityName(String activityId, String processDefinitionId) {
+        try {
+            org.flowable.bpmn.model.BpmnModel bpmnModel = repositoryService.getBpmnModel(processDefinitionId);
+            if (bpmnModel != null) {
+                org.flowable.bpmn.model.FlowElement element = bpmnModel.getFlowElement(activityId);
+                if (element != null) {
+                    return element.getName();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取节点名称失败: activityId={}", activityId, e);
+        }
+        return activityId;
+    }
+    
+    /**
+     * 根据流程实例ID获取BPMN XML
+     */
+    private String getBpmnXmlByInstanceId(String instanceId) {
+        HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(instanceId)
+                .singleResult();
+        
+        if (historicInstance == null) {
+            return null;
+        }
+        
+        String processDefinitionId = historicInstance.getProcessDefinitionId();
+        return getBpmnXmlByProcessDefinitionId(processDefinitionId);
+    }
+    
+    /**
+     * 根据流程定义ID获取BPMN XML
+     */
+    private String getBpmnXmlByProcessDefinitionId(String processDefinitionId) {
+        if (processDefinitionId == null) {
+            return null;
+        }
+        
+        try {
+            ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
+                    .processDefinitionId(processDefinitionId)
+                    .singleResult();
+            
+            if (processDefinition == null) {
+                return null;
+            }
+            
+            // 先从 Model 获取
+            try {
+                org.flowable.engine.repository.Model model = repositoryService.getModel(processDefinition.getId());
+                if (model != null) {
+                    byte[] modelBytes = repositoryService.getModelEditorSource(model.getId());
+                    if (modelBytes != null) {
+                        return new String(modelBytes, java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("无法从 Model 获取 BPMN XML", e);
+            }
+            
+            // 从部署资源获取
+            String resourceName = processDefinition.getResourceName();
+            if (resourceName != null) {
+                org.flowable.engine.repository.Deployment deployment = repositoryService.createDeploymentQuery()
+                        .deploymentId(processDefinition.getDeploymentId())
+                        .singleResult();
+                if (deployment != null) {
+                    java.io.InputStream resourceStream = repositoryService.getResourceAsStream(
+                            deployment.getId(), resourceName);
+                    if (resourceStream != null) {
+                        return new String(resourceStream.readAllBytes(), 
+                                java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取 BPMN XML 失败", e);
+        }
+        
+        return null;
     }
 }

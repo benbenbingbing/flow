@@ -72,6 +72,28 @@ public class SysUser {
     private Integer deleted;
     
     /**
+     * 组织ID
+     */
+    private String orgId;
+    
+    /**
+     * 部门ID
+     */
+    private String deptId;
+    
+    /**
+     * 组织名称（冗余）
+     */
+    @TableField(exist = false)
+    private String orgName;
+    
+    /**
+     * 部门名称（冗余）
+     */
+    @TableField(exist = false)
+    private String deptName;
+    
+    /**
      * 角色列表（非数据库字段）
      */
     @TableField(exist = false)

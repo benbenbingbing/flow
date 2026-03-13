@@ -214,7 +214,22 @@ public class EntityDefinitionService {
         entityMapper.updateById(entity);
         return convertToDTO(entity);
     }
-    
+
+    /**
+     * 根据流程定义ID查询绑定的实体
+     */
+    @Transactional(readOnly = true)
+    public EntityDefinitionDTO findByProcessDefinitionId(String processDefinitionId) {
+        EntityDefinition entity = entityMapper.findByProcessDefinitionId(processDefinitionId)
+                .orElseThrow(() -> new RuntimeException("该流程未绑定实体"));
+        // 加载字段
+        List<EntityField> fields = fieldMapper.findByEntityId(entity.getId());
+        entity.setFields(fields);
+        // 查询流程名称
+        String processName = getProcessName(entity.getProcessDefinitionId());
+        return convertToDTO(entity, processName);
+    }
+
     // 转换方法
     private EntityDefinitionDTO convertToDTO(EntityDefinition entity) {
         return convertToDTO(entity, null);

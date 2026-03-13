@@ -113,6 +113,159 @@ public class SysMenu {
     @TableField(exist = false)
     private String parentName;
     
+    // Getter 和 Setter 方法
+    public String getId() {
+        return id;
+    }
+    
+    public void setId(String id) {
+        this.id = id;
+    }
+    
+    public String getParentId() {
+        return parentId;
+    }
+    
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
+    }
+    
+    public String getMenuName() {
+        return menuName;
+    }
+    
+    public void setMenuName(String menuName) {
+        this.menuName = menuName;
+    }
+    
+    public String getMenuType() {
+        return menuType;
+    }
+    
+    public void setMenuType(String menuType) {
+        this.menuType = menuType;
+    }
+    
+    public String getIcon() {
+        return icon;
+    }
+    
+    public void setIcon(String icon) {
+        this.icon = icon;
+    }
+    
+    public Integer getSort() {
+        return sort;
+    }
+    
+    public void setSort(Integer sort) {
+        this.sort = sort;
+    }
+    
+    public String getPath() {
+        return path;
+    }
+    
+    public void setPath(String path) {
+        this.path = path;
+    }
+    
+    public String getComponent() {
+        return component;
+    }
+    
+    public void setComponent(String component) {
+        this.component = component;
+    }
+    
+    public String getPerm() {
+        return perm;
+    }
+    
+    public void setPerm(String perm) {
+        this.perm = perm;
+    }
+    
+    public String getStatus() {
+        return status;
+    }
+    
+    public void setStatus(String status) {
+        this.status = status;
+    }
+    
+    public String getVisible() {
+        return visible;
+    }
+    
+    public void setVisible(String visible) {
+        this.visible = visible;
+    }
+    
+    public String getIsFrame() {
+        return isFrame;
+    }
+    
+    public void setIsFrame(String isFrame) {
+        this.isFrame = isFrame;
+    }
+    
+    public String getIsCache() {
+        return isCache;
+    }
+    
+    public void setIsCache(String isCache) {
+        this.isCache = isCache;
+    }
+    
+    public String getQuery() {
+        return query;
+    }
+    
+    public void setQuery(String query) {
+        this.query = query;
+    }
+    
+    public Integer getDeleted() {
+        return deleted;
+    }
+    
+    public void setDeleted(Integer deleted) {
+        this.deleted = deleted;
+    }
+    
+    public LocalDateTime getCreateTime() {
+        return createTime;
+    }
+    
+    public void setCreateTime(LocalDateTime createTime) {
+        this.createTime = createTime;
+    }
+    
+    public LocalDateTime getUpdateTime() {
+        return updateTime;
+    }
+    
+    public void setUpdateTime(LocalDateTime updateTime) {
+        this.updateTime = updateTime;
+    }
+    
+    public List<SysMenu> getChildren() {
+        return children;
+    }
+    
+    public void setChildren(List<SysMenu> children) {
+        this.children = children;
+    }
+    
+    public String getParentName() {
+        return parentName;
+    }
+    
+    public void setParentName(String parentName) {
+        this.parentName = parentName;
+    }
+    
     public enum MenuType {
         /** 目录 */
         M,

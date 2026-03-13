@@ -38,4 +38,14 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
      */
     @Select("SELECT * FROM process_definition_config WHERE deleted = 0 OR deleted IS NULL ORDER BY updated_at DESC")
     List<ProcessDefinitionConfig> findAllActive();
+
+    /**
+     * 查询所有未被实体绑定的流程（排除已删除）
+     * 用于实体绑定流程时选择
+     */
+    @Select("SELECT p.* FROM process_definition_config p " +
+            "WHERE (p.deleted = 0 OR p.deleted IS NULL) " +
+            "AND p.id NOT IN (SELECT e.process_definition_id FROM entity_definition e WHERE e.process_definition_id IS NOT NULL) " +
+            "ORDER BY p.updated_at DESC")
+    List<ProcessDefinitionConfig> findAllUnbound();
 }

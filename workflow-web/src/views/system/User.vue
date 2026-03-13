@@ -20,6 +20,10 @@
       
       <el-table-column prop="phone" label="手机号" min-width="120" />
       
+      <el-table-column prop="orgName" label="组织" min-width="120" />
+      
+      <el-table-column prop="deptName" label="部门" min-width="120" />
+      
       <el-table-column prop="roles" label="角色" min-width="180">
         <template #default="{ row }">
           <el-tag 
@@ -125,6 +129,35 @@
           </el-col>
         </el-row>
         
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="组织">
+              <el-tree-select
+                v-model="formData.orgId"
+                :data="orgOptions"
+                :props="{ label: 'orgName', value: 'id' }"
+                placeholder="请选择组织"
+                clearable
+                check-strictly
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="部门">
+              <el-tree-select
+                v-model="formData.deptId"
+                :data="deptOptions"
+                :props="{ label: 'orgName', value: 'id' }"
+                placeholder="请选择部门"
+                clearable
+                check-strictly
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
         <el-form-item label="角色" prop="roleIds">
           <el-select
             v-model="formData.roleIds"
@@ -159,6 +192,8 @@ import { getUserList, createUser, updateUser, deleteUser, updateUserStatus, rese
 const loading = ref(false)
 const userList = ref<any[]>([])
 const roleOptions = ref<any[]>([])
+const orgOptions = ref<any[]>([])
+const deptOptions = ref<any[]>([])
 
 // 对话框
 const dialogVisible = ref(false)
@@ -173,7 +208,9 @@ const formData = reactive({
   email: '',
   phone: '',
   status: '0',
-  roleIds: []
+  roleIds: [],
+  orgId: '',
+  deptId: ''
 })
 
 const formRules = {
@@ -200,6 +237,20 @@ const fetchRoleOptions = async () => {
   }
 }
 
+// 获取组织部门选项
+const fetchOrgOptions = async () => {
+  try {
+    const res = await fetch('/api/system/org/enabled').then(r => r.json())
+    if (res.code === 200) {
+      const list = res.data || []
+      orgOptions.value = list.filter((item: any) => item.type === 'org')
+      deptOptions.value = list.filter((item: any) => item.type === 'dept')
+    }
+  } catch (error) {
+    console.error('获取组织部门列表失败', error)
+  }
+}
+
 // 重置表单
 const resetForm = () => {
   Object.assign(formData, {
@@ -209,7 +260,9 @@ const resetForm = () => {
     email: '',
     phone: '',
     status: '0',
-    roleIds: []
+    roleIds: [],
+    orgId: '',
+    deptId: ''
   })
 }
 
@@ -230,7 +283,9 @@ const handleEdit = (row: any) => {
     email: row.email,
     phone: row.phone,
     status: row.status,
-    roleIds: row.roles?.map((r: any) => r.id) || []
+    roleIds: row.roles?.map((r: any) => r.id) || [],
+    orgId: row.orgId,
+    deptId: row.deptId
   })
   dialogTitle.value = '编辑用户'
   dialogVisible.value = true
@@ -292,6 +347,7 @@ const handleResetPassword = async (row: any) => {
 onMounted(() => {
   fetchUserList()
   fetchRoleOptions()
+  fetchOrgOptions()
 })
 </script>
 

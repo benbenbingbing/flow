@@ -41,13 +41,23 @@ public class ProcessDefinitionController {
 
     /**
      * 获取已发布的流程定义列表
-     * 用于实体绑定流程时选择
      * 
      * @return 已发布的流程定义列表
      */
     @GetMapping("/published")
     public ApiResponse<List<ProcessDefinitionDTO>> listPublished() {
         return ApiResponse.success(processService.findByStatus(com.workflow.entity.ProcessDefinitionConfig.ProcessStatus.PUBLISHED));
+    }
+
+    /**
+     * 获取所有未被实体绑定的流程定义列表
+     * 用于实体绑定流程时选择，不限于已发布状态
+     * 
+     * @return 未被绑定的流程定义列表
+     */
+    @GetMapping("/unbound")
+    public ApiResponse<List<ProcessDefinitionDTO>> listUnbound() {
+        return ApiResponse.success(processService.findAllUnbound());
     }
 
     /**

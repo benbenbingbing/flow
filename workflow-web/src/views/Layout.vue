@@ -13,14 +13,26 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
+        <el-menu-item index="/home">
+          <el-icon><HomeFilled /></el-icon>
+          <span>首页</span>
+        </el-menu-item>
         <el-menu-item index="/process">
           <el-icon><Share /></el-icon>
           <span>流程管理</span>
         </el-menu-item>
-        <el-menu-item index="/entity">
-          <el-icon><Box /></el-icon>
-          <span>实体管理</span>
-        </el-menu-item>
+        <el-sub-menu index="/entity">
+          <template #title>
+            <el-icon><Box /></el-icon>
+            <span>实体管理</span>
+          </template>
+          <el-menu-item index="/entity">
+            <span>实体列表</span>
+          </el-menu-item>
+          <el-menu-item index="/entity-form">
+            <span>实体表单</span>
+          </el-menu-item>
+        </el-sub-menu>
         <el-sub-menu index="/system">
           <template #title>
             <el-icon><Setting /></el-icon>
@@ -37,6 +49,10 @@
           <el-menu-item index="/system/group">
             <el-icon><FolderOpened /></el-icon>
             <span>用户组管理</span>
+          </el-menu-item>
+          <el-menu-item index="/system/org">
+            <el-icon><OfficeBuilding /></el-icon>
+            <span>组织部门管理</span>
           </el-menu-item>
           <el-menu-item index="/system/menu">
             <el-icon><Menu /></el-icon>
@@ -120,3 +136,7 @@
   overflow-y: auto;
 }
 </style>
+
+<script setup>
+import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding } from '@element-plus/icons-vue'
+</script>

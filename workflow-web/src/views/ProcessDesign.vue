@@ -39,6 +39,26 @@
       </div>
     </div>
     
+    <!-- XML 查看弹窗 -->
+    <el-dialog
+      v-model="xmlDialogVisible"
+      title="BPMN XML"
+      width="70%"
+      :close-on-click-modal="false"
+    >
+      <div class="xml-container">
+        <pre class="xml-content">{{ xmlContent }}</pre>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="xmlDialogVisible = false">关闭</el-button>
+          <el-button type="primary" @click="copyXML">
+            <el-icon><Document /></el-icon>复制
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+    
     <div class="design-container">
       <div ref="canvasRef" class="canvas"></div>
       <div class="config-panel">
@@ -60,10 +80,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right } from '@element-plus/icons-vue'
 import BpmnModeler from 'bpmn-js/lib/Modeler'
 import { layoutProcess } from 'bpmn-auto-layout'
+import camundaModdle from 'camunda-bpmn-moddle/resources/camunda'
 import { processApi } from '@/api/process'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
 
@@ -172,6 +193,14 @@ const fixXmlLayout = async (xml) => {
   try {
     const layoutedXml = await layoutProcess(xml)
     console.log('布局生成成功，新XML长度:', layoutedXml.length)
+    
+    // 确保生成的 XML 包含 camunda 命名空间
+    if (!layoutedXml.includes('xmlns:camunda')) {
+      return layoutedXml.replace(
+        '<bpmn:definitions',
+        '<bpmn:definitions xmlns:camunda="http://camunda.org/schema/1.0/bpmn"'
+      )
+    }
     return layoutedXml
   } catch (error) {
     console.error('布局生成失败:', error)
@@ -192,14 +221,19 @@ const selectedElement = ref(null)
 const canUndo = ref(false)
 const canRedo = ref(false)
 
+// XML 查看弹窗
+const xmlDialogVisible = ref(false)
+const xmlContent = ref('')
+
 // 命令栈（用于撤销/重做）
 let commandStack = null
 
-// 默认空白流程
+// 默认空白流程（包含 camunda 命名空间）
 const defaultXML = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
                   id="Definitions_1"
                   targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_1" isExecutable="true">
@@ -219,9 +253,9 @@ const initBpmnModeler = () => {
     bpmnModeler.value = new BpmnModeler({
       container: canvasRef.value,
       additionalModules: [customTranslateModule],
-      // 修改Palette默认条目
+      // 添加 camunda 扩展支持
       moddleExtensions: {
-        // 可以在这里添加扩展
+        camunda: camundaModdle
       }
     })
     
@@ -247,6 +281,9 @@ const initBpmnModeler = () => {
           canUndo.value = commandStack.canUndo()
           canRedo.value = commandStack.canRedo()
         })
+        // 初始状态更新
+        canUndo.value = commandStack.canUndo()
+        canRedo.value = commandStack.canRedo()
       }
     } catch (e) {
       console.warn('命令栈服务不可用:', e)
@@ -340,6 +377,14 @@ const initBpmnModeler = () => {
       }
     })
     
+    // 监听画布变化事件，更新撤销/重做按钮状态（备用机制）
+    bpmnModeler.value.on('elements.changed', () => {
+      if (commandStack) {
+        canUndo.value = commandStack.canUndo()
+        canRedo.value = commandStack.canRedo()
+      }
+    })
+    
     // 监听键盘事件（Ctrl+Z 撤销，Ctrl+Y 重做）
     document.addEventListener('keydown', handleKeydown)
   } catch (error) {
@@ -352,6 +397,9 @@ const initBpmnModeler = () => {
 const handleUndo = () => {
   if (commandStack && commandStack.canUndo()) {
     commandStack.undo()
+    // 撤销后更新按钮状态
+    canUndo.value = commandStack.canUndo()
+    canRedo.value = commandStack.canRedo()
   }
 }
 
@@ -359,6 +407,9 @@ const handleUndo = () => {
 const handleRedo = () => {
   if (commandStack && commandStack.canRedo()) {
     commandStack.redo()
+    // 重做后更新按钮状态
+    canUndo.value = commandStack.canUndo()
+    canRedo.value = commandStack.canRedo()
   }
 }
 
@@ -387,6 +438,14 @@ const loadProcess = async () => {
     processData.value = data
     let xml = data.bpmnXml || defaultXML
     
+    // 确保 XML 包含 camunda 命名空间
+    if (!xml.includes('xmlns:camunda')) {
+      xml = xml.replace(
+        '<bpmn:definitions',
+        '<bpmn:definitions xmlns:camunda="http://camunda.org/schema/1.0/bpmn"'
+      )
+    }
+    
     // 如果XML缺少DI，自动生成布局
     if (!xml.includes('BPMNDiagram') || !xml.includes('BPMNShape')) {
       xml = await fixXmlLayout(xml)
@@ -404,20 +463,60 @@ const importXML = async (xml) => {
     await bpmnModeler.value.importXML(xml)
     const canvas = bpmnModeler.value.get('canvas')
     canvas.zoom('fit-viewport', 'auto')
+    
+    // 导入完成后更新撤销/重做按钮状态
+    if (commandStack) {
+      canUndo.value = commandStack.canUndo()
+      canRedo.value = commandStack.canRedo()
+    }
   } catch (error) {
     console.error('导入XML失败:', error)
     ElMessage.error('导入流程图失败')
   }
 }
 
+// 格式化 XML（添加缩进和换行）
+const formatXML = (xml) => {
+  let formatted = ''
+  let indent = 0
+  // 使用字符串替换替代正则，避免转义问题
+  const lines = xml.replace(/>(\s*)</g, '>__SPLIT__<').split('__SPLIT__')
+  
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim()
+    if (!line) continue
+    
+    if (line.match(/^<\/\w/)) {
+      indent--
+    }
+    
+    formatted += '  '.repeat(indent) + line + '\n'
+    
+    if (line.match(/^<\w[^>]*[^\/]>.*$/)) {
+      indent++
+    }
+  }
+  
+  return formatted.trim()
+}
+
+// 复制 XML 到剪贴板
+const copyXML = () => {
+  navigator.clipboard.writeText(xmlContent.value).then(() => {
+    ElMessage.success('XML 已复制到剪贴板')
+  }).catch(() => {
+    ElMessage.error('复制失败')
+  })
+}
+
 const handleSaveXML = async () => {
   try {
     const { xml } = await bpmnModeler.value.saveXML({ format: true })
-    console.log(xml)
-    ElMessage.success('XML已输出到控制台')
+    xmlContent.value = formatXML(xml)
+    xmlDialogVisible.value = true
   } catch (error) {
     console.error(error)
-    ElMessage.error('保存失败')
+    ElMessage.error('获取 XML 失败')
   }
 }
 
@@ -426,7 +525,15 @@ const handleSave = async () => {
     const { xml } = await bpmnModeler.value.saveXML({ format: true })
     
     // 确保 isExecutable="true"，否则 Flowable 无法发布流程
-    const executableXml = xml.replace(/isExecutable="false"/g, 'isExecutable="true"')
+    let executableXml = xml.replace(/isExecutable="false"/g, 'isExecutable="true"')
+    
+    // 确保 XML 包含 camunda 命名空间
+    if (!executableXml.includes('xmlns:camunda')) {
+      executableXml = executableXml.replace(
+        '<bpmn:definitions',
+        '<bpmn:definitions xmlns:camunda="http://camunda.org/schema/1.0/bpmn"'
+      )
+    }
     
     if (processId) {
       await processApi.update(processId, {
@@ -553,5 +660,30 @@ onUnmounted(() => {
 /* 分割线 */
 .header-right .el-divider {
   margin: 0 12px;
+}
+
+/* XML 弹窗样式 */
+.xml-container {
+  max-height: 500px;
+  overflow: auto;
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.xml-content {
+  margin: 0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

@@ -32,10 +32,11 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" width="380" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
             <el-button link type="primary" @click="handleData(row)">数据管理</el-button>
+            <el-button link type="warning" @click="handleForm(row)">表单</el-button>
             <el-button link type="success" @click="handleBindProcess(row)">绑定流程</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -132,8 +133,8 @@ const fetchData = async () => {
 
 const fetchProcessList = async () => {
   try {
-    // 使用专门获取已发布流程的接口
-    processList.value = await processApi.getPublishedList()
+    // 获取所有未被实体绑定的流程（不限于已发布状态）
+    processList.value = await processApi.getUnboundList()
   } catch (error) {
     console.error(error)
     ElMessage.error('获取流程列表失败')
@@ -183,13 +184,19 @@ const handleDesign = (row) => {
   router.push(`/entity/design/${row.id}`)
 }
 
+const handleForm = (row) => {
+  // 跳转到实体表单列表页面，一个实体可以有多个表单
+  router.push(`/entity-form/list-by-entity/${row.id}`)
+}
+
 const handleData = (row) => {
   router.push(`/entity/data/${row.entityCode}`)
 }
 
 const handleBindProcess = (row) => {
   currentEntity.value = row
-  selectedProcessId.value = row.processDefinitionId
+  // 清空之前的选择，让用户重新选择（因为列表只显示未被绑定的流程）
+  selectedProcessId.value = ''
   fetchProcessList()
   bindDialogVisible.value = true
 }

@@ -25,4 +25,10 @@ public interface NodeConfigMapper extends BaseMapper<NodeConfig> {
      */
     @Select("DELETE FROM node_config WHERE process_config_id = #{processConfigId}")
     void deleteByProcessConfigId(@Param("processConfigId") String processConfigId);
+    
+    /**
+     * 根据节点ID和流程配置ID查询节点配置
+     */
+    @Select("SELECT * FROM node_config WHERE node_id = #{nodeId} AND process_config_id = #{processConfigId} LIMIT 1")
+    NodeConfig selectByNodeIdAndProcessId(@Param("nodeId") String nodeId, @Param("processConfigId") String processConfigId);
 }

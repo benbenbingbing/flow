@@ -26,4 +26,10 @@ public interface EntityDefinitionMapper extends BaseMapper<EntityDefinition> {
      */
     @Select("SELECT * FROM entity_definition ORDER BY created_at DESC")
     List<EntityDefinition> findAllWithFields();
+
+    /**
+     * 根据流程定义ID查询绑定的实体
+     */
+    @Select("SELECT * FROM entity_definition WHERE process_definition_id = #{processDefinitionId} LIMIT 1")
+    Optional<EntityDefinition> findByProcessDefinitionId(@Param("processDefinitionId") String processDefinitionId);
 }
