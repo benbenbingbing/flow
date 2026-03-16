@@ -16,6 +16,15 @@ export const processApi = {
     return request.get('/process/unbound')
   },
   
+  // 获取所有可用于绑定的流程列表（包括当前已绑定的和未绑定的）
+  getBindableList(currentProcessId = null) {
+    // 只传递非空的 currentProcessId
+    const params = (currentProcessId && currentProcessId.trim() !== '') 
+      ? { currentProcessId } 
+      : {}
+    return request.get('/process/bindable', { params })
+  },
+  
   // 获取流程详情
   getById(id) {
     return request.get(`/process/${id}`)

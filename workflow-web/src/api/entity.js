@@ -58,6 +58,27 @@ export const entityApi = {
    */
   bindProcess(entityId, processId) {
     return request.post(`/entity/${entityId}/bind-process/${processId}`)
+  },
+
+  /**
+   * 获取实体的表单列表
+   */
+  getEntityForms(entityId) {
+    return request.get(`/entity-form/entity/${entityId}`)
+  },
+
+  /**
+   * 保存实体表单配置
+   */
+  saveEntityForm(entityId, data) {
+    return request.post('/entity-form', data)
+  },
+
+  /**
+   * 获取表单字段
+   */
+  getFormFields(formId) {
+    return request.get(`/entity-form/${formId}/fields`)
   }
 }
 

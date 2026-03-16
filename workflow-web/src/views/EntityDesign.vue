@@ -123,6 +123,88 @@
               placeholder="JSON格式验证规则"
             />
           </el-form-item>
+          
+          <!-- 子表单配置 -->
+          <template v-if="isSubForm">
+            <el-divider>子表单配置</el-divider>
+            <el-form-item label="关联实体" required>
+              <el-select 
+                v-model="selectedField.refEntityId" 
+                placeholder="选择关联实体"
+                style="width: 100%"
+                @change="onRefEntityChange"
+              >
+                <el-option
+                  v-for="entity in availableEntities"
+                  :key="entity.id"
+                  :label="entity.entityName"
+                  :value="entity.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="显示方式">
+              <el-radio-group v-model="selectedField.displayMode">
+                <el-radio label="embedded">嵌入</el-radio>
+                <el-radio label="tab">Tab页</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="关联字段" v-if="selectedField.refEntityId">
+              <el-select 
+                v-model="selectedField.refFieldCode" 
+                placeholder="选择关联字段（用于数据关联）"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="field in refEntityFields"
+                  :key="field.fieldCode"
+                  :label="field.fieldName"
+                  :value="field.fieldCode"
+                />
+              </el-select>
+            </el-form-item>
+          </template>
+          
+          <!-- 附件配置 -->
+          <template v-if="isAttachment">
+            <el-divider>附件配置</el-divider>
+            <el-form-item label="文件类型">
+              <el-select 
+                v-model="selectedField.fileTypes" 
+                multiple 
+                placeholder="选择允许的文件类型"
+                style="width: 100%"
+              >
+                <el-option label="图片 (.jpg, .jpeg, .png, .gif)" value=".jpg,.jpeg,.png,.gif" />
+                <el-option label="文档 (.pdf, .doc, .docx)" value=".pdf,.doc,.docx" />
+                <el-option label="表格 (.xls, .xlsx)" value=".xls,.xlsx" />
+                <el-option label="文本 (.txt)" value=".txt" />
+                <el-option label="压缩包 (.zip, .rar)" value=".zip,.rar" />
+              </el-select>
+              <div class="form-tip">不选则表示允许所有类型</div>
+            </el-form-item>
+            <el-form-item label="单文件大小">
+              <el-input-number 
+                v-model="selectedField.fileMaxSize" 
+                :min="1" 
+                :max="100" 
+                placeholder="MB"
+                style="width: 150px"
+              />
+              <span class="unit-text">MB</span>
+              <div class="form-tip">不设置则默认最大 10MB</div>
+            </el-form-item>
+            <el-form-item label="数量限制">
+              <el-input-number 
+                v-model="selectedField.fileMaxCount" 
+                :min="1" 
+                :max="20" 
+                placeholder="个"
+                style="width: 150px"
+              />
+              <span class="unit-text">个</span>
+              <div class="form-tip">不设置则默认最多 5 个</div>
+            </el-form-item>
+          </template>
         </el-form>
         <div v-else class="empty-tip">请选择字段进行配置</div>
       </div>
@@ -171,7 +253,9 @@ const fieldTypes = [
   { value: 'FILE', label: '文件', icon: 'DocumentChecked' },
   { value: 'IMAGE', label: '图片', icon: 'Picture' },
   { value: 'USER', label: '用户', icon: 'User' },
-  { value: 'DEPT', label: '部门', icon: 'OfficeBuilding' }
+  { value: 'DEPT', label: '部门', icon: 'OfficeBuilding' },
+  { value: 'SUB_FORM', label: '子表单', icon: 'Grid' },
+  { value: 'SUB_FORM_LIST', label: '子表单列表', icon: 'List' }
 ]
 
 const entityData = ref({})
@@ -180,11 +264,50 @@ const selectedField = ref(null)
 const previewVisible = ref(false)
 const draggedType = ref(null)
 const optionsText = ref('')
+const refEntityFields = ref([])
 
 // 是否显示选项配置
 const showOptions = computed(() => {
   return selectedField.value && ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(selectedField.value.fieldType)
 })
+
+// 是否显示子表单配置
+const isSubForm = computed(() => {
+  return selectedField.value && ['SUB_FORM', 'SUB_FORM_LIST'].includes(selectedField.value.fieldType)
+})
+
+// 是否显示附件配置
+const isAttachment = computed(() => {
+  return selectedField.value && ['FILE', 'IMAGE'].includes(selectedField.value.fieldType)
+})
+
+// 可选的实体列表（排除当前实体）
+const availableEntities = ref([])
+
+// 加载可选实体列表
+const loadAvailableEntities = async () => {
+  try {
+    const res = await entityApi.getList()
+    availableEntities.value = res.filter(item => item.id !== entityId)
+  } catch (error) {
+    console.error('加载实体列表失败:', error)
+  }
+}
+
+// 关联实体变化时加载字段
+const onRefEntityChange = async (entityId) => {
+  if (!entityId) {
+    refEntityFields.value = []
+    return
+  }
+  try {
+    const data = await entityApi.getById(entityId)
+    refEntityFields.value = data.fields || []
+  } catch (error) {
+    console.error('加载实体字段失败:', error)
+    refEntityFields.value = []
+  }
+}
 
 // 监听选项文本变化
 watch(optionsText, (val) => {
@@ -230,6 +353,8 @@ const handleAddField = (type) => {
 // 选择字段
 const selectField = (field) => {
   selectedField.value = field
+  refEntityFields.value = []
+  
   if (showOptions.value && field.optionsJson) {
     try {
       const options = JSON.parse(field.optionsJson)
@@ -239,6 +364,11 @@ const selectField = (field) => {
     }
   } else {
     optionsText.value = ''
+  }
+  
+  // 如果是子表单字段，加载关联实体的字段
+  if (isSubForm.value && field.refEntityId) {
+    onRefEntityChange(field.refEntityId)
   }
 }
 
@@ -277,10 +407,19 @@ const convertToFormField = (field) => {
   return {
     fieldName: field.fieldName,
     fieldKey: field.fieldCode,
+    fieldCode: field.fieldCode,
     fieldType: field.fieldType,
     isRequired: field.isRequired,
     defaultValue: field.defaultValue,
-    optionsJson: field.optionsJson
+    optionsJson: field.optionsJson,
+    // 子表单相关属性
+    refEntityId: field.refEntityId,
+    displayMode: field.displayMode,
+    refFieldCode: field.refFieldCode,
+    // 附件相关属性
+    fileTypes: field.fileTypes,
+    fileMaxSize: field.fileMaxSize,
+    fileMaxCount: field.fileMaxCount
   }
 }
 
@@ -323,6 +462,7 @@ const handleDragStart = (type) => {
 
 onMounted(() => {
   loadEntity()
+  loadAvailableEntities()
 })
 </script>
 

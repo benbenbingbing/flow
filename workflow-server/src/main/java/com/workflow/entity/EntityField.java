@@ -107,6 +107,42 @@ public class EntityField {
     private Boolean isQuery;
     
     /**
+     * 关联实体ID（用于子表单）
+     */
+    @TableField("ref_entity_id")
+    private String refEntityId;
+    
+    /**
+     * 显示方式：embedded-嵌入, tab-Tab页（用于子表单）
+     */
+    @TableField("display_mode")
+    private String displayMode;
+    
+    /**
+     * 关联字段编码（用于子表单数据关联）
+     */
+    @TableField("ref_field_code")
+    private String refFieldCode;
+    
+    /**
+     * 文件类型限制（用于附件类型，如：.jpg,.png,.pdf）
+     */
+    @TableField("file_types")
+    private String fileTypes;
+    
+    /**
+     * 文件大小限制（MB，用于附件类型）
+     */
+    @TableField("file_max_size")
+    private Integer fileMaxSize;
+    
+    /**
+     * 文件数量限制（用于附件类型）
+     */
+    @TableField("file_max_count")
+    private Integer fileMaxCount;
+    
+    /**
      * 创建时间
      */
     @TableField(value = "created_at", fill = FieldFill.INSERT)
@@ -119,22 +155,24 @@ public class EntityField {
     private LocalDateTime updatedAt;
     
     public enum FieldType {
-        STRING,      // 字符串
-        TEXT,        // 长文本
-        INTEGER,     // 整数
-        LONG,        // 长整数
-        DECIMAL,     // 小数
-        DATE,        // 日期
-        DATETIME,    // 日期时间
-        BOOLEAN,     // 布尔
-        SELECT,      // 下拉选择
-        MULTI_SELECT,// 多选
-        RADIO,       // 单选
-        CHECKBOX,    // 复选框
-        FILE,        // 文件
-        IMAGE,       // 图片
-        USER,        // 用户选择
-        DEPT,        // 部门选择
-        REFERENCE    // 引用其他实体
+        STRING,         // 字符串
+        TEXT,           // 长文本
+        INTEGER,        // 整数
+        LONG,           // 长整数
+        DECIMAL,        // 小数
+        DATE,           // 日期
+        DATETIME,       // 日期时间
+        BOOLEAN,        // 布尔
+        SELECT,         // 下拉选择
+        MULTI_SELECT,   // 多选
+        RADIO,          // 单选
+        CHECKBOX,       // 复选框
+        FILE,           // 文件
+        IMAGE,          // 图片
+        USER,           // 用户选择
+        DEPT,           // 部门选择
+        REFERENCE,      // 引用其他实体
+        SUB_FORM,       // 子表单（嵌入主表单）
+        SUB_FORM_LIST   // 子表单列表（数据列表形式）
     }
 }

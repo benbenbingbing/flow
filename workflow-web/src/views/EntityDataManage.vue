@@ -48,10 +48,19 @@
             {{ formatDate(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">查看</el-button>
             <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <!-- 显示审批按钮的条件：有流程实例ID且当前登录人是审批人 -->
+            <el-button 
+              v-if="row.processInstanceId && row.currentTaskAssignee === userStore.username" 
+              link 
+              type="warning" 
+              @click="handleApprove(row)"
+            >
+              审批
+            </el-button>
             <el-button v-if="row.processInstanceId" link type="success" @click="handleViewProcess(row)">流程</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -131,9 +140,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import { entityApi, entityDataApi } from '@/api/entity'
+import { processTaskApi } from '@/api/processTask'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const entityCode = route.params.code
 
 const loading = ref(false)
@@ -153,8 +165,8 @@ const formData = ref({
   entityCode: entityCode,
   title: '',
   data: {},
-  submitterId: 'admin',
-  submitterName: '管理员',
+  submitterId: userStore.username,
+  submitterName: userStore.nickname,
   startProcess: false
 })
 
@@ -261,8 +273,8 @@ const handleCreate = () => {
     entityCode: entityCode,
     title: '',
     data: {},
-    submitterId: 'admin',
-    submitterName: '管理员',
+    submitterId: userStore.username,
+    submitterName: userStore.nickname,
     startProcess: entityDefinition.value.enableProcess
   }
   dialogVisible.value = true
@@ -291,6 +303,61 @@ const handleView = (row) => {
 const handleViewProcess = (row) => {
   // 跳转到流程进度查看页
   router.push(`/process/progress/${row.processInstanceId}`)
+}
+
+// 处理审批
+const handleApprove = async (row) => {
+  try {
+    // 使用输入框获取审批意见
+    const { value: action } = await ElMessageBox.confirm(
+      `确定要处理任务 "${row.currentTaskName}" 吗？`,
+      '任务审批',
+      {
+        confirmButtonText: '通过',
+        cancelButtonText: '驳回',
+        distinguishCancelAndClose: true,
+        type: 'warning'
+      }
+    ).catch((action) => {
+      if (action === 'cancel') {
+        return { value: 'reject' }
+      }
+      return null
+    })
+    
+    if (!action) return
+    
+    const actionType = action === 'confirm' ? 'approve' : 'reject'
+    const actionText = actionType === 'approve' ? '通过' : '驳回'
+    
+    // 输入审批备注
+    const { value: comment } = await ElMessageBox.prompt(
+      `请输入审批备注（${actionText}）`,
+      '审批备注',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请输入审批备注（可选）'
+      }
+    ).catch(() => null)
+    
+    if (comment === null) return
+    
+    // 调用审批接口
+    await processTaskApi.completeTask({
+      taskId: row.currentTaskId,
+      action: actionType,
+      comment: comment || ''
+    })
+    
+    ElMessage.success(`审批${actionText}成功`)
+    loadData() // 刷新列表
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error('审批失败')
+    }
+  }
 }
 
 const handleSubmit = async () => {

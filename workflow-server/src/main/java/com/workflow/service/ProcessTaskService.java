@@ -370,6 +370,13 @@ public class ProcessTaskService {
     }
     
     /**
+     * 根据流程实例ID查询当前待办任务（status=0）
+     */
+    public ProcessTask getTodoTaskByProcessInstance(String processInstanceId) {
+        return taskMapper.selectTodoTaskByProcessInstance(processInstanceId);
+    }
+    
+    /**
      * 根据任务ID查询本地待办
      */
     public ProcessTask getTaskByTaskId(String taskId) {

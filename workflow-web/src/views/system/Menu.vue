@@ -11,13 +11,10 @@
     <!-- 菜单表格 -->
     <el-table
       v-loading="loading"
-      :data="menuTree"
+      :data="flattenMenuTree"
       row-key="id"
-      :expand-row-keys="expandedKeys"
       border
       stripe
-      :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
-      @expand-change="handleExpandChange"
     >
       <el-table-column prop="menuName" label="菜单名称" min-width="220">
         <template #default="{ row, $index }">
@@ -257,6 +254,22 @@ const loading = ref(false)
 const menuTree = ref<any[]>([])
 const expandedKeys = ref<string[]>([])
 
+// 扁平化菜单树（根据展开状态显示/隐藏子菜单）
+const flattenMenuTree = computed(() => {
+  const result: any[] = []
+  const flatten = (menus: any[]) => {
+    menus.forEach(menu => {
+      result.push(menu)
+      // 如果菜单已展开，递归添加子菜单
+      if (menu.children?.length && expandedKeys.value.includes(menu.id)) {
+        flatten(menu.children)
+      }
+    })
+  }
+  flatten(menuTree.value)
+  return result
+})
+
 // 对话框
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -313,15 +326,21 @@ const getIconComponent = (iconName: string) => {
 
 // 计算左侧缩进（根据层级）
 const getPaddingLeft = (row: any, index: number) => {
-  // 通过 parentId 判断层级
-  let level = 0
-  let parentId = row.parentId
-  while (parentId && parentId !== '0') {
-    level++
-    const parent = findMenuById(menuTree.value, parentId)
-    parentId = parent?.parentId
+  // 计算层级：在原始 menuTree 中找到该菜单的层级
+  const getLevel = (menus: any[], targetId: string, currentLevel: number = 0): number => {
+    for (const menu of menus) {
+      if (menu.id === targetId) {
+        return currentLevel
+      }
+      if (menu.children?.length) {
+        const level = getLevel(menu.children, targetId, currentLevel + 1)
+        if (level >= 0) return level
+      }
+    }
+    return -1
   }
-  return level * 20
+  const level = getLevel(menuTree.value, row.id)
+  return level > 0 ? level * 20 : 0
 }
 
 // 根据ID查找菜单
@@ -363,15 +382,7 @@ const removeChildrenKeys = (row: any) => {
   }
 }
 
-// 处理表格展开变化
-const handleExpandChange = (row: any, expanded: boolean) => {
-  const index = expandedKeys.value.indexOf(row.id)
-  if (expanded && index === -1) {
-    expandedKeys.value.push(row.id)
-  } else if (!expanded && index > -1) {
-    expandedKeys.value.splice(index, 1)
-  }
-}
+
 
 // 重置表单
 const resetForm = () => {

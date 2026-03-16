@@ -131,10 +131,10 @@ const fetchData = async () => {
   }
 }
 
-const fetchProcessList = async () => {
+const fetchProcessList = async (currentProcessId = null) => {
   try {
-    // 获取所有未被实体绑定的流程（不限于已发布状态）
-    processList.value = await processApi.getUnboundList()
+    // 获取所有可用于绑定的流程（包括当前已绑定的和未绑定的）
+    processList.value = await processApi.getBindableList(currentProcessId)
   } catch (error) {
     console.error(error)
     ElMessage.error('获取流程列表失败')
@@ -185,7 +185,7 @@ const handleDesign = (row) => {
 }
 
 const handleForm = (row) => {
-  // 跳转到实体表单列表页面，一个实体可以有多个表单
+  // 跳转到实体表单列表页面
   router.push(`/entity-form/list-by-entity/${row.id}`)
 }
 
@@ -195,9 +195,10 @@ const handleData = (row) => {
 
 const handleBindProcess = (row) => {
   currentEntity.value = row
-  // 清空之前的选择，让用户重新选择（因为列表只显示未被绑定的流程）
-  selectedProcessId.value = ''
-  fetchProcessList()
+  // 如果已绑定流程，默认显示当前绑定的流程ID
+  selectedProcessId.value = row.processDefinitionId || ''
+  // 获取可绑定的流程列表，包括当前已绑定的
+  fetchProcessList(row.processDefinitionId)
   bindDialogVisible.value = true
 }
 
@@ -206,6 +207,18 @@ const handleConfirmBind = async () => {
     ElMessage.warning('请选择流程')
     return
   }
+  
+  if (!currentEntity.value) {
+    ElMessage.warning('实体信息丢失，请重新打开对话框')
+    return
+  }
+  
+  // 如果没有变化，直接关闭
+  if (selectedProcessId.value === currentEntity.value.processDefinitionId) {
+    bindDialogVisible.value = false
+    return
+  }
+  
   bindLoading.value = true
   try {
     await entityApi.bindProcess(currentEntity.value.id, selectedProcessId.value)
@@ -214,6 +227,12 @@ const handleConfirmBind = async () => {
     fetchData()
   } catch (error) {
     console.error(error)
+    // 显示后端返回的错误信息
+    if (error.response?.data?.message) {
+      ElMessage.error(error.response.data.message)
+    } else if (error.message) {
+      ElMessage.error(error.message)
+    }
   } finally {
     bindLoading.value = false
   }

@@ -70,8 +70,17 @@
                 </span>
               </template>
             </el-tab-pane>
+            <el-tab-pane name="started">
+              <template #label>
+                <span>
+                  <el-icon><Share /></el-icon>
+                  我发起的
+                  <el-badge v-if="startedTotal > 0" :value="startedTotal" class="tab-badge" />
+                </span>
+              </template>
+            </el-tab-pane>
           </el-tabs>
-          <el-radio-group v-model="queryParams.timeRange" size="small" @change="handleTimeRangeChange">
+          <el-radio-group v-if="activeTab !== 'started'" v-model="queryParams.timeRange" size="small" @change="handleTimeRangeChange">
             <el-radio-button label="week">本周</el-radio-button>
             <el-radio-button label="month">本月</el-radio-button>
             <el-radio-button label="year">本年</el-radio-button>
@@ -84,7 +93,7 @@
         <el-form-item label="流程名称">
           <el-input v-model="queryParams.processName" placeholder="请输入流程名称" clearable @keyup.enter="handleQuery" />
         </el-form-item>
-        <el-form-item label="任务名称">
+        <el-form-item v-if="activeTab !== 'started'" label="任务名称">
           <el-input v-model="queryParams.taskName" placeholder="请输入任务名称" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item>
@@ -118,7 +127,7 @@
             <el-tag v-else type="info" size="small">普通</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="handleApprove(row)">
               <el-icon><Check /></el-icon>审批
@@ -126,15 +135,12 @@
             <el-button type="info" size="small" @click="viewProcessProgress(row)">
               <el-icon><View /></el-icon>进度
             </el-button>
-            <el-button type="warning" size="small" @click="handleWithdraw(row)">
-              <el-icon><Back /></el-icon>撤回
-            </el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <!-- 已办列表 -->
-      <el-table v-else :data="doneList" v-loading="loading" stripe>
+      <el-table v-else-if="activeTab === 'done'" :data="doneList" v-loading="loading" stripe>
         <el-table-column type="index" width="50" />
         <el-table-column prop="processName" label="流程名称" min-width="150" show-overflow-tooltip />
         <el-table-column prop="taskName" label="任务名称" min-width="120" show-overflow-tooltip />
@@ -173,12 +179,53 @@
         </el-table-column>
       </el-table>
 
+      <!-- 我发起的列表 -->
+      <el-table v-else-if="activeTab === 'started'" :data="startedList" v-loading="loading" stripe>
+        <el-table-column type="index" width="50" />
+        <el-table-column prop="processName" label="流程名称" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="businessKey" label="业务编码" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="processInstanceId" label="流程实例" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link type="primary" @click="viewStartedProcessDetail(row)">
+              {{ row.processInstanceId }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="currentNodeName" label="当前节点" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="startTime" label="发起时间" width="160" />
+        <el-table-column prop="endTime" label="结束时间" width="160">
+          <template #default="{ row }">
+            <span>{{ row.endTime || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" size="small">{{ row.statusText }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button type="info" size="small" @click="viewStartedProcessDetail(row)">
+              <el-icon><View /></el-icon>查看
+            </el-button>
+            <el-button 
+              v-if="row.status === 'RUNNING'" 
+              type="danger" 
+              size="small" 
+              @click="handleTerminate(row)"
+            >
+              <el-icon><CircleClose /></el-icon>终止
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="queryParams.pageNum"
         v-model:page-size="queryParams.pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :total="activeTab === 'todo' ? todoTotal : doneTotal"
+        :total="activeTab === 'todo' ? todoTotal : activeTab === 'done' ? doneTotal : startedTotal"
         layout="total, sizes, prev, pager, next, jumper"
         class="pagination"
         @size-change="handleSizeChange"
@@ -186,157 +233,176 @@
       />
     </el-card>
 
-    <!-- 审批弹窗 -->
+    <!-- 综合审批弹窗（4个Tab） -->
     <el-dialog
       v-model="approveDialogVisible"
-      title="任务审批"
-      width="800px"
+      :title="activeTab === 'started' ? '流程详情' : (currentTask?.taskName || '任务审批')"
+      width="900px"
       :close-on-click-modal="false"
       class="approve-dialog"
     >
-      <!-- 上半部分：申请信息 -->
-      <el-card shadow="never" class="form-card">
-        <template #header>
-          <div class="card-header">
-            <span>申请信息</span>
-            <el-tag v-if="taskDetail?.formConfig?.isReadonly" type="info" size="small">只读</el-tag>
-          </div>
-        </template>
-        <!-- 调试信息（开发时使用） -->
-        <div v-if="false" style="background: #f5f7fa; padding: 10px; margin-bottom: 10px; font-size: 12px;">
-          <div>taskDetail: {{ taskDetail }}</div>
-          <div>entityData: {{ taskDetail?.entityData }}</div>
-          <div>formConfig: {{ taskDetail?.formConfig }}</div>
-        </div>
-        <div v-if="taskDetail?.entityData && Object.keys(taskDetail.entityData).length > 0" class="entity-data-form">
-          <FormPreview 
-            v-if="taskDetail?.formConfig?.fields && taskDetail.formConfig.fields.length > 0"
-            :form="previewFormConfig" 
-            v-model="taskDetail.entityData"
-            :readonly="true"
-            :show-header="false"
-          />
-          <div v-else class="entity-data-simple">
-            <el-descriptions :column="2" border>
-              <el-descriptions-item 
-                v-for="(value, key) in taskDetail.entityData" 
-                :key="key"
-                :label="key"
-              >
-                {{ value }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </div>
-        </div>
-        <el-empty v-else description="暂无申请数据" />
-      </el-card>
-      
-      <!-- 下半部分：审批操作 -->
-      <el-card shadow="never" class="approve-card" style="margin-top: 20px;">
-        <template #header>
-          <span>审批操作</span>
-        </template>
-        <el-form :model="approveForm" label-width="80px">
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="流程">
-                <span>{{ currentTask?.processName || taskDetail?.processTask?.processName }}</span>
+      <el-tabs v-model="activeApproveTab" type="border-card">
+        <!-- Tab 1: 任务审批 -->
+        <el-tab-pane label="任务审批" name="approval">
+          <!-- 申请信息 -->
+          <el-card shadow="never" class="form-card">
+            <template #header>
+              <div class="card-header">
+                <span>申请信息</span>
+                <el-tag v-if="activeTab === 'started' || taskDetail?.formConfig?.isReadonly" type="info" size="small">只读</el-tag>
+              </div>
+            </template>
+            <div v-if="taskDetail?.entityData && Object.keys(taskDetail.entityData).length > 0" class="entity-data-form">
+              <!-- 调试输出 -->
+              <div v-if="true" style="background:#f5f7fa;padding:10px;margin-bottom:10px;font-size:12px;">
+                <div><strong>调试信息:</strong></div>
+                <div>entityData keys: {{ taskDetail.entityData ? Object.keys(taskDetail.entityData) : 'null' }}</div>
+                <div>fieldNameMap: {{ taskDetail.fieldNameMap }}</div>
+                <div>formFields: {{ taskDetail?.formConfig?.fields?.map(f => ({code: f.fieldCode, name: f.fieldName})) }}</div>
+              </div>
+              <FormPreview 
+                v-if="taskDetail?.formConfig?.fields && taskDetail.formConfig.fields.length > 0"
+                :form="previewFormConfig" 
+                v-model="taskDetail.entityData"
+                :readonly="true"
+                :show-header="false"
+              />
+              <div v-else class="entity-data-simple">
+                <el-descriptions :column="2" border>
+                  <el-descriptions-item 
+                    v-for="(value, key) in taskDetail.entityData" 
+                    :key="key"
+                    :label="taskDetail?.fieldNameMap?.[key] || key"
+                  >
+                    {{ value }}
+                  </el-descriptions-item>
+                </el-descriptions>
+              </div>
+            </div>
+            <el-empty v-else-if="!taskDetail?.formConfig?.fields || taskDetail.formConfig.fields.length === 0" description="暂无申请数据" />
+            <!-- 有表单配置但没有entityData时，显示空表单 -->
+            <div v-else class="entity-data-form">
+              <FormPreview 
+                :form="previewFormConfig" 
+                :model-value="{}"
+                :readonly="true"
+                :show-header="false"
+              />
+            </div>
+          </el-card>
+          
+          <!-- 审批操作 -->
+          <el-card v-if="activeTab !== 'started'" shadow="never" class="approve-card" style="margin-top: 20px;">
+            <template #header>
+              <span>审批操作</span>
+            </template>
+            <el-form :model="approveForm" label-width="80px">
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="流程">
+                    <span>{{ currentTask?.processName || taskDetail?.processTask?.processName }}</span>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="当前节点">
+                    <span>{{ currentTask?.taskName || taskDetail?.processTask?.nodeName }}</span>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-divider />
+              <el-form-item label="审批意见" required>
+                <el-radio-group v-model="approveForm.action">
+                  <el-radio-button label="approve">通过</el-radio-button>
+                  <el-radio-button label="reject">驳回</el-radio-button>
+                  <el-radio-button label="transfer">转办</el-radio-button>
+                </el-radio-group>
               </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="当前节点">
-                <span>{{ currentTask?.taskName || taskDetail?.processTask?.nodeName }}</span>
+              <el-form-item v-if="approveForm.action === 'transfer'" label="转办人" required>
+                <el-select-v2
+                  v-model="approveForm.transferTo"
+                  :options="userOptions"
+                  placeholder="选择转办人"
+                  filterable
+                  clearable
+                  style="width: 100%"
+                />
               </el-form-item>
-            </el-col>
-          </el-row>
-          <el-divider />
-          <el-form-item label="审批意见" required>
-            <el-radio-group v-model="approveForm.action">
-              <el-radio-button label="approve">通过</el-radio-button>
-              <el-radio-button label="reject">驳回</el-radio-button>
-              <el-radio-button label="transfer">转办</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item v-if="approveForm.action === 'transfer'" label="转办人" required>
-            <el-select-v2
-              v-model="approveForm.transferTo"
-              :options="userOptions"
-              placeholder="选择转办人"
-              filterable
-              clearable
-              style="width: 100%"
-            />
-          </el-form-item>
-          <el-form-item label="审批备注">
-            <el-input
-              v-model="approveForm.comment"
-              type="textarea"
-              :rows="3"
-              placeholder="请输入审批备注"
-            />
-          </el-form-item>
-        </el-form>
-      </el-card>
+              <el-form-item label="审批备注">
+                <el-input
+                  v-model="approveForm.comment"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="请输入审批备注"
+                />
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </el-tab-pane>
+
+        <!-- Tab 2: 流程图 -->
+        <el-tab-pane label="流程图" name="diagram">
+          <div ref="bpmnViewer" class="bpmn-viewer"></div>
+        </el-tab-pane>
+
+        <!-- Tab 3: 审批历史 -->
+        <el-tab-pane label="审批历史" name="history">
+          <el-timeline v-if="processHistory.length > 0">
+            <el-timeline-item
+              v-for="(item, index) in processHistory"
+              :key="index"
+              :type="item.type"
+              :color="item.color"
+              :timestamp="item.time"
+            >
+              <div class="timeline-content">
+                <div class="timeline-title">{{ item.title }}</div>
+                <div class="timeline-desc">{{ item.description }}</div>
+                <div v-if="item.comment" class="timeline-comment">
+                  <el-icon><ChatDotRound /></el-icon>
+                  {{ item.comment }}
+                </div>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+          <el-empty v-else description="暂无审批历史" />
+        </el-tab-pane>
+
+        <!-- Tab 4: 流程信息 -->
+        <el-tab-pane label="流程信息" name="info">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="流程名称">{{ processInfo.processName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="流程实例">{{ processInfo.instanceId || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="当前节点">{{ processInfo.currentNode || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="发起人">{{ processInfo.startUser || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="发起时间">{{ processInfo.startTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="业务Key">{{ processInfo.businessKey || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="流程状态">
+              <el-tag :type="processInfo.statusType">{{ processInfo.statusText }}</el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-tab-pane>
+      </el-tabs>
       
       <template #footer>
-        <el-button @click="approveDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitApprove" :loading="submitLoading">
-          确认
+        <el-button @click="approveDialogVisible = false">关闭</el-button>
+        <el-button v-if="activeApproveTab === 'approval' && activeTab !== 'started'" type="primary" @click="submitApprove" :loading="submitLoading">
+          确认审批
         </el-button>
       </template>
-    </el-dialog>
-
-    <!-- 流程详情弹窗 -->
-    <el-dialog
-      v-model="detailDialogVisible"
-      title="流程详情"
-      width="900px"
-      :close-on-click-modal="false"
-    >
-      <ProcessDetail
-        v-if="detailDialogVisible && currentInstanceId"
-        :instance-id="currentInstanceId"
-      />
-    </el-dialog>
-
-    <!-- 流程历史弹窗 -->
-    <el-dialog
-      v-model="historyDialogVisible"
-      title="审批历史"
-      width="800px"
-    >
-      <el-timeline>
-        <el-timeline-item
-          v-for="(item, index) in historyList"
-          :key="index"
-          :type="item.endTime ? 'success' : 'primary'"
-          :timestamp="formatDate(item.endTime || item.createTime)"
-        >
-          <div class="history-item">
-            <div class="history-title">{{ item.taskName }}</div>
-            <div class="history-info">
-              <span>处理人: {{ item.assignee || '待处理' }}</span>
-              <el-tag v-if="item.result" :type="getResultType(item.result)" size="small">
-                {{ getResultText(item.result) }}
-              </el-tag>
-            </div>
-            <div v-if="item.comment" class="history-comment">
-              {{ item.comment }}
-            </div>
-          </div>
-        </el-timeline-item>
-      </el-timeline>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, Check, Share, Timer, Search, Refresh, View, Back, List } from '@element-plus/icons-vue'
-import ProcessDetail from '@/components/ProcessDetail.vue'
+import { Bell, Check, Share, Timer, Search, Refresh, View, List, ChatDotRound, CircleClose } from '@element-plus/icons-vue'
 import FormPreview from '@/components/FormPreview.vue'
+import Viewer from 'bpmn-js/lib/Viewer'
+import request from '@/utils/request'
+import { getTodoList, getDoneList, getStatistics, getTaskDetail, completeTask, getProcessHistory, getMyStartedList, terminateProcess } from '@/api/processTask'
+import { getUserList } from '@/api/system/user'
 
 const router = useRouter()
 
@@ -363,17 +429,21 @@ const queryParams = reactive({
 // 列表数据
 const todoList = ref([])
 const doneList = ref([])
+const startedList = ref([])
 const todoTotal = ref(0)
 const doneTotal = ref(0)
+const startedTotal = ref(0)
 const loading = ref(false)
 
 // 用户选项
 const userOptions = ref([])
 
-// 审批弹窗
+// 审批弹窗（4个Tab）
 const approveDialogVisible = ref(false)
+const activeApproveTab = ref('approval')
 const submitLoading = ref(false)
 const currentTask = ref(null)
+const currentInstanceId = ref('')
 const approveForm = reactive({
   action: 'approve',
   comment: '',
@@ -391,21 +461,31 @@ const previewFormConfig = computed(() => {
   }
 })
 
-// 详情弹窗
-const detailDialogVisible = ref(false)
-const currentInstanceId = ref('')
+// BPMN Viewer
+const bpmnViewer = ref(null)
+let viewer = null
 
-// 流程历史弹窗
-const historyDialogVisible = ref(false)
-const historyList = ref([])
+// 流程信息
+const processInfo = ref({
+  processName: '',
+  instanceId: '',
+  currentNode: '',
+  startUser: '',
+  startTime: '',
+  businessKey: '',
+  status: '',
+  statusText: '',
+  statusType: ''
+})
+
+// 审批历史
+const processHistory = ref([])
 
 // 获取统计数据
 async function loadStatistics() {
   try {
-    const res = await fetch('/api/process-task/statistics').then(r => r.json())
-    if (res.code === 200) {
-      Object.assign(statistics, res.data)
-    }
+    const res = await getStatistics()
+    Object.assign(statistics, res)
   } catch (e) {
     console.error('加载统计数据失败:', e)
   }
@@ -415,15 +495,12 @@ async function loadStatistics() {
 async function loadTodoList() {
   loading.value = true
   try {
-    const params = new URLSearchParams({
+    const res = await getTodoList({
       pageNum: queryParams.pageNum,
       pageSize: queryParams.pageSize
     })
-    const res = await fetch(`/api/process-task/todo?${params}`).then(r => r.json())
-    if (res.code === 200) {
-      todoList.value = res.data.records || []
-      todoTotal.value = res.data.total || 0
-    }
+    todoList.value = res.records || []
+    todoTotal.value = res.total || 0
   } catch (e) {
     console.error('加载待办列表失败:', e)
     ElMessage.error('加载待办列表失败')
@@ -436,15 +513,12 @@ async function loadTodoList() {
 async function loadDoneList() {
   loading.value = true
   try {
-    const params = new URLSearchParams({
+    const res = await getDoneList({
       pageNum: queryParams.pageNum,
       pageSize: queryParams.pageSize
     })
-    const res = await fetch(`/api/process-task/done?${params}`).then(r => r.json())
-    if (res.code === 200) {
-      doneList.value = res.data.records || []
-      doneTotal.value = res.data.total || 0
-    }
+    doneList.value = res.records || []
+    doneTotal.value = res.total || 0
   } catch (e) {
     console.error('加载已办列表失败:', e)
     ElMessage.error('加载已办列表失败')
@@ -453,16 +527,35 @@ async function loadDoneList() {
   }
 }
 
+// 获取我发起的流程列表
+async function loadStartedList() {
+  loading.value = true
+  try {
+    const res = await getMyStartedList({
+      pageNum: queryParams.pageNum,
+      pageSize: queryParams.pageSize,
+      processName: queryParams.processName
+    })
+    // PageResult 结构: { records, total, pageNum, pageSize }
+    // 注意：request.js 拦截器已经解包了 Result，所以 res 就是 PageResult
+    startedList.value = res?.records || []
+    startedTotal.value = res?.total || 0
+  } catch (e) {
+    console.error('加载我发起的流程列表失败:', e)
+    ElMessage.error('加载我发起的流程列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 // 加载用户列表
 async function loadUsers() {
   try {
-    const res = await fetch('/api/system/user/list').then(r => r.json())
-    if (res.code === 200) {
-      userOptions.value = res.data.map(user => ({
-        label: `${user.nickname || user.username} (${user.username})`,
-        value: user.username
-      }))
-    }
+    const res = await getUserList()
+    userOptions.value = res.map(user => ({
+      label: `${user.nickname || user.username} (${user.username})`,
+      value: user.username
+    }))
   } catch (e) {
     console.error('加载用户列表失败:', e)
   }
@@ -471,33 +564,36 @@ async function loadUsers() {
 // 处理审批
 async function handleApprove(row) {
   currentTask.value = row
+  currentInstanceId.value = row.processInstanceId
   approveForm.action = 'approve'
   approveForm.comment = ''
   approveForm.transferTo = ''
   taskDetail.value = null
+  activeApproveTab.value = 'approval'
   
   // 加载任务详情（包含表单和实体数据）
   try {
     const taskId = row.taskId || row.id
-    console.log('审批任务ID:', taskId, 'row数据:', row)
     if (taskId) {
-      const res = await fetch(`/api/process-task/detail/${taskId}`).then(r => r.json())
-      console.log('任务详情接口返回:', res)
-      if (res.code === 200) {
-        taskDetail.value = res.data
-        console.log('taskDetail赋值后:', taskDetail.value)
-        console.log('entityData:', taskDetail.value?.entityData)
-        console.log('formConfig:', taskDetail.value?.formConfig)
-      } else {
-        console.error('获取任务详情失败:', res.message)
-      }
+      const res = await getTaskDetail(taskId)
+      taskDetail.value = res
     }
   } catch (e) {
     console.error('加载任务详情失败:', e)
     ElMessage.error('加载任务详情失败')
   }
   
+  // 加载流程详情（用于流程图、历史、流程信息）
+  await loadProcessDetail(row.processInstanceId)
+  
   approveDialogVisible.value = true
+  
+  // 在弹窗显示后渲染流程图
+  nextTick(() => {
+    if (activeApproveTab.value === 'diagram') {
+      renderBpmn()
+    }
+  })
 }
 
 // 提交审批
@@ -513,27 +609,19 @@ async function submitApprove() {
 
   submitLoading.value = true
   try {
-    const res = await fetch('/api/process-task/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        taskId: currentTask.value.taskId,
-        action: approveForm.action,
-        comment: approveForm.comment,
-        transferTo: approveForm.transferTo
-      })
-    }).then(r => r.json())
-
-    if (res.code === 200) {
-      ElMessage.success('审批成功')
-      approveDialogVisible.value = false
-      // 同时刷新待办和已办列表
-      loadTodoList()
-      loadDoneList()
-      loadStatistics()
-    } else {
-      ElMessage.error(res.message || '审批失败')
-    }
+    await completeTask({
+      taskId: currentTask.value.taskId,
+      action: approveForm.action,
+      comment: approveForm.comment,
+      transferTo: approveForm.transferTo
+    })
+    
+    ElMessage.success('审批成功')
+    approveDialogVisible.value = false
+    // 同时刷新待办和已办列表
+    loadTodoList()
+    loadDoneList()
+    loadStatistics()
   } catch (e) {
     console.error('审批失败:', e)
     ElMessage.error('审批失败: ' + (e.message || '未知错误'))
@@ -542,58 +630,243 @@ async function submitApprove() {
   }
 }
 
-// 查看流程进度
-function viewProcessProgress(row) {
+// 查看流程进度（现在合并到审批弹窗）
+async function viewProcessProgress(row) {
+  currentTask.value = row
   currentInstanceId.value = row.processInstanceId
-  detailDialogVisible.value = true
+  taskDetail.value = null
+  activeApproveTab.value = 'diagram'
+  
+  // 尝试加载任务详情
+  try {
+    const taskId = row.taskId || row.id
+    if (taskId) {
+      const res = await getTaskDetail(taskId)
+      taskDetail.value = res
+    }
+  } catch (e) {
+    console.error('加载任务详情失败:', e)
+  }
+  
+  // 加载流程详情
+  await loadProcessDetail(row.processInstanceId)
+  
+  approveDialogVisible.value = true
+  
+  // 在弹窗显示后渲染流程图
+  nextTick(() => {
+    renderBpmn()
+  })
 }
 
-// 撤回流程
-async function handleWithdraw(row) {
-  try {
-    await ElMessageBox.confirm('确定要撤回该流程吗？撤回后流程将回到草稿状态', '提示', { type: 'warning' })
-    
-    const res = await fetch('/api/process-task/withdraw', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        processInstanceId: row.processInstanceId,
-        reason: '发起人主动撤回'
-      })
-    }).then(r => r.json())
-    
-    if (res.code === 200) {
-      ElMessage.success('流程撤回成功')
-      loadTodoList()
-      loadStatistics()
-    } else {
-      ElMessage.error(res.message || '撤回失败')
+// 查看我发起的流程详情（只读模式）
+async function viewStartedProcessDetail(row) {
+  currentTask.value = row
+  currentInstanceId.value = row.processInstanceId
+  taskDetail.value = null
+  activeApproveTab.value = 'approval'
+  
+  // 加载流程详情
+  await loadProcessDetail(row.processInstanceId)
+  
+  approveDialogVisible.value = true
+  
+  // 在弹窗显示后渲染流程图
+  nextTick(() => {
+    if (activeApproveTab.value === 'diagram') {
+      renderBpmn()
     }
+  })
+}
+
+// 终止流程
+async function handleTerminate(row) {
+  try {
+    await ElMessageBox.confirm(
+      '确定要终止该流程吗？终止后流程将结束且不可恢复。', 
+      '提示', 
+      { type: 'warning' }
+    )
+    
+    await terminateProcess(row.processInstanceId, '发起人主动终止')
+    
+    ElMessage.success('流程终止成功')
+    loadStartedList()
+    loadStatistics()
   } catch (error) {
     // ElMessageBox.confirm 取消时会抛出 'cancel' 字符串
     if (error === 'cancel' || (error && error.message === 'cancel')) {
       return // 用户取消，不处理
     }
-    console.error('撤回失败:', error)
-    ElMessage.error('撤回失败: ' + (error.message || '未知错误'))
+    console.error('终止失败:', error)
+    ElMessage.error('终止失败: ' + (error.message || '未知错误'))
   }
 }
 
-// 查看流程历史
-async function viewProcessHistory(row) {
+// 获取状态类型
+function getStatusType(status) {
+  const types = {
+    'RUNNING': 'primary',
+    'COMPLETED': 'success',
+    'TERMINATED': 'danger',
+    'SUSPENDED': 'warning'
+  }
+  return types[status] || 'info'
+}
+
+// 加载流程详情
+async function loadProcessDetail(instanceId) {
+  if (!instanceId) return
+  
   try {
-    const res = await fetch(`/api/process-task/history/${row.processInstanceId}`).then(r => r.json())
-    if (res.code === 200) {
-      historyList.value = res.data || []
-      historyDialogVisible.value = true
-    } else {
-      ElMessage.error(res.message || '加载历史失败')
+    const res = await request.get(`/process-instance/${instanceId}/detail`)
+    if (res) {
+      // 流程信息
+      const statusMap = {
+        'RUNNING': { text: '运行中', type: 'primary' },
+        'COMPLETED': { text: '已完成', type: 'success' },
+        'SUSPENDED': { text: '已挂起', type: 'warning' },
+        'TERMINATED': { text: '已终止', type: 'danger' }
+      }
+      const status = statusMap[res.status] || { text: res.status || '未知', type: 'info' }
+      
+      processInfo.value = {
+        processName: res.processName || currentTask.value?.processName || '-',
+        instanceId: res.instanceId || instanceId,
+        currentNode: res.currentNode || currentTask.value?.taskName || '-',
+        startUser: res.startUser || '-',
+        startTime: res.startTime || '-',
+        businessKey: res.businessKey || '-',
+        status: res.status || 'UNKNOWN',
+        statusText: status.text,
+        statusType: status.type
+      }
+      
+      // 审批历史
+      processHistory.value = (res.history || []).map(h => ({
+        title: `${h.assignee || '系统'} ${h.action}`,
+        description: h.taskName || '流程发起',
+        time: h.endTime || h.startTime,
+        comment: h.comment,
+        type: h.action === '发起' ? 'primary' : h.action === '通过' ? 'success' : h.action === '驳回' ? 'danger' : 'info',
+        color: h.action === '发起' ? '#409EFF' : h.action === '通过' ? '#67C23A' : h.action === '驳回' ? '#F56C6C' : '#909399'
+      }))
+      
+      // 保存BPMN XML用于渲染
+      bpmnXml.value = res.bpmnXml || ''
+      completedNodes.value = res.completedNodes || []
+      currentNodeId.value = res.currentNodeId || ''
+      nodeAssigneeMap.value = res.nodeAssigneeMap || {}
     }
   } catch (e) {
-    console.error('加载历史失败:', e)
-    ElMessage.error('加载历史失败: ' + (e.message || '未知错误'))
+    console.error('加载流程详情失败:', e)
   }
 }
+
+// BPMN XML 和节点信息
+const bpmnXml = ref('')
+const completedNodes = ref([])
+const currentNodeId = ref('')
+const nodeAssigneeMap = ref({})
+
+// 渲染BPMN流程图
+async function renderBpmn() {
+  if (!bpmnXml.value || !bpmnViewer.value) return
+  
+  if (!viewer) {
+    viewer = new Viewer({
+      container: bpmnViewer.value
+    })
+  }
+  
+  try {
+    await viewer.importXML(bpmnXml.value)
+    
+    const canvas = viewer.get('canvas')
+    const overlays = viewer.get('overlays')
+    const elementRegistry = viewer.get('elementRegistry')
+    const eventBus = viewer.get('eventBus')
+    
+    // 高亮已完成的节点
+    completedNodes.value.forEach(nodeId => {
+      canvas.addMarker(nodeId, 'completed')
+    })
+    
+    // 高亮当前节点
+    if (currentNodeId.value) {
+      canvas.addMarker(currentNodeId.value, 'active')
+    }
+    
+    // 添加节点悬停提示
+    const tooltipOverlayId = 'node-tooltip'
+    let currentElement = null
+    
+    elementRegistry.forEach(element => {
+      if (element.type.includes('Task') || element.type.includes('Activity') || element.type.includes('Gateway') || element.type.includes('Event')) {
+        const gfx = canvas.getGraphics(element)
+        if (!gfx) return
+        
+        // 鼠标进入事件
+        eventBus.on('element.hover', (e) => {
+          if (e.element.id !== element.id) return
+          
+          const assigneeInfo = nodeAssigneeMap.value[element.id]
+          if (!assigneeInfo) return
+          
+          currentElement = element
+          const statusText = assigneeInfo.status === 'completed' ? '已审批' : '待审批'
+          const tooltipContent = `
+            <div class="bpmn-tooltip">
+              <div class="tooltip-title">${element.businessObject.name || element.id}</div>
+              <div class="tooltip-row"><span class="label">状态:</span> <span class="value ${assigneeInfo.status}">${statusText}</span></div>
+              <div class="tooltip-row"><span class="label">处理人:</span> <span class="value">${assigneeInfo.assigneeName || '-'}</span></div>
+              ${assigneeInfo.handleTime ? `<div class="tooltip-row"><span class="label">时间:</span> <span class="value">${assigneeInfo.handleTime}</span></div>` : ''}
+              ${assigneeInfo.comment ? `<div class="tooltip-row"><span class="label">意见:</span> <span class="value">${assigneeInfo.comment}</span></div>` : ''}
+            </div>
+          `
+          
+          // 移除已有的tooltip
+          try {
+            overlays.remove({ element: element.id, type: tooltipOverlayId })
+          } catch (e) {}
+          
+          overlays.add(element.id, tooltipOverlayId, {
+            position: {
+              top: -10,
+              left: 50
+            },
+            html: tooltipContent
+          })
+        })
+        
+        // 鼠标离开事件
+        eventBus.on('element.out', (e) => {
+          if (e.element.id !== element.id) return
+          if (currentElement && currentElement.id === element.id) {
+            try {
+              overlays.remove({ element: element.id, type: tooltipOverlayId })
+            } catch (e) {}
+            currentElement = null
+          }
+        })
+      }
+    })
+    
+    // 适应视口
+    canvas.zoom('fit-viewport', 'auto')
+  } catch (err) {
+    console.error('渲染流程图失败:', err)
+  }
+}
+
+// 监听Tab切换，当切换到流程图Tab时渲染
+watch(activeApproveTab, (val) => {
+  if (val === 'diagram') {
+    nextTick(() => {
+      renderBpmn()
+    })
+  }
+})
 
 // 格式化日期
 function formatDate(date) {
@@ -643,8 +916,10 @@ function handleQuery() {
   queryParams.pageNum = 1
   if (activeTab.value === 'todo') {
     loadTodoList()
-  } else {
+  } else if (activeTab.value === 'done') {
     loadDoneList()
+  } else {
+    loadStartedList()
   }
 }
 
@@ -677,8 +952,10 @@ watch(activeTab, () => {
   queryParams.pageNum = 1
   if (activeTab.value === 'todo') {
     loadTodoList()
-  } else {
+  } else if (activeTab.value === 'done') {
     loadDoneList()
+  } else {
+    loadStartedList()
   }
 })
 
@@ -686,6 +963,7 @@ onMounted(() => {
   loadStatistics()
   loadTodoList()
   loadUsers()
+  loadStartedList()
 })
 </script>
 
@@ -791,5 +1069,113 @@ onMounted(() => {
   padding: 8px;
   border-radius: 4px;
   margin-top: 5px;
+}
+
+/* BPMN 流程图样式 */
+.bpmn-viewer {
+  height: 500px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+
+/* 时间线样式 */
+.timeline-content {
+  padding: 10px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.timeline-title {
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+
+.timeline-desc {
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 5px;
+}
+
+.timeline-comment {
+  font-size: 13px;
+  color: #909399;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+</style>
+
+<style>
+/* BPMN 样式覆盖 - 全局 */
+.bpmn-viewer .completed rect,
+.bpmn-viewer .completed circle,
+.bpmn-viewer .completed polygon {
+  stroke: #67c23a !important;
+  stroke-width: 2px !important;
+}
+
+.bpmn-viewer .active rect,
+.bpmn-viewer .active circle,
+.bpmn-viewer .active polygon {
+  stroke: #409eff !important;
+  stroke-width: 3px !important;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { stroke-opacity: 1; }
+  50% { stroke-opacity: 0.5; }
+  100% { stroke-opacity: 1; }
+}
+
+/* 去掉 bpmn.io 水印 */
+.bjs-powered-by {
+  display: none !important;
+}
+
+/* BPMN 节点悬停提示样式 */
+.bpmn-tooltip {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 10px 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  min-width: 160px;
+}
+
+.bpmn-tooltip .tooltip-title {
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.bpmn-tooltip .tooltip-row {
+  display: flex;
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.bpmn-tooltip .tooltip-row .label {
+  color: #909399;
+  min-width: 50px;
+}
+
+.bpmn-tooltip .tooltip-row .value {
+  color: #606266;
+  flex: 1;
+}
+
+.bpmn-tooltip .tooltip-row .value.completed {
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.bpmn-tooltip .tooltip-row .value.processing {
+  color: #409eff;
+  font-weight: 500;
 }
 </style>

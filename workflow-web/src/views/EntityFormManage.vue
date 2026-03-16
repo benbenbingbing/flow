@@ -128,6 +128,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import FormPreview from '@/components/FormPreview.vue'
+import { entityApi } from '@/api/entity'
+import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm } from '@/api/entityForm'
 
 const router = useRouter()
 const loading = ref(false)
@@ -164,10 +166,7 @@ const rules = {
 // 加载实体列表
 async function loadEntities() {
   try {
-    const res = await fetch('/api/entity/list').then(r => r.json())
-    if (res.code === 200) {
-      entityList.value = res.data || []
-    }
+    entityList.value = await entityApi.getList()
   } catch (e) {
     console.error('加载实体列表失败:', e)
   }
@@ -177,13 +176,11 @@ async function loadEntities() {
 async function loadForms() {
   loading.value = true
   try {
-    let url = '/api/entity-form/list'
     if (selectedEntityId.value) {
-      url = `/api/entity-form/entity/${selectedEntityId.value}`
-    }
-    const res = await fetch(url).then(r => r.json())
-    if (res.code === 200) {
-      formList.value = res.data || []
+      formList.value = await getFormsByEntity(selectedEntityId.value)
+    } else {
+      // 如果没有选择实体，获取所有表单（通过实体列表逐个获取或后端需要提供列表接口）
+      formList.value = []
     }
   } catch (e) {
     console.error('加载表单列表失败:', e)
@@ -216,11 +213,8 @@ function handleDesign(row) {
 
 async function handlePreview(row) {
   try {
-    const res = await fetch(`/api/entity-form/${row.id}`).then(r => r.json())
-    if (res.code === 200) {
-      previewForm.value = res.data
-      previewVisible.value = true
-    }
+    previewForm.value = await getFormById(row.id)
+    previewVisible.value = true
   } catch (e) {
     console.error('加载表单详情失败:', e)
   }
@@ -232,24 +226,18 @@ async function handleSubmit() {
 
   submitLoading.value = true
   try {
-    const url = isEdit.value ? `/api/entity-form/${form.id}` : '/api/entity-form'
-    const method = isEdit.value ? 'PUT' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    }).then(r => r.json())
-
-    if (res.code === 200) {
-      ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
-      dialogVisible.value = false
-      loadForms()
+    if (isEdit.value) {
+      await updateForm(form.id, form)
+      ElMessage.success('更新成功')
     } else {
-      ElMessage.error(res.message || '操作失败')
+      await createForm(form)
+      ElMessage.success('创建成功')
     }
+    dialogVisible.value = false
+    loadForms()
   } catch (e) {
     console.error('提交失败:', e)
-    ElMessage.error('提交失败')
+    ElMessage.error(e.message || '提交失败')
   } finally {
     submitLoading.value = false
   }
@@ -262,16 +250,12 @@ function handleDelete(row) {
     type: 'warning'
   }).then(async () => {
     try {
-      const res = await fetch(`/api/entity-form/${row.id}`, { method: 'DELETE' }).then(r => r.json())
-      if (res.code === 200) {
-        ElMessage.success('删除成功')
-        loadForms()
-      } else {
-        ElMessage.error(res.message || '删除失败')
-      }
+      await deleteForm(row.id)
+      ElMessage.success('删除成功')
+      loadForms()
     } catch (e) {
       console.error('删除失败:', e)
-      ElMessage.error('删除失败')
+      ElMessage.error(e.message || '删除失败')
     }
   }).catch(() => {})
 }

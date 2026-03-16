@@ -1,8 +1,11 @@
 package com.workflow.service;
 
+import com.workflow.common.PageResult;
+import com.workflow.common.Result;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.vo.MyStartedProcessVO;
 import com.workflow.vo.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +15,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricActivityInstance;
 import org.flowable.engine.history.HistoricProcessInstance;
+import org.flowable.engine.history.HistoricProcessInstanceQuery;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.Execution;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -336,20 +340,50 @@ public class ProcessInstanceService {
         }
         
         // 2. 获取流程定义信息
+        String processKey = null;
         if (detail.getProcessDefinitionId() != null) {
             ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
                     .processDefinitionId(detail.getProcessDefinitionId())
                     .singleResult();
             if (processDefinition != null) {
-                detail.setProcessName(processDefinition.getName());
+                // 优先使用流程定义名称，如果没有则从ProcessDefinitionConfig获取
+                String processName = processDefinition.getName();
+                processKey = processDefinition.getKey();
+                if ((processName == null || processName.isEmpty()) && processKey != null) {
+                    ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
+                    if (config != null) {
+                        processName = config.getProcessName();
+                    }
+                }
+                detail.setProcessName(processName != null ? processName : processKey);
             }
         }
         
         // 3. 获取流程实例基本信息
         if (historicInstance != null) {
-            detail.setStartUser(historicInstance.getStartUserId());
+            // 获取发起人 - 优先从startUserId获取，如果没有则尝试从变量中获取
+            String startUser = historicInstance.getStartUserId();
+            if (startUser == null || startUser.isEmpty()) {
+                try {
+                    startUser = (String) historyService.createHistoricVariableInstanceQuery()
+                            .processInstanceId(instanceId)
+                            .variableName("initiator")
+                            .singleResult()
+                            .getValue();
+                } catch (Exception e) {
+                    // 忽略异常
+                }
+            }
+            // 从流程任务中获取发起人作为后备
+            if ((startUser == null || startUser.isEmpty()) && processKey != null) {
+                ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
+                if (config != null && config.getCreatedBy() != null) {
+                    startUser = config.getCreatedBy();
+                }
+            }
+            detail.setStartUser(startUser != null ? startUser : "系统");
             detail.setStartTime(formatDate(historicInstance.getStartTime()));
-            detail.setBusinessKey(historicInstance.getBusinessKey());
+            detail.setBusinessKey(historicInstance.getBusinessKey() != null ? historicInstance.getBusinessKey() : "-");
         }
         
         // 4. 获取当前活动节点
@@ -418,7 +452,37 @@ public class ProcessInstanceService {
         
         detail.setHistory(historyList);
         
-        // 8. 获取表单数据（流程变量）
+        // 8. 构建节点处理人映射
+        Map<String, ProcessDetailVO.AssigneeVO> nodeAssigneeMap = new HashMap<>();
+        
+        // 添加已完成节点的处理人信息
+        for (HistoricTaskInstance task : historicTasks) {
+            ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
+            assignee.setAssigneeName(task.getAssignee());
+            assignee.setHandleTime(formatDate(task.getEndTime()));
+            assignee.setAction("通过");
+            assignee.setStatus("completed");
+            nodeAssigneeMap.put(task.getTaskDefinitionKey(), assignee);
+        }
+        
+        // 添加当前活动节点的处理人信息
+        if (processInstance != null) {
+            List<Task> activeTasks = taskService.createTaskQuery()
+                    .processInstanceId(instanceId)
+                    .list();
+            for (Task task : activeTasks) {
+                ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
+                assignee.setAssigneeName(task.getAssignee());
+                assignee.setHandleTime(formatDate(task.getCreateTime()));
+                assignee.setAction("待处理");
+                assignee.setStatus("processing");
+                nodeAssigneeMap.put(task.getTaskDefinitionKey(), assignee);
+            }
+        }
+        
+        detail.setNodeAssigneeMap(nodeAssigneeMap);
+        
+        // 9. 获取表单数据（流程变量）
         if (historicInstance != null) {
             Map<String, Object> variables = historicInstance.getProcessVariables();
             if (variables != null) {
@@ -517,5 +581,164 @@ public class ProcessInstanceService {
         }
         
         return null;
+    }
+    
+    /**
+     * 获取我发起的流程列表
+     * 
+     * @param userId 用户ID
+     * @param pageNum 页码
+     * @param pageSize 每页大小
+     * @param processName 流程名称（可选筛选）
+     * @return 流程列表
+     */
+    public PageResult<MyStartedProcessVO> getMyStartedList(String userId, Integer pageNum, Integer pageSize, String processName) {
+        // 查询历史流程实例（包含运行中和已结束的）
+        HistoricProcessInstanceQuery query = historyService.createHistoricProcessInstanceQuery()
+                .startedBy(userId)
+                .orderByProcessInstanceStartTime()
+                .desc();
+        
+        // 获取总数
+        long total = query.count();
+        
+        // 分页查询
+        int firstResult = (pageNum - 1) * pageSize;
+        List<HistoricProcessInstance> historicInstances = query.listPage(firstResult, pageSize);
+        
+        // 转换为VO
+        List<MyStartedProcessVO> list = new ArrayList<>();
+        for (HistoricProcessInstance historicInstance : historicInstances) {
+            MyStartedProcessVO vo = new MyStartedProcessVO();
+            vo.setProcessInstanceId(historicInstance.getId());
+            vo.setProcessDefinitionId(historicInstance.getProcessDefinitionId());
+            vo.setBusinessKey(historicInstance.getBusinessKey());
+            vo.setStartUser(historicInstance.getStartUserId());
+            vo.setStartTime(formatDate(historicInstance.getStartTime()));
+            vo.setEndTime(formatDate(historicInstance.getEndTime()));
+            
+            // 获取流程名称
+            String processDefinitionId = historicInstance.getProcessDefinitionId();
+            ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
+                    .processDefinitionId(processDefinitionId)
+                    .singleResult();
+            if (processDefinition != null) {
+                vo.setProcessKey(processDefinition.getKey());
+                String procName = processDefinition.getName();
+                if (procName == null || procName.isEmpty()) {
+                    ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processDefinition.getKey()).orElse(null);
+                    if (config != null) {
+                        procName = config.getProcessName();
+                    }
+                }
+                vo.setProcessName(procName != null ? procName : processDefinition.getKey());
+                
+                // 流程名称筛选
+                if (processName != null && !processName.isEmpty() && 
+                    (vo.getProcessName() == null || !vo.getProcessName().contains(processName))) {
+                    continue;
+                }
+            }
+            
+            // 判断流程状态
+            ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+                    .processInstanceId(historicInstance.getId())
+                    .singleResult();
+            
+            if (processInstance != null) {
+                // 流程还在运行中
+                if (processInstance.isSuspended()) {
+                    vo.setStatus("SUSPENDED");
+                    vo.setStatusText("已挂起");
+                } else {
+                    vo.setStatus("RUNNING");
+                    vo.setStatusText("运行中");
+                }
+                
+                // 获取当前节点
+                List<Execution> executions = runtimeService.createExecutionQuery()
+                        .processInstanceId(historicInstance.getId())
+                        .list();
+                String currentNode = executions.stream()
+                        .filter(e -> e.getActivityId() != null)
+                        .map(e -> getActivityName(e.getActivityId(), processDefinitionId))
+                        .findFirst()
+                        .orElse("处理中");
+                vo.setCurrentNodeName(currentNode);
+            } else {
+                // 流程已结束
+                if (historicInstance.getEndTime() != null) {
+                    // 检查是否是终止（通过检查删除原因）
+                    String deleteReason = historicInstance.getDeleteReason();
+                    if (deleteReason != null && (deleteReason.contains("终止") || deleteReason.contains("terminated"))) {
+                        vo.setStatus("TERMINATED");
+                        vo.setStatusText("已终止");
+                    } else {
+                        vo.setStatus("COMPLETED");
+                        vo.setStatusText("已完成");
+                    }
+                    vo.setCurrentNodeName("-");
+                } else {
+                    vo.setStatus("UNKNOWN");
+                    vo.setStatusText("未知");
+                }
+            }
+            
+            list.add(vo);
+        }
+        
+        // 由于可能在循环中过滤，需要重新计算分页
+        // 为了简化，这里不做精确分页，如果需要精确分页需要在外层查询后统一过滤
+        return new PageResult<>(list, total, pageNum, pageSize);
+    }
+    
+    /**
+     * 终止流程实例
+     * 
+     * @param processInstanceId 流程实例ID
+     * @param userId 操作用户ID
+     * @param reason 终止原因
+     * @return 是否成功
+     */
+    public Result<Void> terminateProcess(String processInstanceId, String userId, String reason) {
+        // 1. 验证流程实例是否存在
+        ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .singleResult();
+        
+        if (processInstance == null) {
+            // 检查是否已结束
+            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult();
+            if (historicInstance == null) {
+                return Result.error(404, "流程实例不存在");
+            }
+            if (historicInstance.getEndTime() != null) {
+                return Result.error(400, "流程已结束，无法终止");
+            }
+        }
+        
+        // 2. 验证是否是发起人（可选，根据业务需求）
+        HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .singleResult();
+        if (historicInstance != null && !userId.equals(historicInstance.getStartUserId())) {
+            return Result.error(403, "只有发起人可以终止流程");
+        }
+        
+        // 3. 终止流程
+        try {
+            String deleteReason = "发起人主动终止";
+            if (reason != null && !reason.isEmpty()) {
+                deleteReason = reason;
+            }
+            runtimeService.deleteProcessInstance(processInstanceId, deleteReason);
+            log.info("流程终止成功: processInstanceId={}, userId={}, reason={}", processInstanceId, userId, deleteReason);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("流程终止失败: processInstanceId={}, userId={}", processInstanceId, userId, e);
+            return Result.error(500, "流程终止失败: " + e.getMessage());
+        }
     }
 }

@@ -32,4 +32,10 @@ public interface EntityDataMapper extends BaseMapper<EntityData> {
      */
     @Select("SELECT * FROM entity_data WHERE process_instance_id = #{processInstanceId}")
     Optional<EntityData> findByProcessInstanceId(@Param("processInstanceId") String processInstanceId);
+    
+    /**
+     * 根据实体编码查询是否有流程数据（process_instance_id不为空）
+     */
+    @Select("SELECT COUNT(*) FROM entity_data WHERE entity_code = #{entityCode} AND process_instance_id IS NOT NULL AND deleted = 0")
+    int countProcessDataByEntityCode(@Param("entityCode") String entityCode);
 }

@@ -20,6 +20,7 @@ public class EntityDataDTO {
     private String processInstanceId;
     private String currentTaskId;
     private String currentTaskName;
+    private String currentTaskAssignee;  // 当前任务审批人
     private Map<String, Object> data;
     private String submitterId;
     private String submitterName;

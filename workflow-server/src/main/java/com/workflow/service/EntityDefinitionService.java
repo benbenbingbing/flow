@@ -6,6 +6,7 @@ import com.workflow.dto.EntityFieldDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.ProcessDefinitionConfig;
+import com.workflow.mapper.EntityDataMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
@@ -29,6 +30,7 @@ public class EntityDefinitionService {
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
     private final ProcessDefinitionConfigMapper processMapper;
+    private final EntityDataMapper entityDataMapper;
     private final ObjectMapper objectMapper;
     
     /**
@@ -202,6 +204,9 @@ public class EntityDefinitionService {
     
     /**
      * 绑定流程
+     * @param entityId 实体ID
+     * @param processId 流程定义ID
+     * @return 更新后的实体DTO
      */
     @Transactional
     public EntityDefinitionDTO bindProcess(String entityId, String processId) {
@@ -209,6 +214,16 @@ public class EntityDefinitionService {
         if (entity == null) {
             throw new RuntimeException("实体不存在: " + entityId);
         }
+        
+        // 如果要切换流程（原流程不为空且新流程不同），检查是否有流程数据
+        String oldProcessId = entity.getProcessDefinitionId();
+        if (oldProcessId != null && !oldProcessId.equals(processId)) {
+            int processDataCount = entityDataMapper.countProcessDataByEntityCode(entity.getEntityCode());
+            if (processDataCount > 0) {
+                throw new RuntimeException("该实体已有 " + processDataCount + " 条流程数据，无法切换绑定的流程。请先处理完现有流程数据后再切换。");
+            }
+        }
+        
         entity.setProcessDefinitionId(processId);
         entity.setEnableProcess(true);
         entityMapper.updateById(entity);

@@ -104,17 +104,25 @@
       :disabled="disabled"
     />
     
-    <!-- 文件 -->
-    <el-upload
-      v-else-if="renderType === 'file'"
-      action="#"
+    <!-- 文件上传 -->
+    <FileUploader
+      v-else-if="renderType === 'file' || renderType === 'image'"
+      v-model="fieldValue"
+      :field="field"
       :disabled="disabled"
-      :auto-upload="false"
-    >
-      <el-button :disabled="disabled">
-        <el-icon><Upload /></el-icon>选择文件
-      </el-button>
-    </el-upload>
+      :is-image="renderType === 'image'"
+    />
+    
+    <!-- 子表单 -->
+    <SubFormRenderer
+      v-else-if="renderType === 'sub_form' || renderType === 'sub_form_list'"
+      :ref-entity-id="field.refEntityId"
+      :display-mode="field.displayMode || 'embedded'"
+      :sub-form-type="field.fieldType"
+      :title="field.fieldName"
+      v-model="fieldValue"
+      :disabled="disabled"
+    />
     
     <!-- 默认文本输入 -->
     <el-input
@@ -129,6 +137,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
+import SubFormRenderer from './SubFormRenderer.vue'
+import FileUploader from './FileUploader.vue'
 
 const props = defineProps({
   field: {
@@ -136,7 +146,7 @@ const props = defineProps({
     required: true
   },
   modelValue: {
-    type: [String, Number, Array, Date],
+    type: [String, Number, Array, Date, Object],
     default: ''
   },
   disabled: {

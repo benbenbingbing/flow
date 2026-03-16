@@ -188,6 +188,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { getUserList, createUser, updateUser, deleteUser, updateUserStatus, resetPassword, getRoles } from '@/api/system/user'
+import request from '@/utils/request'
 
 const loading = ref(false)
 const userList = ref<any[]>([])
@@ -240,11 +241,10 @@ const fetchRoleOptions = async () => {
 // 获取组织部门选项
 const fetchOrgOptions = async () => {
   try {
-    const res = await fetch('/api/system/org/enabled').then(r => r.json())
-    if (res.code === 200) {
-      const list = res.data || []
-      orgOptions.value = list.filter((item: any) => item.type === 'org')
-      deptOptions.value = list.filter((item: any) => item.type === 'dept')
+    const res = await request.get('/system/org/enabled')
+    if (res && Array.isArray(res)) {
+      orgOptions.value = res.filter((item: any) => item.type === 'org')
+      deptOptions.value = res.filter((item: any) => item.type === 'dept')
     }
   } catch (error) {
     console.error('获取组织部门列表失败', error)

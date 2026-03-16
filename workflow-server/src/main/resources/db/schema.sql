@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS `entity_field` (
     `entity_id` VARCHAR(64) NOT NULL COMMENT '实体定义ID',
     `field_id` VARCHAR(100) NOT NULL COMMENT '字段编码',
     `field_name` VARCHAR(200) NOT NULL COMMENT '字段名称',
-    `field_type` VARCHAR(50) NOT NULL COMMENT '字段类型：string/int/long/date/datetime/decimal/boolean/json/text等',
+    `field_type` VARCHAR(50) NOT NULL COMMENT '字段类型：string/int/long/date/datetime/decimal/boolean/json/text/sub_form/sub_form_list等',
     `length` INT COMMENT '长度',
     `precision` INT COMMENT '精度（小数位数）',
     `is_required` TINYINT DEFAULT 0 COMMENT '是否必填',
@@ -183,6 +183,12 @@ CREATE TABLE IF NOT EXISTS `entity_field` (
     `default_value` VARCHAR(200) COMMENT '默认值',
     `dict_type` VARCHAR(100) COMMENT '字典类型（用于枚举）',
     `sort_order` INT DEFAULT 0 COMMENT '排序号',
+    `ref_entity_id` VARCHAR(64) COMMENT '关联实体ID（用于子表单）',
+    `display_mode` VARCHAR(20) DEFAULT 'embedded' COMMENT '显示方式：embedded-嵌入, tab-Tab页（用于子表单）',
+    `ref_field_code` VARCHAR(100) COMMENT '关联字段编码（用于子表单数据关联）',
+    `file_types` VARCHAR(500) COMMENT '文件类型限制（用于附件类型，如：.jpg,.png,.pdf）',
+    `file_max_size` INT COMMENT '文件大小限制（MB，用于附件类型）',
+    `file_max_count` INT COMMENT '文件数量限制（用于附件类型）',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -190,6 +196,7 @@ CREATE TABLE IF NOT EXISTS `entity_field` (
     UNIQUE KEY `uk_entity_field` (`entity_id`, `field_id`),
     KEY `idx_entity_id` (`entity_id`),
     KEY `idx_field_type` (`field_type`),
+    KEY `idx_ref_entity_id` (`ref_entity_id`),
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实体字段表';
 

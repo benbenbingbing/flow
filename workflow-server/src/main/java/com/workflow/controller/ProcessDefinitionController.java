@@ -59,6 +59,19 @@ public class ProcessDefinitionController {
     public ApiResponse<List<ProcessDefinitionDTO>> listUnbound() {
         return ApiResponse.success(processService.findAllUnbound());
     }
+    
+    /**
+     * 获取所有可用于绑定的流程定义列表
+     * 包括当前已绑定的流程和未绑定的流程
+     * 
+     * @param currentProcessId 当前绑定的流程ID（可选）
+     * @return 可用于绑定的流程定义列表
+     */
+    @GetMapping("/bindable")
+    public ApiResponse<List<ProcessDefinitionDTO>> listBindable(
+            @RequestParam(required = false) String currentProcessId) {
+        return ApiResponse.success(processService.findAllBindable(currentProcessId));
+    }
 
     /**
      * 根据ID获取流程定义详情

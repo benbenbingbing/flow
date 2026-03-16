@@ -90,6 +90,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreview from '@/components/FormPreview.vue'
+import { entityApi } from '@/api/entity'
+import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields } from '@/api/entityForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -127,10 +129,7 @@ const rules = {
 // 加载实体信息
 async function loadEntityInfo() {
   try {
-    const res = await fetch(`/api/entity/${entityId}`).then(r => r.json())
-    if (res.code === 200) {
-      entityInfo.value = res.data
-    }
+    entityInfo.value = await entityApi.getById(entityId)
   } catch (e) {
     console.error('加载实体信息失败:', e)
   }
@@ -140,10 +139,7 @@ async function loadEntityInfo() {
 async function loadForms() {
   loading.value = true
   try {
-    const res = await fetch(`/api/entity-form/entity/${entityId}`).then(r => r.json())
-    if (res.code === 200) {
-      formList.value = res.data || []
-    }
+    formList.value = await getFormsByEntity(entityId)
   } catch (e) {
     console.error('加载表单列表失败:', e)
     ElMessage.error('加载表单列表失败')
@@ -173,17 +169,15 @@ function handleDesign(row) {
 async function handlePreview(row) {
   try {
     // 同时加载表单信息和字段
-    const [formRes, fieldsRes] = await Promise.all([
-      fetch(`/api/entity-form/${row.id}`).then(r => r.json()),
-      fetch(`/api/entity-form/${row.id}/fields`).then(r => r.json())
+    const [formData, fields] = await Promise.all([
+      getFormById(row.id),
+      getFormFields(row.id)
     ])
-    if (formRes.code === 200) {
-      previewForm.value = {
-        ...formRes.data,
-        fields: fieldsRes.data || []
-      }
-      previewVisible.value = true
+    previewForm.value = {
+      ...formData,
+      fields: fields || []
     }
+    previewVisible.value = true
   } catch (e) {
     console.error('加载表单详情失败:', e)
     ElMessage.error('加载预览失败')
@@ -196,24 +190,18 @@ async function handleSubmit() {
 
   submitLoading.value = true
   try {
-    const url = isEdit.value ? `/api/entity-form/${form.id}` : '/api/entity-form'
-    const method = isEdit.value ? 'PUT' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    }).then(r => r.json())
-
-    if (res.code === 200) {
-      ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
-      dialogVisible.value = false
-      loadForms()
+    if (isEdit.value) {
+      await updateForm(form.id, form)
+      ElMessage.success('更新成功')
     } else {
-      ElMessage.error(res.message || '操作失败')
+      await createForm(form)
+      ElMessage.success('创建成功')
     }
+    dialogVisible.value = false
+    loadForms()
   } catch (e) {
     console.error('提交失败:', e)
-    ElMessage.error('提交失败')
+    ElMessage.error(e.message || '提交失败')
   } finally {
     submitLoading.value = false
   }
@@ -221,20 +209,21 @@ async function handleSubmit() {
 
 async function handleCopy(row) {
   try {
-    const res = await fetch(`/api/entity-form/${row.id}/copy`, { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    }).then(r => r.json())
-    
-    if (res.code === 200) {
-      ElMessage.success(`表单 "${row.formName}" 复制成功`)
-      loadForms()
-    } else {
-      ElMessage.error(res.message || '复制失败')
+    // 调用后端复制接口（暂时使用新建方式）
+    const newForm = {
+      entityId: row.entityId,
+      formName: row.formName + '_复制',
+      formKey: row.formKey + '_copy_' + Date.now(),
+      layoutType: row.layoutType,
+      status: 1,
+      description: row.description
     }
+    await createForm(newForm)
+    ElMessage.success(`表单 "${row.formName}" 复制成功`)
+    loadForms()
   } catch (e) {
     console.error('复制失败:', e)
-    ElMessage.error('复制失败')
+    ElMessage.error(e.message || '复制失败')
   }
 }
 
@@ -245,16 +234,12 @@ function handleDelete(row) {
     type: 'warning'
   }).then(async () => {
     try {
-      const res = await fetch(`/api/entity-form/${row.id}`, { method: 'DELETE' }).then(r => r.json())
-      if (res.code === 200) {
-        ElMessage.success('删除成功')
-        loadForms()
-      } else {
-        ElMessage.error(res.message || '删除失败')
-      }
+      await deleteForm(row.id)
+      ElMessage.success('删除成功')
+      loadForms()
     } catch (e) {
       console.error('删除失败:', e)
-      ElMessage.error('删除失败')
+      ElMessage.error(e.message || '删除失败')
     }
   }).catch(() => {})
 }

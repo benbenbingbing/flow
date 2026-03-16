@@ -1,12 +1,18 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.common.Result;
+import com.workflow.common.UserContext;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.service.ProcessInstanceService;
+import com.workflow.vo.MyStartedProcessVO;
 import com.workflow.vo.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * 流程实例控制器
@@ -40,5 +46,45 @@ public class ProcessInstanceController {
     @GetMapping("/{instanceId}/detail")
     public Result<ProcessDetailVO> getProcessDetail(@PathVariable String instanceId) {
         return Result.success(processInstanceService.getProcessDetail(instanceId));
+    }
+    
+    /**
+     * 获取我发起的流程列表
+     * 
+     * @param pageNum 页码
+     * @param pageSize 每页大小
+     * @param processName 流程名称（可选）
+     * @return 我发起的流程列表
+     */
+    @GetMapping("/my-started")
+    public Result<PageResult<MyStartedProcessVO>> getMyStartedList(
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String processName) {
+        String userId = UserContext.getUsername();
+        if (userId == null || userId.isEmpty()) {
+            userId = "admin"; // 默认用户，用于测试
+        }
+        return Result.success(processInstanceService.getMyStartedList(userId, pageNum, pageSize, processName));
+    }
+    
+    /**
+     * 终止流程实例
+     * 
+     * @param processInstanceId 流程实例ID
+     * @param requestBody 请求体，包含reason（终止原因，可选）
+     * @return 操作结果
+     */
+    @PostMapping("/{processInstanceId}/terminate")
+    public Result<Void> terminateProcess(
+            @PathVariable String processInstanceId,
+            @RequestBody(required = false) Map<String, String> requestBody) {
+        String userId = UserContext.getUsername();
+        if (userId == null || userId.isEmpty()) {
+            userId = "admin"; // 默认用户，用于测试
+        }
+        
+        String reason = requestBody != null ? requestBody.get("reason") : null;
+        return processInstanceService.terminateProcess(processInstanceId, userId, reason);
     }
 }

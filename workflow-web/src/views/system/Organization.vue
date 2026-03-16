@@ -145,6 +145,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, OfficeBuilding, House } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 
 const loading = ref(false)
 const orgTree = ref([])
@@ -183,9 +184,9 @@ const rules = {
 async function loadOrgTree() {
   loading.value = true
   try {
-    const res = await fetch(`/api/system/org/tree?type=${filterType.value}`).then(r => r.json())
-    if (res.code === 200) {
-      orgTree.value = res.data || []
+    const res = await request.get('/system/org/tree', { params: { type: filterType.value } })
+    if (res && Array.isArray(res)) {
+      orgTree.value = res
     }
   } catch (e) {
     console.error('加载组织部门失败:', e)
@@ -198,9 +199,9 @@ async function loadOrgTree() {
 // 加载用户列表
 async function loadUsers() {
   try {
-    const res = await fetch('/api/system/user/list').then(r => r.json())
-    if (res.code === 200) {
-      userOptions.value = res.data.map(user => ({
+    const res = await request.get('/system/user/list')
+    if (res && Array.isArray(res)) {
+      userOptions.value = res.map(user => ({
         label: `${user.nickname || user.username} (${user.username})`,
         value: user.id
       }))
@@ -240,21 +241,15 @@ async function submitForm() {
 
   submitLoading.value = true
   try {
-    const url = isEdit.value ? `/api/system/org/${form.id}` : '/api/system/org'
-    const method = isEdit.value ? 'PUT' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    }).then(r => r.json())
-
-    if (res.code === 200) {
-      ElMessage.success(isEdit.value ? '更新成功' : '新增成功')
-      dialogVisible.value = false
-      loadOrgTree()
+    if (isEdit.value) {
+      await request.put(`/system/org/${form.id}`, form)
+      ElMessage.success('更新成功')
     } else {
-      ElMessage.error(res.message || '操作失败')
+      await request.post('/system/org', form)
+      ElMessage.success('新增成功')
     }
+    dialogVisible.value = false
+    loadOrgTree()
   } catch (e) {
     console.error('提交失败:', e)
     ElMessage.error('提交失败')
@@ -270,13 +265,9 @@ function handleDelete(row) {
     type: 'warning'
   }).then(async () => {
     try {
-      const res = await fetch(`/api/system/org/${row.id}`, { method: 'DELETE' }).then(r => r.json())
-      if (res.code === 200) {
-        ElMessage.success('删除成功')
-        loadOrgTree()
-      } else {
-        ElMessage.error(res.message || '删除失败')
-      }
+      await request.delete(`/system/org/${row.id}`)
+      ElMessage.success('删除成功')
+      loadOrgTree()
     } catch (e) {
       console.error('删除失败:', e)
       ElMessage.error('删除失败')

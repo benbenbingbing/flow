@@ -22,6 +22,11 @@ spring:
     sql-migration-suffixes: .sql
     baseline-on-migrate: true
     baseline-version: 0
+  
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
 
 # MyBatis-Plus 配置
 mybatis-plus:
@@ -59,3 +64,10 @@ cors:
   allowed-origins: "*"
   allowed-methods: "*"
   allowed-headers: "*"
+
+# 文件上传配置
+file:
+  upload:
+    path: ./uploads
+  access:
+    url: /uploads

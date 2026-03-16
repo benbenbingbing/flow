@@ -202,6 +202,8 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, Edit, DocumentAdd } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormPreview from '@/components/FormPreview.vue'
+import { entityApi } from '@/api/entity'
+import { getFormById, createForm, saveFormFields, getEntityFields, getFormFields } from '@/api/entityForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -289,13 +291,11 @@ function getGridStyle(field) {
 async function loadEntityInfo() {
   if (!entityId) return
   try {
-    const res = await fetch(`/api/entity/${entityId}`).then(r => r.json())
-    if (res.code === 200) {
-      entityInfo.value = res.data
-      if (!isEdit.value) {
-        form.value.formName = res.data.entityName + '表单'
-        form.value.formKey = res.data.entityCode + '_form'
-      }
+    const data = await entityApi.getById(entityId)
+    entityInfo.value = data
+    if (!isEdit.value) {
+      form.value.formName = data.entityName + '表单'
+      form.value.formKey = data.entityCode + '_form'
     }
   } catch (e) {
     console.error('加载实体信息失败:', e)
@@ -308,10 +308,7 @@ async function loadEntityFields() {
   if (!eid) return
   
   try {
-    const res = await fetch(`/api/entity-form/entity/${eid}/fields`).then(r => r.json())
-    if (res.code === 200) {
-      entityFields.value = res.data || []
-    }
+    entityFields.value = await getEntityFields(eid)
   } catch (e) {
     console.error('加载实体字段失败:', e)
   }
@@ -322,12 +319,10 @@ async function loadFormInfo() {
   if (!isEdit.value) return
   
   try {
-    const res = await fetch(`/api/entity-form/${formId}`).then(r => r.json())
-    if (res.code === 200) {
-      form.value = { ...form.value, ...res.data }
-      if (res.data.entityId && !entityId) {
-        form.value.entityId = res.data.entityId
-      }
+    const data = await getFormById(formId)
+    form.value = { ...form.value, ...data }
+    if (data.entityId && !entityId) {
+      form.value.entityId = data.entityId
     }
   } catch (e) {
     console.error('加载表单信息失败:', e)
@@ -339,10 +334,7 @@ async function loadFormFields() {
   if (!isEdit.value) return
   
   try {
-    const res = await fetch(`/api/entity-form/${formId}/fields`).then(r => r.json())
-    if (res.code === 200) {
-      formFields.value = res.data || []
-    }
+    formFields.value = await getFormFields(formId)
   } catch (e) {
     console.error('加载表单字段失败:', e)
   }
@@ -446,17 +438,9 @@ async function handleSave() {
   saving.value = true
   try {
     // 1. 创建/更新表单
-    const formRes = await fetch('/api/entity-form', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value)
-    }).then(r => r.json())
+    const formData = await createForm(form.value)
     
-    if (formRes.code !== 200) {
-      throw new Error(formRes.message || '创建表单失败')
-    }
-    
-    const newFormId = formRes.data.id
+    const newFormId = formData.id
     
     // 2. 保存表单字段
     const fieldsToSave = formFields.value.map((f, index) => ({
@@ -465,15 +449,7 @@ async function handleSave() {
       sortOrder: index
     }))
     
-    const fieldsRes = await fetch(`/api/entity-form/${newFormId}/fields`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(fieldsToSave)
-    }).then(r => r.json())
-    
-    if (fieldsRes.code !== 200) {
-      throw new Error(fieldsRes.message || '保存字段失败')
-    }
+    await saveFormFields(newFormId, fieldsToSave)
     
     ElMessage.success('表单保存成功')
     const backEntityId = form.value.entityId || entityId

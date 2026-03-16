@@ -233,6 +233,20 @@ public class EntityDataService {
             log.error("数据反序列化失败: {}", data.getId(), e);
         }
         
+        // 如果有流程实例ID，查询当前待办任务的审批人
+        if (data.getProcessInstanceId() != null) {
+            try {
+                ProcessTask todoTask = processTaskService.getTodoTaskByProcessInstance(data.getProcessInstanceId());
+                if (todoTask != null) {
+                    dto.setCurrentTaskId(todoTask.getTaskId());
+                    dto.setCurrentTaskName(todoTask.getNodeName());
+                    dto.setCurrentTaskAssignee(todoTask.getAssigneeId());
+                }
+            } catch (Exception e) {
+                log.warn("查询流程待办任务失败: {}", data.getProcessInstanceId(), e);
+            }
+        }
+        
         return dto;
     }
     

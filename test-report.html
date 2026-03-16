@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录功能测试报告 - iMessage风格</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(180deg, #f2f2f7 0%, #e5e5ea 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: #f8f8f8;
+            border-radius: 16px 16px 0 0;
+            border-bottom: 1px solid #c8c7cc;
+        }
+        
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #000;
+        }
+        
+        .header .subtitle {
+            font-size: 12px;
+            color: #8e8e93;
+            margin-top: 4px;
+        }
+        
+        .chat-container {
+            background: #fff;
+            padding: 20px;
+            min-height: 500px;
+        }
+        
+        .timestamp {
+            text-align: center;
+            color: #8e8e93;
+            font-size: 11px;
+            margin: 15px 0;
+        }
+        
+        .message {
+            display: flex;
+            margin: 10px 0;
+            align-items: flex-end;
+        }
+        
+        .message.sent {
+            justify-content: flex-end;
+        }
+        
+        .message.received {
+            justify-content: flex-start;
+        }
+        
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin: 0 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        
+        .message.sent .avatar {
+            background: linear-gradient(135deg, #007AFF, #5856D6);
+            color: white;
+            order: 2;
+        }
+        
+        .message.received .avatar {
+            background: linear-gradient(135deg, #34C759, #30D158);
+            color: white;
+            order: 0;
+        }
+        
+        .bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 20px;
+            font-size: 15px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            position: relative;
+        }
+        
+        .message.sent .bubble {
+            background: #007AFF;
+            color: white;
+            border-bottom-right-radius: 4px;
+            order: 1;
+        }
+        
+        .message.received .bubble {
+            background: #e5e5ea;
+            color: black;
+            border-bottom-left-radius: 4px;
+            order: 1;
+        }
+        
+        .bubble.success {
+            background: #34C759 !important;
+        }
+        
+        .bubble.error {
+            background: #FF3B30 !important;
+        }
+        
+        .bubble.info {
+            background: #8E8E93 !important;
+            color: white !important;
+        }
+        
+        .status-bar {
+            background: #f8f8f8;
+            padding: 15px 20px;
+            border-radius: 0 0 16px 16px;
+            border-top: 1px solid #c8c7cc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-text {
+            font-size: 13px;
+            color: #8e8e93;
+        }
+        
+        .summary {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .summary-item {
+            text-align: center;
+        }
+        
+        .summary-item .number {
+            font-size: 20px;
+            font-weight: 600;
+            color: #007AFF;
+        }
+        
+        .summary-item .label {
+            font-size: 11px;
+            color: #8e8e93;
+        }
+        
+        .code-block {
+            background: rgba(0,0,0,0.1);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+            margin-top: 8px;
+            overflow-x: auto;
+        }
+        
+        .test-result {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        
+        .check-icon {
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 登录功能测试报告</h1>
+            <div class="subtitle">Workflow Platform - 登录模块测试</div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="timestamp">今天 15:45</div>
+            
+            <!-- 测试开始 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble info">
+                    开始执行登录功能测试...
+                </div>
+            </div>
+            
+            <!-- 测试1: admin登录 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    测试账号 1️⃣: admin/admin<br>
+                    正在尝试登录...
+                </div>
+            </div>
+            
+            <div class="message sent">
+                <div class="bubble success">
+                    <span class="check-icon">✅</span>登录成功<br><br>
+                    返回信息：<br>
+                    • 用户名: admin<br>
+                    • 昵称: 系统管理员<br>
+                    • Token: eyJhbGciOiJIUzUxMiJ9...<br>
+                    • 角色: [admin]
+                </div>
+                <div class="avatar">🧪</div>
+            </div>
+            
+            <!-- 测试2: zhangsan登录 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    测试账号 2️⃣: zhangsan/admin<br>
+                    正在尝试登录...
+                </div>
+            </div>
+            
+            <div class="message sent">
+                <div class="bubble success">
+                    <span class="check-icon">✅</span>登录成功<br><br>
+                    返回信息：<br>
+                    • 用户名: zhangsan<br>
+                    • 昵称: 张三<br>
+                    • Token: eyJhbGciOiJIUzUxMiJ9...<br>
+                    • 角色: []
+                </div>
+                <div class="avatar">🧪</div>
+            </div>
+            
+            <!-- 测试3: 获取当前用户信息 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    测试 3️⃣: 获取当前登录用户信息<br>
+                    使用 zhangsan 的 Token 调用 /api/auth/current...
+                </div>
+            </div>
+            
+            <div class="message sent">
+                <div class="bubble success">
+                    <span class="check-icon">✅</span>获取成功<br><br>
+                    返回的是 zhangsan 的信息，正确！
+                </div>
+                <div class="avatar">🧪</div>
+            </div>
+            
+            <!-- 测试4: 错误密码 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    测试 4️⃣: 错误密码<br>
+                    admin/wrongpassword...
+                </div>
+            </div>
+            
+            <div class="message sent">
+                <div class="bubble error">
+                    <span class="check-icon">❌</span>登录失败<br><br>
+                    错误信息: 用户名或密码错误<br>
+                    符合预期 ✅
+                </div>
+                <div class="avatar">🧪</div>
+            </div>
+            
+            <!-- 测试5: 获取待办列表 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    测试 5️⃣: 验证 Token 是否生效<br>
+                    zhangsan 获取待办列表...
+                </div>
+            </div>
+            
+            <div class="message sent">
+                <div class="bubble success">
+                    <span class="check-icon">✅</span>请求成功<br><br>
+                    Token 验证通过<br>
+                    返回 zhangsan 的待办任务列表
+                </div>
+                <div class="avatar">🧪</div>
+            </div>
+            
+            <!-- 测试6: 无Token访问 -->
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                    测试 6️⃣: 未登录访问<br>
+                    不带 Token 访问 /api/process-task/todo...
+                </div>
+            </div>
+            
+            <div class="message sent">
+                <div class="bubble error">
+                    <span class="check-icon">❌</span>访问被拒绝<br><br>
+                    返回 401: 未登录或登录已过期<br>
+                    认证拦截器工作正常 ✅
+                </div>
+                <div class="avatar">🧪</div>
+            </div>
+            
+            <!-- 总结 -->
+            <div class="timestamp">测试完成</div>
+            
+            <div class="message received">
+                <div class="avatar">🤖</div>
+                <div class="bubble info">
+                    📊 测试总结<br><br>
+                    ✅ 登录功能正常<br>
+                    ✅ JWT Token 生成正确<br>
+                    ✅ Token 验证有效<br>
+                    ✅ 用户信息隔离正确<br>
+                    ✅ 权限控制正常<br><br>
+                    所有测试通过！🎉
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-text">测试时间: 2025-03-14 15:45</div>
+            <div class="summary">
+                <div class="summary-item">
+                    <div class="number">6</div>
+                    <div class="label">测试项</div>
+                </div>
+                <div class="summary-item">
+                    <div class="number" style="color: #34C759;">6</div>
+                    <div class="label">通过</div>
+                </div>
+                <div class="summary-item">
+                    <div class="number" style="color: #FF3B30;">0</div>
+                    <div class="label">失败</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

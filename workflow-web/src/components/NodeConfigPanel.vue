@@ -1035,6 +1035,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
+import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
@@ -1082,7 +1083,7 @@ function getFieldTypeLabel(type) {
 
 // 跳转到表单设计
 function goToFormDesign() {
-  window.open('/#/entity-form', '_blank')
+  ElMessage.info('请前往实体设计页面配置表单')
 }
 
 // ========== 节点类型说明 ==========
@@ -1272,9 +1273,9 @@ const selectedForm = computed(() => {
 // 加载用户列表
 async function loadUsers() {
   try {
-    const res = await fetch('/api/system/user/list').then(r => r.json())
-    if (res.code === 200) {
-      userOptions.value = res.data.map(user => ({
+    const res = await request.get('/system/user/list')
+    if (res && Array.isArray(res)) {
+      userOptions.value = res.map(user => ({
         id: user.id,
         username: user.username,
         nickname: user.nickname,
@@ -1290,9 +1291,9 @@ async function loadUsers() {
 // 加载组列表
 async function loadGroups() {
   try {
-    const res = await fetch('/api/system/group/enabled').then(r => r.json())
-    if (res.code === 200) {
-      groupOptions.value = res.data.map(group => ({
+    const res = await request.get('/system/group/enabled')
+    if (res && Array.isArray(res)) {
+      groupOptions.value = res.map(group => ({
         id: group.id,
         code: group.groupCode,
         label: group.groupName,
@@ -1307,9 +1308,9 @@ async function loadGroups() {
 // 加载角色列表
 async function loadRoles() {
   try {
-    const res = await fetch('/api/system/role/enabled').then(r => r.json())
-    if (res.code === 200) {
-      roleOptions.value = res.data.map(role => ({
+    const res = await request.get('/system/role/enabled')
+    if (res && Array.isArray(res)) {
+      roleOptions.value = res.map(role => ({
         id: role.id,
         code: role.roleCode,
         label: role.roleName,
@@ -1332,14 +1333,14 @@ async function loadEntityForms() {
   }
   try {
     // 1. 先获取流程绑定的实体
-    const entityRes = await fetch(`/api/entity/process/${props.processId}`).then(r => r.json())
-    if (entityRes.code === 200) {
-      boundEntity.value = entityRes.data
+    const entityRes = await request.get(`/entity/process/${props.processId}`)
+    if (entityRes) {
+      boundEntity.value = entityRes
       // 2. 加载该实体的表单列表
       if (boundEntity.value?.id) {
-        const formsRes = await fetch(`/api/entity-form/entity/${boundEntity.value.id}`).then(r => r.json())
-        if (formsRes.code === 200) {
-          entityFormOptions.value = formsRes.data || []
+        const formsRes = await request.get(`/entity-form/entity/${boundEntity.value.id}`)
+        if (formsRes && Array.isArray(formsRes)) {
+          entityFormOptions.value = formsRes
         }
       }
     }
@@ -1351,9 +1352,9 @@ async function loadEntityForms() {
 // 加载表单字段
 async function loadFormFields(formId) {
   try {
-    const res = await fetch(`/api/entity-form/${formId}/fields`).then(r => r.json())
-    if (res.code === 200) {
-      selectedFormFields.value = res.data || []
+    const res = await request.get(`/entity-form/${formId}/fields`)
+    if (res && Array.isArray(res)) {
+      selectedFormFields.value = res
     }
   } catch (e) {
     console.error('加载表单字段失败:', e)

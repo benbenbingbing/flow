@@ -49,7 +49,45 @@ public class ProcessDefinitionService {
      */
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAllUnbound() {
-        return processMapper.findAllUnbound().stream()
+        List<ProcessDefinitionConfig> unbound = processMapper.findAllUnbound();
+        if (unbound == null) {
+            return new java.util.ArrayList<>();
+        }
+        return unbound.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * 查询所有可用于绑定的流程（包括当前已绑定的）
+     * 用于实体绑定流程时选择，包括当前已绑定的流程和未绑定的流程
+     * @param currentProcessId 当前绑定的流程ID（可为空）
+     * @return 可用于绑定的流程列表
+     */
+    @Transactional(readOnly = true)
+    public List<ProcessDefinitionDTO> findAllBindable(String currentProcessId) {
+        // 获取所有未绑定的流程
+        List<ProcessDefinitionConfig> unbound = processMapper.findAllUnbound();
+        
+        // 如果返回null，使用空列表
+        if (unbound == null) {
+            unbound = new java.util.ArrayList<>();
+        }
+        
+        // 如果指定了当前流程ID，需要将其加入列表
+        if (currentProcessId != null && !currentProcessId.trim().isEmpty()) {
+            ProcessDefinitionConfig current = processMapper.selectById(currentProcessId);
+            if (current != null) {
+                // 检查是否已经在未绑定列表中（理论上不应该在，但为了安全）
+                boolean exists = unbound.stream()
+                        .anyMatch(p -> p.getId().equals(currentProcessId));
+                if (!exists) {
+                    unbound.add(0, current); // 添加到列表开头
+                }
+            }
+        }
+        
+        return unbound.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -176,17 +214,51 @@ public class ProcessDefinitionService {
         // 将 processKey 写入 XML 的 process id 属性，确保 Flowable 使用正确的 key
         String bpmnXml = config.getBpmnXml();
         
-        // 清理前端错误生成的无效属性（这些属性应该用 flowable: 命名空间或在 extensionElements 中）
-        // 清理 extensionProperties
-        bpmnXml = bpmnXml.replaceAll("\\s+extensionProperties=\"[^\"]*\"", "");
-        // 将 candidateGroups="xxx" 转换为 flowable:candidateGroups="xxx"（避免重复添加前缀）
-        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
-        // 将 candidateUsers="xxx" 转换为 flowable:candidateUsers="xxx"（避免重复添加前缀）
-        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
-        // 将 assignee="xxx" 转换为 flowable:assignee="xxx"（避免重复添加前缀）
-        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)assignee=\"([^\"]*)\"", "flowable:assignee=\"$1\"");
+        // 清理前端 camunda 命名空间（Flowable 不识别 camunda 扩展）
+        // 策略：1) 移除camunda命名空间声明 2) 提取camunda属性值并转换为flowable 3) 移除camunda元素和属性
         
-        // 处理 skipNode 配置：为设置了 skipNode=true 的用户任务添加自动完成监听器
+        // 1. 移除 camunda 命名空间声明
+        bpmnXml = bpmnXml.replaceAll("\\s+xmlns:camunda=\"[^\"]*\"", "");
+        
+        // 2. 提取 camunda:assignee/candidateGroups/candidateUsers 的值，然后移除这些属性
+        // 先提取值保存到变量，后续用于设置flowable属性
+        java.util.regex.Pattern assigneePattern = java.util.regex.Pattern.compile("camunda:assignee=\"([^\"]*)\"");
+        java.util.regex.Matcher assigneeMatcher = assigneePattern.matcher(bpmnXml);
+        while (assigneeMatcher.find()) {
+            String value = assigneeMatcher.group(1);
+            // 移除camunda:assignee，后面会添加flowable:assignee
+            bpmnXml = bpmnXml.replace(assigneeMatcher.group(0), "");
+            // 同时移除普通assignee（如果有），避免重复
+            bpmnXml = bpmnXml.replaceAll("(?<!flowable:)assignee=\"" + java.util.regex.Pattern.quote(value) + "\"", "");
+            // 添加flowable:assignee
+            bpmnXml = bpmnXml.replace(assigneeMatcher.group(0) + "", " flowable:assignee=\"" + value + "\"");
+        }
+        
+        // 3. 移除所有camunda元素（properties等）
+        java.util.regex.Pattern camundaElementPattern = java.util.regex.Pattern.compile(
+            "<camunda:[^>]*>[\\s\\S]*?</camunda:[^>]*>", 
+            java.util.regex.Pattern.DOTALL
+        );
+        java.util.regex.Matcher matcher;
+        int maxIterations = 10;
+        for (int i = 0; i < maxIterations; i++) {
+            matcher = camundaElementPattern.matcher(bpmnXml);
+            if (!matcher.find()) break;
+            bpmnXml = matcher.replaceAll("");
+        }
+        
+        // 4. 移除所有剩余的camunda属性
+        bpmnXml = bpmnXml.replaceAll("\\s+camunda:[^=\\s]*=\"[^\"]*\"", "");
+        
+        // 5. 清理其他无效属性，并将无命名空间的属性转为flowable
+        bpmnXml = bpmnXml.replaceAll("\\s+extensionProperties=\"[^\"]*\"", "");
+        // 注意：只转换那些还没有flowable:前缀的属性
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
+        // assignee要特别小心，可能已经处理了
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)\\sassignee=\"([^\"]*)\"", " flowable:assignee=\"$1\"");
+        
+        // 处理 skipNode 配置：为设置了 skipNode=true 的用户任务添加 skipExpression
         bpmnXml = processSkipNodeTasks(bpmnXml);
         
         // 添加 flowable 命名空间声明（如果不存在）
@@ -239,7 +311,9 @@ public class ProcessDefinitionService {
         config.setVersion(newVersion);
         processMapper.updateById(config);
         
-        return convertToDTO(config);
+        // 重新查询确保获取最新值
+        ProcessDefinitionConfig updatedConfig = processMapper.selectById(id);
+        return convertToDTO(updatedConfig);
     }
     
     /**
@@ -371,17 +445,16 @@ public class ProcessDefinitionService {
             String taskAttrs = taskMatcher.group(1);
             String taskContent = taskMatcher.group(2);
             
-            // 检查是否包含 skipNode=true 的 camunda:Property
-            if (taskContent.contains("<camunda:Property name=\"skipNode\" value=\"true\" />") ||
-                taskContent.contains("<camunda:Property name=\"skipNode\" value=\"true\"/>") ||
-                taskContent.contains("name=\"skipNode\" value=\"true\"")) {
-                
+            // 检查是否包含 skipNode=true 的 Property（可能是 camunda:Property 或普通 Property）
+            boolean hasSkipNode = taskContent.contains("name=\"skipNode\" value=\"true\"") ||
+                                  taskContent.contains("name=\"skipNode\" value=\"true\"");
+            
+            if (hasSkipNode) {
                 // 提取任务ID
                 java.util.regex.Matcher idMatcher = java.util.regex.Pattern.compile("id=\"([^\"]+)\"").matcher(taskAttrs);
                 String taskId = idMatcher.find() ? idMatcher.group(1) : "";
                 
                 // 添加 flowable:skipExpression 属性到任务标签
-                // 使用 ${skipNodeEnabled} 作为统一变量名
                 if (!taskAttrs.contains("flowable:skipExpression")) {
                     taskAttrs += " flowable:skipExpression=\"${skipNodeEnabled}\"";
                 }

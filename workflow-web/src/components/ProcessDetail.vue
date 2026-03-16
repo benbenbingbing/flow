@@ -73,6 +73,7 @@
 import { ref, onMounted } from 'vue'
 import { ChatDotRound } from '@element-plus/icons-vue'
 import Viewer from 'bpmn-js/lib/Viewer'
+import request from '@/utils/request'
 
 const props = defineProps({
   instanceId: { type: String, required: true }
@@ -105,9 +106,9 @@ let viewer = null
 // 加载流程详情
 async function loadProcessDetail() {
   try {
-    const res = await fetch(`/api/process-instance/${props.instanceId}/detail`).then(r => r.json())
-    if (res.code === 200) {
-      const data = res.data
+    const res = await request.get(`/process-instance/${props.instanceId}/detail`)
+    if (res) {
+      const data = res
       processInfo.value = {
         processName: data.processName,
         instanceId: data.instanceId,

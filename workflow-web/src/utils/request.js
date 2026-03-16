@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 
 const request = axios.create({
   baseURL: '/api',
@@ -12,6 +13,12 @@ const request = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   (config) => {
+    // 从 store 获取 token
+    const userStore = useUserStore()
+    const token = userStore.token
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
     return config
   },
   (error) => {
@@ -26,11 +33,32 @@ request.interceptors.response.use(
     if (code === 200) {
       return data
     }
+    // 处理登录过期
+    if (code === 401) {
+      ElMessage.error(message || '登录已过期，请重新登录')
+      const userStore = useUserStore()
+      userStore.logout()
+      window.location.href = '/login'
+      return Promise.reject(new Error(message || '登录已过期'))
+    }
     ElMessage.error(message || '请求失败')
     return Promise.reject(new Error(message))
   },
   (error) => {
-    ElMessage.error(error.message || '网络错误')
+    const { response } = error
+    if (response) {
+      // 处理 401 未授权
+      if (response.status === 401) {
+        ElMessage.error('登录已过期，请重新登录')
+        const userStore = useUserStore()
+        userStore.logout()
+        window.location.href = '/login'
+      } else {
+        ElMessage.error(response.data?.message || '请求失败')
+      }
+    } else {
+      ElMessage.error(error.message || '网络错误')
+    }
     return Promise.reject(error)
   }
 )

@@ -1,5 +1,6 @@
 package com.workflow.controller;
 
+import com.workflow.common.UserContext;
 import com.workflow.common.PageResult;
 import com.workflow.common.Result;
 import com.workflow.dto.TaskDetailDTO;
@@ -25,14 +26,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 public class ProcessTaskController {
-    
+
     private final ProcessTaskService processTaskService;
     private final TaskDetailService taskDetailService;
     private final TaskActionService taskActionService;
-    
-    // 当前用户（模拟）
-    private static final String CURRENT_USER = "admin";
-    
+
     /**
      * 获取用户待办列表（分页，兼容前端TaskVO格式）
      */
@@ -40,22 +38,26 @@ public class ProcessTaskController {
     public Result<PageResult<TaskVO>> getTodoList(
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize) {
-        List<ProcessTask> tasks = processTaskService.getTodoList(CURRENT_USER);
-        
+        String currentUser = UserContext.getUsername();
+        if (currentUser == null) {
+            currentUser = "admin";
+        }
+        List<ProcessTask> tasks = processTaskService.getTodoList(currentUser);
+
         // 转换为TaskVO格式
         List<TaskVO> voList = tasks.stream()
                 .map(this::convertToTaskVO)
                 .collect(Collectors.toList());
-        
+
         // 手动分页
         int total = voList.size();
         int start = (pageNum - 1) * pageSize;
         int end = Math.min(start + pageSize, total);
         List<TaskVO> pageList = start < total ? voList.subList(start, end) : List.of();
-        
+
         return Result.success(new PageResult<>(pageList, total, pageNum, pageSize));
     }
-    
+
     /**
      * 获取用户已办列表（分页，兼容前端TaskVO格式）
      */
@@ -63,38 +65,50 @@ public class ProcessTaskController {
     public Result<PageResult<TaskVO>> getDoneList(
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize) {
-        List<ProcessTask> tasks = processTaskService.getDoneList(CURRENT_USER);
-        
+        String currentUser = UserContext.getUsername();
+        if (currentUser == null) {
+            currentUser = "admin";
+        }
+        List<ProcessTask> tasks = processTaskService.getDoneList(currentUser);
+
         // 转换为TaskVO格式
         List<TaskVO> voList = tasks.stream()
                 .map(this::convertToTaskVO)
                 .collect(Collectors.toList());
-        
+
         // 手动分页
         int total = voList.size();
         int start = (pageNum - 1) * pageSize;
         int end = Math.min(start + pageSize, total);
         List<TaskVO> pageList = start < total ? voList.subList(start, end) : List.of();
-        
+
         return Result.success(new PageResult<>(pageList, total, pageNum, pageSize));
     }
-    
+
     /**
      * 统计待办数量
      */
     @GetMapping("/count/todo")
     public Result<Long> countTodo() {
-        return Result.success(processTaskService.countTodo(CURRENT_USER));
+        String currentUser = UserContext.getUsername();
+        if (currentUser == null) {
+            currentUser = "admin";
+        }
+        return Result.success(processTaskService.countTodo(currentUser));
     }
-    
+
     /**
      * 统计已办数量
      */
     @GetMapping("/count/done")
     public Result<Long> countDone() {
-        return Result.success(processTaskService.countDone(CURRENT_USER));
+        String currentUser = UserContext.getUsername();
+        if (currentUser == null) {
+            currentUser = "admin";
+        }
+        return Result.success(processTaskService.countDone(currentUser));
     }
-    
+
     /**
      * 同步流程实例的任务
      */
@@ -103,7 +117,7 @@ public class ProcessTaskController {
         processTaskService.syncTasksFromFlowable(processInstanceId);
         return Result.success();
     }
-    
+
     /**
      * 获取任务详情（包含表单和实体数据）
      */
@@ -111,20 +125,24 @@ public class ProcessTaskController {
     public Result<TaskDetailDTO> getTaskDetail(@PathVariable String taskId) {
         return Result.success(taskDetailService.getTaskDetail(taskId));
     }
-    
+
     /**
      * 获取任务统计信息
      */
     @GetMapping("/statistics")
     public Result<Map<String, Object>> getStatistics() {
         try {
-            Map<String, Object> stats = taskActionService.getTaskStatistics(CURRENT_USER);
+            String currentUser = UserContext.getUsername();
+            if (currentUser == null) {
+                currentUser = "admin";
+            }
+            Map<String, Object> stats = taskActionService.getTaskStatistics(currentUser);
             return Result.success(stats);
         } catch (Exception e) {
             return Result.error("获取统计信息失败: " + e.getMessage());
         }
     }
-    
+
     /**
      * 完成任务
      */
@@ -134,39 +152,23 @@ public class ProcessTaskController {
         String action = (String) params.get("action");
         String comment = (String) params.get("comment");
         String transferTo = (String) params.get("transferTo");
-        
+
         if (taskId == null || taskId.isEmpty()) {
             return Result.error("任务ID不能为空");
         }
-        
+
         try {
-            taskActionService.completeTask(taskId, CURRENT_USER, action, comment, transferTo);
+            String currentUser = UserContext.getUsername();
+            if (currentUser == null) {
+                currentUser = "admin";
+            }
+            taskActionService.completeTask(taskId, currentUser, action, comment, transferTo);
             return Result.success();
         } catch (Exception e) {
             return Result.error("审批失败: " + e.getMessage());
         }
     }
-    
-    /**
-     * 撤回流程
-     */
-    @PostMapping("/withdraw")
-    public Result<Void> withdrawProcess(@RequestBody Map<String, Object> params) {
-        String processInstanceId = (String) params.get("processInstanceId");
-        String reason = (String) params.get("reason");
-        
-        if (processInstanceId == null || processInstanceId.isEmpty()) {
-            return Result.error("流程实例ID不能为空");
-        }
-        
-        try {
-            taskActionService.withdrawProcess(processInstanceId, CURRENT_USER, reason);
-            return Result.success();
-        } catch (Exception e) {
-            return Result.error("撤回失败: " + e.getMessage());
-        }
-    }
-    
+
     /**
      * 获取流程历史记录
      */
@@ -179,7 +181,7 @@ public class ProcessTaskController {
             return Result.error("获取历史失败: " + e.getMessage());
         }
     }
-    
+
     /**
      * 将ProcessTask转换为TaskVO
      */
@@ -194,7 +196,7 @@ public class ProcessTaskController {
         vo.setAssigneeName(task.getAssigneeName()); // 执行人姓名
         vo.setStartUserName(task.getAssigneeName()); // 发起人名称（复用）
         vo.setBusinessKey(task.getBusinessKey());
-        
+
         // 时间转换
         if (task.getStartTime() != null) {
             vo.setCreateTime(Date.from(task.getStartTime().atZone(ZoneId.systemDefault()).toInstant()));
@@ -202,16 +204,16 @@ public class ProcessTaskController {
         if (task.getEndTime() != null) {
             vo.setEndTime(Date.from(task.getEndTime().atZone(ZoneId.systemDefault()).toInstant()));
         }
-        
+
         vo.setDuration(task.getDuration());
         vo.setResult(task.getAction());
         vo.setComment(task.getComment());
-        
+
         // 扩展字段
         vo.setEntityCode(task.getEntityCode());
         vo.setEntityDataId(task.getEntityDataId());
         vo.setFormKey(task.getFormKey());
-        
+
         return vo;
     }
 }

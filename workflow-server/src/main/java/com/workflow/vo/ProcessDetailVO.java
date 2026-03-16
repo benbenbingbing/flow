@@ -68,6 +68,11 @@ public class ProcessDetailVO {
     private List<String> completedNodes;
     
     /**
+     * 节点处理人映射（key: 节点ID, value: 处理人信息）
+     */
+    private Map<String, AssigneeVO> nodeAssigneeMap;
+    
+    /**
      * 审批历史
      */
     private List<HistoryVO> history;
@@ -76,6 +81,37 @@ public class ProcessDetailVO {
      * 表单数据
      */
     private Map<String, Object> formData;
+    
+    /**
+     * 节点处理人VO
+     */
+    @Data
+    public static class AssigneeVO {
+        /**
+         * 处理人姓名
+         */
+        private String assigneeName;
+        
+        /**
+         * 处理时间
+         */
+        private String handleTime;
+        
+        /**
+         * 操作类型
+         */
+        private String action;
+        
+        /**
+         * 审批意见
+         */
+        private String comment;
+        
+        /**
+         * 状态：completed-已完成，processing-处理中
+         */
+        private String status;
+    }
     
     /**
      * 历史记录VO

@@ -11,6 +11,7 @@ import com.workflow.mapper.SysUserMapper;
 import com.workflow.mapper.SysUserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -31,6 +32,7 @@ public class SysUserService {
     private final SysRoleMapper roleMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final SysOrganizationMapper orgMapper;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     
     /**
      * 查询用户列表
@@ -163,7 +165,19 @@ public class SysUserService {
         SysUser user = new SysUser();
         user.setId(id);
         // 默认密码 123456
-        user.setPassword("$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO");
+        user.setPassword(passwordEncoder.encode("123456"));
+        user.setUpdateTime(LocalDateTime.now());
+        userMapper.updateById(user);
+    }
+    
+    /**
+     * 更新用户密码
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePassword(String id, String encodedPassword) {
+        SysUser user = new SysUser();
+        user.setId(id);
+        user.setPassword(encodedPassword);
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
     }

@@ -29,9 +29,6 @@
           <el-menu-item index="/entity">
             <span>实体列表</span>
           </el-menu-item>
-          <el-menu-item index="/entity-form">
-            <span>实体表单</span>
-          </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="/system">
           <template #title>
@@ -64,14 +61,20 @@
     <el-container>
       <el-header class="header">
         <div class="header-right">
-          <el-dropdown>
+          <el-dropdown @command="handleCommand">
             <span class="user-info">
-              管理员 <el-icon><ArrowDown /></el-icon>
+              <el-avatar 
+                :size="28" 
+                :src="userStore.avatar || defaultAvatar" 
+                class="user-avatar"
+              />
+              {{ userStore.nickname || '未登录' }}
+              <el-icon><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item>个人设置</el-dropdown-item>
-                <el-dropdown-item divided>退出登录</el-dropdown-item>
+                <el-dropdown-item command="profile">个人设置</el-dropdown-item>
+                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -83,6 +86,44 @@
     </el-container>
   </el-container>
 </template>
+
+<script setup>
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
+import { logout } from '@/api/auth'
+
+const router = useRouter()
+const userStore = useUserStore()
+
+const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+
+async function handleCommand(command) {
+  if (command === 'logout') {
+    try {
+      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+        type: 'warning'
+      })
+      
+      // 调用退出登录接口
+      await logout().catch(() => {})
+      
+      // 清除登录状态
+      userStore.logout()
+      
+      ElMessage.success('已退出登录')
+      
+      // 跳转到登录页
+      router.push('/login')
+    } catch (error) {
+      // 用户取消
+    }
+  } else if (command === 'profile') {
+    ElMessage.info('个人设置功能开发中...')
+  }
+}
+</script>
 
 <style scoped>
 .layout-container {
@@ -128,6 +169,13 @@
 .user-info {
   cursor: pointer;
   color: #606266;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-avatar {
+  margin-right: 4px;
 }
 
 .main-content {
@@ -136,7 +184,3 @@
   overflow-y: auto;
 }
 </style>
-
-<script setup>
-import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding } from '@element-plus/icons-vue'
-</script>

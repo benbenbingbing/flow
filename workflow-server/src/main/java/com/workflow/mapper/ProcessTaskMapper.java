@@ -34,6 +34,12 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     List<ProcessTask> selectByProcessInstance(@Param("processInstanceId") String processInstanceId);
     
     /**
+     * 根据流程实例ID查询当前待办任务（status=0）
+     */
+    @Select("SELECT * FROM process_task WHERE process_instance_id = #{processInstanceId} AND status = 0 AND deleted = 0 LIMIT 1")
+    ProcessTask selectTodoTaskByProcessInstance(@Param("processInstanceId") String processInstanceId);
+    
+    /**
      * 根据Flowable任务ID查询
      */
     @Select("SELECT * FROM process_task WHERE task_id = #{taskId} AND deleted = 0 LIMIT 1")
