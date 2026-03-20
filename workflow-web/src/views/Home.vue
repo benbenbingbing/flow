@@ -464,6 +464,7 @@ const previewFormConfig = computed(() => {
 // BPMN Viewer
 const bpmnViewer = ref(null)
 let viewer = null
+let eventBusListeners = []  // 保存事件监听器引用，用于清理
 
 // 流程信息
 const processInfo = ref({
@@ -769,6 +770,20 @@ const completedNodes = ref([])
 const currentNodeId = ref('')
 const nodeAssigneeMap = ref({})
 
+// 清理BPMN事件监听器
+function clearBpmnEventListeners() {
+  if (!viewer) return
+  const eventBus = viewer.get('eventBus')
+  if (eventBus) {
+    // 移除所有已注册的事件监听器
+    eventBusListeners.forEach(listener => {
+      eventBus.off('element.hover', listener.hover)
+      eventBus.off('element.out', listener.out)
+    })
+    eventBusListeners = []
+  }
+}
+
 // 渲染BPMN流程图
 async function renderBpmn() {
   if (!bpmnXml.value || !bpmnViewer.value) return
@@ -780,6 +795,9 @@ async function renderBpmn() {
   }
   
   try {
+    // 先清理旧的事件监听器
+    clearBpmnEventListeners()
+    
     await viewer.importXML(bpmnXml.value)
     
     const canvas = viewer.get('canvas')
@@ -800,19 +818,19 @@ async function renderBpmn() {
     // 添加节点悬停提示
     const tooltipOverlayId = 'node-tooltip'
     let currentElement = null
-    
+
     elementRegistry.forEach(element => {
       if (element.type.includes('Task') || element.type.includes('Activity') || element.type.includes('Gateway') || element.type.includes('Event')) {
         const gfx = canvas.getGraphics(element)
         if (!gfx) return
-        
-        // 鼠标进入事件
-        eventBus.on('element.hover', (e) => {
+
+        // 创建事件监听函数
+        const hoverListener = (e) => {
           if (e.element.id !== element.id) return
-          
+
           const assigneeInfo = nodeAssigneeMap.value[element.id]
           if (!assigneeInfo) return
-          
+
           currentElement = element
           const statusText = assigneeInfo.status === 'completed' ? '已审批' : '待审批'
           const tooltipContent = `
@@ -824,12 +842,12 @@ async function renderBpmn() {
               ${assigneeInfo.comment ? `<div class="tooltip-row"><span class="label">意见:</span> <span class="value">${assigneeInfo.comment}</span></div>` : ''}
             </div>
           `
-          
+
           // 移除已有的tooltip
           try {
             overlays.remove({ element: element.id, type: tooltipOverlayId })
           } catch (e) {}
-          
+
           overlays.add(element.id, tooltipOverlayId, {
             position: {
               top: -10,
@@ -837,10 +855,9 @@ async function renderBpmn() {
             },
             html: tooltipContent
           })
-        })
-        
-        // 鼠标离开事件
-        eventBus.on('element.out', (e) => {
+        }
+
+        const outListener = (e) => {
           if (e.element.id !== element.id) return
           if (currentElement && currentElement.id === element.id) {
             try {
@@ -848,6 +865,17 @@ async function renderBpmn() {
             } catch (e) {}
             currentElement = null
           }
+        }
+
+        // 注册事件监听
+        eventBus.on('element.hover', hoverListener)
+        eventBus.on('element.out', outListener)
+
+        // 保存监听器引用，便于后续清理
+        eventBusListeners.push({
+          elementId: element.id,
+          hover: hoverListener,
+          out: outListener
         })
       }
     })

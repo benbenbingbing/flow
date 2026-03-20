@@ -97,6 +97,18 @@ public class EntityFormController {
     }
     
     /**
+     * 获取实体的默认表单
+     */
+    @GetMapping("/entity/{entityId}/default")
+    public Result<EntityForm> getDefaultForm(@PathVariable String entityId) {
+        EntityForm form = formService.getDefaultForm(entityId);
+        if (form == null) {
+            return Result.success(null);
+        }
+        return Result.success(form);
+    }
+    
+    /**
      * 复制表单
      */
     @PostMapping("/{id}/copy")

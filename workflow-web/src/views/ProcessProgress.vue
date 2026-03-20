@@ -124,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, watch, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import BpmnViewer from 'bpmn-js/lib/NavigatedViewer'
@@ -264,8 +264,13 @@ const importXML = async (xml) => {
     const canvas = bpmnViewer.value.get('canvas')
     canvas.zoom('fit-viewport', 'auto')
     
-    // 高亮显示节点状态
-    highlightProcess()
+    // 延迟高亮显示节点状态，确保 DOM 渲染完成
+    setTimeout(() => {
+      nextTick(() => {
+        highlightProcess()
+      })
+    }, 300)
+    
     // 添加鼠标事件监听
     addMouseEventListeners()
   } catch (error) {
@@ -292,8 +297,10 @@ const highlightProcess = () => {
       return
     }
     
-    const { completedNodes, activeNodes, executedSequenceFlows } = progressData.value
-    console.log('高亮节点:', { completedNodes, activeNodes, executedSequenceFlows })
+    const { completedNodes, activeNodes } = progressData.value
+    // 使用 toRaw 解除 Proxy，确保 includes 方法正常工作
+    const executedSequenceFlows = toRaw(progressData.value.executedSequenceFlows) || []
+    console.log('高亮节点:', { completedNodes: toRaw(completedNodes), activeNodes: toRaw(activeNodes), executedSequenceFlows })
     
     // 获取所有元素
     const allElements = elementRegistry.getAll()
@@ -305,7 +312,9 @@ const highlightProcess = () => {
       
       // 处理连线
       if (elementType === 'bpmn:SequenceFlow') {
-        const isExecuted = executedSequenceFlows && executedSequenceFlows.includes(elementId)
+        const flows = executedSequenceFlows || []
+        const isExecuted = flows.includes(elementId)
+        console.log('检查连线:', elementId, '是否已执行:', isExecuted, '在列表中:', flows)
         setFlowStyle(canvas, element, isExecuted ? COLORS.executedFlow : COLORS.pendingFlow, isExecuted)
         return
       }
@@ -316,9 +325,11 @@ const highlightProcess = () => {
       }
       
       let status = 'pending' // 默认未开始
-      if (completedNodes && completedNodes.includes(elementId)) {
+      const rawCompletedNodes = toRaw(completedNodes) || []
+      const rawActiveNodes = toRaw(activeNodes) || []
+      if (rawCompletedNodes.includes(elementId)) {
         status = 'completed'
-      } else if (activeNodes && activeNodes.includes(elementId)) {
+      } else if (rawActiveNodes.includes(elementId)) {
         status = 'active'
       }
       
@@ -400,20 +411,14 @@ const addNodeBadge = (gfx, element, status) => {
 }
 
 /**
- * 设置连线样式
+ * 设置连线样式 - 不破坏箭头 marker
  */
 const setFlowStyle = (canvas, element, colorConfig, isExecuted = false) => {
+  // 只添加/移除 executed 类，样式由 CSS 处理
+  // 这样不会破坏 bpmn-js 默认的 marker-end 箭头
   const gfx = canvas.getGraphics(element)
   if (!gfx) return
   
-  // 获取连线元素
-  const path = gfx.querySelector('.djs-visual path, .djs-visual line, .djs-visual polyline')
-  if (path) {
-    path.style.stroke = colorConfig.stroke
-    path.style.strokeWidth = colorConfig.strokeWidth
-  }
-  
-  // 为已执行的连线添加标记类
   if (isExecuted) {
     gfx.classList.add('executed')
   } else {
@@ -454,13 +459,15 @@ const addMouseEventListeners = () => {
         }
         
         const elementId = element.id
-        const { completedNodes, activeNodes, nodeAssigneeMap } = progressData.value
+        const { nodeAssigneeMap } = progressData.value
+        const rawCompletedNodes = toRaw(progressData.value.completedNodes) || []
+        const rawActiveNodes = toRaw(progressData.value.activeNodes) || []
         
         // 确定节点状态
         let status = 'pending'
-        if (completedNodes?.includes(elementId)) {
+        if (rawCompletedNodes.includes(elementId)) {
           status = 'completed'
-        } else if (activeNodes?.includes(elementId)) {
+        } else if (rawActiveNodes.includes(elementId)) {
           status = 'active'
         }
         
@@ -567,6 +574,20 @@ const formatDuration = (ms) => {
   if (minutes > 0) return `${minutes}分钟${seconds % 60}秒`
   return `${seconds}秒`
 }
+
+// 监听 progressData 变化，自动高亮
+watch(() => progressData.value, (newVal) => {
+  console.log('progressData 变化:', newVal)
+  if (newVal && newVal.executedSequenceFlows) {
+    console.log('检测到 executedSequenceFlows:', newVal.executedSequenceFlows)
+    // 延迟执行，确保 DOM 完全渲染
+    setTimeout(() => {
+      nextTick(() => {
+        highlightProcess()
+      })
+    }, 500)
+  }
+}, { deep: true })
 
 onMounted(() => {
   nextTick(() => {
@@ -828,21 +849,23 @@ onMounted(() => {
   stroke-width: 1px !important;
 }
 
-/* 连线样式 - 确保箭头显示 */
-:deep(.djs-connection path) {
-  marker-end: url(#sequenceflow-end) !important;
+/* 连线颜色 - 只改变颜色不改变宽度，保留默认箭头 */
+:deep(.djs-connection.executed) {
+  --connection-stroke: #52c41a;
 }
 
-/* 已执行的连线 - 绿色 */
-:deep(.djs-connection.executed path) {
-  stroke: #52c41a !important;
-  stroke-width: 2px !important;
+:deep(.djs-connection:not(.executed)) {
+  --connection-stroke: #d9d9d9;
+}
+
+/* 已执行的连线 - 绿色，不使用 !important 避免破坏 marker */
+:deep(.djs-connection.executed .djs-visual > path) {
+  stroke: #52c41a;
 }
 
 /* 待执行的连线 - 灰色 */
-:deep(.djs-connection:not(.executed) path) {
-  stroke: #d9d9d9 !important;
-  stroke-width: 1px !important;
+:deep(.djs-connection:not(.executed) .djs-visual > path) {
+  stroke: #d9d9d9;
 }
 
 /* 节点徽章动画 */

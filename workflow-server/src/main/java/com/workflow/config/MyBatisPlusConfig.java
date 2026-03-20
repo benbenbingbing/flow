@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import com.workflow.common.UserContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.logging.slf4j.Slf4jImpl;
 import org.apache.ibatis.reflection.MetaObject;
@@ -41,6 +42,7 @@ public class MyBatisPlusConfig {
 
     /**
      * 自动填充处理器
+     * 自动填充创建时间、更新时间、创建人、更新人
      */
     @Bean
     public MetaObjectHandler metaObjectHandler() {
@@ -49,11 +51,24 @@ public class MyBatisPlusConfig {
             public void insertFill(MetaObject metaObject) {
                 this.strictInsertFill(metaObject, "createdAt", LocalDateTime.class, LocalDateTime.now());
                 this.strictInsertFill(metaObject, "updatedAt", LocalDateTime.class, LocalDateTime.now());
+                
+                // 填充创建人和更新人
+                String currentUserId = UserContext.getUserId();
+                if (currentUserId != null && !currentUserId.isEmpty()) {
+                    this.strictInsertFill(metaObject, "createdBy", String.class, currentUserId);
+                    this.strictInsertFill(metaObject, "updatedBy", String.class, currentUserId);
+                }
             }
 
             @Override
             public void updateFill(MetaObject metaObject) {
                 this.strictUpdateFill(metaObject, "updatedAt", LocalDateTime.class, LocalDateTime.now());
+                
+                // 填充更新人
+                String currentUserId = UserContext.getUserId();
+                if (currentUserId != null && !currentUserId.isEmpty()) {
+                    this.strictUpdateFill(metaObject, "updatedBy", String.class, currentUserId);
+                }
             }
         };
     }

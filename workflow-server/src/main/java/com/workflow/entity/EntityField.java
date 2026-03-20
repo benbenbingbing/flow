@@ -107,6 +107,18 @@ public class EntityField {
     private Boolean isQuery;
     
     /**
+     * 是否系统字段（系统自动添加的字段，不可删除）
+     */
+    @TableField("is_system")
+    private Boolean isSystem;
+    
+    /**
+     * 是否可编辑（系统字段中，name和code可配置，其他固定不可编辑）
+     */
+    @TableField("editable")
+    private Boolean editable;
+    
+    /**
      * 关联实体ID（用于子表单）
      */
     @TableField("ref_entity_id")

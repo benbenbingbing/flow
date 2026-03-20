@@ -28,6 +28,8 @@ public class ProcessDefinitionService {
     private final RepositoryService activitiRepositoryService;
     private final ObjectMapper objectMapper;
     private final FlowActionService flowActionService;
+    private final EntityFlowStatusService entityFlowStatusService;
+    private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
     
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAll() {
@@ -214,25 +216,22 @@ public class ProcessDefinitionService {
         // 将 processKey 写入 XML 的 process id 属性，确保 Flowable 使用正确的 key
         String bpmnXml = config.getBpmnXml();
         
+        // 在清理 camunda 命名空间之前，先提取并保存状态映射配置
+        // 查找关联的实体编码
+        String entityCode = getEntityCodeByProcessId(id);
+        saveStatusMappingsFromBpmn(id, config.getProcessKey(), entityCode, bpmnXml);
+        
         // 清理前端 camunda 命名空间（Flowable 不识别 camunda 扩展）
-        // 策略：1) 移除camunda命名空间声明 2) 提取camunda属性值并转换为flowable 3) 移除camunda元素和属性
+        // 策略：1) 先转换camunda属性为flowable属性 2) 移除camunda命名空间声明 3) 移除camunda元素和属性
         
-        // 1. 移除 camunda 命名空间声明
+        // 1. 先将 camunda:assignee/candidateGroups/candidateUsers 转换为 flowable:xxx
+        // 这一步必须在移除camunda命名空间之前完成
+        bpmnXml = bpmnXml.replaceAll("camunda:candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
+        bpmnXml = bpmnXml.replaceAll("camunda:candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
+        bpmnXml = bpmnXml.replaceAll("camunda:assignee=\"([^\"]*)\"", "flowable:assignee=\"$1\"");
+        
+        // 2. 移除 camunda 命名空间声明
         bpmnXml = bpmnXml.replaceAll("\\s+xmlns:camunda=\"[^\"]*\"", "");
-        
-        // 2. 提取 camunda:assignee/candidateGroups/candidateUsers 的值，然后移除这些属性
-        // 先提取值保存到变量，后续用于设置flowable属性
-        java.util.regex.Pattern assigneePattern = java.util.regex.Pattern.compile("camunda:assignee=\"([^\"]*)\"");
-        java.util.regex.Matcher assigneeMatcher = assigneePattern.matcher(bpmnXml);
-        while (assigneeMatcher.find()) {
-            String value = assigneeMatcher.group(1);
-            // 移除camunda:assignee，后面会添加flowable:assignee
-            bpmnXml = bpmnXml.replace(assigneeMatcher.group(0), "");
-            // 同时移除普通assignee（如果有），避免重复
-            bpmnXml = bpmnXml.replaceAll("(?<!flowable:)assignee=\"" + java.util.regex.Pattern.quote(value) + "\"", "");
-            // 添加flowable:assignee
-            bpmnXml = bpmnXml.replace(assigneeMatcher.group(0) + "", " flowable:assignee=\"" + value + "\"");
-        }
         
         // 3. 移除所有camunda元素（properties等）
         java.util.regex.Pattern camundaElementPattern = java.util.regex.Pattern.compile(
@@ -247,15 +246,14 @@ public class ProcessDefinitionService {
             bpmnXml = matcher.replaceAll("");
         }
         
-        // 4. 移除所有剩余的camunda属性
+        // 4. 移除所有剩余的camunda属性（此时应该已经没有camunda:开头的属性了）
         bpmnXml = bpmnXml.replaceAll("\\s+camunda:[^=\\s]*=\"[^\"]*\"", "");
         
         // 5. 清理其他无效属性，并将无命名空间的属性转为flowable
         bpmnXml = bpmnXml.replaceAll("\\s+extensionProperties=\"[^\"]*\"", "");
-        // 注意：只转换那些还没有flowable:前缀的属性
+        // 转换那些还没有flowable:前缀的属性（处理未加camunda前缀的情况）
         bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
         bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
-        // assignee要特别小心，可能已经处理了
         bpmnXml = bpmnXml.replaceAll("(?<!flowable:)\\sassignee=\"([^\"]*)\"", " flowable:assignee=\"$1\"");
         
         // 处理 skipNode 配置：为设置了 skipNode=true 的用户任务添加 skipExpression
@@ -426,6 +424,108 @@ public class ProcessDefinitionService {
         config.setBpmnXml(dto.getBpmnXml());
         config.setCreatedBy(dto.getCreatedBy());
         return config;
+    }
+    
+    /**
+     * 从 BPMN XML 中提取状态映射配置并保存到数据库
+     */
+    private void saveStatusMappingsFromBpmn(String processConfigId, String processKey, String entityCode, String bpmnXml) {
+        if (entityCode == null || entityCode.isEmpty()) {
+            log.debug("流程未绑定实体，跳过状态映射提取: processConfigId={}", processConfigId);
+            return;
+        }
+        
+        try {
+            // 解析 BPMN XML 提取 sequenceFlow 的状态映射配置
+            java.util.regex.Pattern flowPattern = java.util.regex.Pattern.compile(
+                "<bpmn:sequenceFlow[^>]*id=\"([^\"]+)\"[^>]*sourceRef=\"([^\"]+)\"[^>]*targetRef=\"([^\"]+)\"[^>]*>",
+                java.util.regex.Pattern.DOTALL
+            );
+            java.util.regex.Matcher flowMatcher = flowPattern.matcher(bpmnXml);
+            
+            List<com.workflow.entity.EntityFlowStatusMapping> mappings = new java.util.ArrayList<>();
+            
+            while (flowMatcher.find()) {
+                String flowId = flowMatcher.group(1);
+                String sourceRef = flowMatcher.group(2);
+                String targetRef = flowMatcher.group(3);
+                
+                // 查找该 sequenceFlow 的扩展属性中的状态配置
+                // 提取 sequenceFlow 标签到结束标签之间的内容
+                int flowStart = flowMatcher.start();
+                int flowEnd = bpmnXml.indexOf("</bpmn:sequenceFlow>", flowStart);
+                if (flowEnd == -1) continue;
+                
+                String flowContent = bpmnXml.substring(flowStart, flowEnd + 20);
+                
+                // 提取 entityStatusCode
+                java.util.regex.Pattern statusPattern = java.util.regex.Pattern.compile(
+                    "name=\"entityStatusCode\"\\s+value=\"([^\"]+)\""
+                );
+                java.util.regex.Matcher statusMatcher = statusPattern.matcher(flowContent);
+                
+                if (statusMatcher.find()) {
+                    String statusCode = statusMatcher.group(1);
+                    
+                    // 提取 sourceNodeName 和 targetNodeName
+                    String sourceName = extractNodeName(bpmnXml, sourceRef);
+                    String targetName = extractNodeName(bpmnXml, targetRef);
+                    
+                    com.workflow.entity.EntityFlowStatusMapping mapping = 
+                        new com.workflow.entity.EntityFlowStatusMapping();
+                    mapping.setSequenceFlowId(flowId);
+                    mapping.setSourceNodeId(sourceRef);
+                    mapping.setSourceNodeName(sourceName);
+                    mapping.setTargetNodeId(targetRef);
+                    mapping.setTargetNodeName(targetName);
+                    mapping.setEntityStatusCode(statusCode);
+                    
+                    mappings.add(mapping);
+                    log.debug("提取状态映射: flowId={}, source={}, target={}, status={}", 
+                            flowId, sourceRef, targetRef, statusCode);
+                }
+            }
+            
+            // 保存到数据库
+            if (!mappings.isEmpty()) {
+                entityFlowStatusService.saveStatusMappings(processConfigId, processKey, entityCode, mappings);
+                log.info("保存流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
+            }
+        } catch (Exception e) {
+            log.warn("提取状态映射失败: processConfigId={}", processConfigId, e);
+        }
+    }
+    
+    /**
+     * 根据流程定义ID获取关联的实体编码
+     */
+    private String getEntityCodeByProcessId(String processConfigId) {
+        try {
+            // 通过 entity_definition 表的 process_definition_id 字段查找关联的实体
+            com.workflow.entity.EntityDefinition entityDef = entityDefinitionMapper
+                    .findByProcessDefinitionId(processConfigId)
+                    .orElse(null);
+            if (entityDef != null) {
+                return entityDef.getEntityCode();
+            }
+        } catch (Exception e) {
+            log.warn("获取流程关联的实体编码失败: processConfigId={}", processConfigId, e);
+        }
+        return null;
+    }
+    
+    /**
+     * 从 BPMN XML 中提取节点名称
+     */
+    private String extractNodeName(String bpmnXml, String nodeId) {
+        java.util.regex.Pattern namePattern = java.util.regex.Pattern.compile(
+            "<bpmn:[^>]+id=\"" + java.util.regex.Pattern.quote(nodeId) + "\"[^>]*name=\"([^\"]+)\""
+        );
+        java.util.regex.Matcher matcher = namePattern.matcher(bpmnXml);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return nodeId;
     }
     
     /**

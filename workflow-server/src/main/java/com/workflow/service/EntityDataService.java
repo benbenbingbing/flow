@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.EntityDefinition;
@@ -10,6 +11,7 @@ import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.flowable.engine.IdentityService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.repository.ProcessDefinition;
@@ -17,6 +19,7 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +39,7 @@ public class EntityDataService {
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
+    private final IdentityService identityService;
     private final ObjectMapper objectMapper;
     private final ProcessTaskService processTaskService;
     
@@ -86,12 +90,35 @@ public class EntityDataService {
             throw new RuntimeException("该实体未启用流程，无法发起流程");
         }
         
+        // 获取当前登录用户作为发起人（如果DTO中没有提供）
+        String currentUserId = dto.getSubmitterId();
+        String currentUserName = dto.getSubmitterName();
+        if (currentUserId == null || currentUserId.isEmpty()) {
+            currentUserId = UserContext.getUserId();
+            currentUserName = UserContext.getUsername();
+            // 如果UserContext也没有，使用默认值
+            if (currentUserId == null || currentUserId.isEmpty()) {
+                currentUserId = "system";
+                currentUserName = "系统用户";
+            }
+        }
+        
         EntityData data = new EntityData();
         data.setEntityCode(dto.getEntityCode());
         data.setDataNo(generateDataNo(dto.getEntityCode()));
         data.setTitle(dto.getTitle());
-        data.setSubmitterId(dto.getSubmitterId());
-        data.setSubmitterName(dto.getSubmitterName());
+        data.setSubmitterId(currentUserId);
+        data.setSubmitterName(currentUserName);
+        
+        // 从data中提取name和code到标准字段
+        if (dto.getData() != null) {
+            data.setName((String) dto.getData().get("name"));
+            data.setCode((String) dto.getData().get("code"));
+        }
+        
+        // 设置创建人
+        data.setCreatedBy(currentUserId);
+        data.setUpdatedBy(currentUserId);
         
         // 将Map转换为JSON存储
         try {
@@ -106,7 +133,7 @@ public class EntityDataService {
             definition.getProcessDefinitionId() != null) {
             
             // 先保存数据获取ID（草稿状态）
-            data.setStatus(EntityData.DataStatus.DRAFT);
+            data.setStatus("草稿");
             dataMapper.insert(data);
             log.info("数据已保存为草稿，数据ID：{}", data.getId());
             
@@ -132,25 +159,32 @@ public class EntityDataService {
                 Map<String, Object> variables = dto.getData() != null ? dto.getData() : new java.util.HashMap<>();
                 variables.put("entityDataId", data.getId());
                 variables.put("entityCode", data.getEntityCode());
+                // 设置发起人变量（兼容不同的BPMN配置）
                 variables.put("submitterId", data.getSubmitterId());
+                variables.put("initiator", data.getSubmitterId());
                 variables.put("skipNodeEnabled", true);
+                
+                // 设置Flowable认证用户，使流程实例记录正确的startUserId
+                identityService.setAuthenticatedUserId(data.getSubmitterId());
                 
                 ProcessInstance processInstance = runtimeService.startProcessInstanceById(
                         flowableProcess.getId(), 
                         variables
                 );
                 
-                // 更新流程实例ID和状态
+                // 更新流程实例ID、状态和流程开始时间
                 data.setProcessInstanceId(processInstance.getId());
-                data.setStatus(EntityData.DataStatus.PENDING);
+                data.setStatus("审批中");  // 发起流程后状态为审批中
+                data.setProcessStartTime(LocalDateTime.now());
+                data.setUpdatedBy(currentUserId);
                 dataMapper.updateById(data);
                 
                 // 同步创建流程待办 - 需要等待Flowable创建任务
                 // 由于流程启动后任务可能还未立即创建，尝试多次同步
                 syncTasksWithRetry(processInstance.getId(), 3);
                 
-                log.info("数据保存并发起流程成功，数据ID：{}，流程实例ID：{}", 
-                        data.getId(), processInstance.getId());
+                log.info("数据保存并发起流程成功，数据ID：{}，流程实例ID：{}，发起人：{}", 
+                        data.getId(), processInstance.getId(), data.getSubmitterId());
                         
             } catch (Exception e) {
                 // 流程启动失败，删除已保存的数据，保持数据一致性
@@ -159,7 +193,7 @@ public class EntityDataService {
                 throw new RuntimeException("流程启动失败: " + e.getMessage(), e);
             }
         } else {
-            data.setStatus(EntityData.DataStatus.DRAFT);
+            data.setStatus("草稿");  // 未发起流程状态为草稿
             dataMapper.insert(data);
             log.info("数据已保存为草稿（未发起流程），数据ID：{}", data.getId());
         }
@@ -214,8 +248,12 @@ public class EntityDataService {
         dto.setEntityCode(data.getEntityCode());
         dto.setDataNo(data.getDataNo());
         dto.setTitle(data.getTitle());
+        dto.setName(data.getName());
+        dto.setCode(data.getCode());
         dto.setStatus(data.getStatus());
         dto.setProcessInstanceId(data.getProcessInstanceId());
+        dto.setProcessStartTime(data.getProcessStartTime());
+        dto.setProcessEndTime(data.getProcessEndTime());
         dto.setCurrentTaskId(data.getCurrentTaskId());
         dto.setCurrentTaskName(data.getCurrentTaskName());
         dto.setSubmitterId(data.getSubmitterId());
@@ -223,6 +261,8 @@ public class EntityDataService {
         dto.setSubmitTime(data.getSubmitTime());
         dto.setCreatedAt(data.getCreatedAt());
         dto.setUpdatedAt(data.getUpdatedAt());
+        dto.setCreatedBy(data.getCreatedBy());
+        dto.setUpdatedBy(data.getUpdatedBy());
         
         // 将JSON转换为Map
         try {

@@ -176,7 +176,62 @@ public class TaskDetailService {
             } catch (Exception e) {
                 log.warn("获取表单字段配置失败: entityFormId={}, error={}", entityFormId, e.getMessage());
             }
-        } else if (formKey != null && entityCode != null) {
+        }
+        
+        // 节点未配置表单，尝试使用实体的默认表单或第一个可用表单
+        if (formConfig.getEntityFormId() == null && entityCode != null) {
+            try {
+                com.workflow.entity.EntityDefinition entityDef = 
+                    entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
+                if (entityDef != null) {
+                    EntityForm form = null;
+                    
+                    // 1. 先尝试获取默认表单
+                    form = entityFormMapper.selectDefaultByEntityId(entityDef.getId());
+                    
+                    // 2. 如果没有默认表单，获取第一个可用表单
+                    if (form == null) {
+                        List<EntityForm> forms = entityFormMapper.selectByEntityId(entityDef.getId());
+                        if (forms != null && !forms.isEmpty()) {
+                            form = forms.stream()
+                                    .filter(f -> f.getDeleted() == null || f.getDeleted() == 0)
+                                    .findFirst()
+                                    .orElse(null);
+                        }
+                    }
+                    
+                    if (form != null) {
+                        // 填充字段
+                        List<com.workflow.entity.EntityFormField> fields = 
+                            entityFormFieldMapper.selectByFormId(form.getId());
+                        form.setFields(fields);
+                        
+                        formConfig.setEntityFormId(form.getId());
+                        formConfig.setFormName(form.getFormName());
+                        formConfig.setLayoutType(form.getLayoutType());
+                        
+                        // 转换字段配置
+                        if (form.getFields() != null && !form.getFields().isEmpty()) {
+                            final Map<String, String> fieldCodeMap = entityFieldCodeMap;
+                            List<Map<String, Object>> fieldList = form.getFields().stream()
+                                    .map(f -> convertFieldToMap(f, fieldCodeMap))
+                                    .collect(Collectors.toList());
+                            formConfig.setFields(fieldList);
+                            log.info("使用实体表单: entityCode={}, formId={}, fieldCount={}, isDefault={}", 
+                                    entityCode, form.getId(), fieldList.size(), 
+                                    form.getIsDefault() != null && form.getIsDefault());
+                        }
+                    } else {
+                        log.warn("实体没有可用表单: entityCode={}", entityCode);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("获取实体表单失败: entityCode={}, error={}", entityCode, e.getMessage());
+            }
+        }
+        
+        // 备用：使用 formKey 查询（如果上面的逻辑都未找到表单）
+        if (formConfig.getEntityFormId() == null && formKey != null && entityCode != null) {
             // 备用：使用 formKey 查询
             try {
                 com.workflow.entity.EntityDefinition entityDef = entityDefinitionMapper

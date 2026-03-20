@@ -106,11 +106,17 @@ public class EntityDefinitionService {
      */
     @Transactional
     public EntityDefinitionDTO save(EntityDefinitionDTO dto) {
+        // 校验实体编码唯一性（不区分大小写）
+        validateEntityCodeUnique(dto.getEntityCode());
+        
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
         
         EntityDefinition entity = convertToEntity(dto);
         entityMapper.insert(entity);
+        
+        // 添加系统标准字段
+        addSystemFields(entity.getId());
         
         // 保存字段（新建时确保字段ID为空，避免重复使用旧ID）
         if (dto.getFields() != null) {
@@ -123,6 +129,101 @@ public class EntityDefinitionService {
         }
         
         return convertToDTO(entity);
+    }
+    
+    /**
+     * 为实体添加系统标准字段
+     * 系统字段说明：
+     * - name: 数据名称（可编辑字段大小）
+     * - code: 数据编码（可编辑字段大小）
+     * - 其他字段：系统自动维护，不可编辑
+     */
+    private void addSystemFields(String entityId) {
+        int sortOrder = 0;
+        
+        // 1. name - 数据名称（可编辑）
+        EntityField nameField = createSystemField(entityId, "name", "数据名称", 
+                EntityField.FieldType.STRING, "varchar(200)", 200, true, ++sortOrder);
+        fieldMapper.insert(nameField);
+        
+        // 2. code - 数据编码（可编辑）
+        EntityField codeField = createSystemField(entityId, "code", "数据编码", 
+                EntityField.FieldType.STRING, "varchar(100)", 100, true, ++sortOrder);
+        codeField.setIsUnique(true); // 编码默认唯一
+        fieldMapper.insert(codeField);
+        
+        // 3. status - 状态（不可编辑，系统维护）
+        EntityField statusField = createSystemField(entityId, "status", "状态", 
+                EntityField.FieldType.STRING, "varchar(20)", 20, false, ++sortOrder);
+        statusField.setDefaultValue("DRAFT");
+        fieldMapper.insert(statusField);
+        
+        // 4. processInstanceId - 流程实例ID（不可编辑）
+        EntityField processIdField = createSystemField(entityId, "processInstanceId", "流程实例ID", 
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder);
+        fieldMapper.insert(processIdField);
+        
+        // 5. processStartTime - 流程开始时间（不可编辑）
+        EntityField processStartField = createSystemField(entityId, "processStartTime", "流程开始时间", 
+                EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder);
+        fieldMapper.insert(processStartField);
+        
+        // 6. processEndTime - 流程结束时间（不可编辑）
+        EntityField processEndField = createSystemField(entityId, "processEndTime", "流程结束时间", 
+                EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder);
+        fieldMapper.insert(processEndField);
+        
+        // 7. submitterId - 提交人ID（不可编辑）
+        EntityField submitterIdField = createSystemField(entityId, "submitterId", "提交人ID", 
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder);
+        fieldMapper.insert(submitterIdField);
+        
+        // 8. submitterName - 提交人姓名（不可编辑）
+        EntityField submitterNameField = createSystemField(entityId, "submitterName", "提交人", 
+                EntityField.FieldType.STRING, "varchar(100)", 100, false, ++sortOrder);
+        fieldMapper.insert(submitterNameField);
+        
+        log.info("已为实体 [{}] 添加系统标准字段", entityId);
+    }
+    
+    /**
+     * 创建系统字段
+     */
+    private EntityField createSystemField(String entityId, String fieldCode, String fieldName, 
+            EntityField.FieldType fieldType, String dbType, Integer fieldLength, 
+            boolean editable, int sortOrder) {
+        EntityField field = new EntityField();
+        field.setEntityId(entityId);
+        field.setFieldCode(fieldCode);
+        field.setFieldName(fieldName);
+        field.setFieldType(fieldType);
+        field.setDbType(dbType);
+        field.setFieldLength(fieldLength);
+        field.setIsRequired(false);
+        field.setIsSystem(true); // 标记为系统字段
+        field.setEditable(editable); // 是否可编辑
+        field.setShowInList(true);
+        field.setShowInForm(true);
+        field.setSortOrder(sortOrder);
+        return field;
+    }
+    
+    /**
+     * 校验实体编码唯一性（不区分大小写）
+     */
+    private void validateEntityCodeUnique(String entityCode) {
+        if (entityCode == null || entityCode.trim().isEmpty()) {
+            throw new RuntimeException("实体编码不能为空");
+        }
+        
+        // 检查是否已存在相同编码（不区分大小写）
+        List<EntityDefinition> allEntities = entityMapper.selectList(null);
+        for (EntityDefinition existing : allEntities) {
+            if (existing.getEntityCode() != null && 
+                existing.getEntityCode().equalsIgnoreCase(entityCode.trim())) {
+                throw new RuntimeException("实体编码 [" + entityCode + "] 已存在，请更换其他编码");
+            }
+        }
     }
     
     /**
@@ -165,13 +266,28 @@ public class EntityDefinitionService {
         
         entityMapper.updateById(existing);
         
-        // 更新字段：先删除旧字段，再保存新字段（ID置空确保创建新记录）
+        // 更新字段：先删除旧字段（保留系统字段），再保存新字段
         if (dto.getFields() != null) {
-            fieldMapper.deleteByEntityId(id);
+            // 只删除非系统字段，系统字段保留
+            List<EntityField> existingFields = fieldMapper.findByEntityId(id);
+            for (EntityField field : existingFields) {
+                if (!Boolean.TRUE.equals(field.getIsSystem())) {
+                    fieldMapper.deleteById(field.getId());
+                }
+            }
+            
+            // 保存新字段（跳过系统字段，因为系统字段已经存在）
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
+                // 跳过系统字段的重复添加
+                if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
+                    continue;
+                }
+                
                 EntityField field = convertToEntity(fieldDTO);
                 field.setId(null); // 更新时重新创建字段，避免ID冲突
                 field.setEntityId(id);
+                field.setIsSystem(false); // 用户添加的字段标记为非系统字段
+                field.setEditable(true);  // 用户添加的字段默认可编辑
                 fieldMapper.insert(field);
             }
         }
@@ -290,6 +406,8 @@ public class EntityDefinitionService {
         dto.setShowInList(field.getShowInList());
         dto.setShowInForm(field.getShowInForm());
         dto.setIsQuery(field.getIsQuery());
+        dto.setIsSystem(field.getIsSystem());
+        dto.setEditable(field.getEditable());
         return dto;
     }
     

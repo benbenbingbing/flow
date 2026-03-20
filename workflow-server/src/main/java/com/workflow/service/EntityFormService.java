@@ -81,6 +81,9 @@ public class EntityFormService {
         if (form.getStatus() == null) {
             form.setStatus(1);
         }
+        if (form.getIsDefault() == null) {
+            form.setIsDefault(false);
+        }
         
         form.setUpdateTime(LocalDateTime.now());
         
@@ -95,12 +98,38 @@ public class EntityFormService {
             log.info("更新实体表单：{}", form.getFormName());
         }
         
+        // 如果设置为默认表单，将同一实体下的其他表单设为非默认
+        if (Boolean.TRUE.equals(form.getIsDefault())) {
+            clearOtherDefaultForm(form.getEntityId(), form.getId());
+        }
+        
         // 保存字段
         if (form.getFields() != null) {
             saveFormFields(form.getId(), form.getFields());
         }
         
         return form;
+    }
+    
+    /**
+     * 将同一实体下的其他表单设为非默认
+     */
+    private void clearOtherDefaultForm(String entityId, String currentFormId) {
+        List<EntityForm> forms = formMapper.selectByEntityId(entityId);
+        for (EntityForm form : forms) {
+            if (!form.getId().equals(currentFormId) && Boolean.TRUE.equals(form.getIsDefault())) {
+                form.setIsDefault(false);
+                formMapper.updateById(form);
+                log.info("取消表单默认状态：{}", form.getFormName());
+            }
+        }
+    }
+    
+    /**
+     * 获取实体的默认表单
+     */
+    public EntityForm getDefaultForm(String entityId) {
+        return formMapper.selectDefaultByEntityId(entityId);
     }
     
     /**

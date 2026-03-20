@@ -7,6 +7,27 @@ import java.time.LocalDateTime;
 
 /**
  * 实体数据主表
+ * 标准字段说明：
+ * - id: 主键（系统自动生成，不可编辑）
+ * - name: 数据名称（可编辑字段大小）
+ * - code: 数据编码（可编辑字段大小）
+ * - status: 状态（与流程节点状态同步，不可编辑）
+ * - processInstanceId: 流程实例ID（系统自动填充，不可编辑）
+ * - processStartTime: 流程开始时间（系统自动填充，不可编辑）
+ * - processEndTime: 流程结束时间（系统自动填充，不可编辑）
+ * - currentTaskId: 当前任务ID（系统自动填充，不可编辑）
+ * - currentTaskName: 当前任务名称（系统自动填充，不可编辑）
+ * - createdAt: 创建时间（系统自动填充，不可编辑）
+ * - updatedAt: 更新时间（系统自动填充，不可编辑）
+ * - deleted: 是否删除（逻辑删除，不可编辑）
+ * - createdBy: 创建人（系统自动填充，不可编辑）
+ * - updatedBy: 最后更新人（系统自动填充，不可编辑）
+ * - submitterId/submitterName/submitTime: 提交信息（系统自动填充，不可编辑）
+ * - dataJson: 自定义字段数据（JSON格式）
+ */
+
+/**
+ * 实体数据主表
  * 存储所有实体数据的通用信息
  */
 @Data
@@ -35,16 +56,40 @@ public class EntityData {
     private String title;
     
     /**
-     * 数据状态
+     * 数据名称（系统标准字段，字段长度可配置）
      */
-    @TableField("status")
-    private DataStatus status;
+    @TableField("name")
+    private String name;
     
     /**
-     * 关联的流程实例ID
+     * 数据编码（系统标准字段，字段长度可配置）
+     */
+    @TableField("code")
+    private String code;
+    
+    /**
+     * 数据状态（与流程节点状态同步，系统自动维护）
+     */
+    @TableField("status")
+    private String status;
+    
+    /**
+     * 关联的流程实例ID（系统自动填充）
      */
     @TableField("process_instance_id")
     private String processInstanceId;
+    
+    /**
+     * 流程开始时间（系统自动填充）
+     */
+    @TableField("process_start_time")
+    private LocalDateTime processStartTime;
+    
+    /**
+     * 流程结束时间（系统自动填充）
+     */
+    @TableField("process_end_time")
+    private LocalDateTime processEndTime;
     
     /**
      * 流程当前节点
@@ -93,6 +138,25 @@ public class EntityData {
      */
     @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+    
+    /**
+     * 是否删除（逻辑删除）
+     */
+    @TableField("deleted")
+    @TableLogic
+    private Integer deleted;
+    
+    /**
+     * 创建人
+     */
+    @TableField("created_by")
+    private String createdBy;
+    
+    /**
+     * 最后更新人
+     */
+    @TableField("updated_by")
+    private String updatedBy;
     
     public enum DataStatus {
         DRAFT,          // 草稿

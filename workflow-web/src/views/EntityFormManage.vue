@@ -42,6 +42,12 @@
             <el-tag v-else-if="row.layoutType === 'grid'" type="warning">网格</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="isDefault" label="默认表单" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.isDefault === 1" type="warning">默认</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
             <el-tag v-if="row.status === 1" type="success">启用</el-tag>
@@ -99,6 +105,15 @@
             <el-radio label="grid">网格</el-radio>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="默认表单">
+          <el-switch
+            v-model="form.isDefault"
+            :active-value="1"
+            :inactive-value="0"
+            active-text="设为默认表单"
+          />
+          <div class="form-tip">默认表单会在流程节点未选择表单时自动使用</div>
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :label="1">启用</el-radio>
@@ -150,6 +165,7 @@ const form = reactive({
   formName: '',
   formKey: '',
   layoutType: 'vertical',
+  isDefault: 0,
   status: 1,
   description: ''
 })
@@ -266,6 +282,7 @@ function resetForm() {
   form.formName = ''
   form.formKey = ''
   form.layoutType = 'vertical'
+  form.isDefault = 0
   form.status = 1
   form.description = ''
 }

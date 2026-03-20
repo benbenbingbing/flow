@@ -16,17 +16,23 @@ public class EntityDataDTO {
     private String entityName;
     private String dataNo;
     private String title;
-    private EntityData.DataStatus status;
-    private String processInstanceId;
-    private String currentTaskId;
-    private String currentTaskName;
-    private String currentTaskAssignee;  // 当前任务审批人
-    private Map<String, Object> data;
-    private String submitterId;
-    private String submitterName;
-    private LocalDateTime submitTime;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private String name;                    // 数据名称（系统标准字段）
+    private String code;                    // 数据编码（系统标准字段）
+    private String status;                  // 状态（与流程节点同步）
+    private String processInstanceId;       // 流程实例ID
+    private LocalDateTime processStartTime; // 流程开始时间
+    private LocalDateTime processEndTime;   // 流程结束时间
+    private String currentTaskId;           // 当前任务ID
+    private String currentTaskName;         // 当前任务名称
+    private String currentTaskAssignee;     // 当前任务审批人
+    private Map<String, Object> data;       // 自定义字段数据
+    private String submitterId;             // 提交人ID
+    private String submitterName;           // 提交人姓名
+    private LocalDateTime submitTime;       // 提交时间
+    private LocalDateTime createdAt;        // 创建时间
+    private LocalDateTime updatedAt;        // 更新时间
+    private String createdBy;               // 创建人
+    private String updatedBy;               // 最后更新人
     
     /**
      * 是否同时发起流程

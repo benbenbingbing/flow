@@ -59,11 +59,16 @@
                 {{ getFieldTypeLabel(field.fieldType) }}
               </el-tag>
               <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain">必填</el-tag>
+              <el-tag v-if="field.isSystem" type="info" size="small" effect="plain">系统</el-tag>
             </div>
             <div class="field-actions">
               <el-icon class="action-btn" @click.stop="moveField(index, -1)"><ArrowUp /></el-icon>
               <el-icon class="action-btn" @click.stop="moveField(index, 1)"><ArrowDown /></el-icon>
-              <el-icon class="action-btn delete" @click.stop="deleteField(index)"><Delete /></el-icon>
+              <el-icon 
+                v-if="!field.isSystem" 
+                class="action-btn delete" 
+                @click.stop="deleteField(index)"
+              ><Delete /></el-icon>
             </div>
           </div>
         </div>
@@ -72,7 +77,7 @@
       <!-- 字段属性配置 -->
       <div class="property-panel">
         <div class="panel-title">属性配置</div>
-        <el-form v-if="selectedField" :model="selectedField" label-width="100px" size="small">
+        <el-form v-if="selectedField" :model="selectedField" label-width="90px" size="small">
           <el-form-item label="字段名称" required>
             <el-input v-model="selectedField.fieldName" placeholder="请输入字段名称" />
           </el-form-item>
@@ -550,7 +555,7 @@ onMounted(() => {
 }
 
 .fields-panel {
-  width: 350px;
+  width: 500px;
   background: #fff;
   border-right: 1px solid #dcdfe6;
   display: flex;
@@ -567,7 +572,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 8px 12px;
   margin-bottom: 8px;
   border: 1px solid #e4e7ed;
   border-radius: 4px;
@@ -586,18 +591,29 @@ onMounted(() => {
 
 .field-info {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
-.field-name {
+.field-info .field-name {
   font-weight: bold;
+  flex-shrink: 0;
 }
 
-.field-code {
+.field-info .field-code {
   font-size: 12px;
   color: #909399;
+  flex-shrink: 0;
 }
+
+.field-info .el-tag {
+  flex-shrink: 0;
+}
+
+
 
 .field-actions {
   display: flex;
@@ -615,7 +631,8 @@ onMounted(() => {
 }
 
 .property-panel {
-  flex: 1;
+  width: 380px;
+  flex-shrink: 0;
   background: #f5f7fa;
   padding: 15px;
   overflow-y: auto;

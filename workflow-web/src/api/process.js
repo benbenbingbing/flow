@@ -66,8 +66,8 @@ export const processApi = {
   },
   
   // 删除节点
-  deleteNode(id) {
-    return request.delete(`/process/xxx/nodes/${id}`)
+  deleteNode(processId, id) {
+    return request.delete(`/process/${processId}/nodes/${id}`)
   },
   
   // ==================== 版本管理接口 ====================
@@ -84,7 +84,7 @@ export const processApi = {
   
   // 回滚到指定版本
   rollbackToVersion(processId, versionId, reason) {
-    return request.post(`/${processId}/rollback/${versionId}`, { reason })
+    return request.post(`/process/${processId}/rollback/${versionId}`, { reason })
   },
   
   // 删除版本

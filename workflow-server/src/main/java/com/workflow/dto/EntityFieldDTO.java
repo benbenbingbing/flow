@@ -23,4 +23,6 @@ public class EntityFieldDTO {
     private Boolean showInList;
     private Boolean showInForm;
     private Boolean isQuery;
+    private Boolean isSystem;       // 是否系统字段
+    private Boolean editable;       // 是否可编辑
 }

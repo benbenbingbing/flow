@@ -99,9 +99,49 @@
                          v-model="formData.data[field.fieldCode]">
             <el-radio v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
           </el-radio-group>
-          <el-upload v-else-if="field.fieldType === 'FILE' || field.fieldType === 'IMAGE'" 
-                    action="#" :auto-upload="false">
-            <el-button>选择文件</el-button>
+          <!-- 文件上传 -->
+          <el-upload v-else-if="field.fieldType === 'FILE'"
+                    :file-list="getFileList(field.fieldCode)"
+                    :auto-upload="false"
+                    :limit="1"
+                    :before-upload="(file) => beforeFileUpload(file, 'FILE')"
+                    :on-change="(file) => handleFileUpload(file, field.fieldCode)"
+                    :on-remove="() => handleFileRemove(field.fieldCode)"
+                    accept="*/*"
+                    v-loading="uploadLoading"
+                    class="file-upload"
+                    action="#">
+            <el-button type="primary" :icon="Upload">
+              <span v-if="formData.data[field.fieldCode]">更换文件</span>
+              <span v-else>选择文件</span>
+            </el-button>
+            <template #tip>
+              <div class="el-upload__tip">支持任意格式文件，大小不超过20MB</div>
+            </template>
+          </el-upload>
+          
+          <!-- 图片上传 -->
+          <el-upload v-else-if="field.fieldType === 'IMAGE'"
+                    :file-list="getFileList(field.fieldCode)"
+                    :auto-upload="false"
+                    :limit="1"
+                    :before-upload="(file) => beforeFileUpload(file, 'IMAGE')"
+                    :on-change="(file) => handleImageUpload(file, field.fieldCode)"
+                    :on-remove="() => handleFileRemove(field.fieldCode)"
+                    accept="image/*"
+                    list-type="picture-card"
+                    v-loading="uploadLoading"
+                    class="image-upload"
+                    action="#"
+                    @preview="handlePictureCardPreview"
+                    >
+            <div v-if="!formData.data[field.fieldCode]">
+              <el-icon><Plus /></el-icon>
+              <div class="el-upload__text">点击上传</div>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip">支持 JPG/PNG/GIF 格式，大小不超过5MB</div>
+            </template>
           </el-upload>
         </el-form-item>
         
@@ -122,7 +162,23 @@
       <el-descriptions :column="1" border>
         <el-descriptions-item label="编号">{{ currentRow.dataNo }}</el-descriptions-item>
         <el-descriptions-item v-for="field in formFields" :key="field.fieldCode" :label="field.fieldName">
-          {{ formatFieldValue(field, currentRow.data?.[field.fieldCode]) }}
+          <!-- 文件类型显示下载链接 -->
+          <a v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" 
+             :href="currentRow.data[field.fieldCode]" 
+             target="_blank"
+             class="file-link">
+            <el-icon><Document /></el-icon>
+            {{ currentRow.data[field.fieldCode].split('/').pop() }}
+          </a>
+          <!-- 图片类型显示缩略图 -->
+          <el-image v-else-if="field.fieldType === 'IMAGE' && currentRow.data?.[field.fieldCode]"
+                   :src="currentRow.data[field.fieldCode]" 
+                   :preview-src-list="[currentRow.data[field.fieldCode]]"
+                   fit="cover"
+                   style="width: 100px; height: 100px;"
+                   class="preview-image" />
+          <!-- 其他类型正常显示 -->
+          <span v-else>{{ formatFieldValue(field, currentRow.data?.[field.fieldCode]) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="提交人">{{ currentRow.submitterName }}</el-descriptions-item>
         <el-descriptions-item label="状态">
@@ -130,6 +186,13 @@
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDate(currentRow.createdAt) }}</el-descriptions-item>
       </el-descriptions>
+    </el-dialog>
+
+    <!-- 图片预览对话框 -->
+    <el-dialog v-model="previewImageVisible" title="图片预览" width="800px" append-to-body>
+      <div style="text-align: center;">
+        <img :src="previewImageUrl" style="max-width: 100%; max-height: 600px;" />
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -139,8 +202,10 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
+import { Plus, Upload, Document } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { processTaskApi } from '@/api/processTask'
+import { fileApi } from '@/api/file'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
@@ -159,6 +224,10 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const currentRow = ref({})
 const formRef = ref()
+
+// 图片预览相关
+const previewImageVisible = ref(false)
+const previewImageUrl = ref('')
 
 const queryForm = ref({})
 const formData = ref({
@@ -185,7 +254,7 @@ const formFields = computed(() => {
   return fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
 })
 
-const formRules = {}
+const uploadLoading = ref(false)
 
 // 加载实体定义
 const loadEntity = async () => {
@@ -220,9 +289,91 @@ const parseOptions = (json) => {
   }
 }
 
-// 格式化字段值
+// 处理文件上传
+const handleFileUpload = async (file, fieldCode) => {
+  try {
+    uploadLoading.value = true
+    const res = await fileApi.upload(file.raw)
+    // 保存文件URL到表单数据
+    formData.value.data[fieldCode] = res.url
+    ElMessage.success('文件上传成功')
+  } catch (error) {
+    console.error('文件上传失败:', error)
+    ElMessage.error('文件上传失败')
+  } finally {
+    uploadLoading.value = false
+  }
+}
+
+// 处理图片上传
+const handleImageUpload = async (file, fieldCode) => {
+  try {
+    uploadLoading.value = true
+    const res = await fileApi.uploadImage(file.raw)
+    // 保存图片URL到表单数据
+    formData.value.data[fieldCode] = res.url
+    ElMessage.success('图片上传成功')
+  } catch (error) {
+    console.error('图片上传失败:', error)
+    ElMessage.error('图片上传失败')
+  } finally {
+    uploadLoading.value = false
+  }
+}
+
+// 处理文件移除
+const handleFileRemove = (fieldCode) => {
+  formData.value.data[fieldCode] = null
+}
+
+// 上传前校验
+const beforeFileUpload = (file, fieldType) => {
+  if (fieldType === 'IMAGE') {
+    const isImage = file.type.startsWith('image/')
+    if (!isImage) {
+      ElMessage.error('只能上传图片文件')
+      return false
+    }
+    const isLt5M = file.size / 1024 / 1024 < 5
+    if (!isLt5M) {
+      ElMessage.error('图片大小不能超过5MB')
+      return false
+    }
+  } else {
+    const isLt20M = file.size / 1024 / 1024 < 20
+    if (!isLt20M) {
+      ElMessage.error('文件大小不能超过20MB')
+      return false
+    }
+  }
+  return true
+}
+
+// 图片预览
+const handlePictureCardPreview = (file) => {
+  previewImageUrl.value = file.url || file.response?.url || ''
+  previewImageVisible.value = true
+}
+
+// 获取文件列表（用于回显）
+const getFileList = (fieldCode) => {
+  const url = formData.value.data[fieldCode]
+  if (!url) return []
+  return [{
+    name: url.split('/').pop() || 'file',
+    url: url
+  }]
+}
+
+// 格式化字段值（处理文件/图片显示）
 const formatFieldValue = (field, value) => {
   if (value === null || value === undefined) return '-'
+  if (field.fieldType === 'FILE') {
+    return value ? `<a href="${value}" target="_blank">${value.split('/').pop()}</a>` : '-'
+  }
+  if (field.fieldType === 'IMAGE') {
+    return value ? `<img src="${value}" style="max-width: 100px; max-height: 100px;" />` : '-'
+  }
   if (['SELECT', 'RADIO'].includes(field.fieldType)) {
     const options = parseOptions(field.optionsJson)
     const opt = options.find(o => o.value === value)
@@ -427,5 +578,58 @@ onMounted(() => {
   margin-left: 10px;
   color: #909399;
   font-size: 12px;
+}
+
+/* 文件上传样式 */
+.file-upload {
+  width: 100%;
+}
+
+.file-upload :deep(.el-upload-list) {
+  width: 100%;
+}
+
+/* 图片上传样式 */
+.image-upload :deep(.el-upload--picture-card) {
+  width: 120px;
+  height: 120px;
+  line-height: 120px;
+}
+
+.image-upload :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: 120px;
+  height: 120px;
+}
+
+/* 文件链接样式 */
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #409eff;
+  text-decoration: none;
+  padding: 5px 10px;
+  border: 1px solid #d9ecff;
+  border-radius: 4px;
+  background-color: #ecf5ff;
+  transition: all 0.3s;
+}
+
+.file-link:hover {
+  background-color: #409eff;
+  color: #fff;
+}
+
+/* 图片预览样式 */
+.preview-image {
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.preview-image:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.3);
 }
 </style>

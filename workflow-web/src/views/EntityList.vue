@@ -32,11 +32,12 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="380" fixed="right">
+        <el-table-column label="操作" width="450" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
             <el-button link type="primary" @click="handleData(row)">数据管理</el-button>
             <el-button link type="warning" @click="handleForm(row)">表单</el-button>
+            <el-button link type="info" @click="handleStatusConfig(row)">状态配置</el-button>
             <el-button link type="success" @click="handleBindProcess(row)">绑定流程</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -82,15 +83,76 @@
         <el-button type="primary" @click="handleConfirmBind" :loading="bindLoading">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 状态配置对话框 -->
+    <el-dialog v-model="statusDialogVisible" title="实体状态配置" width="800px">
+      <div class="status-config-header">
+        <span>实体：{{ currentEntity?.entityName }}</span>
+        <el-button type="primary" size="small" @click="addStatus">
+          <el-icon><Plus /></el-icon>添加状态
+        </el-button>
+      </div>
+      <el-table 
+        :data="statusList" 
+        border 
+        size="small"
+        row-key="id"
+        class="status-drag-table"
+      >
+        <el-table-column type="index" width="50" />
+        <el-table-column label="拖拽排序" width="80" align="center">
+          <template #default>
+            <el-icon class="drag-handle"><Rank /></el-icon>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态分类" width="150">
+          <template #default="{ row }">
+            <el-select v-model="row.statusCategory" placeholder="选择分类" size="small">
+              <el-option label="📋 新建流程" value="NEW" />
+              <el-option label="⏳ 审批中" value="PROCESSING" />
+              <el-option label="✅ 已完成" value="COMPLETED" />
+              <el-option label="❌ 终止" value="TERMINATED" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态编码" width="120">
+          <template #default="{ row }">
+            <el-input v-model="row.statusCode" placeholder="如：PENDING" size="small" />
+          </template>
+        </el-table-column>
+        <el-table-column label="状态名称" width="120">
+          <template #default="{ row }">
+            <el-input v-model="row.statusName" placeholder="如：审批中" size="small" />
+          </template>
+        </el-table-column>
+        <el-table-column label="说明" min-width="200">
+          <template #default="{ row }">
+            <el-input v-model="row.description" placeholder="状态说明" size="small" />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ $index }">
+            <el-button link type="danger" size="small" @click="removeStatus($index)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="statusDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveStatusConfig" :loading="statusLoading">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Rank } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
 import { processApi } from '@/api/process'
+import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
+import Sortable from 'sortablejs'
 
 const router = useRouter()
 const loading = ref(false)
@@ -238,6 +300,108 @@ const handleConfirmBind = async () => {
   }
 }
 
+// ========== 状态配置相关 ==========
+const statusDialogVisible = ref(false)
+const statusLoading = ref(false)
+const statusList = ref([])
+
+const handleStatusConfig = async (row) => {
+  currentEntity.value = row
+  statusDialogVisible.value = true
+  
+  try {
+    const res = await getEntityStatusList(row.entityCode)
+    statusList.value = res || []
+    
+    // 如果没有配置，添加默认状态
+    if (statusList.value.length === 0) {
+      statusList.value = [
+        { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '新建数据' },
+        { statusCategory: 'PROCESSING', statusCode: 'PENDING', statusName: '审批中', description: '审批进行中' },
+        { statusCategory: 'COMPLETED', statusCode: 'APPROVED', statusName: '已通过', description: '审批已通过' },
+        { statusCategory: 'TERMINATED', statusCode: 'REJECTED', statusName: '已驳回', description: '审批已驳回' }
+      ]
+    }
+    
+    // 初始化拖拽排序
+    nextTick(() => {
+      initSortable()
+    })
+  } catch (error) {
+    console.error('加载状态配置失败:', error)
+    ElMessage.error('加载状态配置失败')
+  }
+}
+
+// 拖拽排序实例
+let sortableInstance = null
+
+// 初始化拖拽排序
+const initSortable = () => {
+  const tableEl = document.querySelector('.status-drag-table .el-table__body-wrapper tbody')
+  if (!tableEl) return
+  
+  // 销毁旧实例
+  if (sortableInstance) {
+    sortableInstance.destroy()
+  }
+  
+  sortableInstance = new Sortable(tableEl, {
+    handle: '.drag-handle',
+    animation: 150,
+    onEnd: (evt) => {
+      const { oldIndex, newIndex } = evt
+      if (oldIndex === newIndex) return
+      
+      // 重新排序数组
+      const item = statusList.value.splice(oldIndex, 1)[0]
+      statusList.value.splice(newIndex, 0, item)
+      
+      // 更新排序号
+      statusList.value.forEach((status, index) => {
+        status.sortOrder = index
+      })
+      
+      console.log('排序更新:', statusList.value)
+    }
+  })
+}
+
+const addStatus = () => {
+  statusList.value.push({
+    statusCategory: 'PROCESSING',
+    statusCode: '',
+    statusName: '',
+    description: ''
+  })
+}
+
+const removeStatus = (index) => {
+  statusList.value.splice(index, 1)
+}
+
+const saveStatusConfig = async () => {
+  // 验证数据
+  for (const status of statusList.value) {
+    if (!status.statusCode || !status.statusName) {
+      ElMessage.warning('请填写完整的状态编码和名称')
+      return
+    }
+  }
+  
+  statusLoading.value = true
+  try {
+    await saveEntityStatusList(currentEntity.value.entityCode, statusList.value)
+    ElMessage.success('保存成功')
+    statusDialogVisible.value = false
+  } catch (error) {
+    console.error('保存状态配置失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    statusLoading.value = false
+  }
+}
+
 const handleDelete = async (row) => {
   try {
     await ElMessageBox.confirm('确定要删除该实体吗？', '提示', { type: 'warning' })
@@ -265,5 +429,30 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.status-config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.drag-handle {
+  cursor: move;
+  color: #909399;
+  font-size: 16px;
+}
+
+.drag-handle:hover {
+  color: #409eff;
+}
+
+.status-drag-table .sortable-ghost {
+  opacity: 0.5;
+  background-color: #f5f7fa;
 }
 </style>

@@ -57,6 +57,83 @@
         </div>
       </el-tab-pane>
       
+      <!-- ========== 状态配置（仅连线） ========== -->
+      <el-tab-pane v-if="isSequenceFlow" label="实体状态" name="status">
+        <el-form :model="statusForm" label-width="100px" size="small">
+          <el-alert type="info" :closable="false" class="section-alert">
+            配置流程经过此连线时的实体数据状态变更
+          </el-alert>
+          
+          <el-form-item label="来源节点">
+            <el-input v-model="statusForm.sourceNodeName" disabled />
+          </el-form-item>
+          
+          <el-form-item label="目标节点">
+            <el-input v-model="statusForm.targetNodeName" disabled />
+          </el-form-item>
+          
+          <el-form-item label="实体状态">
+            <el-select
+              v-model="statusForm.entityStatusCode"
+              placeholder="请选择实体状态"
+              style="width: 100%"
+              filterable
+              clearable
+            >
+              <el-option-group label="📋 新建流程状态">
+                <el-option 
+                  v-for="status in entityStatusList.filter(s => s.statusCategory === 'NEW')" 
+                  :key="status.id" 
+                  :label="status.statusName" 
+                  :value="status.statusCode"
+                />
+              </el-option-group>
+              <el-option-group label="⏳ 审批中流程状态">
+                <el-option 
+                  v-for="status in entityStatusList.filter(s => s.statusCategory === 'PROCESSING')" 
+                  :key="status.id" 
+                  :label="status.statusName" 
+                  :value="status.statusCode"
+                />
+              </el-option-group>
+              <el-option-group label="✅ 已完成流程状态">
+                <el-option 
+                  v-for="status in entityStatusList.filter(s => s.statusCategory === 'COMPLETED')" 
+                  :key="status.id" 
+                  :label="status.statusName" 
+                  :value="status.statusCode"
+                />
+              </el-option-group>
+              <el-option-group label="❌ 终止流程状态">
+                <el-option 
+                  v-for="status in entityStatusList.filter(s => s.statusCategory === 'TERMINATED')" 
+                  :key="status.id" 
+                  :label="status.statusName" 
+                  :value="status.statusCode"
+                />
+              </el-option-group>
+            </el-select>
+            <div class="form-tip">从实体预定义的状态中选择</div>
+          </el-form-item>
+          
+          <el-form-item label="状态名称" v-if="selectedStatusName">
+            <el-input v-model="selectedStatusName" disabled />
+          </el-form-item>
+          
+          <el-form-item label="条件表达式" v-if="hasCondition">
+            <el-input v-model="statusForm.conditionExpression" type="textarea" :rows="2" disabled />
+            <div class="form-tip">网关连线的判断条件</div>
+          </el-form-item>
+          
+          <el-form-item label="说明">
+            <el-input v-model="statusForm.description" type="textarea" :rows="2" placeholder="状态变更说明..." />
+          </el-form-item>
+        </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveStatusConfig">保存状态配置</el-button>
+        </div>
+      </el-tab-pane>
+      
       <!-- ========== 执行人配置（仅用户任务） ========== -->
       <el-tab-pane v-if="isUserTask" label="执行人" name="assignee">
         <el-form :model="assigneeForm" label-width="100px" size="small">
@@ -89,7 +166,7 @@
               >
                 <template #default="{ item }">
                   <span>{{ item.label }}</span>
-                  <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname || item.username }})</span>
+                  <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
                 </template>
               </el-select-v2>
               <div class="form-tip">指定一个固定用户处理此任务</div>
@@ -738,23 +815,113 @@
             </el-radio-group>
           </el-form-item>
           
-          <el-form-item v-if="conditionForm.type === 'expression'" label="表达式">
-            <el-input 
-              v-model="conditionForm.expression" 
-              type="textarea"
-              :rows="3"
-              placeholder="如：${amount > 1000 && approved == true}"
-              @blur="updateCondition"
-            />
-            <div class="form-tip">返回true时执行此分支</div>
-          </el-form-item>
+          <!-- 表达式编辑器 -->
+          <template v-if="conditionForm.type === 'expression'">
+            <!-- 常用模板 -->
+            <el-form-item label="快速选择">
+              <el-select 
+                v-model="selectedConditionTemplate" 
+                placeholder="选择常用条件模板"
+                clearable
+                style="width: 100%"
+                @change="onConditionTemplateChange"
+              >
+                <el-option label="审批通过" value="approved == true" />
+                <el-option label="审批拒绝" value="approved == false" />
+                <el-option label="金额大于" value="amount > 1000" />
+                <el-option label="金额小于等于" value="amount <= 1000" />
+                <el-option label="数值范围" value="amount >= 100 && amount <= 500" />
+                <el-option label="字符串等于" value="status == 'APPROVED'" />
+                <el-option label="字符串包含" value="description.contains('keyword')" />
+                <el-option label="非空判断" value="remark != null &amp;&amp; !remark.isEmpty()" />
+              </el-select>
+            </el-form-item>
+            
+            <!-- 表达式输入 -->
+            <el-form-item label="表达式">
+              <el-input 
+                v-model="conditionForm.expression" 
+                type="textarea"
+                :rows="3"
+                placeholder="如：approved == true &amp;&amp; amount > 1000"
+                @blur="updateCondition"
+              />
+              <div class="form-tip">
+                <el-tag size="small" type="info">提示</el-tag>
+                系统会自动添加 ${} 包裹。使用流程变量名，如：approved, amount, status
+              </div>
+            </el-form-item>
+            
+            <!-- 变量选择器 -->
+            <el-form-item label="插入变量">
+              <div class="condition-variables">
+                <el-tag 
+                  v-for="v in commonVariables" 
+                  :key="v.name"
+                  size="small"
+                  class="variable-tag"
+                  @click="insertVariable(v.name)"
+                >
+                  {{ v.name }}
+                  <span class="var-desc">{{ v.desc }}</span>
+                </el-tag>
+              </div>
+            </el-form-item>
+            
+            <!-- 操作符参考 -->
+            <el-form-item label="操作符参考">
+              <div class="operator-ref">
+                <div class="op-group">
+                  <el-tag size="small" type="info">==</el-tag>
+                  <el-tag size="small" type="info">!=</el-tag>
+                  <el-tag size="small" type="info">></el-tag>
+                  <el-tag size="small" type="info"><</el-tag>
+                  <el-tag size="small" type="info">>=</el-tag>
+                  <el-tag size="small" type="info"><=</el-tag>
+                  <span class="op-desc">比较</span>
+                </div>
+                <div class="op-group">
+                  <el-tag size="small" type="warning">&amp;&amp;</el-tag>
+                  <el-tag size="small" type="warning">||</el-tag>
+                  <el-tag size="small" type="warning">!</el-tag>
+                  <span class="op-desc">逻辑</span>
+                </div>
+              </div>
+            </el-form-item>
+            
+            <!-- 预览 -->
+            <el-form-item label="完整表达式">
+              <el-input 
+                :model-value="getFullExpression()" 
+                disabled
+                type="textarea"
+                :rows="2"
+              />
+            </el-form-item>
+          </template>
           
           <el-alert 
             v-if="conditionForm.type === 'default'" 
             type="warning" 
             :closable="false"
           >
-            默认流：当其他条件都不满足时执行
+            <template #title>
+              <div>
+                <strong>默认流</strong>：当其他条件都不满足时执行
+              </div>
+            </template>
+            <div class="default-flow-tip">
+              <p>⚠️ 一个排他网关只能有一个默认流</p>
+              <p>💡 建议在其他分支都设置条件表达式，最后一个分支设为默认流</p>
+            </div>
+          </el-alert>
+          
+          <el-alert 
+            v-if="conditionForm.type === ''" 
+            type="info" 
+            :closable="false"
+          >
+            无条件：此连线在任何情况下都会执行
           </el-alert>
         </el-form>
         <div class="tab-footer">
@@ -1031,10 +1198,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
+import { getEntityStatusList } from '@/api/entityStatus'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -1045,7 +1213,7 @@ const props = defineProps({
   processId: { type: String, default: '' }
 })
 
-const emit = defineEmits(['save'])
+const emit = defineEmits(['save', 'update-status-mapping'])
 const activeTab = ref('basic')
 
 // ========== 节点类型判断 ==========
@@ -1248,6 +1416,41 @@ const ruleForm = ref({ decisionRef: '', inputVariables: '', resultVariable: '', 
 const scriptForm = ref({ scriptFormat: 'javascript', script: '', resultVariable: '', autoStoreVariables: false })
 const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParameters: '', outputParameters: '', businessKey: '' })
 const conditionForm = ref({ type: '', expression: '' })
+const selectedConditionTemplate = ref('')
+
+// 常用变量
+const commonVariables = ref([
+  { name: 'approved', desc: '审批结果' },
+  { name: 'amount', desc: '金额' },
+  { name: 'status', desc: '状态' },
+  { name: 'level', desc: '级别' },
+  { name: 'count', desc: '数量' },
+  { name: 'remark', desc: '备注' },
+  { name: 'days', desc: '天数' },
+  { name: 'assignee', desc: '处理人' }
+])
+
+// 连线状态配置表单
+const statusForm = ref({
+  sourceNodeId: '',
+  sourceNodeName: '',
+  targetNodeId: '',
+  targetNodeName: '',
+  entityStatusCode: '',
+  conditionExpression: '',
+  description: ''
+})
+
+// 实体预定义的状态列表
+const entityStatusList = ref([])
+
+// 当前选中的状态名称
+const selectedStatusName = computed(() => {
+  const status = entityStatusList.value.find(s => s.statusCode === statusForm.value.entityStatusCode)
+  return status?.statusName || ''
+})
+const hasCondition = ref(false)
+
 const formConfig = ref({ 
   formKey: '',
   formSource: 'entity',  // 默认实体表单
@@ -1349,6 +1552,17 @@ async function loadEntityForms() {
   }
 }
 
+// 获取默认表单
+async function getDefaultForm(entityId) {
+  try {
+    const res = await request.get(`/entity-form/entity/${entityId}/default`)
+    return res || null
+  } catch (e) {
+    console.log('获取默认表单失败:', e)
+    return null
+  }
+}
+
 // 加载表单字段
 async function loadFormFields(formId) {
   try {
@@ -1369,6 +1583,14 @@ onMounted(() => {
   loadRoles()
   loadEntityForms()
 })
+
+// 监听 processId 变化，当流程ID传入后加载实体表单
+watch(() => props.processId, (newProcessId) => {
+  if (newProcessId) {
+    console.log('processId 变化，重新加载实体表单:', newProcessId)
+    loadEntityForms()
+  }
+}, { immediate: true })
 
 // 监听用户/组/角色列表加载完成，重新计算ID映射
 watch(() => userOptions.value.length, () => {
@@ -1464,6 +1686,8 @@ async function moveAction(index, direction) {
 
 // ========== 监听和初始化 ==========
 watch(() => props.element, (newElement) => {
+  // 切换节点时重置activeTab为basic
+  activeTab.value = 'basic'
   if (newElement?.type === 'bpmn:SequenceFlow') loadActions()
 }, { immediate: true })
 
@@ -1497,7 +1721,7 @@ function getRoleIdsFromCodes(codes) {
   }).filter(Boolean)
 }
 
-watch(() => props.element, (newElement) => {
+watch(() => props.element, async (newElement) => {
   if (newElement?.businessObject) {
     const bo = newElement.businessObject
     const extProps = getExtensionProperties(bo)
@@ -1650,7 +1874,21 @@ watch(() => props.element, (newElement) => {
       }
     }
     if (isSequenceFlow.value) {
-      conditionForm.value = { type: bo.conditionExpression ? 'expression' : bo.sourceRef?.default === bo ? 'default' : '', expression: bo.conditionExpression?.body || '' }
+      // 解析条件表达式，去除 ${} 方便编辑
+      let expressionBody = bo.conditionExpression?.body || ''
+      if (expressionBody) {
+        // 去除 ${} 或 #{} 包裹，让用户更容易编辑
+        expressionBody = expressionBody.replace(/^\$\{/, '').replace(/\}$/, '')
+        expressionBody = expressionBody.replace(/^\#\{/, '').replace(/\}$/, '')
+      }
+      conditionForm.value = { 
+        type: bo.conditionExpression ? 'expression' : bo.sourceRef?.default === bo ? 'default' : '', 
+        expression: expressionBody 
+      }
+      hasCondition.value = !!bo.conditionExpression
+      
+      // 加载连线状态配置
+      loadStatusConfig(bo)
     }
     if (isTask.value || isStartEvent.value) {
       // 从扩展属性中读取表单绑定信息
@@ -1677,6 +1915,33 @@ watch(() => props.element, (newElement) => {
           entityFormId: '',
           isReadonly: false,
           entityCode: ''
+        }
+      } else if (boundEntity.value?.id) {
+        // 无表单配置，尝试使用默认表单
+        const defaultForm = await getDefaultForm(boundEntity.value.id)
+        if (defaultForm) {
+          console.log('使用默认表单:', defaultForm.formName)
+          formConfig.value = {
+            formSource: 'entity',
+            formKey: '',
+            entityFormId: defaultForm.id,
+            isReadonly: false,
+            entityCode: boundEntity.value.entityCode || ''
+          }
+          loadFormFields(defaultForm.id)
+          // 自动保存到BPMN
+          updateExtensionProperty('entityFormId', defaultForm.id)
+          updateExtensionProperty('entityFormReadonly', 'false')
+          updateExtensionProperty('entityCode', boundEntity.value.entityCode || '')
+        } else {
+          // 无默认表单
+          formConfig.value = {
+            formSource: 'none',
+            formKey: '',
+            entityFormId: '',
+            isReadonly: false,
+            entityCode: ''
+          }
         }
       } else {
         // 无表单
@@ -1724,7 +1989,7 @@ function updateProperty(prop, value) {
   const modeling = getModeling()
   if (!modeling) return
   const updates = {}; updates[prop] = value || undefined
-  modeling.updateProperties(props.element, updates)
+  modeling.updateProperties(toRaw(props.element), updates)
   emit('save')
 }
 
@@ -1732,7 +1997,7 @@ function updateDocumentation() {
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
   const docs = basicForm.value.documentation ? [moddle.create('bpmn:Documentation', { text: basicForm.value.documentation })] : []
-  modeling.updateProperties(props.element, { documentation: docs })
+  modeling.updateProperties(toRaw(props.element), { documentation: docs })
   emit('save')
 }
 
@@ -1741,9 +2006,9 @@ function onMultiInstanceChange(enabled) {
   if (!modeling || !moddle) return
   if (enabled) {
     const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', { isSequential: assigneeForm.value.multiInstanceType === 'sequential' })
-    modeling.updateProperties(props.element, { loopCharacteristics: loop })
+    modeling.updateProperties(toRaw(props.element), { loopCharacteristics: loop })
   } else {
-    modeling.updateProperties(props.element, { loopCharacteristics: undefined })
+    modeling.updateProperties(toRaw(props.element), { loopCharacteristics: undefined })
   }
   emit('save')
 }
@@ -1754,7 +2019,7 @@ function updateMultiInstance() {
   if (!modeling || !moddle) return
   const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', { isSequential: assigneeForm.value.multiInstanceType === 'sequential', collection: assigneeForm.value.collection || undefined, elementVariable: assigneeForm.value.elementVariable || 'assignee' })
   if (assigneeForm.value.completionCondition) loop.completionCondition = moddle.create('bpmn:FormalExpression', { body: assigneeForm.value.completionCondition })
-  modeling.updateProperties(props.element, { loopCharacteristics: loop })
+  modeling.updateProperties(toRaw(props.element), { loopCharacteristics: loop })
   
   // 保存多实例高级配置到扩展属性（用于回显）
   const multiInstanceConfig = {
@@ -1784,19 +2049,68 @@ function updateServiceImplementation() {
   if (!modeling) return
   const updates = { class: undefined, expression: undefined, delegateExpression: undefined }
   if (serviceForm.value.implementation) updates[serviceForm.value.implementationType] = serviceForm.value.implementation
-  modeling.updateProperties(props.element, updates)
+  modeling.updateProperties(toRaw(props.element), updates)
   emit('save')
+}
+
+// 条件模板选择
+function onConditionTemplateChange(template) {
+  if (template) {
+    conditionForm.value.expression = template
+    updateCondition()
+  }
+}
+
+// 获取完整表达式（带${}）
+function getFullExpression() {
+  const expr = conditionForm.value.expression?.trim()
+  if (!expr) return ''
+  if (expr.startsWith('${') || expr.startsWith('#{')) return expr
+  return '${' + expr + '}'
+}
+
+// 插入变量到表达式
+function insertVariable(varName) {
+  const currentExpr = conditionForm.value.expression || ''
+  // 在光标位置或末尾插入
+  conditionForm.value.expression = currentExpr + (currentExpr ? ' ' : '') + varName
+  updateCondition()
+}
+
+// 获取源网关/节点对象(element)
+function getSourceElement() {
+  const el = toRaw(props.element)
+  if (!el) return null
+  // 对于 sequenceFlow，source 属性指向源节点 element
+  // 使用 toRaw 确保返回原始对象，避免 Vue Proxy 问题
+  return toRaw(el.source)
 }
 
 function onConditionTypeChange(type) {
   const modeling = getModeling()
   if (!modeling) return
-  if (type === 'expression') updateCondition()
-  else if (type === 'default') {
-    modeling.updateProperties(props.element, { conditionExpression: undefined })
-    const source = props.element.businessObject.sourceRef
-    if (source) modeling.updateProperties(source.$parent, { default: props.element.businessObject })
-  } else modeling.updateProperties(props.element, { conditionExpression: undefined })
+  
+  const source = getSourceElement()
+  
+  if (type === 'expression') {
+    // 先清除默认流设置
+    if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
+      modeling.updateProperties(toRaw(source), { default: undefined })
+    }
+    updateCondition()
+  } else if (type === 'default') {
+    // 设置为默认流：清除条件表达式，设置源节点的 default
+    modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+    if (source) {
+      modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
+    }
+  } else {
+    // 无条件：清除条件表达式和默认流设置
+    modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+    if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
+      modeling.updateProperties(toRaw(source), { default: undefined })
+    }
+  }
   emit('save')
 }
 
@@ -1804,8 +2118,22 @@ function updateCondition() {
   if (conditionForm.value.type !== 'expression') return
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
-  const condition = moddle.create('bpmn:FormalExpression', { body: conditionForm.value.expression })
-  modeling.updateProperties(props.element, { conditionExpression: condition })
+  
+  let expression = conditionForm.value.expression?.trim() || ''
+  
+  // 自动添加 ${} 包裹（如果没有的话）
+  if (expression && !expression.startsWith('${') && !expression.startsWith('#{')) {
+    expression = '${' + expression + '}'
+    conditionForm.value.expression = expression
+  }
+  
+  if (expression) {
+    const condition = moddle.create('bpmn:FormalExpression', { body: expression })
+    modeling.updateProperties(toRaw(props.element), { conditionExpression: condition })
+  } else {
+    // 表达式为空时清除条件
+    modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+  }
   emit('save')
 }
 
@@ -1816,7 +2144,7 @@ function onAsyncChange() {
 function updateAsync() {
   const modeling = getModeling()
   if (!modeling) return
-  modeling.updateProperties(props.element, { async: advancedForm.value.async, asyncBefore: advancedForm.value.asyncBefore, asyncAfter: advancedForm.value.asyncAfter })
+  modeling.updateProperties(toRaw(props.element), { async: advancedForm.value.async, asyncBefore: advancedForm.value.asyncBefore, asyncAfter: advancedForm.value.asyncAfter })
   emit('save')
 }
 
@@ -1825,8 +2153,8 @@ function updateSkipExpression() {
   if (!modeling || !moddle) return
   if (advancedForm.value.skipExpression) {
     const expr = moddle.create('bpmn:FormalExpression', { body: advancedForm.value.skipExpression })
-    modeling.updateProperties(props.element, { skipExpression: expr })
-  } else modeling.updateProperties(props.element, { skipExpression: undefined })
+    modeling.updateProperties(toRaw(props.element), { skipExpression: expr })
+  } else modeling.updateProperties(toRaw(props.element), { skipExpression: undefined })
   emit('save')
 }
 
@@ -1881,7 +2209,7 @@ async function onEntityFormChange(formId) {
 
 function updateNodeFormBind() {
   if (!props.element) return
-  const bo = props.element.businessObject
+  const bo = toRaw(props.element).businessObject
   
   if (formConfig.value.formSource === 'entity' && formConfig.value.entityFormId) {
     // 实体表单绑定
@@ -1917,7 +2245,7 @@ function updateExtensionProperty(name, value) {
     console.warn('updateExtensionProperty: moddle 为空')
     return
   }
-  const bo = props.element.businessObject
+  const bo = toRaw(props.element).businessObject
   if (!bo) {
     console.warn('updateExtensionProperty: businessObject 为空')
     return
@@ -2054,7 +2382,7 @@ function updateRestConfig() {
   const restConfig = { ...restForm.value }
   updateExtensionProperty('restConfig', JSON.stringify(restConfig))
   // 清除其他实现方式
-  modeling.updateProperties(props.element, { 
+  modeling.updateProperties(toRaw(props.element), { 
     class: undefined,
     expression: undefined,
     delegateExpression: undefined
@@ -2122,7 +2450,27 @@ function saveCurrentTab() {
         updateExtensionProperty('callConfig', JSON.stringify(callForm.value))
         break
       case 'condition':
-        updateCondition()
+        // 根据条件类型执行相应的保存逻辑
+        if (conditionForm.value.type === 'default') {
+          // 保存默认流设置
+          const modeling = getModeling()
+          const source = getSourceElement()
+          if (modeling && source) {
+            modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
+          }
+        } else if (conditionForm.value.type === 'expression') {
+          updateCondition()
+        } else {
+          // 无条件：清除条件表达式和默认流设置
+          const modeling = getModeling()
+          const source = getSourceElement()
+          if (modeling) {
+            modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+            if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
+              modeling.updateProperties(toRaw(source), { default: undefined })
+            }
+          }
+        }
         break
       case 'actions':
         // 流程动作自动保存，无需额外操作
@@ -2145,6 +2493,116 @@ function saveCurrentTab() {
     emit('save')
   } catch (error) {
     console.error('保存失败:', error)
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+  }
+}
+
+// ========== 连线状态配置相关方法 ==========
+
+/**
+ * 加载连线状态配置
+ */
+async function loadStatusConfig(bo) {
+  // 重置表单
+  statusForm.value = {
+    sourceNodeId: '',
+    sourceNodeName: '',
+    targetNodeId: '',
+    targetNodeName: '',
+    entityStatusCode: '',
+    conditionExpression: '',
+    description: ''
+  }
+  
+  // 获取源节点和目标节点信息
+  const sourceRef = bo.sourceRef
+  const targetRef = bo.targetRef
+  
+  statusForm.value.sourceNodeId = sourceRef?.id || ''
+  statusForm.value.sourceNodeName = sourceRef?.name || sourceRef?.id || ''
+  statusForm.value.targetNodeId = targetRef?.id || ''
+  statusForm.value.targetNodeName = targetRef?.name || targetRef?.id || ''
+  statusForm.value.conditionExpression = bo.conditionExpression?.body || ''
+  
+  // 从扩展属性中读取状态配置
+  const extProps = getExtensionProperties(bo)
+  statusForm.value.entityStatusCode = extProps['entityStatusCode'] || ''
+  statusForm.value.description = extProps['statusDescription'] || ''
+  
+  console.log('加载连线状态配置:', bo.id, '扩展属性:', extProps, '状态码:', statusForm.value.entityStatusCode)
+  
+  // 加载实体预定义的状态列表（如果 boundEntity 已加载）
+  if (boundEntity.value?.entityCode) {
+    await loadEntityStatusList()
+  }
+}
+
+/**
+ * 加载实体预定义的状态列表
+ */
+async function loadEntityStatusList() {
+  // 从流程配置中获取实体编码
+  const entityCode = boundEntity.value?.entityCode
+  if (!entityCode) {
+    console.warn('流程未绑定实体，无法加载状态列表')
+    return
+  }
+  
+  try {
+    entityStatusList.value = await getEntityStatusList(entityCode) || []
+    console.log('加载实体状态列表:', entityStatusList.value)
+  } catch (error) {
+    console.error('加载实体状态列表失败:', error)
+    entityStatusList.value = []
+  }
+}
+
+// 监听 boundEntity 变化，当流程绑定实体后加载状态列表
+watch(() => boundEntity.value, async (newVal) => {
+  if (newVal?.entityCode && isSequenceFlow.value) {
+    console.log('流程已绑定实体，加载状态列表:', newVal.entityCode)
+    await loadEntityStatusList()
+  }
+}, { immediate: true })
+
+/**
+ * 保存状态配置
+ */
+async function saveStatusConfig() {
+  try {
+    if (!statusForm.value.entityStatusCode) {
+      ElMessage.warning('请选择实体状态')
+      return
+    }
+    
+    // 获取选中的状态详情
+    const selectedStatus = entityStatusList.value.find(s => s.statusCode === statusForm.value.entityStatusCode)
+    
+    // 保存到 BPMN 扩展属性
+    updateExtensionProperty('entityStatusCode', statusForm.value.entityStatusCode)
+    updateExtensionProperty('entityStatusName', selectedStatus?.statusName || '')
+    updateExtensionProperty('statusCategory', selectedStatus?.statusCategory || '')
+    updateExtensionProperty('statusDescription', statusForm.value.description)
+    
+    // 触发 XML 更新
+    emit('save')
+    
+    ElMessage.success('状态配置已保存')
+    emit('save')
+    emit('update-status-mapping', {
+      elementId: props.element?.id,
+      sourceNodeId: statusForm.value.sourceNodeId,
+      sourceNodeName: statusForm.value.sourceNodeName,
+      targetNodeId: statusForm.value.targetNodeId,
+      targetNodeName: statusForm.value.targetNodeName,
+      entityStatusCode: statusForm.value.entityStatusCode,
+      entityStatusName: selectedStatus?.statusName || '',
+      statusCategory: selectedStatus?.statusCategory || '',
+      conditionExpression: statusForm.value.conditionExpression,
+      description: statusForm.value.description
+    })
+  } catch (error) {
+    console.error('保存状态配置失败:', error)
     ElMessage.error('保存失败: ' + (error.message || '未知错误'))
   }
 }
@@ -2205,5 +2663,63 @@ function saveCurrentTab() {
   padding: 15px 0;
   margin-top: 10px;
   border-top: 1px solid #e4e7ed;
+}
+
+/* 条件配置样式 */
+.condition-variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.variable-tag {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.variable-tag:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.variable-tag .var-desc {
+  font-size: 11px;
+  color: #909399;
+  margin-left: 4px;
+  font-weight: normal;
+}
+
+.operator-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-group .el-tag {
+  min-width: 36px;
+  text-align: center;
+  font-family: monospace;
+}
+
+.op-desc {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+}
+
+.default-flow-tip {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.default-flow-tip p {
+  margin: 0;
 }
 </style>
