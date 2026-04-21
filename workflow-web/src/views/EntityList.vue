@@ -32,13 +32,30 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="450" fixed="right">
+        <el-table-column label="操作" width="500" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
+            <el-button 
+              v-if="row.status !== 'PUBLISHED'" 
+              link 
+              type="success" 
+              @click="handlePublish(row)"
+            >
+              发布
+            </el-button>
+            <el-button 
+              v-else 
+              link 
+              type="success" 
+              @click="handleRepublish(row)"
+            >
+              重新发布
+            </el-button>
             <el-button link type="primary" @click="handleData(row)">数据管理</el-button>
             <el-button link type="warning" @click="handleForm(row)">表单</el-button>
             <el-button link type="info" @click="handleStatusConfig(row)">状态配置</el-button>
             <el-button link type="success" @click="handleBindProcess(row)">绑定流程</el-button>
+            <el-button link type="primary" @click="handleViewHistory(row)">版本历史</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -141,6 +158,255 @@
         <el-button type="primary" @click="saveStatusConfig" :loading="statusLoading">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 版本历史对话框 -->
+    <el-dialog v-model="historyDialogVisible" title="版本历史" width="900px">
+      <div class="version-header">
+        <span>实体：{{ currentEntity?.entityName }} ({{ currentEntity?.entityCode }})</span>
+        <el-tag v-if="currentEntity?.status === 'PUBLISHED'" type="success">已发布</el-tag>
+        <el-tag v-else type="info">草稿</el-tag>
+      </div>
+      <el-timeline>
+        <el-timeline-item
+          v-for="(item, index) in versionHistoryList"
+          :key="item.id"
+          :type="index === 0 ? 'primary' : ''"
+          :color="index === 0 ? '#409EFF' : ''"
+          :timestamp="formatDate(item.publishedAt)"
+        >
+          <div class="version-item" :class="{ 'version-clickable': index < versionHistoryList.length - 1 }" @click="viewVersionDiff(item, index)">
+            <div class="version-title">
+              <span class="version-number">V{{ item.version }}</span>
+              <el-tag size="small" :type="item.publishType === 'CREATE' ? 'success' : 'warning'" class="version-type">
+                {{ item.publishType === 'CREATE' ? '首次发布' : '结构变更' }}
+              </el-tag>
+            </div>
+            <div class="version-desc">{{ item.versionDescription }}</div>
+            <div class="version-meta">
+              <span v-if="item.publishedByName">发布人：{{ item.publishedByName }}</span>
+              <span v-else-if="item.publishedBy">发布人：{{ item.publishedBy }}</span>
+              <span v-if="item.changesDescription" class="changes-desc">变更：{{ item.changesDescription }}</span>
+            </div>
+            <div v-if="index < versionHistoryList.length - 1" class="version-tip">
+              <el-link type="primary" :underline="false" @click.stop="viewVersionDiff(item, index)">
+                <el-icon><View /></el-icon> 点击查看与上一版本的差异
+              </el-link>
+            </div>
+            <div v-if="item.fields && item.fields.length > 0" class="version-fields">
+              <el-collapse>
+                <el-collapse-item title="查看字段详情" name="1">
+                  <el-table :data="item.fields" size="small" border>
+                    <el-table-column prop="fieldCode" label="字段编码" width="120" />
+                    <el-table-column prop="fieldName" label="字段名称" width="120" />
+                    <el-table-column prop="fieldType" label="字段类型" width="100" />
+                    <el-table-column prop="dbType" label="数据库类型" width="120" />
+                    <el-table-column prop="isRequired" label="必填" width="60">
+                      <template #default="{ row }">
+                        <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
+                        <span v-else>-</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="isSystem" label="系统" width="60">
+                      <template #default="{ row }">
+                        <el-tag v-if="row.isSystem" type="info" size="small">是</el-tag>
+                        <span v-else>-</span>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+          </div>
+        </el-timeline-item>
+      </el-timeline>
+      <template #footer>
+        <el-button @click="historyDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 版本间差异对比对话框 -->
+    <el-dialog 
+      v-model="versionDiffDialogVisible" 
+      title="版本差异对比" 
+      width="800px"
+    >
+      <div v-loading="versionDiffLoading">
+        <div v-if="versionDiffData" class="version-diff-content">
+          <!-- 版本信息 -->
+          <div class="diff-header">
+            <div class="version-compare">
+              <div class="version-box old">
+                <div class="version-label">版本 V{{ versionDiffData.currentVersion }}</div>
+                <div class="version-desc">上一版本</div>
+              </div>
+              <div class="version-arrow">
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+              <div class="version-box new">
+                <div class="version-label">版本 V{{ versionDiffData.nextVersion }}</div>
+                <div class="version-desc">当前版本</div>
+              </div>
+            </div>
+            <div class="change-summary">
+              <el-alert :title="versionDiffData.changeSummary" type="info" :closable="false" />
+            </div>
+          </div>
+
+          <!-- 新增字段 -->
+          <div v-if="versionDiffData.addedFields?.length > 0" class="diff-section">
+            <div class="section-title">
+              <el-tag type="success">新增</el-tag>
+              <span>新增字段（{{ versionDiffData.addedFields.length }}）</span>
+            </div>
+            <el-table :data="versionDiffData.addedFields" size="small" border>
+              <el-table-column prop="fieldCode" label="字段编码" width="120" />
+              <el-table-column prop="fieldName" label="字段名称" width="120" />
+              <el-table-column prop="fieldType" label="字段类型" width="100" />
+              <el-table-column prop="dbType" label="数据库类型" />
+              <el-table-column prop="isRequired" label="必填" width="60">
+                <template #default="{ row }">
+                  <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <!-- 修改字段 -->
+          <div v-if="versionDiffData.modifiedFields?.length > 0" class="diff-section">
+            <div class="section-title">
+              <el-tag type="warning">修改</el-tag>
+              <span>修改字段（{{ versionDiffData.modifiedFields.length }}）</span>
+            </div>
+            <el-table :data="versionDiffData.modifiedFields" size="small" border>
+              <el-table-column prop="fieldCode" label="字段编码" width="120" />
+              <el-table-column prop="fieldName" label="字段名称" width="120" />
+              <el-table-column prop="changeDescription" label="变更内容" min-width="200" />
+            </el-table>
+          </div>
+
+          <!-- 删除字段 -->
+          <div v-if="versionDiffData.removedFields?.length > 0" class="diff-section">
+            <div class="section-title">
+              <el-tag type="danger">删除</el-tag>
+              <span>删除字段（{{ versionDiffData.removedFields.length }}）</span>
+            </div>
+            <el-table :data="versionDiffData.removedFields" size="small" border>
+              <el-table-column prop="fieldCode" label="字段编码" width="120" />
+              <el-table-column prop="fieldName" label="字段名称" />
+            </el-table>
+          </div>
+
+          <!-- 无变更字段 -->
+          <div v-if="versionDiffData.unchangedFields?.length > 0" class="diff-section">
+            <el-collapse>
+              <el-collapse-item :title="`无变更字段（${versionDiffData.unchangedFields.length}）`" name="1">
+                <el-table :data="versionDiffData.unchangedFields" size="small" border>
+                  <el-table-column prop="fieldCode" label="字段编码" width="120" />
+                  <el-table-column prop="fieldName" label="字段名称" />
+                </el-table>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="versionDiffDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 发布差异预览对话框 -->
+    <el-dialog 
+      v-model="publishDiffDialogVisible" 
+      :title="publishDiffData?.isFirstPublish ? '发布预览 - 首次发布' : '发布预览 - 版本升级'" 
+      width="800px"
+    >
+      <div v-loading="publishDiffLoading">
+        <div v-if="publishDiffData" class="publish-diff-content">
+          <!-- 版本信息 -->
+          <div class="diff-header">
+            <div class="version-compare">
+              <div class="version-box old">
+                <div class="version-label">当前版本</div>
+                <div class="version-value">V{{ publishDiffData.currentVersion || 0 }}</div>
+              </div>
+              <div class="version-arrow">
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+              <div class="version-box new">
+                <div class="version-label">即将发布</div>
+                <div class="version-value">V{{ publishDiffData.nextVersion }}</div>
+              </div>
+            </div>
+            <div class="change-summary">
+              <el-alert :title="publishDiffData.changeSummary" type="info" :closable="false" />
+            </div>
+          </div>
+
+          <!-- 新增字段 -->
+          <div v-if="publishDiffData.addedFields?.length > 0" class="diff-section">
+            <div class="section-title">
+              <el-tag type="success">新增</el-tag>
+              <span>新增字段（{{ publishDiffData.addedFields.length }}）</span>
+            </div>
+            <el-table :data="publishDiffData.addedFields" size="small" border>
+              <el-table-column prop="fieldCode" label="字段编码" width="120" />
+              <el-table-column prop="fieldName" label="字段名称" width="120" />
+              <el-table-column prop="fieldType" label="字段类型" width="100" />
+              <el-table-column prop="dbType" label="数据库类型" />
+              <el-table-column prop="isRequired" label="必填" width="60">
+                <template #default="{ row }">
+                  <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <!-- 修改字段 -->
+          <div v-if="publishDiffData.modifiedFields?.length > 0" class="diff-section">
+            <div class="section-title">
+              <el-tag type="warning">修改</el-tag>
+              <span>修改字段（{{ publishDiffData.modifiedFields.length }}）</span>
+            </div>
+            <el-table :data="publishDiffData.modifiedFields" size="small" border>
+              <el-table-column prop="fieldCode" label="字段编码" width="120" />
+              <el-table-column prop="fieldName" label="字段名称" width="120" />
+              <el-table-column prop="changeDescription" label="变更内容" min-width="200" />
+            </el-table>
+          </div>
+
+          <!-- 无变更字段 -->
+          <div v-if="publishDiffData.unchangedFields?.length > 0" class="diff-section">
+            <el-collapse>
+              <el-collapse-item :title="`无变更字段（${publishDiffData.unchangedFields.length}）`" name="1">
+                <el-table :data="publishDiffData.unchangedFields" size="small" border>
+                  <el-table-column prop="fieldCode" label="字段编码" width="120" />
+                  <el-table-column prop="fieldName" label="字段名称" />
+                </el-table>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+
+          <!-- DDL预览 -->
+          <div v-if="publishDiffData.pendingDdls?.length > 0" class="diff-section">
+            <div class="section-title">
+              <el-tag type="info">DDL</el-tag>
+              <span>即将执行的SQL</span>
+            </div>
+            <div class="ddl-preview">
+              <pre v-for="(ddl, index) in publishDiffData.pendingDdls" :key="index">{{ ddl }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="publishDiffDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmPublish" :loading="publishDiffLoading">
+          {{ publishDiffData?.isFirstPublish ? '确认发布' : '确认重新发布' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -148,8 +414,10 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Rank } from '@element-plus/icons-vue'
+import { Plus, Rank, View, ArrowRight } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
+import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
+import { entityVersionDiffApi } from '@/api/entityVersionDiff'
 import { processApi } from '@/api/process'
 import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
 import Sortable from 'sortablejs'
@@ -305,6 +573,128 @@ const statusDialogVisible = ref(false)
 const statusLoading = ref(false)
 const statusList = ref([])
 
+// ========== 版本历史相关 ==========
+const historyDialogVisible = ref(false)
+const versionHistoryList = ref([])
+const selectedVersionIndex = ref(null)
+const versionDiffDialogVisible = ref(false)
+const versionDiffLoading = ref(false)
+const versionDiffData = ref(null)
+
+// ========== 发布差异预览相关 ==========
+const publishDiffDialogVisible = ref(false)
+const publishDiffLoading = ref(false)
+const publishDiffData = ref(null)
+const publishTargetEntity = ref(null)
+
+// 格式化日期
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+// 发布实体（先显示差异预览）
+const handlePublish = async (row) => {
+  publishTargetEntity.value = row
+  publishDiffDialogVisible.value = true
+  publishDiffLoading.value = true
+  
+  try {
+    const diff = await entityVersionDiffApi.getPendingPublishDiff(row.id)
+    publishDiffData.value = diff
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('获取发布预览失败')
+  } finally {
+    publishDiffLoading.value = false
+  }
+}
+
+// 重新发布实体（已发布的实体修改字段后再次发布）
+const handleRepublish = async (row) => {
+  publishTargetEntity.value = row
+  publishDiffDialogVisible.value = true
+  publishDiffLoading.value = true
+  
+  try {
+    const diff = await entityVersionDiffApi.getPendingPublishDiff(row.id)
+    publishDiffData.value = diff
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('获取发布预览失败')
+  } finally {
+    publishDiffLoading.value = false
+  }
+}
+
+// 确认发布
+const confirmPublish = async () => {
+  if (!publishTargetEntity.value) return
+  
+  publishDiffLoading.value = true
+  try {
+    await entityApi.publish(publishTargetEntity.value.id)
+    ElMessage.success(publishDiffData.value?.isFirstPublish ? '发布成功' : '重新发布成功，表结构已更新')
+    publishDiffDialogVisible.value = false
+    fetchData()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error.response?.data?.message || '发布失败')
+  } finally {
+    publishDiffLoading.value = false
+  }
+}
+
+// 查看版本历史
+const handleViewHistory = async (row) => {
+  currentEntity.value = row
+  historyDialogVisible.value = true
+  selectedVersionIndex.value = null
+  
+  try {
+    const res = await entityPublishHistoryApi.getVersionHistory(row.id)
+    versionHistoryList.value = res || []
+  } catch (error) {
+    console.error('加载版本历史失败:', error)
+    ElMessage.error('加载版本历史失败')
+    versionHistoryList.value = []
+  }
+}
+
+// 查看版本与上一版本的差异
+const viewVersionDiff = async (item, index) => {
+  if (index === versionHistoryList.value.length - 1) {
+    // 最后一个版本，没有上一个版本可比较
+    ElMessage.info('这是第一个版本，无上一版本可比较')
+    return
+  }
+  
+  versionDiffLoading.value = true
+  versionDiffDialogVisible.value = true
+  
+  try {
+    const diff = await entityVersionDiffApi.compareVersions(
+      currentEntity.value.id,
+      item.version - 1,
+      item.version
+    )
+    versionDiffData.value = diff
+  } catch (error) {
+    console.error('获取版本差异失败:', error)
+    ElMessage.error('获取版本差异失败')
+  } finally {
+    versionDiffLoading.value = false
+  }
+}
+
 const handleStatusConfig = async (row) => {
   currentEntity.value = row
   statusDialogVisible.value = true
@@ -454,5 +844,180 @@ onMounted(() => {
 .status-drag-table .sortable-ghost {
   opacity: 0.5;
   background-color: #f5f7fa;
+}
+
+/* 版本历史样式 */
+.version-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.version-item {
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.version-item.version-clickable {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.version-item.version-clickable:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 12px 0 rgba(64, 158, 255, 0.1);
+}
+
+.version-tip {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.version-diff-content {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.version-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.version-number {
+  font-size: 18px;
+  font-weight: bold;
+  color: #409EFF;
+}
+
+.version-type {
+  font-size: 12px;
+}
+
+.version-desc {
+  color: #606266;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.version-meta {
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.changes-desc {
+  color: #E6A23C;
+}
+
+.version-fields {
+  margin-top: 10px;
+}
+
+/* 发布差异预览样式 */
+.publish-diff-content {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.diff-header {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.version-compare {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 15px;
+}
+
+.version-box {
+  text-align: center;
+  padding: 15px 30px;
+  border-radius: 8px;
+  min-width: 100px;
+}
+
+.version-box.old {
+  background-color: #f4f4f5;
+  border: 2px solid #e4e7ed;
+}
+
+.version-box.new {
+  background-color: #ecf5ff;
+  border: 2px solid #409eff;
+}
+
+.version-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 5px;
+}
+
+.version-value {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.version-box.old .version-value {
+  color: #606266;
+}
+
+.version-box.new .version-value {
+  color: #409eff;
+}
+
+.version-arrow {
+  font-size: 24px;
+  color: #909399;
+}
+
+.diff-section {
+  margin-bottom: 20px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.ddl-preview {
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.ddl-preview pre {
+  margin: 0;
+  padding: 8px;
+  background-color: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.ddl-preview pre:not(:last-child) {
+  margin-bottom: 8px;
 }
 </style>

@@ -28,6 +28,12 @@ public class EntityFormField {
     private String fieldId;
     
     /**
+     * 字段编码（对应entity_field的field_code），非数据库字段，用于前端
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String fieldCode;
+    
+    /**
      * 字段名称
      */
     private String fieldName;

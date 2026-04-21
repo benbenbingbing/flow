@@ -65,6 +65,14 @@ public class NodeConfig {
     private String configJson;
 
     /**
+     * 是否跳过此节点（仅第一个用户任务节点可设置）
+     * true: 流程到达此节点后自动跳转到下一节点
+     * false: 正常处理
+     */
+    @TableField("skip_node")
+    private Boolean skipNode;
+
+    /**
      * 创建时间
      */
     @TableField(value = "created_at", fill = FieldFill.INSERT)
@@ -100,9 +108,27 @@ public class NodeConfig {
         USER_TASK,
         /** 服务任务节点（自动执行） */
         SERVICE_TASK,
+        /** 脚本任务节点 */
+        SCRIPT_TASK,
+        /** 发送任务节点 */
+        SEND_TASK,
+        /** 接收任务节点 */
+        RECEIVE_TASK,
+        /** 手动任务节点 */
+        MANUAL_TASK,
+        /** 业务规则任务节点 */
+        BUSINESS_RULE_TASK,
         /** 排他网关（条件分支） */
         EXCLUSIVE_GATEWAY,
         /** 并行网关（并行分支） */
-        PARALLEL_GATEWAY
+        PARALLEL_GATEWAY,
+        /** 包容网关 */
+        INCLUSIVE_GATEWAY,
+        /** 事件网关 */
+        EVENT_BASED_GATEWAY,
+        /** 调用活动（子流程） */
+        CALL_ACTIVITY,
+        /** 子流程 */
+        SUB_PROCESS
     }
 }

@@ -13,7 +13,6 @@
     "bpmn-auto-layout": "^1.2.0",
     "bpmn-js": "^17.0.0",
     "bpmn-js-properties-panel": "1.21.0",
-    "camunda-bpmn-moddle": "^7.0.0",
     "dayjs": "^1.11.0",
     "diagram-js": "^14.0.0",
     "element-plus": "^2.5.0",

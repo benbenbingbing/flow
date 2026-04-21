@@ -119,10 +119,27 @@ public class EntityField {
     private Boolean editable;
     
     /**
-     * 关联实体ID（用于子表单）
+     * 是否已发布（已同步到数据库表的字段）
+     */
+    @TableField("is_published")
+    private Boolean isPublished;
+    
+    /**
+     * 关联实体ID（用于子表单/实体选择）
      */
     @TableField("ref_entity_id")
     private String refEntityId;
+    
+    /**
+     * 引用实体类型（区分用户实体和系统实体）
+     * CUSTOM - 用户创建的实体（对应 refEntityId）
+     * USER - 系统用户
+     * DEPT - 系统部门/组织
+     * ROLE - 系统角色
+     * GROUP - 系统用户组
+     */
+    @TableField("ref_entity_type")
+    private RefEntityType refEntityType;
     
     /**
      * 显示方式：embedded-嵌入, tab-Tab页（用于子表单）
@@ -183,8 +200,20 @@ public class EntityField {
         IMAGE,          // 图片
         USER,           // 用户选择
         DEPT,           // 部门选择
-        REFERENCE,      // 引用其他实体
+        REFERENCE,      // 引用其他实体（单选实体）
+        MULTI_REFERENCE,// 引用其他实体（多选实体）
         SUB_FORM,       // 子表单（嵌入主表单）
         SUB_FORM_LIST   // 子表单列表（数据列表形式）
+    }
+    
+    /**
+     * 引用实体类型枚举
+     */
+    public enum RefEntityType {
+        CUSTOM,     // 用户自定义实体（对应 refEntityId 字段）
+        USER,       // 系统用户
+        DEPT,       // 系统部门/组织
+        ROLE,       // 系统角色
+        GROUP       // 系统用户组
     }
 }

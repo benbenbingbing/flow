@@ -215,6 +215,28 @@ public class EntityFormService {
     }
     
     /**
+     * 设置默认表单
+     * @param formId 表单ID
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void setDefaultForm(String formId) {
+        EntityForm form = formMapper.selectById(formId);
+        if (form == null) {
+            throw new RuntimeException("表单不存在");
+        }
+        
+        // 设置为默认表单
+        form.setIsDefault(true);
+        form.setUpdateTime(LocalDateTime.now());
+        formMapper.updateById(form);
+        
+        // 将同一实体下的其他表单设为非默认
+        clearOtherDefaultForm(form.getEntityId(), formId);
+        
+        log.info("设置默认表单：{} (entityId={})", form.getFormName(), form.getEntityId());
+    }
+    
+    /**
      * 复制表单
      * @param sourceFormId 源表单ID
      * @return 新表单

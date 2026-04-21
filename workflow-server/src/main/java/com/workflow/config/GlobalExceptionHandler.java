@@ -21,21 +21,50 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler({DuplicateKeyException.class, DataIntegrityViolationException.class})
     public ApiResponse<Void> handleDuplicateKeyException(Exception e) {
-        log.warn("数据重复异常: {}", e.getMessage());
+        log.warn("数据完整性异常: {}", e.getMessage());
         
-        // 提取实体编码相关的重复提示
         String message = e.getMessage();
-        if (message != null && message.contains("entity_code")) {
-            return ApiResponse.error("实体编码已存在，请更换其他编码");
-        }
-        if (message != null && message.contains("process_key")) {
-            return ApiResponse.error("流程标识已存在，请更换其他标识");
-        }
-        if (message != null && message.contains("field_code")) {
-            return ApiResponse.error("字段编码已存在，请更换其他编码");
+        if (message != null) {
+            // 处理没有默认值的字段错误
+            if (message.contains("doesn't have a default value")) {
+                int start = message.indexOf("Field '");
+                if (start >= 0) {
+                    int fieldStart = start + 7;
+                    int fieldEnd = message.indexOf("'", fieldStart);
+                    if (fieldEnd > fieldStart) {
+                        String fieldName = message.substring(fieldStart, fieldEnd);
+                        return ApiResponse.error("字段 '" + fieldName + "' 不能为空且没有默认值，请检查表单配置");
+                    }
+                }
+                return ApiResponse.error("必填字段没有填写且没有默认值");
+            }
+            // 提取重复键信息
+            if (message.contains("Duplicate entry")) {
+                int start = message.indexOf("Duplicate entry");
+                int end = message.indexOf(" for key");
+                if (start >= 0 && end > start) {
+                    String duplicateValue = message.substring(start + 16, end);
+                    String keyName = "";
+                    int keyStart = message.indexOf("'", end);
+                    int keyEnd = message.indexOf("'", keyStart + 1);
+                    if (keyStart > 0 && keyEnd > keyStart) {
+                        keyName = message.substring(keyStart + 1, keyEnd);
+                    }
+                    return ApiResponse.error("数据重复: 值 '" + duplicateValue + "' 在字段 '" + keyName + "' 中已存在");
+                }
+            }
+            if (message.contains("entity_code")) {
+                return ApiResponse.error("实体编码已存在，请更换其他编码");
+            }
+            if (message.contains("process_key")) {
+                return ApiResponse.error("流程标识已存在，请更换其他标识");
+            }
+            if (message.contains("field_code")) {
+                return ApiResponse.error("字段编码已存在，请更换其他编码");
+            }
         }
         
-        return ApiResponse.error("数据已存在，请检查是否有重复项");
+        return ApiResponse.error("数据保存失败: " + (message != null ? message.substring(0, Math.min(100, message.length())) : ""));
     }
 
     /**

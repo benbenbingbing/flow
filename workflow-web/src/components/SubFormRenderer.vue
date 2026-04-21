@@ -1,154 +1,190 @@
 <template>
   <div class="sub-form-renderer">
-    <!-- 嵌入模式：直接显示子表单 -->
-    <div v-if="displayMode === 'embedded'" class="sub-form-embedded">
-      <el-card shadow="never" class="sub-form-card">
-        <template #header v-if="title">
-          <span>{{ title }}</span>
-        </template>
-        
-        <!-- 列表模式 -->
-        <template v-if="isListMode">
-          <div class="sub-form-toolbar" v-if="!disabled">
-            <el-button type="primary" size="small" @click="addRow">
-              <el-icon><Plus /></el-icon>添加
-            </el-button>
-          </div>
-          <el-table :data="tableData" border size="small">
-            <el-table-column 
-              v-for="col in columns" 
-              :key="col.fieldCode"
-              :prop="col.fieldCode"
-              :label="col.fieldName"
-              min-width="120"
-            >
-              <template #default="{ row, $index }">
-                <FormFieldRenderer 
-                  :field="col"
-                  v-model="row[col.fieldCode]"
-                  :disabled="disabled"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="80" v-if="!disabled">
-              <template #default="{ $index }">
-                <el-button type="danger" link size="small" @click="deleteRow($index)">
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </template>
-        
-        <!-- 单条模式 -->
-        <template v-else>
-          <el-form label-width="100px">
-            <el-form-item
-              v-for="col in columns"
-              :key="col.fieldCode"
-              :label="col.fieldName"
-            >
-              <FormFieldRenderer 
-                :field="col"
-                v-model="formData[col.fieldCode]"
-                :disabled="disabled"
-              />
-            </el-form-item>
-          </el-form>
-        </template>
-      </el-card>
+    <!-- 子表单标题和操作 -->
+    <div class="sub-form-header">
+      <span class="sub-form-title">{{ title || config.label || '明细' }}</span>
+      <el-tag v-if="config.required" type="danger" size="small" effect="plain">必填</el-tag>
+      <span class="sub-form-summary" v-if="showSummary">
+        共 {{ rowData.length }} 条，
+        <span v-for="(sum, key) in summaryData" :key="key" class="summary-item">
+          {{ sum.label }}: {{ sum.value }}
+        </span>
+      </span>
+      <el-button 
+        v-if="!disabled && !readonly" 
+        type="primary" 
+        size="small" 
+        @click="addRow"
+        :disabled="rowData.length >= maxRows"
+      >
+        <el-icon><Plus /></el-icon>添加
+      </el-button>
     </div>
-    
-    <!-- Tab 模式：以 Tab 页签形式显示 -->
-    <div v-else-if="displayMode === 'tab'" class="sub-form-tab">
-      <el-tabs type="border-card">
-        <el-tab-pane :label="title || '子表单'">
-          <!-- 列表模式 -->
-          <template v-if="isListMode">
-            <div class="sub-form-toolbar" v-if="!disabled">
-              <el-button type="primary" size="small" @click="addRow">
-                <el-icon><Plus /></el-icon>添加
-              </el-button>
-            </div>
-            <el-table :data="tableData" border size="small">
-              <el-table-column 
-                v-for="col in columns" 
-                :key="col.fieldCode"
-                :prop="col.fieldCode"
-                :label="col.fieldName"
-                min-width="120"
-              >
-                <template #default="{ row, $index }">
-                  <FormFieldRenderer 
-                    :field="col"
-                    v-model="row[col.fieldCode]"
-                    :disabled="disabled"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" v-if="!disabled">
-                <template #default="{ $index }">
-                  <el-button type="danger" link size="small" @click="deleteRow($index)">
-                    删除
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+
+    <!-- 空状态 -->
+    <el-empty v-if="rowData.length === 0" description="暂无数据，点击添加" :image-size="60">
+      <template v-if="!disabled && !readonly">
+        <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+      </template>
+    </el-empty>
+
+    <!-- 表格形式 -->
+    <el-table 
+      v-else
+      :data="rowData" 
+      border 
+      stripe
+      size="small"
+      class="sub-form-table"
+      :max-height="config.maxHeight || 400"
+    >
+      <!-- 序号列 -->
+      <el-table-column type="index" width="50" align="center" />
+
+      <!-- 动态字段列 -->
+      <el-table-column 
+        v-for="field in config.fields" 
+        :key="field.fieldKey"
+        :prop="field.fieldKey"
+        :label="field.fieldName"
+        :min-width="field.width || 120"
+        :show-overflow-tooltip="!field.isEditable"
+      >
+        <template #default="{ row, $index }">
+          <!-- 只读模式 -->
+          <template v-if="readonly || disabled || !field.isEditable">
+            <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
           </template>
-          
-          <!-- 单条模式 -->
+
+          <!-- 编辑模式 -->
           <template v-else>
-            <el-form label-width="100px">
-              <el-form-item
-                v-for="col in columns"
-                :key="col.fieldCode"
-                :label="col.fieldName"
-              >
-                <FormFieldRenderer 
-                  :field="col"
-                  v-model="formData[col.fieldCode]"
-                  :disabled="disabled"
-                />
-              </el-form-item>
-            </el-form>
+            <!-- 文本输入 -->
+            <el-input
+              v-if="field.fieldType === 'TEXT' || field.fieldType === 'input'"
+              v-model="row[field.fieldKey]"
+              size="small"
+              :placeholder="field.placeholder"
+              @blur="validateField(row, field, $index)"
+            />
+
+            <!-- 数字输入 -->
+            <el-input-number
+              v-else-if="field.fieldType === 'NUMBER' || field.fieldType === 'number'"
+              v-model="row[field.fieldKey]"
+              size="small"
+              :precision="field.precision || 2"
+              :min="field.min"
+              :max="field.max"
+              style="width: 100%"
+              @change="handleNumberChange(row, field, $index)"
+            />
+
+            <!-- 日期选择 -->
+            <el-date-picker
+              v-else-if="field.fieldType === 'DATE' || field.fieldType === 'date'"
+              v-model="row[field.fieldKey]"
+              type="date"
+              size="small"
+              :placeholder="field.placeholder"
+              style="width: 100%"
+              value-format="YYYY-MM-DD"
+            />
+
+            <!-- 下拉选择 -->
+            <el-select
+              v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'"
+              v-model="row[field.fieldKey]"
+              size="small"
+              :placeholder="field.placeholder"
+              style="width: 100%"
+              filterable
+              clearable
+            >
+              <el-option
+                v-for="opt in getFieldOptions(field)"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+
+            <!-- 默认文本 -->
+            <el-input
+              v-else
+              v-model="row[field.fieldKey]"
+              size="small"
+              :placeholder="field.placeholder"
+            />
+
+            <!-- 字段校验错误提示 -->
+            <div v-if="getFieldError($index, field.fieldKey)" class="field-error">
+              {{ getFieldError($index, field.fieldKey) }}
+            </div>
           </template>
-        </el-tab-pane>
-      </el-tabs>
-    </div>
+        </template>
+      </el-table-column>
+
+      <!-- 操作列 -->
+      <el-table-column v-if="!disabled && !readonly" label="操作" width="80" align="center" fixed="right">
+        <template #default="{ $index }">
+          <el-button type="danger" size="small" text @click="removeRow($index)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <!-- 校验错误汇总 -->
+    <el-alert 
+      v-if="validationErrors.length > 0" 
+      type="error" 
+      :closable="false"
+      class="validation-summary"
+    >
+      <template #title>
+        存在 {{ validationErrors.length }} 处错误，请修正
+      </template>
+    </el-alert>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
-import FormFieldRenderer from './FormFieldRenderer.vue'
-import { entityApi } from '@/api/entity'
+import { ref, computed, watch } from 'vue'
+import { Plus, Delete } from '@element-plus/icons-vue'
 
 const props = defineProps({
-  // 关联实体ID
-  refEntityId: {
-    type: String,
-    required: true
-  },
-  // 显示模式：embedded-嵌入, tab-Tab页
+  // 兼容旧版属性
+  refEntityId: String,
   displayMode: {
     type: String,
     default: 'embedded'
   },
-  // 子表单类型：sub_form-单条, sub_form_list-列表
-  subFormType: {
-    type: String,
-    default: 'sub_form'
+  subFormType: String,
+  title: String,
+  
+  // 新版子表单配置
+  config: {
+    type: Object,
+    default: () => ({
+      label: '明细',
+      fieldKey: 'detailList',
+      required: false,
+      minRows: 0,
+      maxRows: 100,
+      fields: [],
+      showSummary: false,
+      summaryFields: []
+    })
   },
-  // 标题
-  title: {
-    type: String,
-    default: ''
-  },
-  // 数据值
+  // 数据绑定
   modelValue: {
-    type: [Object, Array],
-    default: () => null
+    type: Array,
+    default: () => []
+  },
+  // 是否只读
+  readonly: {
+    type: Boolean,
+    default: false
   },
   // 是否禁用
   disabled: {
@@ -157,145 +193,268 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'change', 'validate'])
 
-// 关联实体的字段列表
-const columns = ref([])
+// 内部数据副本
+const rowData = ref([])
 
-// 是否是列表模式
-const isListMode = computed(() => props.subFormType === 'SUB_FORM_LIST' || props.subFormType === 'sub_form_list')
+// 校验错误
+const fieldErrors = ref({})
 
-// 表格数据（列表模式）
-const tableData = computed({
-  get() {
-    const val = props.modelValue
-    if (!val) return []
-    return Array.isArray(val) ? val : [val]
-  },
-  set(val) {
-    if (isListMode.value) {
-      emit('update:modelValue', val)
-    } else {
-      emit('update:modelValue', val[0] || {})
-    }
+// 初始化数据
+watch(() => props.modelValue, (newVal) => {
+  if (newVal && Array.isArray(newVal)) {
+    rowData.value = JSON.parse(JSON.stringify(newVal))
+  } else {
+    rowData.value = []
   }
+}, { immediate: true, deep: true })
+
+// 数据变化时触发更新
+watch(rowData, (newVal) => {
+  emit('update:modelValue', newVal)
+  emit('change', newVal)
+  calculateSummary()
+}, { deep: true })
+
+// 最大行数
+const maxRows = computed(() => props.config.maxRows || 100)
+
+// 最小行数
+const minRows = computed(() => props.config.minRows || 0)
+
+// 是否显示汇总
+const showSummary = computed(() => {
+  return props.config.showSummary && props.config.summaryFields?.length > 0
 })
 
-// 表单数据（单条模式）
-const formData = computed({
-  get() {
-    const val = props.modelValue
-    if (!val) return {}
-    return Array.isArray(val) ? (val[0] || {}) : val
-  },
-  set(val) {
-    if (isListMode.value) {
-      emit('update:modelValue', [val])
-    } else {
-      emit('update:modelValue', val)
-    }
-  }
+// 汇总数据
+const summaryData = ref({})
+
+// 校验错误列表
+const validationErrors = computed(() => {
+  return Object.values(fieldErrors.value).filter(e => e)
 })
 
-// 加载关联实体的字段
-const loadRefEntityFields = async () => {
-  if (!props.refEntityId) return
-  try {
-    const data = await entityApi.getById(props.refEntityId)
-    if (data && data.fields) {
-      // 过滤掉子表单字段，避免嵌套过深
-      columns.value = data.fields.filter(f => 
-        f.fieldType !== 'SUB_FORM' && f.fieldType !== 'SUB_FORM_LIST'
-      ).map(f => ({
-        fieldCode: f.fieldCode,
-        fieldName: f.fieldName,
-        fieldType: f.fieldType,
-        componentType: getComponentType(f.fieldType),
-        optionsJson: f.optionsJson,
-        placeholder: f.placeholder
-      }))
+// 计算汇总
+function calculateSummary() {
+  if (!showSummary.value) return
+  
+  const result = {}
+  props.config.summaryFields.forEach(fieldKey => {
+    const field = props.config.fields.find(f => f.fieldKey === fieldKey)
+    if (!field) return
+    
+    const sum = rowData.value.reduce((acc, row) => {
+      const val = parseFloat(row[fieldKey]) || 0
+      return acc + val
+    }, 0)
+    
+    result[fieldKey] = {
+      label: field.fieldName,
+      value: formatNumber(sum, field.precision || 2)
     }
-  } catch (error) {
-    console.error('加载关联实体字段失败:', error)
-  }
-}
-
-// 获取组件类型
-const getComponentType = (fieldType) => {
-  const typeMap = {
-    'STRING': 'input',
-    'TEXT': 'textarea',
-    'INTEGER': 'number',
-    'DECIMAL': 'number',
-    'DATE': 'date',
-    'DATETIME': 'datetime',
-    'BOOLEAN': 'switch',
-    'SELECT': 'select',
-    'MULTI_SELECT': 'checkbox',
-    'RADIO': 'radio',
-    'CHECKBOX': 'checkbox',
-    'FILE': 'file',
-    'IMAGE': 'file',
-    'USER': 'input',
-    'DEPT': 'input'
-  }
-  return typeMap[fieldType] || 'input'
-}
-
-// 添加行（列表模式）
-const addRow = () => {
-  const newRow = {}
-  columns.value.forEach(col => {
-    newRow[col.fieldCode] = ''
   })
-  const newData = [...tableData.value, newRow]
-  tableData.value = newData
+  
+  summaryData.value = result
 }
 
-// 删除行（列表模式）
-const deleteRow = (index) => {
-  const newData = [...tableData.value]
-  newData.splice(index, 1)
-  tableData.value = newData
+// 格式化数字
+function formatNumber(num, precision) {
+  return num.toFixed(precision)
 }
 
-onMounted(() => {
-  loadRefEntityFields()
-})
+// 格式化单元格显示
+function formatCellValue(value, field) {
+  if (value == null || value === '') return '-'
+  
+  if (field.fieldType === 'NUMBER' || field.fieldType === 'number') {
+    return formatNumber(value, field.precision || 2)
+  }
+  
+  if (field.fieldType === 'SELECT' || field.fieldType === 'select') {
+    const options = getFieldOptions(field)
+    const option = options.find(o => o.value === value)
+    return option?.label || value
+  }
+  
+  return value
+}
 
-// 监听关联实体ID变化
-watch(() => props.refEntityId, () => {
-  loadRefEntityFields()
+// 获取字段选项
+function getFieldOptions(field) {
+  if (!field.options) return []
+  
+  if (typeof field.options === 'string') {
+    try {
+      return JSON.parse(field.options)
+    } catch (e) {
+      return []
+    }
+  }
+  
+  return field.options
+}
+
+// 添加行
+function addRow() {
+  if (rowData.value.length >= maxRows.value) {
+    return
+  }
+  
+  const newRow = {}
+  // 初始化字段默认值
+  props.config.fields.forEach(field => {
+    if (field.defaultValue != null) {
+      newRow[field.fieldKey] = field.defaultValue
+    } else {
+      newRow[field.fieldKey] = ''
+    }
+  })
+  
+  rowData.value.push(newRow)
+  emit('change', rowData.value)
+}
+
+// 删除行
+function removeRow(index) {
+  if (rowData.value.length <= minRows.value) {
+    return
+  }
+  
+  rowData.value.splice(index, 1)
+  clearRowErrors(index)
+  emit('change', rowData.value)
+}
+
+// 数字变化处理
+function handleNumberChange(row, field, index) {
+  if (props.config.summaryFields?.includes(field.fieldKey)) {
+    calculateSummary()
+  }
+}
+
+// 字段校验
+function validateField(row, field, index) {
+  const key = `${index}_${field.fieldKey}`
+  let error = null
+  
+  const value = row[field.fieldKey]
+  
+  if (field.required && (value == null || value === '')) {
+    error = `${field.fieldName}不能为空`
+  }
+  
+  if ((field.fieldType === 'NUMBER' || field.fieldType === 'number') && value != null) {
+    const num = parseFloat(value)
+    if (field.min != null && num < field.min) {
+      error = `${field.fieldName}不能小于${field.min}`
+    }
+    if (field.max != null && num > field.max) {
+      error = `${field.fieldName}不能大于${field.max}`
+    }
+  }
+  
+  if (error) {
+    fieldErrors.value[key] = error
+  } else {
+    delete fieldErrors.value[key]
+  }
+  
+  return !error
+}
+
+// 获取字段错误
+function getFieldError(index, fieldKey) {
+  return fieldErrors.value[`${index}_${fieldKey}`]
+}
+
+// 清除行错误
+function clearRowErrors(index) {
+  Object.keys(fieldErrors.value).forEach(key => {
+    if (key.startsWith(`${index}_`)) {
+      delete fieldErrors.value[key]
+    }
+  })
+}
+
+// 校验整个子表单
+function validate() {
+  let isValid = true
+  
+  rowData.value.forEach((row, index) => {
+    props.config.fields.forEach(field => {
+      if (field.isEditable !== false) {
+        const valid = validateField(row, field, index)
+        if (!valid) isValid = false
+      }
+    })
+  })
+  
+  if (rowData.value.length < minRows.value) {
+    isValid = false
+  }
+  
+  emit('validate', isValid)
+  return isValid
+}
+
+// 暴露方法
+defineExpose({
+  validate,
+  getData: () => rowData.value
 })
 </script>
 
 <style scoped>
 .sub-form-renderer {
-  width: 100%;
+  padding: 10px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  background-color: #fafafa;
 }
 
-.sub-form-embedded {
-  margin-top: 8px;
+.sub-form-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
 }
 
-.sub-form-card {
-  background-color: #f5f7fa;
+.sub-form-title {
+  font-weight: 500;
+  font-size: 14px;
 }
 
-.sub-form-card :deep(.el-card__header) {
-  padding: 10px 15px;
+.sub-form-summary {
+  flex: 1;
+  font-size: 13px;
+  color: #606266;
+}
+
+.summary-item {
+  margin-left: 15px;
+  color: #409eff;
   font-weight: 500;
 }
 
-.sub-form-card :deep(.el-card__body) {
-  padding: 15px;
+.sub-form-table {
+  margin-top: 10px;
 }
 
-.sub-form-toolbar {
-  margin-bottom: 10px;
+.field-error {
+  color: #f56c6c;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
-.sub-form-tab :deep(.el-tabs__content) {
-  padding: 15px;
+.validation-summary {
+  margin-top: 10px;
+}
+
+:deep(.el-table__body-wrapper) {
+  overflow-x: auto;
 }
 </style>

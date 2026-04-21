@@ -7,7 +7,7 @@
       @click="dialogVisible = true"
     >
       <template #prefix>
-        <el-icon v-if="selectedIcon">
+        <el-icon v-if="selectedIcon && getIconComponent(selectedIcon)">
           <component :is="getIconComponent(selectedIcon)" />
         </el-icon>
       </template>
@@ -42,8 +42,8 @@
           :class="['icon-item', { active: selectedIcon === icon }]"
           @click="selectIcon(icon)"
         >
-          <el-icon :size="24">
-            <component :is="icon" />
+          <el-icon :size="24" v-if="getIconComponent(icon)">
+            <component :is="getIconComponent(icon)" />
           </el-icon>
           <span class="icon-name">{{ icon }}</span>
         </div>
@@ -113,7 +113,8 @@ const filteredIcons = computed(() => {
 })
 
 const getIconComponent = (iconName: string) => {
-  return (ElementPlusIconsVue as any)[iconName] || 'CircleCheck'
+  if (!iconName) return null
+  return (ElementPlusIconsVue as any)[iconName] || null
 }
 
 const selectIcon = (icon: string) => {

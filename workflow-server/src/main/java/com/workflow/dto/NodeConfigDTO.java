@@ -51,4 +51,11 @@ public class NodeConfigDTO {
      * 扩展配置JSON
      */
     private String configJson;
+
+    /**
+     * 是否跳过此节点（仅第一个用户任务节点可设置）
+     * true: 流程到达此节点后自动跳转到下一节点
+     * false: 正常处理
+     */
+    private Boolean skipNode;
 }

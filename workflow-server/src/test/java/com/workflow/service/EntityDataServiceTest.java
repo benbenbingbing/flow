@@ -78,7 +78,7 @@ public class EntityDataServiceTest {
         testData.setTitle("测试数据");
         testData.setSubmitterId("user1");
         testData.setSubmitterName("张三");
-        testData.setStatus(EntityData.DataStatus.PENDING);
+        testData.setStatus(EntityData.DataStatus.PENDING.name());
         testData.setDataJson("{\"name\":\"测试\",\"amount\":100}");
     }
 

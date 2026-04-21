@@ -2,12 +2,12 @@ package com.workflow.service;
 
 import com.workflow.entity.ProcessTask;
 import com.workflow.mapper.ProcessTaskMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +22,6 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProcessTaskService {
     
     private final ProcessTaskMapper taskMapper;
@@ -33,6 +32,36 @@ public class ProcessTaskService {
     private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
     private final com.workflow.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
+    private final com.workflow.mapper.SysGroupMapper sysGroupMapper;
+    private final com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper;
+    private final com.workflow.mapper.SysUserMapper sysUserMapper;
+    
+    public ProcessTaskService(ProcessTaskMapper taskMapper,
+                              TaskService flowableTaskService,
+                              RuntimeService runtimeService,
+                              org.flowable.engine.RepositoryService repositoryService,
+                              com.workflow.mapper.NodeConfigMapper nodeConfigMapper,
+                              com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper,
+                              com.workflow.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper,
+                              com.fasterxml.jackson.databind.ObjectMapper objectMapper,
+                              @Lazy com.workflow.service.EntityDataDynamicService entityDataDynamicService,
+                              com.workflow.mapper.SysGroupMapper sysGroupMapper,
+                              com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper,
+                              com.workflow.mapper.SysUserMapper sysUserMapper) {
+        this.taskMapper = taskMapper;
+        this.flowableTaskService = flowableTaskService;
+        this.runtimeService = runtimeService;
+        this.repositoryService = repositoryService;
+        this.nodeConfigMapper = nodeConfigMapper;
+        this.entityDefinitionMapper = entityDefinitionMapper;
+        this.processDefinitionConfigMapper = processDefinitionConfigMapper;
+        this.objectMapper = objectMapper;
+        this.entityDataDynamicService = entityDataDynamicService;
+        this.sysGroupMapper = sysGroupMapper;
+        this.sysUserGroupMapper = sysUserGroupMapper;
+        this.sysUserMapper = sysUserMapper;
+    }
     
     /**
      * 创建流程待办（用于监听器）
@@ -84,9 +113,42 @@ public class ProcessTaskService {
         }
         
         // 设置执行人
-        task.setAssigneeId(delegateTask.getAssignee());
-        if (task.getAssigneeId() == null) {
+        String assignee = delegateTask.getAssignee();
+        task.setAssigneeId(assignee);
+        
+        if (assignee == null || assignee.isEmpty()) {
+            // 如果没有指定执行人，检查候选组和候选人
             task.setAssigneeType("group");
+            try {
+                List<org.flowable.identitylink.api.IdentityLink> identityLinks = flowableTaskService.getIdentityLinksForTask(delegateTask.getId());
+                List<String> groupIds = new java.util.ArrayList<>();
+                List<String> groupMemberNames = new java.util.ArrayList<>();
+                List<String> candidateUserIds = new java.util.ArrayList<>();
+                for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
+                    if (link.getGroupId() != null) {
+                        groupIds.add(link.getGroupId());
+                        String members = getGroupMemberNames(link.getGroupId());
+                        if (members != null && !members.isEmpty()) {
+                            for (String m : members.split(",")) {
+                                if (!groupMemberNames.contains(m)) {
+                                    groupMemberNames.add(m);
+                                }
+                            }
+                        }
+                    } else if (link.getUserId() != null) {
+                        candidateUserIds.add(link.getUserId());
+                    }
+                }
+                if (!groupIds.isEmpty()) {
+                    task.setAssigneeId(String.join(",", groupIds));
+                    task.setAssigneeName(groupMemberNames.isEmpty() ? String.join(",", groupIds) : String.join(",", groupMemberNames));
+                } else if (!candidateUserIds.isEmpty()) {
+                    task.setAssigneeId(String.join(",", candidateUserIds));
+                    task.setAssigneeName(getUserNamesFromIds(candidateUserIds));
+                }
+            } catch (Exception e) {
+                log.warn("获取任务候选人失败: {}", e.getMessage());
+            }
         } else {
             task.setAssigneeType("user");
         }
@@ -176,7 +238,7 @@ public class ProcessTaskService {
             task.setEntityDataId((String) variables.get("entityDataId"));
         }
         
-        // 设置执行人 - 优先使用assignee，否则使用候选人
+        // 设置执行人 - 优先使用assignee，否则使用候选组/候选人
         String assignee = flowableTask.getAssignee();
         task.setAssigneeId(assignee);
         
@@ -187,8 +249,38 @@ public class ProcessTaskService {
         }
         
         if (assignee == null || assignee.isEmpty()) {
-            // 如果没有指定执行人，检查候选人
+            // 如果没有指定执行人，检查候选组和候选人
             task.setAssigneeType("group");
+            try {
+                List<org.flowable.identitylink.api.IdentityLink> identityLinks = flowableTaskService.getIdentityLinksForTask(flowableTask.getId());
+                List<String> groupIds = new java.util.ArrayList<>();
+                List<String> groupMemberNames = new java.util.ArrayList<>();
+                List<String> candidateUserIds = new java.util.ArrayList<>();
+                for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
+                    if (link.getGroupId() != null) {
+                        groupIds.add(link.getGroupId());
+                        String members = getGroupMemberNames(link.getGroupId());
+                        if (members != null && !members.isEmpty()) {
+                            for (String m : members.split(",")) {
+                                if (!groupMemberNames.contains(m)) {
+                                    groupMemberNames.add(m);
+                                }
+                            }
+                        }
+                    } else if (link.getUserId() != null) {
+                        candidateUserIds.add(link.getUserId());
+                    }
+                }
+                if (!groupIds.isEmpty()) {
+                    task.setAssigneeId(String.join(",", groupIds));
+                    task.setAssigneeName(groupMemberNames.isEmpty() ? String.join(",", groupIds) : String.join(",", groupMemberNames));
+                } else if (!candidateUserIds.isEmpty()) {
+                    task.setAssigneeId(String.join(",", candidateUserIds));
+                    task.setAssigneeName(getUserNamesFromIds(candidateUserIds));
+                }
+            } catch (Exception e) {
+                log.warn("获取任务候选人失败: {}", e.getMessage());
+            }
         } else {
             task.setAssigneeType("user");
         }
@@ -248,7 +340,7 @@ public class ProcessTaskService {
         }
         
         // 更新状态
-        Integer status = ProcessTask.STATUS_DONE;
+        String status = ProcessTask.STATUS_DONE;
         if ("transfer".equals(action)) {
             status = ProcessTask.STATUS_TRANSFER;
         } else if ("skip".equals(action)) {
@@ -266,6 +358,31 @@ public class ProcessTaskService {
         
         log.info("完成流程待办: id={}, nodeName={}, action={}, duration={}ms", 
                 task.getId(), task.getNodeName(), action, duration);
+    }
+    
+    /**
+     * 转办任务
+     * 更新本地待办的执行人为转办人
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void transferTask(String taskId, String transferTo, String comment) {
+        ProcessTask task = taskMapper.selectByTaskId(taskId);
+        if (task == null) {
+            log.warn("待办任务不存在: taskId={}", taskId);
+            return;
+        }
+        
+        // 更新执行人为转办人，保持待办状态
+        task.setAssigneeId(transferTo);
+        task.setAssigneeType("user");
+        task.setAction("transfer");
+        task.setComment(comment);
+        task.setUpdateTime(LocalDateTime.now());
+        
+        taskMapper.updateById(task);
+        
+        log.info("转办本地待办: id={}, nodeName={}, transferTo={}", 
+                task.getId(), task.getNodeName(), transferTo);
     }
     
     /**
@@ -310,6 +427,40 @@ public class ProcessTaskService {
                 // 继续同步其他任务
             }
         }
+        
+        // 同步更新实体数据表的当前任务信息
+        try {
+            updateEntityCurrentTask(processInstanceId);
+        } catch (Exception e) {
+            log.warn("更新实体当前任务失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 更新实体数据表的当前任务ID和名称
+     */
+    private void updateEntityCurrentTask(String processInstanceId) {
+        Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
+        String entityCode = (String) variables.get("entityCode");
+        String entityDataId = (String) variables.get("entityDataId");
+        if (entityCode == null || entityDataId == null) {
+            return;
+        }
+        
+        // 查询当前活跃任务（取第一个）
+        List<Task> activeTasks = flowableTaskService.createTaskQuery()
+                .processInstanceId(processInstanceId)
+                .active()
+                .list();
+        
+        String currentTaskId = null;
+        String currentTaskName = null;
+        if (!activeTasks.isEmpty()) {
+            currentTaskId = activeTasks.get(0).getId();
+            currentTaskName = activeTasks.get(0).getName();
+        }
+        
+        entityDataDynamicService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName);
     }
     
     /**
@@ -381,6 +532,58 @@ public class ProcessTaskService {
      */
     public ProcessTask getTaskByTaskId(String taskId) {
         return taskMapper.selectByTaskId(taskId);
+    }
+
+    /**
+     * 获取组成员昵称列表（去重）
+     */
+    private String getGroupMemberNames(String groupCode) {
+        try {
+            com.workflow.entity.SysGroup group = sysGroupMapper.selectByGroupCode(groupCode);
+            if (group == null) {
+                return groupCode;
+            }
+            List<String> userIds = sysUserGroupMapper.selectUserIdsByGroupId(group.getId());
+            if (userIds == null || userIds.isEmpty()) {
+                return group.getGroupName();
+            }
+            List<String> nicknames = new java.util.ArrayList<>();
+            for (String userId : userIds) {
+                com.workflow.entity.SysUser user = sysUserMapper.selectById(userId);
+                if (user != null) {
+                    String name = user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : user.getUsername();
+                    if (!nicknames.contains(name)) {
+                        nicknames.add(name);
+                    }
+                }
+            }
+            return nicknames.isEmpty() ? group.getGroupName() : String.join(",", nicknames);
+        } catch (Exception e) {
+            log.warn("获取组成员失败: {}", groupCode, e);
+            return groupCode;
+        }
+    }
+
+    /**
+     * 根据用户ID/用户名列表获取昵称列表
+     */
+    private String getUserNamesFromIds(List<String> idsOrNames) {
+        List<String> names = new java.util.ArrayList<>();
+        for (String value : idsOrNames) {
+            try {
+                com.workflow.entity.SysUser user = sysUserMapper.selectByUsername(value);
+                if (user == null) {
+                    user = sysUserMapper.selectById(value);
+                }
+                String name = user != null && user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : value;
+                if (!names.contains(name)) {
+                    names.add(name);
+                }
+            } catch (Exception e) {
+                names.add(value);
+            }
+        }
+        return String.join(",", names);
     }
 
 }

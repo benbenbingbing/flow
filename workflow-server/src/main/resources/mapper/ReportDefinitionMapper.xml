@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workflow.mapper.ReportDefinitionMapper">
+
+    <!-- 分页查询报表列表 -->
+    <select id="selectReportList" resultType="com.workflow.entity.ReportDefinition">
+        SELECT r.*, c.category_name as categoryName 
+        FROM report_definition r
+        LEFT JOIN report_category c ON r.category_id = c.id
+        WHERE r.status = 'ACTIVE'
+        <if test="keyword != null and keyword != ''">
+            AND (r.report_name LIKE CONCAT('%', #{keyword}, '%') OR r.report_code LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="reportType != null and reportType != ''">
+            AND r.report_type = #{reportType}
+        </if>
+        <if test="categoryId != null and categoryId != ''">
+            AND r.category_id = #{categoryId}
+        </if>
+        ORDER BY r.created_at DESC
+    </select>
+
+</mapper>

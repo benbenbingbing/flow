@@ -209,4 +209,17 @@ public class ProcessDefinitionController {
         processService.deleteVersion(versionId);
         return ApiResponse.success();
     }
+    
+    /**
+     * 测试节点解析（开发测试用）
+     */
+    @PostMapping("/{processId}/test-parse")
+    public ApiResponse<String> testParseNodes(@PathVariable String processId) {
+        try {
+            processService.testParseNodes(processId);
+            return ApiResponse.success("解析完成，请查看日志");
+        } catch (Exception e) {
+            return ApiResponse.error("解析失败: " + e.getMessage());
+        }
+    }
 }

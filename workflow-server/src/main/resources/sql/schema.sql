@@ -74,10 +74,12 @@ CREATE TABLE IF NOT EXISTS node_config (
     node_type VARCHAR(50) NOT NULL COMMENT '节点类型',
     process_config_id BIGINT NOT NULL COMMENT '所属流程配置ID',
     config_json TEXT COMMENT '扩展配置JSON',
+    skip_node TINYINT(1) DEFAULT 0 COMMENT '是否跳过此节点（仅第一个用户任务节点可设置）：0-不跳过，1-跳过',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_process_config_id (process_config_id),
-    INDEX idx_node_id (node_id)
+    INDEX idx_node_id (node_id),
+    INDEX idx_skip_node (skip_node)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程节点配置表';
 
 -- 审批人配置表

@@ -21,6 +21,26 @@
           <el-icon><Share /></el-icon>
           <span>流程管理</span>
         </el-menu-item>
+        <el-menu-item index="/process-center">
+          <el-icon><Bell /></el-icon>
+          <span>流程中心</span>
+        </el-menu-item>
+        <el-menu-item index="/view-engine">
+          <el-icon><View /></el-icon>
+          <span>视图引擎</span>
+        </el-menu-item>
+        <el-menu-item index="/report-engine">
+          <el-icon><DataLine /></el-icon>
+          <span>报表引擎</span>
+        </el-menu-item>
+        <el-menu-item index="/service-orchestration">
+          <el-icon><Link /></el-icon>
+          <span>服务编排</span>
+        </el-menu-item>
+        <el-menu-item index="/script-engine">
+          <el-icon><EditPen /></el-icon>
+          <span>脚本引擎</span>
+        </el-menu-item>
         <el-sub-menu index="/entity">
           <template #title>
             <el-icon><Box /></el-icon>
@@ -90,7 +110,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding } from '@element-plus/icons-vue'
+import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Bell, View, DataLine, Link, EditPen } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
 

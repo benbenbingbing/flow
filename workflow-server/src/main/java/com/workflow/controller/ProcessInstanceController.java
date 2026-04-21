@@ -87,4 +87,16 @@ public class ProcessInstanceController {
         String reason = requestBody != null ? requestBody.get("reason") : null;
         return processInstanceService.terminateProcess(processInstanceId, userId, reason);
     }
+    
+    /**
+     * 获取流程实例的BPMN XML
+     * 
+     * @param processInstanceId 流程实例ID
+     * @return BPMN XML字符串
+     */
+    @GetMapping("/{processInstanceId}/xml")
+    public Result<String> getProcessXml(@PathVariable String processInstanceId) {
+        String xml = processInstanceService.getBpmnXmlByProcessInstanceId(processInstanceId);
+        return Result.success(xml);
+    }
 }

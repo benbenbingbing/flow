@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS `node_config` (
     `node_name` VARCHAR(200) COMMENT '节点名称',
     `node_type` VARCHAR(50) COMMENT '节点类型：UserTask/ServiceTask/Gateway等',
     `config_json` TEXT COMMENT '配置JSON（扩展用）',
+    `skip_node` TINYINT DEFAULT 0 COMMENT '是否跳过此节点（仅第一个用户任务节点可设置）：0-不跳过，1-跳过',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -78,6 +79,7 @@ CREATE TABLE IF NOT EXISTS `node_config` (
     UNIQUE KEY `uk_process_node` (`process_config_id`, `node_id`),
     KEY `idx_node_id` (`node_id`),
     KEY `idx_node_type` (`node_type`),
+    KEY `idx_skip_node` (`skip_node`),
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='节点配置表';
 

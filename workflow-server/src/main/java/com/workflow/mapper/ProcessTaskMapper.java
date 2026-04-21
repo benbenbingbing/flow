@@ -18,13 +18,29 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     /**
      * 查询待办列表（根据用户ID查询用户的待办）
      */
-    @Select("SELECT * FROM process_task WHERE (assignee_id = #{userId} OR assignee_type = 'group') AND status = 0 AND deleted = 0 ORDER BY create_time DESC")
+    @Select("SELECT pt.* FROM process_task pt " +
+            "WHERE pt.status = 'todo' AND pt.deleted = 0 " +
+            "AND (" +
+            "  pt.assignee_id = #{userId} " +
+            "  OR pt.assignee_id COLLATE utf8mb4_unicode_ci = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 LIMIT 1) " +
+            "  OR (" +
+            "    pt.assignee_type = 'group' " +
+            "    AND EXISTS (" +
+            "      SELECT 1 FROM sys_group g " +
+            "      INNER JOIN sys_user_group ug ON ug.group_id = g.id " +
+            "      INNER JOIN sys_user u ON u.id = ug.user_id " +
+            "      WHERE u.username = #{userId} " +
+            "        AND g.deleted = 0 " +
+            "        AND FIND_IN_SET(g.group_code COLLATE utf8mb4_0900_ai_ci, pt.assignee_id) > 0" +
+            "    )" +
+            "  )" +
+            ") ORDER BY pt.create_time DESC")
     List<ProcessTask> selectTodoByUser(@Param("userId") String userId);
     
     /**
      * 查询已办列表（根据用户ID查询用户已完成的）
      */
-    @Select("SELECT * FROM process_task WHERE assignee_id = #{userId} AND status = 1 AND deleted = 0 ORDER BY end_time DESC")
+    @Select("SELECT * FROM process_task pt WHERE (pt.assignee_id = #{userId} OR pt.assignee_id COLLATE utf8mb4_unicode_ci = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 LIMIT 1)) AND pt.status = 'done' AND pt.deleted = 0 ORDER BY pt.end_time DESC")
     List<ProcessTask> selectDoneByUser(@Param("userId") String userId);
     
     /**
@@ -36,7 +52,7 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     /**
      * 根据流程实例ID查询当前待办任务（status=0）
      */
-    @Select("SELECT * FROM process_task WHERE process_instance_id = #{processInstanceId} AND status = 0 AND deleted = 0 LIMIT 1")
+    @Select("SELECT * FROM process_task WHERE process_instance_id = #{processInstanceId} AND status = 'todo' AND deleted = 0 LIMIT 1")
     ProcessTask selectTodoTaskByProcessInstance(@Param("processInstanceId") String processInstanceId);
     
     /**
@@ -50,19 +66,34 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
      */
     @Update("UPDATE process_task SET status = #{status}, action = #{action}, comment = #{comment}, " +
             "end_time = NOW(), duration = #{duration} WHERE id = #{id}")
-    int completeTask(@Param("id") Long id, @Param("status") Integer status, 
+    int completeTask(@Param("id") Long id, @Param("status") String status, 
                      @Param("action") String action, @Param("comment") String comment,
                      @Param("duration") Long duration);
     
     /**
      * 统计用户待办数
      */
-    @Select("SELECT COUNT(*) FROM process_task WHERE assignee_id = #{userId} AND status = 0 AND deleted = 0")
+    @Select("SELECT COUNT(*) FROM process_task pt " +
+            "WHERE pt.status = 'todo' AND pt.deleted = 0 " +
+            "AND (" +
+            "  pt.assignee_id = #{userId} " +
+            "  OR (" +
+            "    pt.assignee_type = 'group' " +
+            "    AND EXISTS (" +
+            "      SELECT 1 FROM sys_group g " +
+            "      INNER JOIN sys_user_group ug ON ug.group_id = g.id " +
+            "      INNER JOIN sys_user u ON u.id = ug.user_id " +
+            "      WHERE u.username = #{userId} " +
+            "        AND g.deleted = 0 " +
+            "        AND FIND_IN_SET(g.group_code COLLATE utf8mb4_0900_ai_ci, pt.assignee_id) > 0" +
+            "    )" +
+            "  )" +
+            ")")
     Long countTodoByUser(@Param("userId") String userId);
     
     /**
      * 统计用户已办数
      */
-    @Select("SELECT COUNT(*) FROM process_task WHERE assignee_id = #{userId} AND status = 1 AND deleted = 0")
+    @Select("SELECT COUNT(*) FROM process_task WHERE assignee_id = #{userId} AND status = 'done' AND deleted = 0")
     Long countDoneByUser(@Param("userId") String userId);
 }

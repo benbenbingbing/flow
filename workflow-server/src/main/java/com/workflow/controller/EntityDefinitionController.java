@@ -1,5 +1,6 @@
 package com.workflow.controller;
 
+import com.workflow.common.UserContext;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.service.EntityDefinitionService;
@@ -74,7 +75,9 @@ public class EntityDefinitionController {
      */
     @PostMapping("/{id}/publish")
     public ApiResponse<EntityDefinitionDTO> publish(@PathVariable String id) {
-        return ApiResponse.success(entityService.publish(id));
+        String userId = UserContext.getUserId();
+        String userName = UserContext.getUsername();
+        return ApiResponse.success(entityService.publish(id, userId, userName));
     }
     
     /**

@@ -86,6 +86,13 @@ public class SysMenu {
     private String query;
     
     /**
+     * 关联实体编码（用于实体数据菜单）
+     * 当菜单类型为C且配置了此字段时，点击菜单将跳转到对应实体的数据列表
+     */
+    @TableField("entity_code")
+    private String entityCode;
+    
+    /**
      * 是否删除：0-未删除 1-已删除
      */
     @TableLogic
@@ -224,6 +231,14 @@ public class SysMenu {
     
     public void setQuery(String query) {
         this.query = query;
+    }
+    
+    public String getEntityCode() {
+        return entityCode;
+    }
+    
+    public void setEntityCode(String entityCode) {
+        this.entityCode = entityCode;
     }
     
     public Integer getDeleted() {

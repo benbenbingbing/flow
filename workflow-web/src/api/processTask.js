@@ -72,6 +72,32 @@ export function terminateProcess(processInstanceId, reason) {
   return request.post(`/process-instance/${processInstanceId}/terminate`, { reason })
 }
 
+/**
+ * 驳回任务（驳回到发起人）
+ * @param {string} taskId - 任务ID
+ * @param {Object} data - {comment: "驳回原因"}
+ */
+export function rejectTask(taskId, data) {
+  return request.post(`/process-rollback/reject/${taskId}`, data)
+}
+
+/**
+ * 重新提交流程（发起人在被驳回后使用）
+ * @param {string} processInstanceId - 流程实例ID
+ * @param {Object} data - {formData: {}, comment: "重新提交备注"}
+ */
+export function resubmitProcess(processInstanceId, data) {
+  return request.post(`/process-rollback/resubmit/${processInstanceId}`, data)
+}
+
+/**
+ * 检查流程是否被驳回
+ * @param {string} processInstanceId - 流程实例ID
+ */
+export function checkRejectedStatus(processInstanceId) {
+  return request.get(`/process-rollback/rejected-status/${processInstanceId}`)
+}
+
 // 统一导出
 export const processTaskApi = {
   getTodoList,
@@ -82,5 +108,8 @@ export const processTaskApi = {
   withdrawProcess,
   getProcessHistory,
   getMyStartedList,
-  terminateProcess
+  terminateProcess,
+  rejectTask,
+  resubmitProcess,
+  checkRejectedStatus
 }

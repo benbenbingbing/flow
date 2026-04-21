@@ -88,6 +88,26 @@ public class TaskVO {
     private String businessKey;
     
     /**
+     * 数据标题（实体数据的name字段）
+     */
+    private String dataName;
+    
+    /**
+     * 数据编码（实体数据的code字段）
+     */
+    private String code;
+    
+    /**
+     * 数据名称（实体数据的name字段，用于显示标题）
+     */
+    private String name;
+    
+    /**
+     * 当前任务名称（实体数据的current_task_name字段）
+     */
+    private String currentTaskName;
+    
+    /**
      * 流程状态
      */
     private String processStatus;

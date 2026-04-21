@@ -73,6 +73,47 @@ public class ProcessProgressDTO {
     private Map<String, AssigneeInfoDTO> nodeAssigneeMap;
     
     /**
+     * 实体数据
+     */
+    private Map<String, Object> entityData;
+    
+    /**
+     * 表单配置
+     */
+    private FormConfigDTO formConfig;
+    
+    /**
+     * 表单配置DTO
+     */
+    @Data
+    public static class FormConfigDTO {
+        /**
+         * 表单ID
+         */
+        private String formId;
+        
+        /**
+         * 表单名称
+         */
+        private String formName;
+        
+        /**
+         * 表单Key
+         */
+        private String formKey;
+        
+        /**
+         * 布局类型
+         */
+        private String layoutType;
+        
+        /**
+         * 表单字段列表
+         */
+        private List<Map<String, Object>> fields;
+    }
+    
+    /**
      * 节点历史记录
      */
     @Data
@@ -121,6 +162,16 @@ public class ProcessProgressDTO {
          * 执行结果：COMPLETED-完成，ACTIVE-进行中
          */
         private String status;
+        
+        /**
+         * 处理方式：APPROVED-同意，REJECTED-驳回，TRANSFERRED-转办
+         */
+        private String action;
+        
+        /**
+         * 审批意见/备注
+         */
+        private String comment;
     }
     
     /**

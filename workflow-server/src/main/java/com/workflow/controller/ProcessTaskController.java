@@ -30,6 +30,10 @@ public class ProcessTaskController {
     private final ProcessTaskService processTaskService;
     private final TaskDetailService taskDetailService;
     private final TaskActionService taskActionService;
+    private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
+    private final com.workflow.service.EntityDataService entityDataService;
+    private final org.flowable.engine.HistoryService historyService;
+    private final com.workflow.service.SysUserService sysUserService;
 
     /**
      * 获取用户待办列表（分页，兼容前端TaskVO格式）
@@ -183,6 +187,31 @@ public class ProcessTaskController {
     }
 
     /**
+     * 撤回流程
+     * 发起人可以在流程未完成前撤回
+     */
+    @PostMapping("/withdraw")
+    public Result<Void> withdrawProcess(@RequestBody Map<String, String> params) {
+        String processInstanceId = params.get("processInstanceId");
+        String reason = params.get("reason");
+
+        if (processInstanceId == null || processInstanceId.isEmpty()) {
+            return Result.error("流程实例ID不能为空");
+        }
+
+        try {
+            String currentUser = UserContext.getUsername();
+            if (currentUser == null) {
+                currentUser = "admin";
+            }
+            taskActionService.withdrawProcess(processInstanceId, currentUser, reason);
+            return Result.success();
+        } catch (Exception e) {
+            return Result.error("撤回失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 将ProcessTask转换为TaskVO
      */
     private TaskVO convertToTaskVO(ProcessTask task) {
@@ -194,7 +223,23 @@ public class ProcessTaskController {
         vo.setProcessName(task.getProcessName());
         vo.setAssignee(task.getAssigneeId());
         vo.setAssigneeName(task.getAssigneeName()); // 执行人姓名
-        vo.setStartUserName(task.getAssigneeName()); // 发起人名称（复用）
+        
+        // 发起人名称从流程实例历史记录中查询，不能复用 assigneeName（候选组任务时 assigneeName 是组名）
+        String startUserName = null;
+        try {
+            org.flowable.engine.history.HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .singleResult();
+            if (hpi != null && hpi.getStartUserId() != null) {
+                startUserName = sysUserService.getNicknameByUsername(hpi.getStartUserId());
+                if (startUserName == null) {
+                    startUserName = hpi.getStartUserId();
+                }
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        vo.setStartUserName(startUserName);
         vo.setBusinessKey(task.getBusinessKey());
 
         // 时间转换
@@ -213,6 +258,35 @@ public class ProcessTaskController {
         vo.setEntityCode(task.getEntityCode());
         vo.setEntityDataId(task.getEntityDataId());
         vo.setFormKey(task.getFormKey());
+
+        // 查询实体数据填充 name、code、currentTaskName
+        try {
+            String entityCode = task.getEntityCode();
+            String entityDataId = task.getEntityDataId();
+            if (entityDataId != null) {
+                com.workflow.dto.EntityDataDTO entityData = null;
+                if (entityCode != null) {
+                    try {
+                        entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+                    } catch (Exception ex) {
+                        // fallback
+                    }
+                }
+                if (entityData == null) {
+                    entityData = entityDataService.findById(entityDataId);
+                }
+                if (entityData != null) {
+                    if (entityData.getData() != null) {
+                        vo.setDataName((String) entityData.getData().get("name"));
+                    }
+                    vo.setName(entityData.getName());
+                    vo.setCode(entityData.getCode());
+                    vo.setCurrentTaskName(entityData.getCurrentTaskName());
+                }
+            }
+        } catch (Exception e) {
+            // ignore
+        }
 
         return vo;
     }

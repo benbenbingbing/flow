@@ -40,6 +40,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
     private final com.workflow.service.ProcessTaskService processTaskService;
     private final com.workflow.service.EntityFormService entityFormService;
     private final com.workflow.service.EntityDataService entityDataService;
+    private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     // 当前用户（模拟，实际应从安全上下文获取）
@@ -230,8 +231,8 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
         
         switch (action) {
             case "approve":
-                // 通过 - 设置流程变量
-                flowableTaskService.setVariable(taskId, "approved", true);
+                // 通过 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
+                runtimeService.setVariable(processInstanceId, "approved", true);
                 
                 // 检查是否是多实例任务（会签/或签）
                 if (isMultiInstanceTask(task)) {
@@ -252,8 +253,8 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 break;
                 
             case "reject":
-                // 驳回 - 设置流程变量
-                flowableTaskService.setVariable(taskId, "approved", false);
+                // 驳回 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
+                runtimeService.setVariable(processInstanceId, "approved", false);
                 
                 // 如果是多实例任务，直接结束整个多实例
                 if (isMultiInstanceTask(task)) {
@@ -279,10 +280,18 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 if (!StringUtils.hasText(transferTo)) {
                     throw new RuntimeException("转办人不能为空");
                 }
+                
+                // 添加转办评论记录
+                String transferComment = "转办给: " + transferTo;
+                if (StringUtils.hasText(comment)) {
+                    transferComment += "，意见: " + comment;
+                }
+                flowableTaskService.addComment(taskId, processInstanceId, transferComment);
+                
                 flowableTaskService.setAssignee(taskId, transferTo);
                 
-                // 更新本地待办状态为转办
-                processTaskService.completeTask(taskId, "transfer", comment);
+                // 更新本地待办的执行人为转办人，保持待办状态
+                processTaskService.transferTask(taskId, transferTo, comment);
                 
                 log.info("任务转办: taskId={}, from={}, to={}", taskId, CURRENT_USER, transferTo);
                 break;
@@ -542,6 +551,35 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
             vo.setBusinessKey(hpi.getBusinessKey());
         }
         
+        // 获取数据标题、编码、当前任务名（从实体数据）
+        try {
+            String entityCode = (String) runtimeService.getVariable(task.getProcessInstanceId(), "entityCode");
+            String entityDataId = (String) runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId");
+            if (entityDataId != null) {
+                com.workflow.dto.EntityDataDTO entityData = null;
+                if (entityCode != null) {
+                    try {
+                        entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+                    } catch (Exception ex) {
+                        // fallback to entityDataService
+                    }
+                }
+                if (entityData == null) {
+                    entityData = entityDataService.findById(entityDataId);
+                }
+                if (entityData != null) {
+                    if (entityData.getData() != null) {
+                        vo.setDataName((String) entityData.getData().get("name"));
+                    }
+                    vo.setName(entityData.getName());
+                    vo.setCode(entityData.getCode());
+                    vo.setCurrentTaskName(entityData.getCurrentTaskName());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("获取数据标题失败: {}", e.getMessage());
+        }
+        
         return vo;
     }
 
@@ -579,6 +617,44 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
         
         // 获取审批意见（简化处理）
         vo.setResult("approve"); // 默认可通过变量判断
+        
+        // 获取数据标题、编码、当前任务名（从历史变量）
+        try {
+            var entityCodeVar = historyService.createHistoricVariableInstanceQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .variableName("entityCode")
+                    .singleResult();
+            String entityCode = entityCodeVar != null ? (String) entityCodeVar.getValue() : null;
+            
+            var entityDataVar = historyService.createHistoricVariableInstanceQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .variableName("entityDataId")
+                    .singleResult();
+            String entityDataId = entityDataVar != null ? (String) entityDataVar.getValue() : null;
+            if (entityDataId != null) {
+                com.workflow.dto.EntityDataDTO entityData = null;
+                if (entityCode != null) {
+                    try {
+                        entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+                    } catch (Exception ex) {
+                        // fallback to entityDataService
+                    }
+                }
+                if (entityData == null) {
+                    entityData = entityDataService.findById(entityDataId);
+                }
+                if (entityData != null) {
+                    if (entityData.getData() != null) {
+                        vo.setDataName((String) entityData.getData().get("name"));
+                    }
+                    vo.setName(entityData.getName());
+                    vo.setCode(entityData.getCode());
+                    vo.setCurrentTaskName(entityData.getCurrentTaskName());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("获取数据标题失败: {}", e.getMessage());
+        }
         
         return vo;
     }

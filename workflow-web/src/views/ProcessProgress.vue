@@ -30,7 +30,7 @@
     
     <div class="progress-container">
       <div class="canvas-wrapper">
-        <div ref="canvasRef" class="canvas"></div>
+        <VueBpmnViewer ref="viewerRef" :xml="bpmnXml" navigated @imported="onViewerImported" class="canvas" />
         
         <!-- 节点悬停提示框 -->
         <div v-if="tooltip.visible" 
@@ -86,7 +86,7 @@
             <el-card v-for="task in progressData.tasks" :key="task.taskId" class="task-card" shadow="hover">
               <div class="task-name">{{ task.taskName }}</div>
               <div class="task-info">
-                <span>处理人: {{ task.assignee || '未分配' }}</span>
+                <span>处理人: {{ task.assigneeName || task.assignee || '未分配' }}</span>
                 <span class="task-time">{{ task.createTime }}</span>
               </div>
             </el-card>
@@ -108,8 +108,8 @@
                   {{ node.status === 'COMPLETED' ? '已完成' : '进行中' }}
                 </el-tag>
               </div>
-              <div v-if="node.assignee" class="assignee-info">
-                执行人: {{ node.assignee }}
+              <div v-if="node.assignee || node.assigneeName" class="assignee-info">
+                执行人: {{ node.assigneeName || node.assignee }}
               </div>
               <div v-if="node.duration" class="duration-info">
                 耗时: {{ formatDuration(node.duration) }}
@@ -127,21 +127,16 @@
 import { ref, onMounted, nextTick, watch, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import BpmnViewer from 'bpmn-js/lib/NavigatedViewer'
-import BpmnModdle from 'bpmn-moddle'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
-
-import 'bpmn-js/dist/assets/diagram-js.css'
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-codes.css'
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css'
+import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 
 const route = useRoute()
 const processInstanceId = route.params.instanceId
 
-const canvasRef = ref()
-const bpmnViewer = ref(null)
+const viewerRef = ref()
+const bpmnXml = ref('')
+let currentViewer = null
 const progressData = ref({
   completedNodes: [],
   activeNodes: [],
@@ -189,10 +184,16 @@ const COLORS = {
   }
 }
 
-const initBpmnViewer = () => {
-  bpmnViewer.value = new BpmnViewer({
-    container: canvasRef.value
-  })
+const onViewerImported = ({ viewer }) => {
+  currentViewer = viewer
+  // 延迟高亮显示节点状态，确保 DOM 渲染完成
+  setTimeout(() => {
+    nextTick(() => {
+      highlightProcess(viewer)
+    })
+  }, 300)
+  // 添加鼠标事件监听
+  addMouseEventListeners(viewer)
 }
 
 const loadProcessProgress = async () => {
@@ -209,7 +210,7 @@ const loadProcessProgress = async () => {
     
     if (data.bpmnXml) {
       console.log('BPMN XML长度:', data.bpmnXml.length)
-      await importXML(data.bpmnXml)
+      bpmnXml.value = data.bpmnXml
     } else {
       ElMessage.warning('无法获取流程图')
     }
@@ -245,52 +246,20 @@ const addLayoutToXml = async (xml) => {
   }
 }
 
-const importXML = async (xml) => {
-  try {
-    if (!bpmnViewer.value) {
-      console.error('BPMN Viewer 未初始化')
-      ElMessage.error('流程图查看器未初始化')
-      return
-    }
-    
-    console.log('开始导入XML...')
-    
-    // 为 XML 添加布局信息（如果缺少）
-    const xmlWithLayout = await addLayoutToXml(xml)
-    
-    const result = await bpmnViewer.value.importXML(xmlWithLayout)
-    console.log('XML导入成功:', result)
-    
-    const canvas = bpmnViewer.value.get('canvas')
-    canvas.zoom('fit-viewport', 'auto')
-    
-    // 延迟高亮显示节点状态，确保 DOM 渲染完成
-    setTimeout(() => {
-      nextTick(() => {
-        highlightProcess()
-      })
-    }, 300)
-    
-    // 添加鼠标事件监听
-    addMouseEventListeners()
-  } catch (error) {
-    console.error('导入XML失败:', error)
-    ElMessage.error('导入流程图失败: ' + (error.message || '请检查流程定义'))
-  }
-}
+
 
 /**
  * 高亮显示流程节点和连线
  */
-const highlightProcess = () => {
+const highlightProcess = (viewerInstance = currentViewer) => {
   try {
-    if (!bpmnViewer.value) {
+    if (!viewerInstance) {
       console.warn('BPMN Viewer 未初始化，跳过高亮')
       return
     }
     
-    const canvas = bpmnViewer.value.get('canvas')
-    const elementRegistry = bpmnViewer.value.get('elementRegistry')
+    const canvas = viewerInstance.get('canvas')
+    const elementRegistry = viewerInstance.get('elementRegistry')
     
     if (!canvas || !elementRegistry) {
       console.warn('Canvas 或 ElementRegistry 未初始化')
@@ -429,14 +398,14 @@ const setFlowStyle = (canvas, element, colorConfig, isExecuted = false) => {
 /**
  * 添加鼠标事件监听
  */
-const addMouseEventListeners = () => {
+const addMouseEventListeners = (viewerInstance = currentViewer) => {
   try {
-    if (!bpmnViewer.value) {
+    if (!viewerInstance) {
       console.warn('BPMN Viewer 未初始化，跳过事件监听')
       return
     }
     
-    const eventBus = bpmnViewer.value.get('eventBus')
+    const eventBus = viewerInstance.get('eventBus')
     if (!eventBus) {
       console.warn('EventBus 未初始化')
       return
@@ -591,7 +560,6 @@ watch(() => progressData.value, (newVal) => {
 
 onMounted(() => {
   nextTick(() => {
-    initBpmnViewer()
     loadProcessProgress()
   })
 })
@@ -847,25 +815,6 @@ onMounted(() => {
   fill: #f5f5f5 !important;
   stroke: #d9d9d9 !important;
   stroke-width: 1px !important;
-}
-
-/* 连线颜色 - 只改变颜色不改变宽度，保留默认箭头 */
-:deep(.djs-connection.executed) {
-  --connection-stroke: #52c41a;
-}
-
-:deep(.djs-connection:not(.executed)) {
-  --connection-stroke: #d9d9d9;
-}
-
-/* 已执行的连线 - 绿色，不使用 !important 避免破坏 marker */
-:deep(.djs-connection.executed .djs-visual > path) {
-  stroke: #52c41a;
-}
-
-/* 待执行的连线 - 灰色 */
-:deep(.djs-connection:not(.executed) .djs-visual > path) {
-  stroke: #d9d9d9;
 }
 
 /* 节点徽章动画 */

@@ -63,8 +63,8 @@ public class ProcessTask {
     /** 表单数据(JSON) */
     private String formData;
     
-    /** 状态: 0-待办 1-已办 2-转办 3-跳过 */
-    private Integer status;
+    /** 状态: todo-待办 done-已办 transfer-转办 skip-跳过 */
+    private String status;
     
     /** 操作: approve/reject/transfer/skip */
     private String action;
@@ -84,6 +84,15 @@ public class ProcessTask {
     /** 处理耗时(毫秒) */
     private Long duration;
     
+    /** 超时时间(小时) */
+    private Integer timeoutHours;
+    
+    /** 超时处理策略: REMIND-提醒, TRANSFER-转办, AUTO_APPROVE-自动通过, AUTO_REJECT-自动驳回 */
+    private String timeoutAction;
+    
+    /** 是否已处理超时 */
+    private Boolean timeoutHandled;
+    
     private LocalDateTime createTime;
     
     private LocalDateTime updateTime;
@@ -92,10 +101,10 @@ public class ProcessTask {
     private Integer deleted;
     
     // 状态常量
-    public static final int STATUS_TODO = 0;
-    public static final int STATUS_DONE = 1;
-    public static final int STATUS_TRANSFER = 2;
-    public static final int STATUS_SKIP = 3;
+    public static final String STATUS_TODO = "todo";
+    public static final String STATUS_DONE = "done";
+    public static final String STATUS_TRANSFER = "transfer";
+    public static final String STATUS_SKIP = "skip";
     
     // 操作常量
     public static final String ACTION_APPROVE = "approve";

@@ -187,7 +187,7 @@
       </el-descriptions>
       <div class="bpmn-preview">
         <div class="preview-title">流程图预览</div>
-        <div class="bpmn-container" ref="versionBpmnRef"></div>
+        <VueBpmnViewer :xml="versionBpmnXml" class="bpmn-container" />
       </div>
     </el-dialog>
     
@@ -233,7 +233,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import { processApi } from '@/api/process'
 import { flowActionApi } from '@/api/flowAction'
-import BpmnViewer from 'bpmn-js/lib/Viewer'
+import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -253,8 +253,7 @@ const currentProcess = ref(null)
 // 版本详情
 const versionDetailVisible = ref(false)
 const currentVersion = ref(null)
-const versionBpmnRef = ref(null)
-let bpmnViewer = null
+const versionBpmnXml = ref('')
 
 // 发布对话框
 const publishDialogVisible = ref(false)
@@ -427,26 +426,8 @@ const handleViewVersions = async (row) => {
 // 查看版本详情
 const handleViewVersionDetail = async (row) => {
   currentVersion.value = row
+  versionBpmnXml.value = row.bpmnXml || ''
   versionDetailVisible.value = true
-  
-  await nextTick()
-  
-  // 初始化 BPMN Viewer
-  if (bpmnViewer) {
-    bpmnViewer.destroy()
-  }
-  
-  bpmnViewer = new BpmnViewer({
-    container: versionBpmnRef.value
-  })
-  
-  try {
-    await bpmnViewer.importXML(row.bpmnXml)
-    const canvas = bpmnViewer.get('canvas')
-    canvas.zoom('fit-viewport', 'auto')
-  } catch (error) {
-    console.error('渲染 BPMN 失败:', error)
-  }
 }
 
 // 查看版本流程动作

@@ -42,6 +42,17 @@ public class ProcessInstanceService {
     private final RepositoryService repositoryService;
     private final TaskService taskService;
     private final ProcessDefinitionConfigMapper processConfigMapper;
+    private final SysUserService sysUserService;
+    private final com.workflow.service.EntityDataService entityDataService;
+    private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
+    private final com.workflow.service.EntityFormService entityFormService;
+    private final com.workflow.mapper.NodeConfigMapper nodeConfigMapper;
+    private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
+    private final com.workflow.mapper.ProcessTaskMapper processTaskMapper;
+    private final com.workflow.mapper.SysGroupMapper sysGroupMapper;
+    private final com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper;
+    private final com.workflow.mapper.SysUserMapper sysUserMapper;
+    private final com.workflow.mapper.ProcessOperationLogMapper operationLogMapper;
     
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
@@ -193,14 +204,180 @@ public class ProcessInstanceService {
                     dto.setNodeId(h.getActivityId());
                     dto.setNodeName(h.getActivityName());
                     dto.setNodeType(h.getActivityType());
-                    dto.setAssignee(h.getAssignee());
+                    String assigneeId = h.getAssignee();
+                    dto.setAssignee(assigneeId);
+                    // 将用户ID转换为用户名称
+                    if (assigneeId != null && !assigneeId.isEmpty() && !assigneeId.startsWith("${")) {
+                        String nickname = sysUserService.getNicknameByUsername(assigneeId);
+                        if (nickname != null && !nickname.equals(assigneeId)) {
+                            dto.setAssigneeName(nickname);
+                        }
+                    }
                     dto.setStartTime(h.getStartTime() != null ? formatDate(h.getStartTime()) : null);
                     dto.setEndTime(h.getEndTime() != null ? formatDate(h.getEndTime()) : null);
                     dto.setDuration(h.getDurationInMillis());
                     dto.setStatus(h.getEndTime() != null ? "COMPLETED" : "ACTIVE");
+                    
+                    // 获取任务处理方式
+                    if (h.getEndTime() != null && "userTask".equals(h.getActivityType())) {
+                        // 查询任务评论判断处理方式
+                        try {
+                            List<org.flowable.engine.task.Comment> comments = taskService.getTaskComments(h.getTaskId());
+                            String commentMsg = comments.isEmpty() ? null : comments.get(0).getFullMessage();
+                            if (commentMsg != null && commentMsg.contains("转办给:")) {
+                                dto.setAction("TRANSFERRED");
+                            } else {
+                                // 优先从本地 process_task 表获取每个任务的实际 action（最准确）
+                                String action = null;
+                                var localTask = processTaskMapper.selectByTaskId(h.getTaskId());
+                                if (localTask != null && localTask.getAction() != null) {
+                                    action = localTask.getAction();
+                                    if (localTask.getComment() != null) {
+                                        dto.setComment(localTask.getComment());
+                                    }
+                                } else {
+                                    // fallback：从历史变量获取（按任务ID查）
+                                    var actionVar = historyService.createHistoricVariableInstanceQuery()
+                                            .taskId(h.getTaskId())
+                                            .variableName("action")
+                                            .singleResult();
+                                    action = actionVar != null ? (String) actionVar.getValue() : null;
+                                }
+                                if ("approve".equals(action)) {
+                                    dto.setAction("APPROVED");
+                                } else if ("reject".equals(action)) {
+                                    dto.setAction("REJECTED");
+                                } else if ("transfer".equals(action)) {
+                                    dto.setAction("TRANSFERRED");
+                                } else {
+                                    dto.setAction("APPROVED");
+                                }
+                            }
+                        } catch (Exception e) {
+                            dto.setAction("APPROVED");
+                        }
+                    }
+                    
                     return dto;
                 })
                 .collect(Collectors.toList());
+        
+        // 7.1 合并转办记录到审批历史中
+        try {
+            List<com.workflow.entity.ProcessOperationLog> transferLogs = operationLogMapper
+                    .selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.workflow.entity.ProcessOperationLog>()
+                            .eq(com.workflow.entity.ProcessOperationLog::getProcessInstanceId, processInstanceId)
+                            .eq(com.workflow.entity.ProcessOperationLog::getOperationType, "TRANSFER")
+                            .orderByAsc(com.workflow.entity.ProcessOperationLog::getOperationTime));
+            
+            for (com.workflow.entity.ProcessOperationLog log : transferLogs) {
+                // 通过 taskId 查找节点信息
+                String nodeId = null;
+                String nodeName = null;
+                if (log.getTaskId() != null) {
+                    var historicTask = historyService.createHistoricTaskInstanceQuery()
+                            .taskId(log.getTaskId())
+                            .singleResult();
+                    if (historicTask != null) {
+                        nodeId = historicTask.getTaskDefinitionKey();
+                        nodeName = historicTask.getName();
+                    } else {
+                        var task = taskService.createTaskQuery().taskId(log.getTaskId()).singleResult();
+                        if (task != null) {
+                            nodeId = task.getTaskDefinitionKey();
+                            nodeName = task.getName();
+                        }
+                    }
+                }
+                
+                ProcessProgressDTO.NodeHistoryDTO dto = new ProcessProgressDTO.NodeHistoryDTO();
+                dto.setNodeId(nodeId != null ? nodeId : log.getTaskId());
+                dto.setNodeName(nodeName != null ? nodeName : "任务转办");
+                dto.setNodeType("userTask");
+                dto.setAssignee(log.getOperatorId());
+                dto.setAction("TRANSFERRED");
+                dto.setComment(log.getNewValue() != null ? "转办给: " + log.getNewValue() : log.getOperationComment());
+                String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
+                dto.setStartTime(opTime);
+                dto.setEndTime(opTime);
+                dto.setStatus("COMPLETED");
+                
+                // 插入到对应节点的最终完成记录之前
+                int insertIndex = -1;
+                for (int i = 0; i < nodeHistory.size(); i++) {
+                    ProcessProgressDTO.NodeHistoryDTO item = nodeHistory.get(i);
+                    if (nodeId != null && nodeId.equals(item.getNodeId()) && "COMPLETED".equals(item.getStatus())) {
+                        insertIndex = i;
+                        break;
+                    }
+                }
+                if (insertIndex >= 0) {
+                    nodeHistory.add(insertIndex, dto);
+                } else {
+                    nodeHistory.add(dto);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("合并转办记录失败", e);
+        }
+        
+        // 合并多实例会签记录：相同 nodeId 的 userTask 合并为一条，显示所有执行人
+        java.util.Map<String, java.util.List<ProcessProgressDTO.NodeHistoryDTO>> nodeGroup = new java.util.LinkedHashMap<>();
+        for (ProcessProgressDTO.NodeHistoryDTO dto : nodeHistory) {
+            nodeGroup.computeIfAbsent(dto.getNodeId(), k -> new java.util.ArrayList<>()).add(dto);
+        }
+        java.util.List<ProcessProgressDTO.NodeHistoryDTO> mergedHistory = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, java.util.List<ProcessProgressDTO.NodeHistoryDTO>> entry : nodeGroup.entrySet()) {
+            java.util.List<ProcessProgressDTO.NodeHistoryDTO> list = entry.getValue();
+            if (list.size() > 1 && "userTask".equals(list.get(0).getNodeType())) {
+                ProcessProgressDTO.NodeHistoryDTO merged = new ProcessProgressDTO.NodeHistoryDTO();
+                merged.setNodeId(list.get(0).getNodeId());
+                merged.setNodeName(list.get(0).getNodeName());
+                merged.setNodeType("userTask");
+                
+                java.util.Set<String> assignees = new java.util.LinkedHashSet<>();
+                java.util.Set<String> assigneeNames = new java.util.LinkedHashSet<>();
+                for (ProcessProgressDTO.NodeHistoryDTO d : list) {
+                    if (d.getAssignee() != null) assignees.add(d.getAssignee());
+                    if (d.getAssigneeName() != null) assigneeNames.add(d.getAssigneeName());
+                }
+                merged.setAssignee(String.join(",", assignees));
+                merged.setAssigneeName(String.join(",", assigneeNames));
+                
+                boolean hasActive = list.stream().anyMatch(d -> "ACTIVE".equals(d.getStatus()));
+                merged.setStatus(hasActive ? "ACTIVE" : "COMPLETED");
+                
+                boolean hasRejected = list.stream().anyMatch(d -> "REJECTED".equals(d.getAction()));
+                boolean allApproved = list.stream().allMatch(d -> "APPROVED".equals(d.getAction()));
+                if (hasRejected) merged.setAction("REJECTED");
+                else if (allApproved) merged.setAction("APPROVED");
+                
+                merged.setStartTime(list.get(0).getStartTime());
+                String latestEndTime = list.stream()
+                    .map(ProcessProgressDTO.NodeHistoryDTO::getEndTime)
+                    .filter(java.util.Objects::nonNull)
+                    .max(String::compareTo)
+                    .orElse(null);
+                merged.setEndTime(latestEndTime);
+                
+                long totalDuration = list.stream()
+                    .mapToLong(d -> d.getDuration() != null ? d.getDuration() : 0)
+                    .sum();
+                merged.setDuration(totalDuration > 0 ? totalDuration : null);
+                
+                String comments = list.stream()
+                    .map(ProcessProgressDTO.NodeHistoryDTO::getComment)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining("; "));
+                merged.setComment(comments.isEmpty() ? null : comments);
+                
+                mergedHistory.add(merged);
+            } else {
+                mergedHistory.addAll(list);
+            }
+        }
+        nodeHistory = mergedHistory;
+        
         progress.setNodeHistory(nodeHistory);
         
         // 8. 获取当前任务信息
@@ -226,7 +403,20 @@ public class ProcessInstanceService {
         // 9. 构建节点处理人映射（用于前端悬停显示）
         buildNodeAssigneeMap(progress, processInstanceId);
         
+        // 10. 获取实体数据和表单配置
+        loadEntityDataAndFormConfig(progress, processInstanceId);
+        
         return progress;
+    }
+    
+    /**
+     * 根据流程实例ID获取BPMN XML（公共方法）
+     * 
+     * @param processInstanceId 流程实例ID
+     * @return BPMN XML
+     */
+    public String getBpmnXmlByProcessInstanceId(String processInstanceId) {
+        return getBpmnXmlByInstanceId(processInstanceId);
     }
     
     /**
@@ -281,8 +471,11 @@ public class ProcessInstanceService {
                   formatDate(task.getEndTime()).compareTo(assigneeMap.get(nodeId).getHandleTime()) > 0))) {
                 
                 ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
-                info.setAssigneeId(task.getAssignee());
-                info.setAssigneeName(task.getAssignee()); // 暂时使用ID作为名称，后续可从用户表查询
+                String userId = task.getAssignee();
+                // 查询用户昵称
+                String nickname = sysUserService.getNicknameByUsername(userId);
+                info.setAssigneeId(userId);
+                info.setAssigneeName(nickname != null ? nickname : userId);
                 info.setHandleTime(task.getEndTime() != null ? formatDate(task.getEndTime()) : null);
                 // 从流程变量中获取审批意见（如果有）
                 info.setAction("APPROVED"); // 默认同意，实际可从变量中读取
@@ -300,8 +493,49 @@ public class ProcessInstanceService {
         for (Task task : activeTasks) {
             String nodeId = task.getTaskDefinitionKey();
             ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
-            info.setAssigneeId(task.getAssignee());
-            info.setAssigneeName(task.getAssignee()); // 暂时使用ID作为名称
+            String userId = task.getAssignee();
+            
+            if (userId == null || userId.isEmpty()) {
+                // 尝试从候选组/候选人中解析
+                try {
+                    List<org.flowable.identitylink.api.IdentityLink> identityLinks = taskService.getIdentityLinksForTask(task.getId());
+                    List<String> groupMemberNames = new ArrayList<>();
+                    List<String> candidateUsers = new ArrayList<>();
+                    for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
+                        if (link.getGroupId() != null) {
+                            String members = getGroupMemberNames(link.getGroupId());
+                            if (members != null && !members.isEmpty()) {
+                                for (String m : members.split(",")) {
+                                    if (!groupMemberNames.contains(m)) {
+                                        groupMemberNames.add(m);
+                                    }
+                                }
+                            }
+                        } else if (link.getUserId() != null) {
+                            candidateUsers.add(link.getUserId());
+                        }
+                    }
+                    if (!groupMemberNames.isEmpty()) {
+                        info.setAssigneeId(null);
+                        info.setAssigneeName(String.join(",", groupMemberNames));
+                    } else if (!candidateUsers.isEmpty()) {
+                        info.setAssigneeId(null);
+                        info.setAssigneeName(getUserNamesFromIds(candidateUsers));
+                    } else {
+                        info.setAssigneeId(null);
+                        info.setAssigneeName("未分配");
+                    }
+                } catch (Exception e) {
+                    info.setAssigneeId(null);
+                    info.setAssigneeName("未分配");
+                }
+            } else {
+                // 查询用户昵称
+                String nickname = sysUserService.getNicknameByUsername(userId);
+                info.setAssigneeId(userId);
+                info.setAssigneeName(nickname != null ? nickname : userId);
+            }
+            
             info.setHandleTime(task.getCreateTime() != null ? formatDate(task.getCreateTime()) : null);
             info.setAction("PROCESSING"); // 处理中
             info.setComment("待处理");
@@ -310,6 +544,189 @@ public class ProcessInstanceService {
         }
         
         progress.setNodeAssigneeMap(assigneeMap);
+    }
+    
+    /**
+     * 加载实体数据和表单配置
+     */
+    private void loadEntityDataAndFormConfig(ProcessProgressDTO progress, String processInstanceId) {
+        try {
+            // 1. 获取流程变量中的实体信息
+            String entityCode = null;
+            String entityDataId = null;
+            String formKey = null;
+            String currentNodeId = null;
+            
+            // 从流程变量获取
+            ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult();
+            
+            if (processInstance != null) {
+                entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
+                entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
+                formKey = (String) runtimeService.getVariable(processInstanceId, "formKey");
+                
+                // 获取当前活动节点
+                List<Execution> executions = runtimeService.createExecutionQuery()
+                        .processInstanceId(processInstanceId)
+                        .list();
+                if (!executions.isEmpty() && executions.get(0).getActivityId() != null) {
+                    currentNodeId = executions.get(0).getActivityId();
+                }
+            } else {
+                // 从历史变量获取
+                var entityCodeVar = historyService.createHistoricVariableInstanceQuery()
+                        .processInstanceId(processInstanceId)
+                        .variableName("entityCode")
+                        .singleResult();
+                if (entityCodeVar != null) entityCode = (String) entityCodeVar.getValue();
+                
+                var entityDataIdVar = historyService.createHistoricVariableInstanceQuery()
+                        .processInstanceId(processInstanceId)
+                        .variableName("entityDataId")
+                        .singleResult();
+                if (entityDataIdVar != null) entityDataId = (String) entityDataIdVar.getValue();
+                
+                var formKeyVar = historyService.createHistoricVariableInstanceQuery()
+                        .processInstanceId(processInstanceId)
+                        .variableName("formKey")
+                        .singleResult();
+                if (formKeyVar != null) formKey = (String) formKeyVar.getValue();
+            }
+            
+            // 2. 加载实体数据
+            if (entityDataId != null && entityCode != null) {
+                try {
+                    com.workflow.dto.EntityDataDTO entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+                    if (entityData != null) {
+                        progress.setEntityData(entityData.getData());
+                    }
+                } catch (Exception e) {
+                    log.debug("获取实体数据失败: {}", e.getMessage());
+                }
+            }
+            
+            // 3. 加载表单配置
+            if (entityCode != null && entityDataId != null) {
+                loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey);
+            }
+            
+        } catch (Exception e) {
+            log.warn("加载实体数据和表单配置失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 加载表单配置
+     */
+    private void loadFormConfig(ProcessProgressDTO progress, String entityCode, String entityDataId, 
+                                  String currentNodeId, String formKeyFromVariable) {
+        try {
+            // 1. 获取流程定义配置
+            com.workflow.entity.EntityDefinition entityDef = 
+                entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
+            if (entityDef == null || entityDef.getProcessDefinitionId() == null) {
+                return;
+            }
+            
+            // 2. 确定要加载表单的节点ID
+            String targetNodeId = currentNodeId;
+            
+            // 流程已结束：取最后一个完成的节点（排除 startEvent 和 endEvent）
+            if (targetNodeId == null && progress.getCompletedNodes() != null && !progress.getCompletedNodes().isEmpty()) {
+                List<String> completed = progress.getCompletedNodes();
+                for (int i = completed.size() - 1; i >= 0; i--) {
+                    String nodeId = completed.get(i);
+                    // 排除常见的开始/结束节点ID
+                    if (nodeId != null && !nodeId.toLowerCase().contains("start") && !nodeId.toLowerCase().contains("end")) {
+                        targetNodeId = nodeId;
+                        break;
+                    }
+                }
+                if (targetNodeId == null) {
+                    targetNodeId = completed.get(completed.size() - 1);
+                }
+            }
+            
+            // 3. 尝试从节点配置获取表单
+            if (targetNodeId != null) {
+                com.workflow.entity.NodeConfig nodeConfig = 
+                    nodeConfigMapper.selectByNodeIdAndProcessId(targetNodeId, entityDef.getProcessDefinitionId());
+                if (nodeConfig != null && nodeConfig.getConfigJson() != null) {
+                    try {
+                        com.fasterxml.jackson.databind.JsonNode config = 
+                            new com.fasterxml.jackson.databind.ObjectMapper().readTree(nodeConfig.getConfigJson());
+                        if (config.has("formKey")) {
+                            formKeyFromVariable = config.get("formKey").asText();
+                        }
+                    } catch (Exception e) {
+                        log.debug("解析节点配置失败: {}", e.getMessage());
+                    }
+                }
+            }
+            
+            // 3. 获取表单配置
+            String formKey = formKeyFromVariable;
+            if (formKey == null) {
+                // 使用默认表单
+                formKey = "default";
+            }
+            
+            // 4. 从 EntityFormService 获取表单详情
+            com.workflow.entity.EntityForm entityForm = 
+                entityFormService.getByEntityIdAndFormKey(entityDef.getId(), formKey);
+            
+            if (entityForm == null && !"default".equals(formKey)) {
+                // 如果指定表单不存在，回退到默认表单
+                entityForm = entityFormService.getByEntityIdAndFormKey(entityDef.getId(), "default");
+            }
+            
+            if (entityForm != null) {
+                ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
+                formConfig.setFormId(entityForm.getId());
+                formConfig.setFormName(entityForm.getFormName());
+                formConfig.setFormKey(entityForm.getFormKey());
+                formConfig.setLayoutType(entityForm.getLayoutType());
+                
+                // 转换字段配置
+                if (entityForm.getFields() != null) {
+                    List<Map<String, Object>> fields = new ArrayList<>();
+                    for (com.workflow.entity.EntityFormField field : entityForm.getFields()) {
+                        Map<String, Object> fieldMap = new HashMap<>();
+                        fieldMap.put("id", field.getId());
+                        fieldMap.put("fieldCode", field.getFieldId());
+                        fieldMap.put("fieldName", field.getFieldName());
+                        fieldMap.put("fieldLabel", field.getFieldLabel());
+                        fieldMap.put("fieldType", field.getFieldType());
+                        fieldMap.put("componentType", field.getComponentType());
+                        fieldMap.put("isRequired", field.getIsRequired());
+                        fieldMap.put("isReadonly", field.getIsReadonly());
+                        fieldMap.put("isHidden", field.getIsHidden());
+                        fieldMap.put("sortOrder", field.getSortOrder());
+                        fieldMap.put("gridSpan", field.getGridSpan());
+                        
+                        // 解析组件属性
+                        if (field.getComponentProps() != null) {
+                            try {
+                                com.fasterxml.jackson.databind.ObjectMapper mapper = 
+                                    new com.fasterxml.jackson.databind.ObjectMapper();
+                                fieldMap.put("componentProps", mapper.readValue(field.getComponentProps(), Map.class));
+                            } catch (Exception e) {
+                                fieldMap.put("componentProps", new HashMap<>());
+                            }
+                        }
+                        fields.add(fieldMap);
+                    }
+                    formConfig.setFields(fields);
+                }
+                
+                progress.setFormConfig(formConfig);
+            }
+            
+        } catch (Exception e) {
+            log.warn("加载表单配置失败: {}", e.getMessage());
+        }
     }
     
     /**
@@ -442,13 +859,68 @@ public class ProcessInstanceService {
         for (HistoricTaskInstance task : historicTasks) {
             ProcessDetailVO.HistoryVO history = new ProcessDetailVO.HistoryVO();
             history.setTaskName(task.getName());
-            history.setAssignee(task.getAssignee());
+            String assigneeId = task.getAssignee();
+            history.setAssignee(assigneeId);
+            String nickname = sysUserService.getNicknameByUsername(assigneeId);
+            if (nickname != null && !nickname.equals(assigneeId)) {
+                history.setAssigneeName(nickname);
+            }
             history.setAction("通过"); // 可根据变量判断实际动作
             history.setStartTime(formatDate(task.getStartTime()));
             history.setEndTime(formatDate(task.getEndTime()));
             history.setDuration(task.getDurationInMillis());
             historyList.add(history);
         }
+        
+        // 合并多实例会签记录：相同 taskName 的记录合并为一条，显示所有执行人
+        java.util.Map<String, java.util.List<ProcessDetailVO.HistoryVO>> historyGroup = new java.util.LinkedHashMap<>();
+        for (ProcessDetailVO.HistoryVO h : historyList) {
+            historyGroup.computeIfAbsent(h.getTaskName(), k -> new java.util.ArrayList<>()).add(h);
+        }
+        java.util.List<ProcessDetailVO.HistoryVO> mergedHistory = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, java.util.List<ProcessDetailVO.HistoryVO>> entry : historyGroup.entrySet()) {
+            java.util.List<ProcessDetailVO.HistoryVO> list = entry.getValue();
+            if (list.size() > 1 && !"流程发起".equals(list.get(0).getTaskName())) {
+                ProcessDetailVO.HistoryVO merged = new ProcessDetailVO.HistoryVO();
+                merged.setTaskName(list.get(0).getTaskName());
+                
+                java.util.Set<String> assignees = new java.util.LinkedHashSet<>();
+                java.util.Set<String> assigneeNames = new java.util.LinkedHashSet<>();
+                for (ProcessDetailVO.HistoryVO h : list) {
+                    if (h.getAssignee() != null) assignees.add(h.getAssignee());
+                    if (h.getAssigneeName() != null) assigneeNames.add(h.getAssigneeName());
+                }
+                merged.setAssignee(String.join(",", assignees));
+                merged.setAssigneeName(String.join(",", assigneeNames));
+                
+                boolean hasActive = list.stream().anyMatch(h -> h.getEndTime() == null);
+                merged.setAction(hasActive ? "进行中" : "通过");
+                
+                merged.setStartTime(list.get(0).getStartTime());
+                String latestEndTime = list.stream()
+                    .map(ProcessDetailVO.HistoryVO::getEndTime)
+                    .filter(java.util.Objects::nonNull)
+                    .max(String::compareTo)
+                    .orElse(null);
+                merged.setEndTime(latestEndTime);
+                
+                long totalDuration = list.stream()
+                    .mapToLong(h -> h.getDuration() != null ? h.getDuration() : 0)
+                    .sum();
+                merged.setDuration(totalDuration > 0 ? totalDuration : null);
+                
+                String comments = list.stream()
+                    .map(ProcessDetailVO.HistoryVO::getComment)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining("; "));
+                merged.setComment(comments.isEmpty() ? null : comments);
+                
+                mergedHistory.add(merged);
+            } else {
+                mergedHistory.addAll(list);
+            }
+        }
+        historyList = mergedHistory;
         
         detail.setHistory(historyList);
         
@@ -458,7 +930,11 @@ public class ProcessInstanceService {
         // 添加已完成节点的处理人信息
         for (HistoricTaskInstance task : historicTasks) {
             ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
-            assignee.setAssigneeName(task.getAssignee());
+            String userId = task.getAssignee();
+            // 查询用户昵称
+            String nickname = sysUserService.getNicknameByUsername(userId);
+            assignee.setAssigneeId(userId);
+            assignee.setAssigneeName(nickname != null ? nickname : userId);
             assignee.setHandleTime(formatDate(task.getEndTime()));
             assignee.setAction("通过");
             assignee.setStatus("completed");
@@ -472,7 +948,43 @@ public class ProcessInstanceService {
                     .list();
             for (Task task : activeTasks) {
                 ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
-                assignee.setAssigneeName(task.getAssignee());
+                String userId = task.getAssignee();
+                if (userId != null && !userId.isEmpty()) {
+                    // 查询用户昵称
+                    String nickname = sysUserService.getNicknameByUsername(userId);
+                    assignee.setAssigneeId(userId);
+                    assignee.setAssigneeName(nickname != null ? nickname : userId);
+                } else {
+                    // 候选组/候选人任务
+                    try {
+                        List<org.flowable.identitylink.api.IdentityLink> identityLinks = taskService.getIdentityLinksForTask(task.getId());
+                        List<String> groupIds = new java.util.ArrayList<>();
+                        List<String> groupNames = new java.util.ArrayList<>();
+                        List<String> candidateUserIds = new java.util.ArrayList<>();
+                        for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
+                            if (link.getGroupId() != null) {
+                                groupIds.add(link.getGroupId());
+                                com.workflow.entity.SysGroup group = sysGroupMapper.selectByGroupCode(link.getGroupId());
+                                groupNames.add(group != null ? group.getGroupName() : link.getGroupId());
+                            } else if (link.getUserId() != null) {
+                                candidateUserIds.add(link.getUserId());
+                            }
+                        }
+                        if (!groupIds.isEmpty()) {
+                            assignee.setAssigneeId(String.join(",", groupIds));
+                            assignee.setAssigneeName(String.join(",", groupNames) + "（组任务）");
+                        } else if (!candidateUserIds.isEmpty()) {
+                            assignee.setAssigneeId(String.join(",", candidateUserIds));
+                            assignee.setAssigneeName(String.join(",", candidateUserIds) + "（候选）");
+                        } else {
+                            assignee.setAssigneeId("");
+                            assignee.setAssigneeName("未分配");
+                        }
+                    } catch (Exception e) {
+                        assignee.setAssigneeId("");
+                        assignee.setAssigneeName("未分配");
+                    }
+                }
                 assignee.setHandleTime(formatDate(task.getCreateTime()));
                 assignee.setAction("待处理");
                 assignee.setStatus("processing");
@@ -640,6 +1152,53 @@ public class ProcessInstanceService {
                 }
             }
             
+            // 获取数据标题（从实体数据）
+            try {
+                String entityDataId = (String) historicInstance.getProcessVariables().get("entityDataId");
+                String entityCode = (String) historicInstance.getProcessVariables().get("entityCode");
+                if (entityDataId == null) {
+                    // 从历史变量查询
+                    var varInstance = historyService.createHistoricVariableInstanceQuery()
+                            .processInstanceId(historicInstance.getId())
+                            .variableName("entityDataId")
+                            .singleResult();
+                    if (varInstance != null) {
+                        entityDataId = (String) varInstance.getValue();
+                    }
+                }
+                if (entityCode == null) {
+                    var codeVar = historyService.createHistoricVariableInstanceQuery()
+                            .processInstanceId(historicInstance.getId())
+                            .variableName("entityCode")
+                            .singleResult();
+                    if (codeVar != null) {
+                        entityCode = (String) codeVar.getValue();
+                    }
+                }
+                if (entityDataId != null) {
+                    com.workflow.dto.EntityDataDTO entityData = null;
+                    if (entityCode != null) {
+                        try {
+                            entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+                        } catch (Exception ex) {
+                            // fallback
+                        }
+                    }
+                    if (entityData == null) {
+                        entityData = entityDataService.findById(entityDataId);
+                    }
+                    if (entityData != null) {
+                        if (entityData.getData() != null) {
+                            vo.setDataName((String) entityData.getData().get("name"));
+                        }
+                        vo.setName(entityData.getName());
+                        vo.setCode(entityData.getCode());
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("获取数据标题失败: {}", e.getMessage());
+            }
+            
             // 判断流程状态
             ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                     .processInstanceId(historicInstance.getId())
@@ -740,5 +1299,57 @@ public class ProcessInstanceService {
             log.error("流程终止失败: processInstanceId={}, userId={}", processInstanceId, userId, e);
             return Result.error(500, "流程终止失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 获取组成员昵称列表（去重）
+     */
+    private String getGroupMemberNames(String groupCode) {
+        try {
+            com.workflow.entity.SysGroup group = sysGroupMapper.selectByGroupCode(groupCode);
+            if (group == null) {
+                return groupCode;
+            }
+            List<String> userIds = sysUserGroupMapper.selectUserIdsByGroupId(group.getId());
+            if (userIds == null || userIds.isEmpty()) {
+                return group.getGroupName();
+            }
+            List<String> nicknames = new ArrayList<>();
+            for (String userId : userIds) {
+                com.workflow.entity.SysUser user = sysUserMapper.selectById(userId);
+                if (user != null) {
+                    String name = user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : user.getUsername();
+                    if (!nicknames.contains(name)) {
+                        nicknames.add(name);
+                    }
+                }
+            }
+            return nicknames.isEmpty() ? group.getGroupName() : String.join(",", nicknames);
+        } catch (Exception e) {
+            log.warn("获取组成员失败: {}", groupCode, e);
+            return groupCode;
+        }
+    }
+
+    /**
+     * 根据用户ID/用户名列表获取昵称列表
+     */
+    private String getUserNamesFromIds(List<String> idsOrNames) {
+        List<String> names = new ArrayList<>();
+        for (String value : idsOrNames) {
+            try {
+                com.workflow.entity.SysUser user = sysUserMapper.selectByUsername(value);
+                if (user == null) {
+                    user = sysUserMapper.selectById(value);
+                }
+                String name = user != null && user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : value;
+                if (!names.contains(name)) {
+                    names.add(name);
+                }
+            } catch (Exception e) {
+                names.add(value);
+            }
+        }
+        return String.join(",", names);
     }
 }

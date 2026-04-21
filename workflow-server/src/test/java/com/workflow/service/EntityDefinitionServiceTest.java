@@ -214,7 +214,7 @@ public class EntityDefinitionServiceTest {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
-        EntityDefinitionDTO result = entityService.publish("1");
+        EntityDefinitionDTO result = entityService.publish("1", "user1", "测试用户");
 
         assertNotNull(result);
         assertEquals(EntityDefinition.Status.PUBLISHED, result.getStatus());
@@ -226,7 +226,7 @@ public class EntityDefinitionServiceTest {
         when(entityMapper.selectById("999")).thenReturn(null);
 
         Exception exception = assertThrows(RuntimeException.class, () -> {
-            entityService.publish("999");
+            entityService.publish("999", "user1", "测试用户");
         });
 
         assertEquals("实体不存在: 999", exception.getMessage());

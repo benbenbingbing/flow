@@ -34,6 +34,21 @@ public class MyStartedProcessVO {
     private String businessKey;
     
     /**
+     * 数据标题（实体数据的name字段）
+     */
+    private String dataName;
+    
+    /**
+     * 数据名称（实体数据的name字段，用于显示标题）
+     */
+    private String name;
+    
+    /**
+     * 数据编码（实体数据的code字段）
+     */
+    private String code;
+    
+    /**
      * 当前节点名称
      */
     private String currentNodeName;

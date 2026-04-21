@@ -48,7 +48,7 @@
       <template #header>
         <span>流程图</span>
       </template>
-      <div ref="bpmnViewer" class="bpmn-viewer"></div>
+      <VueBpmnViewer :xml="bpmnXml" class="bpmn-viewer" @imported="onViewerImported" />
     </el-card>
 
     <!-- 表单数据 -->
@@ -72,8 +72,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ChatDotRound } from '@element-plus/icons-vue'
-import Viewer from 'bpmn-js/lib/Viewer'
 import request from '@/utils/request'
+import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 
 const props = defineProps({
   instanceId: { type: String, required: true }
@@ -99,9 +99,41 @@ const historyList = ref([])
 // 表单数据
 const formData = ref({})
 
-// BPMN Viewer
-const bpmnViewer = ref(null)
-let viewer = null
+// BPMN XML
+const bpmnXml = ref('')
+
+const completedNodes = ref([])
+const currentNodeId = ref('')
+
+function onViewerImported({ viewer }) {
+  const canvas = viewer.get('canvas')
+  const overlays = viewer.get('overlays')
+  const elementRegistry = viewer.get('elementRegistry')
+  
+  // 高亮已完成的节点
+  completedNodes.value.forEach(nodeId => {
+    canvas.addMarker(nodeId, 'completed')
+    const element = elementRegistry.get(nodeId)
+    if (element) {
+      overlays.add(nodeId, {
+        position: { top: -10, right: -10 },
+        html: '<div class="node-badge completed">✓</div>'
+      })
+    }
+  })
+  
+  // 高亮当前节点
+  if (currentNodeId.value) {
+    canvas.addMarker(currentNodeId.value, 'active')
+    const element = elementRegistry.get(currentNodeId.value)
+    if (element) {
+      overlays.add(currentNodeId.value, {
+        position: { top: -10, right: -10 },
+        html: '<div class="node-badge active">●</div>'
+      })
+    }
+  }
+}
 
 // 加载流程详情
 async function loadProcessDetail() {
@@ -132,7 +164,7 @@ async function loadProcessDetail() {
       
       // 加载历史记录
       historyList.value = (data.history || []).map(h => ({
-        title: `${h.assignee || '系统'} ${h.action}`,
+        title: `${h.assigneeName || h.assignee || '系统'} ${h.action}`,
         description: h.taskName || '流程发起',
         time: h.endTime || h.startTime,
         comment: h.comment,
@@ -143,66 +175,15 @@ async function loadProcessDetail() {
       // 加载表单数据
       formData.value = data.formData || {}
       
-      // 渲染流程图
+      // 设置高亮数据并渲染流程图
+      completedNodes.value = data.completedNodes || []
+      currentNodeId.value = data.currentNodeId || ''
       if (data.bpmnXml) {
-        renderBpmn(data.bpmnXml, data.completedNodes || [], data.currentNodeId)
+        bpmnXml.value = data.bpmnXml
       }
     }
   } catch (e) {
     console.error('加载流程详情失败:', e)
-  }
-}
-
-// 渲染BPMN流程图
-async function renderBpmn(xml, completedNodes, currentNodeId) {
-  if (!viewer) {
-    viewer = new Viewer({
-      container: bpmnViewer.value
-    })
-  }
-  
-  try {
-    await viewer.importXML(xml)
-    
-    const canvas = viewer.get('canvas')
-    const overlays = viewer.get('overlays')
-    
-    // 高亮已完成的节点
-    completedNodes.forEach(nodeId => {
-      canvas.addMarker(nodeId, 'completed')
-    })
-    
-    // 高亮当前节点
-    if (currentNodeId) {
-      canvas.addMarker(currentNodeId, 'active')
-    }
-    
-    // 添加节点样式
-    const elementRegistry = viewer.get('elementRegistry')
-    completedNodes.forEach(nodeId => {
-      const element = elementRegistry.get(nodeId)
-      if (element) {
-        overlays.add(nodeId, {
-          position: { top: -10, right: -10 },
-          html: '<div class="node-badge completed">✓</div>'
-        })
-      }
-    })
-    
-    if (currentNodeId) {
-      const element = elementRegistry.get(currentNodeId)
-      if (element) {
-        overlays.add(currentNodeId, {
-          position: { top: -10, right: -10 },
-          html: '<div class="node-badge active">●</div>'
-        })
-      }
-    }
-    
-    // 适应视口
-    canvas.zoom('fit-viewport', 'auto')
-  } catch (err) {
-    console.error('渲染流程图失败:', err)
   }
 }
 

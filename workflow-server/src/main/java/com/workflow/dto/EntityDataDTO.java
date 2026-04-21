@@ -38,4 +38,9 @@ public class EntityDataDTO {
      * 是否同时发起流程
      */
     private Boolean startProcess;
+    
+    /**
+     * 流程变量（用于传递额外参数，如会签人员列表等）
+     */
+    private Map<String, Object> processVariables;
 }

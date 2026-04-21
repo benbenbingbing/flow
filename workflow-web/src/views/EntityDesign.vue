@@ -11,6 +11,9 @@
         <el-button @click="handlePreview">
           <el-icon><View /></el-icon>预览
         </el-button>
+        <el-button @click="codeRuleVisible = true">
+          <el-icon><Ticket /></el-icon>编码规则
+        </el-button>
         <el-button type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>保存
         </el-button>
@@ -60,14 +63,17 @@
               </el-tag>
               <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain">必填</el-tag>
               <el-tag v-if="field.isSystem" type="info" size="small" effect="plain">系统</el-tag>
+              <el-tag v-if="field.isPublished" type="success" size="small" effect="plain" title="该字段已发布到数据库">已发布</el-tag>
+              <el-tag v-else-if="!field.isSystem" type="warning" size="small" effect="plain">未发布</el-tag>
             </div>
             <div class="field-actions">
               <el-icon class="action-btn" @click.stop="moveField(index, -1)"><ArrowUp /></el-icon>
               <el-icon class="action-btn" @click.stop="moveField(index, 1)"><ArrowDown /></el-icon>
               <el-icon 
-                v-if="!field.isSystem" 
+                v-if="!field.isSystem && !field.isPublished" 
                 class="action-btn delete" 
                 @click.stop="deleteField(index)"
+                title="删除字段"
               ><Delete /></el-icon>
             </div>
           </div>
@@ -82,10 +88,22 @@
             <el-input v-model="selectedField.fieldName" placeholder="请输入字段名称" />
           </el-form-item>
           <el-form-item label="字段编码" required>
-            <el-input v-model="selectedField.fieldCode" placeholder="请输入字段编码" />
+            <el-input 
+              v-model="selectedField.fieldCode" 
+              placeholder="请输入字段编码"
+              :disabled="selectedField.isPublished"
+            />
+            <div v-if="selectedField.isPublished" class="form-tip text-warning">
+              已发布字段的编码不能修改
+            </div>
           </el-form-item>
           <el-form-item label="字段类型" required>
-            <el-select v-model="selectedField.fieldType" placeholder="选择类型" style="width: 100%">
+            <el-select 
+              v-model="selectedField.fieldType" 
+              placeholder="选择类型" 
+              style="width: 100%"
+              :disabled="selectedField.isPublished"
+            >
               <el-option
                 v-for="type in fieldTypes"
                 :key="type.value"
@@ -93,6 +111,9 @@
                 :value="type.value"
               />
             </el-select>
+            <div v-if="selectedField.isPublished" class="form-tip text-warning">
+              已发布字段的类型不能修改
+            </div>
           </el-form-item>
           <el-form-item label="是否必填">
             <el-switch v-model="selectedField.isRequired" />
@@ -210,6 +231,40 @@
               <div class="form-tip">不设置则默认最多 5 个</div>
             </el-form-item>
           </template>
+          
+          <!-- 实体引用配置 -->
+          <template v-if="isReference">
+            <el-divider>实体引用配置</el-divider>
+            <el-form-item label="引用类型" required>
+              <el-select 
+                v-model="selectedField.refEntityType" 
+                placeholder="选择引用类型"
+                style="width: 100%"
+              >
+                <el-option label="用户自定义实体" value="CUSTOM" />
+                <el-option label="系统用户" value="USER" />
+                <el-option label="系统部门" value="DEPT" />
+                <el-option label="系统角色" value="ROLE" />
+                <el-option label="系统用户组" value="GROUP" />
+              </el-select>
+              <div class="form-tip">选择要引用的实体类型</div>
+            </el-form-item>
+            <el-form-item label="关联实体" v-if="selectedField.refEntityType === 'CUSTOM'" required>
+              <el-select 
+                v-model="selectedField.refEntityId" 
+                placeholder="选择关联实体"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="entity in availableEntities"
+                  :key="entity.id"
+                  :label="entity.entityName"
+                  :value="entity.id"
+                />
+              </el-select>
+              <div class="form-tip">选择用户自定义的业务实体</div>
+            </el-form-item>
+          </template>
         </el-form>
         <div v-else class="empty-tip">请选择字段进行配置</div>
       </div>
@@ -228,6 +283,66 @@
         </el-form-item>
       </el-form>
     </el-dialog>
+
+    <!-- 编码规则配置对话框 -->
+    <el-dialog v-model="codeRuleVisible" title="数据编码规则配置" width="550px">
+      <el-form :model="codeRule" label-width="100px" size="default">
+        <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+          配置实体数据的自动编码规则，默认格式：前缀 + 日期 + 序列号
+        </el-alert>
+        
+        <el-form-item label="编码前缀">
+          <el-input v-model="codeRule.prefix" placeholder="如：CG、DD、ORDER" maxlength="20" show-word-limit />
+          <div class="form-tip">建议使用大写字母，如采购单用CG，订单用DD</div>
+        </el-form-item>
+        
+        <el-form-item label="日期格式">
+          <el-select v-model="codeRule.dateFormat" placeholder="选择日期格式" style="width: 100%">
+            <el-option label="yyyyMMdd (如：20240101)" value="yyyyMMdd" />
+            <el-option label="yyyy-MM-dd (如：2024-01-01)" value="yyyy-MM-dd" />
+            <el-option label="yyyy/MM/dd (如：2024/01/01)" value="yyyy/MM/dd" />
+            <el-option label="yyyyMM (如：202401)" value="yyyyMM" />
+            <el-option label="yyMMdd (如：240101)" value="yyMMdd" />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="序列号位数">
+          <el-slider v-model="codeRule.seqLength" :min="3" :max="10" show-stops />
+          <div class="form-tip">当前：{{ codeRule.seqLength }}位（格式：{{ '0'.repeat(codeRule.seqLength).replace(/0/g, '0') }}1）</div>
+        </el-form-item>
+        
+        <el-form-item label="重置周期">
+          <el-radio-group v-model="codeRule.seqType">
+            <el-radio-button label="DAY">按天</el-radio-button>
+            <el-radio-button label="MONTH">按月</el-radio-button>
+            <el-radio-button label="YEAR">按年</el-radio-button>
+            <el-radio-button label="NEVER">不重置</el-radio-button>
+          </el-radio-group>
+          <div class="form-tip">
+            <span v-if="codeRule.seqType === 'DAY'">每天从000001开始编号</span>
+            <span v-if="codeRule.seqType === 'MONTH'">每月从000001开始编号</span>
+            <span v-if="codeRule.seqType === 'YEAR'">每年从000001开始编号</span>
+            <span v-if="codeRule.seqType === 'NEVER'">永远不重置，持续递增</span>
+          </div>
+        </el-form-item>
+        
+        <el-divider />
+        
+        <el-form-item label="编码示例">
+          <el-input v-model="codeRule.example" readonly>
+            <template #append>
+              <el-button @click="previewCode">刷新</el-button>
+            </template>
+          </el-input>
+          <div class="form-tip">根据上述配置生成的编码示例</div>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="codeRuleVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveCodeRule">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -236,6 +351,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { entityApi } from '@/api/entity'
+import { codeRuleApi } from '@/api/codeRule'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 
 const route = useRoute()
@@ -259,6 +375,8 @@ const fieldTypes = [
   { value: 'IMAGE', label: '图片', icon: 'Picture' },
   { value: 'USER', label: '用户', icon: 'User' },
   { value: 'DEPT', label: '部门', icon: 'OfficeBuilding' },
+  { value: 'REFERENCE', label: '单选实体', icon: 'Connection' },
+  { value: 'MULTI_REFERENCE', label: '多选实体', icon: 'Share' },
   { value: 'SUB_FORM', label: '子表单', icon: 'Grid' },
   { value: 'SUB_FORM_LIST', label: '子表单列表', icon: 'List' }
 ]
@@ -270,6 +388,17 @@ const previewVisible = ref(false)
 const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
+
+// 编码规则配置
+const codeRuleVisible = ref(false)
+const codeRule = ref({
+  entityCode: '',
+  prefix: '',
+  dateFormat: 'yyyyMMdd',
+  seqLength: 6,
+  seqType: 'DAY',
+  example: ''
+})
 
 // 是否显示选项配置
 const showOptions = computed(() => {
@@ -284,6 +413,11 @@ const isSubForm = computed(() => {
 // 是否显示附件配置
 const isAttachment = computed(() => {
   return selectedField.value && ['FILE', 'IMAGE'].includes(selectedField.value.fieldType)
+})
+
+// 是否显示实体引用配置
+const isReference = computed(() => {
+  return selectedField.value && ['REFERENCE', 'MULTI_REFERENCE'].includes(selectedField.value.fieldType)
 })
 
 // 可选的实体列表（排除当前实体）
@@ -331,9 +465,64 @@ const loadEntity = async () => {
     const data = await entityApi.getById(entityId)
     entityData.value = data
     fields.value = data.fields || []
+    // 设置编码规则的实体编码
+    if (data.entityCode) {
+      codeRule.value.entityCode = data.entityCode
+    }
   } catch (error) {
     console.error(error)
     ElMessage.error('加载失败')
+  }
+}
+
+// 加载编码规则
+const loadCodeRule = async () => {
+  try {
+    const data = await codeRuleApi.getByEntityCode(entityData.value.entityCode)
+    if (data) {
+      codeRule.value = { ...codeRule.value, ...data }
+    } else {
+      // 使用默认配置
+      codeRule.value.prefix = entityData.value.entityCode?.toUpperCase() || ''
+      codeRule.value.dateFormat = 'yyyyMMdd'
+      codeRule.value.seqLength = 6
+      codeRule.value.seqType = 'DAY'
+      previewCode()
+    }
+  } catch (error) {
+    console.error('加载编码规则失败:', error)
+  }
+}
+
+// 预览编码
+const previewCode = async () => {
+  try {
+    const preview = await codeRuleApi.preview(codeRule.value)
+    codeRule.value.example = preview
+  } catch (error) {
+    // 本地计算示例
+    const date = new Date()
+    const format = codeRule.value.dateFormat || 'yyyyMMdd'
+    const dateStr = format
+      .replace('yyyy', date.getFullYear())
+      .replace('MM', String(date.getMonth() + 1).padStart(2, '0'))
+      .replace('dd', String(date.getDate()).padStart(2, '0'))
+      .replace(/-/g, '')
+      .replace(/\//g, '')
+    const seqStr = '1'.padStart(codeRule.value.seqLength || 6, '0')
+    codeRule.value.example = (codeRule.value.prefix || '') + dateStr + seqStr
+  }
+}
+
+// 保存编码规则
+const saveCodeRule = async () => {
+  try {
+    await codeRuleApi.save(codeRule.value)
+    ElMessage.success('编码规则保存成功')
+    codeRuleVisible.value = false
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('保存失败')
   }
 }
 
@@ -379,6 +568,11 @@ const selectField = (field) => {
 
 // 删除字段
 const deleteField = (index) => {
+  const field = fields.value[index]
+  if (field.isPublished) {
+    ElMessage.warning('已发布的字段不能删除，请先修改字段配置')
+    return
+  }
   fields.value.splice(index, 1)
   if (selectedField.value && !fields.value.find(f => f === selectedField.value)) {
     selectedField.value = null
@@ -398,7 +592,16 @@ const moveField = (index, direction) => {
 
 // 获取字段类型标签
 const getFieldTypeTag = (type) => {
-  const tags = { 'STRING': '', 'TEXT': 'info', 'INTEGER': 'success', 'DECIMAL': 'success', 'DATE': 'warning', 'DATETIME': 'warning' }
+  const tags = { 
+    'STRING': '', 
+    'TEXT': 'info', 
+    'INTEGER': 'success', 
+    'DECIMAL': 'success', 
+    'DATE': 'warning', 
+    'DATETIME': 'warning',
+    'REFERENCE': 'primary',
+    'MULTI_REFERENCE': 'primary'
+  }
   return tags[type] || ''
 }
 
@@ -468,6 +671,7 @@ const handleDragStart = (type) => {
 onMounted(() => {
   loadEntity()
   loadAvailableEntities()
+  loadCodeRule()
 })
 </script>
 
@@ -476,47 +680,95 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: #f0f2f5;
 }
 
+/* ===== 头部样式 ===== */
 .design-header {
-  height: 50px;
-  background: #fff;
-  border-bottom: 1px solid #dcdfe6;
+  height: 60px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
+}
+
+.header-left :deep(.el-button) {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s;
+}
+
+.header-left :deep(.el-button:hover) {
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .entity-name {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
+.header-right {
+  display: flex;
+  gap: 12px;
+}
+
+.header-right :deep(.el-button) {
+  border-radius: 6px;
+  padding: 8px 20px;
+}
+
+.header-right :deep(.el-button:first-child) {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  color: #606266;
+}
+
+.header-right :deep(.el-button:first-child:hover) {
+  background: #fff;
+  color: #409eff;
+}
+
+/* ===== 主体布局 ===== */
 .design-body {
   flex: 1;
   display: flex;
   overflow: hidden;
+  padding: 16px;
+  gap: 16px;
 }
 
+/* ===== 左侧字段类型面板 ===== */
 .field-types-panel {
-  width: 180px;
+  width: 200px;
   background: #fff;
-  border-right: 1px solid #dcdfe6;
-  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-title {
-  font-weight: bold;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e4e7ed;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f0f2f5;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -525,122 +777,259 @@ onMounted(() => {
 .field-type-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.field-type-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.field-type-list::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 2px;
 }
 
 .field-type-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  padding: 14px 8px;
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.25s ease;
 }
 
 .field-type-item:hover {
+  background: #fff;
   border-color: #409eff;
   color: #409eff;
-  background: #ecf5ff;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.25);
+  transform: translateY(-2px);
 }
 
 .field-type-item .el-icon {
-  font-size: 20px;
-  margin-bottom: 5px;
+  font-size: 22px;
+  margin-bottom: 6px;
+  transition: transform 0.2s;
+}
+
+.field-type-item:hover .el-icon {
+  transform: scale(1.1);
 }
 
 .field-type-item span {
   font-size: 12px;
+  font-weight: 500;
 }
 
+/* ===== 中间字段列表面板 ===== */
 .fields-panel {
-  width: 500px;
+  flex: 1;
+  min-width: 450px;
   background: #fff;
-  border-right: 1px solid #dcdfe6;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.fields-panel .panel-title {
+  margin: 0;
+  padding: 16px 20px;
+  background: #fafbfc;
+  border-bottom: 1px solid #ebeef5;
 }
 
 .fields-list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 16px;
+  background: #f8f9fa;
 }
 
 .field-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  background: #fff;
   border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .field-item:hover {
   border-color: #409eff;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
+  transform: translateX(4px);
 }
 
 .field-item.active {
   border-color: #409eff;
-  background: #ecf5ff;
+  background: linear-gradient(135deg, #ecf5ff 0%, #f5f7ff 100%);
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.2);
 }
 
 .field-info {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
   min-width: 0;
 }
 
 .field-info .field-name {
-  font-weight: bold;
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
 .field-info .field-code {
   font-size: 12px;
   color: #909399;
+  background: #f4f4f5;
+  padding: 2px 8px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
 .field-info .el-tag {
   flex-shrink: 0;
+  border-radius: 4px;
+  font-weight: 500;
 }
-
-
 
 .field-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.field-item:hover .field-actions {
+  opacity: 1;
 }
 
 .action-btn {
   cursor: pointer;
   color: #409eff;
   font-size: 16px;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: #ecf5ff;
 }
 
 .action-btn.delete {
   color: #f56c6c;
 }
 
+.action-btn.delete:hover {
+  background: #fef0f0;
+}
+
+/* ===== 右侧属性面板 ===== */
 .property-panel {
-  width: 380px;
+  width: 360px;
   flex-shrink: 0;
-  background: #f5f7fa;
-  padding: 15px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.property-panel .panel-title {
+  margin: 0;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
+  border-bottom: 1px solid #ebeef5;
+}
+
+.property-panel :deep(.el-form) {
+  flex: 1;
   overflow-y: auto;
+  padding: 20px;
+}
+
+.property-panel :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.property-panel :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
+}
+
+.property-panel :deep(.el-input__inner),
+.property-panel :deep(.el-textarea__inner) {
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.property-panel :deep(.el-input__inner:focus),
+.property-panel :deep(.el-textarea__inner:focus) {
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
 }
 
 .empty-tip {
-  text-align: center;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #909399;
-  padding: 50px 0;
+  font-size: 14px;
+  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
+}
+
+.empty-tip::before {
+  content: '';
+  display: inline-block;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 16px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23c0c4cc'%3E%3Cpath d='M9 2v2H7v2h2v2H7v2h2v2H7v2h2v2H7v2h2v2h6v-2h2v-2h-2v-2h2v-2h-2v-2h2V8h-2V6h2V4h-2V2H9zm2 2h2v2h-2V4zm0 4h2v2h-2V8zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z'/%3E%3C/svg%3E") no-repeat center;
+  background-size: contain;
+  opacity: 0.5;
+}
+
+/* ===== 滚动条美化 ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #909399;
+}
+
+/* ===== 响应式调整 ===== */
+@media (max-width: 1200px) {
+  .property-panel {
+    width: 320px;
+  }
 }
 </style>

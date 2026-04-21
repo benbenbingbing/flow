@@ -89,6 +89,7 @@ public class NodeConfigService {
         dto.setNodeName(node.getNodeName());
         dto.setNodeType(node.getNodeType());
         dto.setConfigJson(node.getConfigJson());
+        dto.setSkipNode(node.getSkipNode());
         
         // Load assignees
         List<AssigneeConfig> assignees = assigneeMapper.findByNodeConfigId(node.getId());
@@ -159,6 +160,7 @@ public class NodeConfigService {
         node.setNodeName(dto.getNodeName());
         node.setNodeType(dto.getNodeType());
         node.setConfigJson(dto.getConfigJson());
+        node.setSkipNode(dto.getSkipNode());
         return node;
     }
     

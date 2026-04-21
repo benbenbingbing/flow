@@ -5,8 +5,9 @@ import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityFieldDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
+import com.workflow.entity.EntityPublishHistory;
 import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.mapper.EntityDataMapper;
+import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
@@ -30,7 +31,9 @@ public class EntityDefinitionService {
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
     private final ProcessDefinitionConfigMapper processMapper;
-    private final EntityDataMapper entityDataMapper;
+    private final EntityDataDynamicMapper entityDataDynamicMapper;
+    private final DynamicTableService dynamicTableService;
+    private final EntityPublishHistoryService publishHistoryService;
     private final ObjectMapper objectMapper;
     
     /**
@@ -248,6 +251,7 @@ public class EntityDefinitionService {
     
     /**
      * 更新实体定义
+     * 注意：实体发布后，已保存的字段不能再删除，只能添加新字段
      */
     @Transactional
     public EntityDefinitionDTO update(String id, EntityDefinitionDTO dto) {
@@ -259,6 +263,10 @@ public class EntityDefinitionService {
             throw new RuntimeException("实体不存在: " + id);
         }
         
+        // 检查实体是否已发布
+        boolean isPublished = existing.getStatus() == EntityDefinition.Status.PUBLISHED;
+        String entityCode = existing.getEntityCode();
+        
         existing.setEntityName(dto.getEntityName());
         existing.setDescription(dto.getDescription());
         existing.setProcessDefinitionId(dto.getProcessDefinitionId());
@@ -266,29 +274,72 @@ public class EntityDefinitionService {
         
         entityMapper.updateById(existing);
         
-        // 更新字段：先删除旧字段（保留系统字段），再保存新字段
+        // 更新字段
         if (dto.getFields() != null) {
-            // 只删除非系统字段，系统字段保留
+            // 获取现有字段
             List<EntityField> existingFields = fieldMapper.findByEntityId(id);
-            for (EntityField field : existingFields) {
-                if (!Boolean.TRUE.equals(field.getIsSystem())) {
-                    fieldMapper.deleteById(field.getId());
+            Map<String, EntityField> existingFieldMap = existingFields.stream()
+                    .collect(Collectors.toMap(EntityField::getFieldCode, f -> f));
+            
+            // 收集需要保留的字段编码
+            List<String> newFieldCodes = dto.getFields().stream()
+                    .map(EntityFieldDTO::getFieldCode)
+                    .filter(code -> code != null && !code.isEmpty())
+                    .collect(Collectors.toList());
+            
+            if (isPublished) {
+                // 已发布的实体：不允许删除字段，只能添加新字段
+                for (EntityField existingField : existingFields) {
+                    if (!Boolean.TRUE.equals(existingField.getIsSystem()) && 
+                        !newFieldCodes.contains(existingField.getFieldCode())) {
+                        throw new RuntimeException("实体已发布，不允许删除字段: " + existingField.getFieldCode() + 
+                                "。已发布的实体只能添加新字段，不能删除已有字段。");
+                    }
+                }
+            } else {
+                // 未发布的实体：可以删除非系统字段
+                for (EntityField field : existingFields) {
+                    if (!Boolean.TRUE.equals(field.getIsSystem()) && 
+                        !newFieldCodes.contains(field.getFieldCode())) {
+                        fieldMapper.deleteById(field.getId());
+                    }
                 }
             }
             
-            // 保存新字段（跳过系统字段，因为系统字段已经存在）
+            // 保存新字段（跳过系统字段和已存在的字段）
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
                 // 跳过系统字段的重复添加
                 if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
                     continue;
                 }
                 
-                EntityField field = convertToEntity(fieldDTO);
-                field.setId(null); // 更新时重新创建字段，避免ID冲突
-                field.setEntityId(id);
-                field.setIsSystem(false); // 用户添加的字段标记为非系统字段
-                field.setEditable(true);  // 用户添加的字段默认可编辑
-                fieldMapper.insert(field);
+                String fieldCode = fieldDTO.getFieldCode();
+                
+                if (existingFieldMap.containsKey(fieldCode)) {
+                    // 字段已存在，更新字段定义（仅更新元数据，不修改数据库列）
+                    EntityField existingField = existingFieldMap.get(fieldCode);
+                    existingField.setFieldName(fieldDTO.getFieldName());
+                    existingField.setIsRequired(fieldDTO.getIsRequired());
+                    existingField.setIsUnique(fieldDTO.getIsUnique());
+                    existingField.setDefaultValue(fieldDTO.getDefaultValue());
+                    existingField.setOptionsJson(fieldDTO.getOptionsJson());
+                    existingField.setShowInList(fieldDTO.getShowInList());
+                    existingField.setShowInForm(fieldDTO.getShowInForm());
+                    existingField.setIsQuery(fieldDTO.getIsQuery());
+                    existingField.setSortOrder(fieldDTO.getSortOrder());
+                    fieldMapper.updateById(existingField);
+                } else {
+                    // 新字段，添加到字段定义表（不立即同步到数据表，等发布时同步）
+                    EntityField field = convertToEntity(fieldDTO);
+                    field.setId(null);
+                    field.setEntityId(id);
+                    field.setIsSystem(false);
+                    field.setEditable(true);
+                    field.setIsPublished(false); // 新字段标记为未发布
+                    fieldMapper.insert(field);
+                    
+                    // 注意：不再自动添加字段到数据表，只有点击发布时才同步
+                }
             }
         }
         
@@ -306,16 +357,80 @@ public class EntityDefinitionService {
     
     /**
      * 发布实体
+     * 发布时自动创建数据表，并记录版本历史
      */
     @Transactional
-    public EntityDefinitionDTO publish(String id) {
+    public EntityDefinitionDTO publish(String id, String userId, String userName) {
         EntityDefinition entity = entityMapper.selectById(id);
         if (entity == null) {
             throw new RuntimeException("实体不存在: " + id);
         }
+        
+        // 加载字段
+        List<EntityField> fields = fieldMapper.findByEntityId(id);
+        entity.setFields(fields);
+        
+        // 判断是首次发布还是字段变更
+        boolean isFirstPublish = entity.getStatus() != EntityDefinition.Status.PUBLISHED;
+        EntityPublishHistory.PublishType publishType = isFirstPublish 
+                ? EntityPublishHistory.PublishType.CREATE 
+                : EntityPublishHistory.PublishType.ALTER;
+        
+        // 同步表结构（创建表或添加字段）
+        List<String> executedDdls = dynamicTableService.syncEntityTableStructure(entity);
+        
+        // 标记已同步的字段为已发布状态
+        int publishedFieldCount = 0;
+        for (EntityField field : fields) {
+            if (!Boolean.TRUE.equals(field.getIsSystem()) && 
+                !Boolean.TRUE.equals(field.getIsPublished())) {
+                field.setIsPublished(true);
+                fieldMapper.updateById(field);
+                publishedFieldCount++;
+            }
+        }
+        if (publishedFieldCount > 0) {
+            log.info("实体 [{}] 发布完成，标记 {} 个字段为已发布状态", entity.getEntityCode(), publishedFieldCount);
+        }
+        
+        // 构建变更描述
+        String changesDesc = buildChangesDescription(isFirstPublish, executedDdls, fields);
+        
+        // 记录版本历史
+        String ddlString = executedDdls.isEmpty() ? null : String.join(";\n", executedDdls);
+        publishHistoryService.createVersion(
+                entity, fields, ddlString, publishType, changesDesc, userId, userName);
+        
         entity.setStatus(EntityDefinition.Status.PUBLISHED);
         entityMapper.updateById(entity);
         return convertToDTO(entity);
+    }
+    
+    /**
+     * 构建变更描述
+     */
+    private String buildChangesDescription(boolean isFirstPublish, List<String> executedDdls, List<EntityField> fields) {
+        if (isFirstPublish) {
+            return "首次发布，创建数据表，包含 " + fields.size() + " 个字段";
+        }
+        
+        if (executedDdls.isEmpty()) {
+            return "无字段变更";
+        }
+        
+        // 统计新增字段
+        int addCount = 0;
+        for (String ddl : executedDdls) {
+            if (ddl.contains("ADD COLUMN")) {
+                addCount++;
+            }
+        }
+        
+        if (addCount > 0) {
+            return "新增 " + addCount + " 个字段到数据表";
+        }
+        
+        return "表结构同步完成";
     }
     
     /**
@@ -334,7 +449,12 @@ public class EntityDefinitionService {
         // 如果要切换流程（原流程不为空且新流程不同），检查是否有流程数据
         String oldProcessId = entity.getProcessDefinitionId();
         if (oldProcessId != null && !oldProcessId.equals(processId)) {
-            int processDataCount = entityDataMapper.countProcessDataByEntityCode(entity.getEntityCode());
+            // 检查是否有流程数据（使用新表结构）
+            String tableName = dynamicTableService.getTableName(entity.getEntityCode());
+            int processDataCount = 0;
+            if (dynamicTableService.tableExists(entity.getEntityCode())) {
+                processDataCount = (int) entityDataDynamicMapper.count(tableName);
+            }
             if (processDataCount > 0) {
                 throw new RuntimeException("该实体已有 " + processDataCount + " 条流程数据，无法切换绑定的流程。请先处理完现有流程数据后再切换。");
             }
@@ -408,6 +528,7 @@ public class EntityDefinitionService {
         dto.setIsQuery(field.getIsQuery());
         dto.setIsSystem(field.getIsSystem());
         dto.setEditable(field.getEditable());
+        dto.setIsPublished(field.getIsPublished());
         return dto;
     }
     

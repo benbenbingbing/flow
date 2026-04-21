@@ -296,8 +296,13 @@ const handleSubmit = async () => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    const api = formData.id ? updateUser : createUser
-    await api(formData.id, formData)
+    if (formData.id) {
+      // 更新用户
+      await updateUser(formData.id, formData)
+    } else {
+      // 创建用户（只传 data，不传 id）
+      await createUser(formData)
+    }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
     fetchUserList()

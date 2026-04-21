@@ -88,7 +88,12 @@ public class ProcessDetailVO {
     @Data
     public static class AssigneeVO {
         /**
-         * 处理人姓名
+         * 处理人ID（用户名）
+         */
+        private String assigneeId;
+        
+        /**
+         * 处理人姓名（昵称）
          */
         private String assigneeName;
         
@@ -124,9 +129,14 @@ public class ProcessDetailVO {
         private String taskName;
         
         /**
-         * 处理人
+         * 处理人ID
          */
         private String assignee;
+        
+        /**
+         * 处理人姓名
+         */
+        private String assigneeName;
         
         /**
          * 操作类型（发起、通过、驳回、转办）

@@ -71,3 +71,8 @@ export const saveNodeForms = (processConfigId: string, nodeForms: any[]) => {
 export const getEntityFormsForBind = (entityId: string) => {
   return request.get(`/process-node-form/entity/${entityId}/forms`)
 }
+
+// 设置默认表单
+export const setDefaultForm = (formId: string) => {
+  return request.put(`/entity-form/${formId}/default`)
+}

@@ -22,6 +22,12 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
     boolean existsGroupCode(@Param("groupCode") String groupCode, @Param("excludeId") String excludeId);
     
     /**
+     * 根据组编码查询组信息
+     */
+    @Select("SELECT * FROM sys_group WHERE group_code = #{groupCode} AND deleted = 0 LIMIT 1")
+    SysGroup selectByGroupCode(@Param("groupCode") String groupCode);
+    
+    /**
      * 查询组下的用户列表
      */
     @Select("SELECT u.* FROM sys_user u " +

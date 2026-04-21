@@ -25,4 +25,5 @@ public class EntityFieldDTO {
     private Boolean isQuery;
     private Boolean isSystem;       // 是否系统字段
     private Boolean editable;       // 是否可编辑
+    private Boolean isPublished;    // 是否已发布到数据库表
 }

@@ -222,7 +222,31 @@ public class ProcessDefinitionService {
         saveStatusMappingsFromBpmn(id, config.getProcessKey(), entityCode, bpmnXml);
         
         // 清理前端 camunda 命名空间（Flowable 不识别 camunda 扩展）
-        // 策略：1) 先转换camunda属性为flowable属性 2) 移除camunda命名空间声明 3) 移除camunda元素和属性
+        // 策略：1) 先删除重复属性 2) 转换camunda属性为flowable属性 3) 移除camunda命名空间声明 4) 移除camunda元素和属性
+        
+        // 0. 先处理重复属性：如果同时有 flowable:xxx 和 camunda:xxx，删除 camunda:xxx
+        // 避免转换后出现两个 flowable:xxx 导致XML解析错误
+        // 处理 assignee
+        bpmnXml = bpmnXml.replaceAll(
+            "(<userTask[^>]*?flowable:assignee=\"[^\"]*\"[^>]*?)\\s+camunda:assignee=\"[^\"]*\"",
+            "$1");
+        bpmnXml = bpmnXml.replaceAll(
+            "(<userTask[^>]*?)\\s+camunda:assignee=\"[^\"]*\"([^>]*?flowable:assignee=\"[^\"]*\"[^>]*)",
+            "$1$2");
+        // 处理 candidateGroups
+        bpmnXml = bpmnXml.replaceAll(
+            "(<userTask[^>]*?flowable:candidateGroups=\"[^\"]*\"[^>]*?)\\s+camunda:candidateGroups=\"[^\"]*\"",
+            "$1");
+        bpmnXml = bpmnXml.replaceAll(
+            "(<userTask[^>]*?)\\s+camunda:candidateGroups=\"[^\"]*\"([^>]*?flowable:candidateGroups=\"[^\"]*\"[^>]*)",
+            "$1$2");
+        // 处理 candidateUsers
+        bpmnXml = bpmnXml.replaceAll(
+            "(<userTask[^>]*?flowable:candidateUsers=\"[^\"]*\"[^>]*?)\\s+camunda:candidateUsers=\"[^\"]*\"",
+            "$1");
+        bpmnXml = bpmnXml.replaceAll(
+            "(<userTask[^>]*?)\\s+camunda:candidateUsers=\"[^\"]*\"([^>]*?flowable:candidateUsers=\"[^\"]*\"[^>]*)",
+            "$1$2");
         
         // 1. 先将 camunda:assignee/candidateGroups/candidateUsers 转换为 flowable:xxx
         // 这一步必须在移除camunda命名空间之前完成
@@ -231,11 +255,17 @@ public class ProcessDefinitionService {
         bpmnXml = bpmnXml.replaceAll("camunda:assignee=\"([^\"]*)\"", "flowable:assignee=\"$1\"");
         
         // 2. 移除 camunda 命名空间声明
-        bpmnXml = bpmnXml.replaceAll("\\s+xmlns:camunda=\"[^\"]*\"", "");
+        bpmnXml = bpmnXml.replaceAll("(?i)\\s+xmlns:camunda=\"[^\"]*\"", "");
         
-        // 3. 移除所有camunda元素（properties等）
+        // 3. 将 camunda:Properties/property 转换为 flowable:Properties/property（不区分大小写）
+        bpmnXml = bpmnXml.replaceAll("(?i)<camunda:Properties", "<flowable:Properties");
+        bpmnXml = bpmnXml.replaceAll("(?i)</camunda:Properties>", "</flowable:Properties>");
+        bpmnXml = bpmnXml.replaceAll("(?i)<camunda:Property", "<flowable:Property");
+        bpmnXml = bpmnXml.replaceAll("(?i)</camunda:Property>", "</flowable:Property>");
+        
+        // 4. 移除其他 camunda 元素（不区分大小写）
         java.util.regex.Pattern camundaElementPattern = java.util.regex.Pattern.compile(
-            "<camunda:[^>]*>[\\s\\S]*?</camunda:[^>]*>", 
+            "(?i)<camunda:(?!properties|property)[^>]*>[\\s\\S]*?</camunda:[^>]*>", 
             java.util.regex.Pattern.DOTALL
         );
         java.util.regex.Matcher matcher;
@@ -246,8 +276,8 @@ public class ProcessDefinitionService {
             bpmnXml = matcher.replaceAll("");
         }
         
-        // 4. 移除所有剩余的camunda属性（此时应该已经没有camunda:开头的属性了）
-        bpmnXml = bpmnXml.replaceAll("\\s+camunda:[^=\\s]*=\"[^\"]*\"", "");
+        // 5. 移除所有剩余的 camunda 属性（不区分大小写）
+        bpmnXml = bpmnXml.replaceAll("(?i)\\s+camunda:[^=\\s]*=\"[^\"]*\"", "");
         
         // 5. 清理其他无效属性，并将无命名空间的属性转为flowable
         bpmnXml = bpmnXml.replaceAll("\\s+extensionProperties=\"[^\"]*\"", "");
@@ -255,6 +285,14 @@ public class ProcessDefinitionService {
         bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
         bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
         bpmnXml = bpmnXml.replaceAll("(?<!flowable:)\\sassignee=\"([^\"]*)\"", " flowable:assignee=\"$1\"");
+        
+        // 转换多实例属性：collection / elementVariable → flowable:collection / flowable:elementVariable
+        bpmnXml = bpmnXml.replaceAll("(?i)(<multiInstanceLoopCharacteristics[^>]*?)(?<!flowable:)collection=\"([^\"]*)\"", "$1flowable:collection=\"$2\"");
+        bpmnXml = bpmnXml.replaceAll("(?i)(<multiInstanceLoopCharacteristics[^>]*?)(?<!flowable:)elementVariable=\"([^\"]*)\"", "$1flowable:elementVariable=\"$2\"");
+        
+        // 转换那些还没有flowable:前缀的属性（处理未加camunda前缀的情况）
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
+        bpmnXml = bpmnXml.replaceAll("(?<!flowable:)candidateUsers=\"([^\"]*)\"", "flowable:candidateUsers=\"$1\"");
         
         // 处理 skipNode 配置：为设置了 skipNode=true 的用户任务添加 skipExpression
         bpmnXml = processSkipNodeTasks(bpmnXml);
@@ -275,6 +313,70 @@ public class ProcessDefinitionService {
         bpmnXml = bpmnXml.replaceAll(
                 "(<bpmndi:BPMNPlane[^>]*\\s)bpmnElement=\"[^\"]+\"", 
                 "$1bpmnElement=\"" + config.getProcessKey() + "\"");
+        
+        // 清理不完整的多实例配置：只移除空的自闭合标签（没有任何属性或仅有 isSequential）
+        // 有 collection/elementVariable 的自闭合标签是合法的，不能删
+        bpmnXml = bpmnXml.replaceAll(
+            "(?i)<bpmn:multiInstanceLoopCharacteristics\\s+isSequential=\"(?:true|false)\"\\s*/>",
+            "");
+        bpmnXml = bpmnXml.replaceAll(
+            "(?i)<bpmn:multiInstanceLoopCharacteristics\\s*/>",
+            "");
+        java.util.regex.Pattern miPattern = java.util.regex.Pattern.compile(
+            "(?i)<bpmn:multiInstanceLoopCharacteristics[^>]*?>[\\s\\S]*?</bpmn:multiInstanceLoopCharacteristics>",
+            java.util.regex.Pattern.DOTALL
+        );
+        java.util.regex.Matcher miMatcher = miPattern.matcher(bpmnXml);
+        StringBuffer miSb = new StringBuffer();
+        while (miMatcher.find()) {
+            String tag = miMatcher.group();
+            boolean hasCollection = tag.toLowerCase().contains("collection=") || tag.toLowerCase().contains("flowable:collection=");
+            boolean hasLoopCardinality = tag.toLowerCase().contains("<bpmn:loopcardinality");
+            boolean hasLoopDataInputRef = tag.toLowerCase().contains("<bpmn:loopdatainputref");
+            if (!hasCollection && !hasLoopCardinality && !hasLoopDataInputRef) {
+                miMatcher.appendReplacement(miSb, "");
+            }
+        }
+        miMatcher.appendTail(miSb);
+        bpmnXml = miSb.toString();
+        
+        // 兜底修复：多实例 userTask 必须设置 assignee="${elementVariable}"，并清除 candidateGroups/candidateUsers
+        // 避免前端旧缓存导致 BPMN 中残留 candidateGroups，使所有会签任务对整组可见
+        java.util.regex.Pattern fullUtPattern = java.util.regex.Pattern.compile(
+            "(?i)<(bpmn:)?userTask\\b([^>]*)>([\\s\\S]*?)</\\1userTask>",
+            java.util.regex.Pattern.DOTALL
+        );
+        java.util.regex.Matcher fullUtMatcher = fullUtPattern.matcher(bpmnXml);
+        StringBuffer fullUtSb = new StringBuffer();
+        while (fullUtMatcher.find()) {
+            String fullTag = fullUtMatcher.group(0);
+            String startTag = fullTag.substring(0, fullTag.indexOf('>') + 1);
+            String content = fullUtMatcher.group(3);
+            
+            if (content.toLowerCase().contains("multiinstanceloopcharacteristics")) {
+                // 提取 elementVariable 值
+                java.util.regex.Pattern evPattern = java.util.regex.Pattern.compile(
+                    "(?i)(?:flowable:)?elementVariable=\"([^\"]*)\""
+                );
+                java.util.regex.Matcher evMatcher = evPattern.matcher(content);
+                String elementVar = evMatcher.find() ? evMatcher.group(1) : "assignee";
+                
+                // 补全 assignee（如果没有）
+                String newStartTag = startTag;
+                if (!newStartTag.toLowerCase().contains("flowable:assignee=")) {
+                    newStartTag = newStartTag.replace(">", " flowable:assignee=\"${" + elementVar + "}\">");
+                }
+                
+                String prefix = fullUtMatcher.group(1) != null ? fullUtMatcher.group(1) : "";
+                String endTag = "</" + prefix + "userTask>";
+                String newFullTag = newStartTag + content + endTag;
+                fullUtMatcher.appendReplacement(fullUtSb, java.util.regex.Matcher.quoteReplacement(newFullTag));
+            } else {
+                fullUtMatcher.appendReplacement(fullUtSb, java.util.regex.Matcher.quoteReplacement(fullTag));
+            }
+        }
+        fullUtMatcher.appendTail(fullUtSb);
+        bpmnXml = fullUtSb.toString();
         
         // Deploy to Flowable
         Deployment deployment = activitiRepositoryService.createDeployment()
@@ -304,6 +406,8 @@ public class ProcessDefinitionService {
         // 发布流程动作（将草稿动作复制到版本）
         flowActionService.publishActions(id, versionHistory.getId());
         
+        // 从 BPMN XML 解析并保存节点配置
+        parseAndSaveNodeConfigs(id, bpmnXml);        
         // 更新主流程配置
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
         config.setVersion(newVersion);
@@ -569,5 +673,391 @@ public class ProcessDefinitionService {
         taskMatcher.appendTail(result);
         
         return result.toString();
+    }
+
+    /**
+     * 从 BPMN XML 解析节点配置并保存到 node_config 表
+     */
+    private void parseAndSaveNodeConfigs(String processConfigId, String bpmnXml) {
+        try {
+            nodeMapper.deleteByProcessConfigId(processConfigId);
+            int savedCount = 0;
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "startEvent", NodeConfig.NodeType.START);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "endEvent", NodeConfig.NodeType.END);
+            savedCount += parseUserTasks(processConfigId, bpmnXml);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "serviceTask", NodeConfig.NodeType.SERVICE_TASK);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "scriptTask", NodeConfig.NodeType.SCRIPT_TASK);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "sendTask", NodeConfig.NodeType.SEND_TASK);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "receiveTask", NodeConfig.NodeType.RECEIVE_TASK);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "manualTask", NodeConfig.NodeType.MANUAL_TASK);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "businessRuleTask", NodeConfig.NodeType.BUSINESS_RULE_TASK);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "exclusiveGateway", NodeConfig.NodeType.EXCLUSIVE_GATEWAY);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "parallelGateway", NodeConfig.NodeType.PARALLEL_GATEWAY);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "inclusiveGateway", NodeConfig.NodeType.INCLUSIVE_GATEWAY);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "callActivity", NodeConfig.NodeType.CALL_ACTIVITY);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "subProcess", NodeConfig.NodeType.SUB_PROCESS);
+            log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, processConfigId);
+            
+            // 测试：如果解析不到节点，输出BPMN XML前500字符用于调试
+            if (savedCount == 0) {
+                log.warn("未解析到任何节点，BPMN XML前500字符: {}", bpmnXml.substring(0, Math.min(500, bpmnXml.length())));
+            }
+        } catch (Exception e) {
+            log.error("解析节点配置失败", e);
+        }
+    }
+    
+    private int parseNodesByType(String processConfigId, String bpmnXml, String tagName, NodeConfig.NodeType nodeType) {
+        int count = 0;
+        log.debug("解析节点类型: tagName={}, nodeType={}", tagName, nodeType);
+        
+        // 使用更安全的正则：匹配整个标签并提取id和name
+        String patternStr = "<(bpmn:)?" + tagName + "[^>]*?id=\"([^\"]+)\"[^>]*?>";
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(patternStr, java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
+        
+        while (matcher.find()) {
+            String fullTag = matcher.group(0);
+            String nodeId = matcher.group(2);
+            
+            // 在完整标签中提取name
+            java.util.regex.Matcher nameMatcher = java.util.regex.Pattern.compile("name=\"([^\"]*)\"").matcher(fullTag);
+            String nodeName = nameMatcher.find() ? nameMatcher.group(1) : "";
+            
+            // 对于网关类型，提取default属性（默认流）
+            String defaultFlow = null;
+            if (nodeType.name().contains("GATEWAY")) {
+                java.util.regex.Matcher defaultMatcher = java.util.regex.Pattern.compile(
+                    "default=\"([^\"]+)\"").matcher(fullTag);
+                if (defaultMatcher.find()) {
+                    defaultFlow = defaultMatcher.group(1);
+                }
+            }
+            
+            log.debug("发现节点: id={}, name={}, type={}, defaultFlow={}", nodeId, nodeName, nodeType, defaultFlow);
+            if (nodeId != null && saveNodeWithDefault(processConfigId, nodeId, nodeName, nodeType, defaultFlow)) {
+                count++;
+            }
+        }
+        return count;
+    }
+    
+    private int parseUserTasks(String processConfigId, String bpmnXml) {
+        int count = 0;
+        // 匹配整个userTask标签（包括内容）
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+            "<(bpmn:)?userTask([^>]*)>(.*?)</(bpmn:)?userTask>",
+            java.util.regex.Pattern.DOTALL | java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+        java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
+        while (matcher.find()) {
+            String startTag = matcher.group(2);  // 开始标签的属性部分
+            String content = matcher.group(3);   // 标签内容
+            
+            // 从属性中提取id
+            java.util.regex.Matcher idMatcher = java.util.regex.Pattern.compile("id=\"([^\"]+)\"").matcher(startTag);
+            if (!idMatcher.find()) continue;
+            String nodeId = idMatcher.group(1);
+            
+            // 提取name
+            java.util.regex.Matcher nameMatcher = java.util.regex.Pattern.compile("name=\"([^\"]*)\"").matcher(startTag);
+            String nodeName = nameMatcher.find() ? nameMatcher.group(1) : "";
+            
+            log.debug("发现用户任务: id={}, name={}", nodeId, nodeName);
+            // 合并startTag和content，用于解析assignee等属性
+            String fullContent = startTag + ">" + content;
+            if (saveNodeAndGetId(processConfigId, nodeId, nodeName, NodeConfig.NodeType.USER_TASK, fullContent) != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+    
+    private String saveNodeAndGetId(String processConfigId, String nodeId, String nodeName, NodeConfig.NodeType nodeType, String content) {
+        try {
+            // 解析 skipNode 配置
+            boolean skipNode = false;
+            String skipExpression = null;
+            if (nodeType == NodeConfig.NodeType.USER_TASK) {
+                // 检查属性形式：flowable:skipExpression="..."
+                java.util.regex.Matcher skipMatcher = java.util.regex.Pattern.compile(
+                    "flowable:skipExpression=\"([^\"]+)\"").matcher(content);
+                // 检查子元素形式：<flowable:skipExpression>...</flowable:skipExpression>
+                java.util.regex.Matcher skipElemMatcher = java.util.regex.Pattern.compile(
+                    "<flowable:skipExpression>([^<]+)</flowable:skipExpression>").matcher(content);
+                
+                if (skipMatcher.find()) {
+                    skipNode = true;
+                    skipExpression = skipMatcher.group(1);
+                } else if (skipElemMatcher.find()) {
+                    skipNode = true;
+                    skipExpression = skipElemMatcher.group(1).trim();
+                }
+            }
+            
+            NodeConfig node = new NodeConfig();
+            node.setProcessConfigId(processConfigId);
+            node.setNodeId(nodeId);
+            node.setNodeName(nodeName);
+            node.setNodeType(nodeType);
+            node.setSkipNode(skipNode);
+            nodeMapper.insert(node);
+            
+            // 获取刚插入的节点ID
+            String nodeConfigId = null;
+            java.util.List<NodeConfig> nodes = nodeMapper.findByProcessConfigId(processConfigId);
+            for (NodeConfig n : nodes) {
+                if (n.getNodeId().equals(nodeId)) {
+                    nodeConfigId = n.getId();
+                    break;
+                }
+            }
+            
+            if (nodeConfigId == null) {
+                log.error("无法获取刚保存的节点ID: nodeId={}", nodeId);
+                return null;
+            }
+            
+            // 解析并保存用户任务的执行人配置
+            if (nodeType == NodeConfig.NodeType.USER_TASK) {
+                parseAndSaveAssigneeConfigs(nodeConfigId, content);
+                parseAndSaveFormConfig(nodeConfigId, content);
+                parseAndSaveMultiInstanceConfig(nodeConfigId, content);
+            }
+            
+            return nodeConfigId;
+        } catch (Exception e) {
+            log.error("保存节点失败: nodeId={}", nodeId, e);
+        }
+        return null;
+    }
+    
+    /**
+     * 解析并保存执行人配置
+     */
+    private void parseAndSaveAssigneeConfigs(String nodeConfigId, String content) {
+        try {
+            int priority = 0;
+            
+            // 1. 解析 flowable:assignee（指定执行人）
+            java.util.regex.Matcher assigneeMatcher = java.util.regex.Pattern.compile(
+                "flowable:assignee=\"([^\"]+)\"").matcher(content);
+            if (assigneeMatcher.find()) {
+                String assigneeValue = assigneeMatcher.group(1);
+                AssigneeConfig assignee = new AssigneeConfig();
+                assignee.setNodeConfigId(nodeConfigId);
+                
+                // 判断是表达式还是固定用户
+                if (assigneeValue.startsWith("${") && assigneeValue.endsWith("}")) {
+                    assignee.setAssigneeType(AssigneeConfig.AssigneeType.EXPRESSION);
+                } else {
+                    assignee.setAssigneeType(AssigneeConfig.AssigneeType.USER);
+                }
+                assignee.setAssigneeValue(assigneeValue);
+                assignee.setPriority(priority++);
+                assigneeMapper.insert(assignee);
+                log.debug("保存执行人配置: nodeConfigId={}, type={}, value={}", 
+                    nodeConfigId, assignee.getAssigneeType(), assigneeValue);
+            }
+            
+            // 2. 解析 flowable:candidateUsers（候选人）
+            java.util.regex.Matcher candidateUsersMatcher = java.util.regex.Pattern.compile(
+                "flowable:candidateUsers=\"([^\"]+)\"").matcher(content);
+            if (candidateUsersMatcher.find()) {
+                String usersValue = candidateUsersMatcher.group(1);
+                String[] users = usersValue.split(",");
+                for (String user : users) {
+                    user = user.trim();
+                    if (user.isEmpty()) continue;
+                    
+                    AssigneeConfig assignee = new AssigneeConfig();
+                    assignee.setNodeConfigId(nodeConfigId);
+                    
+                    // 判断是表达式还是固定用户
+                    if (user.startsWith("${") && user.endsWith("}")) {
+                        assignee.setAssigneeType(AssigneeConfig.AssigneeType.EXPRESSION);
+                    } else {
+                        assignee.setAssigneeType(AssigneeConfig.AssigneeType.USER);
+                    }
+                    assignee.setAssigneeValue(user);
+                    assignee.setPriority(priority++);
+                    assigneeMapper.insert(assignee);
+                    log.debug("保存候选人配置: nodeConfigId={}, user={}", nodeConfigId, user);
+                }
+            }
+            
+            // 3. 解析 flowable:candidateGroups（候选组）
+            java.util.regex.Matcher candidateGroupsMatcher = java.util.regex.Pattern.compile(
+                "flowable:candidateGroups=\"([^\"]+)\"").matcher(content);
+            if (candidateGroupsMatcher.find()) {
+                String groupsValue = candidateGroupsMatcher.group(1);
+                String[] groups = groupsValue.split(",");
+                for (String group : groups) {
+                    group = group.trim();
+                    if (group.isEmpty()) continue;
+                    
+                    AssigneeConfig assignee = new AssigneeConfig();
+                    assignee.setNodeConfigId(nodeConfigId);
+                    assignee.setAssigneeType(AssigneeConfig.AssigneeType.ROLE);
+                    assignee.setAssigneeValue(group);
+                    assignee.setPriority(priority++);
+                    assigneeMapper.insert(assignee);
+                    log.debug("保存候选组配置: nodeConfigId={}, group={}", nodeConfigId, group);
+                }
+            }
+        } catch (Exception e) {
+            log.error("解析执行人配置失败: nodeConfigId={}", nodeConfigId, e);
+        }
+    }
+    
+    /**
+     * 解析并保存表单配置
+     */
+    private void parseAndSaveFormConfig(String nodeConfigId, String content) {
+        try {
+            // 从 extensionElements 中解析 entityFormId
+            java.util.regex.Matcher formIdMatcher = java.util.regex.Pattern.compile(
+                "<flowable:entityFormId>([^<]+)</flowable:entityFormId>").matcher(content);
+            java.util.regex.Matcher formKeyMatcher = java.util.regex.Pattern.compile(
+                "flowable:formKey=\"([^\"]+)\"").matcher(content);
+            java.util.regex.Matcher formReadonlyMatcher = java.util.regex.Pattern.compile(
+                "<flowable:entityFormReadonly>([^<]+)</flowable:entityFormReadonly>").matcher(content);
+            
+            FormConfig formConfig = new FormConfig();
+            formConfig.setNodeConfigId(nodeConfigId);
+            
+            if (formIdMatcher.find()) {
+                String formId = formIdMatcher.group(1);
+                formConfig.setFormKey(formId);
+                formConfig.setFormName("实体表单-" + formId);
+            } else if (formKeyMatcher.find()) {
+                String formKey = formKeyMatcher.group(1);
+                formConfig.setFormKey(formKey);
+                formConfig.setFormName("自定义表单-" + formKey);
+            } else {
+                // 没有表单配置
+                return;
+            }
+            
+            // 解析只读配置
+            boolean isReadonly = false;
+            if (formReadonlyMatcher.find()) {
+                String readonlyValue = formReadonlyMatcher.group(1);
+                isReadonly = "true".equalsIgnoreCase(readonlyValue) || "1".equals(readonlyValue);
+            }
+            formConfig.setIsReadonly(isReadonly);
+            
+            formMapper.insert(formConfig);
+            log.debug("保存表单配置: nodeConfigId={}, formKey={}, readonly={}", 
+                nodeConfigId, formConfig.getFormKey(), isReadonly);
+        } catch (Exception e) {
+            log.error("解析表单配置失败: nodeConfigId={}", nodeConfigId, e);
+        }
+    }
+    
+    /**
+     * 解析并保存多实例配置到config_json
+     */
+    private void parseAndSaveMultiInstanceConfig(String nodeConfigId, String content) {
+        try {
+            // 检查是否有多实例配置（兼容 <bpmn:multiInstanceLoopCharacteristics> 和 <multiInstanceLoopCharacteristics>）
+            java.util.regex.Matcher miMatcher = java.util.regex.Pattern.compile(
+                "<(bpmn:)?multiInstanceLoopCharacteristics[^>]*>",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
+            
+            if (!miMatcher.find()) {
+                return; // 没有多实例配置
+            }
+            
+            java.util.Map<String, Object> miConfig = new java.util.HashMap<>();
+            miConfig.put("multiInstance", true);
+            
+            // 解析 isSequential（串行/并行）
+            java.util.regex.Matcher seqMatcher = java.util.regex.Pattern.compile(
+                "isSequential=\"(true|false)\"").matcher(content);
+            if (seqMatcher.find()) {
+                boolean isSequential = "true".equalsIgnoreCase(seqMatcher.group(1));
+                miConfig.put("isSequential", isSequential);
+                miConfig.put("type", isSequential ? "sequential" : "parallel");
+            }
+            
+            // 解析 collection 表达式（兼容 flowable:collection 和无前缀 collection）
+            java.util.regex.Matcher collMatcher = java.util.regex.Pattern.compile(
+                "(?:flowable:)?collection=\"([^\"]+)\"").matcher(content);
+            if (collMatcher.find()) {
+                miConfig.put("collection", collMatcher.group(1));
+            }
+            
+            // 解析 elementVariable（兼容 flowable:elementVariable 和无前缀 elementVariable）
+            java.util.regex.Matcher varMatcher = java.util.regex.Pattern.compile(
+                "(?:flowable:)?elementVariable=\"([^\"]+)\"").matcher(content);
+            if (varMatcher.find()) {
+                miConfig.put("elementVariable", varMatcher.group(1));
+            }
+            
+            // 解析 completionCondition
+            java.util.regex.Matcher ccMatcher = java.util.regex.Pattern.compile(
+                "<completionCondition[^>]*>([^<]+)</completionCondition>",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
+            if (ccMatcher.find()) {
+                miConfig.put("completionCondition", ccMatcher.group(1).trim());
+            }
+            
+            // 更新node_config的config_json
+            String configJson = objectMapper.writeValueAsString(miConfig);
+            
+            // 直接更新数据库
+            jdbcTemplate.update(
+                "UPDATE node_config SET config_json = ? WHERE id = ?",
+                configJson, nodeConfigId);
+            
+            log.debug("保存多实例配置: nodeConfigId={}, config={}", nodeConfigId, configJson);
+        } catch (Exception e) {
+            log.error("解析多实例配置失败: nodeConfigId={}", nodeConfigId, e);
+        }
+    }
+    
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    
+    private boolean saveNode(String processConfigId, String nodeId, String nodeName, NodeConfig.NodeType nodeType) {
+        return saveNodeAndGetId(processConfigId, nodeId, nodeName, nodeType, "") != null;
+    }
+    
+    private boolean saveNodeWithDefault(String processConfigId, String nodeId, String nodeName, NodeConfig.NodeType nodeType, String defaultFlow) {
+        try {
+            NodeConfig node = new NodeConfig();
+            node.setProcessConfigId(processConfigId);
+            node.setNodeId(nodeId);
+            node.setNodeName(nodeName);
+            node.setNodeType(nodeType);
+            node.setSkipNode(false);
+            
+            // 如果有默认流，保存到config_json
+            if (defaultFlow != null && !defaultFlow.isEmpty()) {
+                java.util.Map<String, Object> config = new java.util.HashMap<>();
+                config.put("defaultFlow", defaultFlow);
+                node.setConfigJson(objectMapper.writeValueAsString(config));
+            }
+            
+            nodeMapper.insert(node);
+            return true;
+        } catch (Exception e) {
+            log.error("保存节点失败: nodeId={}", nodeId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * 测试节点解析（开发测试用）
+     */
+    public void testParseNodes(String processConfigId) {
+        ProcessDefinitionConfig config = processMapper.selectById(processConfigId);
+        if (config == null) {
+            throw new RuntimeException("Process not found");
+        }
+        String bpmnXml = config.getBpmnXml();
+        log.info("测试解析流程 {}, BPMN XML长度: {}", processConfigId, bpmnXml.length());
+        parseAndSaveNodeConfigs(processConfigId, bpmnXml);
     }
 }

@@ -115,13 +115,35 @@
     
     <!-- 子表单 -->
     <SubFormRenderer
-      v-else-if="renderType === 'sub_form' || renderType === 'sub_form_list'"
-      :ref-entity-id="field.refEntityId"
-      :display-mode="field.displayMode || 'embedded'"
-      :sub-form-type="field.fieldType"
-      :title="field.fieldName"
+      v-else-if="renderType === 'sub_form' || renderType === 'sub_form_list' || renderType === 'SUB_FORM'"
       v-model="fieldValue"
+      :config="subFormConfig"
+      :title="field.fieldName"
+      :readonly="disabled"
       :disabled="disabled"
+    />
+    
+    <!-- 单选实体 -->
+    <EntitySelector
+      v-else-if="renderType === 'reference' || renderType === 'REFERENCE'"
+      v-model="fieldValue"
+      :entity-type="getRefEntityType()"
+      :entity-code="field.refEntityId"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
+      :disabled="disabled"
+      @change="handleEntitySelect"
+    />
+    
+    <!-- 多选实体 -->
+    <EntitySelector
+      v-else-if="renderType === 'multi_reference' || renderType === 'MULTI_REFERENCE'"
+      v-model="fieldValue"
+      :entity-type="getRefEntityType()"
+      :entity-code="field.refEntityId"
+      :multiple="true"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
+      :disabled="disabled"
+      @change="handleEntitySelect"
     />
     
     <!-- 默认文本输入 -->
@@ -139,6 +161,7 @@ import { ref, computed, watch } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
 import SubFormRenderer from './SubFormRenderer.vue'
 import FileUploader from './FileUploader.vue'
+import EntitySelector from './EntitySelector.vue'
 
 const props = defineProps({
   field: {
@@ -170,13 +193,32 @@ const fieldLabel = computed(() => {
 
 const fieldValue = computed({
   get() {
-    if (renderType.value === 'checkbox' && !Array.isArray(props.modelValue)) {
+    if ((renderType.value === 'checkbox' || renderType.value === 'CHECKBOX') && !Array.isArray(props.modelValue)) {
       return props.modelValue ? [props.modelValue] : []
+    }
+    // 子表单数据必须是数组
+    if ((renderType.value === 'sub_form' || renderType.value === 'SUB_FORM') && !Array.isArray(props.modelValue)) {
+      return []
     }
     return props.modelValue
   },
   set(val) {
     emit('update:modelValue', val)
+  }
+})
+
+// 子表单配置转换
+const subFormConfig = computed(() => {
+  const field = props.field
+  return {
+    label: field.fieldName || '明细',
+    fieldKey: field.fieldKey || 'detailList',
+    required: field.required || false,
+    minRows: field.minRows || 0,
+    maxRows: field.maxRows || 100,
+    fields: field.subFields || field.fields || [],
+    showSummary: field.showSummary || false,
+    summaryFields: field.summaryFields || []
   }
 })
 
@@ -219,6 +261,19 @@ watch(() => props.field.defaultValue, (val) => {
     emit('update:modelValue', val)
   }
 }, { immediate: true })
+
+// 实体选择回调
+const handleEntitySelect = (data) => {
+  // 可以选择性地发射额外的事件或处理
+  console.log('实体选择:', data)
+}
+
+// 获取引用实体类型
+const getRefEntityType = () => {
+  // refEntityType: CUSTOM/USER/DEPT/ROLE/GROUP
+  // 默认为 CUSTOM（用户自定义实体）
+  return props.field.refEntityType || 'CUSTOM'
+}
 </script>
 
 <style scoped>

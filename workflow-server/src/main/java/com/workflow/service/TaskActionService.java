@@ -41,6 +41,8 @@ public class TaskActionService {
     private final ProcessTaskService processTaskService;
     private final org.flowable.engine.RepositoryService repositoryService;
     private final EntityDataMapper entityDataMapper;
+    private final com.workflow.mapper.ProcessOperationLogMapper operationLogMapper;
+    private final SysUserService sysUserService;
 
     /**
      * 完成任务
@@ -75,28 +77,17 @@ public class TaskActionService {
             taskService.setAssignee(taskId, userId);
         }
 
+        // 检查是否是多实例任务（会签/或签）
+        boolean isMultiInstance = isMultiInstanceTask(task);
+        
         // 根据不同操作类型处理
         switch (action) {
             case "approve":
-                // 通过 - 设置变量并完成任务
-                Map<String, Object> approveVars = new HashMap<>();
-                approveVars.put("approved", true);
-                approveVars.put("action", "approve");
-                approveVars.put("comment", comment);
-                taskService.complete(taskId, approveVars);
-                processTaskService.completeTask(taskId, "approve", comment);
-                log.info("任务 {} 已通过，处理人: {}", taskId, userId);
+                handleApprove(task, userId, comment, isMultiInstance);
                 break;
 
             case "reject":
-                // 驳回 - 设置变量并完成任务
-                Map<String, Object> rejectVars = new HashMap<>();
-                rejectVars.put("approved", false);
-                rejectVars.put("action", "reject");
-                rejectVars.put("comment", comment);
-                taskService.complete(taskId, rejectVars);
-                processTaskService.completeTask(taskId, "reject", comment);
-                log.info("任务 {} 已驳回，处理人: {}", taskId, userId);
+                handleReject(task, userId, comment, isMultiInstance);
                 break;
 
             case "transfer":
@@ -106,6 +97,25 @@ public class TaskActionService {
                 }
                 taskService.setAssignee(taskId, transferTo);
                 processTaskService.completeTask(taskId, "transfer", "转办给: " + transferTo);
+                
+                // 记录转办日志到 process_operation_log
+                try {
+                    com.workflow.entity.ProcessOperationLog log = new com.workflow.entity.ProcessOperationLog();
+                    log.setProcessInstanceId(task.getProcessInstanceId());
+                    log.setTaskId(taskId);
+                    log.setOperationType("TRANSFER");
+                    log.setOperatorId(userId);
+                    String operatorName = sysUserService.getNicknameByUsername(userId);
+                    log.setOperatorName(operatorName != null ? operatorName : userId);
+                    log.setOperationTime(LocalDateTime.now());
+                    log.setOperationComment(comment);
+                    log.setOldValue(assignee);
+                    log.setNewValue(transferTo);
+                    operationLogMapper.insert(log);
+                } catch (Exception e) {
+                    log.warn("记录转办日志失败", e);
+                }
+                
                 log.info("任务 {} 已转办给 {}", taskId, transferTo);
                 break;
 
@@ -119,6 +129,104 @@ public class TaskActionService {
             processTaskService.syncTasksFromFlowable(processInstanceId);
             // 注意：实体数据状态由 EntityStatusUpdateListener 监听器自动更新
             // 不需要在这里手动更新，避免重复更新
+        }
+    }
+    
+    /**
+     * 检查任务是否是多实例任务（会签/或签）
+     */
+    private boolean isMultiInstanceTask(Task task) {
+        try {
+            // 从流程变量中检查是否是多实例任务
+            Map<String, Object> vars = runtimeService.getVariables(task.getProcessInstanceId());
+            // 检查是否有 nrOfInstances 变量（Flowable 多实例任务的标志）
+            return vars.containsKey("nrOfInstances") || vars.containsKey("nrOfCompletedInstances");
+        } catch (Exception e) {
+            log.debug("检查多实例任务失败: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 处理通过操作（支持单签/会签）
+     */
+    private void handleApprove(Task task, String userId, String comment, boolean isMultiInstance) {
+        String taskId = task.getId();
+        
+        // 设置流程变量
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("approved", true);
+        vars.put("action", "approve");
+        vars.put("comment", comment);
+        vars.put("approver", userId);
+        
+        // 记录审批人信息到变量（用于会签统计）
+        List<String> approvers = (List<String>) runtimeService.getVariable(task.getProcessInstanceId(), "_approvers_");
+        if (approvers == null) {
+            approvers = new ArrayList<>();
+        }
+        approvers.add(userId);
+        vars.put("_approvers_", approvers);
+        
+        // 完成任务
+        taskService.complete(taskId, vars);
+        processTaskService.completeTask(taskId, "approve", comment);
+        
+        log.info("任务 {} 已通过，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
+    }
+    
+    /**
+     * 处理驳回操作（支持单签/会签）
+     * 会签模式下：一人驳回即整体驳回
+     */
+    private void handleReject(Task task, String userId, String comment, boolean isMultiInstance) {
+        String taskId = task.getId();
+        String processInstanceId = task.getProcessInstanceId();
+        
+        // 设置流程变量
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("approved", false);
+        vars.put("action", "reject");
+        vars.put("comment", comment);
+        vars.put("rejectBy", userId);
+        vars.put("rejectTime", new Date());
+        
+        if (isMultiInstance) {
+            // 会签模式下：记录驳回信息，所有未完成的实例将被终止
+            vars.put("_multiInstanceRejected_", true);
+            vars.put("_rejectReason_", comment);
+            
+            // 终止其他未完成的多实例任务
+            terminateOtherMultiInstanceTasks(processInstanceId, taskId);
+        }
+        
+        // 完成任务
+        taskService.complete(taskId, vars);
+        processTaskService.completeTask(taskId, "reject", comment);
+        
+        log.info("任务 {} 已驳回，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
+    }
+    
+    /**
+     * 终止其他未完成的多实例任务（会签驳回时使用）
+     */
+    private void terminateOtherMultiInstanceTasks(String processInstanceId, String currentTaskId) {
+        try {
+            // 获取同一节点上的其他未完成任务
+            List<Task> activeTasks = taskService.createTaskQuery()
+                    .processInstanceId(processInstanceId)
+                    .list();
+            
+            for (Task otherTask : activeTasks) {
+                if (!otherTask.getId().equals(currentTaskId)) {
+                    // 设置变量标记该任务因驳回而跳过
+                    taskService.setVariable(otherTask.getId(), "_skippedDueToReject_", true);
+                    taskService.setVariable(otherTask.getId(), "approved", false);
+                    log.debug("多实例任务 {} 因驳回而被跳过", otherTask.getId());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("终止其他多实例任务失败: {}", e.getMessage());
         }
     }
 
@@ -211,8 +319,59 @@ public class TaskActionService {
             vo.setAssignee(task.getAssignee());
             vo.setProcessInstanceId(task.getProcessInstanceId());
             vo.setCreateTime(task.getCreateTime());
-            vo.setResult("processing");
+            
+            // 获取任务评论判断是否是转办
+            List<org.flowable.engine.task.Comment> comments = taskService.getTaskComments(task.getId());
+            String result = "processing";
+            for (org.flowable.engine.task.Comment c : comments) {
+                if (c.getFullMessage() != null && c.getFullMessage().contains("转办给:")) {
+                    result = "transfer";
+                    break;
+                }
+            }
+            vo.setResult(result);
+            
             historyList.add(vo);
+        }
+
+        // 4. 合并转办记录
+        try {
+            List<com.workflow.entity.ProcessOperationLog> transferLogs = operationLogMapper
+                    .selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.workflow.entity.ProcessOperationLog>()
+                            .eq(com.workflow.entity.ProcessOperationLog::getProcessInstanceId, processInstanceId)
+                            .eq(com.workflow.entity.ProcessOperationLog::getOperationType, "TRANSFER")
+                            .orderByAsc(com.workflow.entity.ProcessOperationLog::getOperationTime));
+            
+            for (com.workflow.entity.ProcessOperationLog log : transferLogs) {
+                TaskVO vo = new TaskVO();
+                vo.setTaskId(log.getTaskId());
+                vo.setProcessInstanceId(processInstanceId);
+                
+                // 查找任务名称
+                var ht = historyService.createHistoricTaskInstanceQuery().taskId(log.getTaskId()).singleResult();
+                vo.setTaskName(ht != null ? ht.getName() : "任务转办");
+                vo.setAssignee(log.getOperatorId());
+                vo.setResult("transfer");
+                vo.setComment(log.getNewValue() != null ? "转办给: " + log.getNewValue() : log.getOperationComment());
+                vo.setCreateTime(log.getOperationTime() != null ? 
+                    Date.from(log.getOperationTime().atZone(ZoneId.systemDefault()).toInstant()) : null);
+                
+                // 插入到对应任务记录之前
+                int insertIndex = -1;
+                for (int i = 0; i < historyList.size(); i++) {
+                    if (log.getTaskId() != null && log.getTaskId().equals(historyList.get(i).getTaskId())) {
+                        insertIndex = i;
+                        break;
+                    }
+                }
+                if (insertIndex >= 0) {
+                    historyList.add(insertIndex, vo);
+                } else {
+                    historyList.add(vo);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("合并转办记录到历史失败", e);
         }
 
         return historyList;
@@ -267,9 +426,19 @@ public class TaskActionService {
         vo.setEndTime(historicTask.getEndTime());
         vo.setDuration(historicTask.getDurationInMillis());
 
-        // 从变量中获取审批结果
-        String action = getTaskVariable(historicTask.getId(), "action");
-        vo.setResult(action != null ? action : "approve");
+        // 获取任务评论
+        List<org.flowable.engine.task.Comment> comments = taskService.getTaskComments(historicTask.getId());
+        String commentMsg = comments.isEmpty() ? null : comments.get(0).getFullMessage();
+        vo.setComment(commentMsg);
+        
+        // 判断是否是转办
+        if (commentMsg != null && commentMsg.contains("转办给:")) {
+            vo.setResult("transfer");
+        } else {
+            // 从变量中获取审批结果
+            String action = getTaskVariable(historicTask.getId(), "action");
+            vo.setResult(action != null ? action : "approve");
+        }
 
         return vo;
     }

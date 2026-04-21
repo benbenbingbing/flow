@@ -24,6 +24,12 @@
             <el-tag v-else-if="row.layoutType === 'grid'" type="warning">网格</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="isDefault" label="默认表单" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.isDefault" type="success">默认</el-tag>
+            <el-tag v-else type="info">-</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
             <el-tag v-if="row.status === 1" type="success">启用</el-tag>
@@ -31,10 +37,20 @@
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="160" />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleDesign(row)">设计</el-button>
             <el-button type="primary" link size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-button 
+              v-if="!row.isDefault" 
+              type="warning" 
+              link 
+              size="small" 
+              @click="handleSetDefault(row)"
+            >
+              设为默认
+            </el-button>
+            <el-button v-else type="info" link size="small" disabled>已是默认</el-button>
             <el-button type="info" link size="small" @click="handleCopy(row)">复制</el-button>
             <el-button type="success" link size="small" @click="handlePreview(row)">预览</el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
@@ -91,7 +107,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreview from '@/components/FormPreview.vue'
 import { entityApi } from '@/api/entity'
-import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields } from '@/api/entityForm'
+import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm } from '@/api/entityForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -204,6 +220,17 @@ async function handleSubmit() {
     ElMessage.error(e.message || '提交失败')
   } finally {
     submitLoading.value = false
+  }
+}
+
+async function handleSetDefault(row) {
+  try {
+    await setDefaultForm(row.id)
+    ElMessage.success(`已将 "${row.formName}" 设为默认表单`)
+    loadForms()
+  } catch (e) {
+    console.error('设置默认表单失败:', e)
+    ElMessage.error(e.message || '设置默认表单失败')
   }
 }
 

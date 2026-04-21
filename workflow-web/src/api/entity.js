@@ -89,8 +89,8 @@ export const entityDataApi = {
   /**
    * 获取某实体的所有数据
    */
-  getList(entityCode) {
-    return request.get(`/entity-data/entity/${entityCode}`)
+  getList(entityCode, params = {}) {
+    return request.get(`/entity-data/entity/${entityCode}`, { params })
   },
 
   /**

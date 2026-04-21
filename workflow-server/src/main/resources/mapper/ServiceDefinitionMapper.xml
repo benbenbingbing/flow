@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workflow.mapper.ServiceDefinitionMapper">
+
+    <!-- 分页查询服务列表 -->
+    <select id="selectServiceList" resultType="com.workflow.entity.ServiceDefinition">
+        SELECT s.*, c.category_name as categoryName 
+        FROM service_definition s
+        LEFT JOIN service_category c ON s.category_id = c.id
+        WHERE s.status = 'ACTIVE'
+        <if test="keyword != null and keyword != ''">
+            AND (s.service_name LIKE CONCAT('%', #{keyword}, '%') OR s.service_code LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="serviceType != null and serviceType != ''">
+            AND s.service_type = #{serviceType}
+        </if>
+        <if test="categoryId != null and categoryId != ''">
+            AND s.category_id = #{categoryId}
+        </if>
+        ORDER BY s.created_at DESC
+    </select>
+
+</mapper>

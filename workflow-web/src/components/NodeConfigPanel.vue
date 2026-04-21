@@ -344,7 +344,7 @@
             <el-form-item label="集合变量" v-if="assigneeForm.collectionSource === 'variable'">
               <el-input 
                 v-model="assigneeForm.collection" 
-                placeholder="如：${approverList}"
+                placeholder="系统默认：${_wfMultiInstanceUsers_}" disabled
                 @blur="updateMultiInstance"
               />
               <div class="form-tip">返回用户ID列表的流程变量</div>
@@ -817,80 +817,121 @@
           
           <!-- 表达式编辑器 -->
           <template v-if="conditionForm.type === 'expression'">
-            <!-- 常用模板 -->
-            <el-form-item label="快速选择">
-              <el-select 
-                v-model="selectedConditionTemplate" 
-                placeholder="选择常用条件模板"
-                clearable
-                style="width: 100%"
-                @change="onConditionTemplateChange"
+            <!-- 条件表达式列表 -->
+            <div class="condition-list">
+              <div 
+                v-for="(condition, index) in conditionList" 
+                :key="index"
+                class="condition-item"
               >
-                <el-option label="审批通过" value="approved == true" />
-                <el-option label="审批拒绝" value="approved == false" />
-                <el-option label="金额大于" value="amount > 1000" />
-                <el-option label="金额小于等于" value="amount <= 1000" />
-                <el-option label="数值范围" value="amount >= 100 && amount <= 500" />
-                <el-option label="字符串等于" value="status == 'APPROVED'" />
-                <el-option label="字符串包含" value="description.contains('keyword')" />
-                <el-option label="非空判断" value="remark != null &amp;&amp; !remark.isEmpty()" />
-              </el-select>
-            </el-form-item>
-            
-            <!-- 表达式输入 -->
-            <el-form-item label="表达式">
-              <el-input 
-                v-model="conditionForm.expression" 
-                type="textarea"
-                :rows="3"
-                placeholder="如：approved == true &amp;&amp; amount > 1000"
-                @blur="updateCondition"
-              />
-              <div class="form-tip">
-                <el-tag size="small" type="info">提示</el-tag>
-                系统会自动添加 ${} 包裹。使用流程变量名，如：approved, amount, status
-              </div>
-            </el-form-item>
-            
-            <!-- 变量选择器 -->
-            <el-form-item label="插入变量">
-              <div class="condition-variables">
-                <el-tag 
-                  v-for="v in commonVariables" 
-                  :key="v.name"
-                  size="small"
-                  class="variable-tag"
-                  @click="insertVariable(v.name)"
-                >
-                  {{ v.name }}
-                  <span class="var-desc">{{ v.desc }}</span>
-                </el-tag>
-              </div>
-            </el-form-item>
-            
-            <!-- 操作符参考 -->
-            <el-form-item label="操作符参考">
-              <div class="operator-ref">
-                <div class="op-group">
-                  <el-tag size="small" type="info">==</el-tag>
-                  <el-tag size="small" type="info">!=</el-tag>
-                  <el-tag size="small" type="info">></el-tag>
-                  <el-tag size="small" type="info"><</el-tag>
-                  <el-tag size="small" type="info">>=</el-tag>
-                  <el-tag size="small" type="info"><=</el-tag>
-                  <span class="op-desc">比较</span>
+                <el-row :gutter="10" class="condition-row">
+                  <!-- 属性选择 -->
+                  <el-col :span="8">
+                    <el-select 
+                      v-model="condition.property" 
+                      placeholder="选择属性"
+                      @change="onPropertyChange(index)"
+                      size="small"
+                    >
+                      <el-option label="审批结果 (approved)" value="approved" />
+                      <el-option 
+                        v-for="field in entityFields" 
+                        :key="field.fieldName"
+                        :label="field.fieldLabel || field.fieldName"
+                        :value="field.fieldName"
+                      />
+                    </el-select>
+                  </el-col>
+                  
+                  <!-- 操作符选择 -->
+                  <el-col :span="6">
+                    <el-select 
+                      v-model="condition.operator" 
+                      placeholder="操作符"
+                      size="small"
+                    >
+                      <el-option label="等于 (==)" value="==" />
+                      <el-option label="不等于 (!=)" value="!=" />
+                      <el-option label="大于 (>)" value=">" />
+                      <el-option label="小于 (<)" value="<" />
+                      <el-option label="大于等于 (>=)" value=">=" />
+                      <el-option label="小于等于 (<=)" value="<=" />
+                      <el-option label="包含" value="contains" />
+                    </el-select>
+                  </el-col>
+                  
+                  <!-- 值输入 -->
+                  <el-col :span="8">
+                    <!-- 下拉框类型 -->
+                    <el-select 
+                      v-if="getFieldType(condition.property) === 'select'"
+                      v-model="condition.value" 
+                      placeholder="选择值"
+                      size="small"
+                      style="width: 100%"
+                    >
+                      <el-option 
+                        v-for="opt in getFieldOptions(condition.property)" 
+                        :key="opt.value"
+                        :label="opt.label"
+                        :value="opt.value"
+                      />
+                    </el-select>
+                    <!-- 布尔类型 -->
+                    <el-select 
+                      v-else-if="condition.property === 'approved'"
+                      v-model="condition.value" 
+                      placeholder="选择值"
+                      size="small"
+                      style="width: 100%"
+                    >
+                      <el-option label="通过 (true)" value="true" />
+                      <el-option label="拒绝 (false)" value="false" />
+                    </el-select>
+                    <!-- 输入框类型 -->
+                    <el-input 
+                      v-else
+                      v-model="condition.value" 
+                      placeholder="输入值"
+                      size="small"
+                    />
+                  </el-col>
+                  
+                  <!-- 删除按钮 -->
+                  <el-col :span="2">
+                    <el-button 
+                      type="danger" 
+                      link
+                      @click="removeCondition(index)"
+                      :disabled="conditionList.length <= 1"
+                    >
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </el-col>
+                </el-row>
+                
+                <!-- 逻辑关系选择 -->
+                <div v-if="index < conditionList.length - 1" class="logic-operator">
+                  <el-radio-group v-model="condition.logic" size="small">
+                    <el-radio-button label="&&">且 (AND)</el-radio-button>
+                    <el-radio-button label="||">或 (OR)</el-radio-button>
+                  </el-radio-group>
                 </div>
-                <div class="op-group">
-                  <el-tag size="small" type="warning">&amp;&amp;</el-tag>
-                  <el-tag size="small" type="warning">||</el-tag>
-                  <el-tag size="small" type="warning">!</el-tag>
-                  <span class="op-desc">逻辑</span>
-                </div>
               </div>
-            </el-form-item>
+              
+              <!-- 添加条件按钮 -->
+              <el-button 
+                type="primary" 
+                link 
+                @click="addCondition"
+                class="add-condition-btn"
+              >
+                <el-icon><Plus /></el-icon>添加条件
+              </el-button>
+            </div>
             
-            <!-- 预览 -->
-            <el-form-item label="完整表达式">
+            <!-- 表达式预览 -->
+            <el-form-item label="完整表达式" class="expression-preview">
               <el-input 
                 :model-value="getFullExpression()" 
                 disabled
@@ -1178,12 +1219,19 @@
             <el-switch 
               v-model="advancedForm.skipNode" 
               @change="updateSkipNode"
+              :disabled="!isFirstUserTask"
               active-text="是"
               inactive-text="否"
             />
           </el-form-item>
           
-          <el-alert v-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
+          <el-alert v-if="!isFirstUserTask" type="info" :closable="false" show-icon>
+            <template #title>
+              只有第一个用户任务节点可以设置跳过
+            </template>
+          </el-alert>
+          
+          <el-alert v-else-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
             <template #title>
               开启后，流程执行到此节点时将自动跳过，直接流转到下一节点
             </template>
@@ -1200,9 +1248,10 @@
 <script setup>
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, ArrowUp, ArrowDown, Delete } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
 import { getEntityStatusList } from '@/api/entityStatus'
+import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -1218,6 +1267,48 @@ const activeTab = ref('basic')
 
 // ========== 节点类型判断 ==========
 const isUserTask = computed(() => props.element?.type === 'bpmn:UserTask')
+
+// 判断当前节点是否是第一个用户任务节点
+const isFirstUserTask = computed(() => {
+  if (!isUserTask.value || !props.element?._modeler) return false
+  
+  const elementRegistry = props.element._modeler.get('elementRegistry')
+  const allElements = elementRegistry.getAll()
+  
+  // 获取所有用户任务节点，按它们在流程中的顺序排序
+  // 通过检查连接到 StartEvent 的序列流来找到第一个用户任务
+  const startEvent = allElements.find(el => el.type === 'bpmn:StartEvent')
+  if (!startEvent) return false
+  
+  // 找到当前用户任务节点
+  const currentNodeId = props.element.id
+  
+  // 使用 BFS 找到从 StartEvent 可达的第一个用户任务
+  const visited = new Set()
+  const queue = [startEvent]
+  let firstUserTask = null
+  
+  while (queue.length > 0 && !firstUserTask) {
+    const current = queue.shift()
+    if (visited.has(current.id)) continue
+    visited.add(current.id)
+    
+    // 获取当前节点的出线
+    const outgoing = current.outgoing || []
+    for (const connection of outgoing) {
+      const target = connection.target
+      if (target.type === 'bpmn:UserTask') {
+        firstUserTask = target
+        break
+      }
+      if (!visited.has(target.id)) {
+        queue.push(target)
+      }
+    }
+  }
+  
+  return firstUserTask && firstUserTask.id === currentNodeId
+})
 const isServiceTask = computed(() => props.element?.type === 'bpmn:ServiceTask')
 const isSendTask = computed(() => props.element?.type === 'bpmn:SendTask')
 const isReceiveTask = computed(() => props.element?.type === 'bpmn:ReceiveTask')
@@ -1418,6 +1509,14 @@ const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParamet
 const conditionForm = ref({ type: '', expression: '' })
 const selectedConditionTemplate = ref('')
 
+// 条件表达式列表（支持多个条件）
+const conditionList = ref([
+  { property: '', operator: '==', value: '', logic: '&&' }
+])
+
+// 实体字段列表
+const entityFields = ref([])
+
 // 常用变量
 const commonVariables = ref([
   { name: 'approved', desc: '审批结果' },
@@ -1582,6 +1681,7 @@ onMounted(() => {
   loadGroups()
   loadRoles()
   loadEntityForms()
+  loadEntityFields()
 })
 
 // 监听 processId 变化，当流程ID传入后加载实体表单
@@ -1589,6 +1689,7 @@ watch(() => props.processId, (newProcessId) => {
   if (newProcessId) {
     console.log('processId 变化，重新加载实体表单:', newProcessId)
     loadEntityForms()
+    loadEntityFields()
   }
 }, { immediate: true })
 
@@ -1691,39 +1792,39 @@ watch(() => props.element, (newElement) => {
   if (newElement?.type === 'bpmn:SequenceFlow') loadActions()
 }, { immediate: true })
 
-// 根据用户名列表获取用户ID列表
+// 根据用户名列表获取用户 value 列表（el-select-v2 的 v-model 绑定 value）
 function getUserIdsFromUsernames(usernames) {
   if (!usernames) return []
   const usernameList = usernames.split(',').filter(Boolean)
   return usernameList.map(username => {
     const user = userOptions.value.find(u => u.username === username || u.value === username)
-    return user?.id || username
+    return user?.value || username
   }).filter(Boolean)
 }
 
-// 根据组code列表获取组ID列表
+// 根据组 code 列表获取组 value 列表（el-select-v2 的 v-model 绑定 value）
 function getGroupIdsFromCodes(codes) {
   if (!codes) return []
   const codeList = codes.split(',').filter(c => c && !c.startsWith('ROLE_'))
   return codeList.map(code => {
     const group = groupOptions.value.find(g => g.code === code || g.value === code)
-    return group?.id || code
+    return group?.value || code
   }).filter(Boolean)
 }
 
-// 根据组code列表获取角色ID列表
+// 根据角色 code 列表获取角色 value 列表（el-select-v2 的 v-model 绑定 value）
 function getRoleIdsFromCodes(codes) {
   if (!codes) return []
   const roleCodes = codes.split(',').filter(c => c && c.startsWith('ROLE_')).map(c => c.replace('ROLE_', ''))
   return roleCodes.map(code => {
     const role = roleOptions.value.find(r => r.code === code || r.value === code)
-    return role?.id || code
+    return role?.value || code
   }).filter(Boolean)
 }
 
 watch(() => props.element, async (newElement) => {
   if (newElement?.businessObject) {
-    const bo = newElement.businessObject
+    const bo = toRaw(newElement).businessObject
     const extProps = getExtensionProperties(bo)
     
     console.log('加载节点配置:', bo.id, bo.name, '扩展属性:', extProps)
@@ -1754,27 +1855,33 @@ watch(() => props.element, async (newElement) => {
       }
       
       // 处理候选人和候选组
-      const candidateUsers = bo.candidateUsers || ''
-      const candidateGroups = bo.candidateGroups || ''
+      const candidateUsers = bo.get('candidateUsers') || bo.get('flowable:candidateUsers') || ''
+      const rawCandidateGroups = bo.get('candidateGroups') || bo.get('flowable:candidateGroups') || ''
+      const assignee = bo.get('assignee') || bo.get('flowable:assignee') || ''
+      // 当 BPMN 属性为空时，从扩展属性恢复（多实例模式下 candidateGroups 可能被覆盖）
+      const candidateGroups = rawCandidateGroups || 
+          ((assigneeConfig.assigneeType === 'group' || assigneeConfig.assigneeType === 'role') ? assigneeConfig.assigneeValue : '') || ''
       
       assigneeForm.value = { 
         // 基础执行人配置
-        assignee: bo.assignee || '', 
+        assignee: assignee, 
         candidateUsers: candidateUsers, 
         candidateGroups: candidateGroups, 
         candidateUserIds: getUserIdsFromUsernames(candidateUsers),
         candidateGroupIds: getGroupIdsFromCodes(candidateGroups),
         candidateRoleIds: getRoleIdsFromCodes(candidateGroups),
+        // 从扩展属性恢复 assigneeValue（兜底：当 BPMN 属性被多实例覆盖时）
+        assigneeValue: assigneeConfig.assigneeValue || '',
         
         // 多实例配置
         isMultiInstance: !!loop, 
         multiInstanceType: loop?.isSequential ? 'sequential' : 'parallel', 
-        collection: loop?.collection || multiInstanceConfig.collection || '', 
+        collection: loop?.collection || multiInstanceConfig.collection || '${_wfMultiInstanceUsers_}', 
         elementVariable: loop?.elementVariable || multiInstanceConfig.elementVariable || 'assignee', 
         completionCondition: loop?.completionCondition?.body || multiInstanceConfig.completionCondition || '',
         
         // 执行人类型和接口配置（从扩展属性）
-        assigneeType: assigneeConfig.assigneeType || (bo.assignee ? 'user' : candidateGroups ? 'group' : 'user'),
+        assigneeType: assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
         interfaceType: assigneeConfig.interfaceType || 'rest',
         interfaceName: assigneeConfig.interfaceName || '',
         interfaceMethod: assigneeConfig.interfaceMethod || '',
@@ -1786,7 +1893,7 @@ watch(() => props.element, async (newElement) => {
       }
     }
     if (isServiceTask.value) {
-      // 检查是否是REST配置（从 camunda:Properties 读取）
+      // 检查是否是REST配置（从 flowable:Properties 读取，兼容 camunda:Properties）
       const restConfigStr = extProps['restConfig']
       if (restConfigStr) {
         try {
@@ -1874,21 +1981,24 @@ watch(() => props.element, async (newElement) => {
       }
     }
     if (isSequenceFlow.value) {
-      // 解析条件表达式，去除 ${} 方便编辑
+      // 解析条件表达式
       let expressionBody = bo.conditionExpression?.body || ''
-      if (expressionBody) {
-        // 去除 ${} 或 #{} 包裹，让用户更容易编辑
-        expressionBody = expressionBody.replace(/^\$\{/, '').replace(/\}$/, '')
-        expressionBody = expressionBody.replace(/^\#\{/, '').replace(/\}$/, '')
-      }
       conditionForm.value = { 
         type: bo.conditionExpression ? 'expression' : bo.sourceRef?.default === bo ? 'default' : '', 
         expression: expressionBody 
       }
       hasCondition.value = !!bo.conditionExpression
       
+      // 解析表达式到条件列表
+      conditionList.value = parseExpressionToConditions(expressionBody)
+      
       // 加载连线状态配置
       loadStatusConfig(bo)
+      
+      // 加载实体字段（用于条件表达式编辑器）
+      if (boundEntity.value?.id) {
+        loadEntityFields()
+      }
     }
     if (isTask.value || isStartEvent.value) {
       // 从扩展属性中读取表单绑定信息
@@ -1975,11 +2085,20 @@ function getExtensionProperties(bo) {
   const props = {}
   if (!bo.extensionElements) return props
   const extElements = bo.extensionElements.get('values') || []
-  const propElement = extElements.find(v => v.$type === 'camunda:Properties')
+  
+  // 支持 flowable:Properties，兼容旧数据 camunda:Properties
+  let propElement = extElements.find(v => v.$type === 'flowable:Properties')
+  if (!propElement) {
+    propElement = extElements.find(v => v.$type === 'camunda:Properties')
+  }
+  
   if (propElement) {
-    const values = propElement.get('values') || []
+    // properties 可能在 values 或 properties 属性中
+    const values = propElement.get('values') || propElement.get('properties') || propElement.values || propElement.properties || []
     values.forEach(p => {
-      props[p.name] = p.value
+      if (p && p.name) {
+        props[p.name] = p.value
+      }
     })
   }
   return props
@@ -1988,7 +2107,12 @@ function getExtensionProperties(bo) {
 function updateProperty(prop, value) {
   const modeling = getModeling()
   if (!modeling) return
-  const updates = {}; updates[prop] = value || undefined
+  const updates = {}
+  if (value === null || value === undefined) {
+    updates[prop] = null
+  } else {
+    updates[prop] = value
+  }
   modeling.updateProperties(toRaw(props.element), updates)
   emit('save')
 }
@@ -2005,32 +2129,62 @@ function onMultiInstanceChange(enabled) {
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
   if (enabled) {
-    const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', { isSequential: assigneeForm.value.multiInstanceType === 'sequential' })
-    modeling.updateProperties(toRaw(props.element), { loopCharacteristics: loop })
+    // 打开时如果没有 collection，给一个默认值，避免生成空 loopCharacteristics
+    if (!assigneeForm.value.collection) {
+      assigneeForm.value.collection = '${_wfMultiInstanceUsers_}'
+    }
+    updateMultiInstance()
   } else {
-    modeling.updateProperties(toRaw(props.element), { loopCharacteristics: undefined })
+    // 关闭多实例：清除 loopCharacteristics 和 assignee，恢复普通任务配置
+    modeling.updateProperties(toRaw(props.element), { 
+      loopCharacteristics: undefined,
+      assignee: undefined
+    })
+    // 恢复原来的 candidateGroups/candidateUsers（如果配置过）
+    if (assigneeForm.value.candidateGroups) {
+      updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
+    }
+    if (assigneeForm.value.candidateUsers) {
+      updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
+    }
+    emit('save')
   }
-  emit('save')
 }
 
 function updateMultiInstance() {
   if (!assigneeForm.value.isMultiInstance) return
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
-  const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', { isSequential: assigneeForm.value.multiInstanceType === 'sequential', collection: assigneeForm.value.collection || undefined, elementVariable: assigneeForm.value.elementVariable || 'assignee' })
-  if (assigneeForm.value.completionCondition) loop.completionCondition = moddle.create('bpmn:FormalExpression', { body: assigneeForm.value.completionCondition })
-  modeling.updateProperties(toRaw(props.element), { loopCharacteristics: loop })
-  
+  // 使用内部系统变量，由后端监听器自动根据审批人配置计算
+  const collection = assigneeForm.value.collection || '${_wfMultiInstanceUsers_}'
+  assigneeForm.value.collection = collection
+  const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', {
+    isSequential: assigneeForm.value.multiInstanceType === 'sequential',
+    collection: collection,
+    elementVariable: assigneeForm.value.elementVariable || 'assignee'
+  })
+  if (assigneeForm.value.completionCondition) {
+    loop.completionCondition = moddle.create('bpmn:FormalExpression', { body: assigneeForm.value.completionCondition })
+  }
+  // 多实例任务必须设置 assignee 为 elementVariable 表达式，
+  // 否则 Flowable 会沿用原来的 candidateGroups，导致所有人都能看到所有会签任务
+  modeling.updateProperties(toRaw(props.element), { 
+    loopCharacteristics: loop,
+    assignee: '${' + (assigneeForm.value.elementVariable || 'assignee') + '}',
+    candidateGroups: undefined,
+    candidateUsers: undefined
+  })
+
   // 保存多实例高级配置到扩展属性（用于回显）
   const multiInstanceConfig = {
-    collection: assigneeForm.value.collection,
-    elementVariable: assigneeForm.value.elementVariable,
+    collection: collection,
+    elementVariable: assigneeForm.value.elementVariable || 'assignee',
     completionCondition: assigneeForm.value.completionCondition,
     collectionSource: assigneeForm.value.collectionSource,
     collectionInterface: assigneeForm.value.collectionInterface
   }
   updateExtensionProperty('multiInstanceConfig', JSON.stringify(multiInstanceConfig))
-  
+
   emit('save')
 }
 
@@ -2061,12 +2215,9 @@ function onConditionTemplateChange(template) {
   }
 }
 
-// 获取完整表达式（带${}）
+// 获取完整表达式（从条件列表生成）
 function getFullExpression() {
-  const expr = conditionForm.value.expression?.trim()
-  if (!expr) return ''
-  if (expr.startsWith('${') || expr.startsWith('#{')) return expr
-  return '${' + expr + '}'
+  return buildExpressionFromConditions()
 }
 
 // 插入变量到表达式
@@ -2119,13 +2270,9 @@ function updateCondition() {
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
   
-  let expression = conditionForm.value.expression?.trim() || ''
-  
-  // 自动添加 ${} 包裹（如果没有的话）
-  if (expression && !expression.startsWith('${') && !expression.startsWith('#{')) {
-    expression = '${' + expression + '}'
-    conditionForm.value.expression = expression
-  }
+  // 从条件列表生成表达式
+  const expression = buildExpressionFromConditions()
+  conditionForm.value.expression = expression
   
   if (expression) {
     const condition = moddle.create('bpmn:FormalExpression', { body: expression })
@@ -2135,6 +2282,189 @@ function updateCondition() {
     modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
   }
   emit('save')
+}
+
+// ========== 新条件表达式编辑器方法 ==========
+
+// 加载实体字段
+async function loadEntityFields() {
+  if (!boundEntity.value?.id) return
+  try {
+    const res = await request.get(`/entity-form/entity/${boundEntity.value.id}/fields`)
+    if (res && Array.isArray(res)) {
+      entityFields.value = res
+    }
+  } catch (e) {
+    console.error('加载实体字段失败:', e)
+  }
+}
+
+// 添加条件
+function addCondition() {
+  conditionList.value.push({ property: '', operator: '==', value: '', logic: '&&' })
+}
+
+// 删除条件
+function removeCondition(index) {
+  if (conditionList.value.length <= 1) return
+  conditionList.value.splice(index, 1)
+  // 更新最后一个条件的逻辑关系（如果不是最后一个）
+  if (index < conditionList.value.length) {
+    conditionList.value[index].logic = '&&'
+  }
+  updateCondition()
+}
+
+// 属性变化时处理
+function onPropertyChange(index) {
+  const condition = conditionList.value[index]
+  condition.value = '' // 清空值
+  // 根据属性类型设置默认操作符
+  const fieldType = getFieldType(condition.property)
+  if (fieldType === 'select' || fieldType === 'boolean') {
+    condition.operator = '=='
+  }
+}
+
+// 获取字段类型
+function getFieldType(fieldName) {
+  if (fieldName === 'approved') return 'boolean'
+  const field = entityFields.value.find(f => f.fieldName === fieldName)
+  if (!field) return 'string'
+  // 映射字段类型
+  const typeMap = {
+    'string': 'string',
+    'text': 'string',
+    'number': 'number',
+    'integer': 'number',
+    'decimal': 'number',
+    'select': 'select',
+    'radio': 'select',
+    'checkbox': 'select',
+    'date': 'date',
+    'datetime': 'date',
+    'boolean': 'boolean',
+    'user': 'string',
+    'dept': 'string'
+  }
+  return typeMap[field.fieldType] || 'string'
+}
+
+// 获取字段选项（用于下拉框）
+function getFieldOptions(fieldName) {
+  if (fieldName === 'approved') {
+    return [
+      { label: '通过', value: 'true' },
+      { label: '拒绝', value: 'false' }
+    ]
+  }
+  const field = entityFields.value.find(f => f.fieldName === fieldName)
+  if (!field || !field.optionsJson) return []
+  try {
+    const options = JSON.parse(field.optionsJson)
+    return Array.isArray(options) ? options : []
+  } catch (e) {
+    return []
+  }
+}
+
+// 从条件列表构建表达式
+function buildExpressionFromConditions() {
+  if (conditionList.value.length === 0) return ''
+  
+  const parts = []
+  for (let i = 0; i < conditionList.value.length; i++) {
+    const condition = conditionList.value[i]
+    if (!condition.property || !condition.operator) continue
+    
+    let value = condition.value
+    const fieldType = getFieldType(condition.property)
+    
+    // 处理值类型
+    if (fieldType === 'string' || fieldType === 'select') {
+      // 字符串需要加引号（如果不是变量）
+      if (value && !value.startsWith('${') && !value.startsWith('#{')) {
+        value = `'${value}'`
+      }
+    } else if (fieldType === 'boolean') {
+      // 布尔值不需要引号
+      value = value === 'true' ? 'true' : 'false'
+    }
+    
+    // 构建单个条件
+    let part = ''
+    if (condition.operator === 'contains') {
+      part = `${condition.property}.contains(${value})`
+    } else {
+      part = `${condition.property} ${condition.operator} ${value}`
+    }
+    
+    parts.push(part)
+    
+    // 添加逻辑关系（如果不是最后一个）
+    if (i < conditionList.value.length - 1) {
+      parts.push(condition.logic || '&&')
+    }
+  }
+  
+  if (parts.length === 0) return ''
+  
+  // 自动添加 ${} 包裹
+  return '${' + parts.join(' ') + '}'
+}
+
+// 从表达式解析条件列表
+function parseExpressionToConditions(expression) {
+  if (!expression) return [{ property: '', operator: '==', value: '', logic: '&&' }]
+  
+  // 移除 ${} 包裹
+  let expr = expression.trim()
+  if (expr.startsWith('${')) expr = expr.substring(2)
+  if (expr.endsWith('}')) expr = expr.substring(0, expr.length - 1)
+  
+  // 简单解析：按 && 或 || 分割
+  const conditions = []
+  const tokens = expr.split(/(\&\&|\|\|)/)
+  
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i].trim()
+    if (token === '&&' || token === '||') {
+      // 逻辑操作符，设置到前一个条件
+      if (conditions.length > 0) {
+        conditions[conditions.length - 1].logic = token
+      }
+    } else if (token) {
+      // 解析单个条件: property operator value
+      const match = token.match(/^(\w+)\s*(==|!=|>|<|>=|<=)\s*(.+)$/) ||
+                   token.match(/^(\w+)\.contains\((.+)\)$/)
+      
+      if (match) {
+        const property = match[1]
+        let operator = match[2]
+        let value = match[3]
+        
+        // 处理 contains
+        if (token.includes('.contains(')) {
+          operator = 'contains'
+          value = match[2]
+        }
+        
+        // 移除字符串引号
+        if (value && (value.startsWith("'") || value.startsWith('"'))) {
+          value = value.slice(1, -1)
+        }
+        
+        conditions.push({
+          property,
+          operator,
+          value,
+          logic: '&&'
+        })
+      }
+    }
+  }
+  
+  return conditions.length > 0 ? conditions : [{ property: '', operator: '==', value: '', logic: '&&' }]
 }
 
 function onAsyncChange() {
@@ -2173,6 +2503,10 @@ function onAssigneeTypeChange(type) {
   assigneeForm.value.candidateUserIds = []
   assigneeForm.value.candidateGroupIds = []
   assigneeForm.value.candidateRoleIds = []
+  // 同时清除 BPMN 中旧的执行人属性，避免 XML 残留
+  updateProperty('assignee', null)
+  updateProperty('candidateUsers', null)
+  updateProperty('candidateGroups', null)
   updateAssigneeConfig()
 }
 
@@ -2209,12 +2543,15 @@ async function onEntityFormChange(formId) {
 
 function updateNodeFormBind() {
   if (!props.element) return
-  const bo = toRaw(props.element).businessObject
+  const rawElement = toRaw(props.element)
+  const bo = rawElement.businessObject
+  const modeling = getModeling()
   
   if (formConfig.value.formSource === 'entity' && formConfig.value.entityFormId) {
     // 实体表单绑定
-    bo.set('camunda:formKey', null)
-    bo.set('camunda:formData', null)
+    if (modeling) {
+      modeling.updateProperties(rawElement, { 'flowable:formKey': null, 'flowable:formData': null })
+    }
     // 扩展属性存储表单绑定信息
     updateExtensionProperty('entityFormId', formConfig.value.entityFormId)
     updateExtensionProperty('entityFormReadonly', formConfig.value.isReadonly ? 'true' : 'false')
@@ -2222,7 +2559,9 @@ function updateNodeFormBind() {
   } else if (formConfig.value.formSource === 'custom' && formConfig.value.formKey) {
     // 自定义表单使用 formKey
     updateProperty('formKey', formConfig.value.formKey)
-    bo.set('camunda:formData', null)
+    if (modeling) {
+      modeling.updateProperties(rawElement, { 'flowable:formData': null })
+    }
     updateExtensionProperty('entityFormId', null)
     updateExtensionProperty('entityFormReadonly', null)
     updateExtensionProperty('entityCode', null)
@@ -2241,8 +2580,9 @@ function updateExtensionProperty(name, value) {
     return
   }
   const moddle = getModdle()
-  if (!moddle) {
-    console.warn('updateExtensionProperty: moddle 为空')
+  const modeling = getModeling()
+  if (!moddle || !modeling) {
+    console.warn('updateExtensionProperty: moddle 或 modeling 为空')
     return
   }
   const bo = toRaw(props.element).businessObject
@@ -2256,51 +2596,57 @@ function updateExtensionProperty(name, value) {
     let extensionElements = bo.extensionElements
     if (!extensionElements) {
       extensionElements = moddle.create('bpmn:ExtensionElements')
-      bo.extensionElements = extensionElements
     }
     
     // 获取 values 数组
     let values = extensionElements.get('values')
     if (!values) {
       values = []
-      extensionElements.set('values', values)
     }
     
-    // 查找或创建 camunda:Properties 元素
-    let propElement = values.find(v => v.$type === 'camunda:Properties')
+    // 查找或创建 flowable:Properties 元素
+    let propElement = values.find(v => v.$type === 'flowable:Properties')
     if (!propElement) {
-      propElement = moddle.create('camunda:Properties')
+      console.log('创建新的 flowable:Properties')
+      propElement = moddle.create('flowable:Properties')
       values.push(propElement)
     }
     
-    // 获取或创建 properties 数组
-    let props = propElement.get('values') || propElement.values
-    if (!props) {
-      props = []
-      propElement.set('values', props)
+    // 获取或创建 values 数组（flowable:Properties 的 moddle 属性名为 values）
+    let propValues = propElement.get('values') || []
+    if (!propValues || !Array.isArray(propValues)) {
+      propValues = []
     }
     
     // 查找或更新属性
-    let prop = props.find(p => p.name === name)
+    let existingProp = propValues.find(p => p.name === name)
     
     if (value !== null && value !== undefined && value !== '') {
-      if (!prop) {
-        prop = moddle.create('camunda:Property', { name: name, value: String(value) })
-        props.push(prop)
+      if (!existingProp) {
+        console.log('创建新的 flowable:Property:', name, value)
+        existingProp = moddle.create('flowable:Property', { name: name, value: String(value) })
+        propValues.push(existingProp)
       } else {
-        prop.value = String(value)
+        console.log('更新现有属性:', name, value)
+        existingProp.value = String(value)
       }
-    } else if (prop) {
-      // 清除空值
-      const idx = props.indexOf(prop)
-      if (idx > -1) props.splice(idx, 1)
+    } else if (existingProp) {
+      console.log('清除属性:', name)
+      const idx = propValues.indexOf(existingProp)
+      if (idx > -1) propValues.splice(idx, 1)
     }
     
-    // 更新 values
-    propElement.set('values', props)
+    // 更新 values（使用 moddle set 方法确保正确序列化）
+    propElement.set('values', propValues)
+    
+    // 关键：使用 modeling.updateProperties 通知 bpmn-js 属性已更改
+    // 注意：使用 toRaw 避免 Vue Proxy 与 BPMN.js 对象冲突
+    modeling.updateProperties(toRaw(props.element), { extensionElements: extensionElements })
+    
     console.log('扩展属性已保存:', name, value)
   } catch (error) {
     console.error('updateExtensionProperty 失败:', error)
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
     throw error
   }
 }
@@ -2318,30 +2664,33 @@ function updateAssignee() {
 }
 
 function updateCandidateUsers() {
-  // 将用户ID列表转换为逗号分隔的用户名
-  const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.id))
+  // candidateUserIds 里存的是 username（el-select-v2 的 value）
+  const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
   assigneeForm.value.candidateUsers = selectedUsers.map(u => u.username).join(',')
   updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
   updateAssigneeConfig()
 }
 
 function updateCandidateGroups() {
-  const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.id))
+  // candidateGroupIds 里存的是 groupCode（el-select-v2 的 value）
+  const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
   assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
   updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
   updateAssigneeConfig()
 }
 
 function updateCandidateRoles() {
-  const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.candidateRoleIds?.includes(r.id))
+  // candidateRoleIds 里存的是 roleCode（el-select-v2 的 value）
+  const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.candidateRoleIds?.includes(r.value))
   // 角色也存储在candidateGroups中，通过前缀区分
   const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
-  updateProperty('candidateGroups', assigneeForm.value.candidateGroups + ',' + roleCodes)
+  assigneeForm.value.candidateGroups = roleCodes
+  updateProperty('candidateGroups', roleCodes)
   updateAssigneeConfig()
 }
 
 function updateAssigneeInterface() {
-  // 将接口配置存储到扩展属性中（使用 camunda:Properties）
+  // 将接口配置存储到扩展属性中（使用 flowable:Properties）
   const interfaceConfig = {
     type: assigneeForm.value.assigneeType,
     interfaceType: assigneeForm.value.interfaceType,
@@ -2357,9 +2706,20 @@ function updateAssigneeInterface() {
 }
 
 function updateAssigneeConfig() {
-  // 保存执行人配置类型（使用 camunda:Properties）
+  // 根据类型提取 assigneeValue
+  let assigneeValue = ''
+  const type = assigneeForm.value.assigneeType
+  if (type === 'user') {
+    assigneeValue = assigneeForm.value.assignee || ''
+  } else if (type === 'group' || type === 'role') {
+    assigneeValue = assigneeForm.value.candidateGroups || ''
+  } else if (type === 'expression') {
+    assigneeValue = assigneeForm.value.candidateUsers || assigneeForm.value.candidateGroups || ''
+  }
+  // 保存执行人配置类型（使用 flowable:Properties）
   const config = {
     assigneeType: assigneeForm.value.assigneeType,
+    assigneeValue: assigneeValue,
     interfaceType: assigneeForm.value.interfaceType,
     interfaceName: assigneeForm.value.interfaceName,
     interfaceMethod: assigneeForm.value.interfaceMethod,
@@ -2378,7 +2738,7 @@ function updateAssigneeConfig() {
 function updateRestConfig() {
   const modeling = getModeling()
   if (!modeling) return
-  // 将REST配置存储到扩展属性中（使用 camunda:Properties）
+  // 将REST配置存储到扩展属性中（使用 flowable:Properties）
   const restConfig = { ...restForm.value }
   updateExtensionProperty('restConfig', JSON.stringify(restConfig))
   // 清除其他实现方式
@@ -2417,12 +2777,53 @@ function saveCurrentTab() {
         updateProperty('name', basicForm.value.name)
         updateDocumentation()
         break
-      case 'assignee':
+      case 'assignee': {
+        const modeling = getModeling()
+        if (!modeling) {
+          ElMessage.warning('模型未初始化')
+          return
+        }
+        const updates = {}
+        // 统一计算并写入执行人相关 BPMN 属性，不依赖 @change 事件
+        if (assigneeForm.value.assigneeType === 'user') {
+          const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
+          const usersStr = selectedUsers.map(u => u.username).join(',')
+          assigneeForm.value.candidateUsers = usersStr
+          updates.assignee = assigneeForm.value.assignee || null
+          updates.candidateUsers = usersStr || null
+          updates.candidateGroups = null
+        } else if (assigneeForm.value.assigneeType === 'group') {
+          const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
+          const groupsStr = selectedGroups.map(g => g.code).join(',')
+          assigneeForm.value.candidateGroups = groupsStr
+          updates.assignee = null
+          updates.candidateUsers = null
+          updates.candidateGroups = groupsStr || null
+        } else if (assigneeForm.value.assigneeType === 'role') {
+          const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.candidateRoleIds?.includes(r.value))
+          const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
+          assigneeForm.value.candidateGroups = roleCodes
+          updates.assignee = null
+          updates.candidateUsers = null
+          updates.candidateGroups = roleCodes || null
+        } else if (assigneeForm.value.assigneeType === 'expression') {
+          updates.assignee = assigneeForm.value.assignee || null
+          updates.candidateUsers = assigneeForm.value.candidateUsers || null
+          updates.candidateGroups = assigneeForm.value.candidateGroups || null
+        } else if (assigneeForm.value.assigneeType === 'interface') {
+          updates.assignee = null
+          updates.candidateUsers = null
+          updates.candidateGroups = null
+          updateAssigneeInterface()
+        }
+        modeling.updateProperties(toRaw(props.element), updates)
+        emit('save')
         updateAssigneeConfig()
         if (assigneeForm.value.isMultiInstance) {
           updateMultiInstance()
         }
         break
+      }
       case 'service':
         if (serviceForm.value.implementationType === 'rest') {
           updateRestConfig()
@@ -2531,6 +2932,23 @@ async function loadStatusConfig(bo) {
   
   console.log('加载连线状态配置:', bo.id, '扩展属性:', extProps, '状态码:', statusForm.value.entityStatusCode)
   
+  // 如果扩展属性为空，尝试从后端 API 加载（兼容旧数据或发布后的数据）
+  if (!statusForm.value.entityStatusCode && props.processId && sourceRef?.id && targetRef?.id) {
+    try {
+      const backendMappings = await getStatusMappings(props.processId)
+      const matching = backendMappings?.find(
+        m => m.sourceNodeId === sourceRef.id && m.targetNodeId === targetRef.id
+      )
+      if (matching) {
+        statusForm.value.entityStatusCode = matching.entityStatusCode || ''
+        statusForm.value.description = matching.description || ''
+        console.log('从后端加载到状态映射:', matching)
+      }
+    } catch (e) {
+      console.warn('从后端加载状态映射失败:', e)
+    }
+  }
+  
   // 加载实体预定义的状态列表（如果 boundEntity 已加载）
   if (boundEntity.value?.entityCode) {
     await loadEntityStatusList()
@@ -2557,11 +2975,12 @@ async function loadEntityStatusList() {
   }
 }
 
-// 监听 boundEntity 变化，当流程绑定实体后加载状态列表
+// 监听 boundEntity 变化，当流程绑定实体后加载状态列表和实体字段
 watch(() => boundEntity.value, async (newVal) => {
   if (newVal?.entityCode && isSequenceFlow.value) {
-    console.log('流程已绑定实体，加载状态列表:', newVal.entityCode)
+    console.log('流程已绑定实体，加载状态列表和实体字段:', newVal.entityCode)
     await loadEntityStatusList()
+    await loadEntityFields()
   }
 }, { immediate: true })
 
@@ -2584,11 +3003,31 @@ async function saveStatusConfig() {
     updateExtensionProperty('statusCategory', selectedStatus?.statusCategory || '')
     updateExtensionProperty('statusDescription', statusForm.value.description)
     
+    // 同时保存到后端数据库（确保发布前也能持久化）
+    if (props.processId && boundEntity.value?.entityCode) {
+      try {
+        await saveStatusMappings(props.processId, {
+          processKey: '', // 后端会自动补充
+          entityCode: boundEntity.value.entityCode,
+          mappings: [{
+            sequenceFlowId: props.element?.id,
+            sourceNodeId: statusForm.value.sourceNodeId,
+            sourceNodeName: statusForm.value.sourceNodeName,
+            targetNodeId: statusForm.value.targetNodeId,
+            targetNodeName: statusForm.value.targetNodeName,
+            entityStatusCode: statusForm.value.entityStatusCode,
+            description: statusForm.value.description
+          }]
+        })
+      } catch (apiErr) {
+        console.warn('保存后端状态映射失败:', apiErr)
+      }
+    }
+    
     // 触发 XML 更新
     emit('save')
     
     ElMessage.success('状态配置已保存')
-    emit('save')
     emit('update-status-mapping', {
       elementId: props.element?.id,
       sourceNodeId: statusForm.value.sourceNodeId,
@@ -2721,5 +3160,47 @@ async function saveStatusConfig() {
 
 .default-flow-tip p {
   margin: 0;
+}
+
+/* 新条件表达式编辑器样式 */
+.condition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.condition-item {
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+}
+
+.condition-row {
+  display: flex;
+  align-items: center;
+}
+
+.logic-operator {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #dcdfe6;
+}
+
+.add-condition-btn {
+  align-self: flex-start;
+  margin-top: 5px;
+}
+
+.expression-preview {
+  margin-top: 15px;
+}
+
+.expression-preview :deep(.el-input__inner) {
+  font-family: monospace;
+  color: #409eff;
 }
 </style>

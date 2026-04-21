@@ -133,7 +133,14 @@
         <div class="panel-title">属性配置</div>
         
         <template v-if="selectedField">
-          <el-scrollbar height="calc(100vh - 140px)">
+          <!-- 添加联动配置按钮 -->
+          <div class="linkage-config-header">
+            <el-button type="primary" size="small" @click="showLinkageConfig = true">
+              <el-icon><Connection /></el-icon> 字段联动配置
+            </el-button>
+          </div>
+          
+          <el-scrollbar height="calc(100vh - 180px)">
             <el-form label-width="90px" size="small" class="property-form">
               <el-form-item label="字段名称">
                 <el-input v-model="selectedField.fieldName" disabled />
@@ -153,6 +160,8 @@
                   <el-option label="多选" value="checkbox" />
                   <el-option label="开关" value="switch" />
                   <el-option label="文件" value="file" />
+                  <el-option label="级联选择" value="cascader" />
+                  <el-option label="子表单" value="SUB_FORM" />
                 </el-select>
               </el-form-item>
               <el-form-item label="属性">
@@ -172,6 +181,45 @@
                 <el-slider v-model="selectedField.gridSpan" :min="1" :max="24" show-stops />
                 <span class="slider-value">{{ selectedField.gridSpan }}/24</span>
               </el-form-item>
+              
+              <!-- 子表单特殊配置 -->
+              <template v-if="selectedField.componentType === 'SUB_FORM'">
+                <el-divider>子表单配置</el-divider>
+                
+                <el-form-item label="最少行数">
+                  <el-input-number v-model="selectedField.minRows" :min="0" />
+                </el-form-item>
+                
+                <el-form-item label="最多行数">
+                  <el-input-number v-model="selectedField.maxRows" :min="1" />
+                </el-form-item>
+                
+                <el-form-item label="显示汇总">
+                  <el-switch v-model="selectedField.showSummary" />
+                </el-form-item>
+                
+                <el-form-item label="子表字段">
+                  <div class="sub-form-fields">
+                    <div v-for="(subField, idx) in selectedField.subFields" :key="idx" class="sub-field-item">
+                      <el-input v-model="subField.fieldName" placeholder="字段名" size="small" style="width: 100px" />
+                      <el-select v-model="subField.fieldType" placeholder="类型" size="small" style="width: 90px">
+                        <el-option label="文本" value="TEXT" />
+                        <el-option label="数字" value="NUMBER" />
+                        <el-option label="日期" value="DATE" />
+                        <el-option label="下拉" value="SELECT" />
+                      </el-select>
+                      
+                      <el-button type="danger" size="small" text @click="removeSubField(idx)">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                    
+                    <el-button type="primary" size="small" text @click="addSubField">
+                      <el-icon><Plus /></el-icon> 添加子字段
+                    </el-button>
+                  </div>
+                </el-form-item>
+              </template>
             </el-form>
           </el-scrollbar>
         </template>
@@ -192,6 +240,22 @@
         <FormPreview :form="previewForm" />
       </div>
     </el-dialog>
+    
+    <!-- 联动配置弹窗 -->
+    <el-dialog 
+      v-model="showLinkageConfig" 
+      title="字段联动配置" 
+      width="700px" 
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <LinkageConfigPanel
+        v-if="selectedField"
+        :field="selectedField"
+        :all-fields="formFields"
+        @save="handleSaveLinkage"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -199,9 +263,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, Edit, DocumentAdd } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, Edit, DocumentAdd, Plus, Connection } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormPreview from '@/components/FormPreview.vue'
+import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import { entityApi } from '@/api/entity'
 import { getFormById, createForm, saveFormFields, getEntityFields, getFormFields } from '@/api/entityForm'
 
@@ -213,6 +278,7 @@ const entityId = route.query.entityId || ''
 const isEdit = ref(!!formId)
 const saving = ref(false)
 const showPreview = ref(false)
+const showLinkageConfig = ref(false)
 const entityInfo = ref({})
 const entityFields = ref([])
 const formFields = ref([])
@@ -412,6 +478,51 @@ function moveDown(index) {
   formFields.value[index] = formFields.value[index + 1]
   formFields.value[index + 1] = temp
   formFields.value.forEach((f, i) => f.sortOrder = i)
+}
+
+// 保存联动配置
+function handleSaveLinkage(linkageRules) {
+  if (selectedField.value) {
+    selectedField.value.linkageRules = linkageRules
+    // 将联动规则保存到扩展属性中
+    selectedField.value.componentProps = JSON.stringify({
+      ...parseComponentProps(selectedField.value.componentProps),
+      linkageRules
+    })
+    ElMessage.success('联动配置已保存到字段')
+    showLinkageConfig.value = false
+  }
+}
+
+// 解析 componentProps
+function parseComponentProps(propsStr) {
+  if (!propsStr) return {}
+  try {
+    return JSON.parse(propsStr)
+  } catch (e) {
+    return {}
+  }
+}
+
+// 添加子表单字段
+function addSubField() {
+  if (!selectedField.value) return
+  if (!selectedField.value.subFields) {
+    selectedField.value.subFields = []
+  }
+  selectedField.value.subFields.push({
+    fieldName: '',
+    fieldType: 'TEXT',
+    isRequired: false,
+    isEditable: true
+  })
+}
+
+// 移除子表单字段
+function removeSubField(index) {
+  if (selectedField.value && selectedField.value.subFields) {
+    selectedField.value.subFields.splice(index, 1)
+  }
 }
 
 // 保存表单

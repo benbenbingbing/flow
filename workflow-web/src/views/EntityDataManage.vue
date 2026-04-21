@@ -71,48 +71,48 @@
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
-        <el-form-item v-for="field in formFields" :key="field.fieldCode" 
-                     :label="field.fieldName" :prop="`data.${field.fieldCode}`"
-                     :rules="field.isRequired ? [{ required: true, message: `请输入${field.fieldName}`, trigger: 'blur' }] : []">
+        <el-form-item v-for="field in formFields" :key="field.fieldId" 
+                     :label="field.fieldLabel || field.fieldName" :prop="`data.${field.fieldCode || field.fieldId}`"
+                     :rules="field.isRequired ? [{ required: true, message: `请输入${field.fieldLabel || field.fieldName}`, trigger: 'blur' }] : []">
           <!-- 根据字段类型渲染不同组件 -->
           <el-input v-if="field.fieldType === 'STRING'" 
-                   v-model="formData.data[field.fieldCode]" :placeholder="`请输入${field.fieldName}`" />
+                   v-model="formData.data[field.fieldCode || field.fieldId]" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
           <el-input v-else-if="field.fieldType === 'TEXT'" 
-                   v-model="formData.data[field.fieldCode]" type="textarea" rows="3" :placeholder="`请输入${field.fieldName}`" />
+                   v-model="formData.data[field.fieldCode || field.fieldId]" type="textarea" rows="3" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
           <el-input-number v-else-if="field.fieldType === 'INTEGER' || field.fieldType === 'DECIMAL'" 
-                          v-model="formData.data[field.fieldCode]" style="width: 100%" />
+                          v-model="formData.data[field.fieldCode || field.fieldId]" style="width: 100%" />
           <el-date-picker v-else-if="field.fieldType === 'DATE'" 
-                         v-model="formData.data[field.fieldCode]" type="date" style="width: 100%" />
+                         v-model="formData.data[field.fieldCode || field.fieldId]" type="date" style="width: 100%" />
           <el-date-picker v-else-if="field.fieldType === 'DATETIME'" 
-                         v-model="formData.data[field.fieldCode]" type="datetime" style="width: 100%" />
+                         v-model="formData.data[field.fieldCode || field.fieldId]" type="datetime" style="width: 100%" />
           <el-switch v-else-if="field.fieldType === 'BOOLEAN'" 
-                    v-model="formData.data[field.fieldCode]" />
+                    v-model="formData.data[field.fieldCode || field.fieldId]" />
           <el-select v-else-if="field.fieldType === 'SELECT'" 
-                    v-model="formData.data[field.fieldCode]" style="width: 100%" clearable>
+                    v-model="formData.data[field.fieldCode || field.fieldId]" style="width: 100%" clearable>
             <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
           <el-checkbox-group v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'" 
-                            v-model="formData.data[field.fieldCode]">
+                            v-model="formData.data[field.fieldCode || field.fieldId]">
             <el-checkbox v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
           </el-checkbox-group>
           <el-radio-group v-else-if="field.fieldType === 'RADIO'" 
-                         v-model="formData.data[field.fieldCode]">
+                         v-model="formData.data[field.fieldCode || field.fieldId]">
             <el-radio v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
           </el-radio-group>
           <!-- 文件上传 -->
           <el-upload v-else-if="field.fieldType === 'FILE'"
-                    :file-list="getFileList(field.fieldCode)"
+                    :file-list="getFileList(field.fieldCode || field.fieldId)"
                     :auto-upload="false"
                     :limit="1"
                     :before-upload="(file) => beforeFileUpload(file, 'FILE')"
-                    :on-change="(file) => handleFileUpload(file, field.fieldCode)"
-                    :on-remove="() => handleFileRemove(field.fieldCode)"
+                    :on-change="(file) => handleFileUpload(file, field.fieldCode || field.fieldId)"
+                    :on-remove="() => handleFileRemove(field.fieldCode || field.fieldId)"
                     accept="*/*"
                     v-loading="uploadLoading"
                     class="file-upload"
                     action="#">
             <el-button type="primary" :icon="Upload">
-              <span v-if="formData.data[field.fieldCode]">更换文件</span>
+              <span v-if="formData.data[field.fieldCode || field.fieldId]">更换文件</span>
               <span v-else>选择文件</span>
             </el-button>
             <template #tip>
@@ -122,12 +122,12 @@
           
           <!-- 图片上传 -->
           <el-upload v-else-if="field.fieldType === 'IMAGE'"
-                    :file-list="getFileList(field.fieldCode)"
+                    :file-list="getFileList(field.fieldCode || field.fieldId)"
                     :auto-upload="false"
                     :limit="1"
                     :before-upload="(file) => beforeFileUpload(file, 'IMAGE')"
-                    :on-change="(file) => handleImageUpload(file, field.fieldCode)"
-                    :on-remove="() => handleFileRemove(field.fieldCode)"
+                    :on-change="(file) => handleImageUpload(file, field.fieldCode || field.fieldId)"
+                    :on-remove="() => handleFileRemove(field.fieldCode || field.fieldId)"
                     accept="image/*"
                     list-type="picture-card"
                     v-loading="uploadLoading"
@@ -135,7 +135,7 @@
                     action="#"
                     @preview="handlePictureCardPreview"
                     >
-            <div v-if="!formData.data[field.fieldCode]">
+            <div v-if="!formData.data[field.fieldCode || field.fieldId]">
               <el-icon><Plus /></el-icon>
               <div class="el-upload__text">点击上传</div>
             </div>
@@ -158,10 +158,40 @@
     </el-dialog>
 
     <!-- 查看详情对话框 -->
-    <el-dialog v-model="viewDialogVisible" title="数据详情" width="600px">
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="编号">{{ currentRow.dataNo }}</el-descriptions-item>
-        <el-descriptions-item v-for="field in formFields" :key="field.fieldCode" :label="field.fieldName">
+    <el-dialog v-model="viewDialogVisible" :title="viewResolvedForm?.formName || '数据详情'" width="700px">
+      <el-descriptions :column="2" border v-loading="viewFormLoading">
+        <!-- 基础信息 -->
+        <el-descriptions-item label="编号">{{ currentRow.dataNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="数据名称">{{ currentRow.name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="数据编码">{{ currentRow.code || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="getStatusType(currentRow.status)">{{ getStatusText(currentRow.status) }}</el-tag>
+        </el-descriptions-item>
+        
+        <!-- 流程信息 -->
+        <el-descriptions-item label="流程实例ID">{{ currentRow.processInstanceId || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="流程开始时间">{{ formatDate(currentRow.processStartTime) }}</el-descriptions-item>
+        <el-descriptions-item label="流程结束时间">{{ formatDate(currentRow.processEndTime) }}</el-descriptions-item>
+        <el-descriptions-item label="当前任务">{{ currentRow.currentTaskName || '-' }}</el-descriptions-item>
+        
+        <!-- 提交信息 -->
+        <el-descriptions-item label="提交人ID">{{ currentRow.submitterId || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="提交人">{{ currentRow.submitterName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="提交时间">{{ formatDate(currentRow.submitTime) }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ formatDate(currentRow.createdAt) }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ formatDate(currentRow.updatedAt) }}</el-descriptions-item>
+        <el-descriptions-item label="创建人">{{ currentRow.createdBy || '-' }}</el-descriptions-item>
+      </el-descriptions>
+      
+      <el-divider>表单字段</el-divider>
+      
+      <!-- 使用流程节点表单字段显示 -->
+      <el-descriptions v-if="viewResolvedForm && viewResolvedForm.fields" :column="2" border>
+        <el-descriptions-item 
+          v-for="field in viewResolvedForm.fields" 
+          :key="field.id" 
+          :label="field.fieldName"
+        >
           <!-- 文件类型显示下载链接 -->
           <a v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" 
              :href="currentRow.data[field.fieldCode]" 
@@ -180,11 +210,29 @@
           <!-- 其他类型正常显示 -->
           <span v-else>{{ formatFieldValue(field, currentRow.data?.[field.fieldCode]) }}</span>
         </el-descriptions-item>
-        <el-descriptions-item label="提交人">{{ currentRow.submitterName }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="getStatusType(currentRow.status)">{{ getStatusText(currentRow.status) }}</el-tag>
+      </el-descriptions>
+      
+      <!-- 没有解析到表单时，使用实体字段显示 -->
+      <el-descriptions v-else :column="2" border>
+        <el-descriptions-item v-for="field in formFields.filter(f => !f.isSystem)" :key="field.fieldCode" :label="field.fieldName">
+          <!-- 文件类型显示下载链接 -->
+          <a v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" 
+             :href="currentRow.data[field.fieldCode]" 
+             target="_blank"
+             class="file-link">
+            <el-icon><Document /></el-icon>
+            {{ currentRow.data[field.fieldCode].split('/').pop() }}
+          </a>
+          <!-- 图片类型显示缩略图 -->
+          <el-image v-else-if="field.fieldType === 'IMAGE' && currentRow.data?.[field.fieldCode]"
+                   :src="currentRow.data[field.fieldCode]" 
+                   :preview-src-list="[currentRow.data[field.fieldCode]]"
+                   fit="cover"
+                   style="width: 100px; height: 100px;"
+                   class="preview-image" />
+          <!-- 其他类型正常显示 -->
+          <span v-else>{{ formatFieldValue(field, currentRow.data?.[field.fieldCode]) }}</span>
         </el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ formatDate(currentRow.createdAt) }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
@@ -206,6 +254,7 @@ import { Plus, Upload, Document } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { processTaskApi } from '@/api/processTask'
 import { fileApi } from '@/api/file'
+import { getFormForNewData, getFormForViewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
@@ -224,6 +273,12 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const currentRow = ref({})
 const formRef = ref()
+
+// 新增/查看数据时解析的表单（流程节点表单或默认表单）
+const resolvedForm = ref(null)
+const formLoading = ref(false)
+const viewFormLoading = ref(false)
+const viewResolvedForm = ref(null)
 
 // 图片预览相关
 const previewImageVisible = ref(false)
@@ -249,8 +304,13 @@ const queryFields = computed(() => {
   return fields.value.filter(f => f.isQuery)
 })
 
-// 表单字段
+// 表单字段 - 新增时使用解析后的表单字段，编辑时使用实体字段
 const formFields = computed(() => {
+  // 如果是新增且有解析的表单，使用解析的表单字段
+  if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
+    return resolvedForm.value.fields.filter(f => f.status !== 0)
+  }
+  // 否则使用实体字段
   return fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
 })
 
@@ -417,23 +477,71 @@ const handleReset = () => {
   loadData()
 }
 
-const handleCreate = () => {
+const handleCreate = async () => {
   isEdit.value = false
   dialogTitle.value = '新增数据'
-  formData.value = {
-    entityCode: entityCode,
-    title: '',
-    data: {},
-    submitterId: userStore.username,
-    submitterName: userStore.nickname,
-    startProcess: entityDefinition.value.enableProcess
+  formLoading.value = true
+  
+  // 调用接口获取解析后的表单（流程节点表单或默认表单）
+  try {
+    const form = await getFormForNewData(entityCode)
+    resolvedForm.value = form
+    
+    // 如果有解析的表单，初始化表单数据
+    if (form && form.fields) {
+      const initialData = {}
+      form.fields.forEach(field => {
+        // 设置默认值 - 使用 fieldCode 作为数据的 key
+        const key = field.fieldCode || field.fieldId
+        if (field.defaultValue) {
+          initialData[key] = field.defaultValue
+        }
+      })
+      formData.value = {
+        entityCode: entityCode,
+        title: '',
+        data: initialData,
+        submitterId: userStore.username,
+        submitterName: userStore.nickname,
+        startProcess: entityDefinition.value.enableProcess
+      }
+    } else {
+      // 没有表单时，使用空表单
+      formData.value = {
+        entityCode: entityCode,
+        title: '',
+        data: {},
+        submitterId: userStore.username,
+        submitterName: userStore.nickname,
+        startProcess: entityDefinition.value.enableProcess
+      }
+      if (!form) {
+        ElMessage.warning('未配置表单，请先在实体表单管理中配置默认表单')
+      }
+    }
+  } catch (error) {
+    console.error('获取表单失败:', error)
+    ElMessage.error('获取表单失败')
+    // 失败时使用空表单
+    formData.value = {
+      entityCode: entityCode,
+      title: '',
+      data: {},
+      submitterId: userStore.username,
+      submitterName: userStore.nickname,
+      startProcess: entityDefinition.value.enableProcess
+    }
+  } finally {
+    formLoading.value = false
   }
+  
   dialogVisible.value = true
 }
 
 const handleEdit = (row) => {
   isEdit.value = true
   dialogTitle.value = '编辑数据'
+  resolvedForm.value = null // 编辑时不使用解析的表单，使用实体字段
   formData.value = {
     id: row.id,
     entityCode: entityCode,
@@ -446,9 +554,21 @@ const handleEdit = (row) => {
   dialogVisible.value = true
 }
 
-const handleView = (row) => {
+const handleView = async (row) => {
   currentRow.value = row
   viewDialogVisible.value = true
+  viewFormLoading.value = true
+  
+  // 调用接口获取当前流程节点对应的表单
+  try {
+    const form = await getFormForViewData(entityCode, row.id)
+    viewResolvedForm.value = form
+  } catch (error) {
+    console.error('获取查看表单失败:', error)
+    viewResolvedForm.value = null
+  } finally {
+    viewFormLoading.value = false
+  }
 }
 
 const handleViewProcess = (row) => {

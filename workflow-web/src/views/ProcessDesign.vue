@@ -60,7 +60,13 @@
     </el-dialog>
     
     <div class="design-container">
-      <div ref="canvasRef" class="canvas"></div>
+      <VueBpmnDesigner
+        ref="designerRef"
+        class="canvas"
+        @element-click="onElementClick"
+        @command-stack-changed="onCommandStackChanged"
+        @imported="onImported"
+      />
       <div class="config-panel">
         <div class="panel-title">节点配置</div>
         <div class="panel-content">
@@ -78,107 +84,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right } from '@element-plus/icons-vue'
-import BpmnModeler from 'bpmn-js/lib/Modeler'
 import { layoutProcess } from 'bpmn-auto-layout'
-import camundaModdle from 'camunda-bpmn-moddle/resources/camunda'
 import { processApi } from '@/api/process'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
-
-import 'bpmn-js/dist/assets/diagram-js.css'
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-codes.css'
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css'
-
-// BPMN 汉化配置
-const translations = {
-  // 小扳手菜单
-  'Append end event': '追加结束事件',
-  'Append gateway': '追加网关',
-  'Append task': '追加用户任务',
-  'Append user task': '追加用户任务',
-  'Append intermediate/boundary event': '追加中间/边界事件',
-  'Change type': '更改类型',
-  'Remove': '删除',
-  'Connect using sequence/message flow or association': '连接',
-  'Activate the global connect tool': '全局连接工具',
-  
-  // 左侧工具栏
-  'Create start event': '创建开始事件',
-  'Create intermediate event': '创建中间事件',
-  'Create end event': '创建结束事件',
-  'Create task': '创建用户任务',
-  'Create user task': '创建用户任务',
-  'Create gateway': '创建网关',
-  'Create pool/participant': '创建泳道',
-  'Create expanded sub-process': '创建子流程',
-  'Create data object reference': '创建数据对象',
-  'Create data store reference': '创建数据存储',
-  
-  // 替换面板标题
-  'Change element': '更改元素类型',
-  
-  // 元素类型
-  'Start event': '开始事件',
-  'Intermediate throw event': '中间抛出事件',
-  'Intermediate catch event': '中间捕获事件',
-  'End event': '结束事件',
-  'Task': '任务',
-  'User task': '用户任务',
-  'Service task': '服务任务',
-  'Send task': '发送任务',
-  'Receive task': '接收任务',
-  'Manual task': '手动任务',
-  'Business rule task': '业务规则任务',
-  'Script task': '脚本任务',
-  'Call activity': '调用活动',
-  'Sub-process (collapsed)': '子流程（折叠）',
-  'Sub-process (expanded)': '子流程（展开）',
-  'Gateway': '网关',
-  'Exclusive gateway': '排他网关',
-  'Parallel gateway': '并行网关',
-  'Inclusive gateway': '包容网关',
-  'Event-based gateway': '基于事件的网关',
-  
-  // 事件类型
-  'Timer': '定时器',
-  'Message': '消息',
-  'Signal': '信号',
-  'Error': '错误',
-  'Escalation': '升级',
-  'Compensation': '补偿',
-  'Link': '链接',
-  'Condition': '条件',
-  'Cancel': '取消',
-  
-  // 工具提示
-  'Activate hand tool': '手型工具',
-  'Activate lasso tool': '套索工具',
-  'Activate create/remove space tool': '空间工具',
-  'Global connect tool': '全局连接',
-  
-  // 其他
-  'Sequence flow': '顺序流',
-  'Default flow': '默认流',
-  'Conditional flow': '条件流'
-}
-
-// 自定义翻译函数
-const customTranslate = (template, replacements = {}) => {
-  let result = translations[template] || template
-  Object.keys(replacements).forEach(key => {
-    result = result.replace(new RegExp('{' + key + '}', 'g'), replacements[key])
-  })
-  return result
-}
-
-// 汉化模块定义 - 覆盖内置 translate 服务
-const customTranslateModule = {
-  translate: ['value', customTranslate]
-}
+import VueBpmnDesigner from '@/components/VueBpmnDesigner.vue'
 
 /**
  * 检查并修复XML布局
@@ -194,11 +107,11 @@ const fixXmlLayout = async (xml) => {
     const layoutedXml = await layoutProcess(xml)
     console.log('布局生成成功，新XML长度:', layoutedXml.length)
     
-    // 确保生成的 XML 包含 camunda 命名空间
-    if (!layoutedXml.includes('xmlns:camunda')) {
+    // 确保生成的 XML 包含 flowable 命名空间
+    if (!layoutedXml.includes('xmlns:flowable')) {
       return layoutedXml.replace(
         '<bpmn:definitions',
-        '<bpmn:definitions xmlns:camunda="http://camunda.org/schema/1.0/bpmn"'
+        '<bpmn:definitions xmlns:flowable="http://flowable.org/bpmn"'
       )
     }
     return layoutedXml
@@ -212,8 +125,7 @@ const route = useRoute()
 const router = useRouter()
 const processId = route.params.id
 
-const canvasRef = ref()
-const bpmnModeler = ref(null)
+const designerRef = ref()
 const processData = ref({})
 const selectedElement = ref(null)
 
@@ -225,15 +137,12 @@ const canRedo = ref(false)
 const xmlDialogVisible = ref(false)
 const xmlContent = ref('')
 
-// 命令栈（用于撤销/重做）
-let commandStack = null
-
-// 默认空白流程（包含 camunda 命名空间）
+// 默认空白流程（包含 flowable 命名空间）
 const defaultXML = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:flowable="http://flowable.org/bpmn"
                   id="Definitions_1"
                   targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_1" isExecutable="true">
@@ -248,169 +157,14 @@ const defaultXML = `<?xml version="1.0" encoding="UTF-8"?>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`
 
-const initBpmnModeler = () => {
-  try {
-    bpmnModeler.value = new BpmnModeler({
-      container: canvasRef.value,
-      additionalModules: [customTranslateModule],
-      // 添加 camunda 扩展支持
-      moddleExtensions: {
-        camunda: camundaModdle
-      }
-    })
-    
-    // 尝试通过injector覆盖translate服务
-    try {
-      const injector = bpmnModeler.value.get('injector')
-      if (injector) {
-        // 覆盖translate服务实例
-        injector._instances.translate = customTranslate
-        console.log('翻译服务已覆盖')
-      }
-    } catch (e) {
-      console.warn('翻译服务覆盖失败:', e)
-    }
-    
-    // 获取命令栈服务
-    try {
-      commandStack = bpmnModeler.value.get('commandStack')
-      
-      // 监听命令栈变化，更新撤销/重做按钮状态
-      if (commandStack) {
-        commandStack.on('changed', () => {
-          canUndo.value = commandStack.canUndo()
-          canRedo.value = commandStack.canRedo()
-        })
-        // 初始状态更新
-        canUndo.value = commandStack.canUndo()
-        canRedo.value = commandStack.canRedo()
-      }
-    } catch (e) {
-      console.warn('命令栈服务不可用:', e)
-    }
-    
-    // 自定义Palette - 移除通用任务，改为用户任务
-    try {
-      const palette = bpmnModeler.value.get('palette')
-      const originalGetEntries = palette._providers[0].getPaletteEntries
-      palette._providers[0].getPaletteEntries = function() {
-        const entries = originalGetEntries.apply(this, arguments)
-        
-        // 移除默认的通用任务创建按钮
-        delete entries['create-task']
-        
-        // 添加用户任务创建按钮
-        const elementFactory = bpmnModeler.value.get('elementFactory')
-        const create = bpmnModeler.value.get('create')
-        
-        entries['create-user-task'] = {
-          group: 'activity',
-          className: 'bpmn-icon-user-task',
-          title: '创建用户任务',
-          action: {
-            dragstart: function(event) {
-              const userTask = elementFactory.createShape({ type: 'bpmn:UserTask' })
-              create.start(event, userTask)
-            },
-            click: function(event) {
-              const userTask = elementFactory.createShape({ type: 'bpmn:UserTask' })
-              create.start(event, userTask, { hints: { autoActivate: true } })
-            }
-          }
-        }
-        
-        return entries
-      }
-    } catch (e) {
-      console.warn('Palette自定义失败:', e)
-    }
-    
-    // 自定义ContextPad - 修改追加任务为追加用户任务
-    try {
-      const contextPad = bpmnModeler.value.get('contextPad')
-      const elementFactory = bpmnModeler.value.get('elementFactory')
-      const autoPlace = bpmnModeler.value.get('autoPlace')
-      
-      contextPad.registerProvider({
-        getContextPadEntries: function(element) {
-          return function(entries) {
-            // 修改追加任务的默认行为
-            if (entries['append.append-task']) {
-              entries['append.append-task'].title = '追加用户任务'
-              entries['append.append-task'].className = 'bpmn-icon-user-task'
-              entries['append.append-task'].action = {
-                click: function(event, element) {
-                  const modeling = bpmnModeler.value.get('modeling')
-                  const userTask = elementFactory.createShape({
-                    type: 'bpmn:UserTask'
-                  })
-                  if (autoPlace) {
-                    autoPlace.append(element, userTask)
-                  } else {
-                    modeling.appendShape(element, userTask)
-                  }
-                }
-              }
-            }
-            return entries
-          }
-        }
-      })
-    } catch (e) {
-      console.warn('ContextPad自定义失败:', e)
-    }
-    
-    // 监听元素点击事件 - 支持所有可配置节点
-    bpmnModeler.value.on('element.click', (e) => {
-      const element = e.element
-      const configurableTypes = [
-        'bpmn:UserTask', 'bpmn:ServiceTask', 'bpmn:ManualTask', 
-        'bpmn:ScriptTask', 'bpmn:BusinessRuleTask', 'bpmn:SendTask', 'bpmn:ReceiveTask',
-        'bpmn:StartEvent', 'bpmn:EndEvent',
-        'bpmn:ExclusiveGateway', 'bpmn:ParallelGateway', 'bpmn:InclusiveGateway', 'bpmn:EventBasedGateway',
-        'bpmn:SequenceFlow'
-      ]
-      if (configurableTypes.some(type => element.type?.includes(type))) {
-        // 将modeler实例附加到元素上，供配置面板使用
-        element._modeler = bpmnModeler.value
-        selectedElement.value = element
-      }
-    })
-    
-    // 监听画布变化事件，更新撤销/重做按钮状态（备用机制）
-    bpmnModeler.value.on('elements.changed', () => {
-      if (commandStack) {
-        canUndo.value = commandStack.canUndo()
-        canRedo.value = commandStack.canRedo()
-      }
-    })
-    
-    // 监听键盘事件（Ctrl+Z 撤销，Ctrl+Y 重做）
-    document.addEventListener('keydown', handleKeydown)
-  } catch (error) {
-    console.error('初始化 BPMN Modeler 失败:', error)
-    ElMessage.error('流程设计器初始化失败')
-  }
-}
-
 // 撤销
 const handleUndo = () => {
-  if (commandStack && commandStack.canUndo()) {
-    commandStack.undo()
-    // 撤销后更新按钮状态
-    canUndo.value = commandStack.canUndo()
-    canRedo.value = commandStack.canRedo()
-  }
+  designerRef.value?.undo()
 }
 
 // 重做
 const handleRedo = () => {
-  if (commandStack && commandStack.canRedo()) {
-    commandStack.redo()
-    // 重做后更新按钮状态
-    canUndo.value = commandStack.canUndo()
-    canRedo.value = commandStack.canRedo()
-  }
+  designerRef.value?.redo()
 }
 
 // 键盘快捷键处理
@@ -427,9 +181,22 @@ const handleKeydown = (e) => {
   }
 }
 
+const onElementClick = (element) => {
+  selectedElement.value = element
+}
+
+const onCommandStackChanged = ({ canUndo: undo, canRedo: redo }) => {
+  canUndo.value = undo
+  canRedo.value = redo
+}
+
+const onImported = () => {
+  // 导入完成后的回调（如果需要）
+}
+
 const loadProcess = async () => {
   if (!processId) {
-    await importXML(defaultXML)
+    await designerRef.value?.loadXml(defaultXML)
     return
   }
   
@@ -438,11 +205,11 @@ const loadProcess = async () => {
     processData.value = data
     let xml = data.bpmnXml || defaultXML
     
-    // 确保 XML 包含 camunda 命名空间
-    if (!xml.includes('xmlns:camunda')) {
+    // 确保 XML 包含 flowable 命名空间
+    if (!xml.includes('xmlns:flowable')) {
       xml = xml.replace(
         '<bpmn:definitions',
-        '<bpmn:definitions xmlns:camunda="http://camunda.org/schema/1.0/bpmn"'
+        '<bpmn:definitions xmlns:flowable="http://flowable.org/bpmn"'
       )
     }
     
@@ -451,27 +218,10 @@ const loadProcess = async () => {
       xml = await fixXmlLayout(xml)
     }
     
-    await importXML(xml)
+    await designerRef.value?.loadXml(xml)
   } catch (error) {
     console.error(error)
     ElMessage.error('加载流程失败')
-  }
-}
-
-const importXML = async (xml) => {
-  try {
-    await bpmnModeler.value.importXML(xml)
-    const canvas = bpmnModeler.value.get('canvas')
-    canvas.zoom('fit-viewport', 'auto')
-    
-    // 导入完成后更新撤销/重做按钮状态
-    if (commandStack) {
-      canUndo.value = commandStack.canUndo()
-      canRedo.value = commandStack.canRedo()
-    }
-  } catch (error) {
-    console.error('导入XML失败:', error)
-    ElMessage.error('导入流程图失败')
   }
 }
 
@@ -511,9 +261,11 @@ const copyXML = () => {
 
 const handleSaveXML = async () => {
   try {
-    const { xml } = await bpmnModeler.value.saveXML({ format: true })
-    xmlContent.value = formatXML(xml)
-    xmlDialogVisible.value = true
+    const xml = await designerRef.value?.getXml()
+    if (xml) {
+      xmlContent.value = formatXML(xml)
+      xmlDialogVisible.value = true
+    }
   } catch (error) {
     console.error(error)
     ElMessage.error('获取 XML 失败')
@@ -522,16 +274,17 @@ const handleSaveXML = async () => {
 
 const handleSave = async () => {
   try {
-    const { xml } = await bpmnModeler.value.saveXML({ format: true })
+    const xml = await designerRef.value?.getXml()
+    if (!xml) return
     
     // 确保 isExecutable="true"，否则 Flowable 无法发布流程
     let executableXml = xml.replace(/isExecutable="false"/g, 'isExecutable="true"')
     
-    // 确保 XML 包含 camunda 命名空间
-    if (!executableXml.includes('xmlns:camunda')) {
+    // 确保 XML 包含 flowable 命名空间
+    if (!executableXml.includes('xmlns:flowable')) {
       executableXml = executableXml.replace(
         '<bpmn:definitions',
-        '<bpmn:definitions xmlns:camunda="http://camunda.org/schema/1.0/bpmn"'
+        '<bpmn:definitions xmlns:flowable="http://flowable.org/bpmn"'
       )
     }
     
@@ -557,19 +310,12 @@ const handleNodeConfigSave = () => {
 }
 
 onMounted(() => {
-  nextTick(() => {
-    initBpmnModeler()
-    loadProcess()
-  })
+  loadProcess()
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
-  // 移除键盘事件监听
   document.removeEventListener('keydown', handleKeydown)
-  
-  if (bpmnModeler.value) {
-    bpmnModeler.value.destroy()
-  }
 })
 </script>
 
@@ -636,20 +382,6 @@ onUnmounted(() => {
   color: #909399;
   text-align: center;
   padding: 20px;
-}
-
-/* 隐藏 bpmn.io 水印 */
-:deep(.bjs-powered-by) {
-  display: none !important;
-}
-
-:deep(.djs-palette) {
-  left: 20px;
-  top: 20px;
-}
-
-:deep(.djs-overlay-context-pad) {
-  display: none;
 }
 
 /* 历史操作按钮组 */

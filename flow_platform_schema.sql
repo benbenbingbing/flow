@@ -66,6 +66,34 @@ CREATE TABLE `process_version_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='【流程版本历史表】记录流程每次发布的版本信息';
 
 -- --------------------------------------------------------
+-- 表名: entity_publish_history           -- 实体发布版本历史表
+-- 说明: 记录实体每次发布的版本信息和表结构快照
+-- --------------------------------------------------------
+DROP TABLE IF EXISTS `entity_publish_history`;
+CREATE TABLE `entity_publish_history` (
+    `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
+    `entity_id` VARCHAR(64) NOT NULL COMMENT '实体定义ID',
+    `entity_code` VARCHAR(100) NOT NULL COMMENT '实体编码',
+    `entity_name` VARCHAR(200) NOT NULL COMMENT '实体名称',
+    `version` INT NOT NULL COMMENT '版本号',
+    `version_description` VARCHAR(500) COMMENT '版本说明',
+    `fields_snapshot` LONGTEXT COMMENT '字段定义快照JSON',
+    `table_ddl` LONGTEXT COMMENT '表结构DDL',
+    `publish_type` VARCHAR(20) DEFAULT 'CREATE' COMMENT '发布类型：CREATE首次创建/ALTER修改结构',
+    `changes_description` VARCHAR(500) COMMENT '变更内容描述',
+    `published_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
+    `published_by` VARCHAR(64) COMMENT '发布人ID',
+    `published_by_name` VARCHAR(100) COMMENT '发布人姓名',
+    `status` VARCHAR(20) DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE有效/ROLLBACK已回滚',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_entity_version` (`entity_id`, `version`),
+    KEY `idx_entity_code` (`entity_code`),
+    KEY `idx_publish_type` (`publish_type`),
+    KEY `idx_status` (`status`),
+    KEY `idx_published_at` (`published_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='【实体发布版本历史表】记录实体每次发布的版本信息和表结构快照';
+
+-- --------------------------------------------------------
 -- 表名: node_config                      -- 节点配置表
 -- 说明: 存储流程节点的配置信息（执行人、表单等）
 -- --------------------------------------------------------
@@ -77,6 +105,7 @@ CREATE TABLE `node_config` (
     `node_name` VARCHAR(200) COMMENT '节点名称',
     `node_type` VARCHAR(50) COMMENT '节点类型：UserTask/ServiceTask/Gateway等',
     `config_json` TEXT COMMENT '配置JSON（扩展用）',
+    `skip_node` TINYINT DEFAULT 0 COMMENT '是否跳过此节点（仅第一个用户任务节点可设置）：0-不跳过，1-跳过',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -84,6 +113,7 @@ CREATE TABLE `node_config` (
     UNIQUE KEY `uk_process_node` (`process_config_id`, `node_id`),
     KEY `idx_node_id` (`node_id`),
     KEY `idx_node_type` (`node_type`),
+    KEY `idx_skip_node` (`skip_node`),
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='【节点配置表】存储流程节点的配置信息（执行人、表单等）';
 
@@ -200,6 +230,7 @@ CREATE TABLE `entity_field` (
     `default_value` VARCHAR(200) COMMENT '默认值',
     `dict_type` VARCHAR(100) COMMENT '字典类型（用于枚举）',
     `sort_order` INT DEFAULT 0 COMMENT '排序号',
+    `is_published` TINYINT DEFAULT 0 COMMENT '是否已发布到数据库表（0否/1是）',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

@@ -70,6 +70,24 @@ public class SysUserService {
     }
     
     /**
+     * 根据用户名查询用户昵称
+     */
+    public String getNicknameByUsername(String username) {
+        if (username == null || username.isEmpty()) {
+            return null;
+        }
+        SysUser user = userMapper.selectByUsername(username);
+        if (user == null) {
+            // 尝试按用户ID查询（多实例任务中 assignee 可能是用户ID）
+            user = userMapper.selectById(username);
+        }
+        if (user != null && user.getNickname() != null && !user.getNickname().isEmpty()) {
+            return user.getNickname();
+        }
+        return user != null ? user.getUsername() : username;
+    }
+    
+    /**
      * 保存用户
      */
     @Transactional(rollbackFor = Exception.class)

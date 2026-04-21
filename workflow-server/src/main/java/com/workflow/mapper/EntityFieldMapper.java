@@ -25,4 +25,16 @@ public interface EntityFieldMapper extends BaseMapper<EntityField> {
      */
     @Select("DELETE FROM entity_field WHERE entity_id = #{entityId}")
     void deleteByEntityId(@Param("entityId") String entityId);
+
+    /**
+     * 根据实体ID和字段编码查询字段
+     */
+    @Select("SELECT * FROM entity_field WHERE entity_id = #{entityId} AND field_code = #{fieldCode} LIMIT 1")
+    EntityField findByEntityIdAndFieldCode(@Param("entityId") String entityId, @Param("fieldCode") String fieldCode);
+
+    /**
+     * 根据ID查询字段（ID是String类型，数据库是bigint，会自动转换）
+     */
+    @Select("SELECT * FROM entity_field WHERE id = #{id} LIMIT 1")
+    EntityField findByIdString(@Param("id") String id);
 }

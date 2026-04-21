@@ -2,15 +2,16 @@ package com.workflow.controller;
 
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.EntityDataDTO;
-import com.workflow.service.EntityDataService;
+import com.workflow.service.EntityDataDynamicService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体数据控制器
- * 管理实体对应的数据
+ * 管理实体对应的数据（使用独立表结构）
  */
 @RestController
 @RequestMapping("/api/entity-data")
@@ -18,30 +19,32 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 public class EntityDataController {
     
-    private final EntityDataService entityDataService;
+    private final EntityDataDynamicService entityDataDynamicService;
     
     /**
      * 获取某实体的所有数据
      */
     @GetMapping("/entity/{entityCode}")
     public ApiResponse<List<EntityDataDTO>> listByEntity(@PathVariable String entityCode) {
-        return ApiResponse.success(entityDataService.findByEntityCode(entityCode));
+        return ApiResponse.success(entityDataDynamicService.findByEntityCode(entityCode));
     }
     
     /**
      * 根据ID获取数据详情
      */
-    @GetMapping("/{id}")
-    public ApiResponse<EntityDataDTO> getById(@PathVariable String id) {
-        return ApiResponse.success(entityDataService.findById(id));
+    @GetMapping("/entity/{entityCode}/{id}")
+    public ApiResponse<EntityDataDTO> getById(@PathVariable String entityCode, @PathVariable String id) {
+        return ApiResponse.success(entityDataDynamicService.findById(entityCode, id));
     }
     
     /**
      * 根据流程实例ID获取数据
      */
-    @GetMapping("/process/{processInstanceId}")
-    public ApiResponse<EntityDataDTO> getByProcessInstance(@PathVariable String processInstanceId) {
-        return ApiResponse.success(entityDataService.findByProcessInstanceId(processInstanceId));
+    @GetMapping("/entity/{entityCode}/process/{processInstanceId}")
+    public ApiResponse<EntityDataDTO> getByProcessInstance(
+            @PathVariable String entityCode, 
+            @PathVariable String processInstanceId) {
+        return ApiResponse.success(entityDataDynamicService.findByProcessInstanceId(entityCode, processInstanceId));
     }
     
     /**
@@ -50,23 +53,44 @@ public class EntityDataController {
      */
     @PostMapping
     public ApiResponse<EntityDataDTO> save(@RequestBody EntityDataDTO dto) {
-        return ApiResponse.success(entityDataService.save(dto));
+        return ApiResponse.success(entityDataDynamicService.save(dto));
     }
     
     /**
      * 更新数据
      */
-    @PutMapping("/{id}")
-    public ApiResponse<EntityDataDTO> update(@PathVariable String id, @RequestBody EntityDataDTO dto) {
-        return ApiResponse.success(entityDataService.update(id, dto));
+    @PutMapping("/entity/{entityCode}/{id}")
+    public ApiResponse<EntityDataDTO> update(
+            @PathVariable String entityCode, 
+            @PathVariable String id, 
+            @RequestBody Map<String, Object> formData) {
+        return ApiResponse.success(entityDataDynamicService.update(entityCode, id, formData));
     }
     
     /**
      * 删除数据
      */
-    @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable String id) {
-        entityDataService.delete(id);
+    @DeleteMapping("/entity/{entityCode}/{id}")
+    public ApiResponse<Void> delete(@PathVariable String entityCode, @PathVariable String id) {
+        entityDataDynamicService.delete(entityCode, id);
         return ApiResponse.success();
+    }
+    
+    /**
+     * 条件查询
+     */
+    @PostMapping("/entity/{entityCode}/search")
+    public ApiResponse<List<EntityDataDTO>> search(
+            @PathVariable String entityCode, 
+            @RequestBody Map<String, Object> condition) {
+        return ApiResponse.success(entityDataDynamicService.findByCondition(entityCode, condition));
+    }
+    
+    /**
+     * 统计数量
+     */
+    @GetMapping("/entity/{entityCode}/count")
+    public ApiResponse<Long> count(@PathVariable String entityCode) {
+        return ApiResponse.success(entityDataDynamicService.count(entityCode));
     }
 }

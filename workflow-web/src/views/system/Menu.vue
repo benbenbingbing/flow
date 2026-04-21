@@ -28,7 +28,7 @@
               <el-icon><ArrowRight v-if="!isExpanded(row)" /><ArrowDown v-else /></el-icon>
             </span>
             <span v-else class="expand-placeholder"></span>
-            <el-icon v-if="row.icon" class="menu-icon">
+            <el-icon v-if="row.icon && getIconComponent(row.icon)" class="menu-icon">
               <component :is="getIconComponent(row.icon)" />
             </el-icon>
             <span>{{ row.menuName }}</span>
@@ -232,6 +232,39 @@
             </el-form-item>
           </el-col>
         </el-row>
+        
+        <!-- 实体数据配置（仅菜单类型为C时显示） -->
+        <el-row :gutter="20" v-if="formData.menuType === 'C'">
+          <el-col :span="24">
+            <el-divider>实体数据配置</el-divider>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="关联实体">
+              <el-select 
+                v-model="formData.entityCode" 
+                placeholder="选择关联实体（可选）"
+                clearable
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="entity in entityList"
+                  :key="entity.entityCode"
+                  :label="entity.entityName"
+                  :value="entity.entityCode"
+                />
+              </el-select>
+              <div class="form-tip">选择实体后，点击菜单将直接显示该实体的数据列表</div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12" v-if="formData.entityCode">
+            <el-form-item label="自动设置">
+              <el-button type="primary" link @click="autoSetEntityPath">
+                自动设置路由和组件
+              </el-button>
+              <div class="form-tip">根据实体自动填充路由地址和组件路径</div>
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
       
       <template #footer>
@@ -249,6 +282,7 @@ import { Plus, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import IconPicker from '@/components/IconPicker.vue'
 import { getMenuTree, createMenu, updateMenu, deleteMenu, updateStatus, updateVisible } from '@/api/system/menu'
+import { entityApi } from '@/api/entity'
 
 const loading = ref(false)
 const menuTree = ref<any[]>([])
@@ -283,6 +317,30 @@ const menuTreeOptions = computed(() => {
   return [...addTopOption, ...menuTree.value]
 })
 
+// 实体列表
+const entityList = ref<any[]>([])
+
+// 加载实体列表
+const fetchEntityList = async () => {
+  try {
+    const res = await entityApi.getList()
+    entityList.value = res || []
+  } catch (error) {
+    console.error('获取实体列表失败:', error)
+  }
+}
+
+// 自动设置实体路由
+const autoSetEntityPath = () => {
+  if (!formData.entityCode) return
+  const entity = entityList.value.find(e => e.entityCode === formData.entityCode)
+  if (entity) {
+    formData.path = `/entity/list/${formData.entityCode}`
+    formData.component = 'entity/EntityDataList'
+    ElMessage.success(`已自动设置路由：${formData.path}`)
+  }
+}
+
 const formData = reactive({
   id: '',
   parentId: '0',
@@ -297,7 +355,8 @@ const formData = reactive({
   status: '0',
   visible: '0',
   isFrame: '0',
-  isCache: '0'
+  isCache: '0',
+  entityCode: ''
 })
 
 const formRules = {
@@ -321,7 +380,8 @@ const fetchMenuTree = async () => {
 
 // 获取图标组件
 const getIconComponent = (iconName: string) => {
-  return (ElementPlusIconsVue as any)[iconName] || 'CircleCheck'
+  if (!iconName) return null
+  return (ElementPlusIconsVue as any)[iconName] || null
 }
 
 // 计算左侧缩进（根据层级）
@@ -400,7 +460,8 @@ const resetForm = () => {
     status: '0',
     visible: '0',
     isFrame: '0',
-    isCache: '0'
+    isCache: '0',
+    entityCode: ''
   })
 }
 
@@ -434,8 +495,13 @@ const handleSubmit = async () => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    const api = formData.id ? updateMenu : createMenu
-    await api(formData.id, formData)
+    if (formData.id) {
+      // 更新
+      await updateMenu(formData.id, formData)
+    } else {
+      // 创建
+      await createMenu(formData)
+    }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
     fetchMenuTree()
@@ -497,6 +563,7 @@ const getAllMenuIds = (menus: any[]): string[] => {
 
 onMounted(() => {
   fetchMenuTree()
+  fetchEntityList()
 })
 </script>
 

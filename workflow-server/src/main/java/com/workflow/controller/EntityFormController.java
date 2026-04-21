@@ -115,4 +115,13 @@ public class EntityFormController {
     public Result<EntityForm> copyForm(@PathVariable String id) {
         return Result.success(formService.copyForm(id));
     }
+    
+    /**
+     * 设置默认表单
+     */
+    @PutMapping("/{id}/default")
+    public Result<Void> setDefaultForm(@PathVariable String id) {
+        formService.setDefaultForm(id);
+        return Result.success();
+    }
 }

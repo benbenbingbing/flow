@@ -38,6 +38,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'
+import { evaluateExpression, formatCalcResult } from '@/utils/calcEngine'
 
 const props = defineProps({
   form: {
@@ -72,6 +73,33 @@ watch(() => props.modelValue, (val) => {
 watch(formData, (val) => {
   emit('update:modelValue', val)
 }, { deep: true })
+
+// 处理计算字段
+watch(formData, (val) => {
+  calculateFields()
+}, { deep: true })
+
+// 计算字段
+function calculateFields() {
+  const fields = props.form?.fields || []
+  
+  fields.forEach(field => {
+    // 检查字段是否有计算表达式
+    const calcExpression = field.calcExpression || field.calculateExpression
+    if (calcExpression && !props.readonly) {
+      const result = evaluateExpression(calcExpression, formData.value)
+      if (result != null) {
+        const fieldCode = field.fieldCode || `field_${field.id}`
+        const formattedValue = formatCalcResult(result, field.fieldType, field.precision || 2)
+        
+        // 只有当值变化时才更新，避免循环
+        if (formData.value[fieldCode] !== formattedValue) {
+          formData.value[fieldCode] = formattedValue
+        }
+      }
+    }
+  })
+}
 
 // 排序后的字段
 const sortedFields = computed(() => {

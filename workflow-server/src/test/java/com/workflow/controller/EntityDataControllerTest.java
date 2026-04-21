@@ -49,7 +49,7 @@ public class EntityDataControllerTest {
         testData.setTitle("测试数据");
         testData.setSubmitterId("user1");
         testData.setSubmitterName("张三");
-        testData.setStatus(EntityData.DataStatus.PENDING);
+        testData.setStatus(EntityData.DataStatus.PENDING.name());
         Map<String, Object> dataMap = new HashMap<>();
         dataMap.put("name", "测试");
         dataMap.put("amount", 100);

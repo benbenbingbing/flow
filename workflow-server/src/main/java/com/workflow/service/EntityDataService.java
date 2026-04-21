@@ -42,6 +42,8 @@ public class EntityDataService {
     private final IdentityService identityService;
     private final ObjectMapper objectMapper;
     private final ProcessTaskService processTaskService;
+    private final EntityCodeGeneratorService codeGeneratorService;
+    private final com.workflow.listener.MultiInstanceCollectionListener multiInstanceCollectionListener;
     
     /**
      * 查询某实体的所有数据
@@ -164,6 +166,9 @@ public class EntityDataService {
                 variables.put("initiator", data.getSubmitterId());
                 variables.put("skipNodeEnabled", true);
                 
+                // 预计算多实例集合变量（根据节点配置的审批人自动计算）
+                multiInstanceCollectionListener.prepareVariables(processConfig.getId(), variables);
+
                 // 设置Flowable认证用户，使流程实例记录正确的startUserId
                 identityService.setAuthenticatedUserId(data.getSubmitterId());
                 
@@ -233,10 +238,10 @@ public class EntityDataService {
     
     /**
      * 生成数据编号
+     * 使用编码规则生成服务
      */
     private String generateDataNo(String entityCode) {
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        return entityCode.toUpperCase() + "-" + timestamp.substring(timestamp.length() - 10);
+        return codeGeneratorService.generateCode(entityCode);
     }
     
     /**
