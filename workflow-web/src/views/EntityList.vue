@@ -52,9 +52,7 @@
               重新发布
             </el-button>
             <el-dropdown>
-              <el-button link type="info">
-                更多<el-icon class="el-icon--right"><arrow-down /></el-icon>
-              </el-button>
+              <el-button link type="info">···</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="handleData(row)">
