@@ -32,31 +32,52 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="500" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
-            <el-button 
-              v-if="row.status !== 'PUBLISHED'" 
-              link 
-              type="success" 
+            <el-button
+              v-if="row.status !== 'PUBLISHED'"
+              link
+              type="success"
               @click="handlePublish(row)"
             >
               发布
             </el-button>
-            <el-button 
-              v-else 
-              link 
-              type="success" 
+            <el-button
+              v-else
+              link
+              type="success"
               @click="handleRepublish(row)"
             >
               重新发布
             </el-button>
-            <el-button link type="primary" @click="handleData(row)">数据管理</el-button>
-            <el-button link type="warning" @click="handleForm(row)">表单</el-button>
-            <el-button link type="info" @click="handleStatusConfig(row)">状态配置</el-button>
-            <el-button link type="success" @click="handleBindProcess(row)">绑定流程</el-button>
-            <el-button link type="primary" @click="handleViewHistory(row)">版本历史</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-dropdown>
+              <el-button link type="info">
+                更多<el-icon class="el-icon--right"><arrow-down /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="handleData(row)">
+                    <el-icon><DataLine /></el-icon>数据管理
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleForm(row)">
+                    <el-icon><Document /></el-icon>表单
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleStatusConfig(row)">
+                    <el-icon><SetUp /></el-icon>状态配置
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleBindProcess(row)">
+                    <el-icon><Link /></el-icon>绑定流程
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleViewHistory(row)">
+                    <el-icon><Clock /></el-icon>版本历史
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="handleDelete(row)">
+                    <el-icon><Delete /></el-icon>删除
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -414,7 +435,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Rank, View, ArrowRight } from '@element-plus/icons-vue'
+import { Plus, Rank, View, ArrowRight, ArrowDown, DataLine, Document, SetUp, Link, Clock, Delete } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
 import { entityVersionDiffApi } from '@/api/entityVersionDiff'
