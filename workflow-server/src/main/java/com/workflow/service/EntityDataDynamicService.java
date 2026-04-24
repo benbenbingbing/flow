@@ -289,6 +289,9 @@ public class EntityDataDynamicService {
         if (processConfig == null) {
             throw new RuntimeException("流程定义不存在: " + processConfigId);
         }
+        if (processConfig.getStatus() == com.workflow.entity.ProcessDefinitionConfig.ProcessStatus.DISABLED) {
+            throw new RuntimeException("流程已禁用，无法发起: " + processConfig.getProcessName());
+        }
         
         String processKey = processConfig.getProcessKey();
 

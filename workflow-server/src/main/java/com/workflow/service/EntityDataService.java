@@ -146,6 +146,9 @@ public class EntityDataService {
                 if (processConfig == null) {
                     throw new RuntimeException("绑定的流程配置不存在");
                 }
+                if (processConfig.getStatus() == com.workflow.entity.ProcessDefinitionConfig.ProcessStatus.DISABLED) {
+                    throw new RuntimeException("流程已禁用，无法发起: " + processConfig.getProcessName());
+                }
                 
                 // 查询Flowable最新的流程定义
                 ProcessDefinition flowableProcess = repositoryService.createProcessDefinitionQuery()
