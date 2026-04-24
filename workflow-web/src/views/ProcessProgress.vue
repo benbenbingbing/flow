@@ -50,6 +50,20 @@
                 <span class="label">{{ tooltip.status === 'active' ? '到达时间' : '处理时间' }}：</span>
                 <span class="value">{{ tooltip.assigneeInfo.handleTime || '-' }}</span>
               </div>
+              <template v-if="tooltip.historyInfo">
+                <div v-if="tooltip.historyInfo.startTime && tooltip.historyInfo.startTime !== tooltip.assigneeInfo.handleTime" class="info-row">
+                  <span class="label">开始时间：</span>
+                  <span class="value">{{ tooltip.historyInfo.startTime }}</span>
+                </div>
+                <div v-if="tooltip.historyInfo.endTime" class="info-row">
+                  <span class="label">结束时间：</span>
+                  <span class="value">{{ tooltip.historyInfo.endTime }}</span>
+                </div>
+                <div v-if="tooltip.historyInfo.duration" class="info-row">
+                  <span class="label">耗时：</span>
+                  <span class="value">{{ formatDuration(tooltip.historyInfo.duration) }}</span>
+                </div>
+              </template>
               <div v-if="tooltip.assigneeInfo.action && tooltip.assigneeInfo.action !== 'PROCESSING'" class="info-row">
                 <span class="label">处理结果：</span>
                 <el-tag size="small" :type="getActionType(tooltip.assigneeInfo.action)">
@@ -66,6 +80,20 @@
                 <span class="label">状态：</span>
                 <span class="value">{{ tooltip.status === 'completed' ? '已完成' : tooltip.status === 'active' ? '进行中' : '未开始' }}</span>
               </div>
+              <template v-if="tooltip.historyInfo">
+                <div v-if="tooltip.historyInfo.startTime" class="info-row">
+                  <span class="label">开始时间：</span>
+                  <span class="value">{{ tooltip.historyInfo.startTime }}</span>
+                </div>
+                <div v-if="tooltip.historyInfo.endTime" class="info-row">
+                  <span class="label">结束时间：</span>
+                  <span class="value">{{ tooltip.historyInfo.endTime }}</span>
+                </div>
+                <div v-if="tooltip.historyInfo.duration" class="info-row">
+                  <span class="label">耗时：</span>
+                  <span class="value">{{ formatDuration(tooltip.historyInfo.duration) }}</span>
+                </div>
+              </template>
             </template>
           </div>
         </div>
@@ -114,6 +142,11 @@
               <div v-if="node.duration" class="duration-info">
                 耗时: {{ formatDuration(node.duration) }}
               </div>
+              <div v-if="node.variables && Object.keys(node.variables).length > 0" class="node-variables">
+                <el-tag v-for="(val, key) in node.variables" :key="key" size="small" type="info" class="var-tag">
+                  {{ key }}: {{ val }}
+                </el-tag>
+              </div>
             </el-timeline-item>
           </el-timeline>
           <el-empty v-else description="暂无执行历史" />
@@ -154,7 +187,8 @@ const tooltip = ref({
   nodeId: '',
   nodeName: '',
   status: '', // completed, active, pending
-  assigneeInfo: null
+  assigneeInfo: null,
+  historyInfo: null
 })
 
 // 颜色配置
@@ -443,6 +477,10 @@ const addMouseEventListeners = (viewerInstance = currentViewer) => {
         // 获取处理人信息
         const assigneeInfo = nodeAssigneeMap?.[elementId] || null
         
+        // 从历史记录中查找该节点的执行信息（用于脚本任务等自动节点显示时间）
+        const nodeHistory = toRaw(progressData.value.nodeHistory) || []
+        const historyInfo = nodeHistory.find(h => h.nodeId === elementId) || null
+        
         // 更新提示框
         tooltip.value = {
           visible: true,
@@ -451,7 +489,8 @@ const addMouseEventListeners = (viewerInstance = currentViewer) => {
           nodeId: elementId,
           nodeName: element.businessObject?.name || elementId,
           status: status,
-          assigneeInfo: assigneeInfo
+          assigneeInfo: assigneeInfo,
+          historyInfo: historyInfo
         }
       } catch (err) {
         console.error('处理悬停事件时出错:', err)
@@ -831,5 +870,17 @@ onMounted(() => {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+.node-variables {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.var-tag {
+  font-family: monospace;
+  font-size: 12px;
 }
 </style>

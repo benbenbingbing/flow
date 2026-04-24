@@ -200,7 +200,13 @@ const importXML = async (xml) => {
   try {
     await modeler.value.importXML(xml)
     const canvas = modeler.value.get('canvas')
+    // 先 fit-viewport 保证所有节点在可视区域内
     canvas.zoom('fit-viewport', 'auto')
+    // 限制最小缩放比例，避免节点缩得太小；若超出画布则通过滚动查看
+    const currentZoom = canvas.zoom()
+    if (currentZoom < 0.7) {
+      canvas.zoom(0.7)
+    }
     if (commandStack) {
       emit('command-stack-changed', {
         canUndo: commandStack.canUndo(),

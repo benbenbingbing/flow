@@ -162,5 +162,10 @@ public class ProcessDetailVO {
          * 耗时（毫秒）
          */
         private Long duration;
+        
+        /**
+         * 节点执行时的流程变量快照
+         */
+        private java.util.Map<String, Object> variables;
     }
 }

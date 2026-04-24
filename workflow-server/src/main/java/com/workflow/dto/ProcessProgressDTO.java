@@ -172,6 +172,11 @@ public class ProcessProgressDTO {
          * 审批意见/备注
          */
         private String comment;
+        
+        /**
+         * 节点执行变量快照（主要用于脚本任务等自动节点）
+         */
+        private Map<String, Object> variables;
     }
     
     /**

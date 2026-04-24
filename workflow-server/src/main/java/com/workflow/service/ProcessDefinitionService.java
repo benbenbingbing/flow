@@ -279,6 +279,9 @@ public class ProcessDefinitionService {
         // 5. 移除所有剩余的 camunda 属性（不区分大小写）
         bpmnXml = bpmnXml.replaceAll("(?i)\\s+camunda:[^=\\s]*=\"[^\"]*\"", "");
         
+        // 5.1 清理 serviceTask 上不允许的标准 resultVariable 属性（应使用扩展属性存储）
+        bpmnXml = bpmnXml.replaceAll("(?i)\\s+resultVariable=\"[^\"]*\"", "");
+        
         // 5. 清理其他无效属性，并将无命名空间的属性转为flowable
         bpmnXml = bpmnXml.replaceAll("\\s+extensionProperties=\"[^\"]*\"", "");
         // 转换那些还没有flowable:前缀的属性（处理未加camunda前缀的情况）
@@ -377,6 +380,92 @@ public class ProcessDefinitionService {
         }
         fullUtMatcher.appendTail(fullUtSb);
         bpmnXml = fullUtSb.toString();
+        
+        // 修复 scriptTask 缺少 <script> 子元素的问题（前端只存到扩展属性，未写入标准 BPMN）
+        java.util.regex.Pattern scriptTaskPattern = java.util.regex.Pattern.compile(
+            "(?i)<(bpmn:)?scriptTask\\b([^>]*)>([\\s\\S]*?)</\\1scriptTask>",
+            java.util.regex.Pattern.DOTALL
+        );
+        java.util.regex.Matcher scriptTaskMatcher = scriptTaskPattern.matcher(bpmnXml);
+        StringBuffer scriptTaskSb = new StringBuffer();
+        while (scriptTaskMatcher.find()) {
+            String fullTag = scriptTaskMatcher.group(0);
+            String startTag = fullTag.substring(0, fullTag.indexOf('>') + 1);
+            String content = scriptTaskMatcher.group(3);
+            String prefix = scriptTaskMatcher.group(1) != null ? scriptTaskMatcher.group(1) : "";
+            String endTag = "</" + prefix + "scriptTask>";
+            
+            // 无论 <script> 是否存在，都从 scriptConfig 提取最新内容（覆盖旧内容）
+            java.util.regex.Pattern scriptConfigPattern = java.util.regex.Pattern.compile(
+                "(?i)<flowable:property\\s+name=\\\"scriptConfig\\\"\\s+value=\\\"([^\\\"]*)\\\""
+            );
+            java.util.regex.Matcher scriptConfigMatcher = scriptConfigPattern.matcher(content);
+            if (scriptConfigMatcher.find()) {
+                String scriptConfigJson = scriptConfigMatcher.group(1)
+                    .replace("&quot;", "\"")
+                    .replace("&#34;", "\"")
+                    .replace("&lt;", "<")
+                    .replace("&#60;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&#62;", ">")
+                    .replace("&amp;", "&")
+                    .replace("&#38;", "&");
+                
+                try {
+                    com.fasterxml.jackson.databind.JsonNode scriptConfig = objectMapper.readTree(scriptConfigJson);
+                    String script = scriptConfig.has("script") ? scriptConfig.get("script").asText() : "";
+                    // 去除 <script> 和 </script> 标签
+                    script = script.replaceAll("(?i)<script[^>]*>", "").replaceAll("(?i)</script>", "").trim();
+                    
+                    if (!script.isEmpty()) {
+                        // 补充/更新 scriptFormat 属性
+                        String scriptFormat = scriptConfig.has("scriptFormat") ? scriptConfig.get("scriptFormat").asText() : "javascript";
+                        if (!startTag.toLowerCase().contains("scriptformat=")) {
+                            startTag = startTag.replace(">", " scriptFormat=\"" + scriptFormat + "\">");
+                        } else {
+                            // 更新已有的 scriptFormat
+                            startTag = startTag.replaceAll("(?i)scriptFormat=\\\"[^\\\"]*\\\"", "scriptFormat=\"" + scriptFormat + "\"");
+                        }
+                        
+                        // 补充/更新 flowable:resultVariable 和 flowable:autoStoreVariables
+                        String resultVariable = scriptConfig.has("resultVariable") ? scriptConfig.get("resultVariable").asText() : "";
+                        boolean autoStore = scriptConfig.has("autoStoreVariables") && scriptConfig.get("autoStoreVariables").asBoolean();
+                        if (!resultVariable.isEmpty()) {
+                            if (!startTag.toLowerCase().contains("flowable:resultvariable=")) {
+                                startTag = startTag.replace(">", " flowable:resultVariable=\"" + resultVariable + "\">");
+                            } else {
+                                // 更新已有的 resultVariable
+                                startTag = startTag.replaceAll("(?i)flowable:resultVariable=\\\"[^\\\"]*\\\"", "flowable:resultVariable=\"" + resultVariable + "\"");
+                            }
+                        }
+                        if (autoStore) {
+                            if (!startTag.toLowerCase().contains("flowable:autostorevariables=")) {
+                                startTag = startTag.replace(">", " flowable:autoStoreVariables=\"true\">");
+                            } else {
+                                startTag = startTag.replaceAll("(?i)flowable:autoStoreVariables=\\\"[^\\\"]*\\\"", "flowable:autoStoreVariables=\"true\"");
+                            }
+                        }
+                        
+                        // 移除旧的 <script> 子元素（如果存在）
+                        String newContent = content.replaceAll("(?i)<" + prefix + "script>[^<]*</" + prefix + "script>", "")
+                            .replaceAll("(?i)<script>[^<]*</script>", "");
+                        
+                        String scriptElement = "<" + prefix + "script>" + script + "</" + prefix + "script>";
+                        newContent = newContent + scriptElement;
+                        String newFullTag = startTag + newContent + endTag;
+                        scriptTaskMatcher.appendReplacement(scriptTaskSb, java.util.regex.Matcher.quoteReplacement(newFullTag));
+                        log.debug("更新 scriptTask script: nodeId={}, format={}, resultVar={}, autoStore={}", 
+                            fullTag.replaceAll("(?i).*id=\\\"([^\\\"]*)\\\".*", "$1"), scriptFormat, resultVariable, autoStore);
+                        continue;
+                    }
+                } catch (Exception e) {
+                    log.warn("解析 scriptConfig 失败: {}", e.getMessage());
+                }
+            }
+            scriptTaskMatcher.appendReplacement(scriptTaskSb, java.util.regex.Matcher.quoteReplacement(fullTag));
+        }
+        scriptTaskMatcher.appendTail(scriptTaskSb);
+        bpmnXml = scriptTaskSb.toString();
         
         // Deploy to Flowable
         Deployment deployment = activitiRepositoryService.createDeployment()

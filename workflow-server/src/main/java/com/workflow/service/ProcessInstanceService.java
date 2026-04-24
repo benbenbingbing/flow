@@ -218,6 +218,22 @@ public class ProcessInstanceService {
                     dto.setDuration(h.getDurationInMillis());
                     dto.setStatus(h.getEndTime() != null ? "COMPLETED" : "ACTIVE");
                     
+                    // 查询该节点关联的历史变量（快照）
+                    java.util.List<org.flowable.variable.api.history.HistoricVariableInstance> nodeVars = null;
+                    if (h.getTaskId() != null) {
+                        nodeVars = historyService.createHistoricVariableInstanceQuery()
+                                .taskId(h.getTaskId()).list();
+                    }
+                    if ((nodeVars == null || nodeVars.isEmpty()) && h.getExecutionId() != null) {
+                        nodeVars = historyService.createHistoricVariableInstanceQuery()
+                                .executionId(h.getExecutionId()).list();
+                    }
+                    if (nodeVars != null && !nodeVars.isEmpty()) {
+                        java.util.Map<String, Object> vars = new java.util.HashMap<>();
+                        for (var v : nodeVars) vars.put(v.getVariableName(), v.getValue());
+                        dto.setVariables(vars);
+                    }
+                    
                     // 获取任务处理方式
                     if (h.getEndTime() != null && "userTask".equals(h.getActivityType())) {
                         // 查询任务评论判断处理方式
@@ -869,6 +885,29 @@ public class ProcessInstanceService {
             history.setStartTime(formatDate(task.getStartTime()));
             history.setEndTime(formatDate(task.getEndTime()));
             history.setDuration(task.getDurationInMillis());
+            
+            // 查询该任务关联的历史变量（快照）
+            try {
+                java.util.List<org.flowable.variable.api.history.HistoricVariableInstance> taskVars = historyService.createHistoricVariableInstanceQuery()
+                        .taskId(task.getId())
+                        .list();
+                // 脚本任务等自动节点的变量可能 TASK_ID_ 为空，按 executionId 兜底
+                if (taskVars.isEmpty() && task.getExecutionId() != null) {
+                    taskVars = historyService.createHistoricVariableInstanceQuery()
+                            .executionId(task.getExecutionId())
+                            .list();
+                }
+                if (!taskVars.isEmpty()) {
+                    java.util.Map<String, Object> vars = new java.util.HashMap<>();
+                    for (org.flowable.variable.api.history.HistoricVariableInstance var : taskVars) {
+                        vars.put(var.getVariableName(), var.getValue());
+                    }
+                    history.setVariables(vars);
+                }
+            } catch (Exception e) {
+                log.warn("查询任务变量失败: taskId={}", task.getId(), e);
+            }
+            
             historyList.add(history);
         }
         
@@ -914,6 +953,17 @@ public class ProcessInstanceService {
                     .filter(java.util.Objects::nonNull)
                     .collect(java.util.stream.Collectors.joining("; "));
                 merged.setComment(comments.isEmpty() ? null : comments);
+                
+                // 合并变量：收集所有子任务的变量
+                java.util.Map<String, Object> mergedVars = new java.util.LinkedHashMap<>();
+                for (ProcessDetailVO.HistoryVO h : list) {
+                    if (h.getVariables() != null) {
+                        mergedVars.putAll(h.getVariables());
+                    }
+                }
+                if (!mergedVars.isEmpty()) {
+                    merged.setVariables(mergedVars);
+                }
                 
                 mergedHistory.add(merged);
             } else {

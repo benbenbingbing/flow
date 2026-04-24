@@ -512,7 +512,7 @@
             <el-input 
               v-model="serviceForm.resultVariable" 
               placeholder="存储结果到变量"
-              @blur="updateProperty('resultVariable', serviceForm.resultVariable)"
+              @blur="updateExtensionProperty('serviceResultVariable', serviceForm.resultVariable)"
             />
           </el-form-item>
         </el-form>
@@ -712,14 +712,56 @@
             </el-radio-group>
           </el-form-item>
           
-          <el-form-item label="脚本内容">
+          <el-form-item>
+            <template #label>
+              <span>脚本内容</span>
+              <el-tooltip placement="top" :content="scriptHintText" max-width="280">
+                <el-icon class="hint-icon"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </template>
+            <div class="script-toolbar">
+              <el-button size="small" type="primary" text @click="insertScriptExample">
+                <el-icon><Plus /></el-icon> 插入示例代码
+              </el-button>
+              <el-button size="small" type="success" text :loading="scriptTestLoading" @click="testScriptCode">
+                <el-icon><VideoPlay /></el-icon> 测试执行
+              </el-button>
+            </div>
             <el-input 
               v-model="scriptForm.script" 
               type="textarea"
               :rows="10"
-              placeholder="// 脚本代码示例：&#10;execution.setVariable('result', amount * 0.1);"
+              :placeholder="scriptPlaceholder"
               class="code-input"
             />
+            <!-- 脚本测试结果 -->
+            <div v-if="scriptTestResult" class="script-test-result">
+              <el-alert 
+                :type="scriptTestResult.success ? 'success' : 'error'" 
+                :closable="false"
+                :title="scriptTestResult.success ? '执行成功' : '执行失败'"
+              >
+                <div v-if="scriptTestResult.success" class="test-result-content">
+                  <div v-if="scriptTestResult.result !== undefined && scriptTestResult.result !== null" class="result-item">
+                    <span class="result-label">返回值：</span>
+                    <el-tag size="small" type="primary">{{ scriptTestResult.result }}</el-tag>
+                  </div>
+                  <div v-if="scriptTestResult.resultVariableValue !== undefined && scriptTestResult.resultVariableValue !== null" class="result-item">
+                    <span class="result-label">结果变量 ({{ scriptForm.resultVariable }})：</span>
+                    <el-tag size="small" type="success">{{ scriptTestResult.resultVariableValue }}</el-tag>
+                  </div>
+                  <div v-if="scriptTestResult.variables && Object.keys(scriptTestResult.variables).length > 0" class="result-item">
+                    <span class="result-label">流程变量：</span>
+                    <div class="result-vars">
+                      <el-tag v-for="(val, key) in scriptTestResult.variables" :key="key" size="small" type="info" class="var-tag">
+                        {{ key }}={{ val }}
+                      </el-tag>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="test-error">{{ scriptTestResult.message }}</div>
+              </el-alert>
+            </div>
           </el-form-item>
           
           <el-form-item label="结果变量">
@@ -1091,8 +1133,8 @@
         </el-dialog>
       </el-tab-pane>
       
-      <!-- ========== 表单配置（任务/开始事件） ========== -->
-      <el-tab-pane v-if="isTask || isStartEvent" label="表单" name="form">
+      <!-- ========== 表单配置（仅用户任务/开始事件） ========== -->
+      <el-tab-pane v-if="isUserTask || isStartEvent" label="表单" name="form">
         <el-form :model="formConfig" label-width="100px" size="small">
           <el-alert type="info" :closable="false" class="section-alert">
             绑定实体表单或自定义表单到当前节点
@@ -1248,7 +1290,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, ArrowUp, ArrowDown, Delete } from '@element-plus/icons-vue'
+import { Plus, ArrowUp, ArrowDown, Delete, QuestionFilled, VideoPlay } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
@@ -1315,6 +1357,89 @@ const isReceiveTask = computed(() => props.element?.type === 'bpmn:ReceiveTask')
 const isManualTask = computed(() => props.element?.type === 'bpmn:ManualTask')
 const isBusinessRuleTask = computed(() => props.element?.type === 'bpmn:BusinessRuleTask')
 const isScriptTask = computed(() => props.element?.type === 'bpmn:ScriptTask')
+
+// 脚本类型对应的占位符提示
+const scriptPlaceholder = computed(() => {
+  const type = scriptForm.value.scriptFormat
+  if (type === 'groovy') {
+    return '// Groovy: 输入脚本代码，支持 ?: Elvis 运算符'
+  }
+  if (type === 'python') {
+    return '# Python: 输入脚本代码，注意缩进和库限制'
+  }
+  return '// JavaScript: 输入脚本代码，避免使用 var 声明变量'
+})
+
+// 问号 tooltip 提示文本
+const scriptHintText = computed(() => {
+  const type = scriptForm.value.scriptFormat
+  if (type === 'groovy') {
+    return 'Groovy: 支持 ?: Elvis 运算符，最后一行表达式自动返回给 resultVariable，可直接使用 execution.setVariable()'
+  }
+  if (type === 'python') {
+    return 'Python: Flowable 内嵌 Python 支持有限，避免使用复杂第三方库，resultVariable 捕获最后表达式结果'
+  }
+  return 'Nashorn JS: 避免使用 var 声明变量（var 为局部变量不会返回），直接赋值如 result = a + b; 可被 resultVariable 捕获'
+})
+
+// 各脚本类型的默认示例代码（有区分度且保证能执行）
+const SCRIPT_EXAMPLES = {
+  javascript: `// Nashorn JS: var 声明的变量不会返回给 resultVariable
+price = execution.getVariable("price") || 100;
+qty = execution.getVariable("qty") || 2;
+price * qty;`,
+  groovy: `// Groovy: 支持 def 声明和 ?: Elvis 运算符
+def price = execution.getVariable("price") ?: 100
+def qty = execution.getVariable("qty") ?: 2
+price * qty`,
+  python: `# Python: 注意缩进，resultVariable 捕获最后赋值
+price = execution.getVariable("price") or 100
+qty = execution.getVariable("qty") or 2
+result = price * qty`
+}
+
+// 插入示例代码到脚本编辑器
+function insertScriptExample() {
+  const type = scriptForm.value.scriptFormat
+  scriptForm.value.script = SCRIPT_EXAMPLES[type] || SCRIPT_EXAMPLES.javascript
+}
+
+// 测试脚本代码
+async function testScriptCode() {
+  if (!scriptForm.value.script || !scriptForm.value.script.trim()) {
+    ElMessage.warning('请先输入脚本内容')
+    return
+  }
+  scriptTestLoading.value = true
+  scriptTestResult.value = null
+  try {
+    const res = await request({
+      url: '/script/test',
+      method: 'post',
+      data: {
+        scriptFormat: scriptForm.value.scriptFormat,
+        script: scriptForm.value.script,
+        resultVariable: scriptForm.value.resultVariable,
+        testVariables: { price: 100, qty: 2 }
+      }
+    })
+    if (res.code === 200) {
+      scriptTestResult.value = res.data
+      if (res.data.success) {
+        ElMessage.success('脚本测试通过')
+      } else {
+        ElMessage.error(res.data.message || '脚本执行失败')
+      }
+    } else {
+      ElMessage.error(res.message || '测试请求失败')
+    }
+  } catch (e) {
+    ElMessage.error('测试请求异常: ' + (e.message || '未知错误'))
+  } finally {
+    scriptTestLoading.value = false
+  }
+}
+
 const isCallActivity = computed(() => props.element?.type === 'bpmn:CallActivity')
 const isSubProcess = computed(() => props.element?.type === 'bpmn:SubProcess')
 const isTask = computed(() => props.element?.type?.includes('Task') || props.element?.type?.includes('Activity'))
@@ -1456,9 +1581,22 @@ function getNamePlaceholder() {
 }
 
 const servicePlaceholder = computed(() => {
-  const map = { class: 'com.example.MyServiceTask', expression: '${myService.execute()}', delegateExpression: '${myDelegate}' }
+  const map = {
+    class: 'com.workflow.delegate.DemoJavaDelegate',
+    expression: '${demoExpressionService.execute(execution)}',
+    delegateExpression: '${demoServiceTask}',
+    rest: 'http://localhost:8080/api/demo/hello?name=${userId}'
+  }
   return map[serviceForm.value.implementationType] || ''
 })
+
+// 服务任务各实现类型的默认示例
+const SERVICE_EXAMPLES = {
+  class: 'com.workflow.delegate.DemoJavaDelegate',
+  expression: '${demoExpressionService.execute(execution)}',
+  delegateExpression: '${demoServiceTask}',
+  rest: 'http://localhost:8080/api/demo/hello?name=${userId}'
+}
 
 // ========== 表单数据 ==========
 const basicForm = ref({ id: '', name: '', documentation: '' })
@@ -1505,6 +1643,17 @@ const receiveForm = ref({ messageRef: '', hasTimeout: false, timeout: 30, timeou
 const manualForm = ref({ description: '', completionCriteria: '', responsible: '', estimatedHours: 0 })
 const ruleForm = ref({ decisionRef: '', inputVariables: '', resultVariable: '', mapDecisionResult: true })
 const scriptForm = ref({ scriptFormat: 'javascript', script: '', resultVariable: '', autoStoreVariables: false })
+
+// 监听脚本类型切换，自动联动脚本内容
+watch(() => scriptForm.value.scriptFormat, (newType, oldType) => {
+  if (!newType || newType === oldType) return
+  // 切换类型时直接替换为对应语言的示例代码
+  scriptForm.value.script = SCRIPT_EXAMPLES[newType] || SCRIPT_EXAMPLES.javascript
+})
+
+const scriptTestLoading = ref(false)
+const scriptTestResult = ref(null)
+
 const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParameters: '', outputParameters: '', businessKey: '' })
 const conditionForm = ref({ type: '', expression: '' })
 const selectedConditionTemplate = ref('')
@@ -1893,19 +2042,24 @@ watch(() => props.element, async (newElement) => {
       }
     }
     if (isServiceTask.value) {
-      // 检查是否是REST配置（从 flowable:Properties 读取，兼容 camunda:Properties）
+      // 优先根据 BPMN 标准属性判断实现类型（class/expression/delegateExpression）
+      const hasStandardImpl = bo.class || bo.expression || bo.delegateExpression
       const restConfigStr = extProps['restConfig']
-      if (restConfigStr) {
+      if (restConfigStr && !hasStandardImpl) {
+        // 只有没有标准实现时才走 REST 配置
         try {
           const restConfig = JSON.parse(restConfigStr)
-          serviceForm.value = { implementationType: 'rest', implementation: '', resultVariable: bo.resultVariable || '' }
+          serviceForm.value = { implementationType: 'rest', implementation: '', resultVariable: extProps['serviceResultVariable'] || '' }
           restForm.value = { ...restForm.value, ...restConfig }
         } catch (e) {
           console.error('解析 REST 配置失败:', e)
-          serviceForm.value = { implementationType: bo.class ? 'class' : bo.expression ? 'expression' : bo.delegateExpression ? 'delegateExpression' : 'class', implementation: bo.class || bo.expression || bo.delegateExpression || '', resultVariable: bo.resultVariable || '' }
+          const implType = 'class'
+          serviceForm.value = { implementationType: implType, implementation: SERVICE_EXAMPLES[implType] || '', resultVariable: extProps['serviceResultVariable'] || '' }
         }
       } else {
-        serviceForm.value = { implementationType: bo.class ? 'class' : bo.expression ? 'expression' : bo.delegateExpression ? 'delegateExpression' : 'class', implementation: bo.class || bo.expression || bo.delegateExpression || '', resultVariable: bo.resultVariable || '' }
+        const implType = bo.class ? 'class' : bo.expression ? 'expression' : bo.delegateExpression ? 'delegateExpression' : 'class'
+        const implValue = bo.class || bo.expression || bo.delegateExpression || SERVICE_EXAMPLES[implType] || ''
+        serviceForm.value = { implementationType: implType, implementation: implValue, resultVariable: extProps['serviceResultVariable'] || '' }
       }
     }
     if (isSendTask.value) {
@@ -2188,12 +2342,15 @@ function updateMultiInstance() {
   emit('save')
 }
 
-function onServiceTypeChange() { 
-  if (serviceForm.value.implementationType === 'rest') {
-    // REST类型，清除其他实现配置
+function onServiceTypeChange() {
+  const type = serviceForm.value.implementationType
+  if (type === 'rest') {
+    // REST类型，填充默认示例URL
+    restForm.value.url = SERVICE_EXAMPLES.rest
     updateRestConfig()
   } else {
-    serviceForm.value.implementation = ''
+    // Java类/表达式/Spring Bean，填充默认示例
+    serviceForm.value.implementation = SERVICE_EXAMPLES[type] || ''
     updateServiceImplementation()
   }
 }
@@ -2204,6 +2361,8 @@ function updateServiceImplementation() {
   const updates = { class: undefined, expression: undefined, delegateExpression: undefined }
   if (serviceForm.value.implementation) updates[serviceForm.value.implementationType] = serviceForm.value.implementation
   modeling.updateProperties(toRaw(props.element), updates)
+  // 清除可能残留的 REST 配置扩展属性，避免回显时误判为 REST 类型
+  updateExtensionProperty('restConfig', null)
   emit('save')
 }
 
@@ -3202,5 +3361,57 @@ async function saveStatusConfig() {
 .expression-preview :deep(.el-input__inner) {
   font-family: monospace;
   color: #409eff;
+}
+
+.hint-icon {
+  margin-left: 4px;
+  color: #909399;
+  cursor: help;
+  vertical-align: middle;
+}
+
+.script-toolbar {
+  margin-bottom: 6px;
+  display: flex;
+  gap: 8px;
+}
+
+.script-test-result {
+  margin-top: 8px;
+}
+
+.script-test-result .test-result-content {
+  margin-top: 6px;
+}
+
+.script-test-result .result-item {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.script-test-result .result-label {
+  font-size: 12px;
+  color: #606266;
+  min-width: 70px;
+}
+
+.script-test-result .result-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.script-test-result .var-tag {
+  font-family: monospace;
+}
+
+.script-test-result .test-error {
+  font-size: 12px;
+  color: #f56c6c;
+  margin-top: 4px;
+  word-break: break-all;
 }
 </style>

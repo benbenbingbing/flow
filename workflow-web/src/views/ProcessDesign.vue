@@ -356,6 +356,7 @@ onUnmounted(() => {
 .canvas {
   flex: 1;
   background: #f5f5f5;
+  overflow: auto;
 }
 
 .config-panel {

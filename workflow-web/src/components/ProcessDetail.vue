@@ -38,6 +38,11 @@
               <el-icon><ChatDotRound /></el-icon>
               {{ item.comment }}
             </div>
+            <div v-if="item.variables && Object.keys(item.variables).length > 0" class="timeline-variables">
+              <el-tag v-for="(val, key) in item.variables" :key="key" size="small" type="info" class="var-tag">
+                {{ key }}: {{ val }}
+              </el-tag>
+            </div>
           </div>
         </el-timeline-item>
       </el-timeline>
@@ -168,6 +173,7 @@ async function loadProcessDetail() {
         description: h.taskName || '流程发起',
         time: h.endTime || h.startTime,
         comment: h.comment,
+        variables: h.variables,
         type: h.action === '发起' ? 'primary' : h.action === '通过' ? 'success' : h.action === '驳回' ? 'danger' : 'info',
         color: h.action === '发起' ? '#409EFF' : h.action === '通过' ? '#67C23A' : h.action === '驳回' ? '#F56C6C' : '#909399'
       }))
@@ -239,6 +245,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.timeline-variables {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.var-tag {
+  font-size: 12px;
 }
 </style>
 
