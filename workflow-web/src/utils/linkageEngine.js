@@ -10,28 +10,30 @@ export const LinkageEngine = {
    * @returns {Object} 合并后的规则对象
    */
   getFieldLinkageRules(field) {
-    if (!field) return {}
+    if (!field || typeof field !== 'object') return {}
     const rules = {}
+    const ruleKeys = ['visibilityRule', 'disabledRule', 'requiredRule', 'calculationFormula',
+      'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula']
 
     // 1. 优先读取直接挂在字段根属性上的规则
-    ['visibilityRule', 'disabledRule', 'requiredRule', 'calculationFormula',
-     'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula'].forEach(key => {
+    for (let i = 0; i < ruleKeys.length; i++) {
+      const key = ruleKeys[i]
       if (field[key] !== undefined) rules[key] = field[key]
-    })
+    }
 
     // 2. 从 linkageRules 对象读取（内存中临时保存）
-    if (field.linkageRules) {
+    if (field.linkageRules && typeof field.linkageRules === 'object') {
       Object.assign(rules, field.linkageRules)
     }
 
     // 3. 从 componentProps JSON 解析
     if (field.componentProps) {
       try {
-        const props = typeof field.componentProps === 'string'
+        const compProps = typeof field.componentProps === 'string'
           ? JSON.parse(field.componentProps)
           : field.componentProps
-        if (props.linkageRules) {
-          Object.assign(rules, props.linkageRules)
+        if (compProps && compProps.linkageRules && typeof compProps.linkageRules === 'object') {
+          Object.assign(rules, compProps.linkageRules)
         }
       } catch (e) {
         // 忽略解析错误
@@ -219,7 +221,10 @@ export const LinkageEngine = {
       options: {}      // 联动选项
     }
 
-    fields.forEach(field => {
+    if (!Array.isArray(fields)) return result
+
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i]
       const fieldKey = field.fieldCode || field.fieldKey
       const rules = this.getFieldLinkageRules(field)
 
@@ -256,7 +261,7 @@ export const LinkageEngine = {
           )
         }
       }
-    })
+    }
 
     return result
   },
