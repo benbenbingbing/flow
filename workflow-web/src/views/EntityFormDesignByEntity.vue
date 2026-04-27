@@ -252,7 +252,7 @@
       <LinkageConfigPanel
         v-if="selectedField"
         :field="selectedField"
-        :all-fields="formFields"
+        :all-fields="entityFields.filter(f => !f.isSystem)"
         @save="handleSaveLinkage"
       />
     </el-dialog>

@@ -32,12 +32,12 @@
                   class="condition-item"
                 >
                   <el-select v-model="condition.field" placeholder="选择字段" size="small" style="width: 120px">
-                    <el-option 
-                      v-for="f in availableFields" 
-                      :key="f.fieldKey" 
-                      :label="f.fieldName" 
-                      :value="f.fieldKey"
-                      :disabled="f.fieldKey === currentFieldKey"
+                    <el-option
+                      v-for="f in availableFields"
+                      :key="f.fieldCode || f.fieldKey"
+                      :label="f.fieldName"
+                      :value="f.fieldCode || f.fieldKey"
+                      :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
                     />
                   </el-select>
                   
@@ -109,12 +109,12 @@
                 <template v-if="config.valueSourceType === 'field'">
                   <el-form-item label="源字段">
                     <el-select v-model="config.sourceField" placeholder="选择源字段" style="width: 100%">
-                      <el-option 
-                        v-for="f in availableFields" 
-                        :key="f.fieldKey" 
-                        :label="f.fieldName" 
-                        :value="f.fieldKey"
-                        :disabled="f.fieldKey === currentFieldKey"
+                      <el-option
+                        v-for="f in availableFields"
+                        :key="f.fieldCode || f.fieldKey"
+                        :label="f.fieldName"
+                        :value="f.fieldCode || f.fieldKey"
+                        :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
                       />
                     </el-select>
                   </el-form-item>
@@ -195,12 +195,12 @@
               <template v-if="config.optionsLinkageEnabled">
                 <el-form-item label="依赖字段">
                   <el-select v-model="config.optionsDependField" placeholder="选择依赖字段" style="width: 100%">
-                    <el-option 
-                      v-for="f in availableFields" 
-                      :key="f.fieldKey" 
-                      :label="f.fieldName" 
-                      :value="f.fieldKey"
-                      :disabled="f.fieldKey === currentFieldKey"
+                    <el-option
+                      v-for="f in availableFields"
+                      :key="f.fieldCode || f.fieldKey"
+                      :label="f.fieldName"
+                      :value="f.fieldCode || f.fieldKey"
+                      :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
                     />
                   </el-select>
                 </el-form-item>
