@@ -264,7 +264,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -615,8 +615,12 @@ const handleCreate = async () => {
   } finally {
     formLoading.value = false
   }
-  
+
   dialogVisible.value = true
+  // 初始化联动状态
+  nextTick(() => {
+    updateLinkageState()
+  })
 }
 
 const handleEdit = (row) => {
@@ -633,6 +637,10 @@ const handleEdit = (row) => {
     startProcess: false
   }
   dialogVisible.value = true
+  // 初始化联动状态
+  nextTick(() => {
+    updateLinkageState()
+  })
 }
 
 const handleView = async (row) => {

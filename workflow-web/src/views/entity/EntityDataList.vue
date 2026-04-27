@@ -205,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -467,6 +467,9 @@ const handleCreate = () => {
   resetForm()
   dialogTitle.value = '新增数据'
   dialogVisible.value = true
+  nextTick(() => {
+    updateLinkageState()
+  })
 }
 
 // 编辑
@@ -476,6 +479,9 @@ const handleEdit = (row: any) => {
   formData.data = { ...row.data }
   dialogTitle.value = '编辑数据'
   dialogVisible.value = true
+  nextTick(() => {
+    updateLinkageState()
+  })
 }
 
 // 查看

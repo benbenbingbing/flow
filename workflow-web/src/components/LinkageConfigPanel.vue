@@ -334,6 +334,7 @@
 import { ref, computed, watch } from 'vue'
 import { Connection, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { LinkageEngine } from '../utils/linkageEngine'
 
 const props = defineProps({
   field: {
@@ -510,12 +511,12 @@ function buildLinkageRules() {
   // 显隐规则
   if (config.value.visibilityEnabled && visibilityConditions.value.length > 0) {
     const conditions = visibilityConditions.value.map(c => {
-      if (c.operator === 'empty') return `!${c.field} || ${c.field} == ''`
-      if (c.operator === 'notEmpty') return `${c.field} && ${c.field} != ''`
-      if (c.operator === 'contains') return `${c.field}.contains('${c.value}')`
-      return `${c.field} ${c.operator} '${c.value}'`
+      if (c.operator === 'empty') return `!\${${c.field}} || \${${c.field}} == ''`
+      if (c.operator === 'notEmpty') return `\${${c.field}} && \${${c.field}} != ''`
+      if (c.operator === 'contains') return `\${${c.field}}.includes('${c.value}')`
+      return `\${${c.field}} ${c.operator} '${c.value}'`
     })
-    rules.visibilityRule = config.value.visibilityLogic === 'and' 
+    rules.visibilityRule = config.value.visibilityLogic === 'and'
       ? conditions.join(' && ')
       : conditions.join(' || ')
   }
@@ -545,14 +546,14 @@ function buildLinkageRules() {
     rules.calculationEditable = config.value.calculationEditable
   }
   
-  // 禁用规则
+  // 禁用规则（将裸字段名转为 ${field} 格式以兼容引擎）
   if (config.value.disabledEnabled && config.value.disabledCondition) {
-    rules.disabledRule = config.value.disabledCondition
+    rules.disabledRule = config.value.disabledCondition.replace(/(?<!\$)\b(\w+)\b/g, '${$1}')
   }
-  
+
   // 必填规则
   if (config.value.requiredEnabled && config.value.requiredCondition) {
-    rules.requiredRule = config.value.requiredCondition
+    rules.requiredRule = config.value.requiredCondition.replace(/(?<!\$)\b(\w+)\b/g, '${$1}')
   }
   
   return rules
@@ -586,17 +587,17 @@ function resetConfig() {
   valueMappingRules.value = []
 }
 
-// 监听字段变化，加载已有配置
+// 监听字段变化，加载已有配置（兼容内存、componentProps、根属性）
 watch(() => props.field, (newField) => {
-  if (newField?.linkageRules) {
-    // 解析已有配置
-    parseLinkageRules(newField.linkageRules)
+  const rules = LinkageEngine.getFieldLinkageRules(newField)
+  if (Object.keys(rules).length > 0) {
+    parseLinkageRules(rules)
   } else {
     resetConfig()
   }
 }, { immediate: true })
 
-// 反向解析显隐规则字符串为条件数组
+// 反向解析显隐规则字符串为条件数组（兼容 ${field} 和裸字段名两种格式）
 function parseVisibilityRuleString(ruleStr) {
   if (!ruleStr) return []
   const conditions = []
@@ -608,40 +609,42 @@ function parseVisibilityRuleString(ruleStr) {
   parts.forEach(part => {
     part = part.trim()
     if (!part) return
-    // 解析 empty: !field || field == ''
-    const emptyMatch = part.match(/^!(\w+)\s*\|\|\s*\1\s*==\s*''$/)
+    // 字段名匹配：支持 ${field} 或裸字段名
+    const fieldPattern = '(?:\\$\\{(\\w+)\\}|(\\w+))'
+    // 解析 empty: !${field} || ${field} == ''
+    const emptyMatch = part.match(new RegExp(`^!${fieldPattern}\\s*\\|\\|\\s*(?:\\$\\{\\1\\}|\\2)\\s*==\\s*''$`))
     if (emptyMatch) {
-      conditions.push({ field: emptyMatch[1], operator: 'empty', value: '' })
+      conditions.push({ field: emptyMatch[1] || emptyMatch[2], operator: 'empty', value: '' })
       return
     }
-    // 解析 notEmpty: field && field != ''
-    const notEmptyMatch = part.match(/^(\w+)\s*&&\s*\1\s*!=\s*''$/)
+    // 解析 notEmpty: ${field} && ${field} != ''
+    const notEmptyMatch = part.match(new RegExp(`^${fieldPattern}\\s*&&\\s*(?:\\$\\{\\1\\}|\\2)\\s*!=\\s*''$`))
     if (notEmptyMatch) {
-      conditions.push({ field: notEmptyMatch[1], operator: 'notEmpty', value: '' })
+      conditions.push({ field: notEmptyMatch[1] || notEmptyMatch[2], operator: 'notEmpty', value: '' })
       return
     }
-    // 解析 contains: field.contains('value')
-    const containsMatch = part.match(/^(\w+)\.contains\('([^']*)'\)$/)
+    // 解析 contains: ${field}.includes('value') 或 field.contains('value')
+    const containsMatch = part.match(new RegExp(`^${fieldPattern}\\.includes\\('([^']*)'\\)$`))
     if (containsMatch) {
-      conditions.push({ field: containsMatch[1], operator: 'contains', value: containsMatch[2] })
+      conditions.push({ field: containsMatch[1] || containsMatch[2], operator: 'contains', value: containsMatch[3] })
       return
     }
-    // 解析标准比较: field == 'value', field != 'value', field > 'value' 等
-    const stdMatch = part.match(/^(\w+)\s*(==|!=|>|>=|<|<=)\s*'([^']*)'$/)
+    // 解析标准比较: ${field} == 'value' 或 field == 'value'
+    const stdMatch = part.match(new RegExp(`^${fieldPattern}\\s*(==|!=|>|>=|<|<=)\\s*'([^']*)'$`))
     if (stdMatch) {
-      conditions.push({ field: stdMatch[1], operator: stdMatch[2], value: stdMatch[3] })
+      conditions.push({ field: stdMatch[1] || stdMatch[2], operator: stdMatch[3], value: stdMatch[4] })
       return
     }
     // 解析无引号的数字比较
-    const numMatch = part.match(/^(\w+)\s*(==|!=|>|>=|<|<=)\s*([\d.]+)$/)
+    const numMatch = part.match(new RegExp(`^${fieldPattern}\\s*(==|!=|>|>=|<|<=)\\s*([\\d.]+)$`))
     if (numMatch) {
-      conditions.push({ field: numMatch[1], operator: numMatch[2], value: numMatch[3] })
+      conditions.push({ field: numMatch[1] || numMatch[2], operator: numMatch[3], value: numMatch[4] })
       return
     }
-    // 解析简单字段引用（如 field == variable）
-    const varMatch = part.match(/^(\w+)\s*(==|!=|>|>=|<|<=)\s*(\w+)$/)
+    // 解析简单字段引用（如 ${field} == variable）
+    const varMatch = part.match(new RegExp(`^${fieldPattern}\\s*(==|!=|>|>=|<|<=)\\s*(\\w+)$`))
     if (varMatch) {
-      conditions.push({ field: varMatch[1], operator: varMatch[2], value: varMatch[3] })
+      conditions.push({ field: varMatch[1] || varMatch[2], operator: varMatch[3], value: varMatch[4] })
       return
     }
   })
