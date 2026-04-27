@@ -84,6 +84,7 @@ watch(() => props.modelValue, (val) => {
 
 // 同步内部数据到外部，并触发联动更新
 watch(formData, (val) => {
+  console.log('[FormPreviewLinkage] formData changed:', JSON.parse(JSON.stringify(val)))
   emit('update:modelValue', val)
   updateLinkageState()
   // 计算字段自动赋值
@@ -169,6 +170,7 @@ function getFieldRules(field) {
 // 更新联动状态
 function updateLinkageState() {
   const fields = props.form?.fields || []
+  console.log('[FormPreviewLinkage] updateLinkageState, formData:', JSON.parse(JSON.stringify(formData.value)))
   linkageState.value = LinkageEngine.processAllLinkages(fields, formData.value)
 }
 

@@ -296,6 +296,7 @@ const form = ref({
 
 // 预览数据
 const previewForm = computed(() => {
+  enrichFieldCodes()
   const sortedFields = [...formFields.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   return {
     ...form.value,
@@ -368,13 +369,29 @@ async function loadEntityInfo() {
   }
 }
 
+// 给表单字段补充 fieldCode
+function enrichFieldCodes() {
+  if (entityFields.value.length === 0 || formFields.value.length === 0) return
+  formFields.value.forEach(field => {
+    if (!field.fieldCode && field.fieldId) {
+      // 使用字符串比较，避免数字/字符串类型不匹配
+      const fieldIdStr = String(field.fieldId)
+      const entityField = entityFields.value.find(ef => String(ef.id) === fieldIdStr)
+      if (entityField && entityField.fieldCode) {
+        field.fieldCode = entityField.fieldCode
+      }
+    }
+  })
+}
+
 // 加载实体字段
 async function loadEntityFields() {
   const eid = entityId || form.value.entityId
   if (!eid) return
-  
+
   try {
     entityFields.value = await getEntityFields(eid)
+    enrichFieldCodes()
   } catch (e) {
     console.error('加载实体字段失败:', e)
   }
@@ -398,9 +415,10 @@ async function loadFormInfo() {
 // 加载表单字段
 async function loadFormFields() {
   if (!isEdit.value) return
-  
+
   try {
     formFields.value = await getFormFields(formId)
+    enrichFieldCodes()
   } catch (e) {
     console.error('加载表单字段失败:', e)
   }
@@ -417,6 +435,7 @@ function addField(entityField) {
   const newField = {
     formId: formId,
     fieldId: entityField.id,
+    fieldCode: entityField.fieldCode,
     fieldName: entityField.fieldName,
     fieldLabel: entityField.fieldName,
     fieldType: entityField.fieldType,

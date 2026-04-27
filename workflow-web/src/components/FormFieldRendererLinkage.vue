@@ -285,6 +285,7 @@ const fieldValue = computed({
     return props.modelValue
   },
   set(val) {
+    console.log('[FormFieldRendererLinkage] set value:', props.field.fieldCode || props.field.fieldId, val)
     emit('update:modelValue', val)
   }
 })
