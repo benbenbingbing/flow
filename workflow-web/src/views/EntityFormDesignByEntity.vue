@@ -502,6 +502,13 @@ function moveDown(index) {
 // 保存联动配置
 function handleSaveLinkage(linkageRules) {
   if (selectedField.value) {
+    // 先清除旧的联动规则根属性，避免切换类型后残留
+    const allRuleKeys = ['visibilityRule', 'disabledRule', 'requiredRule', 'calculationFormula',
+      'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi']
+    allRuleKeys.forEach(key => {
+      delete selectedField.value[key]
+    })
+
     selectedField.value.linkageRules = linkageRules
     // 将联动规则展开到字段根属性，便于引擎直接读取
     Object.keys(linkageRules).forEach(key => {
