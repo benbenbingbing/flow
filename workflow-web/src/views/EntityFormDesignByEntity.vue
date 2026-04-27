@@ -270,34 +270,13 @@
               <!-- 字段事件配置 -->
               <template v-if="selectedField">
                 <el-divider>事件配置</el-divider>
-                <el-collapse>
-                  <el-collapse-item title="字段事件" name="fieldEvents">
-                    <el-form-item label="onChange">
-                      <el-input
-                        v-model="selectedField.eventOnChange"
-                        type="textarea"
-                        :rows="2"
-                        placeholder="value 为当前值，field 为字段配置，formData 为表单数据"
-                      />
-                    </el-form-item>
-                    <el-form-item label="onBlur">
-                      <el-input
-                        v-model="selectedField.eventOnBlur"
-                        type="textarea"
-                        :rows="2"
-                        placeholder="value 为当前值，field 为字段配置，formData 为表单数据"
-                      />
-                    </el-form-item>
-                    <el-form-item label="onFocus">
-                      <el-input
-                        v-model="selectedField.eventOnFocus"
-                        type="textarea"
-                        :rows="2"
-                        placeholder="value 为当前值，field 为字段配置，formData 为表单数据"
-                      />
-                    </el-form-item>
-                  </el-collapse-item>
-                </el-collapse>
+                <el-form-item>
+                  <el-button type="primary" text @click="openEventConfig">
+                    <el-icon><Edit /></el-icon>
+                    配置字段事件
+                  </el-button>
+                  <el-tag v-if="hasEventConfig" type="success" size="small" style="margin-left: 8px">已配置</el-tag>
+                </el-form-item>
               </template>
             </el-form>
           </el-scrollbar>
@@ -321,10 +300,10 @@
     </el-dialog>
     
     <!-- 联动配置弹窗 -->
-    <el-dialog 
-      v-model="showLinkageConfig" 
-      title="字段联动配置" 
-      width="700px" 
+    <el-dialog
+      v-model="showLinkageConfig"
+      title="字段联动配置"
+      width="700px"
       destroy-on-close
       :close-on-click-modal="false"
     >
@@ -335,6 +314,13 @@
         @save="handleSaveLinkage"
       />
     </el-dialog>
+
+    <!-- 事件配置弹窗 -->
+    <EventConfigPanel
+      v-model:visible="showEventConfig"
+      :model-value="currentEventValues"
+      @save="handleSaveEvent"
+    />
   </div>
 </template>
 
@@ -346,6 +332,7 @@ import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, E
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
+import EventConfigPanel from '@/components/EventConfigPanel.vue'
 import { entityApi } from '@/api/entity'
 import { getFormById, createForm, saveFormFields, getEntityFields, getFormFields } from '@/api/entityForm'
 
@@ -358,6 +345,8 @@ const isEdit = ref(!!formId)
 const saving = ref(false)
 const showPreview = ref(false)
 const showLinkageConfig = ref(false)
+const showEventConfig = ref(false)
+const currentEventField = ref(null)
 const entityInfo = ref({})
 const entityFields = ref([])
 const formFields = ref([])
@@ -373,6 +362,22 @@ const form = ref({
   formKey: '',
   layoutType: 'vertical',
   status: 1
+})
+
+// 当前选中字段的事件配置值
+const currentEventValues = computed(() => {
+  if (!currentEventField.value) return { onChange: '', onBlur: '', onFocus: '' }
+  return {
+    onChange: currentEventField.value.eventOnChange || '',
+    onBlur: currentEventField.value.eventOnBlur || '',
+    onFocus: currentEventField.value.eventOnFocus || ''
+  }
+})
+
+// 当前选中字段是否已配置事件
+const hasEventConfig = computed(() => {
+  if (!selectedField.value) return false
+  return !!(selectedField.value.eventOnChange || selectedField.value.eventOnBlur || selectedField.value.eventOnFocus)
 })
 
 // 预览数据
@@ -710,6 +715,22 @@ function moveDown(index) {
   formFields.value[index] = formFields.value[index + 1]
   formFields.value[index + 1] = temp
   formFields.value.forEach((f, i) => f.sortOrder = i)
+}
+
+// 打开事件配置弹框
+function openEventConfig() {
+  if (!selectedField.value) return
+  currentEventField.value = selectedField.value
+  showEventConfig.value = true
+}
+
+// 保存事件配置
+function handleSaveEvent(events) {
+  if (!currentEventField.value) return
+  currentEventField.value.eventOnChange = events.onChange
+  currentEventField.value.eventOnBlur = events.onBlur
+  currentEventField.value.eventOnFocus = events.onFocus
+  ElMessage.success('事件配置已保存')
 }
 
 // 保存联动配置
