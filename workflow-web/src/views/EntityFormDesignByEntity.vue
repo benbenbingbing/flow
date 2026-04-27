@@ -833,12 +833,6 @@ async function handleSave() {
     await saveFormFields(newFormId, fieldsToSave)
     
     ElMessage.success('表单保存成功')
-    const backEntityId = form.value.entityId || entityId
-    if (backEntityId) {
-      router.push(`/entity-form/list-by-entity/${backEntityId}`)
-    } else {
-      router.back()
-    }
   } catch (e) {
     console.error('保存失败:', e)
     ElMessage.error(e.message || '保存失败')
