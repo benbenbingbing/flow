@@ -68,8 +68,15 @@ export const LinkageEngine = {
     if (!condition) return true
 
     try {
-      // 替换变量为实际值
-      const expr = condition.replace(/\$\{(\w+)\}/g, (match, key) => {
+      let expr = condition
+
+      // 兼容没有 ${} 的裸字段名格式（如 desc1 == '1'）
+      if (!expr.includes('${')) {
+        expr = expr.replace(/\b([a-zA-Z_]\w*)\s*([!=<>]+)\s*('[^']*')/g, '\${$1} $2 $3')
+      }
+
+      // 替换 ${field} 为实际值
+      expr = expr.replace(/\$\{(\w+)\}/g, (match, key) => {
         const value = formData[key]
         if (typeof value === 'string') {
           return `'${value}'`
@@ -77,7 +84,7 @@ export const LinkageEngine = {
         return value ?? 'null'
       })
 
-      console.log('[LinkageEngine] evaluateCondition:', { condition, expr, formData })
+      console.log('[LinkageEngine] evaluateCondition:', { condition, originalExpr: condition, expr, formData })
 
       // 安全评估表达式
       const result = this.safeEvaluate(expr)
