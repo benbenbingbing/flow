@@ -12,7 +12,9 @@
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
       clearable
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 多行文本 -->
@@ -23,7 +25,9 @@
       :rows="3"
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 数字 -->
@@ -33,7 +37,9 @@
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 日期 -->
@@ -45,7 +51,9 @@
       :disabled="disabled"
       style="width: 100%"
       value-format="YYYY-MM-DD"
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 日期时间 -->
@@ -57,7 +65,9 @@
       :disabled="disabled"
       style="width: 100%"
       value-format="YYYY-MM-DD HH:mm:ss"
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 下拉选择 - 支持动态选项 -->
@@ -68,7 +78,9 @@
       :disabled="disabled"
       style="width: 100%"
       clearable
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     >
       <el-option
         v-for="opt in currentOptions"
@@ -83,7 +95,7 @@
       v-else-if="renderType === 'radio'"
       v-model="fieldValue"
       :disabled="disabled"
-      @change="handleChange"
+      @change="handleValueChange"
     >
       <el-radio
         v-for="opt in currentOptions"
@@ -99,7 +111,7 @@
       v-else-if="renderType === 'checkbox'"
       v-model="fieldValue"
       :disabled="disabled"
-      @change="handleChange"
+      @change="handleValueChange"
     >
       <el-checkbox
         v-for="opt in currentOptions"
@@ -115,7 +127,7 @@
       v-else-if="renderType === 'switch'"
       v-model="fieldValue"
       :disabled="disabled"
-      @change="handleChange"
+      @change="handleValueChange"
     />
     
     <!-- 文件上传 -->
@@ -125,7 +137,7 @@
       :field="field"
       :disabled="disabled"
       :is-image="renderType === 'image'"
-      @change="handleChange"
+      @change="handleValueChange"
     />
     
     <!-- 用户选择 -->
@@ -138,7 +150,9 @@
       clearable
       :disabled="disabled"
       style="width: 100%"
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 级联选择（省市联动） -->
@@ -150,7 +164,9 @@
       :disabled="disabled"
       style="width: 100%"
       clearable
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
     
     <!-- 子表单 -->
@@ -160,7 +176,7 @@
       :config="subFormConfig"
       :readonly="disabled"
       :disabled="disabled"
-      @change="handleChange"
+      @change="handleValueChange"
     />
     
     <!-- 默认文本输入 -->
@@ -169,7 +185,9 @@
       v-model="fieldValue"
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
-      @change="handleChange"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
     />
   </div>
 </template>
@@ -178,6 +196,7 @@
 import { ref, computed, watch } from 'vue'
 import FileUploader from './FileUploader.vue'
 import SubFormRenderer from './SubFormRenderer.vue'
+import { getFormFields } from '../api/entityForm'
 
 const props = defineProps({
   field: {
@@ -290,20 +309,92 @@ const fieldValue = computed({
   }
 })
 
+// 外部表单字段（子表单引用外部表单时使用）
+const externalFormFields = ref([])
+
+watch(() => props.field.refFormId, async (formId) => {
+  if (formId && props.field.subFormType === 'ref') {
+    try {
+      const fields = await getFormFields(formId)
+      // 将外部表单字段转换为 SubFormRenderer 需要的格式
+      externalFormFields.value = fields.map(f => ({
+        fieldKey: f.fieldCode || f.fieldId || f.id,
+        fieldName: f.fieldLabel || f.fieldName,
+        fieldType: mapFieldType(f.componentType || f.fieldType),
+        isEditable: true,
+        isRequired: f.isRequired === 1,
+        options: f.options
+      }))
+    } catch (e) {
+      console.error('加载外部表单字段失败:', e)
+      externalFormFields.value = []
+    }
+  } else {
+    externalFormFields.value = []
+  }
+}, { immediate: true })
+
+// 字段类型映射（外部表单字段类型 → SubFormRenderer 类型）
+function mapFieldType(type) {
+  const map = {
+    'string': 'TEXT',
+    'text': 'TEXT',
+    'integer': 'NUMBER',
+    'decimal': 'NUMBER',
+    'date': 'DATE',
+    'datetime': 'DATE',
+    'select': 'SELECT',
+    'radio': 'SELECT',
+    'checkbox': 'SELECT'
+  }
+  return map[(type || '').toLowerCase()] || 'TEXT'
+}
+
 // 子表单配置
 const subFormConfig = computed(() => {
   const field = props.field
+  const fields = field.subFormType === 'ref' && externalFormFields.value.length > 0
+    ? externalFormFields.value
+    : (field.subFields || field.fields || [])
   return {
     label: field.fieldName || '明细',
     fieldKey: field.fieldKey || 'detailList',
     required: field.required || false,
     minRows: field.minRows || 0,
     maxRows: field.maxRows || 100,
-    fields: field.subFields || field.fields || [],
+    fields: fields,
     showSummary: field.showSummary || false,
     summaryFields: field.summaryFields || []
   }
 })
+
+// 执行字段自定义事件代码
+function executeEvent(code, value) {
+  if (!code) return
+  try {
+    const func = new Function('value', 'field', code)
+    func(value, props.field)
+  } catch (e) {
+    console.error('字段事件执行失败:', e)
+  }
+}
+
+// 字段值变化处理（含事件触发）
+function handleValueChange(val) {
+  fieldValue.value = val
+  executeEvent(props.field.eventOnChange, val)
+  emit('change', val)
+}
+
+// 字段失焦处理
+function handleBlur(val) {
+  executeEvent(props.field.eventOnBlur, val)
+}
+
+// 字段聚焦处理
+function handleFocus(val) {
+  executeEvent(props.field.eventOnFocus, val)
+}
 
 // 用户选项
 const userOptions = ref([

@@ -185,40 +185,119 @@
               <!-- 子表单特殊配置 -->
               <template v-if="selectedField.componentType === 'SUB_FORM'">
                 <el-divider>子表单配置</el-divider>
-                
-                <el-form-item label="最少行数">
-                  <el-input-number v-model="selectedField.minRows" :min="0" />
+
+                <el-form-item label="引用类型">
+                  <el-radio-group v-model="selectedField.subFormType">
+                    <el-radio label="embedded">内嵌定义</el-radio>
+                    <el-radio label="ref">引用实体表单</el-radio>
+                  </el-radio-group>
                 </el-form-item>
-                
-                <el-form-item label="最多行数">
-                  <el-input-number v-model="selectedField.maxRows" :min="1" />
-                </el-form-item>
-                
-                <el-form-item label="显示汇总">
-                  <el-switch v-model="selectedField.showSummary" />
-                </el-form-item>
-                
-                <el-form-item label="子表字段">
-                  <div class="sub-form-fields">
-                    <div v-for="(subField, idx) in selectedField.subFields" :key="idx" class="sub-field-item">
-                      <el-input v-model="subField.fieldName" placeholder="字段名" size="small" style="width: 100px" />
-                      <el-select v-model="subField.fieldType" placeholder="类型" size="small" style="width: 90px">
-                        <el-option label="文本" value="TEXT" />
-                        <el-option label="数字" value="NUMBER" />
-                        <el-option label="日期" value="DATE" />
-                        <el-option label="下拉" value="SELECT" />
-                      </el-select>
-                      
-                      <el-button type="danger" size="small" text @click="removeSubField(idx)">
-                        <el-icon><Delete /></el-icon>
+
+                <!-- 引用实体表单配置 -->
+                <template v-if="selectedField.subFormType === 'ref'">
+                  <el-form-item label="引用实体">
+                    <el-select
+                      v-model="selectedField.refEntityId"
+                      placeholder="选择实体（空表示当前实体）"
+                      clearable
+                      style="width: 100%"
+                      @change="handleRefEntityChange"
+                    >
+                      <el-option label="当前实体" value="" />
+                      <el-option
+                        v-for="ent in entityList"
+                        :key="ent.id"
+                        :label="ent.entityName"
+                        :value="ent.id"
+                      />
+                    </el-select>
+                  </el-form-item>
+
+                  <el-form-item label="引用表单">
+                    <el-select
+                      v-model="selectedField.refFormId"
+                      placeholder="选择表单"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        v-for="fm in formListByEntity"
+                        :key="fm.id"
+                        :label="fm.formName"
+                        :value="fm.id"
+                      />
+                    </el-select>
+                  </el-form-item>
+                </template>
+
+                <!-- 内嵌定义配置 -->
+                <template v-else>
+                  <el-form-item label="最少行数">
+                    <el-input-number v-model="selectedField.minRows" :min="0" />
+                  </el-form-item>
+
+                  <el-form-item label="最多行数">
+                    <el-input-number v-model="selectedField.maxRows" :min="1" />
+                  </el-form-item>
+
+                  <el-form-item label="显示汇总">
+                    <el-switch v-model="selectedField.showSummary" />
+                  </el-form-item>
+
+                  <el-form-item label="子表字段">
+                    <div class="sub-form-fields">
+                      <div v-for="(subField, idx) in selectedField.subFields" :key="idx" class="sub-field-item">
+                        <el-input v-model="subField.fieldName" placeholder="字段名" size="small" style="width: 100px" />
+                        <el-select v-model="subField.fieldType" placeholder="类型" size="small" style="width: 90px">
+                          <el-option label="文本" value="TEXT" />
+                          <el-option label="数字" value="NUMBER" />
+                          <el-option label="日期" value="DATE" />
+                          <el-option label="下拉" value="SELECT" />
+                        </el-select>
+
+                        <el-button type="danger" size="small" text @click="removeSubField(idx)">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </div>
+
+                      <el-button type="primary" size="small" text @click="addSubField">
+                        <el-icon><Plus /></el-icon> 添加子字段
                       </el-button>
                     </div>
-                    
-                    <el-button type="primary" size="small" text @click="addSubField">
-                      <el-icon><Plus /></el-icon> 添加子字段
-                    </el-button>
-                  </div>
-                </el-form-item>
+                  </el-form-item>
+                </template>
+              </template>
+
+              <!-- 字段事件配置 -->
+              <template v-if="selectedField">
+                <el-divider>事件配置</el-divider>
+                <el-collapse>
+                  <el-collapse-item title="字段事件" name="fieldEvents">
+                    <el-form-item label="onChange">
+                      <el-input
+                        v-model="selectedField.eventOnChange"
+                        type="textarea"
+                        :rows="2"
+                        placeholder="value 为当前值，field 为字段配置，formData 为表单数据"
+                      />
+                    </el-form-item>
+                    <el-form-item label="onBlur">
+                      <el-input
+                        v-model="selectedField.eventOnBlur"
+                        type="textarea"
+                        :rows="2"
+                        placeholder="value 为当前值，field 为字段配置，formData 为表单数据"
+                      />
+                    </el-form-item>
+                    <el-form-item label="onFocus">
+                      <el-input
+                        v-model="selectedField.eventOnFocus"
+                        type="textarea"
+                        :rows="2"
+                        placeholder="value 为当前值，field 为字段配置，formData 为表单数据"
+                      />
+                    </el-form-item>
+                  </el-collapse-item>
+                </el-collapse>
               </template>
             </el-form>
           </el-scrollbar>
@@ -284,6 +363,8 @@ const entityFields = ref([])
 const formFields = ref([])
 const selectedField = ref(null)
 const fieldSearch = ref('')
+const entityList = ref([])
+const formListByEntity = ref([])
 
 const form = ref({
   id: formId,
@@ -369,6 +450,31 @@ async function loadEntityInfo() {
   }
 }
 
+// 加载所有实体列表（用于子表单引用选择）
+async function loadEntityList() {
+  try {
+    const res = await entityApi.getList()
+    entityList.value = res.data || []
+  } catch (e) {
+    console.error('加载实体列表失败:', e)
+  }
+}
+
+// 加载指定实体的表单列表
+async function loadFormListByEntity(targetEntityId) {
+  if (!targetEntityId) {
+    formListByEntity.value = []
+    return
+  }
+  try {
+    const res = await entityApi.getEntityForms(targetEntityId)
+    formListByEntity.value = res.data || []
+  } catch (e) {
+    console.error('加载表单列表失败:', e)
+    formListByEntity.value = []
+  }
+}
+
 // 检查字段的 componentProps 中是否已有选项
 function hasOptionsInComponentProps(field) {
   if (!field.componentProps) return false
@@ -435,12 +541,80 @@ async function loadFormInfo() {
   }
 }
 
+// 从 componentProps 恢复子表单和事件配置
+function restoreFieldConfig(field) {
+  if (!field.componentProps) return
+  try {
+    const compProps = typeof field.componentProps === 'string'
+      ? JSON.parse(field.componentProps)
+      : field.componentProps
+
+    // 恢复子表单配置
+    if (compProps.subFormConfig) {
+      field.subFormType = compProps.subFormConfig.type || 'embedded'
+      field.refEntityId = compProps.subFormConfig.refEntityId || ''
+      field.refFormId = compProps.subFormConfig.refFormId || ''
+    }
+    if (compProps.subFields) {
+      field.subFields = compProps.subFields
+    }
+
+    // 恢复事件配置
+    if (compProps.events) {
+      field.eventOnChange = compProps.events.onChange || ''
+      field.eventOnBlur = compProps.events.onBlur || ''
+      field.eventOnFocus = compProps.events.onFocus || ''
+    }
+  } catch (e) {
+    // 忽略解析错误
+  }
+}
+
+// 将子表单和事件配置序列化到 componentProps
+function serializeFieldConfig(field) {
+  try {
+    const compProps = field.componentProps
+      ? (typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps)
+      : {}
+
+    // 序列化子表单配置
+    if (field.componentType === 'SUB_FORM') {
+      compProps.subFormConfig = {
+        type: field.subFormType || 'embedded',
+        refEntityId: field.refEntityId || '',
+        refFormId: field.refFormId || ''
+      }
+      if (field.subFields && field.subFields.length > 0) {
+        compProps.subFields = field.subFields
+      } else {
+        delete compProps.subFields
+      }
+    }
+
+    // 序列化事件配置
+    const events = {}
+    if (field.eventOnChange) events.onChange = field.eventOnChange
+    if (field.eventOnBlur) events.onBlur = field.eventOnBlur
+    if (field.eventOnFocus) events.onFocus = field.eventOnFocus
+    if (Object.keys(events).length > 0) {
+      compProps.events = events
+    } else {
+      delete compProps.events
+    }
+
+    field.componentProps = JSON.stringify(compProps)
+  } catch (e) {
+    console.error('序列化字段配置失败:', e)
+  }
+}
+
 // 加载表单字段
 async function loadFormFields() {
   if (!isEdit.value) return
 
   try {
     formFields.value = await getFormFields(formId)
+    formFields.value.forEach(restoreFieldConfig)
     enrichFieldCodes()
   } catch (e) {
     console.error('加载表单字段失败:', e)
@@ -505,6 +679,11 @@ function getDefaultComponentType(fieldType) {
 // 选择字段
 function selectField(field) {
   selectedField.value = field
+  // 如果选中的字段是子表单且配置了引用实体，加载对应表单列表
+  if (field && field.componentType === 'SUB_FORM' && field.subFormType === 'ref') {
+    const refEntityId = field.refEntityId || entityInfo.value.id
+    loadFormListByEntity(refEntityId)
+  }
 }
 
 // 移除字段
@@ -568,6 +747,11 @@ function parseComponentProps(propsStr) {
   }
 }
 
+// 引用实体变化时加载表单列表
+function handleRefEntityChange(entityId) {
+  loadFormListByEntity(entityId || entityInfo.value.id)
+}
+
 // 添加子表单字段
 function addSubField() {
   if (!selectedField.value) return
@@ -617,13 +801,14 @@ async function handleSave() {
     
     const newFormId = formData.id
     
-    // 2. 保存表单字段
+    // 2. 保存表单字段（先序列化子表单和事件配置到 componentProps）
+    formFields.value.forEach(serializeFieldConfig)
     const fieldsToSave = formFields.value.map((f, index) => ({
       ...f,
       formId: newFormId,
       sortOrder: index
     }))
-    
+
     await saveFormFields(newFormId, fieldsToSave)
     
     ElMessage.success('表单保存成功')
@@ -646,6 +831,7 @@ onMounted(async () => {
   await loadFormInfo()
   await loadEntityFields()
   await loadFormFields()
+  await loadEntityList()
 })
 </script>
 
