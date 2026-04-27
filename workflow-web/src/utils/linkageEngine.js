@@ -126,14 +126,22 @@ export const LinkageEngine = {
    */
   calculate(formula, formData) {
     if (!formula) return null
-    
+
     try {
-      // 替换变量为实际值
-      const expr = formula.replace(/\$\{(\w+)\}/g, (match, key) => {
-        const value = parseFloat(formData[key])
-        return isNaN(value) ? 0 : value
-      })
-      
+      let expr = formula
+      // 兼容裸字段名（如 desc1 + desc2）
+      if (!expr.includes('${')) {
+        expr = expr.replace(/\b([a-zA-Z_]\w*)\b/g, (match, key) => {
+          const value = parseFloat(formData[key])
+          return isNaN(value) ? 0 : value
+        })
+      } else {
+        expr = expr.replace(/\$\{(\w+)\}/g, (match, key) => {
+          const value = parseFloat(formData[key])
+          return isNaN(value) ? 0 : value
+        })
+      }
+
       // 安全计算
       return this.safeCalculate(expr)
     } catch (e) {
@@ -260,8 +268,37 @@ export const LinkageEngine = {
         result.required[fieldKey] = field.isRequired === 1
       }
 
+      // 处理值联动（字段映射）
+      if (rules.valueMapping) {
+        const sourceValue = formData[rules.valueMapping.sourceField]
+        const mapping = rules.valueMapping.rules.find(r => String(r.sourceValue) === String(sourceValue))
+        if (mapping) {
+          result.values[fieldKey] = mapping.targetValue
+        }
+      }
+
+      // 处理值公式
+      if (rules.valueFormula && result.values[fieldKey] === undefined) {
+        let expr = rules.valueFormula
+        if (!expr.includes('${')) {
+          expr = expr.replace(/\b([a-zA-Z_]\w*)\b/g, (match, key) => {
+            const value = formData[key]
+            return typeof value === 'string' ? `'${value}'` : (value ?? 'null')
+          })
+        } else {
+          expr = expr.replace(/\$\{(\w+)\}/g, (match, key) => {
+            const value = formData[key]
+            return typeof value === 'string' ? `'${value}'` : (value ?? 'null')
+          })
+        }
+        const evaluatedValue = this.safeEvaluate(expr)
+        if (evaluatedValue !== undefined) {
+          result.values[fieldKey] = evaluatedValue
+        }
+      }
+
       // 处理计算字段
-      if (rules.calculationFormula) {
+      if (rules.calculationFormula && result.values[fieldKey] === undefined) {
         result.values[fieldKey] = this.calculate(rules.calculationFormula, formData)
       }
 

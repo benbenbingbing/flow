@@ -504,6 +504,12 @@ function saveConfig() {
   ElMessage.success('联动配置已保存')
 }
 
+// 将裸字段名转为 ${field} 格式
+function wrapFieldRefs(expr) {
+  if (!expr || expr.includes('${')) return expr
+  return expr.replace(/\b([a-zA-Z_]\w*)\b/g, '${$1}')
+}
+
 // 构建联动规则
 function buildLinkageRules() {
   const rules = {}
@@ -524,7 +530,12 @@ function buildLinkageRules() {
   // 值联动规则
   if (config.value.valueLinkageEnabled) {
     if (config.value.valueSourceType === 'formula') {
-      rules.valueFormula = config.value.valueFormula
+      rules.valueFormula = wrapFieldRefs(config.value.valueFormula)
+    } else if (config.value.valueSourceType === 'field') {
+      rules.valueMapping = {
+        sourceField: config.value.sourceField,
+        rules: valueMappingRules.value
+      }
     }
   }
   
@@ -541,19 +552,19 @@ function buildLinkageRules() {
   
   // 计算字段规则
   if (config.value.calculationEnabled && config.value.calculationFormula) {
-    rules.calculationFormula = config.value.calculationFormula
+    rules.calculationFormula = wrapFieldRefs(config.value.calculationFormula)
     rules.calculationPrecision = config.value.calculationPrecision
     rules.calculationEditable = config.value.calculationEditable
   }
   
-  // 禁用规则（将裸字段名转为 ${field} 格式以兼容引擎）
+  // 禁用规则
   if (config.value.disabledEnabled && config.value.disabledCondition) {
-    rules.disabledRule = config.value.disabledCondition.replace(/(?<!\$)\b(\w+)\b/g, '${$1}')
+    rules.disabledRule = wrapFieldRefs(config.value.disabledCondition)
   }
 
   // 必填规则
   if (config.value.requiredEnabled && config.value.requiredCondition) {
-    rules.requiredRule = config.value.requiredCondition.replace(/(?<!\$)\b(\w+)\b/g, '${$1}')
+    rules.requiredRule = wrapFieldRefs(config.value.requiredCondition)
   }
   
   return rules
@@ -665,7 +676,12 @@ function parseLinkageRules(rules) {
   }
 
   // 值联动
-  if (rules.valueFormula) {
+  if (rules.valueMapping) {
+    config.value.valueLinkageEnabled = true
+    config.value.valueSourceType = 'field'
+    config.value.sourceField = rules.valueMapping.sourceField
+    valueMappingRules.value = rules.valueMapping.rules || []
+  } else if (rules.valueFormula) {
     config.value.valueLinkageEnabled = true
     config.value.valueSourceType = 'formula'
     config.value.valueFormula = rules.valueFormula

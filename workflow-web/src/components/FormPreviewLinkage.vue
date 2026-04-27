@@ -172,6 +172,14 @@ function updateLinkageState() {
   const fields = props.form?.fields || []
   console.log('[FormPreviewLinkage] updateLinkageState, formData:', JSON.parse(JSON.stringify(formData.value)))
   linkageState.value = LinkageEngine.processAllLinkages(fields, formData.value)
+  // 应用值联动和计算字段的结果
+  if (linkageState.value.values) {
+    Object.entries(linkageState.value.values).forEach(([key, val]) => {
+      if (val !== null && val !== undefined && formData.value[key] !== val) {
+        formData.value[key] = val
+      }
+    })
+  }
 }
 
 // 应用计算字段值
