@@ -119,18 +119,22 @@
                     </el-select>
                   </el-form-item>
                   
+                  <el-alert type="info" :closable="false" size="small" style="margin-bottom: 8px">
+                    当<b>源字段</b>的值等于<b>源值</b>时，当前字段自动填充为<b>目标值</b>
+                  </el-alert>
+
                   <el-form-item label="映射规则">
                     <div class="mapping-rules">
                       <div v-for="(rule, index) in valueMappingRules" :key="index" class="mapping-item">
-                        <el-input v-model="rule.sourceValue" placeholder="源值" size="small" style="width: 100px" />
+                        <el-input v-model="rule.sourceValue" placeholder="源字段的值" size="small" style="width: 120px" />
                         <span class="arrow">→</span>
-                        <el-input v-model="rule.targetValue" placeholder="目标值" size="small" style="width: 100px" />
-                        
+                        <el-input v-model="rule.targetValue" placeholder="当前字段显示的值" size="small" style="width: 140px" />
+
                         <el-button type="danger" size="small" text @click="removeValueMapping(index)">
                           <el-icon><Delete /></el-icon>
                         </el-button>
                       </div>
-                      
+
                       <el-button type="primary" size="small" text @click="addValueMapping">
                         <el-icon><Plus /></el-icon> 添加映射
                       </el-button>
