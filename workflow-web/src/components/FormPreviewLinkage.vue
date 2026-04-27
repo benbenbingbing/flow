@@ -82,9 +82,12 @@ watch(() => props.modelValue, (val) => {
   updateLinkageState()
 }, { deep: true })
 
-// 同步内部数据到外部
+// 同步内部数据到外部，并触发联动更新
 watch(formData, (val) => {
   emit('update:modelValue', val)
+  updateLinkageState()
+  // 计算字段自动赋值
+  applyCalculatedValues()
 }, { deep: true })
 
 // 处理后的字段列表（过滤掉隐藏的）
@@ -164,42 +167,38 @@ function updateLinkageState() {
   linkageState.value = LinkageEngine.processAllLinkages(fields, formData.value)
 }
 
+// 应用计算字段值
+function applyCalculatedValues() {
+  const fields = props.form?.fields || []
+  fields.forEach(field => {
+    const rules = LinkageEngine.getFieldLinkageRules(field)
+    if (rules.calculationFormula) {
+      const fieldKey = field.fieldCode || field.fieldKey
+      const calculatedValue = LinkageEngine.calculate(rules.calculationFormula, formData.value)
+      if (calculatedValue !== null && formData.value[fieldKey] !== calculatedValue) {
+        formData.value[fieldKey] = calculatedValue
+      }
+    }
+  })
+}
+
 // 处理字段值变化
 function handleFieldChange(fieldKey, value) {
   // 更新当前字段值
   formData.value[fieldKey] = value
-  
+
   // 重新计算联动状态
   updateLinkageState()
-  
+
   // 处理计算字段自动赋值
-  const fields = props.form?.fields || []
-  const calculatedFields = fields.filter(f => f.calculationFormula)
-  
-  calculatedFields.forEach(field => {
-    const targetKey = field.fieldCode || field.fieldKey
-    const calculatedValue = LinkageEngine.calculate(field.calculationFormula, formData.value)
-    if (calculatedValue !== null) {
-      formData.value[targetKey] = calculatedValue
-    }
-  })
+  applyCalculatedValues()
 }
 
 // 初始化
 onMounted(() => {
   updateLinkageState()
-  
   // 初始化计算字段
-  const fields = props.form?.fields || []
-  fields.forEach(field => {
-    if (field.calculationFormula) {
-      const fieldKey = field.fieldCode || field.fieldKey
-      const calculatedValue = LinkageEngine.calculate(field.calculationFormula, formData.value)
-      if (calculatedValue !== null) {
-        formData.value[fieldKey] = calculatedValue
-      }
-    }
-  })
+  applyCalculatedValues()
 })
 
 // 验证表单

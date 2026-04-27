@@ -5,6 +5,43 @@
 
 export const LinkageEngine = {
   /**
+   * 从字段中提取联动规则（兼容多种存储方式）
+   * @param {Object} field - 字段配置
+   * @returns {Object} 合并后的规则对象
+   */
+  getFieldLinkageRules(field) {
+    if (!field) return {}
+    const rules = {}
+
+    // 1. 优先读取直接挂在字段根属性上的规则
+    ['visibilityRule', 'disabledRule', 'requiredRule', 'calculationFormula',
+     'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula'].forEach(key => {
+      if (field[key] !== undefined) rules[key] = field[key]
+    })
+
+    // 2. 从 linkageRules 对象读取（内存中临时保存）
+    if (field.linkageRules) {
+      Object.assign(rules, field.linkageRules)
+    }
+
+    // 3. 从 componentProps JSON 解析
+    if (field.componentProps) {
+      try {
+        const props = typeof field.componentProps === 'string'
+          ? JSON.parse(field.componentProps)
+          : field.componentProps
+        if (props.linkageRules) {
+          Object.assign(rules, props.linkageRules)
+        }
+      } catch (e) {
+        // 忽略解析错误
+      }
+    }
+
+    return rules
+  },
+
+  /**
    * 解析联动规则
    * @param {string} rule - 联动规则表达式
    * @returns {Object} 解析后的规则对象
@@ -184,28 +221,40 @@ export const LinkageEngine = {
 
     fields.forEach(field => {
       const fieldKey = field.fieldCode || field.fieldKey
-      
+      const rules = this.getFieldLinkageRules(field)
+
       // 处理显隐
-      result.visibility[fieldKey] = this.shouldShowField(field, formData)
-      
+      result.visibility[fieldKey] = rules.visibilityRule
+        ? this.evaluateCondition(rules.visibilityRule, formData)
+        : true
+
       // 处理禁用
-      result.disabled[fieldKey] = this.shouldDisableField(field, formData)
-      
+      result.disabled[fieldKey] = rules.disabledRule
+        ? this.evaluateCondition(rules.disabledRule, formData)
+        : false
+
       // 处理必填
-      result.required[fieldKey] = this.shouldRequireField(field, formData)
-      
-      // 处理计算字段
-      if (field.calculationFormula) {
-        result.values[fieldKey] = this.calculate(field.calculationFormula, formData)
+      if (rules.requiredRule) {
+        result.required[fieldKey] = this.evaluateCondition(rules.requiredRule, formData)
+      } else {
+        result.required[fieldKey] = field.isRequired === 1
       }
-      
+
+      // 处理计算字段
+      if (rules.calculationFormula) {
+        result.values[fieldKey] = this.calculate(rules.calculationFormula, formData)
+      }
+
       // 处理选项联动
-      if (field.optionsLinkage && field.options) {
-        result.options[fieldKey] = this.getLinkedOptions(
-          field.options,
-          field.optionsLinkage,
-          formData
-        )
+      if (rules.optionsLinkage) {
+        const opts = field.options || (field.optionsJson ? JSON.parse(field.optionsJson) : null)
+        if (opts) {
+          result.options[fieldKey] = this.getLinkedOptions(
+            opts,
+            rules.optionsLinkage,
+            formData
+          )
+        }
       }
     })
 
@@ -220,20 +269,24 @@ export const LinkageEngine = {
    */
   getTriggeredLinkages(changedField, fields) {
     return fields.filter(field => {
+      const rules = this.getFieldLinkageRules(field)
       // 检查是否有依赖此字段的联动
-      if (field.visibilityRule && field.visibilityRule.includes(changedField)) {
+      if (rules.visibilityRule && rules.visibilityRule.includes(changedField)) {
         return true
       }
-      if (field.disabledRule && field.disabledRule.includes(changedField)) {
+      if (rules.disabledRule && rules.disabledRule.includes(changedField)) {
         return true
       }
-      if (field.requiredRule && field.requiredRule.includes(changedField)) {
+      if (rules.requiredRule && rules.requiredRule.includes(changedField)) {
         return true
       }
-      if (field.calculationFormula && field.calculationFormula.includes(changedField)) {
+      if (rules.calculationFormula && rules.calculationFormula.includes(changedField)) {
         return true
       }
-      if (field.optionsLinkage && field.optionsLinkage.dependsOn === changedField) {
+      if (rules.valueFormula && rules.valueFormula.includes(changedField)) {
+        return true
+      }
+      if (rules.optionsLinkage && rules.optionsLinkage.dependsOn === changedField) {
         return true
       }
       return false

@@ -596,24 +596,78 @@ watch(() => props.field, (newField) => {
   }
 }, { immediate: true })
 
+// 反向解析显隐规则字符串为条件数组
+function parseVisibilityRuleString(ruleStr) {
+  if (!ruleStr) return []
+  const conditions = []
+  // 先判断逻辑关系
+  const isOr = ruleStr.includes(' || ')
+  config.value.visibilityLogic = isOr ? 'or' : 'and'
+  // 按 && 或 || 分割
+  const parts = ruleStr.split(/\s*\|\|\s*|\s*&&\s*/)
+  parts.forEach(part => {
+    part = part.trim()
+    if (!part) return
+    // 解析 empty: !field || field == ''
+    const emptyMatch = part.match(/^!(\w+)\s*\|\|\s*\1\s*==\s*''$/)
+    if (emptyMatch) {
+      conditions.push({ field: emptyMatch[1], operator: 'empty', value: '' })
+      return
+    }
+    // 解析 notEmpty: field && field != ''
+    const notEmptyMatch = part.match(/^(\w+)\s*&&\s*\1\s*!=\s*''$/)
+    if (notEmptyMatch) {
+      conditions.push({ field: notEmptyMatch[1], operator: 'notEmpty', value: '' })
+      return
+    }
+    // 解析 contains: field.contains('value')
+    const containsMatch = part.match(/^(\w+)\.contains\('([^']*)'\)$/)
+    if (containsMatch) {
+      conditions.push({ field: containsMatch[1], operator: 'contains', value: containsMatch[2] })
+      return
+    }
+    // 解析标准比较: field == 'value', field != 'value', field > 'value' 等
+    const stdMatch = part.match(/^(\w+)\s*(==|!=|>|>=|<|<=)\s*'([^']*)'$/)
+    if (stdMatch) {
+      conditions.push({ field: stdMatch[1], operator: stdMatch[2], value: stdMatch[3] })
+      return
+    }
+    // 解析无引号的数字比较
+    const numMatch = part.match(/^(\w+)\s*(==|!=|>|>=|<|<=)\s*([\d.]+)$/)
+    if (numMatch) {
+      conditions.push({ field: numMatch[1], operator: numMatch[2], value: numMatch[3] })
+      return
+    }
+    // 解析简单字段引用（如 field == variable）
+    const varMatch = part.match(/^(\w+)\s*(==|!=|>|>=|<|<=)\s*(\w+)$/)
+    if (varMatch) {
+      conditions.push({ field: varMatch[1], operator: varMatch[2], value: varMatch[3] })
+      return
+    }
+  })
+  return conditions
+}
+
 // 解析已有联动规则
 function parseLinkageRules(rules) {
   if (!rules) return
-  
+
   // 显隐规则
   if (rules.visibilityRule) {
     config.value.visibilityEnabled = true
-    // 简单解析规则字符串（实际应该更完善）
-    config.value.visibilityConditions = []
+    const parsed = parseVisibilityRuleString(rules.visibilityRule)
+    if (parsed.length > 0) {
+      config.value.visibilityConditions = parsed
+    }
   }
-  
+
   // 值联动
   if (rules.valueFormula) {
     config.value.valueLinkageEnabled = true
     config.value.valueSourceType = 'formula'
     config.value.valueFormula = rules.valueFormula
   }
-  
+
   // 选项联动
   if (rules.optionsLinkage) {
     config.value.optionsLinkageEnabled = true
@@ -623,7 +677,7 @@ function parseLinkageRules(rules) {
       allowedOptions: value
     }))
   }
-  
+
   // 计算字段
   if (rules.calculationFormula) {
     config.value.calculationEnabled = true
@@ -631,7 +685,7 @@ function parseLinkageRules(rules) {
     config.value.calculationPrecision = rules.calculationPrecision || 2
     config.value.calculationEditable = rules.calculationEditable || false
   }
-  
+
   // 禁用/必填
   if (rules.disabledRule) {
     config.value.disabledEnabled = true

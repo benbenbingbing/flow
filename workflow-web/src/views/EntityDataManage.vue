@@ -71,37 +71,54 @@
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
-        <el-form-item v-for="field in formFields" :key="field.fieldId" 
+        <el-form-item v-for="field in formFields" :key="field.fieldId"
+                     v-show="isFieldVisible(field)"
                      :label="field.fieldLabel || field.fieldName" :prop="`data.${field.fieldCode || field.fieldId}`"
-                     :rules="field.isRequired ? [{ required: true, message: `请输入${field.fieldLabel || field.fieldName}`, trigger: 'blur' }] : []">
+                     :rules="getFieldRules(field)">
           <!-- 根据字段类型渲染不同组件 -->
-          <el-input v-if="field.fieldType === 'STRING'" 
-                   v-model="formData.data[field.fieldCode || field.fieldId]" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
-          <el-input v-else-if="field.fieldType === 'TEXT'" 
-                   v-model="formData.data[field.fieldCode || field.fieldId]" type="textarea" rows="3" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
-          <el-input-number v-else-if="field.fieldType === 'INTEGER' || field.fieldType === 'DECIMAL'" 
-                          v-model="formData.data[field.fieldCode || field.fieldId]" style="width: 100%" />
-          <el-date-picker v-else-if="field.fieldType === 'DATE'" 
-                         v-model="formData.data[field.fieldCode || field.fieldId]" type="date" style="width: 100%" />
-          <el-date-picker v-else-if="field.fieldType === 'DATETIME'" 
-                         v-model="formData.data[field.fieldCode || field.fieldId]" type="datetime" style="width: 100%" />
-          <el-switch v-else-if="field.fieldType === 'BOOLEAN'" 
-                    v-model="formData.data[field.fieldCode || field.fieldId]" />
-          <el-select v-else-if="field.fieldType === 'SELECT'" 
-                    v-model="formData.data[field.fieldCode || field.fieldId]" style="width: 100%" clearable>
-            <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
+          <el-input v-if="field.fieldType === 'STRING'"
+                   v-model="formData.data[field.fieldCode || field.fieldId]"
+                   :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                   :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
+          <el-input v-else-if="field.fieldType === 'TEXT'"
+                   v-model="formData.data[field.fieldCode || field.fieldId]"
+                   :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                   type="textarea" rows="3" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
+          <el-input-number v-else-if="field.fieldType === 'INTEGER' || field.fieldType === 'DECIMAL'"
+                          v-model="formData.data[field.fieldCode || field.fieldId]"
+                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                          style="width: 100%" />
+          <el-date-picker v-else-if="field.fieldType === 'DATE'"
+                         v-model="formData.data[field.fieldCode || field.fieldId]"
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         type="date" style="width: 100%" />
+          <el-date-picker v-else-if="field.fieldType === 'DATETIME'"
+                         v-model="formData.data[field.fieldCode || field.fieldId]"
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         type="datetime" style="width: 100%" />
+          <el-switch v-else-if="field.fieldType === 'BOOLEAN'"
+                    v-model="formData.data[field.fieldCode || field.fieldId]"
+                    :disabled="isFieldDisabled(field) || field.isReadonly === 1" />
+          <el-select v-else-if="field.fieldType === 'SELECT'"
+                    v-model="formData.data[field.fieldCode || field.fieldId]"
+                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                    style="width: 100%" clearable>
+            <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
-          <el-checkbox-group v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'" 
-                            v-model="formData.data[field.fieldCode || field.fieldId]">
-            <el-checkbox v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
+          <el-checkbox-group v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'"
+                            v-model="formData.data[field.fieldCode || field.fieldId]"
+                            :disabled="isFieldDisabled(field) || field.isReadonly === 1">
+            <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
           </el-checkbox-group>
-          <el-radio-group v-else-if="field.fieldType === 'RADIO'" 
-                         v-model="formData.data[field.fieldCode || field.fieldId]">
-            <el-radio v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
+          <el-radio-group v-else-if="field.fieldType === 'RADIO'"
+                         v-model="formData.data[field.fieldCode || field.fieldId]"
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1">
+            <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
           </el-radio-group>
           <!-- 文件上传 -->
           <el-upload v-else-if="field.fieldType === 'FILE'"
                     :file-list="getFileList(field.fieldCode || field.fieldId)"
+                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                     :auto-upload="false"
                     :limit="1"
                     :before-upload="(file) => beforeFileUpload(file, 'FILE')"
@@ -123,6 +140,7 @@
           <!-- 图片上传 -->
           <el-upload v-else-if="field.fieldType === 'IMAGE'"
                     :file-list="getFileList(field.fieldCode || field.fieldId)"
+                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                     :auto-upload="false"
                     :limit="1"
                     :before-upload="(file) => beforeFileUpload(file, 'IMAGE')"
@@ -246,7 +264,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -256,6 +274,7 @@ import { processTaskApi } from '@/api/processTask'
 import { fileApi } from '@/api/file'
 import { getFormForNewData, getFormForViewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
+import { LinkageEngine } from '@/utils/linkageEngine'
 
 const route = useRoute()
 const router = useRouter()
@@ -293,6 +312,68 @@ const formData = ref({
   submitterName: userStore.nickname,
   startProcess: false
 })
+
+// 字段联动状态
+const linkageState = ref({
+  visibility: {},
+  disabled: {},
+  required: {},
+  options: {},
+  values: {}
+})
+
+// 更新联动状态
+function updateLinkageState() {
+  const fields = formFields.value || []
+  // 将 formData.data 作为表单数据传入
+  linkageState.value = LinkageEngine.processAllLinkages(fields, formData.value.data || {})
+  // 应用计算字段值
+  if (linkageState.value.values) {
+    Object.entries(linkageState.value.values).forEach(([key, val]) => {
+      if (val !== null && formData.value.data[key] !== val) {
+        formData.value.data[key] = val
+      }
+    })
+  }
+}
+
+// 判断字段是否可见
+function isFieldVisible(field) {
+  const key = field.fieldCode || field.fieldId
+  return linkageState.value.visibility[key] !== false
+}
+
+// 判断字段是否禁用
+function isFieldDisabled(field) {
+  const key = field.fieldCode || field.fieldId
+  return linkageState.value.disabled[key] === true
+}
+
+// 获取字段验证规则（含联动必填）
+function getFieldRules(field) {
+  const key = field.fieldCode || field.fieldId
+  const isRequired = linkageState.value.required[key] !== undefined
+    ? linkageState.value.required[key]
+    : field.isRequired
+  if (isRequired) {
+    return [{ required: true, message: `请输入${field.fieldLabel || field.fieldName}`, trigger: 'blur' }]
+  }
+  return []
+}
+
+// 获取字段选项（含联动过滤）
+function getFieldOptions(field) {
+  const key = field.fieldCode || field.fieldId
+  if (linkageState.value.options[key]) {
+    return linkageState.value.options[key]
+  }
+  return parseOptions(field.optionsJson)
+}
+
+// 监听表单数据变化，触发联动
+watch(() => formData.value.data, () => {
+  updateLinkageState()
+}, { deep: true })
 
 // 列表显示字段
 const listFields = computed(() => {

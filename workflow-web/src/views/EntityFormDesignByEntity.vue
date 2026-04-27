@@ -484,7 +484,11 @@ function moveDown(index) {
 function handleSaveLinkage(linkageRules) {
   if (selectedField.value) {
     selectedField.value.linkageRules = linkageRules
-    // 将联动规则保存到扩展属性中
+    // 将联动规则展开到字段根属性，便于引擎直接读取
+    Object.keys(linkageRules).forEach(key => {
+      selectedField.value[key] = linkageRules[key]
+    })
+    // 将联动规则保存到扩展属性中（持久化到数据库）
     selectedField.value.componentProps = JSON.stringify({
       ...parseComponentProps(selectedField.value.componentProps),
       linkageRules
