@@ -219,11 +219,6 @@ defineExpose({
 })
 </script>
 
-<script>
-// 导出联动引擎供外部使用
-export { LinkageEngine }
-</script>
-
 <style scoped>
 .linkage-form-preview {
   width: 100%;

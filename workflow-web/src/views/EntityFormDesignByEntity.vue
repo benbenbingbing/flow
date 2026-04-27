@@ -237,7 +237,7 @@
     <!-- 预览弹窗 - 所见即所得 -->
     <el-dialog v-model="showPreview" title="表单预览" width="800px" destroy-on-close>
       <div class="preview-container">
-        <FormPreview :form="previewForm" />
+        <FormPreviewLinkage :form="previewForm" />
       </div>
     </el-dialog>
     
@@ -265,7 +265,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, Edit, DocumentAdd, Plus, Connection } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
-import FormPreview from '@/components/FormPreview.vue'
+import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import { entityApi } from '@/api/entity'
 import { getFormById, createForm, saveFormFields, getEntityFields, getFormFields } from '@/api/entityForm'
