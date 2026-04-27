@@ -404,13 +404,23 @@ const availableFields = computed(() => {
 const currentFieldOptions = computed(() => {
   const field = props.field
   if (!field) return []
-  
+
+  // 从 componentProps 解析选项
+  if (field.componentProps) {
+    try {
+      const compProps = typeof field.componentProps === 'string'
+        ? JSON.parse(field.componentProps)
+        : field.componentProps
+      if (compProps && compProps.options) return compProps.options
+    } catch (e) {}
+  }
+
   if (field.options) {
-    return typeof field.options === 'string' 
-      ? JSON.parse(field.options) 
+    return typeof field.options === 'string'
+      ? JSON.parse(field.options)
       : field.options
   }
-  
+
   if (field.optionsJson) {
     try {
       return JSON.parse(field.optionsJson)
@@ -418,7 +428,7 @@ const currentFieldOptions = computed(() => {
       return []
     }
   }
-  
+
   return []
 })
 
