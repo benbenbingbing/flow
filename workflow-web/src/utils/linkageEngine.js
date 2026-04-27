@@ -225,7 +225,7 @@ export const LinkageEngine = {
 
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i]
-      const fieldKey = field.fieldCode || field.fieldKey
+      const fieldKey = field.fieldCode || field.fieldKey || field.fieldId || field.id
       const rules = this.getFieldLinkageRules(field)
 
       // 处理显隐

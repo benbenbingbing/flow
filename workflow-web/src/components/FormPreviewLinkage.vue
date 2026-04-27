@@ -16,24 +16,24 @@
       :label-position="labelPosition"
       class="preview-form"
     >
-      <div 
-        v-for="field in processedFields" 
+      <div
+        v-for="field in processedFields"
         :key="field.id"
         class="preview-field-wrapper"
         :style="getFieldStyle(field)"
-        v-show="linkageState.visibility[field.fieldCode || field.fieldKey] !== false"
+        v-show="linkageState.visibility[getFieldKey(field)] !== false"
       >
         <el-form-item
           :label="field.fieldLabel || field.fieldName"
-          :prop="field.fieldCode || field.fieldKey"
+          :prop="getFieldKey(field)"
           :rules="getFieldRules(field)"
-          :required="linkageState.required[field.fieldCode || field.fieldKey]"
+          :required="linkageState.required[getFieldKey(field)]"
         >
           <FormFieldRendererLinkage
-            :field="field" 
-            v-model="formData[field.fieldCode || field.fieldKey]"
-            :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[field.fieldCode || field.fieldKey]"
-            :options="linkageState.options[field.fieldCode || field.fieldKey] || field.options"
+            :field="field"
+            v-model="formData[getFieldKey(field)]"
+            :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+            :options="linkageState.options[getFieldKey(field)] || field.options"
           />
         </el-form-item>
       </div>
@@ -144,11 +144,16 @@ function getFieldStyle(field) {
   }
 }
 
+// 获取字段唯一键（兼容多种字段结构）
+function getFieldKey(field) {
+  return field.fieldCode || field.fieldKey || field.fieldId || field.id
+}
+
 // 获取字段验证规则
 function getFieldRules(field) {
-  const fieldKey = field.fieldCode || field.fieldKey
+  const fieldKey = getFieldKey(field)
   const rules = []
-  
+
   // 检查联动必填
   if (linkageState.value.required[fieldKey]) {
     rules.push({
@@ -157,7 +162,7 @@ function getFieldRules(field) {
       trigger: 'blur'
     })
   }
-  
+
   return rules
 }
 
