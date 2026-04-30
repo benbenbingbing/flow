@@ -288,14 +288,25 @@ defineExpose({
 }
 </style>
 <style>
-:deep(.bjs-powered-by) {
+.djs-container {
+  background-image:
+    linear-gradient(to right, #e0e0e0 1px, transparent 1px),
+    linear-gradient(to bottom, #e0e0e0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.djs-container svg {
+  background-color: transparent !important;
+}
+
+.bjs-powered-by {
   display: none !important;
 }
-:deep(.djs-palette) {
+.djs-palette {
   left: 20px;
   top: 20px;
 }
-:deep(.djs-overlay-context-pad) {
+.djs-overlay-context-pad {
   display: none;
 }
 </style>

@@ -97,6 +97,12 @@
               已发布字段的编码不能修改
             </div>
           </el-form-item>
+          <el-form-item label="数据库列名">
+            <el-input 
+              :model-value="formatDbColumnName(selectedField.fieldCode)" 
+              disabled
+            />
+          </el-form-item>
           <el-form-item label="字段类型" required>
             <el-select 
               v-model="selectedField.fieldType" 
@@ -115,6 +121,43 @@
               已发布字段的类型不能修改
             </div>
           </el-form-item>
+          
+          <!-- 字段长度配置（文本等字符串类型） -->
+          <el-form-item label="字段长度" v-if="showFieldLength">
+            <el-input-number 
+              v-model="selectedField.fieldLength" 
+              :min="1" 
+              :max="4000" 
+              placeholder="默认200" 
+              style="width: 100%"
+            />
+            <div class="form-tip">对应数据库 VARCHAR 长度</div>
+          </el-form-item>
+          
+          <!-- 小数精度配置（DECIMAL 类型） -->
+          <template v-if="selectedField.fieldType === 'DECIMAL'">
+            <el-form-item label="总位数">
+              <el-input-number 
+                v-model="selectedField.fieldLength" 
+                :min="1" 
+                :max="65" 
+                placeholder="默认18" 
+                style="width: 100%"
+              />
+              <div class="form-tip">DECIMAL 总位数（precision）</div>
+            </el-form-item>
+            <el-form-item label="小数位数">
+              <el-input-number 
+                v-model="selectedField.fieldPrecision" 
+                :min="0" 
+                :max="30" 
+                placeholder="默认2" 
+                style="width: 100%"
+              />
+              <div class="form-tip">DECIMAL 小数位数（scale）</div>
+            </el-form-item>
+          </template>
+          
           <el-form-item label="是否必填">
             <el-switch v-model="selectedField.isRequired" />
           </el-form-item>
@@ -404,6 +447,17 @@ const codeRule = ref({
 const showOptions = computed(() => {
   return selectedField.value && ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(selectedField.value.fieldType)
 })
+
+// 是否显示字段长度配置（字符串相关类型）
+const showFieldLength = computed(() => {
+  return selectedField.value && ['STRING', 'TEXT', 'SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX', 'USER', 'DEPT', 'REFERENCE'].includes(selectedField.value.fieldType)
+})
+
+// 驼峰转下划线
+const formatDbColumnName = (fieldCode) => {
+  if (!fieldCode) return ''
+  return fieldCode.replace(/([a-z])([A-Z]+)/g, '$1_$2').toLowerCase()
+}
 
 // 是否显示子表单配置
 const isSubForm = computed(() => {

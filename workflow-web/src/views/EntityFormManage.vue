@@ -96,7 +96,7 @@
           <el-input v-model="form.formName" placeholder="请输入表单名称" />
         </el-form-item>
         <el-form-item label="表单标识" prop="formKey">
-          <el-input v-model="form.formKey" placeholder="请输入表单标识" :disabled="isEdit" />
+          <el-input v-model="form.formKey" placeholder="请输入表单标识" />
         </el-form-item>
         <el-form-item label="布局类型">
           <el-radio-group v-model="form.layoutType">

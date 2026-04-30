@@ -218,7 +218,11 @@
                     <el-table-column prop="fieldCode" label="字段编码" width="120" />
                     <el-table-column prop="fieldName" label="字段名称" width="120" />
                     <el-table-column prop="fieldType" label="字段类型" width="100" />
-                    <el-table-column prop="dbType" label="数据库类型" width="120" />
+                    <el-table-column label="数据库类型" width="120">
+                      <template #default="{ row }">
+                        {{ formatDbType(row) }}
+                      </template>
+                    </el-table-column>
                     <el-table-column prop="isRequired" label="必填" width="60">
                       <template #default="{ row }">
                         <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
@@ -281,7 +285,11 @@
               <el-table-column prop="fieldCode" label="字段编码" width="120" />
               <el-table-column prop="fieldName" label="字段名称" width="120" />
               <el-table-column prop="fieldType" label="字段类型" width="100" />
-              <el-table-column prop="dbType" label="数据库类型" />
+              <el-table-column label="数据库类型">
+                <template #default="{ row }">
+                  {{ formatDbType(row) }}
+                </template>
+              </el-table-column>
               <el-table-column prop="isRequired" label="必填" width="60">
                 <template #default="{ row }">
                   <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
@@ -372,7 +380,12 @@
               <el-table-column prop="fieldCode" label="字段编码" width="120" />
               <el-table-column prop="fieldName" label="字段名称" width="120" />
               <el-table-column prop="fieldType" label="字段类型" width="100" />
-              <el-table-column prop="dbType" label="数据库类型" />
+              <el-table-column label="数据库类型">
+                <template #default="{ row }">
+                  {{ formatDbType(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="dbColumnName" label="数据库列名" width="150" />
               <el-table-column prop="isRequired" label="必填" width="60">
                 <template #default="{ row }">
                   <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
@@ -618,6 +631,44 @@ const formatDate = (dateStr) => {
     minute: '2-digit',
     second: '2-digit'
   })
+}
+
+// 格式化数据库类型（根据字段类型、长度、精度动态计算）
+const formatDbType = (field) => {
+  if (field.dbType) return field.dbType
+  switch (field.fieldType) {
+    case 'STRING':
+    case 'SELECT':
+    case 'RADIO':
+    case 'USER':
+    case 'DEPT':
+    case 'REFERENCE':
+      return `varchar(${field.fieldLength || 200})`
+    case 'TEXT':
+      return 'text'
+    case 'INTEGER':
+      return 'int'
+    case 'LONG':
+      return 'bigint'
+    case 'DECIMAL':
+      return `decimal(${field.fieldLength || 18},${field.fieldPrecision || 2})`
+    case 'DATE':
+      return 'date'
+    case 'DATETIME':
+      return 'datetime'
+    case 'BOOLEAN':
+      return 'tinyint(1)'
+    case 'MULTI_SELECT':
+    case 'CHECKBOX':
+      return 'varchar(500)'
+    case 'FILE':
+    case 'IMAGE':
+      return 'text'
+    case 'MULTI_REFERENCE':
+      return 'json'
+    default:
+      return 'varchar(255)'
+  }
 }
 
 // 发布实体（先显示差异预览）

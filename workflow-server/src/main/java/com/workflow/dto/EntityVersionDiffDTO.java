@@ -102,6 +102,11 @@ public class EntityVersionDiffDTO {
         private String dbType;
 
         /**
+         * 数据库列名（下划线命名）
+         */
+        private String dbColumnName;
+
+        /**
          * 是否必填
          */
         private Boolean isRequired;

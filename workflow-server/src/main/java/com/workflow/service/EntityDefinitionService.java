@@ -96,6 +96,16 @@ public class EntityDefinitionService {
         return convertToDTO(entity, processName);
     }
     
+    /**
+     * 驼峰命名转下划线命名
+     */
+    private String toSnakeCase(String camelCase) {
+        if (camelCase == null || camelCase.isEmpty()) {
+            return camelCase;
+        }
+        return camelCase.replaceAll("([a-z])([A-Z]+)", "$1_$2").toLowerCase();
+    }
+    
     private String getProcessName(String processId) {
         if (processId == null || processId.isEmpty()) {
             return null;
@@ -319,6 +329,8 @@ public class EntityDefinitionService {
                     // 字段已存在，更新字段定义（仅更新元数据，不修改数据库列）
                     EntityField existingField = existingFieldMap.get(fieldCode);
                     existingField.setFieldName(fieldDTO.getFieldName());
+                    existingField.setFieldLength(fieldDTO.getFieldLength());
+                    existingField.setFieldPrecision(fieldDTO.getFieldPrecision());
                     existingField.setIsRequired(fieldDTO.getIsRequired());
                     existingField.setIsUnique(fieldDTO.getIsUnique());
                     existingField.setDefaultValue(fieldDTO.getDefaultValue());
@@ -327,6 +339,7 @@ public class EntityDefinitionService {
                     existingField.setShowInForm(fieldDTO.getShowInForm());
                     existingField.setIsQuery(fieldDTO.getIsQuery());
                     existingField.setSortOrder(fieldDTO.getSortOrder());
+                    existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
                     fieldMapper.updateById(existingField);
                 } else {
                     // 新字段，添加到字段定义表（不立即同步到数据表，等发布时同步）
@@ -517,6 +530,8 @@ public class EntityDefinitionService {
         dto.setFieldType(field.getFieldType());
         dto.setDbType(field.getDbType());
         dto.setFieldLength(field.getFieldLength());
+        dto.setFieldPrecision(field.getFieldPrecision());
+        dto.setDbColumnName(field.getDbColumnName());
         dto.setIsRequired(field.getIsRequired());
         dto.setIsUnique(field.getIsUnique());
         dto.setDefaultValue(field.getDefaultValue());
@@ -553,6 +568,13 @@ public class EntityDefinitionService {
         field.setFieldType(dto.getFieldType());
         field.setDbType(dto.getDbType());
         field.setFieldLength(dto.getFieldLength());
+        field.setFieldPrecision(dto.getFieldPrecision());
+        // 自动计算数据库列名（驼峰转下划线）
+        if (dto.getDbColumnName() != null && !dto.getDbColumnName().isEmpty()) {
+            field.setDbColumnName(dto.getDbColumnName());
+        } else {
+            field.setDbColumnName(toSnakeCase(dto.getFieldCode()));
+        }
         field.setIsRequired(dto.getIsRequired());
         field.setIsUnique(dto.getIsUnique());
         field.setDefaultValue(dto.getDefaultValue());

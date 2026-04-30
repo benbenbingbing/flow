@@ -21,118 +21,175 @@
       </el-button>
     </div>
 
-    <!-- 空状态 -->
-    <el-empty v-if="rowData.length === 0" description="暂无数据，点击添加" :image-size="60">
-      <template v-if="!disabled && !readonly">
-        <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+    <!-- 表单布局 -->
+    <template v-if="config.layout === 'form'">
+      <!-- 空状态 -->
+      <template v-if="rowData.length === 0">
+        <el-empty description="暂无数据，点击添加" :image-size="60">
+          <template v-if="!disabled && !readonly">
+            <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+          </template>
+        </el-empty>
+        <!-- 字段预览：空状态也显示字段结构 -->
+        <div v-if="config.fields && config.fields.length > 0" class="form-fields-preview">
+          <div v-for="field in config.fields" :key="field.fieldKey" class="preview-field-item">
+            <span class="preview-label">{{ field.fieldName }}</span>
+            <span class="preview-placeholder">—</span>
+          </div>
+        </div>
       </template>
-    </el-empty>
-
-    <!-- 表格形式 -->
-    <el-table 
-      v-else
-      :data="rowData" 
-      border 
-      stripe
-      size="small"
-      class="sub-form-table"
-      :max-height="config.maxHeight || 400"
-    >
-      <!-- 序号列 -->
-      <el-table-column type="index" width="50" align="center" />
-
-      <!-- 动态字段列 -->
-      <el-table-column 
-        v-for="field in config.fields" 
-        :key="field.fieldKey"
-        :prop="field.fieldKey"
-        :label="field.fieldName"
-        :min-width="field.width || 120"
-        :show-overflow-tooltip="!field.isEditable"
-      >
-        <template #default="{ row, $index }">
-          <!-- 只读模式 -->
-          <template v-if="readonly || disabled || !field.isEditable">
-            <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
-          </template>
-
-          <!-- 编辑模式 -->
-          <template v-else>
-            <!-- 文本输入 -->
-            <el-input
-              v-if="field.fieldType === 'TEXT' || field.fieldType === 'input'"
-              v-model="row[field.fieldKey]"
-              size="small"
-              :placeholder="field.placeholder"
-              @blur="validateField(row, field, $index)"
-            />
-
-            <!-- 数字输入 -->
-            <el-input-number
-              v-else-if="field.fieldType === 'NUMBER' || field.fieldType === 'number'"
-              v-model="row[field.fieldKey]"
-              size="small"
-              :precision="field.precision || 2"
-              :min="field.min"
-              :max="field.max"
-              style="width: 100%"
-              @change="handleNumberChange(row, field, $index)"
-            />
-
-            <!-- 日期选择 -->
-            <el-date-picker
-              v-else-if="field.fieldType === 'DATE' || field.fieldType === 'date'"
-              v-model="row[field.fieldKey]"
-              type="date"
-              size="small"
-              :placeholder="field.placeholder"
-              style="width: 100%"
-              value-format="YYYY-MM-DD"
-            />
-
-            <!-- 下拉选择 -->
-            <el-select
-              v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'"
-              v-model="row[field.fieldKey]"
-              size="small"
-              :placeholder="field.placeholder"
-              style="width: 100%"
-              filterable
-              clearable
-            >
-              <el-option
-                v-for="opt in getFieldOptions(field)"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
-
-            <!-- 默认文本 -->
-            <el-input
-              v-else
-              v-model="row[field.fieldKey]"
-              size="small"
-              :placeholder="field.placeholder"
-            />
-
-            <!-- 字段校验错误提示 -->
-            <div v-if="getFieldError($index, field.fieldKey)" class="field-error">
-              {{ getFieldError($index, field.fieldKey) }}
-            </div>
-          </template>
-        </template>
-      </el-table-column>
-
-      <!-- 操作列 -->
-      <el-table-column v-if="!disabled && !readonly" label="操作" width="80" align="center" fixed="right">
-        <template #default="{ $index }">
-          <el-button type="danger" size="small" text @click="removeRow($index)">
-            <el-icon><Delete /></el-icon>
+      
+      <!-- 表单卡片列表 -->
+      <div v-for="(row, index) in rowData" :key="index" class="form-row-card">
+        <div class="form-row-header">
+          <span class="row-title">记录 {{ index + 1 }}</span>
+          <el-button v-if="!disabled && !readonly" type="danger" size="small" text @click="removeRow(index)">
+            <el-icon><Delete /></el-icon>删除
           </el-button>
+        </div>
+        <div class="form-row-body">
+          <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item">
+            <label class="field-label" :class="{ required: field.isRequired }">
+              {{ field.fieldName }}
+              <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
+            </label>
+            <div class="field-control">
+              <!-- 只读模式 -->
+              <template v-if="readonly || disabled || !field.isEditable">
+                <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
+              </template>
+              <!-- 编辑模式 -->
+              <template v-else>
+                <el-input v-if="field.fieldType === 'TEXT' || field.fieldType === 'input' || field.fieldType === 'string'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" @blur="validateField(row, field, index)" />
+                <el-input-number v-else-if="field.fieldType === 'NUMBER' || field.fieldType === 'number' || field.fieldType === 'integer' || field.fieldType === 'long' || field.fieldType === 'double' || field.fieldType === 'decimal'" v-model="row[field.fieldKey]" size="default" :precision="field.precision || 2" :min="field.min" :max="field.max" style="width: 100%" @change="handleNumberChange(row, field, index)" />
+                <el-date-picker v-else-if="field.fieldType === 'DATE' || field.fieldType === 'date'" v-model="row[field.fieldKey]" type="date" size="default" :placeholder="field.placeholder" style="width: 100%" value-format="YYYY-MM-DD" />
+                <el-date-picker v-else-if="field.fieldType === 'DATETIME' || field.fieldType === 'datetime'" v-model="row[field.fieldKey]" type="datetime" size="default" :placeholder="field.placeholder" style="width: 100%" value-format="YYYY-MM-DD HH:mm:ss" />
+                <el-select v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" style="width: 100%" filterable clearable>
+                  <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+                <el-input v-else v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" />
+                <div v-if="getFieldError(index, field.fieldKey)" class="field-error">{{ getFieldError(index, field.fieldKey) }}</div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- 表格布局 -->
+    <template v-else>
+      <el-table 
+        :data="rowData" 
+        border 
+        stripe
+        size="small"
+        class="sub-form-table"
+        :max-height="config.maxHeight || 400"
+      >
+        <!-- 空状态插槽 -->
+        <template #empty>
+          <el-empty description="暂无数据，点击添加" :image-size="60">
+            <template v-if="!disabled && !readonly">
+              <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+            </template>
+          </el-empty>
         </template>
-      </el-table-column>
-    </el-table>
+        <!-- 序号列 -->
+        <el-table-column type="index" width="50" align="center" />
+
+        <!-- 动态字段列 -->
+        <el-table-column 
+          v-for="field in config.fields" 
+          :key="field.fieldKey"
+          :prop="field.fieldKey"
+          :label="field.fieldName"
+          :min-width="field.width || 120"
+          :show-overflow-tooltip="!field.isEditable"
+        >
+          <template #default="{ row, $index }">
+            <!-- 只读模式 -->
+            <template v-if="readonly || disabled || !field.isEditable">
+              <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
+            </template>
+
+            <!-- 编辑模式 -->
+            <template v-else>
+              <!-- 文本输入 -->
+              <el-input
+                v-if="field.fieldType === 'TEXT' || field.fieldType === 'input'"
+                v-model="row[field.fieldKey]"
+                size="small"
+                :placeholder="field.placeholder"
+                @blur="validateField(row, field, $index)"
+              />
+
+              <!-- 数字输入 -->
+              <el-input-number
+                v-else-if="field.fieldType === 'NUMBER' || field.fieldType === 'number'"
+                v-model="row[field.fieldKey]"
+                size="small"
+                :precision="field.precision || 2"
+                :min="field.min"
+                :max="field.max"
+                style="width: 100%"
+                @change="handleNumberChange(row, field, $index)"
+              />
+
+              <!-- 日期选择 -->
+              <el-date-picker
+                v-else-if="field.fieldType === 'DATE' || field.fieldType === 'date'"
+                v-model="row[field.fieldKey]"
+                type="date"
+                size="small"
+                :placeholder="field.placeholder"
+                style="width: 100%"
+                value-format="YYYY-MM-DD"
+              />
+
+              <!-- 下拉选择 -->
+              <el-select
+                v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'"
+                v-model="row[field.fieldKey]"
+                size="small"
+                :placeholder="field.placeholder"
+                style="width: 100%"
+                filterable
+                clearable
+              >
+                <el-option
+                  v-for="opt in getFieldOptions(field)"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+
+              <!-- 默认文本 -->
+              <el-input
+                v-else
+                v-model="row[field.fieldKey]"
+                size="small"
+                :placeholder="field.placeholder"
+              />
+
+              <!-- 字段校验错误提示 -->
+              <div v-if="getFieldError($index, field.fieldKey)" class="field-error">
+                {{ getFieldError($index, field.fieldKey) }}
+              </div>
+            </template>
+          </template>
+        </el-table-column>
+
+        <!-- 操作列 -->
+        <el-table-column v-if="!disabled && !readonly" label="操作" width="80" align="center" fixed="right">
+          <template #default="{ $index }">
+            <el-button type="danger" size="small" text @click="removeRow($index)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </template>
 
     <!-- 校验错误汇总 -->
     <el-alert 
@@ -173,7 +230,8 @@ const props = defineProps({
       maxRows: 100,
       fields: [],
       showSummary: false,
-      summaryFields: []
+      summaryFields: [],
+      layout: 'table'
     })
   },
   // 数据绑定
@@ -209,6 +267,13 @@ watch(() => props.modelValue, (newVal) => {
     rowData.value = []
   }
 }, { immediate: true, deep: true })
+
+// 表单布局下，字段加载完成后自动初始化一行空数据
+watch(() => props.config.fields, (fields) => {
+  if (fields && fields.length > 0 && rowData.value.length === 0 && props.config.layout === 'form' && !props.readonly && !props.disabled) {
+    addRow()
+  }
+}, { immediate: true })
 
 // 数据变化时触发更新
 watch(rowData, (newVal) => {
@@ -454,7 +519,90 @@ defineExpose({
   margin-top: 10px;
 }
 
+/* 表单布局样式 */
+.form-row-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.form-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.row-title {
+  font-weight: 500;
+  font-size: 14px;
+  color: #303133;
+}
+
+.form-field-item {
+  margin-bottom: 16px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.4;
+}
+
+.field-label.required {
+  font-weight: 500;
+}
+
+.required-tag {
+  margin-left: 4px;
+  font-size: 10px;
+  height: 18px;
+  line-height: 16px;
+}
+
+.field-control {
+  width: 100%;
+}
+
 :deep(.el-table__body-wrapper) {
   overflow-x: auto;
+}
+
+/* 空状态字段预览 */
+.form-fields-preview {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px dashed #dcdfe6;
+}
+
+.preview-field-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.preview-field-item:last-child {
+  border-bottom: none;
+}
+
+.preview-label {
+  width: 120px;
+  color: #606266;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.preview-placeholder {
+  color: #c0c4cc;
+  font-size: 14px;
 }
 </style>

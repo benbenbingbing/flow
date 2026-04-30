@@ -69,7 +69,7 @@ public class EntityVersionDiffService {
             }
 
             // 生成DDL预览
-            String ddl = dynamicTableService.buildCreateTableSqlPreview(entity.getEntityCode(), currentFields);
+            String ddl = dynamicTableService.buildCreateTableSqlPreview(entity.getEntityCode(), currentFields, entity.getEntityName());
             diff.getPendingDdls().add(ddl);
 
         } else {
@@ -208,6 +208,7 @@ public class EntityVersionDiffService {
         diff.setFieldName(newField.getFieldName());
         diff.setFieldType(newField.getFieldType() != null ? newField.getFieldType().name() : null);
         diff.setDbType(newField.getDbType());
+        diff.setDbColumnName(newField.getDbColumnName());
         diff.setIsRequired(newField.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(newField.getIsPublished()));
         diff.setIsSystem(Boolean.TRUE.equals(newField.getIsSystem()));
@@ -232,6 +233,19 @@ public class EntityVersionDiffService {
         }
         if (!Objects.equals(oldField.getShowInForm(), newField.getShowInForm())) {
             changes.add("表单显示: " + oldField.getShowInForm() + " → " + newField.getShowInForm());
+        }
+        // 字段长度/精度/列名：只有两边都不为null才比较，避免历史版本缺失这些数据导致误判
+        if (oldField.getFieldLength() != null && newField.getFieldLength() != null
+                && !Objects.equals(oldField.getFieldLength(), newField.getFieldLength())) {
+            changes.add("字段长度: " + oldField.getFieldLength() + " → " + newField.getFieldLength());
+        }
+        if (oldField.getFieldPrecision() != null && newField.getFieldPrecision() != null
+                && !Objects.equals(oldField.getFieldPrecision(), newField.getFieldPrecision())) {
+            changes.add("小数位数: " + oldField.getFieldPrecision() + " → " + newField.getFieldPrecision());
+        }
+        if (oldField.getDbColumnName() != null && newField.getDbColumnName() != null
+                && !Objects.equals(oldField.getDbColumnName(), newField.getDbColumnName())) {
+            changes.add("数据库列名: " + oldField.getDbColumnName() + " → " + newField.getDbColumnName());
         }
 
         if (changes.isEmpty()) {
@@ -252,6 +266,7 @@ public class EntityVersionDiffService {
         diff.setFieldName(newField.getFieldName());
         diff.setFieldType(newField.getFieldType() != null ? newField.getFieldType().name() : null);
         diff.setDbType(newField.getDbType());
+        diff.setDbColumnName(newField.getDbColumnName());
         diff.setIsRequired(newField.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(newField.getIsPublished()));
         diff.setIsSystem(Boolean.TRUE.equals(newField.getIsSystem()));
@@ -277,6 +292,19 @@ public class EntityVersionDiffService {
         if (!Objects.equals(oldField.getShowInForm(), newField.getShowInForm())) {
             changes.add("表单显示: " + oldField.getShowInForm() + " → " + newField.getShowInForm());
         }
+        // 字段长度/精度/列名：只有两边都不为null才比较，避免历史版本缺失这些数据导致误判
+        if (oldField.getFieldLength() != null && newField.getFieldLength() != null
+                && !Objects.equals(oldField.getFieldLength(), newField.getFieldLength())) {
+            changes.add("字段长度: " + oldField.getFieldLength() + " → " + newField.getFieldLength());
+        }
+        if (oldField.getFieldPrecision() != null && newField.getFieldPrecision() != null
+                && !Objects.equals(oldField.getFieldPrecision(), newField.getFieldPrecision())) {
+            changes.add("小数位数: " + oldField.getFieldPrecision() + " → " + newField.getFieldPrecision());
+        }
+        if (oldField.getDbColumnName() != null && newField.getDbColumnName() != null
+                && !Objects.equals(oldField.getDbColumnName(), newField.getDbColumnName())) {
+            changes.add("数据库列名: " + oldField.getDbColumnName() + " → " + newField.getDbColumnName());
+        }
 
         if (changes.isEmpty()) {
             diff.setChangeType(EntityVersionDiffDTO.FieldDiff.ChangeType.UNCHANGED);
@@ -296,6 +324,7 @@ public class EntityVersionDiffService {
         diff.setFieldName(field.getFieldName());
         diff.setFieldType(field.getFieldType() != null ? field.getFieldType().name() : null);
         diff.setDbType(field.getDbType());
+        diff.setDbColumnName(field.getDbColumnName());
         diff.setIsRequired(field.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(field.getIsPublished()));
         diff.setIsSystem(Boolean.TRUE.equals(field.getIsSystem()));
@@ -322,6 +351,7 @@ public class EntityVersionDiffService {
         diff.setFieldName(field.getFieldName());
         diff.setFieldType(field.getFieldType() != null ? field.getFieldType().name() : null);
         diff.setDbType(field.getDbType());
+        diff.setDbColumnName(field.getDbColumnName());
         diff.setIsRequired(field.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(field.getIsPublished()));
         diff.setIsSystem(Boolean.TRUE.equals(field.getIsSystem()));

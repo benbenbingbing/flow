@@ -14,6 +14,8 @@ public class EntityFieldDTO {
     private EntityField.FieldType fieldType;
     private String dbType;
     private Integer fieldLength;
+    private Integer fieldPrecision;
+    private String dbColumnName;
     private Boolean isRequired;
     private Boolean isUnique;
     private String defaultValue;

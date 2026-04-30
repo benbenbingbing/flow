@@ -12,7 +12,9 @@
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
       clearable
+      v-on="customEventListeners"
       @change="handleValueChange"
+      @input="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
     />
@@ -25,7 +27,9 @@
       :rows="3"
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
+      v-on="customEventListeners"
       @change="handleValueChange"
+      @input="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
     />
@@ -37,6 +41,7 @@
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
+      v-on="customEventListeners"
       @change="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
@@ -51,6 +56,7 @@
       :disabled="disabled"
       style="width: 100%"
       value-format="YYYY-MM-DD"
+      v-on="customEventListeners"
       @change="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
@@ -65,6 +71,7 @@
       :disabled="disabled"
       style="width: 100%"
       value-format="YYYY-MM-DD HH:mm:ss"
+      v-on="customEventListeners"
       @change="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
@@ -78,6 +85,7 @@
       :disabled="disabled"
       style="width: 100%"
       clearable
+      v-on="customEventListeners"
       @change="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
@@ -95,6 +103,7 @@
       v-else-if="renderType === 'radio'"
       v-model="fieldValue"
       :disabled="disabled"
+      v-on="customEventListeners"
       @change="handleValueChange"
     >
       <el-radio
@@ -111,6 +120,7 @@
       v-else-if="renderType === 'checkbox'"
       v-model="fieldValue"
       :disabled="disabled"
+      v-on="customEventListeners"
       @change="handleValueChange"
     >
       <el-checkbox
@@ -127,6 +137,7 @@
       v-else-if="renderType === 'switch'"
       v-model="fieldValue"
       :disabled="disabled"
+      v-on="customEventListeners"
       @change="handleValueChange"
     />
     
@@ -150,6 +161,7 @@
       clearable
       :disabled="disabled"
       style="width: 100%"
+      v-on="customEventListeners"
       @change="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
@@ -164,6 +176,7 @@
       :disabled="disabled"
       style="width: 100%"
       clearable
+      v-on="customEventListeners"
       @change="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
@@ -185,7 +198,9 @@
       v-model="fieldValue"
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
+      v-on="customEventListeners"
       @change="handleValueChange"
+      @input="handleValueChange"
       @blur="handleBlur"
       @focus="handleFocus"
     />
@@ -218,6 +233,46 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
+
+// 获取字段所有事件代码（含自定义事件）
+function getAllEvents(field) {
+  const result = {}
+  // 从根属性读取
+  Object.keys(field).forEach(key => {
+    if (key.startsWith('eventOn') && field[key]) {
+      const eventName = 'on' + key.slice(7)
+      result[eventName] = field[key]
+    }
+  })
+  // 从 componentProps 读取
+  if (field.componentProps) {
+    try {
+      const compProps = JSON.parse(field.componentProps)
+      if (compProps.events) {
+        Object.keys(compProps.events).forEach(key => {
+          if (!result[key]) {
+            result[key] = compProps.events[key]
+          }
+        })
+      }
+    } catch (e) {}
+  }
+  return result
+}
+
+// 自定义事件监听器（排除内置的 onChange/onBlur/onFocus）
+const customEventListeners = computed(() => {
+  const listeners = {}
+  const events = getAllEvents(props.field)
+  Object.keys(events).forEach(key => {
+    if (['onChange', 'onBlur', 'onFocus'].includes(key)) return
+    // DOM 事件名：onDoubleClick → dblclick，onSelect → select
+    const domEvent = key.startsWith('on') ? key.slice(2) : key
+    const eventName = domEvent.charAt(0).toLowerCase() + domEvent.slice(1)
+    listeners[eventName] = () => executeEvent(events[key], fieldValue.value)
+  })
+  return listeners
+})
 
 // 渲染类型
 const renderType = computed(() => {
@@ -304,18 +359,42 @@ const fieldValue = computed({
     return props.modelValue
   },
   set(val) {
-    console.log('[FormFieldRendererLinkage] set value:', props.field.fieldCode || props.field.fieldId, val)
     emit('update:modelValue', val)
   }
+})
+
+// 解析子表单元数据（优先根属性，再读 componentProps）
+const subFormMeta = computed(() => {
+  const field = props.field
+  // 优先根属性
+  if (field.subFormType === 'ref' && field.refFormId) {
+    return { subFormType: 'ref', refFormId: field.refFormId, refEntityId: field.refEntityId || '' }
+  }
+  // 从 componentProps 读取
+  if (field.componentProps) {
+    try {
+      const compProps = JSON.parse(field.componentProps)
+      if (compProps.subFormConfig?.type === 'ref' && compProps.subFormConfig?.refFormId) {
+        return {
+          subFormType: 'ref',
+          refFormId: compProps.subFormConfig.refFormId,
+          refEntityId: compProps.subFormConfig.refEntityId || ''
+        }
+      }
+    } catch (e) {}
+  }
+  return { subFormType: field.subFormType || 'embedded', refFormId: null, refEntityId: '' }
 })
 
 // 外部表单字段（子表单引用外部表单时使用）
 const externalFormFields = ref([])
 
-watch(() => props.field.refFormId, async (formId) => {
-  if (formId && props.field.subFormType === 'ref') {
+watch(() => subFormMeta.value.refFormId, async (formId) => {
+  if (formId && subFormMeta.value.subFormType === 'ref') {
     try {
-      const fields = await getFormFields(formId)
+      const res = await getFormFields(formId)
+      // 兼容直接返回数组或 { data: [...] } 两种格式
+      const fields = Array.isArray(res) ? res : (Array.isArray(res.data) ? res.data : [])
       // 将外部表单字段转换为 SubFormRenderer 需要的格式
       externalFormFields.value = fields.map(f => ({
         fieldKey: f.fieldCode || f.fieldId || f.id,
@@ -326,7 +405,6 @@ watch(() => props.field.refFormId, async (formId) => {
         options: f.options
       }))
     } catch (e) {
-      console.error('加载外部表单字段失败:', e)
       externalFormFields.value = []
     }
   } else {
@@ -353,7 +431,8 @@ function mapFieldType(type) {
 // 子表单配置
 const subFormConfig = computed(() => {
   const field = props.field
-  const fields = field.subFormType === 'ref' && externalFormFields.value.length > 0
+  const isRef = subFormMeta.value.subFormType === 'ref' && externalFormFields.value.length > 0
+  const fields = isRef
     ? externalFormFields.value
     : (field.subFields || field.fields || [])
   return {
@@ -364,9 +443,25 @@ const subFormConfig = computed(() => {
     maxRows: field.maxRows || 100,
     fields: fields,
     showSummary: field.showSummary || false,
-    summaryFields: field.summaryFields || []
+    summaryFields: field.summaryFields || [],
+    layout: isRef ? 'form' : 'table'
   }
 })
+
+// 从字段配置中获取事件代码（支持根属性和 componentProps.events）
+function getEventCode(field, eventType) {
+  // eventType 可能是 'onChange' 或 'change'，统一转为 'eventOnChange'
+  const suffix = eventType.startsWith('on') ? eventType.slice(2) : eventType
+  const rootKey = 'eventOn' + suffix.charAt(0).toUpperCase() + suffix.slice(1)
+  if (field[rootKey]) return field[rootKey]
+  if (field.componentProps) {
+    try {
+      const compProps = JSON.parse(field.componentProps)
+      return compProps.events?.[eventType] || ''
+    } catch (e) {}
+  }
+  return ''
+}
 
 // 执行字段自定义事件代码
 function executeEvent(code, value) {
@@ -382,18 +477,21 @@ function executeEvent(code, value) {
 // 字段值变化处理（含事件触发）
 function handleValueChange(val) {
   fieldValue.value = val
-  executeEvent(props.field.eventOnChange, val)
+  const code = getEventCode(props.field, 'onChange')
+  executeEvent(code, val)
   emit('change', val)
 }
 
 // 字段失焦处理
-function handleBlur(val) {
-  executeEvent(props.field.eventOnBlur, val)
+function handleBlur() {
+  const code = getEventCode(props.field, 'onBlur')
+  executeEvent(code, fieldValue.value)
 }
 
 // 字段聚焦处理
-function handleFocus(val) {
-  executeEvent(props.field.eventOnFocus, val)
+function handleFocus() {
+  const code = getEventCode(props.field, 'onFocus')
+  executeEvent(code, fieldValue.value)
 }
 
 // 用户选项

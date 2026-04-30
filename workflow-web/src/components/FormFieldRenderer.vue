@@ -162,6 +162,7 @@ import { Upload } from '@element-plus/icons-vue'
 import SubFormRenderer from './SubFormRenderer.vue'
 import FileUploader from './FileUploader.vue'
 import EntitySelector from './EntitySelector.vue'
+import { getFormFields } from '@/api/entityForm'
 
 const props = defineProps({
   field: {
@@ -207,18 +208,76 @@ const fieldValue = computed({
   }
 })
 
+// 子表单元数据解析（兼容根属性和 componentProps）
+const subFormMeta = computed(() => {
+  const meta = {
+    refFormId: props.field.refFormId,
+    subFormType: props.field.subFormType,
+    displayMode: props.field.displayMode
+  }
+  if (!meta.refFormId && props.field.componentProps) {
+    try {
+      const cp = typeof props.field.componentProps === 'string'
+        ? JSON.parse(props.field.componentProps)
+        : props.field.componentProps
+      if (cp.subFormConfig) {
+        meta.refFormId = cp.subFormConfig.refFormId
+        meta.subFormType = cp.subFormConfig.type
+        meta.displayMode = cp.subFormConfig.displayMode
+      }
+    } catch (e) {}
+  }
+  if ((props.field.componentType || '').toUpperCase() === 'SUB_FORM' || (props.field.fieldType || '').toUpperCase() === 'SUB_FORM') {
+    console.log('[FormFieldRenderer] subFormMeta:', props.field.fieldName, meta, 'componentProps:', props.field.componentProps)
+  }
+  return meta
+})
+
+// 外部表单字段缓存
+const externalFormFields = ref([])
+
+// 监听 refFormId 变化，加载外部表单字段
+watch(() => subFormMeta.value.refFormId, async (formId) => {
+  console.log('[FormFieldRenderer] watch refFormId:', formId, 'subFormType:', subFormMeta.value.subFormType, 'field:', props.field.fieldName)
+  if (formId && subFormMeta.value.subFormType === 'ref') {
+    try {
+      const res = await getFormFields(formId)
+      const fields = Array.isArray(res) ? res : (Array.isArray(res.data) ? res.data : [])
+      console.log('[FormFieldRenderer] 加载外部字段结果:', formId, 'count:', fields.length)
+      externalFormFields.value = fields.map(f => ({
+        fieldKey: f.fieldCode || f.fieldId || f.id,
+        fieldName: f.fieldLabel || f.fieldName,
+        fieldType: (f.componentType || f.fieldType || 'input').toLowerCase(),
+        isEditable: true,
+        isRequired: f.isRequired === 1,
+        options: f.options
+      }))
+    } catch (e) {
+      console.error('[FormFieldRenderer] 加载外部表单字段失败:', e)
+      externalFormFields.value = []
+    }
+  } else {
+    externalFormFields.value = []
+  }
+}, { immediate: true })
+
 // 子表单配置转换
 const subFormConfig = computed(() => {
   const field = props.field
+  const isRef = subFormMeta.value.subFormType === 'ref' && externalFormFields.value.length > 0
+  const fields = isRef
+    ? externalFormFields.value
+    : (field.subFields || field.fields || [])
   return {
     label: field.fieldName || '明细',
     fieldKey: field.fieldKey || 'detailList',
     required: field.required || false,
     minRows: field.minRows || 0,
     maxRows: field.maxRows || 100,
-    fields: field.subFields || field.fields || [],
+    fields,
     showSummary: field.showSummary || false,
-    summaryFields: field.summaryFields || []
+    summaryFields: field.summaryFields || [],
+    layout: isRef ? 'form' : 'table'
   }
 })
 
@@ -265,7 +324,7 @@ watch(() => props.field.defaultValue, (val) => {
 // 实体选择回调
 const handleEntitySelect = (data) => {
   // 可以选择性地发射额外的事件或处理
-  console.log('实体选择:', data)
+  // 实体选择回调已处理
 }
 
 // 获取引用实体类型

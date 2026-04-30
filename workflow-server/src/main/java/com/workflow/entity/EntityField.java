@@ -53,6 +53,18 @@ public class EntityField {
     private Integer fieldLength;
     
     /**
+     * 数据库列名（下划线命名）
+     */
+    @TableField("db_column_name")
+    private String dbColumnName;
+    
+    /**
+     * 小数位数（精度），用于 DECIMAL 类型
+     */
+    @TableField("field_precision")
+    private Integer fieldPrecision;
+    
+    /**
      * 是否必填
      */
     @TableField("is_required")

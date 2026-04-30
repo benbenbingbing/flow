@@ -76,3 +76,8 @@ export const getEntityFormsForBind = (entityId: string) => {
 export const setDefaultForm = (formId: string) => {
   return request.put(`/entity-form/${formId}/default`)
 }
+
+// 复制表单
+export const copyForm = (id: string) => {
+  return request.post(`/entity-form/${id}/copy`)
+}

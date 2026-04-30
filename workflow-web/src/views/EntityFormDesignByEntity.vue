@@ -39,8 +39,10 @@
               <div class="field-name">{{ field.fieldName }}</div>
               <div class="field-code">{{ field.fieldCode }}</div>
             </div>
-            <el-tag v-if="isFieldInForm(field)" type="info" size="small">已添加</el-tag>
-            <el-tag v-else size="small">{{ field.fieldType }}</el-tag>
+            <div class="field-tags">
+              <el-tag v-if="isFieldInForm(field)" type="info" size="small" class="added-tag">已添加</el-tag>
+              <el-tag size="small" class="type-tag">{{ field.fieldType }}</el-tag>
+            </div>
           </div>
         </div>
       </div>
@@ -65,7 +67,7 @@
               <el-input v-model="form.formName" placeholder="请输入表单名称" style="width: 200px" />
             </el-form-item>
             <el-form-item label="表单标识">
-              <el-input v-model="form.formKey" placeholder="表单标识" style="width: 150px" :disabled="isEdit" />
+              <el-input v-model="form.formKey" placeholder="表单标识" style="width: 150px" />
             </el-form-item>
           </el-form>
         </div>
@@ -89,7 +91,8 @@
                 class="form-field-wrapper"
                 :class="{ 
                   active: selectedField?.id === field.id,
-                  'grid-item': form.layoutType === 'grid'
+                  'grid-item': form.layoutType === 'grid',
+                  'tab-subform': isTabSubForm(field)
                 }"
                 :style="getGridStyle(field)"
                 @click="selectField(field)"
@@ -104,6 +107,7 @@
                     :required="field.isRequired === 1"
                     class="design-form-item"
                   >
+                    <el-tag v-if="isTabSubForm(field)" type="warning" size="small" class="tab-badge">Tab 子表单</el-tag>
                     <FormFieldRenderer :field="field" :disabled="true" />
                   </el-form-item>
                 </div>
@@ -122,6 +126,26 @@
                     </el-button>
                   </el-button-group>
                 </div>
+              </div>
+
+              <!-- Tab 子表单预览 -->
+              <div v-if="formFields.filter(f => isTabSubForm(f)).length > 0" class="tab-subforms-preview" style="width: 100%; margin-top: 16px;">
+                <el-tabs v-model="activeDesignTab" type="border-card">
+                  <el-tab-pane
+                    v-for="field in formFields.filter(f => isTabSubForm(f))"
+                    :key="field.id || field.fieldId"
+                    :label="field.fieldLabel || field.fieldName"
+                    :name="field.fieldCode || field.fieldId || field.id"
+                  >
+                    <div 
+                      @click="selectField(field)" 
+                      class="tab-form-field-wrapper"
+                      :class="{ active: selectedField?.id === field.id }"
+                    >
+                      <FormFieldRenderer :field="field" :disabled="true" />
+                    </div>
+                  </el-tab-pane>
+                </el-tabs>
               </div>
             </el-form>
           </div>
@@ -183,11 +207,18 @@
               </el-form-item>
               
               <!-- 子表单特殊配置 -->
-              <template v-if="selectedField.componentType === 'SUB_FORM'">
+              <template v-if="(selectedField.componentType || '').toUpperCase() === 'SUB_FORM'">
                 <el-divider>子表单配置</el-divider>
 
+                <el-form-item label="显示方式">
+                  <el-radio-group v-model="selectedField.displayMode">
+                    <el-radio label="embedded">嵌入表单</el-radio>
+                    <el-radio label="tab">Tab 页签</el-radio>
+                  </el-radio-group>
+                </el-form-item>
+
                 <el-form-item label="引用类型">
-                  <el-radio-group v-model="selectedField.subFormType">
+                  <el-radio-group v-model="selectedField.subFormType" @change="handleSubFormTypeChange">
                     <el-radio label="embedded">内嵌定义</el-radio>
                     <el-radio label="ref">引用实体表单</el-radio>
                   </el-radio-group>
@@ -325,7 +356,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, Edit, DocumentAdd, Plus, Connection } from '@element-plus/icons-vue'
@@ -347,6 +378,24 @@ const showPreview = ref(false)
 const showLinkageConfig = ref(false)
 const showEventConfig = ref(false)
 const currentEventField = ref(null)
+const activeDesignTab = ref('')
+
+// 判断是否为 Tab 模式的子表单
+function isTabSubForm(field) {
+  const type = (field.componentType || field.fieldType || '').toUpperCase()
+  if (type !== 'SUB_FORM') return false
+  if (field.displayMode === 'tab') return true
+  if (field.componentProps) {
+    try {
+      const compProps = typeof field.componentProps === 'string'
+        ? JSON.parse(field.componentProps)
+        : field.componentProps
+      return compProps.subFormConfig?.displayMode === 'tab'
+    } catch (e) {}
+  }
+  return false
+}
+
 const entityInfo = ref({})
 const entityFields = ref([])
 const formFields = ref([])
@@ -354,6 +403,16 @@ const selectedField = ref(null)
 const fieldSearch = ref('')
 const entityList = ref([])
 const formListByEntity = ref([])
+
+// Tab 模式的子表单字段（必须在 formFields 定义之后）
+const tabSubFormFields = ref([])
+watch(formFields, (fields) => {
+  const result = fields.filter(f => isTabSubForm(f))
+  tabSubFormFields.value = result
+  if (result.length > 0) {
+    console.log('[tabSubFormFields] count:', result.length, 'names:', result.map(f => f.fieldName))
+  }
+}, { deep: true, immediate: true })
 
 const form = ref({
   id: formId,
@@ -366,18 +425,35 @@ const form = ref({
 
 // 当前选中字段的事件配置值
 const currentEventValues = computed(() => {
-  if (!currentEventField.value) return { onChange: '', onBlur: '', onFocus: '' }
-  return {
-    onChange: currentEventField.value.eventOnChange || '',
-    onBlur: currentEventField.value.eventOnBlur || '',
-    onFocus: currentEventField.value.eventOnFocus || ''
+  if (!currentEventField.value) return {}
+  const result = {}
+  // 读取所有以 eventOn 开头的根属性
+  Object.keys(currentEventField.value).forEach(key => {
+    if (key.startsWith('eventOn')) {
+      const eventName = 'on' + key.slice(7)
+      result[eventName] = currentEventField.value[key] || ''
+    }
+  })
+  // 再从 componentProps 解析补充
+  if (currentEventField.value.componentProps) {
+    try {
+      const compProps = JSON.parse(currentEventField.value.componentProps)
+      if (compProps.events) {
+        Object.keys(compProps.events).forEach(key => {
+          if (!result[key]) {
+            result[key] = compProps.events[key] || ''
+          }
+        })
+      }
+    } catch (e) {}
   }
+  return result
 })
 
 // 当前选中字段是否已配置事件
 const hasEventConfig = computed(() => {
   if (!selectedField.value) return false
-  return !!(selectedField.value.eventOnChange || selectedField.value.eventOnBlur || selectedField.value.eventOnFocus)
+  return Object.keys(selectedField.value).some(key => key.startsWith('eventOn') && selectedField.value[key])
 })
 
 // 预览数据
@@ -465,7 +541,7 @@ async function loadEntityList() {
   }
 }
 
-// 加载指定实体的表单列表
+// 加载指定实体的表单列表（排除当前正在编辑的表单）
 async function loadFormListByEntity(targetEntityId) {
   if (!targetEntityId) {
     formListByEntity.value = []
@@ -473,7 +549,10 @@ async function loadFormListByEntity(targetEntityId) {
   }
   try {
     const res = await entityApi.getEntityForms(targetEntityId)
-    formListByEntity.value = res.data || []
+    // 兼容直接返回数组或 { data: [...] } 两种格式
+    const list = Array.isArray(res) ? res : (Array.isArray(res.data) ? res.data : [])
+    // 排除当前正在编辑的表单（避免循环引用）
+    formListByEntity.value = list.filter(fm => String(fm.id) !== String(formId))
   } catch (e) {
     console.error('加载表单列表失败:', e)
     formListByEntity.value = []
@@ -557,6 +636,7 @@ function restoreFieldConfig(field) {
     // 恢复子表单配置
     if (compProps.subFormConfig) {
       field.subFormType = compProps.subFormConfig.type || 'embedded'
+      field.displayMode = compProps.subFormConfig.displayMode || 'embedded'
       field.refEntityId = compProps.subFormConfig.refEntityId || ''
       field.refFormId = compProps.subFormConfig.refFormId || ''
     }
@@ -566,9 +646,10 @@ function restoreFieldConfig(field) {
 
     // 恢复事件配置
     if (compProps.events) {
-      field.eventOnChange = compProps.events.onChange || ''
-      field.eventOnBlur = compProps.events.onBlur || ''
-      field.eventOnFocus = compProps.events.onFocus || ''
+      Object.keys(compProps.events).forEach(key => {
+        const rootKey = 'eventOn' + key.charAt(2).toUpperCase() + key.slice(3)
+        field[rootKey] = compProps.events[key] || ''
+      })
     }
   } catch (e) {
     // 忽略解析错误
@@ -583,9 +664,10 @@ function serializeFieldConfig(field) {
       : {}
 
     // 序列化子表单配置
-    if (field.componentType === 'SUB_FORM') {
+    if ((field.componentType || '').toUpperCase() === 'SUB_FORM') {
       compProps.subFormConfig = {
         type: field.subFormType || 'embedded',
+        displayMode: field.displayMode || 'embedded',
         refEntityId: field.refEntityId || '',
         refFormId: field.refFormId || ''
       }
@@ -598,9 +680,12 @@ function serializeFieldConfig(field) {
 
     // 序列化事件配置
     const events = {}
-    if (field.eventOnChange) events.onChange = field.eventOnChange
-    if (field.eventOnBlur) events.onBlur = field.eventOnBlur
-    if (field.eventOnFocus) events.onFocus = field.eventOnFocus
+    Object.keys(field).forEach(key => {
+      if (key.startsWith('eventOn') && field[key]) {
+        const eventName = 'on' + key.slice(7)
+        events[eventName] = field[key]
+      }
+    })
     if (Object.keys(events).length > 0) {
       compProps.events = events
     } else {
@@ -676,7 +761,8 @@ function getDefaultComponentType(fieldType) {
     'DECIMAL': 'number',
     'DATE': 'date',
     'DATETIME': 'datetime',
-    'BOOLEAN': 'switch'
+    'BOOLEAN': 'switch',
+    'SUB_FORM': 'sub_form'
   }
   return typeMap[fieldType] || 'input'
 }
@@ -685,7 +771,7 @@ function getDefaultComponentType(fieldType) {
 function selectField(field) {
   selectedField.value = field
   // 如果选中的字段是子表单且配置了引用实体，加载对应表单列表
-  if (field && field.componentType === 'SUB_FORM' && field.subFormType === 'ref') {
+  if (field && (field.componentType || '').toUpperCase() === 'SUB_FORM' && field.subFormType === 'ref') {
     const refEntityId = field.refEntityId || entityInfo.value.id
     loadFormListByEntity(refEntityId)
   }
@@ -727,9 +813,19 @@ function openEventConfig() {
 // 保存事件配置
 function handleSaveEvent(events) {
   if (!currentEventField.value) return
-  currentEventField.value.eventOnChange = events.onChange
-  currentEventField.value.eventOnBlur = events.onBlur
-  currentEventField.value.eventOnFocus = events.onFocus
+  // 清除旧的事件根属性
+  Object.keys(currentEventField.value).forEach(key => {
+    if (key.startsWith('eventOn')) {
+      delete currentEventField.value[key]
+    }
+  })
+  // 保存所有事件（包括自定义事件）
+  Object.keys(events).forEach(key => {
+    if (events[key]) {
+      const rootKey = 'eventOn' + key.charAt(2).toUpperCase() + key.slice(3)
+      currentEventField.value[rootKey] = events[key]
+    }
+  })
   ElMessage.success('事件配置已保存')
 }
 
@@ -771,6 +867,14 @@ function parseComponentProps(propsStr) {
 // 引用实体变化时加载表单列表
 function handleRefEntityChange(entityId) {
   loadFormListByEntity(entityId || entityInfo.value.id)
+}
+
+// 子表单引用类型切换时加载表单列表
+function handleSubFormTypeChange(val) {
+  if (val === 'ref' && selectedField.value) {
+    const refEntityId = selectedField.value.refEntityId || entityInfo.value.id
+    loadFormListByEntity(refEntityId)
+  }
 }
 
 // 添加子表单字段
@@ -959,6 +1063,21 @@ onMounted(async () => {
 .field-code {
   font-size: 11px;
   color: #909399;
+}
+
+.field-tags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.field-tags .el-tag {
+  font-size: 10px;
+  padding: 0 4px;
+  height: 18px;
+  line-height: 16px;
 }
 
 /* 中间画布 */

@@ -79,40 +79,49 @@
           <el-input v-if="field.fieldType === 'STRING'"
                    v-model="formData.data[field.fieldCode || field.fieldId]"
                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                   @change="(val) => executeFieldEvent(field, 'onChange', val)"
                    :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
           <el-input v-else-if="field.fieldType === 'TEXT'"
                    v-model="formData.data[field.fieldCode || field.fieldId]"
                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                   @change="(val) => executeFieldEvent(field, 'onChange', val)"
                    type="textarea" rows="3" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
           <el-input-number v-else-if="field.fieldType === 'INTEGER' || field.fieldType === 'DECIMAL'"
                           v-model="formData.data[field.fieldCode || field.fieldId]"
                           :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                          @change="(val) => executeFieldEvent(field, 'onChange', val)"
                           style="width: 100%" />
           <el-date-picker v-else-if="field.fieldType === 'DATE'"
                          v-model="formData.data[field.fieldCode || field.fieldId]"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         @change="(val) => executeFieldEvent(field, 'onChange', val)"
                          type="date" style="width: 100%" />
           <el-date-picker v-else-if="field.fieldType === 'DATETIME'"
                          v-model="formData.data[field.fieldCode || field.fieldId]"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         @change="(val) => executeFieldEvent(field, 'onChange', val)"
                          type="datetime" style="width: 100%" />
           <el-switch v-else-if="field.fieldType === 'BOOLEAN'"
                     v-model="formData.data[field.fieldCode || field.fieldId]"
-                    :disabled="isFieldDisabled(field) || field.isReadonly === 1" />
+                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                    @change="(val) => executeFieldEvent(field, 'onChange', val)" />
           <el-select v-else-if="field.fieldType === 'SELECT'"
                     v-model="formData.data[field.fieldCode || field.fieldId]"
                     :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                    @change="(val) => executeFieldEvent(field, 'onChange', val)"
                     style="width: 100%" clearable>
             <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
           <el-checkbox-group v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'"
                             v-model="formData.data[field.fieldCode || field.fieldId]"
-                            :disabled="isFieldDisabled(field) || field.isReadonly === 1">
+                            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                            @change="(val) => executeFieldEvent(field, 'onChange', val)">
             <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
           </el-checkbox-group>
           <el-radio-group v-else-if="field.fieldType === 'RADIO'"
                          v-model="formData.data[field.fieldCode || field.fieldId]"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1">
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         @change="(val) => executeFieldEvent(field, 'onChange', val)">
             <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
           </el-radio-group>
           <!-- 文件上传 -->
@@ -162,6 +171,24 @@
             </template>
           </el-upload>
         </el-form-item>
+
+        <!-- Tab 模式的子表单 -->
+        <div v-if="tabSubFormFields.length > 0" class="tab-subforms-wrapper" style="width: 100%; margin-top: 16px;">
+          <el-tabs v-model="activeTabSubForm" type="border-card">
+            <el-tab-pane
+              v-for="field in tabSubFormFields"
+              :key="field.fieldId || field.id"
+              :label="field.fieldLabel || field.fieldName"
+              :name="field.fieldCode || field.fieldId || field.id"
+            >
+              <FormFieldRendererLinkage
+                :field="field"
+                v-model="formData.data[field.fieldCode || field.fieldId || field.id]"
+                :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              />
+            </el-tab-pane>
+          </el-tabs>
+        </div>
         
         <el-divider v-if="entityDefinition.enableProcess" />
         <el-form-item v-if="entityDefinition.enableProcess" label="发起流程">
@@ -275,6 +302,7 @@ import { fileApi } from '@/api/file'
 import { getFormForNewData, getFormForViewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { LinkageEngine } from '@/utils/linkageEngine'
+import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -370,6 +398,32 @@ function getFieldOptions(field) {
   return parseOptions(field.optionsJson)
 }
 
+// 从字段配置中获取事件代码（支持根属性和 componentProps.events）
+function getFieldEventCode(field, eventType) {
+  const suffix = eventType.startsWith('on') ? eventType.slice(2) : eventType
+  const rootKey = 'eventOn' + suffix.charAt(0).toUpperCase() + suffix.slice(1)
+  if (field[rootKey]) return field[rootKey]
+  if (field.componentProps) {
+    try {
+      const compProps = JSON.parse(field.componentProps)
+      return compProps.events?.[eventType] || ''
+    } catch (e) {}
+  }
+  return ''
+}
+
+// 执行字段自定义事件
+function executeFieldEvent(field, eventType, value) {
+  const code = getFieldEventCode(field, eventType)
+  if (!code) return
+  try {
+    const func = new Function('value', 'field', code)
+    func(value, field)
+  } catch (e) {
+    console.error('字段事件执行失败:', e)
+  }
+}
+
 // 监听表单数据变化，触发联动
 watch(() => formData.value.data, () => {
   updateLinkageState()
@@ -385,15 +439,45 @@ const queryFields = computed(() => {
   return fields.value.filter(f => f.isQuery)
 })
 
-// 表单字段 - 新增时使用解析后的表单字段，编辑时使用实体字段
-const formFields = computed(() => {
-  // 如果是新增且有解析的表单，使用解析的表单字段
-  if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
-    return resolvedForm.value.fields.filter(f => f.status !== 0)
+// 判断是否为 Tab 模式的子表单
+function isTabSubForm(field) {
+  const type = (field.componentType || field.fieldType || '').toUpperCase()
+  if (type !== 'SUB_FORM') return false
+  if (field.displayMode === 'tab') return true
+  if (field.componentProps) {
+    try {
+      const compProps = typeof field.componentProps === 'string'
+        ? JSON.parse(field.componentProps)
+        : field.componentProps
+      return compProps.subFormConfig?.displayMode === 'tab'
+    } catch (e) {}
   }
-  // 否则使用实体字段
-  return fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
+  return false
+}
+
+// 表单字段 - 新增时使用解析后的表单字段，编辑时使用实体字段（过滤掉 Tab 子表单）
+const formFields = computed(() => {
+  let result
+  if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
+    result = resolvedForm.value.fields.filter(f => f.status !== 0)
+  } else {
+    result = fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
+  }
+  return result.filter(f => !isTabSubForm(f))
 })
+
+// Tab 模式的子表单字段
+const tabSubFormFields = computed(() => {
+  let result
+  if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
+    result = resolvedForm.value.fields.filter(f => f.status !== 0)
+  } else {
+    result = fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
+  }
+  return result.filter(f => isTabSubForm(f))
+})
+
+const activeTabSubForm = ref('')
 
 const uploadLoading = ref(false)
 

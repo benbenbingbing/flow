@@ -68,7 +68,7 @@
           <el-input v-model="form.formName" placeholder="请输入表单名称" />
         </el-form-item>
         <el-form-item label="表单标识" prop="formKey">
-          <el-input v-model="form.formKey" placeholder="请输入表单标识" :disabled="isEdit" />
+          <el-input v-model="form.formKey" placeholder="请输入表单标识" />
         </el-form-item>
         <el-form-item label="布局类型">
           <el-radio-group v-model="form.layoutType">
@@ -107,7 +107,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreview from '@/components/FormPreview.vue'
 import { entityApi } from '@/api/entity'
-import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm } from '@/api/entityForm'
+import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm, copyForm } from '@/api/entityForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -236,16 +236,7 @@ async function handleSetDefault(row) {
 
 async function handleCopy(row) {
   try {
-    // 调用后端复制接口（暂时使用新建方式）
-    const newForm = {
-      entityId: row.entityId,
-      formName: row.formName + '_复制',
-      formKey: row.formKey + '_copy_' + Date.now(),
-      layoutType: row.layoutType,
-      status: 1,
-      description: row.description
-    }
-    await createForm(newForm)
+    await copyForm(row.id)
     ElMessage.success(`表单 "${row.formName}" 复制成功`)
     loadForms()
   } catch (e) {

@@ -98,6 +98,18 @@ public class TaskActionService {
                 taskService.setAssignee(taskId, transferTo);
                 processTaskService.completeTask(taskId, "transfer", "转办给: " + transferTo);
                 
+                // 为转办人创建新的待办记录（原待办已标记为 transfer，需要一条新的 todo）
+                try {
+                    Task transferredTask = taskService.createTaskQuery().taskId(taskId).singleResult();
+                    if (transferredTask != null) {
+                        Map<String, Object> variables = runtimeService.getVariables(transferredTask.getProcessInstanceId());
+                        processTaskService.createTask(transferredTask, variables);
+                        log.info("已为转办人 {} 创建新待办: taskId={}", transferTo, taskId);
+                    }
+                } catch (Exception e) {
+                    log.warn("为转办人创建待办失败: taskId={}, transferTo={}", taskId, transferTo, e);
+                }
+                
                 // 记录转办日志到 process_operation_log
                 try {
                     com.workflow.entity.ProcessOperationLog log = new com.workflow.entity.ProcessOperationLog();

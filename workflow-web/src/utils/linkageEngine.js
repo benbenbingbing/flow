@@ -84,11 +84,8 @@ export const LinkageEngine = {
         return value ?? 'null'
       })
 
-      console.log('[LinkageEngine] evaluateCondition:', { condition, originalExpr: condition, expr, formData })
-
       // 安全评估表达式
       const result = this.safeEvaluate(expr)
-      console.log('[LinkageEngine] evaluateResult:', { expr, result })
       return result
     } catch (e) {
       console.error('评估条件失败:', condition, e)
@@ -242,14 +239,12 @@ export const LinkageEngine = {
 
     if (!Array.isArray(fields)) return result
 
-    console.log('[LinkageEngine] processAllLinkages fields count:', fields.length)
+
 
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i]
       const fieldKey = field.fieldCode || field.fieldKey || field.fieldId || field.id
       const rules = this.getFieldLinkageRules(field)
-
-      console.log('[LinkageEngine] field:', fieldKey, 'rules:', rules)
 
       // 处理显隐
       result.visibility[fieldKey] = rules.visibilityRule
@@ -315,7 +310,6 @@ export const LinkageEngine = {
       }
     }
 
-    console.log('[LinkageEngine] processAllLinkages result:', result)
     return result
   },
 

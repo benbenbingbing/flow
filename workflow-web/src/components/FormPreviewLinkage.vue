@@ -9,34 +9,93 @@
       <h3>{{ form?.formName }}</h3>
     </div>
     
-    <el-form 
+    <el-form
       ref="formRef"
       :model="formData"
       :label-width="labelWidth"
       :label-position="labelPosition"
       class="preview-form"
     >
-      <div
-        v-for="field in processedFields"
-        :key="field.id"
-        class="preview-field-wrapper"
-        :style="getFieldStyle(field)"
-        v-show="linkageState.visibility[getFieldKey(field)] !== false"
-      >
-        <el-form-item
-          :label="field.fieldLabel || field.fieldName"
-          :prop="getFieldKey(field)"
-          :rules="getFieldRules(field)"
-          :required="linkageState.required[getFieldKey(field)]"
+      <!-- 没有 Tab 子表单时，正常渲染所有字段 -->
+      <template v-if="tabSubForms.length === 0">
+        <div
+          v-for="field in processedFields"
+          :key="field.id"
+          class="preview-field-wrapper"
+          :style="getFieldStyle(field)"
+          v-show="linkageState.visibility[getFieldKey(field)] !== false"
         >
-          <FormFieldRendererLinkage
-            :field="field"
-            v-model="formData[getFieldKey(field)]"
-            :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
-            :options="linkageState.options[getFieldKey(field)] || field.options"
-          />
-        </el-form-item>
-      </div>
+          <el-form-item
+            :label="field.fieldLabel || field.fieldName"
+            :prop="getFieldKey(field)"
+            :rules="getFieldRules(field)"
+            :required="linkageState.required[getFieldKey(field)]"
+          >
+            <FormFieldRendererLinkage
+              :field="field"
+              v-model="formData[getFieldKey(field)]"
+              :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+              :options="linkageState.options[getFieldKey(field)] || field.options"
+            />
+          </el-form-item>
+        </div>
+      </template>
+
+      <!-- 有 Tab 子表单时，整个表单用 Tab 组织 -->
+      <template v-else>
+        <div class="form-tabs-wrapper">
+          <el-tabs
+            :key="'tabs-' + normalFields.length + '-' + tabSubForms.length"
+            v-model="activeTabSubForm"
+            type="border-card"
+          >
+            <!-- 普通字段放在"基本信息"Tab -->
+            <el-tab-pane
+              v-if="normalFields.length > 0"
+              label="基本信息"
+              name="basic"
+              key="pane-basic"
+            >
+              <div
+                v-for="field in normalFields"
+                :key="'basic-' + (field.id || field.fieldCode || field.fieldKey)"
+                class="preview-field-wrapper"
+                :style="getFieldStyle(field)"
+                v-show="linkageState.visibility[getFieldKey(field)] !== false"
+              >
+                <el-form-item
+                  :label="field.fieldLabel || field.fieldName"
+                  :prop="getFieldKey(field)"
+                  :rules="getFieldRules(field)"
+                  :required="linkageState.required[getFieldKey(field)]"
+                >
+                  <FormFieldRendererLinkage
+                    :field="field"
+                    v-model="formData[getFieldKey(field)]"
+                    :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+                    :options="linkageState.options[getFieldKey(field)] || field.options"
+                  />
+                </el-form-item>
+              </div>
+            </el-tab-pane>
+
+            <!-- Tab 子表单 -->
+            <el-tab-pane
+              v-for="(field, idx) in tabSubForms"
+              :key="'pane-subform-' + idx + '-' + (field.id || field.fieldCode || field.fieldKey || '')"
+              :label="field.fieldLabel || field.fieldName"
+              :name="'tab_' + idx"
+            >
+              <FormFieldRendererLinkage
+                :field="field"
+                v-model="formData[getFieldKey(field)]"
+                :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+                :options="linkageState.options[getFieldKey(field)] || field.options"
+              />
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </template>
     </el-form>
   </div>
 </template>
@@ -75,6 +134,25 @@ const linkageState = ref({
   required: {},
   options: {}
 })
+const activeTabSubForm = ref('')
+
+// 判断是否为 Tab 模式的子表单
+function isTabSubForm(field) {
+  const type = (field.componentType || field.fieldType || '').toUpperCase()
+  const result = field.displayMode === 'tab' || (() => {
+    if (field.componentProps) {
+      try {
+        const compProps = typeof field.componentProps === 'string'
+          ? JSON.parse(field.componentProps)
+          : field.componentProps
+        return compProps.subFormConfig?.displayMode === 'tab'
+      } catch (e) {}
+    }
+    return false
+  })()
+  if (type !== 'SUB_FORM') return false
+  return result
+}
 
 // 同步外部数据
 watch(() => props.modelValue, (val) => {
@@ -84,7 +162,7 @@ watch(() => props.modelValue, (val) => {
 
 // 同步内部数据到外部，并触发联动更新
 watch(formData, (val) => {
-  console.log('[FormPreviewLinkage] formData changed:', JSON.parse(JSON.stringify(val)))
+
   emit('update:modelValue', val)
   updateLinkageState()
   // 计算字段自动赋值
@@ -96,6 +174,31 @@ const processedFields = computed(() => {
   const fields = props.form?.fields || []
   return [...fields].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 })
+
+// 普通字段（嵌入表单或普通字段）
+const normalFields = computed(() => {
+  return processedFields.value.filter(f => !isTabSubForm(f))
+})
+
+// Tab 模式的子表单
+const tabSubForms = computed(() => {
+  return processedFields.value.filter(f => isTabSubForm(f))
+})
+
+// 自动设置第一个 tab 为激活状态
+watch([tabSubForms, normalFields], ([tabs, normals]) => {
+  if (tabs.length > 0) {
+    // 有普通字段时默认激活"基本信息"Tab，否则激活第一个子表单Tab
+    const defaultKey = normals.length > 0 ? 'basic' : 'tab_0'
+    const allTabNames = [
+      ...(normals.length > 0 ? ['basic'] : []),
+      ...tabs.map((t, i) => 'tab_' + i)
+    ]
+    if (!allTabNames.includes(activeTabSubForm.value)) {
+      activeTabSubForm.value = defaultKey
+    }
+  }
+}, { immediate: true })
 
 // 标签位置
 const labelPosition = computed(() => {
@@ -147,7 +250,7 @@ function getFieldStyle(field) {
 
 // 获取字段唯一键（兼容多种字段结构）
 function getFieldKey(field) {
-  return field.fieldCode || field.fieldKey || field.fieldId || field.id
+  return String(field.fieldCode || field.fieldKey || field.fieldId || field.id || '')
 }
 
 // 获取字段验证规则
@@ -170,7 +273,7 @@ function getFieldRules(field) {
 // 更新联动状态
 function updateLinkageState() {
   const fields = props.form?.fields || []
-  console.log('[FormPreviewLinkage] updateLinkageState, formData:', JSON.parse(JSON.stringify(formData.value)))
+
   linkageState.value = LinkageEngine.processAllLinkages(fields, formData.value)
   // 应用值联动和计算字段的结果
   if (linkageState.value.values) {
@@ -250,8 +353,17 @@ defineExpose({
   flex-wrap: wrap;
 }
 
+.preview-form > .el-tabs {
+  width: 100%;
+}
+
 .preview-field-wrapper {
   transition: all 0.3s ease;
+}
+
+.form-tabs-wrapper {
+  width: 100%;
+  display: block;
 }
 
 .preview-field-wrapper[v-show="false"] {

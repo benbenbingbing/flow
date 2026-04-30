@@ -84,7 +84,7 @@ public class DynamicTableService {
         List<EntityField> fields = entityFieldMapper.findByEntityId(entityDefinition.getId());
 
         // 构建建表SQL
-        String createTableSql = buildCreateTableSql(tableName, fields);
+        String createTableSql = buildCreateTableSql(tableName, fields, entityDefinition.getEntityName());
         
         log.info("创建实体数据表: {}", tableName);
         jdbcTemplate.execute(createTableSql);
@@ -112,7 +112,7 @@ public class DynamicTableService {
         
         if (!tableExists(entityCode)) {
             // 表不存在，创建新表（包含所有非子表单字段）
-            String ddl = buildCreateTableSql(tableName, fields);
+            String ddl = buildCreateTableSql(tableName, fields, entityDefinition.getEntityName());
             jdbcTemplate.execute(ddl);
             createIndexes(tableName, fields);
             executedDdls.add(ddl);
@@ -130,13 +130,12 @@ public class DynamicTableService {
                     continue;
                 }
                 
-                // 只同步未发布的字段（isPublished = false 或 null）
-                if (Boolean.TRUE.equals(field.getIsPublished())) {
-                    continue; // 已发布的字段跳过
-                }
+                String dbColumnName = field.getDbColumnName() != null && !field.getDbColumnName().isEmpty() 
+                    ? field.getDbColumnName() 
+                    : field.getFieldCode();
                 
-                if (!existingColumnNames.contains(field.getFieldCode())) {
-                    // 字段在数据库中不存在，添加字段
+                if (!existingColumnNames.contains(dbColumnName)) {
+                    // 字段在数据库中不存在，添加字段（新字段或未发布的字段）
                     String columnDef = buildColumnDefinition(field);
                     String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
                     jdbcTemplate.execute(sql);
@@ -144,10 +143,21 @@ public class DynamicTableService {
                     
                     // 创建索引
                     if (Boolean.TRUE.equals(field.getIsQuery()) || Boolean.TRUE.equals(field.getIsUnique())) {
-                        createIndexForColumn(tableName, field.getFieldCode(), field.getIsUnique());
+                        createIndexForColumn(tableName, dbColumnName, field.getIsUnique());
                     }
                     
-                    log.info("为表 {} 添加字段: {}", tableName, field.getFieldCode());
+                    log.info("为表 {} 添加字段: {}", tableName, dbColumnName);
+                } else if (Boolean.TRUE.equals(field.getIsPublished())) {
+                    // 已发布的字段，检查是否需要修改列定义（长度、精度、必填等变更）
+                    try {
+                        String columnDef = buildColumnDefinition(field);
+                        String sql = "ALTER TABLE " + tableName + " MODIFY COLUMN " + columnDef;
+                        jdbcTemplate.execute(sql);
+                        executedDdls.add(sql);
+                        log.info("修改表 {} 字段定义: {}", tableName, dbColumnName);
+                    } catch (Exception e) {
+                        log.warn("修改表 {} 字段 {} 定义失败: {}", tableName, dbColumnName, e.getMessage());
+                    }
                 }
             }
         }
@@ -210,13 +220,13 @@ public class DynamicTableService {
      * 删除字段
      */
     @Transactional(rollbackFor = Exception.class)
-    public void dropColumn(String entityCode, String fieldCode) {
+    public void dropColumn(String entityCode, String columnName) {
         String tableName = getTableName(entityCode);
         if (!tableExists(entityCode)) {
             return;
         }
 
-        String sql = "ALTER TABLE " + tableName + " DROP COLUMN " + fieldCode;
+        String sql = "ALTER TABLE " + tableName + " DROP COLUMN " + columnName;
         jdbcTemplate.execute(sql);
         log.info("删除表 {} 字段: {}", tableName, fieldCode);
     }
@@ -224,7 +234,7 @@ public class DynamicTableService {
     /**
      * 构建建表SQL
      */
-    private String buildCreateTableSql(String tableName, List<EntityField> fields) {
+    private String buildCreateTableSql(String tableName, List<EntityField> fields, String entityName) {
         StringBuilder sql = new StringBuilder();
         sql.append("CREATE TABLE ").append(tableName).append(" (\n");
         
@@ -272,7 +282,8 @@ public class DynamicTableService {
         
         // 主键
         sql.append("  PRIMARY KEY (`id`)\n");
-        sql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实体数据表-").append(tableName).append("';");
+        String comment = entityName != null && !entityName.isEmpty() ? entityName : tableName;
+        sql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='").append(comment).append("';");
         
         return sql.toString();
     }
@@ -282,7 +293,10 @@ public class DynamicTableService {
      */
     private String buildColumnDefinition(EntityField field) {
         StringBuilder col = new StringBuilder();
-        col.append("`").append(field.getFieldCode()).append("` ");
+        String columnName = field.getDbColumnName() != null && !field.getDbColumnName().isEmpty() 
+            ? field.getDbColumnName() 
+            : field.getFieldCode();
+        col.append("`").append(columnName).append("` ");
         
         // 根据字段类型确定数据库类型
         String dbType = getDbType(field);
@@ -341,7 +355,9 @@ public class DynamicTableService {
             case LONG:
                 return "BIGINT";
             case DECIMAL:
-                return "DECIMAL(18,2)";
+                int prec = field.getFieldLength() != null ? field.getFieldLength() : 18;
+                int scale = field.getFieldPrecision() != null ? field.getFieldPrecision() : 2;
+                return "DECIMAL(" + prec + "," + scale + ")";
             case DATE:
                 return "DATE";
             case DATETIME:
@@ -412,9 +428,9 @@ public class DynamicTableService {
     /**
      * 构建建表SQL预览（不执行）
      */
-    public String buildCreateTableSqlPreview(String entityCode, List<EntityField> fields) {
+    public String buildCreateTableSqlPreview(String entityCode, List<EntityField> fields, String entityName) {
         String tableName = getTableName(entityCode);
-        return buildCreateTableSql(tableName, fields);
+        return buildCreateTableSql(tableName, fields, entityName);
     }
     
     /**
