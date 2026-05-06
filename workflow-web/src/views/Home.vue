@@ -364,7 +364,7 @@ const approvalConfig = ref(null)
 
 // 计算属性：获取当前有效的审批配置（带默认值 fallback）
 const effectiveApprovalConfig = computed(() => {
-  if (approvalConfig.value && approvalConfig.value.options && approvalConfig.value.options.length > 0) {
+  if (approvalConfig.value) {
     return approvalConfig.value
   }
   // 默认配置

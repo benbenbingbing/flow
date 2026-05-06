@@ -852,11 +852,16 @@ public class ProcessInstanceService {
             }
             
             String approvalConfigJson = propMatcher.group(1);
-            // 处理 XML 转义
+            // 处理 XML 命名实体和数字字符引用
             approvalConfigJson = approvalConfigJson.replace("&quot;", "\"")
+                                                   .replace("&#34;", "\"")
                                                    .replace("&amp;", "&")
+                                                   .replace("&#38;", "&")
                                                    .replace("&lt;", "<")
-                                                   .replace("&gt;", ">");
+                                                   .replace("&#60;", "<")
+                                                   .replace("&gt;", ">")
+                                                   .replace("&#62;", ">")
+                                                   .replace("&#39;", "'");
             
             com.fasterxml.jackson.databind.JsonNode config = 
                 new com.fasterxml.jackson.databind.ObjectMapper().readTree(approvalConfigJson);
