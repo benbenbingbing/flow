@@ -56,7 +56,17 @@ public class EntityFormService {
         EntityForm form = formMapper.selectById(id);
         if (form != null) {
             fillFormDetails(form);
-            form.setFields(getFormFields(id));
+            List<EntityFormField> fields = getFormFields(id);
+            // 补充 fieldCode（从 entity_field 查询）
+            for (EntityFormField field : fields) {
+                if (field.getFieldId() != null) {
+                    com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
+                    if (entityField != null) {
+                        field.setFieldCode(entityField.getFieldCode());
+                    }
+                }
+            }
+            form.setFields(fields);
         }
         return form;
     }
@@ -129,7 +139,22 @@ public class EntityFormService {
      * 获取实体的默认表单
      */
     public EntityForm getDefaultForm(String entityId) {
-        return formMapper.selectDefaultByEntityId(entityId);
+        EntityForm form = formMapper.selectDefaultByEntityId(entityId);
+        if (form != null) {
+            fillFormDetails(form);
+            List<EntityFormField> fields = getFormFields(form.getId());
+            // 补充 fieldCode（从 entity_field 查询）
+            for (EntityFormField field : fields) {
+                if (field.getFieldId() != null) {
+                    com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
+                    if (entityField != null) {
+                        field.setFieldCode(entityField.getFieldCode());
+                    }
+                }
+            }
+            form.setFields(fields);
+        }
+        return form;
     }
     
     /**
@@ -185,7 +210,17 @@ public class EntityFormService {
         EntityForm form = formMapper.selectByEntityIdAndFormKey(entityId, formKey);
         if (form != null) {
             fillFormDetails(form);
-            form.setFields(getFormFields(form.getId()));
+            List<EntityFormField> fields = getFormFields(form.getId());
+            // 补充 fieldCode（从 entity_field 查询）
+            for (EntityFormField field : fields) {
+                if (field.getFieldId() != null) {
+                    com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
+                    if (entityField != null) {
+                        field.setFieldCode(entityField.getFieldCode());
+                    }
+                }
+            }
+            form.setFields(fields);
         }
         return form;
     }

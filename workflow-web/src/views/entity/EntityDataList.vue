@@ -108,11 +108,13 @@
           <el-date-picker v-else-if="field.fieldType === 'DATE'"
                          v-model="formData.data[field.fieldCode]"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         type="date" style="width: 100%" />
+                         type="date" style="width: 100%"
+                         value-format="YYYY-MM-DD" />
           <el-date-picker v-else-if="field.fieldType === 'DATETIME'"
                          v-model="formData.data[field.fieldCode]"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         type="datetime" style="width: 100%" />
+                         type="datetime" style="width: 100%"
+                         value-format="YYYY-MM-DD HH:mm:ss" />
           <el-switch v-else-if="field.fieldType === 'BOOLEAN'"
                     v-model="formData.data[field.fieldCode]"
                     :disabled="isFieldDisabled(field) || field.isReadonly === 1" />
@@ -300,7 +302,20 @@ function getFieldOptions(field: any) {
   if (linkageState.value.options[field.fieldCode]) {
     return linkageState.value.options[field.fieldCode]
   }
-  return parseOptions(field.optionsJson)
+  // 优先从 optionsJson 解析
+  if (field.optionsJson) {
+    return parseOptions(field.optionsJson)
+  }
+  // 再从 componentProps 解析
+  if (field.componentProps) {
+    try {
+      const compProps = JSON.parse(field.componentProps)
+      if (compProps.options && Array.isArray(compProps.options)) {
+        return compProps.options
+      }
+    } catch (e) {}
+  }
+  return []
 }
 
 // 监听表单数据变化，触发联动

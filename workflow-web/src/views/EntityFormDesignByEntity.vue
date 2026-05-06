@@ -692,6 +692,16 @@ function serializeFieldConfig(field) {
       delete compProps.events
     }
 
+    // 序列化选项配置（optionsJson → componentProps.options）
+    if (field.optionsJson) {
+      try {
+        const options = JSON.parse(field.optionsJson)
+        if (Array.isArray(options) && options.length > 0) {
+          compProps.options = options
+        }
+      } catch (e) {}
+    }
+
     field.componentProps = JSON.stringify(compProps)
   } catch (e) {
     console.error('序列化字段配置失败:', e)

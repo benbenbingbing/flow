@@ -261,16 +261,20 @@ public class EntityFormResolveService {
         
         List<EntityFormField> fields = formFieldMapper.selectList(wrapper);
         
-        // 加载字段编码（fieldCode）
+        // 加载字段编码（fieldCode）和选项配置
         for (EntityFormField field : fields) {
             if (field.getFieldId() != null) {
-                // fieldId 存储的是 entity_field 的主键 ID（如 "178", "187"）
-                // 使用自定义 SQL 查询（处理 String 到 bigint 的转换）
+                // fieldId 存储的是 entity_field 的主键 ID（如 "266", "267"）
+                // 使用自定义 SQL 查询
                 com.workflow.entity.EntityField entityField = entityFieldMapper.findByIdString(field.getFieldId());
                 if (entityField != null) {
                     field.setFieldCode(entityField.getFieldCode());
+                    // 从实体字段补充选项配置（用于下拉、单选、多选等）
+                    if (entityField.getOptionsJson() != null && !entityField.getOptionsJson().isEmpty()) {
+                        field.setOptionsJson(entityField.getOptionsJson());
+                    }
                 } else {
-                    // 查询不到，可能 fieldId 本身就是 fieldCode，直接使用
+                    // 查询不到，直接使用 fieldId 作为 fieldCode
                     field.setFieldCode(field.getFieldId());
                 }
             }

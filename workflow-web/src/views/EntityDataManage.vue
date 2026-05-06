@@ -95,12 +95,14 @@
                          v-model="formData.data[field.fieldCode || field.fieldId]"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                          @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                         type="date" style="width: 100%" />
+                         type="date" style="width: 100%"
+                         value-format="YYYY-MM-DD" />
           <el-date-picker v-else-if="field.fieldType === 'DATETIME'"
                          v-model="formData.data[field.fieldCode || field.fieldId]"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                          @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                         type="datetime" style="width: 100%" />
+                         type="datetime" style="width: 100%"
+                         value-format="YYYY-MM-DD HH:mm:ss" />
           <el-switch v-else-if="field.fieldType === 'BOOLEAN'"
                     v-model="formData.data[field.fieldCode || field.fieldId]"
                     :disabled="isFieldDisabled(field) || field.isReadonly === 1"
@@ -395,7 +397,20 @@ function getFieldOptions(field) {
   if (linkageState.value.options[key]) {
     return linkageState.value.options[key]
   }
-  return parseOptions(field.optionsJson)
+  // 优先从 optionsJson 解析
+  if (field.optionsJson) {
+    return parseOptions(field.optionsJson)
+  }
+  // 再从 componentProps 解析
+  if (field.componentProps) {
+    try {
+      const compProps = JSON.parse(field.componentProps)
+      if (compProps.options && Array.isArray(compProps.options)) {
+        return compProps.options
+      }
+    } catch (e) {}
+  }
+  return []
 }
 
 // 从字段配置中获取事件代码（支持根属性和 componentProps.events）

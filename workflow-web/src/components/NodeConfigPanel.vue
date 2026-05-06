@@ -1231,6 +1231,62 @@
         </div>
       </el-tab-pane>
       
+      <!-- ========== 审批配置（仅用户任务） ========== -->
+      <el-tab-pane v-if="isUserTask" label="审批配置" name="approval">
+        <el-form :model="approvalForm" label-width="120px" size="small">
+          <el-alert type="info" :closable="false" class="section-alert">
+            自定义当前节点的审批操作选项和审批意见配置
+          </el-alert>
+          
+          <el-form-item label="启用审批意见">
+            <el-switch v-model="approvalForm.enabled" />
+          </el-form-item>
+          
+          <template v-if="approvalForm.enabled">
+            <el-form-item label="审批意见名称">
+              <el-input v-model="approvalForm.commentLabel" placeholder="如：审批意见、审批备注" />
+            </el-form-item>
+            
+            <el-divider>审批选项</el-divider>
+            
+            <div class="approval-options-list">
+              <div v-for="(option, index) in approvalForm.options" :key="index" class="approval-option-item">
+                <el-row :gutter="8" align="middle">
+                  <el-col :span="7">
+                    <el-input v-model="option.label" placeholder="选项名称" size="small" />
+                  </el-col>
+                  <el-col :span="7">
+                    <el-input v-model="option.value" placeholder="选项值" size="small" />
+                  </el-col>
+                  <el-col :span="4">
+                    <el-select v-model="option.type" placeholder="样式" size="small">
+                      <el-option label="主要" value="primary" />
+                      <el-option label="成功" value="success" />
+                      <el-option label="警告" value="warning" />
+                      <el-option label="危险" value="danger" />
+                    </el-select>
+                  </el-col>
+                  <el-col :span="4">
+                    <el-checkbox v-model="option.showComment" size="small">显示备注</el-checkbox>
+                  </el-col>
+                  <el-col :span="2">
+                    <el-button type="danger" link size="small" @click="removeApprovalOption(index)" :disabled="approvalForm.options.length <= 1">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </el-col>
+                </el-row>
+              </div>
+              <el-button type="primary" link size="small" @click="addApprovalOption">
+                <el-icon><Plus /></el-icon> 添加选项
+              </el-button>
+            </div>
+          </template>
+        </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
+      </el-tab-pane>
+      
       <!-- ========== 高级配置 ========== -->
       <el-tab-pane v-if="isTask || isGateway" label="高级" name="advanced">
         <el-form :model="advancedForm" label-width="120px" size="small">
@@ -1708,6 +1764,26 @@ const formConfig = ref({
 })
 const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '', skipNode: false })
 
+// 审批配置
+const approvalForm = ref({
+  enabled: true,
+  commentLabel: '审批意见',
+  options: [
+    { value: 'approve', label: '通过', type: 'primary', showComment: true },
+    { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+  ]
+})
+
+function addApprovalOption() {
+  approvalForm.value.options.push({ value: '', label: '', type: 'primary', showComment: true })
+}
+
+function removeApprovalOption(index) {
+  if (approvalForm.value.options.length > 1) {
+    approvalForm.value.options.splice(index, 1)
+  }
+}
+
 // 用户、组、角色选项
 const userOptions = ref([])
 const groupOptions = ref([])
@@ -2039,6 +2115,38 @@ watch(() => props.element, async (newElement) => {
         resultMapping: assigneeConfig.resultMapping || '',
         collectionSource: assigneeConfig.collectionSource || multiInstanceConfig.collectionSource || 'interface',
         collectionInterface: assigneeConfig.collectionInterface || multiInstanceConfig.collectionInterface || ''
+      }
+      
+      // 加载审批配置
+      let approvalConfig = null
+      if (extProps['approvalConfig']) {
+        try {
+          approvalConfig = JSON.parse(extProps['approvalConfig'])
+        } catch (e) {
+          console.error('解析 approvalConfig 失败:', e)
+        }
+      }
+      if (approvalConfig) {
+        approvalForm.value = {
+          enabled: approvalConfig.enabled !== false,
+          commentLabel: approvalConfig.commentLabel || '审批意见',
+          options: Array.isArray(approvalConfig.options) && approvalConfig.options.length > 0
+            ? approvalConfig.options
+            : [
+                { value: 'approve', label: '通过', type: 'primary', showComment: true },
+                { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+              ]
+        }
+      } else {
+        // 重置为默认值
+        approvalForm.value = {
+          enabled: true,
+          commentLabel: '审批意见',
+          options: [
+            { value: 'approve', label: '通过', type: 'primary', showComment: true },
+            { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+          ]
+        }
       }
     }
     if (isServiceTask.value) {
@@ -3038,6 +3146,9 @@ function saveCurrentTab() {
       case 'form':
         updateNodeFormBind()
         break
+      case 'approval':
+        updateExtensionProperty('approvalConfig', JSON.stringify(approvalForm.value))
+        break
       case 'advanced':
         updateAsync()
         updateSkipExpression()
@@ -3396,6 +3507,20 @@ async function saveStatusConfig() {
   font-size: 12px;
   color: #606266;
   min-width: 70px;
+}
+
+/* 审批配置样式 */
+.approval-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.approval-option-item {
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  padding: 10px;
+  border: 1px solid #e4e7ed;
 }
 
 .script-test-result .result-vars {

@@ -94,6 +94,12 @@ public class EntityFormField {
     private String componentProps;
     
     /**
+     * 选项配置JSON（用于下拉、单选、多选，非数据库字段，从entity_field补充）
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String optionsJson;
+    
+    /**
      * 栅格宽度（1-24）
      */
     private Integer gridSpan;

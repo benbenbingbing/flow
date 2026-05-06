@@ -912,6 +912,7 @@ public class ProcessDefinitionService {
                 parseAndSaveAssigneeConfigs(nodeConfigId, content);
                 parseAndSaveFormConfig(nodeConfigId, content);
                 parseAndSaveMultiInstanceConfig(nodeConfigId, content);
+                parseAndSaveApprovalConfig(nodeConfigId, content);
             }
             
             return nodeConfigId;
@@ -1092,17 +1093,98 @@ public class ProcessDefinitionService {
                 miConfig.put("completionCondition", ccMatcher.group(1).trim());
             }
             
-            // 更新node_config的config_json
-            String configJson = objectMapper.writeValueAsString(miConfig);
+            // 合并到 node_config 的 config_json
+            mergeConfigJson(nodeConfigId, miConfig);
             
-            // 直接更新数据库
+            log.debug("保存多实例配置: nodeConfigId={}, config={}", nodeConfigId, miConfig);
+        } catch (Exception e) {
+            log.error("解析多实例配置失败: nodeConfigId={}", nodeConfigId, e);
+        }
+    }
+    
+    /**
+     * 解析并保存审批配置到 config_json
+     */
+    private void parseAndSaveApprovalConfig(String nodeConfigId, String content) {
+        try {
+            // 从 flowable:Properties 中解析 approvalConfig
+            // BPMN XML 中存储为: <flowable:property name="approvalConfig" value="{...}" />
+            // 先尝试匹配 name="approvalConfig" 在前、value 在后的顺序
+            java.util.regex.Pattern propPattern = java.util.regex.Pattern.compile(
+                "<(?:flowable:|camunda:)?property[^>]*name=\"approvalConfig\"[^>]*value=\"([^\"]*)\"",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Matcher propMatcher = propPattern.matcher(content);
+            
+            // 如果失败，尝试 value 在前、name 在后的顺序
+            if (!propMatcher.find()) {
+                propPattern = java.util.regex.Pattern.compile(
+                    "<(?:flowable:|camunda:)?property[^>]*value=\"([^\"]*)\"[^>]*name=\"approvalConfig\"",
+                    java.util.regex.Pattern.CASE_INSENSITIVE);
+                propMatcher = propPattern.matcher(content);
+            }
+            
+            if (!propMatcher.find()) {
+                // 尝试从子元素形式匹配
+                java.util.regex.Matcher elemMatcher = java.util.regex.Pattern.compile(
+                    "<(?:flowable:|camunda:)?approvalConfig>([^<]+)</(?:flowable:|camunda:)?approvalConfig>",
+                    java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
+                if (elemMatcher.find()) {
+                    String approvalConfigJson = elemMatcher.group(1).trim();
+                    java.util.Map<String, Object> approvalConfig = objectMapper.readValue(approvalConfigJson, java.util.HashMap.class);
+                    mergeConfigJson(nodeConfigId, approvalConfig);
+                    log.debug("保存审批配置(子元素): nodeConfigId={}, config={}", nodeConfigId, approvalConfigJson);
+                }
+                return;
+            }
+            
+            String approvalConfigJson = propMatcher.group(1);
+            // 处理可能的 XML 转义
+            approvalConfigJson = approvalConfigJson.replace("&quot;", "\"")
+                                                   .replace("&amp;", "&")
+                                                   .replace("&lt;", "<")
+                                                   .replace("&gt;", ">");
+            java.util.Map<String, Object> approvalConfig = objectMapper.readValue(approvalConfigJson, java.util.HashMap.class);
+            mergeConfigJson(nodeConfigId, approvalConfig);
+            
+            log.debug("保存审批配置: nodeConfigId={}, config={}", nodeConfigId, approvalConfigJson);
+        } catch (Exception e) {
+            log.error("解析审批配置失败: nodeConfigId={}", nodeConfigId, e);
+        }
+    }
+    
+    /**
+     * 合并配置到 node_config 的 config_json 中
+     */
+    private void mergeConfigJson(String nodeConfigId, java.util.Map<String, Object> newConfig) {
+        try {
+            // 读取现有 config_json
+            String existingJson = jdbcTemplate.queryForObject(
+                "SELECT config_json FROM node_config WHERE id = ?",
+                String.class, nodeConfigId);
+            
+            java.util.Map<String, Object> mergedConfig = new java.util.HashMap<>();
+            if (existingJson != null && !existingJson.isEmpty()) {
+                try {
+                    mergedConfig = objectMapper.readValue(existingJson, java.util.HashMap.class);
+                } catch (Exception e) {
+                    log.warn("解析现有 config_json 失败，将覆盖: nodeConfigId={}", nodeConfigId);
+                }
+            }
+            
+            // 合并新配置
+            mergedConfig.putAll(newConfig);
+            
+            // 写回数据库
+            String configJson = objectMapper.writeValueAsString(mergedConfig);
             jdbcTemplate.update(
                 "UPDATE node_config SET config_json = ? WHERE id = ?",
                 configJson, nodeConfigId);
-            
-            log.debug("保存多实例配置: nodeConfigId={}, config={}", nodeConfigId, configJson);
+                
+            log.debug("合并 config_json: nodeConfigId={}, result={}", nodeConfigId, configJson);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            log.warn("节点不存在，无法合并配置: nodeConfigId={}", nodeConfigId);
         } catch (Exception e) {
-            log.error("解析多实例配置失败: nodeConfigId={}", nodeConfigId, e);
+            log.error("合并 config_json 失败: nodeConfigId={}", nodeConfigId, e);
         }
     }
     

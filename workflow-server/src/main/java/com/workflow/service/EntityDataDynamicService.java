@@ -535,7 +535,7 @@ public class EntityDataDynamicService {
     }
 
     /**
-     * 提取自定义字段（排除系统字段）
+     * 提取自定义字段（排除系统字段，列名下划线转驼峰）
      */
     private Map<String, Object> extractCustomFields(Map<String, Object> data, String entityCode) {
         // 系统字段集合
@@ -550,10 +550,34 @@ public class EntityDataDynamicService {
         Map<String, Object> customData = new HashMap<>();
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             if (!systemFields.contains(entry.getKey())) {
-                customData.put(entry.getKey(), entry.getValue());
+                String camelKey = underscoreToCamel(entry.getKey());
+                customData.put(camelKey, entry.getValue());
             }
         }
         return customData;
+    }
+
+    /**
+     * 下划线命名转驼峰命名
+     */
+    private String underscoreToCamel(String underscore) {
+        if (underscore == null || underscore.isEmpty()) {
+            return underscore;
+        }
+        StringBuilder result = new StringBuilder();
+        boolean nextUpper = false;
+        for (int i = 0; i < underscore.length(); i++) {
+            char c = underscore.charAt(i);
+            if (c == '_') {
+                nextUpper = true;
+            } else if (nextUpper) {
+                result.append(Character.toUpperCase(c));
+                nextUpper = false;
+            } else {
+                result.append(c);
+            }
+        }
+        return result.toString();
     }
 
     private String getString(Map<String, Object> data, String key) {

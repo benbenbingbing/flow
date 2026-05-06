@@ -101,10 +101,10 @@
             <el-tag v-else type="info" size="small">普通</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="handleApprove(row)">审批</el-button>
-            <el-button type="info" size="small" @click="viewProgress(row)">进度</el-button>
+            <el-button type="warning" size="small" @click="openTransferDialog(row)">转办</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -181,81 +181,18 @@
         <el-tab-pane label="审批" name="approval">
           <!-- 实体数据表单 -->
           <div v-if="entityData" class="entity-form-section">
-            <el-form :model="entityData" label-width="100px" class="entity-form">
-              <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
-                <!-- 使用配置的表单字段 -->
-                <el-row :gutter="20">
-                  <el-col 
-                    v-for="field in formConfig.fields.filter(f => !f.isHidden)" 
-                    :key="field.id"
-                    :span="(field.gridSpan || 24) / 2"
-                  >
-                    <el-form-item :label="field.fieldLabel || field.fieldName">
-                      <template v-if="field.componentType === 'input'">
-                        <el-input 
-                          v-model="entityData[field.fieldCode]" 
-                          :readonly="true"
-                          :placeholder="field.placeholder"
-                        />
-                      </template>
-                      <template v-else-if="field.componentType === 'textarea'">
-                        <el-input 
-                          v-model="entityData[field.fieldCode]" 
-                          type="textarea" 
-                          :rows="3"
-                          :readonly="true"
-                          :placeholder="field.placeholder"
-                        />
-                      </template>
-                      <template v-else-if="field.componentType === 'select'">
-                        <el-select 
-                          v-model="entityData[field.fieldCode]" 
-                          :disabled="true"
-                          style="width: 100%"
-                        >
-                          <el-option 
-                            v-for="opt in field.componentProps?.options || []" 
-                            :key="opt.value" 
-                            :label="opt.label" 
-                            :value="opt.value" 
-                          />
-                        </el-select>
-                      </template>
-                      <template v-else-if="field.componentType === 'date'">
-                        <el-date-picker 
-                          v-model="entityData[field.fieldCode]" 
-                          type="date"
-                          :disabled="true"
-                          style="width: 100%"
-                        />
-                      </template>
-                      <template v-else-if="field.componentType === 'datetime'">
-                        <el-date-picker 
-                          v-model="entityData[field.fieldCode]" 
-                          type="datetime"
-                          :disabled="true"
-                          style="width: 100%"
-                        />
-                      </template>
-                      <template v-else-if="field.componentType === 'number'">
-                        <el-input-number 
-                          v-model="entityData[field.fieldCode]" 
-                          :disabled="true"
-                          style="width: 100%"
-                        />
-                      </template>
-                      <template v-else>
-                        <el-input 
-                          v-model="entityData[field.fieldCode]" 
-                          :readonly="true"
-                        />
-                      </template>
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-              </template>
-              <template v-else>
-                <!-- 默认显示 -->
+            <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
+              <!-- 使用节点配置的表单渲染 -->
+              <FormPreviewLinkage
+                :form="formConfig"
+                v-model="entityData"
+                :readonly="true"
+                :show-header="false"
+              />
+            </template>
+            <template v-else>
+              <!-- 默认显示 -->
+              <el-form :model="entityData" label-width="100px" class="entity-form">
                 <el-row :gutter="20">
                   <el-col v-for="(value, key) in entityData" :key="key" :span="12">
                     <el-form-item :label="key">
@@ -263,30 +200,39 @@
                     </el-form-item>
                   </el-col>
                 </el-row>
-              </template>
-            </el-form>
+              </el-form>
+            </template>
           </div>
           
           <el-divider v-if="entityData" />
           
-          <div class="section-title">审批意见</div>
-          <el-form :model="approveForm" label-width="80px">
-            <el-form-item label="审批操作" required>
-              <el-radio-group v-model="approveForm.action">
-                <el-radio-button label="approve">通过</el-radio-button>
-                <el-radio-button label="reject">驳回</el-radio-button>
-                <el-radio-button label="transfer">转办</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item v-if="approveForm.action === 'transfer'" label="转办人" required>
-              <el-select v-model="approveForm.transferTo" placeholder="选择转办人" filterable clearable style="width: 100%">
-                <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="审批备注">
-              <el-input v-model="approveForm.comment" type="textarea" :rows="3" placeholder="请输入审批备注" />
-            </el-form-item>
-          </el-form>
+          <template v-if="effectiveApprovalConfig.enabled !== false">
+            <div class="section-title">审批意见</div>
+            <el-form :model="approveForm" label-width="80px">
+              <el-form-item label="审批操作" required>
+                <el-radio-group v-model="approveForm.action">
+                  <el-radio-button 
+                    v-for="option in effectiveApprovalConfig.options" 
+                    :key="option.value" 
+                    :label="option.value"
+                  >
+                    {{ option.label }}
+                  </el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item 
+                v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+                :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+              >
+                <el-input 
+                  v-model="approveForm.comment" 
+                  type="textarea" 
+                  :rows="3" 
+                  :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`" 
+                />
+              </el-form-item>
+            </el-form>
+          </template>
         </el-tab-pane>
 
         <!-- 流程图 -->
@@ -330,6 +276,24 @@
         <el-button v-if="activeDialogTab === 'approval'" type="primary" @click="submitApprove" :loading="submitLoading">确认</el-button>
       </template>
     </el-dialog>
+
+    <!-- 转办弹窗 -->
+    <el-dialog v-model="transferDialogVisible" title="任务转办" width="400px" :close-on-click-modal="false">
+      <el-form :model="transferForm" label-width="80px">
+        <el-form-item label="转办人" required>
+          <el-select v-model="transferForm.transferTo" placeholder="请选择转办人" filterable clearable style="width: 100%">
+            <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="transferForm.comment" type="textarea" :rows="3" placeholder="请输入转办备注" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitTransfer" :loading="transferLoading">确认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -338,6 +302,7 @@ import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
+import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, withdrawProcess, getProcessHistory } from '@/api/processTask'
 import { getUserList } from '@/api/system/user'
 import request from '@/utils/request'
@@ -395,6 +360,32 @@ const progressData = ref({
 })
 const entityData = ref(null)
 const formConfig = ref(null)
+const approvalConfig = ref(null)
+
+// 计算属性：获取当前有效的审批配置（带默认值 fallback）
+const effectiveApprovalConfig = computed(() => {
+  if (approvalConfig.value && approvalConfig.value.options && approvalConfig.value.options.length > 0) {
+    return approvalConfig.value
+  }
+  // 默认配置
+  return {
+    enabled: true,
+    commentLabel: '审批意见',
+    options: [
+      { value: 'approve', label: '通过', type: 'primary', showComment: true },
+      { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+    ]
+  }
+})
+
+// 转办弹窗
+const transferDialogVisible = ref(false)
+const transferLoading = ref(false)
+const transferForm = reactive({
+  taskId: '',
+  transferTo: '',
+  comment: ''
+})
 
 // 初始化
 onMounted(() => {
@@ -557,7 +548,28 @@ async function loadProcessDetail(instanceId) {
       }
       // 保存实体数据和表单配置
       entityData.value = progressRes.entityData || null
+      // 状态编码转中文名称
+      if (entityData.value && entityData.value.status) {
+        const statusMap = {
+          'DRAFT': '草稿',
+          'PENDING': '审批中',
+          'APPROVED': '已通过',
+          'REJECTED': '已驳回',
+          'COMPLETED': '已完成',
+          'WITHDRAWN': '已撤回'
+        }
+        entityData.value.status = statusMap[entityData.value.status] || entityData.value.status
+      }
       formConfig.value = progressRes.formConfig || null
+      approvalConfig.value = progressRes.approvalConfig || null
+      // 同步审批操作默认值为第一个选项
+      const config = progressRes.approvalConfig
+      if (config && Array.isArray(config.options) && config.options.length > 0) {
+        const firstOption = config.options[0]
+        if (firstOption && firstOption.value) {
+          approveForm.action = firstOption.value
+        }
+      }
       // 更新当前任务的状态和流程名称
       if (currentTask.value) {
         currentTask.value.processStatus = progressRes.status
@@ -614,20 +626,49 @@ async function loadProcessDetail(instanceId) {
   }
 }
 
-// 提交审批
-async function submitApprove() {
-  if (approveForm.action === 'transfer' && !approveForm.transferTo) {
+// 打开转办弹窗
+function openTransferDialog(row) {
+  transferForm.taskId = row.taskId
+  transferForm.transferTo = ''
+  transferForm.comment = ''
+  transferDialogVisible.value = true
+}
+
+// 提交转办
+async function submitTransfer() {
+  if (!transferForm.transferTo) {
     ElMessage.warning('请选择转办人')
     return
   }
+  transferLoading.value = true
+  try {
+    await completeTask({
+      taskId: transferForm.taskId,
+      action: 'transfer',
+      comment: transferForm.comment,
+      transferTo: transferForm.transferTo
+    })
+    ElMessage.success('转办成功')
+    transferDialogVisible.value = false
+    loadTodoList()
+    loadDoneList()
+    loadStatistics()
+  } catch (e) {
+    console.error('转办失败:', e)
+    ElMessage.error('转办失败')
+  } finally {
+    transferLoading.value = false
+  }
+}
 
+// 提交审批
+async function submitApprove() {
   submitLoading.value = true
   try {
     await completeTask({
       taskId: currentTask.value.taskId,
       action: approveForm.action,
-      comment: approveForm.comment,
-      transferTo: approveForm.transferTo
+      comment: approveForm.comment
     })
     ElMessage.success('审批成功')
     dialogVisible.value = false

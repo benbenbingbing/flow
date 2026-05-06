@@ -48,6 +48,7 @@ public class ProcessInstanceService {
     private final com.workflow.service.EntityFormService entityFormService;
     private final com.workflow.mapper.NodeConfigMapper nodeConfigMapper;
     private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
+    private final com.workflow.mapper.FormConfigMapper formConfigMapper;
     private final com.workflow.mapper.ProcessTaskMapper processTaskMapper;
     private final com.workflow.mapper.SysGroupMapper sysGroupMapper;
     private final com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper;
@@ -616,7 +617,17 @@ public class ProcessInstanceService {
                 try {
                     com.workflow.dto.EntityDataDTO entityData = entityDataDynamicService.findById(entityCode, entityDataId);
                     if (entityData != null) {
-                        progress.setEntityData(entityData.getData());
+                        Map<String, Object> entityDataMap = new java.util.HashMap<>();
+                        if (entityData.getData() != null) {
+                            entityDataMap.putAll(entityData.getData());
+                        }
+                        // 将系统标准字段合并进去，确保审批弹窗能正确显示
+                        if (entityData.getName() != null) entityDataMap.put("name", entityData.getName());
+                        if (entityData.getCode() != null) entityDataMap.put("code", entityData.getCode());
+                        if (entityData.getStatus() != null) entityDataMap.put("status", entityData.getStatus());
+                        if (entityData.getDataNo() != null) entityDataMap.put("dataNo", entityData.getDataNo());
+                        if (entityData.getTitle() != null) entityDataMap.put("title", entityData.getTitle());
+                        progress.setEntityData(entityDataMap);
                     }
                 } catch (Exception e) {
                     log.debug("获取实体数据失败: {}", e.getMessage());
@@ -625,7 +636,12 @@ public class ProcessInstanceService {
             
             // 3. 加载表单配置
             if (entityCode != null && entityDataId != null) {
-                loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey);
+                loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey, progress.getBpmnXml());
+            }
+            
+            // 4. 加载审批配置
+            if (currentNodeId != null && progress.getBpmnXml() != null) {
+                loadApprovalConfigFromBpmn(progress, currentNodeId, progress.getBpmnXml());
             }
             
         } catch (Exception e) {
@@ -637,12 +653,13 @@ public class ProcessInstanceService {
      * 加载表单配置
      */
     private void loadFormConfig(ProcessProgressDTO progress, String entityCode, String entityDataId, 
-                                  String currentNodeId, String formKeyFromVariable) {
+                                  String currentNodeId, String formKeyFromVariable, String bpmnXml) {
         try {
-            // 1. 获取流程定义配置
+            // 1. 获取实体定义
             com.workflow.entity.EntityDefinition entityDef = 
                 entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
-            if (entityDef == null || entityDef.getProcessDefinitionId() == null) {
+            if (entityDef == null) {
+                log.warn("加载表单配置失败: 实体不存在, entityCode={}", entityCode);
                 return;
             }
             
@@ -654,7 +671,6 @@ public class ProcessInstanceService {
                 List<String> completed = progress.getCompletedNodes();
                 for (int i = completed.size() - 1; i >= 0; i--) {
                     String nodeId = completed.get(i);
-                    // 排除常见的开始/结束节点ID
                     if (nodeId != null && !nodeId.toLowerCase().contains("start") && !nodeId.toLowerCase().contains("end")) {
                         targetNodeId = nodeId;
                         break;
@@ -665,83 +681,208 @@ public class ProcessInstanceService {
                 }
             }
             
-            // 3. 尝试从节点配置获取表单
-            if (targetNodeId != null) {
-                com.workflow.entity.NodeConfig nodeConfig = 
-                    nodeConfigMapper.selectByNodeIdAndProcessId(targetNodeId, entityDef.getProcessDefinitionId());
-                if (nodeConfig != null && nodeConfig.getConfigJson() != null) {
-                    try {
-                        com.fasterxml.jackson.databind.JsonNode config = 
-                            new com.fasterxml.jackson.databind.ObjectMapper().readTree(nodeConfig.getConfigJson());
-                        if (config.has("formKey")) {
-                            formKeyFromVariable = config.get("formKey").asText();
-                        }
-                    } catch (Exception e) {
-                        log.debug("解析节点配置失败: {}", e.getMessage());
-                    }
+            // 3. 解析 formKey（优先级：BPMN XML > 流程变量 > 默认）
+            String resolvedFormKey = formKeyFromVariable;
+            
+            // 3a. 优先从 BPMN XML 解析当前节点的表单绑定
+            if (targetNodeId != null && bpmnXml != null && !bpmnXml.isEmpty()) {
+                String bpmnFormKey = resolveFormKeyFromBpmn(targetNodeId, bpmnXml);
+                if (bpmnFormKey != null) {
+                    resolvedFormKey = bpmnFormKey;
+                    log.debug("从 BPMN XML 解析到表单绑定: nodeId={}, formKey={}", targetNodeId, resolvedFormKey);
                 }
             }
             
-            // 3. 获取表单配置
-            String formKey = formKeyFromVariable;
+            // 4. 确定最终 formKey
+            String formKey = resolvedFormKey;
             if (formKey == null) {
-                // 使用默认表单
                 formKey = "default";
             }
             
-            // 4. 从 EntityFormService 获取表单详情
-            com.workflow.entity.EntityForm entityForm = 
-                entityFormService.getByEntityIdAndFormKey(entityDef.getId(), formKey);
+            // 5. 加载表单详情
+            com.workflow.entity.EntityForm entityForm = null;
             
-            if (entityForm == null && !"default".equals(formKey)) {
-                // 如果指定表单不存在，回退到默认表单
-                entityForm = entityFormService.getByEntityIdAndFormKey(entityDef.getId(), "default");
-            }
+            // 5a. 尝试通过 entityId + formKey 查询
+            entityForm = entityFormService.getByEntityIdAndFormKey(entityDef.getId(), formKey);
             
-            if (entityForm != null) {
-                ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
-                formConfig.setFormId(entityForm.getId());
-                formConfig.setFormName(entityForm.getFormName());
-                formConfig.setFormKey(entityForm.getFormKey());
-                formConfig.setLayoutType(entityForm.getLayoutType());
-                
-                // 转换字段配置
-                if (entityForm.getFields() != null) {
-                    List<Map<String, Object>> fields = new ArrayList<>();
-                    for (com.workflow.entity.EntityFormField field : entityForm.getFields()) {
-                        Map<String, Object> fieldMap = new HashMap<>();
-                        fieldMap.put("id", field.getId());
-                        fieldMap.put("fieldCode", field.getFieldId());
-                        fieldMap.put("fieldName", field.getFieldName());
-                        fieldMap.put("fieldLabel", field.getFieldLabel());
-                        fieldMap.put("fieldType", field.getFieldType());
-                        fieldMap.put("componentType", field.getComponentType());
-                        fieldMap.put("isRequired", field.getIsRequired());
-                        fieldMap.put("isReadonly", field.getIsReadonly());
-                        fieldMap.put("isHidden", field.getIsHidden());
-                        fieldMap.put("sortOrder", field.getSortOrder());
-                        fieldMap.put("gridSpan", field.getGridSpan());
-                        
-                        // 解析组件属性
-                        if (field.getComponentProps() != null) {
-                            try {
-                                com.fasterxml.jackson.databind.ObjectMapper mapper = 
-                                    new com.fasterxml.jackson.databind.ObjectMapper();
-                                fieldMap.put("componentProps", mapper.readValue(field.getComponentProps(), Map.class));
-                            } catch (Exception e) {
-                                fieldMap.put("componentProps", new HashMap<>());
-                            }
-                        }
-                        fields.add(fieldMap);
-                    }
-                    formConfig.setFields(fields);
+            // 5b. 如果失败且 formKey 看起来像 entityFormId（纯数字），直接按ID查询
+            if (entityForm == null && formKey.matches("\\d+")) {
+                entityForm = entityFormService.getById(formKey);
+                if (entityForm != null) {
+                    log.debug("通过 entityFormId 直接查询到表单: id={}", formKey);
                 }
-                
-                progress.setFormConfig(formConfig);
             }
+            
+            // 5c. 如果仍然失败且不是默认表单，回退到默认表单
+            if (entityForm == null && !"default".equals(formKey)) {
+                entityForm = entityFormService.getByEntityIdAndFormKey(entityDef.getId(), "default");
+                log.debug("指定表单不存在，回退到默认表单(by formKey): triedFormKey={}", formKey);
+            }
+            
+            // 5d. 如果通过 formKey='default' 仍然查不到，尝试通过 is_default=1 查询
+            if (entityForm == null) {
+                entityForm = entityFormService.getDefaultForm(entityDef.getId());
+                if (entityForm != null) {
+                    log.debug("通过 is_default=1 查询到默认表单: formId={}", entityForm.getId());
+                }
+            }
+            
+            if (entityForm == null) {
+                log.warn("无法加载表单: entityId={}, formKey={}", entityDef.getId(), formKey);
+                return;
+            }
+            
+            // 6. 构建 FormConfigDTO
+            ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
+            formConfig.setFormId(entityForm.getId());
+            formConfig.setFormName(entityForm.getFormName());
+            formConfig.setFormKey(entityForm.getFormKey());
+            formConfig.setLayoutType(entityForm.getLayoutType());
+            
+            // 转换字段配置
+            if (entityForm.getFields() != null) {
+                List<Map<String, Object>> fields = new ArrayList<>();
+                for (com.workflow.entity.EntityFormField field : entityForm.getFields()) {
+                    Map<String, Object> fieldMap = new HashMap<>();
+                    fieldMap.put("id", field.getId());
+                    fieldMap.put("fieldCode", field.getFieldCode() != null ? field.getFieldCode() : field.getFieldId());
+                    fieldMap.put("fieldName", field.getFieldName());
+                    fieldMap.put("fieldLabel", field.getFieldLabel());
+                    fieldMap.put("fieldType", field.getFieldType());
+                    fieldMap.put("componentType", field.getComponentType());
+                    fieldMap.put("isRequired", field.getIsRequired());
+                    fieldMap.put("isReadonly", field.getIsReadonly());
+                    fieldMap.put("isHidden", field.getIsHidden());
+                    fieldMap.put("sortOrder", field.getSortOrder());
+                    fieldMap.put("gridSpan", field.getGridSpan());
+                    
+                    // 组件属性保持原始 JSON 字符串，由前端解析
+                    if (field.getComponentProps() != null) {
+                        fieldMap.put("componentProps", field.getComponentProps());
+                    }
+                    fields.add(fieldMap);
+                }
+                formConfig.setFields(fields);
+            }
+            
+            progress.setFormConfig(formConfig);
+            log.debug("表单配置加载成功: entityCode={}, formKey={}, fieldsCount={}", 
+                entityCode, entityForm.getFormKey(), 
+                formConfig.getFields() != null ? formConfig.getFields().size() : 0);
             
         } catch (Exception e) {
-            log.warn("加载表单配置失败: {}", e.getMessage());
+            log.warn("加载表单配置失败: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 从 BPMN XML 解析表单绑定
+     */
+    private String resolveFormKeyFromBpmn(String nodeId, String bpmnXml) {
+        if (bpmnXml == null || nodeId == null || nodeId.isEmpty()) {
+            return null;
+        }
+        try {
+            // 匹配当前节点的 userTask 标签内容（兼容 bpmn: 前缀和无前缀）
+            String patternStr = "<(bpmn:)?userTask[^>]*id=\"" + java.util.regex.Pattern.quote(nodeId) + "\"[^>]*>(.*?)</(bpmn:)?userTask>";
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(patternStr, java.util.regex.Pattern.DOTALL | java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
+            if (!matcher.find()) {
+                return null;
+            }
+            String content = matcher.group(2);
+            
+            // 解析 entityFormId（<flowable:entityFormId>xxx</flowable:entityFormId>）
+            java.util.regex.Matcher formIdMatcher = java.util.regex.Pattern.compile(
+                "<(?:flowable:)?entityFormId>([^<]+)</(?:flowable:)?entityFormId>",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
+            if (formIdMatcher.find()) {
+                return formIdMatcher.group(1).trim();
+            }
+            
+            // 解析 formKey（flowable:formKey="xxx"）
+            java.util.regex.Matcher formKeyMatcher = java.util.regex.Pattern.compile(
+                "(?:flowable:)?formKey=\"([^\"]+)\"").matcher(content);
+            if (formKeyMatcher.find()) {
+                return formKeyMatcher.group(1);
+            }
+            
+            return null;
+        } catch (Exception e) {
+            log.debug("从BPMN解析表单绑定失败: {}", e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * 从 BPMN XML 解析审批配置
+     */
+    private void loadApprovalConfigFromBpmn(ProcessProgressDTO progress, String currentNodeId, String bpmnXml) {
+        if (bpmnXml == null || currentNodeId == null || currentNodeId.isEmpty()) {
+            return;
+        }
+        try {
+            // 匹配当前节点的 userTask 标签内容
+            String patternStr = "<(bpmn:)?userTask[^>]*id=\"" + java.util.regex.Pattern.quote(currentNodeId) + "\"[^>]*>(.*?)</(bpmn:)?userTask>";
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(patternStr, java.util.regex.Pattern.DOTALL | java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
+            if (!matcher.find()) {
+                log.debug("BPMN中未找到当前节点: nodeId={}", currentNodeId);
+                return;
+            }
+            String content = matcher.group(2);
+            
+            // 从 flowable:Properties 中解析 approvalConfig
+            java.util.regex.Pattern propPattern = java.util.regex.Pattern.compile(
+                "<(?:flowable:|camunda:)?property[^>]*name=\"approvalConfig\"[^>]*value=\"([^\"]*)\"",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Matcher propMatcher = propPattern.matcher(content);
+            
+            // 如果失败，尝试 value 在前、name 在后的顺序
+            if (!propMatcher.find()) {
+                propPattern = java.util.regex.Pattern.compile(
+                    "<(?:flowable:|camunda:)?property[^>]*value=\"([^\"]*)\"[^>]*name=\"approvalConfig\"",
+                    java.util.regex.Pattern.CASE_INSENSITIVE);
+                propMatcher = propPattern.matcher(content);
+            }
+            
+            if (!propMatcher.find()) {
+                log.debug("BPMN中未找到审批配置: nodeId={}", currentNodeId);
+                return;
+            }
+            
+            String approvalConfigJson = propMatcher.group(1);
+            // 处理 XML 转义
+            approvalConfigJson = approvalConfigJson.replace("&quot;", "\"")
+                                                   .replace("&amp;", "&")
+                                                   .replace("&lt;", "<")
+                                                   .replace("&gt;", ">");
+            
+            com.fasterxml.jackson.databind.JsonNode config = 
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(approvalConfigJson);
+            
+            ProcessProgressDTO.ApprovalConfigDTO approvalConfig = new ProcessProgressDTO.ApprovalConfigDTO();
+            approvalConfig.setEnabled(config.has("enabled") ? config.get("enabled").asBoolean() : true);
+            approvalConfig.setCommentLabel(config.has("commentLabel") ? config.get("commentLabel").asText() : "审批意见");
+            
+            if (config.has("options") && config.get("options").isArray()) {
+                List<ProcessProgressDTO.ApprovalOptionDTO> options = new ArrayList<>();
+                for (com.fasterxml.jackson.databind.JsonNode optNode : config.get("options")) {
+                    ProcessProgressDTO.ApprovalOptionDTO option = new ProcessProgressDTO.ApprovalOptionDTO();
+                    option.setValue(optNode.has("value") ? optNode.get("value").asText() : "");
+                    option.setLabel(optNode.has("label") ? optNode.get("label").asText() : "");
+                    option.setType(optNode.has("type") ? optNode.get("type").asText() : "primary");
+                    option.setShowComment(optNode.has("showComment") ? optNode.get("showComment").asBoolean() : true);
+                    options.add(option);
+                }
+                approvalConfig.setOptions(options);
+            }
+            
+            progress.setApprovalConfig(approvalConfig);
+            log.info("从BPMN加载审批配置成功: nodeId={}, optionsCount={}", currentNodeId, 
+                approvalConfig.getOptions() != null ? approvalConfig.getOptions().size() : 0);
+        } catch (Exception e) {
+            log.warn("从BPMN加载审批配置失败: {}", e.getMessage());
         }
     }
     

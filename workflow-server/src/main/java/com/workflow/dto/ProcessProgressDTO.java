@@ -83,6 +83,58 @@ public class ProcessProgressDTO {
     private FormConfigDTO formConfig;
     
     /**
+     * 审批配置
+     */
+    private ApprovalConfigDTO approvalConfig;
+    
+    /**
+     * 审批配置DTO
+     */
+    @Data
+    public static class ApprovalConfigDTO {
+        /**
+         * 是否启用审批意见
+         */
+        private Boolean enabled;
+        
+        /**
+         * 审批意见名称
+         */
+        private String commentLabel;
+        
+        /**
+         * 审批选项列表
+         */
+        private List<ApprovalOptionDTO> options;
+    }
+    
+    /**
+     * 审批选项DTO
+     */
+    @Data
+    public static class ApprovalOptionDTO {
+        /**
+         * 选项值
+         */
+        private String value;
+        
+        /**
+         * 选项显示名称
+         */
+        private String label;
+        
+        /**
+         * 按钮样式类型
+         */
+        private String type;
+        
+        /**
+         * 是否显示审批备注
+         */
+        private Boolean showComment;
+    }
+    
+    /**
      * 表单配置DTO
      */
     @Data
