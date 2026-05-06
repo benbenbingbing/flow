@@ -54,6 +54,7 @@ public class ProcessInstanceService {
     private final com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper;
     private final com.workflow.mapper.SysUserMapper sysUserMapper;
     private final com.workflow.mapper.ProcessOperationLogMapper operationLogMapper;
+    private final ProcessTaskService processTaskService;
     
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
@@ -1489,6 +1490,8 @@ public class ProcessInstanceService {
                 deleteReason = reason;
             }
             runtimeService.deleteProcessInstance(processInstanceId, deleteReason);
+            // 清理本地待办
+            processTaskService.deleteTasksByProcessInstance(processInstanceId);
             log.info("流程终止成功: processInstanceId={}, userId={}, reason={}", processInstanceId, userId, deleteReason);
             return Result.success(null);
         } catch (Exception e) {

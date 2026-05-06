@@ -156,7 +156,7 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="info" size="small" @click="viewProgress(row)">查看</el-button>
-            <el-button v-if="row.status === 'RUNNING'" type="danger" size="small" @click="handleWithdraw(row)">撤回</el-button>
+            <el-button v-if="row.status === 'RUNNING'" type="danger" size="small" @click="handleTerminate(row)">终止</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -303,7 +303,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
-import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, withdrawProcess, getProcessHistory } from '@/api/processTask'
+import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, terminateProcess, getProcessHistory } from '@/api/processTask'
 import { getUserList } from '@/api/system/user'
 import request from '@/utils/request'
 
@@ -683,21 +683,18 @@ async function submitApprove() {
   }
 }
 
-// 撤回流程
-async function handleWithdraw(row) {
+// 终止流程
+async function handleTerminate(row) {
   try {
-    await ElMessageBox.confirm('确定要撤回该流程吗？', '提示', { type: 'warning' })
-    await withdrawProcess({
-      processInstanceId: row.processInstanceId,
-      reason: '发起人主动撤回'
-    })
-    ElMessage.success('撤回成功')
+    await ElMessageBox.confirm('确定要终止该流程吗？终止后流程将直接结束，相关待办也会取消。', '提示', { type: 'warning' })
+    await terminateProcess(row.processInstanceId, '发起人主动终止')
+    ElMessage.success('终止成功')
     loadStartedList()
     loadStatistics()
   } catch (e) {
     if (e !== 'cancel') {
-      console.error('撤回失败:', e)
-      ElMessage.error('撤回失败')
+      console.error('终止失败:', e)
+      ElMessage.error('终止失败')
     }
   }
 }
