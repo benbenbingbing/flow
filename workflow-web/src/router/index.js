@@ -91,41 +91,6 @@ const routes = [
         component: () => import('@/views/ProcessProgress.vue'),
         meta: { title: '流程进度' }
       },
-      // 流程中心
-      {
-        path: '/process-center',
-        name: 'ProcessCenter',
-        component: () => import('@/views/ProcessCenter.vue'),
-        meta: { title: '流程中心' }
-      },
-      // 视图引擎
-      {
-        path: '/view-engine',
-        name: 'ViewEngine',
-        component: () => import('@/views/view-engine/ViewList.vue'),
-        meta: { title: '视图引擎' }
-      },
-      // 报表引擎
-      {
-        path: '/report-engine',
-        name: 'ReportEngine',
-        component: () => import('@/views/report-engine/ReportList.vue'),
-        meta: { title: '报表引擎' }
-      },
-      // 服务编排
-      {
-        path: '/service-orchestration',
-        name: 'ServiceOrchestration',
-        component: () => import('@/views/service-orchestration/ServiceList.vue'),
-        meta: { title: '服务编排' }
-      },
-      // 脚本引擎
-      {
-        path: '/script-engine',
-        name: 'ScriptEngine',
-        component: () => import('@/views/script-engine/ScriptEditor.vue'),
-        meta: { title: '脚本引擎' }
-      },
       // 系统管理
       {
         path: '/system/menu',

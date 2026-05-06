@@ -228,7 +228,7 @@ public class DynamicTableService {
 
         String sql = "ALTER TABLE " + tableName + " DROP COLUMN " + columnName;
         jdbcTemplate.execute(sql);
-        log.info("删除表 {} 字段: {}", tableName, fieldCode);
+        log.info("删除表 {} 字段: {}", tableName, columnName);
     }
 
     /**

@@ -7,15 +7,15 @@
         <p>{{ currentDate }}</p>
       </div>
       <div class="quick-stats">
-        <div class="stat-item" @click="$router.push('/process-center')">
+        <div class="stat-item" @click="$router.push('/home')">
           <div class="stat-value">{{ statistics.todoCount || 0 }}</div>
           <div class="stat-label">待办任务</div>
         </div>
-        <div class="stat-item" @click="$router.push('/process-center')">
+        <div class="stat-item" @click="$router.push('/home')">
           <div class="stat-value">{{ statistics.doneTodayCount || 0 }}</div>
           <div class="stat-label">今日已办</div>
         </div>
-        <div class="stat-item" @click="$router.push('/process-center')">
+        <div class="stat-item" @click="$router.push('/home')">
           <div class="stat-value">{{ statistics.unreadCcCount || 0 }}</div>
           <div class="stat-label">未读抄送</div>
         </div>
@@ -58,7 +58,7 @@
         <template #header>
           <div class="widget-header">
             <span>待办任务</span>
-            <el-button link type="primary" @click="$router.push('/process-center')">
+            <el-button link type="primary" @click="$router.push('/home')">
               查看更多
             </el-button>
           </div>
@@ -136,14 +136,7 @@
             <el-icon><Box /></el-icon>
             <span>实体管理</span>
           </div>
-          <div class="recent-item" @click="$router.push('/view-engine')">
-            <el-icon><View /></el-icon>
-            <span>视图引擎</span>
-          </div>
-          <div class="recent-item" @click="$router.push('/report-engine')">
-            <el-icon><DataLine /></el-icon>
-            <span>报表引擎</span>
-          </div>
+
         </div>
       </el-card>
       
@@ -163,16 +156,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, Box, View, DataLine, TrendCharts, Share } from '@element-plus/icons-vue'
+import { Box, TrendCharts, Share } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getWorkbenchData } from '@/api/workbench'
 
 // 图标组件映射
 const iconComponents = {
-  Bell,
   Box,
-  View,
-  DataLine,
   TrendCharts,
   Share
 }
@@ -214,7 +204,7 @@ const loadData = async () => {
 
 // 待办点击
 const handleTodoClick = (item) => {
-  router.push('/process-center')
+  router.push('/home')
 }
 
 // 格式化时间
