@@ -30,6 +30,8 @@ public class ProcessDefinitionService {
     private final FlowActionService flowActionService;
     private final EntityFlowStatusService entityFlowStatusService;
     private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
+    private final ProcessNodeFormMapper nodeFormMapper;
+    private final ProcessNodeApprovalMapper nodeApprovalMapper;
     
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAll() {
@@ -176,7 +178,182 @@ public class ProcessDefinitionService {
             }
         }
         
+        // 同步 BPMN XML 中的节点表单配置到 process_node_form 表
+        if (dto.getBpmnXml() != null && !dto.getBpmnXml().isEmpty()) {
+            syncNodeFormsFromBpmn(id, dto.getBpmnXml());
+            syncNodeApprovalsFromBpmn(id, dto.getBpmnXml());
+        }
+        
         return convertToDTO(existing);
+    }
+    
+    /**
+     * 从 BPMN XML 中同步节点表单配置到 process_node_form 表
+     */
+    private void syncNodeFormsFromBpmn(String processConfigId, String bpmnXml) {
+        try {
+            javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+            org.w3c.dom.Document doc = builder.parse(new java.io.ByteArrayInputStream(bpmnXml.getBytes("UTF-8")));
+            
+            org.w3c.dom.NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
+            for (int i = 0; i < userTasks.getLength(); i++) {
+                org.w3c.dom.Element userTask = (org.w3c.dom.Element) userTasks.item(i);
+                String nodeId = userTask.getAttribute("id");
+                String nodeName = userTask.getAttribute("name");
+                if (nodeId == null || nodeId.isEmpty()) {
+                    continue;
+                }
+                
+                // 查找 extensionElements -> properties -> property name="entityFormId"
+                String entityFormId = null;
+                org.w3c.dom.NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
+                for (int j = 0; j < extElements.getLength(); j++) {
+                    org.w3c.dom.Element extElement = (org.w3c.dom.Element) extElements.item(j);
+                    org.w3c.dom.NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
+                    for (int k = 0; k < properties.getLength(); k++) {
+                        org.w3c.dom.Element props = (org.w3c.dom.Element) properties.item(k);
+                        org.w3c.dom.NodeList propList = props.getElementsByTagNameNS("*", "property");
+                        for (int m = 0; m < propList.getLength(); m++) {
+                            org.w3c.dom.Element prop = (org.w3c.dom.Element) propList.item(m);
+                            String name = prop.getAttribute("name");
+                            String value = prop.getAttribute("value");
+                            if ("entityFormId".equals(name) && value != null && !value.isEmpty()) {
+                                entityFormId = value;
+                            }
+                            // 同时读取 isReadonly
+                            if ("entityFormReadonly".equals(name) && value != null) {
+                                // 后续处理
+                            }
+                        }
+                    }
+                }
+                
+                if (entityFormId != null) {
+                    // 检查是否已存在
+                    ProcessNodeForm existing = nodeFormMapper.selectByNodeId(processConfigId, nodeId);
+                    if (existing != null) {
+                        existing.setFormId(entityFormId);
+                        existing.setNodeName(nodeName);
+                        existing.setUpdateTime(java.time.LocalDateTime.now());
+                        nodeFormMapper.updateById(existing);
+                    } else {
+                        ProcessNodeForm nodeForm = new ProcessNodeForm();
+                        nodeForm.setProcessConfigId(processConfigId);
+                        nodeForm.setNodeId(nodeId);
+                        nodeForm.setNodeName(nodeName);
+                        nodeForm.setFormId(entityFormId);
+                        nodeForm.setIsReadonly(0);
+                        nodeForm.setCreateTime(java.time.LocalDateTime.now());
+                        nodeForm.setUpdateTime(java.time.LocalDateTime.now());
+                        nodeFormMapper.insert(nodeForm);
+                    }
+                    log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formId={}", processConfigId, nodeId, entityFormId);
+                } else {
+                    // 如果 BPMN 中没有 entityFormId，删除已有的绑定
+                    ProcessNodeForm existing = nodeFormMapper.selectByNodeId(processConfigId, nodeId);
+                    if (existing != null) {
+                        nodeFormMapper.deleteById(existing.getId());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("同步节点表单配置失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 从 BPMN XML 中同步节点审批配置到 process_node_approval 表
+     */
+    private void syncNodeApprovalsFromBpmn(String processConfigId, String bpmnXml) {
+        try {
+            javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+            org.w3c.dom.Document doc = builder.parse(new java.io.ByteArrayInputStream(bpmnXml.getBytes("UTF-8")));
+            
+            org.w3c.dom.NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
+            for (int i = 0; i < userTasks.getLength(); i++) {
+                org.w3c.dom.Element userTask = (org.w3c.dom.Element) userTasks.item(i);
+                String nodeId = userTask.getAttribute("id");
+                String nodeName = userTask.getAttribute("name");
+                if (nodeId == null || nodeId.isEmpty()) {
+                    continue;
+                }
+                
+                // 查找 extensionElements -> properties -> property name="approvalConfig"
+                String approvalConfigJson = null;
+                org.w3c.dom.NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
+                for (int j = 0; j < extElements.getLength(); j++) {
+                    org.w3c.dom.Element extElement = (org.w3c.dom.Element) extElements.item(j);
+                    org.w3c.dom.NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
+                    for (int k = 0; k < properties.getLength(); k++) {
+                        org.w3c.dom.Element props = (org.w3c.dom.Element) properties.item(k);
+                        org.w3c.dom.NodeList propList = props.getElementsByTagNameNS("*", "property");
+                        for (int m = 0; m < propList.getLength(); m++) {
+                            org.w3c.dom.Element prop = (org.w3c.dom.Element) propList.item(m);
+                            String name = prop.getAttribute("name");
+                            String value = prop.getAttribute("value");
+                            if ("approvalConfig".equals(name) && value != null && !value.isEmpty()) {
+                                approvalConfigJson = value
+                                    .replace("&quot;", "\"")
+                                    .replace("&#34;", "\"")
+                                    .replace("&amp;", "&")
+                                    .replace("&#38;", "&")
+                                    .replace("&lt;", "<")
+                                    .replace("&#60;", "<")
+                                    .replace("&gt;", ">")
+                                    .replace("&#62;", ">")
+                                    .replace("&#39;", "'");
+                            }
+                        }
+                    }
+                }
+                
+                if (approvalConfigJson != null && !approvalConfigJson.isEmpty()) {
+                    com.fasterxml.jackson.databind.JsonNode config = 
+                        new com.fasterxml.jackson.databind.ObjectMapper().readTree(approvalConfigJson);
+                    
+                    boolean enabled = config.has("enabled") ? config.get("enabled").asBoolean() : true;
+                    String commentLabel = config.has("commentLabel") ? config.get("commentLabel").asText() : "审批意见";
+                    String optionsJson = null;
+                    if (config.has("options") && config.get("options").isArray()) {
+                        optionsJson = config.get("options").toString();
+                    }
+                    
+                    // 检查是否已存在
+                    ProcessNodeApproval existing = nodeApprovalMapper.selectByNodeId(processConfigId, nodeId);
+                    if (existing != null) {
+                        existing.setEnabled(enabled ? 1 : 0);
+                        existing.setCommentLabel(commentLabel);
+                        existing.setOptionsJson(optionsJson);
+                        existing.setUpdateTime(java.time.LocalDateTime.now());
+                        nodeApprovalMapper.updateById(existing);
+                    } else {
+                        ProcessNodeApproval nodeApproval = new ProcessNodeApproval();
+                        nodeApproval.setProcessConfigId(processConfigId);
+                        nodeApproval.setNodeId(nodeId);
+                        nodeApproval.setNodeName(nodeName);
+                        nodeApproval.setEnabled(enabled ? 1 : 0);
+                        nodeApproval.setCommentLabel(commentLabel);
+                        nodeApproval.setOptionsJson(optionsJson);
+                        nodeApproval.setCreateTime(java.time.LocalDateTime.now());
+                        nodeApproval.setUpdateTime(java.time.LocalDateTime.now());
+                        nodeApprovalMapper.insert(nodeApproval);
+                    }
+                    log.debug("同步节点审批配置: processConfigId={}, nodeId={}", processConfigId, nodeId);
+                } else {
+                    // 如果 BPMN 中没有 approvalConfig，删除已有的配置
+                    ProcessNodeApproval existing = nodeApprovalMapper.selectByNodeId(processConfigId, nodeId);
+                    if (existing != null) {
+                        nodeApprovalMapper.deleteById(existing.getId());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("同步节点审批配置失败: {}", e.getMessage());
+        }
     }
     
     @Transactional

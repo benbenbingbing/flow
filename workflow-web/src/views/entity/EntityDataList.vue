@@ -23,14 +23,27 @@
       <el-card class="search-card" v-if="queryFields.length > 0">
         <el-form :model="queryForm" inline>
           <el-form-item v-for="field in queryFields" :key="field.fieldCode" :label="field.fieldName">
-            <el-input v-if="field.fieldType === 'STRING' || field.fieldType === 'TEXT'" 
-                      v-model="queryForm[field.fieldCode]" :placeholder="`请输入${field.fieldName}`" />
-            <el-select v-else-if="field.fieldType === 'SELECT'" 
-                       v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" clearable>
-              <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-            <el-date-picker v-else-if="field.fieldType === 'DATE'" 
-                           v-model="queryForm[field.fieldCode]" type="date" :placeholder="`选择${field.fieldName}`" />
+            <!-- BETWEEN 范围查询 -->
+            <template v-if="field.queryType === 'BETWEEN' && useListConfig">
+              <el-date-picker v-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'"
+                v-model="queryForm[field.fieldCode + '_start']" type="date" :placeholder="`开始${field.fieldName}`" style="width: 140px" value-format="YYYY-MM-DD" />
+              <el-input v-else v-model="queryForm[field.fieldCode + '_start']" :placeholder="`开始${field.fieldName}`" style="width: 120px" />
+              <span style="margin: 0 4px">~</span>
+              <el-date-picker v-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'"
+                v-model="queryForm[field.fieldCode + '_end']" type="date" :placeholder="`结束${field.fieldName}`" style="width: 140px" value-format="YYYY-MM-DD" />
+              <el-input v-else v-model="queryForm[field.fieldCode + '_end']" :placeholder="`结束${field.fieldName}`" style="width: 120px" />
+            </template>
+            <!-- 普通查询 -->
+            <template v-else>
+              <el-input v-if="field.fieldType === 'STRING' || field.fieldType === 'TEXT'" 
+                        v-model="queryForm[field.fieldCode]" :placeholder="`请输入${field.fieldName}`" />
+              <el-select v-else-if="field.fieldType === 'SELECT'" 
+                         v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" clearable>
+                <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+              <el-date-picker v-else-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'" 
+                             v-model="queryForm[field.fieldCode]" type="date" :placeholder="`选择${field.fieldName}`" value-format="YYYY-MM-DD" />
+            </template>
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="handleSearch">查询</el-button>
@@ -43,25 +56,46 @@
       <el-card>
         <el-table :data="dataList" v-loading="tableLoading" stripe>
           <el-table-column type="index" width="50" />
-          <el-table-column prop="dataNo" label="编号" width="150" />
-          <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
-          <el-table-column v-for="field in listFields" :key="field.fieldCode" 
-                          :prop="`data.${field.fieldCode}`" :label="field.fieldName" min-width="120" show-overflow-tooltip />
-          <el-table-column prop="submitterName" label="提交人" width="100" />
-          <el-table-column prop="status" label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" width="150">
-            <template #default="{ row }">
-              {{ formatDate(row.createdAt) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <!-- 使用列表配置时：完全动态列 -->
+          <template v-if="useListConfig">
+            <el-table-column v-for="field in listFields" :key="field.fieldCode"
+              :prop="getListFieldProp(field.fieldCode)"
+              :label="field.fieldName"
+              :width="field.width > 0 ? field.width : undefined"
+              :align="field.align"
+              :min-width="field.width > 0 ? undefined : 100"
+              show-overflow-tooltip>
+              <template #default="{ row }" v-if="field.fieldCode === 'status'">
+                <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+              </template>
+              <template #default="{ row }" v-else-if="field.fieldCode === 'createdAt' || field.fieldCode === 'processStartTime' || field.fieldCode === 'processEndTime' || field.fieldCode === 'submitTime'">
+                {{ formatDate(row[field.fieldCode]) }}
+              </template>
+            </el-table-column>
+          </template>
+          <!-- 默认列 -->
+          <template v-else>
+            <el-table-column prop="dataNo" label="编号" width="150" />
+            <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
+            <el-table-column v-for="field in listFields" :key="field.fieldCode" 
+                            :prop="`data.${field.fieldCode}`" :label="field.fieldName" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="submitterName" label="提交人" width="100" />
+            <el-table-column prop="status" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="创建时间" width="150">
+              <template #default="{ row }">
+                {{ formatDate(row.createdAt) }}
+              </template>
+            </el-table-column>
+          </template>
+          <el-table-column label="操作" width="220" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="handleView(row)">查看</el-button>
               <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+              <el-button v-if="canApprove(row)" link type="warning" @click="handleApprove(row)">审批</el-button>
               <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
             </template>
           </el-table-column>
@@ -203,6 +237,33 @@
         </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+    
+    <!-- 审批对话框 -->
+    <el-dialog v-model="approveDialogVisible" :title="approveTask?.name || '任务审批'" width="600px">
+      <el-form label-width="100px">
+        <el-form-item label="审批意见" prop="action">
+          <el-radio-group v-model="approveForm.action">
+            <el-radio-button 
+              v-for="opt in (approveApprovalConfig?.options || [{label:'通过', value:'approve'}, {label:'驳回', value:'reject'}])" 
+              :key="opt.value" 
+              :label="opt.value">
+              {{ opt.label }}
+            </el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input 
+            v-model="approveForm.comment" 
+            type="textarea" 
+            :rows="3" 
+            placeholder="请输入审批备注" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="approveDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitApprove" :loading="approveLoading">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -212,11 +273,19 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
+import { entityListConfigApi } from '@/api/entityListConfig'
+import { useUserStore } from '@/stores/user'
+import { completeTask } from '@/api/processTask'
+import request from '@/utils/request'
 import EntitySelector from '@/components/EntitySelector.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+
+// 当前登录用户
+const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.username || '')
 
 // 从路由参数获取实体编码
 const entityCode = computed(() => route.params.entityCode as string || route.query.entityCode as string)
@@ -233,6 +302,10 @@ const currentRow = ref<any>({})
 // 实体定义
 const entityDefinition = ref<any>({})
 const entityFields = ref<any[]>([])
+
+// 列表配置（entity_list_config）
+const listConfig = ref<any>(null)
+const listConfigFields = ref<any[]>([])
 
 // 数据列表
 const dataList = ref<any[]>([])
@@ -326,20 +399,46 @@ watch(() => formData.data, () => {
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
 
-// 查询字段（配置了isQuery的字段）
+// 查询字段（优先使用列表配置，否则用默认的isQuery）
 const queryFields = computed(() => {
+  if (listConfigFields.value.length > 0) {
+    // 使用列表配置的查询字段
+    return listConfigFields.value
+      .filter((f: any) => f.isQuery && f.showInList)
+      .map((f: any) => {
+        const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
+        return { ...f, fieldType: originField?.fieldType || 'STRING', optionsJson: originField?.optionsJson, queryType: f.queryType || 'LIKE' }
+      })
+  }
   return entityFields.value.filter((f: any) => f.isQuery && !f.isSystem)
 })
 
-// 列表显示字段（配置了showInList的字段）
+// 列表显示字段（优先使用列表配置，否则用默认的showInList）
 const listFields = computed(() => {
+  if (listConfigFields.value.length > 0) {
+    return listConfigFields.value
+      .filter((f: any) => f.showInList)
+      .map((f: any) => {
+        const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
+        return { ...f, fieldType: originField?.fieldType || 'STRING', optionsJson: originField?.optionsJson }
+      })
+  }
   return entityFields.value.filter((f: any) => f.showInList && !f.isSystem)
 })
+
+// 是否使用列表配置
+const useListConfig = computed(() => listConfigFields.value.length > 0)
 
 // 表单字段（配置了showInForm的字段）
 const formFields = computed(() => {
   return entityFields.value.filter((f: any) => f.showInForm && !f.isSystem)
 })
+
+// 获取列表字段对应的 prop（系统字段在 row 顶层，自定义字段在 row.data 中）
+const SYSTEM_FIELDS = new Set(['id', 'dataNo', 'name', 'code', 'status', 'processInstanceId', 'processStartTime', 'processEndTime', 'currentTaskId', 'currentTaskName', 'currentTaskAssignee', 'submitterId', 'submitterName', 'submitTime', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'])
+const getListFieldProp = (fieldCode: string) => {
+  return SYSTEM_FIELDS.has(fieldCode) ? fieldCode : `data.${fieldCode}`
+}
 
 // 解析选项
 const parseOptions = (optionsJson: string) => {
@@ -391,11 +490,12 @@ const loadEntityDefinition = async () => {
     entityDefinition.value = res || {}
     entityFields.value = res?.fields || []
     
+    // 加载列表配置
+    await loadListConfig()
+    
     // 初始化查询表单
-    entityFields.value.forEach((field: any) => {
-      if (field.isQuery) {
-        queryForm[field.fieldCode] = ''
-      }
+    queryFields.value.forEach((field: any) => {
+      queryForm[field.fieldCode] = ''
     })
     
     // 加载数据列表
@@ -408,13 +508,44 @@ const loadEntityDefinition = async () => {
   }
 }
 
+// 加载列表配置
+const loadListConfig = async () => {
+  if (!entityDefinition.value?.id) return
+  try {
+    const configs = await entityListConfigApi.getByEntityId(entityDefinition.value.id)
+    if (configs && configs.length > 0) {
+      // 优先使用默认配置，如果没有则使用第一个
+      const config = configs.find((c: any) => c.isDefault) || configs[0]
+      const detail = await entityListConfigApi.getById(config.id)
+      if (detail) {
+        listConfig.value = detail
+        listConfigFields.value = detail.fields || []
+      }
+    } else {
+      listConfig.value = null
+      listConfigFields.value = []
+    }
+  } catch (e) {
+    console.error('加载列表配置失败:', e)
+    listConfig.value = null
+    listConfigFields.value = []
+  }
+}
+
 // 加载数据列表
 const loadDataList = async () => {
   if (!entityCode.value) return
   
   tableLoading.value = true
   try {
-    const res = await entityDataApi.getList(entityCode.value)
+    // 构建查询参数，过滤空值
+    const params: Record<string, any> = {}
+    Object.entries(queryForm).forEach(([key, value]) => {
+      if (value !== '' && value !== null && value !== undefined) {
+        params[key] = value
+      }
+    })
+    const res = await entityDataApi.getList(entityCode.value, params)
     // 后端返回列表，前端做分页
     const allData = res || []
     total.value = allData.length
@@ -516,6 +647,77 @@ const handleDelete = async (row: any) => {
     if (error !== 'cancel') {
       ElMessage.error(error.message || '删除失败')
     }
+  }
+}
+
+// 判断是否可审批
+const canApprove = (row: any) => {
+  if (!row.processInstanceId || row.processEndTime) return false
+  const userId = userStore.userInfo?.id
+  const username = userStore.userInfo?.username
+  return row.currentTaskAssignee === String(userId) || row.currentTaskAssignee === username
+}
+
+// 审批弹窗
+const approveDialogVisible = ref(false)
+const approveLoading = ref(false)
+const approveTask = ref<any>(null)
+const approveForm = reactive({
+  action: 'approve',
+  comment: ''
+})
+const approveApprovalConfig = ref<any>(null)
+const approveEntityData = ref<any>(null)
+const approveFormConfig = ref<any>(null)
+
+// 打开审批弹窗
+const handleApprove = async (row: any) => {
+  approveTask.value = {
+    taskId: row.currentTaskId,
+    processInstanceId: row.processInstanceId,
+    name: row.currentTaskName || '任务审批'
+  }
+  approveForm.action = 'approve'
+  approveForm.comment = ''
+  
+  try {
+    // 加载流程进度
+    const progressRes = await request.get(`/process-instance/${row.processInstanceId}/progress`)
+    if (progressRes) {
+      approveEntityData.value = progressRes.entityData || null
+      approveFormConfig.value = progressRes.formConfig || null
+      approveApprovalConfig.value = progressRes.approvalConfig || null
+      // 默认选中第一个审批选项
+      const config = progressRes.approvalConfig
+      if (config && Array.isArray(config.options) && config.options.length > 0) {
+        approveForm.action = config.options[0].value
+      }
+    }
+    approveDialogVisible.value = true
+  } catch (e) {
+    console.error('加载审批详情失败:', e)
+    ElMessage.error('加载审批详情失败')
+  }
+}
+
+// 提交审批
+const submitApprove = async () => {
+  if (!approveTask.value?.taskId) return
+  approveLoading.value = true
+  try {
+    await completeTask({
+      taskId: approveTask.value.taskId,
+      action: approveForm.action,
+      comment: approveForm.comment
+    })
+    ElMessage.success('审批成功')
+    approveDialogVisible.value = false
+    loadDataList()
+  } catch (e) {
+    console.error('审批失败:', e)
+    ElMessage.error('审批失败')
+  } finally {
+    approveLoading.value = false
   }
 }
 

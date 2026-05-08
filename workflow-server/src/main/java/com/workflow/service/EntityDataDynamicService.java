@@ -355,10 +355,11 @@ public class EntityDataDynamicService {
         updateData.put("status", processingStatus);
         updateData.put("updated_at", LocalDateTime.now());
         
-        // 设置当前任务ID和名称
+        // 设置当前任务ID、名称和审批人
         if (currentTask != null) {
             updateData.put("current_task_id", currentTask.getId());
             updateData.put("current_task_name", currentTask.getName());
+            updateData.put("current_task_assignee", currentTask.getAssignee());
         }
 
         dynamicMapper.update(tableName, updateData);
@@ -369,6 +370,7 @@ public class EntityDataDynamicService {
         if (currentTask != null) {
             dto.setCurrentTaskId(currentTask.getId());
             dto.setCurrentTaskName(currentTask.getName());
+            dto.setCurrentTaskAssignee(currentTask.getAssignee());
         }
 
         // 同步待办任务
@@ -382,16 +384,17 @@ public class EntityDataDynamicService {
      * 更新实体数据的当前任务信息
      */
     @Transactional(rollbackFor = Exception.class)
-    public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName) {
+    public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName, String currentTaskAssignee) {
         String tableName = dynamicTableService.getTableName(entityCode);
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("id", entityDataId);
         updateData.put("current_task_id", currentTaskId);
         updateData.put("current_task_name", currentTaskName);
+        updateData.put("current_task_assignee", currentTaskAssignee);
         updateData.put("updated_at", LocalDateTime.now());
         dynamicMapper.update(tableName, updateData);
-        log.debug("更新实体当前任务: entityCode={}, entityDataId={}, taskId={}, taskName={}",
-                entityCode, entityDataId, currentTaskId, currentTaskName);
+        log.debug("更新实体当前任务: entityCode={}, entityDataId={}, taskId={}, taskName={}, assignee={}",
+                entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
     }
 
     /**
@@ -411,6 +414,7 @@ public class EntityDataDynamicService {
         dto.setProcessEndTime(getDateTime(data, "process_end_time"));
         dto.setCurrentTaskId(getString(data, "current_task_id"));
         dto.setCurrentTaskName(getString(data, "current_task_name"));
+        dto.setCurrentTaskAssignee(getString(data, "current_task_assignee"));
         dto.setSubmitterId(getString(data, "submitter_id"));
         dto.setSubmitterName(getString(data, "submitter_name"));
         dto.setSubmitTime(getDateTime(data, "submit_time"));
@@ -464,6 +468,9 @@ public class EntityDataDynamicService {
         }
         if (dto.getCurrentTaskName() != null) {
             data.put("current_task_name", dto.getCurrentTaskName());
+        }
+        if (dto.getCurrentTaskAssignee() != null) {
+            data.put("current_task_assignee", dto.getCurrentTaskAssignee());
         }
         if (dto.getSubmitterId() != null) {
             data.put("submitter_id", dto.getSubmitterId());
@@ -542,7 +549,7 @@ public class EntityDataDynamicService {
         Set<String> systemFields = new HashSet<>(Arrays.asList(
                 "id", "data_no", "title", "name", "code", "status",
                 "process_instance_id", "process_start_time", "process_end_time",
-                "current_task_id", "current_task_name",
+                "current_task_id", "current_task_name", "current_task_assignee",
                 "submitter_id", "submitter_name", "submit_time",
                 "created_at", "updated_at", "created_by", "updated_by", "deleted"
         ));

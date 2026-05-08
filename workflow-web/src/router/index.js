@@ -71,6 +71,19 @@ const routes = [
         component: () => import('@/views/entity/EntityDataList.vue'),
         meta: { title: '实体数据列表' }
       },
+      // 实体列表配置
+      {
+        path: '/entity-list-config/:entityId',
+        name: 'EntityListConfig',
+        component: () => import('@/views/EntityListConfig.vue'),
+        meta: { title: '实体列表配置' }
+      },
+      {
+        path: '/entity-list-config/design/:id',
+        name: 'EntityListConfigDesign',
+        component: () => import('@/views/EntityListConfigDesign.vue'),
+        meta: { title: '列表配置设计' }
+      },
       // 实体表单管理
       {
         path: '/entity-form/list-by-entity/:entityId',

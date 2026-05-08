@@ -455,12 +455,15 @@ public class ProcessTaskService {
         
         String currentTaskId = null;
         String currentTaskName = null;
+        String currentTaskAssignee = null;
         if (!activeTasks.isEmpty()) {
-            currentTaskId = activeTasks.get(0).getId();
-            currentTaskName = activeTasks.get(0).getName();
+            Task task = activeTasks.get(0);
+            currentTaskId = task.getId();
+            currentTaskName = task.getName();
+            currentTaskAssignee = task.getAssignee();
         }
         
-        entityDataDynamicService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName);
+        entityDataDynamicService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
     }
     
     /**
@@ -505,9 +508,8 @@ public class ProcessTaskService {
         List<ProcessTask> tasks = taskMapper.selectByProcessInstance(processInstanceId);
         
         for (ProcessTask task : tasks) {
-            // 逻辑删除
-            task.setDeleted(1);
-            taskMapper.updateById(task);
+            // 使用 MP 的 deleteById 进行逻辑删除（@TableLogic 字段无法通过 updateById 更新）
+            taskMapper.deleteById(task.getId());
             log.info("删除流程待办: taskId={}, processInstanceId={}", 
                     task.getTaskId(), processInstanceId);
         }

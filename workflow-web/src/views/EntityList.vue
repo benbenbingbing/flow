@@ -58,6 +58,9 @@
                   <el-dropdown-item @click="handleData(row)">
                     <el-icon><DataLine /></el-icon>数据管理
                   </el-dropdown-item>
+                  <el-dropdown-item @click="handleListConfig(row)">
+                    <el-icon><List /></el-icon>列表
+                  </el-dropdown-item>
                   <el-dropdown-item @click="handleForm(row)">
                     <el-icon><Document /></el-icon>表单
                   </el-dropdown-item>
@@ -544,6 +547,10 @@ const handleSubmit = async () => {
 
 const handleDesign = (row) => {
   router.push(`/entity/design/${row.id}`)
+}
+
+const handleListConfig = (row) => {
+  router.push(`/entity-list-config/${row.id}`)
 }
 
 const handleForm = (row) => {

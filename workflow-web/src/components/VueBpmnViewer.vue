@@ -32,7 +32,7 @@
         <template v-else>
           <div class="info-row">
             <span class="label">状态：</span>
-            <span class="value">{{ tooltip.status === 'completed' ? '已完成' : tooltip.status === 'active' ? '进行中' : '未开始' }}</span>
+            <span class="value">{{ tooltip.status === 'completed' ? '已完成' : tooltip.status === 'active' ? '进行中' : tooltip.status === 'terminated' ? '已终止' : '未开始' }}</span>
           </div>
         </template>
       </div>
@@ -60,6 +60,7 @@ const props = defineProps({
     default: () => ({
       completedNodes: [],
       activeNodes: [],
+      terminatedNodes: [],
       executedSequenceFlows: [],
       nodeAssigneeMap: {}
     })
@@ -99,6 +100,11 @@ const COLORS = {
     stroke: '#d9d9d9',
     strokeWidth: 1
   },
+  terminated: {
+    fill: '#fff1f0',
+    stroke: '#ff4d4f',
+    strokeWidth: 3
+  },
   executedFlow: {
     stroke: '#52c41a',
     strokeWidth: 2
@@ -118,10 +124,19 @@ const importXML = async (xml) => {
     await viewer.value.importXML(xml)
     if (props.fitViewport) {
       const canvas = viewer.value.get('canvas')
-      canvas.zoom('fit-viewport', 'auto')
+      // 先确保 canvas 尺寸计算正确，再 fit viewport
+      nextTick(() => {
+        canvas.resized()
+        canvas.zoom('fit-viewport', 'auto')
+      })
     }
     // 延迟高亮，确保 bpmn-js 渲染完成
     setTimeout(() => {
+      if (props.fitViewport && viewer.value) {
+        const canvas = viewer.value.get('canvas')
+        canvas.resized()
+        canvas.zoom('fit-viewport', 'auto')
+      }
       highlightProcess()
       addMouseEventListeners()
       startFlowFixTimer()
@@ -179,11 +194,19 @@ const highlightProcess = () => {
       let status = 'pending'
       const rawCompletedNodes = toRaw(completedNodes) || []
       const rawActiveNodes = toRaw(activeNodes) || []
+      const rawTerminatedNodes = toRaw(props.progressData?.terminatedNodes) || []
       // 优先判断活跃：回退后再次经过的节点应显示为进行中
       if (rawActiveNodes.includes(elementId)) {
         status = 'active'
+      } else if (rawTerminatedNodes.includes(elementId)) {
+        status = 'terminated'
       } else if (rawCompletedNodes.includes(elementId)) {
         status = 'completed'
+      }
+      
+      // 终止流程的结束节点标记为红色
+      if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
+        status = 'terminated'
       }
       
       setNodeStyle(canvas, element, COLORS[status], status)
@@ -207,7 +230,7 @@ const setNodeStyle = (canvas, element, colorConfig, status) => {
     rect.style.strokeWidth = colorConfig.strokeWidth
   }
   
-  gfx.classList.remove('status-completed', 'status-active', 'status-pending')
+  gfx.classList.remove('status-completed', 'status-active', 'status-pending', 'status-terminated')
   gfx.classList.add(`status-${status}`)
   
   addNodeBadge(gfx, element, status)
@@ -246,6 +269,13 @@ const addNodeBadge = (gfx, element, status) => {
     badge.innerHTML = `
       <circle cx="${bbox.x + bbox.width - 10}" cy="${bbox.y + 10}" r="10" fill="#1890ff" stroke="#fff" stroke-width="1"/>
       <text x="${bbox.x + bbox.width - 10}" y="${bbox.y + 14}" text-anchor="middle" fill="#fff" font-size="10">${initial}</text>
+    `
+  } else if (status === 'terminated') {
+    // 已终止 - 红色X标记在右上角
+    badge.innerHTML = `
+      <circle cx="${bbox.x + bbox.width - 8}" cy="${bbox.y + 8}" r="8" fill="#ff4d4f" stroke="#fff" stroke-width="1"/>
+      <path d="M${bbox.x + bbox.width - 11} ${bbox.y + 5} L${bbox.x + bbox.width - 5} ${bbox.y + 11}" stroke="#fff" stroke-width="2" fill="none"/>
+      <path d="M${bbox.x + bbox.width - 5} ${bbox.y + 5} L${bbox.x + bbox.width - 11} ${bbox.y + 11}" stroke="#fff" stroke-width="2" fill="none"/>
     `
   }
   
@@ -387,10 +417,17 @@ const addMouseEventListeners = () => {
         const rawActiveNodes = toRaw(props.progressData.activeNodes) || []
         
         let status = 'pending'
-        if (rawCompletedNodes.includes(elementId)) {
-          status = 'completed'
-        } else if (rawActiveNodes.includes(elementId)) {
+        const rawTerminatedNodes2 = toRaw(props.progressData?.terminatedNodes) || []
+        if (rawActiveNodes.includes(elementId)) {
           status = 'active'
+        } else if (rawTerminatedNodes2.includes(elementId)) {
+          status = 'terminated'
+        } else if (rawCompletedNodes.includes(elementId)) {
+          status = 'completed'
+        }
+        // 终止流程的结束节点标记为红色
+        if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
+          status = 'terminated'
         }
         
         const assigneeInfo = nodeAssigneeMap?.[elementId] || null
@@ -431,6 +468,11 @@ watch(() => props.xml, (newXml) => {
 watch(() => props.progressData, () => {
   setTimeout(() => {
     nextTick(() => {
+      if (viewer.value && props.fitViewport) {
+        const canvas = viewer.value.get('canvas')
+        canvas.resized()
+        canvas.zoom('fit-viewport', 'auto')
+      }
       highlightProcess()
       startFlowFixTimer()
     })
@@ -508,6 +550,10 @@ defineExpose({
 
 .node-status-dot.pending {
   background: #d9d9d9;
+}
+
+.node-status-dot.terminated {
+  background: #ff4d4f;
 }
 
 .tooltip-header .node-name {

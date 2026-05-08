@@ -57,7 +57,7 @@ public class EntityDataSqlProvider {
     }
 
     /**
-     * 条件查询
+     * 条件查询（支持 LIKE 模糊查询和 BETWEEN 范围查询）
      */
     public String selectByCondition(Map<String, Object> params) {
         String tableName = (String) params.get("tableName");
@@ -70,11 +70,58 @@ public class EntityDataSqlProvider {
             WHERE("deleted = 0");
         }};
         
-        // 动态添加条件
         if (condition != null) {
+            // 分离 start/end 和普通条件
+            Map<String, Object> startMap = new java.util.HashMap<>();
+            Map<String, Object> endMap = new java.util.HashMap<>();
+            Map<String, Object> normalConditions = new java.util.HashMap<>();
+            
             for (Map.Entry<String, Object> entry : condition.entrySet()) {
-                if (entry.getValue() != null) {
-                    sql.WHERE(entry.getKey() + " = #{condition." + entry.getKey() + "}");
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                // 跳过 null 和空字符串
+                if (value == null || (value instanceof String && ((String) value).trim().isEmpty())) {
+                    continue;
+                }
+                if (key.endsWith("_start")) {
+                    startMap.put(key.substring(0, key.length() - 6), value);
+                } else if (key.endsWith("_end")) {
+                    endMap.put(key.substring(0, key.length() - 4), value);
+                } else {
+                    normalConditions.put(key, value);
+                }
+            }
+            
+            // 处理 BETWEEN 条件（同时有 start 和 end）
+            java.util.Set<String> betweenKeys = new java.util.HashSet<>(startMap.keySet());
+            betweenKeys.retainAll(endMap.keySet());
+            for (String fieldKey : betweenKeys) {
+                String columnName = camelToUnderscore(fieldKey);
+                sql.WHERE(columnName + " >= #{condition." + fieldKey + "_start} AND " + columnName + " <= #{condition." + fieldKey + "_end}");
+            }
+            // 只有 start 没有 end
+            for (Map.Entry<String, Object> entry : startMap.entrySet()) {
+                if (!endMap.containsKey(entry.getKey())) {
+                    String columnName = camelToUnderscore(entry.getKey());
+                    sql.WHERE(columnName + " >= #{condition." + entry.getKey() + "_start}");
+                }
+            }
+            // 只有 end 没有 start
+            for (Map.Entry<String, Object> entry : endMap.entrySet()) {
+                if (!startMap.containsKey(entry.getKey())) {
+                    String columnName = camelToUnderscore(entry.getKey());
+                    sql.WHERE(columnName + " <= #{condition." + entry.getKey() + "_end}");
+                }
+            }
+            
+            // 处理普通条件（字符串使用 LIKE 模糊查询）
+            for (Map.Entry<String, Object> entry : normalConditions.entrySet()) {
+                String columnName = camelToUnderscore(entry.getKey());
+                Object value = entry.getValue();
+                if (value instanceof String) {
+                    sql.WHERE(columnName + " LIKE CONCAT('%', #{condition." + entry.getKey() + "}, '%')");
+                } else {
+                    sql.WHERE(columnName + " = #{condition." + entry.getKey() + "}");
                 }
             }
         }

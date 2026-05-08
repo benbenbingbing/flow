@@ -260,8 +260,8 @@
             >
               <div class="history-item">
                 <span class="history-title">{{ item.title }}</span>
-                <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : 'warning'">
-                  {{ item.status === 'COMPLETED' ? '已完成' : '进行中' }}
+                <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (item.status === 'TERMINATED' ? 'danger' : 'warning')">
+                  {{ item.status === 'COMPLETED' ? '已完成' : (item.status === 'TERMINATED' ? '已终止' : '进行中') }}
                 </el-tag>
               </div>
               <div class="history-desc">{{ item.description }}</div>
@@ -543,8 +543,10 @@ async function loadProcessDetail(instanceId) {
       progressData.value = {
         completedNodes: progressRes.completedNodes || [],
         activeNodes: progressRes.activeNodes || [],
+        terminatedNodes: progressRes.terminatedNodes || [],
         executedSequenceFlows: progressRes.executedSequenceFlows || [],
-        nodeAssigneeMap: progressRes.nodeAssigneeMap || {}
+        nodeAssigneeMap: progressRes.nodeAssigneeMap || {},
+        status: progressRes.status
       }
       // 保存实体数据和表单配置
       entityData.value = progressRes.entityData || null
@@ -588,7 +590,9 @@ async function loadProcessDetail(instanceId) {
         if (node.action === 'APPROVED') actionText = '通过'
         else if (node.action === 'REJECTED') actionText = '驳回'
         else if (node.action === 'TRANSFERRED') actionText = '转办'
+        else if (node.action === 'TERMINATED') actionText = '终止'
         else if (node.status === 'COMPLETED') actionText = '完成'
+        else if (node.status === 'TERMINATED') actionText = '终止'
         else actionText = '进行中'
 
         const commentText = node.comment ? `（${node.comment}）` : ''
@@ -598,7 +602,7 @@ async function loadProcessDetail(instanceId) {
             ? `发起人: ${node.assignee || currentTask.value?.startUserName || 'admin'}`
             : (node.assignee ? `执行人: ${node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
           time: node.endTime || node.startTime,
-          type: node.action === 'TRANSFERRED' ? 'warning' : (node.status === 'COMPLETED' ? 'success' : 'primary'),
+          type: node.action === 'TRANSFERRED' ? 'warning' : (node.status === 'TERMINATED' ? 'danger' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
           status: node.status,
           action: node.action
         }

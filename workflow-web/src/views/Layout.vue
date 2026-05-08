@@ -29,6 +29,10 @@
           <el-menu-item index="/entity">
             <span>实体列表</span>
           </el-menu-item>
+          <el-menu-item index="/entity/list/project_nitiation">
+            <el-icon><Document /></el-icon>
+            <span>立项管理</span>
+          </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="/system">
           <template #title>
@@ -90,7 +94,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding } from '@element-plus/icons-vue'
+import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
 

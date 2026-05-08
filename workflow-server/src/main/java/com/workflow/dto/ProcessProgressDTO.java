@@ -52,6 +52,11 @@ public class ProcessProgressDTO {
     private List<String> activeNodes;
     
     /**
+     * 被终止的节点ID列表（流程终止时正在执行的节点）
+     */
+    private List<String> terminatedNodes;
+    
+    /**
      * 已执行的连线ID列表
      */
     private List<String> executedSequenceFlows;

@@ -250,6 +250,7 @@ public class DynamicTableService {
         sql.append("  `process_end_time` DATETIME DEFAULT NULL COMMENT '流程结束时间',\n");
         sql.append("  `current_task_id` VARCHAR(64) DEFAULT NULL COMMENT '当前任务ID',\n");
         sql.append("  `current_task_name` VARCHAR(200) DEFAULT NULL COMMENT '当前任务名称',\n");
+        sql.append("  `current_task_assignee` VARCHAR(64) DEFAULT NULL COMMENT '当前任务审批人',\n");
         sql.append("  `submitter_id` VARCHAR(64) DEFAULT NULL COMMENT '提交人ID',\n");
         sql.append("  `submitter_name` VARCHAR(100) DEFAULT NULL COMMENT '提交人姓名',\n");
         sql.append("  `submit_time` DATETIME DEFAULT NULL COMMENT '提交时间',\n");

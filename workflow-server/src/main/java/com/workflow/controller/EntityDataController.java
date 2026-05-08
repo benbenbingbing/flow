@@ -22,10 +22,23 @@ public class EntityDataController {
     private final EntityDataDynamicService entityDataDynamicService;
     
     /**
-     * 获取某实体的所有数据
+     * 获取某实体的所有数据（支持查询条件）
      */
     @GetMapping("/entity/{entityCode}")
-    public ApiResponse<List<EntityDataDTO>> listByEntity(@PathVariable String entityCode) {
+    public ApiResponse<List<EntityDataDTO>> listByEntity(
+            @PathVariable String entityCode,
+            @RequestParam(required = false) Map<String, String> params) {
+        if (params != null && !params.isEmpty()) {
+            Map<String, Object> condition = new java.util.HashMap<>();
+            params.forEach((k, v) -> {
+                if (v != null && !v.trim().isEmpty()) {
+                    condition.put(k, v);
+                }
+            });
+            if (!condition.isEmpty()) {
+                return ApiResponse.success(entityDataDynamicService.findByCondition(entityCode, condition));
+            }
+        }
         return ApiResponse.success(entityDataDynamicService.findByEntityCode(entityCode));
     }
     

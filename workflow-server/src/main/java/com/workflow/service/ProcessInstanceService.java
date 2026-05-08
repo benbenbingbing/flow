@@ -55,6 +55,8 @@ public class ProcessInstanceService {
     private final com.workflow.mapper.SysUserMapper sysUserMapper;
     private final com.workflow.mapper.ProcessOperationLogMapper operationLogMapper;
     private final ProcessTaskService processTaskService;
+    private final com.workflow.mapper.ProcessNodeFormMapper nodeFormMapper;
+    private final com.workflow.mapper.ProcessNodeApprovalMapper nodeApprovalMapper;
     
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
@@ -86,8 +88,16 @@ public class ProcessInstanceService {
             progress.setProcessDefinitionId(processInstance.getProcessDefinitionId());
             progress.setStatus("RUNNING");
         } else {
-            // 流程已结束或不存在，查询历史记录
-            progress.setStatus("COMPLETED");
+            // 流程已结束或不存在，查询历史记录判断是否为终止
+            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult();
+            if (historicInstance != null && historicInstance.getDeleteReason() != null
+                    && (historicInstance.getDeleteReason().contains("终止") || historicInstance.getDeleteReason().contains("terminated"))) {
+                progress.setStatus("TERMINATED");
+            } else {
+                progress.setStatus("COMPLETED");
+            }
         }
         
         // 2. 获取流程定义信息
@@ -196,6 +206,29 @@ public class ProcessInstanceService {
             progress.setActiveNodes(activeNodes);
         } else {
             progress.setActiveNodes(new ArrayList<>());
+        }
+        
+        // 6.1 终止流程：识别被终止时正在执行的节点
+        if ("TERMINATED".equals(progress.getStatus())) {
+            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult();
+            if (historicInstance != null && historicInstance.getEndTime() != null) {
+                long processEndTime = historicInstance.getEndTime().getTime();
+                List<String> terminatedNodes = historicActivities.stream()
+                        .filter(h -> h.getEndTime() != null)
+                        .filter(h -> Math.abs(h.getEndTime().getTime() - processEndTime) < 2000) // 2秒内视为被终止的节点
+                        .map(HistoricActivityInstance::getActivityId)
+                        .distinct()
+                        .collect(Collectors.toList());
+                progress.setTerminatedNodes(terminatedNodes);
+                // 从已完成节点中移除被终止的节点，避免显示为绿色"已完成"
+                completedNodes.removeAll(terminatedNodes);
+            } else {
+                progress.setTerminatedNodes(new ArrayList<>());
+            }
+        } else {
+            progress.setTerminatedNodes(new ArrayList<>());
         }
         
         // 7. 构建节点历史记录
@@ -396,6 +429,33 @@ public class ProcessInstanceService {
         }
         nodeHistory = mergedHistory;
         
+        // 7.2 合并终止记录到审批历史中
+        try {
+            List<com.workflow.entity.ProcessOperationLog> terminateLogs = operationLogMapper
+                    .selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.workflow.entity.ProcessOperationLog>()
+                            .eq(com.workflow.entity.ProcessOperationLog::getProcessInstanceId, processInstanceId)
+                            .eq(com.workflow.entity.ProcessOperationLog::getOperationType, "TERMINATE")
+                            .orderByAsc(com.workflow.entity.ProcessOperationLog::getOperationTime));
+            
+            for (com.workflow.entity.ProcessOperationLog log : terminateLogs) {
+                ProcessProgressDTO.NodeHistoryDTO dto = new ProcessProgressDTO.NodeHistoryDTO();
+                dto.setNodeId("TERMINATE_" + log.getId());
+                dto.setNodeName("流程终止");
+                dto.setNodeType("terminate");
+                dto.setAssignee(log.getOperatorId());
+                dto.setAssigneeName(log.getOperatorName());
+                dto.setAction("TERMINATED");
+                dto.setComment(log.getOperationComment());
+                String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
+                dto.setStartTime(opTime);
+                dto.setEndTime(opTime);
+                dto.setStatus("TERMINATED");
+                nodeHistory.add(dto);
+            }
+        } catch (Exception e) {
+            log.warn("合并终止记录失败", e);
+        }
+        
         progress.setNodeHistory(nodeHistory);
         
         // 8. 获取当前任务信息
@@ -422,7 +482,7 @@ public class ProcessInstanceService {
         buildNodeAssigneeMap(progress, processInstanceId);
         
         // 10. 获取实体数据和表单配置
-        loadEntityDataAndFormConfig(progress, processInstanceId);
+        loadEntityDataAndFormConfig(progress, processInstanceId, progress.getProcessKey());
         
         return progress;
     }
@@ -567,13 +627,19 @@ public class ProcessInstanceService {
     /**
      * 加载实体数据和表单配置
      */
-    private void loadEntityDataAndFormConfig(ProcessProgressDTO progress, String processInstanceId) {
+    private void loadEntityDataAndFormConfig(ProcessProgressDTO progress, String processInstanceId, String processKey) {
         try {
             // 1. 获取流程变量中的实体信息
             String entityCode = null;
             String entityDataId = null;
             String formKey = null;
             String currentNodeId = null;
+            
+            // 优先从已加载的任务信息中获取当前节点ID（比execution查询更准确）
+            if (progress.getTasks() != null && !progress.getTasks().isEmpty()) {
+                currentNodeId = progress.getTasks().get(0).getNodeId();
+                log.debug("从任务信息获取当前节点: nodeId={}", currentNodeId);
+            }
             
             // 从流程变量获取
             ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
@@ -585,12 +651,17 @@ public class ProcessInstanceService {
                 entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
                 formKey = (String) runtimeService.getVariable(processInstanceId, "formKey");
                 
-                // 获取当前活动节点
-                List<Execution> executions = runtimeService.createExecutionQuery()
-                        .processInstanceId(processInstanceId)
-                        .list();
-                if (!executions.isEmpty() && executions.get(0).getActivityId() != null) {
-                    currentNodeId = executions.get(0).getActivityId();
+                // 如果任务信息中没有获取到当前节点，再从execution查询
+                if (currentNodeId == null) {
+                    List<Execution> executions = runtimeService.createExecutionQuery()
+                            .processInstanceId(processInstanceId)
+                            .list();
+                    for (Execution execution : executions) {
+                        if (execution.getActivityId() != null) {
+                            currentNodeId = execution.getActivityId();
+                            break;
+                        }
+                    }
                 }
             } else {
                 // 从历史变量获取
@@ -637,12 +708,29 @@ public class ProcessInstanceService {
             
             // 3. 加载表单配置
             if (entityCode != null && entityDataId != null) {
-                loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey, progress.getBpmnXml());
+                // 优先使用已部署的BPMN XML解析，如果解析不到，尝试从数据库获取最新的BPMN XML作为fallback
+                String bpmnXml = progress.getBpmnXml();
+                String fallbackBpmnXml = null;
+                if (bpmnXml == null || bpmnXml.isEmpty()) {
+                    if (processKey != null && !processKey.isEmpty()) {
+                        ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
+                        if (config != null && config.getBpmnXml() != null) {
+                            bpmnXml = config.getBpmnXml();
+                        }
+                    }
+                } else if (processKey != null && !processKey.isEmpty()) {
+                    // 即使已部署的BPMN XML有内容，也准备fallback（可能包含最新的节点表单配置）
+                    ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
+                    if (config != null && config.getBpmnXml() != null) {
+                        fallbackBpmnXml = config.getBpmnXml();
+                    }
+                }
+                loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey, bpmnXml, fallbackBpmnXml, processKey);
             }
             
             // 4. 加载审批配置
-            if (currentNodeId != null && progress.getBpmnXml() != null) {
-                loadApprovalConfigFromBpmn(progress, currentNodeId, progress.getBpmnXml());
+            if (currentNodeId != null) {
+                loadApprovalConfig(progress, currentNodeId, progress.getBpmnXml(), processKey);
             }
             
         } catch (Exception e) {
@@ -654,7 +742,7 @@ public class ProcessInstanceService {
      * 加载表单配置
      */
     private void loadFormConfig(ProcessProgressDTO progress, String entityCode, String entityDataId, 
-                                  String currentNodeId, String formKeyFromVariable, String bpmnXml) {
+                                  String currentNodeId, String formKeyFromVariable, String bpmnXml, String fallbackBpmnXml, String processKey) {
         try {
             // 1. 获取实体定义
             com.workflow.entity.EntityDefinition entityDef = 
@@ -682,54 +770,40 @@ public class ProcessInstanceService {
                 }
             }
             
-            // 3. 解析 formKey（优先级：BPMN XML > 流程变量 > 默认）
-            String resolvedFormKey = formKeyFromVariable;
-            
-            // 3a. 优先从 BPMN XML 解析当前节点的表单绑定
-            if (targetNodeId != null && bpmnXml != null && !bpmnXml.isEmpty()) {
-                String bpmnFormKey = resolveFormKeyFromBpmn(targetNodeId, bpmnXml);
-                if (bpmnFormKey != null) {
-                    resolvedFormKey = bpmnFormKey;
-                    log.debug("从 BPMN XML 解析到表单绑定: nodeId={}, formKey={}", targetNodeId, resolvedFormKey);
-                }
-            }
-            
-            // 4. 确定最终 formKey
-            String formKey = resolvedFormKey;
-            if (formKey == null) {
-                formKey = "default";
-            }
-            
-            // 5. 加载表单详情
+            // 3. 加载表单详情（优先级：process_node_form 映射表 > BPMN XML > 流程变量 > 默认）
             com.workflow.entity.EntityForm entityForm = null;
+            Boolean nodeFormReadonly = null;
             
-            // 5a. 尝试通过 entityId + formKey 查询
-            entityForm = entityFormService.getByEntityIdAndFormKey(entityDef.getId(), formKey);
-            
-            // 5b. 如果失败且 formKey 看起来像 entityFormId（纯数字），直接按ID查询
-            if (entityForm == null && formKey.matches("\\d+")) {
-                entityForm = entityFormService.getById(formKey);
-                if (entityForm != null) {
-                    log.debug("通过 entityFormId 直接查询到表单: id={}", formKey);
+            // 3a. 最高优先级：从 process_node_form 映射表查询节点表单绑定
+            if (processKey != null && !processKey.isEmpty() && targetNodeId != null && !targetNodeId.isEmpty()) {
+                try {
+                    ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
+                    if (config != null) {
+                        com.workflow.entity.ProcessNodeForm nodeForm = nodeFormMapper.selectByNodeId(config.getId(), targetNodeId);
+                        if (nodeForm != null && nodeForm.getFormId() != null && !nodeForm.getFormId().isEmpty()) {
+                            entityForm = entityFormService.getById(nodeForm.getFormId());
+                            if (entityForm != null) {
+                                nodeFormReadonly = nodeForm.getIsReadonly() != null && nodeForm.getIsReadonly() == 1;
+                                log.info("从 process_node_form 映射表查询到节点表单: nodeId={}, formId={}, formName={}",
+                                    targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("从 process_node_form 查询节点表单失败: {}", e.getMessage());
                 }
             }
             
-            // 5c. 如果仍然失败且不是默认表单，回退到默认表单
-            if (entityForm == null && !"default".equals(formKey)) {
-                entityForm = entityFormService.getByEntityIdAndFormKey(entityDef.getId(), "default");
-                log.debug("指定表单不存在，回退到默认表单(by formKey): triedFormKey={}", formKey);
-            }
-            
-            // 5d. 如果通过 formKey='default' 仍然查不到，尝试通过 is_default=1 查询
+            // 3b. 映射表中没有表单绑定，尝试使用默认表单
             if (entityForm == null) {
                 entityForm = entityFormService.getDefaultForm(entityDef.getId());
                 if (entityForm != null) {
-                    log.debug("通过 is_default=1 查询到默认表单: formId={}", entityForm.getId());
+                    log.debug("节点未配置表单，回退到默认表单: nodeId={}, formId={}", targetNodeId, entityForm.getId());
                 }
             }
             
             if (entityForm == null) {
-                log.warn("无法加载表单: entityId={}, formKey={}", entityDef.getId(), formKey);
+                log.warn("无法加载表单: entityId={}, nodeId={}", entityDef.getId(), targetNodeId);
                 return;
             }
             
@@ -752,7 +826,12 @@ public class ProcessInstanceService {
                     fieldMap.put("fieldType", field.getFieldType());
                     fieldMap.put("componentType", field.getComponentType());
                     fieldMap.put("isRequired", field.getIsRequired());
-                    fieldMap.put("isReadonly", field.getIsReadonly());
+                    // 如果节点映射表配置了只读，覆盖字段的 isReadonly
+                    if (nodeFormReadonly != null) {
+                        fieldMap.put("isReadonly", nodeFormReadonly);
+                    } else {
+                        fieldMap.put("isReadonly", field.getIsReadonly());
+                    }
                     fieldMap.put("isHidden", field.getIsHidden());
                     fieldMap.put("sortOrder", field.getSortOrder());
                     fieldMap.put("gridSpan", field.getGridSpan());
@@ -778,36 +857,54 @@ public class ProcessInstanceService {
     
     /**
      * 从 BPMN XML 解析表单绑定
+     * 支持格式：
+     * 1. extensionElements -> properties -> property name="entityFormId" value="xxx"
+     * 2. userTask 标签上的 flowable:formKey="xxx" 属性
      */
     private String resolveFormKeyFromBpmn(String nodeId, String bpmnXml) {
         if (bpmnXml == null || nodeId == null || nodeId.isEmpty()) {
             return null;
         }
         try {
-            // 匹配当前节点的 userTask 标签内容（兼容 bpmn: 前缀和无前缀）
-            String patternStr = "<(bpmn:)?userTask[^>]*id=\"" + java.util.regex.Pattern.quote(nodeId) + "\"[^>]*>(.*?)</(bpmn:)?userTask>";
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(patternStr, java.util.regex.Pattern.DOTALL | java.util.regex.Pattern.CASE_INSENSITIVE);
-            java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
-            if (!matcher.find()) {
-                return null;
-            }
-            String content = matcher.group(2);
+            javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+            org.w3c.dom.Document doc = builder.parse(new java.io.ByteArrayInputStream(bpmnXml.getBytes("UTF-8")));
             
-            // 解析 entityFormId（<flowable:entityFormId>xxx</flowable:entityFormId>）
-            java.util.regex.Matcher formIdMatcher = java.util.regex.Pattern.compile(
-                "<(?:flowable:)?entityFormId>([^<]+)</(?:flowable:)?entityFormId>",
-                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
-            if (formIdMatcher.find()) {
-                return formIdMatcher.group(1).trim();
+            // 查找指定 id 的 userTask 元素
+            org.w3c.dom.NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
+            for (int i = 0; i < userTasks.getLength(); i++) {
+                org.w3c.dom.Element userTask = (org.w3c.dom.Element) userTasks.item(i);
+                if (nodeId.equals(userTask.getAttribute("id"))) {
+                    // 1. 优先解析 extensionElements -> properties -> property name="entityFormId"
+                    org.w3c.dom.NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
+                    for (int j = 0; j < extElements.getLength(); j++) {
+                        org.w3c.dom.Element extElement = (org.w3c.dom.Element) extElements.item(j);
+                        org.w3c.dom.NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
+                        for (int k = 0; k < properties.getLength(); k++) {
+                            org.w3c.dom.Element props = (org.w3c.dom.Element) properties.item(k);
+                            org.w3c.dom.NodeList propList = props.getElementsByTagNameNS("*", "property");
+                            for (int m = 0; m < propList.getLength(); m++) {
+                                org.w3c.dom.Element prop = (org.w3c.dom.Element) propList.item(m);
+                                String name = prop.getAttribute("name");
+                                String value = prop.getAttribute("value");
+                                if ("entityFormId".equals(name) && value != null && !value.isEmpty()) {
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 2. 回退：解析 userTask 标签上的 formKey 属性（flowable:formKey 或 formKey）
+                    String formKey = userTask.getAttribute("formKey");
+                    if (formKey == null || formKey.isEmpty()) {
+                        formKey = userTask.getAttributeNS("http://flowable.org/bpmn", "formKey");
+                    }
+                    if (formKey != null && !formKey.isEmpty()) {
+                        return formKey;
+                    }
+                }
             }
-            
-            // 解析 formKey（flowable:formKey="xxx"）
-            java.util.regex.Matcher formKeyMatcher = java.util.regex.Pattern.compile(
-                "(?:flowable:)?formKey=\"([^\"]+)\"").matcher(content);
-            if (formKeyMatcher.find()) {
-                return formKeyMatcher.group(1);
-            }
-            
             return null;
         } catch (Exception e) {
             log.debug("从BPMN解析表单绑定失败: {}", e.getMessage());
@@ -816,7 +913,56 @@ public class ProcessInstanceService {
     }
     
     /**
-     * 从 BPMN XML 解析审批配置
+     * 加载审批配置（只从 process_node_approval 映射表读取）
+     */
+    private void loadApprovalConfig(ProcessProgressDTO progress, String currentNodeId, String bpmnXml, String processKey) {
+        if (currentNodeId == null || currentNodeId.isEmpty()) {
+            return;
+        }
+        try {
+            // 只从 process_node_approval 映射表查询
+            if (processKey != null && !processKey.isEmpty()) {
+                ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
+                if (config != null) {
+                    com.workflow.entity.ProcessNodeApproval nodeApproval = nodeApprovalMapper.selectByNodeId(config.getId(), currentNodeId);
+                    if (nodeApproval != null) {
+                        ProcessProgressDTO.ApprovalConfigDTO approvalConfig = new ProcessProgressDTO.ApprovalConfigDTO();
+                        approvalConfig.setEnabled(nodeApproval.getEnabled() != null && nodeApproval.getEnabled() == 1);
+                        approvalConfig.setCommentLabel(nodeApproval.getCommentLabel() != null ? nodeApproval.getCommentLabel() : "审批意见");
+                        
+                        if (nodeApproval.getOptionsJson() != null && !nodeApproval.getOptionsJson().isEmpty()) {
+                            com.fasterxml.jackson.databind.JsonNode configNode = 
+                                new com.fasterxml.jackson.databind.ObjectMapper().readTree(nodeApproval.getOptionsJson());
+                            if (configNode.isArray()) {
+                                List<ProcessProgressDTO.ApprovalOptionDTO> options = new ArrayList<>();
+                                for (com.fasterxml.jackson.databind.JsonNode optNode : configNode) {
+                                    ProcessProgressDTO.ApprovalOptionDTO option = new ProcessProgressDTO.ApprovalOptionDTO();
+                                    option.setValue(optNode.has("value") ? optNode.get("value").asText() : "");
+                                    option.setLabel(optNode.has("label") ? optNode.get("label").asText() : "");
+                                    option.setType(optNode.has("type") ? optNode.get("type").asText() : "primary");
+                                    option.setShowComment(optNode.has("showComment") ? optNode.get("showComment").asBoolean() : true);
+                                    options.add(option);
+                                }
+                                approvalConfig.setOptions(options);
+                            }
+                        }
+                        
+                        progress.setApprovalConfig(approvalConfig);
+                        log.debug("从映射表加载审批配置成功: nodeId={}, optionsCount={}", 
+                            currentNodeId, approvalConfig.getOptions() != null ? approvalConfig.getOptions().size() : 0);
+                        return;
+                    }
+                }
+            }
+            
+            log.debug("映射表中未找到审批配置: nodeId={}", currentNodeId);
+        } catch (Exception e) {
+            log.warn("加载审批配置失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 从 BPMN XML 解析审批配置（fallback）
      */
     private void loadApprovalConfigFromBpmn(ProcessProgressDTO progress, String currentNodeId, String bpmnXml) {
         if (bpmnXml == null || currentNodeId == null || currentNodeId.isEmpty()) {
@@ -1492,6 +1638,22 @@ public class ProcessInstanceService {
             runtimeService.deleteProcessInstance(processInstanceId, deleteReason);
             // 清理本地待办
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
+            
+            // 记录终止日志到 process_operation_log
+            try {
+                com.workflow.entity.ProcessOperationLog log = new com.workflow.entity.ProcessOperationLog();
+                log.setProcessInstanceId(processInstanceId);
+                log.setOperationType("TERMINATE");
+                log.setOperatorId(userId);
+                String operatorName = sysUserService.getNicknameByUsername(userId);
+                log.setOperatorName(operatorName != null ? operatorName : userId);
+                log.setOperationTime(LocalDateTime.now());
+                log.setOperationComment(deleteReason);
+                operationLogMapper.insert(log);
+            } catch (Exception e) {
+                log.warn("记录终止日志失败", e);
+            }
+            
             log.info("流程终止成功: processInstanceId={}, userId={}, reason={}", processInstanceId, userId, deleteReason);
             return Result.success(null);
         } catch (Exception e) {

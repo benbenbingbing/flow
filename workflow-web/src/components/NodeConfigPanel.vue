@@ -6,6 +6,19 @@
         {{ nodeTypeText }}
       </el-tag>
       <span class="node-id">{{ element?.id }}</span>
+      <el-popover placement="bottom" trigger="hover" :width="280">
+        <template #reference>
+          <el-icon class="node-info-icon"><InfoFilled /></el-icon>
+        </template>
+        <div class="node-type-info">
+          <div class="info-title">{{ nodeTypeDesc.title }}</div>
+          <div class="info-desc">{{ nodeTypeDesc.desc }}</div>
+          <div class="info-scene">
+            <el-tag size="small" type="warning">场景</el-tag>
+            {{ nodeTypeDesc.scene }}
+          </div>
+        </div>
+      </el-popover>
     </div>
     
     <div v-if="!element" class="no-selection">
@@ -14,7 +27,22 @@
     
     <el-tabs v-else v-model="activeTab" class="config-tabs">
       <!-- ========== 基本信息（所有节点都有） ========== -->
-      <el-tab-pane label="基本信息" name="basic">
+      <el-tab-pane name="basic">
+        <template #label>
+          <el-popover placement="top" trigger="hover" :width="280">
+            <template #reference>
+              <span>基本信息</span>
+            </template>
+            <div class="node-type-info">
+              <div class="info-title">{{ nodeTypeDesc.title }}</div>
+              <div class="info-desc">{{ nodeTypeDesc.desc }}</div>
+              <div class="info-scene">
+                <el-tag size="small" type="warning">场景</el-tag>
+                {{ nodeTypeDesc.scene }}
+              </div>
+            </div>
+          </el-popover>
+        </template>
         <el-form :model="basicForm" label-width="100px" size="small">
           <el-form-item label="节点名称">
             <el-input 
@@ -27,20 +55,6 @@
           <el-form-item label="节点ID">
             <el-input v-model="basicForm.id" disabled />
           </el-form-item>
-          
-          <!-- 节点类型说明 -->
-          <el-alert type="info" :closable="false" class="node-type-alert">
-            <template #title>
-              <div class="node-type-info">
-                <div class="info-title">{{ nodeTypeDesc.title }}</div>
-                <div class="info-desc">{{ nodeTypeDesc.desc }}</div>
-                <div class="info-scene">
-                  <el-tag size="small" type="warning">场景</el-tag>
-                  {{ nodeTypeDesc.scene }}
-                </div>
-              </div>
-            </template>
-          </el-alert>
           
           <el-form-item label="说明文档" class="doc-item">
             <el-input 
@@ -58,12 +72,13 @@
       </el-tab-pane>
       
       <!-- ========== 状态配置（仅连线） ========== -->
-      <el-tab-pane v-if="isSequenceFlow" label="实体状态" name="status">
+      <el-tab-pane v-if="isSequenceFlow" name="status">
+        <template #label>
+          <el-tooltip content="配置流程经过此连线时的实体数据状态变更" placement="top">
+            <span>实体状态</span>
+          </el-tooltip>
+        </template>
         <el-form :model="statusForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            配置流程经过此连线时的实体数据状态变更
-          </el-alert>
-          
           <el-form-item label="来源节点">
             <el-input v-model="statusForm.sourceNodeName" disabled />
           </el-form-item>
@@ -135,12 +150,13 @@
       </el-tab-pane>
       
       <!-- ========== 执行人配置（仅用户任务） ========== -->
-      <el-tab-pane v-if="isUserTask" label="执行人" name="assignee">
+      <el-tab-pane v-if="isUserTask" name="assignee">
+        <template #label>
+          <el-tooltip content="支持固定人员、用户组、角色或动态接口指定任务处理人" placement="top">
+            <span>执行人</span>
+          </el-tooltip>
+        </template>
         <el-form :model="assigneeForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            支持固定人员、用户组、角色或动态接口指定任务处理人
-          </el-alert>
-          
           <!-- 执行人选择类型 -->
           <el-form-item label="指定方式">
             <el-select v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange" style="width: 100%">
@@ -384,12 +400,13 @@
       </el-tab-pane>
       
       <!-- ========== 服务配置（服务任务） ========== -->
-      <el-tab-pane v-if="isServiceTask" label="服务" name="service">
+      <el-tab-pane v-if="isServiceTask" name="service">
+        <template #label>
+          <el-tooltip content="自动执行Java代码、调用外部服务或发送HTTP请求，无需人工干预" placement="top">
+            <span>服务</span>
+          </el-tooltip>
+        </template>
         <el-form :model="serviceForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            自动执行Java代码、调用外部服务或发送HTTP请求，无需人工干预
-          </el-alert>
-          
           <el-form-item label="实现类型">
             <el-radio-group v-model="serviceForm.implementationType" @change="onServiceTypeChange">
               <el-radio-button label="class">Java类</el-radio-button>
@@ -522,12 +539,13 @@
       </el-tab-pane>
       
       <!-- ========== 发送配置（发送任务） ========== -->
-      <el-tab-pane v-if="isSendTask" label="发送" name="send">
+      <el-tab-pane v-if="isSendTask" name="send">
+        <template #label>
+          <el-tooltip content="自动发送消息（邮件、短信、站内信）给指定人员" placement="top">
+            <span>发送</span>
+          </el-tooltip>
+        </template>
         <el-form :model="sendForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            自动发送消息（邮件、短信、站内信）给指定人员
-          </el-alert>
-          
           <el-form-item label="发送渠道">
             <el-checkbox-group v-model="sendForm.channels">
               <el-checkbox label="email">邮件</el-checkbox>
@@ -573,12 +591,13 @@
       </el-tab-pane>
       
       <!-- ========== 接收配置（接收任务） ========== -->
-      <el-tab-pane v-if="isReceiveTask" label="接收" name="receive">
+      <el-tab-pane v-if="isReceiveTask" name="receive">
+        <template #label>
+          <el-tooltip content="流程将暂停执行，等待外部系统或事件触发后才继续" placement="top">
+            <span>接收</span>
+          </el-tooltip>
+        </template>
         <el-form :model="receiveForm" label-width="100px" size="small">
-          <el-alert type="warning" :closable="false" class="section-alert">
-            流程将暂停执行，等待外部系统或事件触发后才继续
-          </el-alert>
-          
           <el-form-item label="消息名称">
             <el-input 
               v-model="receiveForm.messageRef" 
@@ -615,12 +634,13 @@
       </el-tab-pane>
       
       <!-- ========== 手动任务配置（手动任务） ========== -->
-      <el-tab-pane v-if="isManualTask" label="手动" name="manual">
+      <el-tab-pane v-if="isManualTask" name="manual">
+        <template #label>
+          <el-tooltip content="标记需要在流程系统外完成的工作，仅作记录，不生成待办" placement="top">
+            <span>手动</span>
+          </el-tooltip>
+        </template>
         <el-form :model="manualForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            标记需要在流程系统外完成的工作，仅作记录，不生成待办
-          </el-alert>
-          
           <el-form-item label="任务描述">
             <el-input 
               v-model="manualForm.description" 
@@ -655,12 +675,13 @@
       </el-tab-pane>
       
       <!-- ========== 业务规则配置（业务规则任务） ========== -->
-      <el-tab-pane v-if="isBusinessRuleTask" label="规则" name="rule">
+      <el-tab-pane v-if="isBusinessRuleTask" name="rule">
+        <template #label>
+          <el-tooltip content="执行DMN决策表，根据规则自动决策流程走向" placement="top">
+            <span>规则</span>
+          </el-tooltip>
+        </template>
         <el-form :model="ruleForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            执行DMN决策表，根据规则自动决策流程走向
-          </el-alert>
-          
           <el-form-item label="决策表Key">
             <el-input 
               v-model="ruleForm.decisionRef" 
@@ -698,12 +719,13 @@
       </el-tab-pane>
       
       <!-- ========== 脚本配置（脚本任务） ========== -->
-      <el-tab-pane v-if="isScriptTask" label="脚本" name="script">
+      <el-tab-pane v-if="isScriptTask" name="script">
+        <template #label>
+          <el-tooltip content="执行脚本代码，用于轻量级数据处理" placement="top">
+            <span>脚本</span>
+          </el-tooltip>
+        </template>
         <el-form :model="scriptForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            执行脚本代码，用于轻量级数据处理
-          </el-alert>
-          
           <el-form-item label="脚本类型">
             <el-radio-group v-model="scriptForm.scriptFormat">
               <el-radio-button label="javascript">JavaScript</el-radio-button>
@@ -782,12 +804,13 @@
       </el-tab-pane>
       
       <!-- ========== 调用活动配置（调用活动） ========== -->
-      <el-tab-pane v-if="isCallActivity" label="子流程" name="call">
+      <el-tab-pane v-if="isCallActivity" name="call">
+        <template #label>
+          <el-tooltip content="调用另一个独立的子流程，实现流程模块化复用" placement="top">
+            <span>子流程</span>
+          </el-tooltip>
+        </template>
         <el-form :model="callForm" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            调用另一个独立的子流程，实现流程模块化复用
-          </el-alert>
-          
           <el-form-item label="子流程Key">
             <el-select 
               v-model="callForm.calledElement" 
@@ -847,7 +870,12 @@
       </el-tab-pane>
       
       <!-- ========== 条件配置（顺序流） ========== -->
-      <el-tab-pane v-if="isSequenceFlow" label="条件" name="condition">
+      <el-tab-pane v-if="isSequenceFlow" name="condition">
+        <template #label>
+          <el-tooltip content="设置连线流转条件，支持表达式和变量判断" placement="top">
+            <span>条件</span>
+          </el-tooltip>
+        </template>
         <el-form :model="conditionForm" label-width="100px" size="small">
           <el-form-item label="条件类型">
             <el-radio-group v-model="conditionForm.type" @change="onConditionTypeChange">
@@ -919,16 +947,23 @@
                         :value="opt.value"
                       />
                     </el-select>
-                    <!-- 布尔类型 -->
+                    <!-- 审批结果：动态获取源节点审批选项，支持手动输入 -->
                     <el-select 
                       v-else-if="condition.property === 'approved'"
                       v-model="condition.value" 
-                      placeholder="选择值"
+                      placeholder="选择或输入审批结果"
                       size="small"
                       style="width: 100%"
+                      filterable
+                      allow-create
+                      default-first-option
                     >
-                      <el-option label="通过 (true)" value="true" />
-                      <el-option label="拒绝 (false)" value="false" />
+                      <el-option 
+                        v-for="opt in sourceNodeApprovalOptions"
+                        :key="opt.value"
+                        :label="opt.label"
+                        :value="opt.value"
+                      />
                     </el-select>
                     <!-- 输入框类型 -->
                     <el-input 
@@ -1013,7 +1048,12 @@
       </el-tab-pane>
       
       <!-- ========== 流程动作（顺序流） ========== -->
-      <el-tab-pane v-if="isSequenceFlow" label="流程动作" name="actions">
+      <el-tab-pane v-if="isSequenceFlow" name="actions">
+        <template #label>
+          <el-tooltip content="配置节点执行前后的自定义动作" placement="top">
+            <span>流程动作</span>
+          </el-tooltip>
+        </template>
         <div class="actions-section">
           <div class="actions-header">
             <span>接口动作列表</span>
@@ -1134,12 +1174,13 @@
       </el-tab-pane>
       
       <!-- ========== 表单配置（仅用户任务/开始事件） ========== -->
-      <el-tab-pane v-if="isUserTask || isStartEvent" label="表单" name="form">
+      <el-tab-pane v-if="isUserTask || isStartEvent" name="form">
+        <template #label>
+          <el-tooltip content="绑定实体表单或自定义表单到当前节点" placement="top">
+            <span>表单</span>
+          </el-tooltip>
+        </template>
         <el-form :model="formConfig" label-width="100px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            绑定实体表单或自定义表单到当前节点
-          </el-alert>
-
           <!-- 显示绑定的实体信息 -->
           <el-form-item label="所属实体">
             <el-tag v-if="boundEntity" type="success" size="large">
@@ -1188,26 +1229,6 @@
               </div>
             </el-form-item>
             
-            <el-form-item label="表单预览" v-if="formConfig.entityFormId">
-              <div class="form-preview" v-if="selectedFormFields.length > 0">
-                <div class="preview-title">{{ selectedForm?.formName }}</div>
-                <div class="preview-fields">
-                  <div 
-                    v-for="field in selectedFormFields" 
-                    :key="field.id"
-                    class="preview-field"
-                    :class="{ required: field.isRequired, readonly: field.isReadonly }"
-                  >
-                    <span class="field-label">{{ field.fieldLabel }}</span>
-                    <span class="field-type">({{ getFieldTypeLabel(field.fieldType) }})</span>
-                    <el-tag size="small" v-if="field.isRequired" type="danger">必填</el-tag>
-                    <el-tag size="small" v-if="field.isReadonly" type="warning">只读</el-tag>
-                  </div>
-                </div>
-              </div>
-              <el-empty v-else description="表单暂无字段" />
-            </el-form-item>
-            
             <el-form-item label="只读模式">
               <el-switch v-model="formConfig.isReadonly" @change="updateNodeFormBind" />
               <div class="form-tip">开启后节点只能查看表单，不能编辑</div>
@@ -1232,12 +1253,13 @@
       </el-tab-pane>
       
       <!-- ========== 审批配置（仅用户任务） ========== -->
-      <el-tab-pane v-if="isUserTask" label="审批配置" name="approval">
+      <el-tab-pane v-if="isUserTask" name="approval">
+        <template #label>
+          <el-tooltip content="自定义当前节点的审批操作选项和审批意见配置" placement="top">
+            <span>审批配置</span>
+          </el-tooltip>
+        </template>
         <el-form :model="approvalForm" label-width="120px" size="small">
-          <el-alert type="info" :closable="false" class="section-alert">
-            自定义当前节点的审批操作选项和审批意见配置
-          </el-alert>
-          
           <el-form-item label="启用审批意见">
             <el-switch v-model="approvalForm.enabled" />
           </el-form-item>
@@ -1252,13 +1274,13 @@
             <div class="approval-options-list">
               <div v-for="(option, index) in approvalForm.options" :key="index" class="approval-option-item">
                 <el-row :gutter="8" align="middle">
-                  <el-col :span="7">
+                  <el-col :span="6">
                     <el-input v-model="option.label" placeholder="选项名称" size="small" />
                   </el-col>
-                  <el-col :span="7">
+                  <el-col :span="6">
                     <el-input v-model="option.value" placeholder="选项值" size="small" />
                   </el-col>
-                  <el-col :span="4">
+                  <el-col :span="6">
                     <el-select v-model="option.type" placeholder="样式" size="small">
                       <el-option label="主要" value="primary" />
                       <el-option label="成功" value="success" />
@@ -1266,13 +1288,38 @@
                       <el-option label="危险" value="danger" />
                     </el-select>
                   </el-col>
-                  <el-col :span="4">
-                    <el-checkbox v-model="option.showComment" size="small">显示备注</el-checkbox>
-                  </el-col>
-                  <el-col :span="2">
-                    <el-button type="danger" link size="small" @click="removeApprovalOption(index)" :disabled="approvalForm.options.length <= 1">
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
+                  <el-col :span="6" class="approval-option-actions">
+                    <el-tooltip content="显示备注" placement="top">
+                      <el-button
+                        :type="option.showComment ? 'primary' : ''"
+                        link
+                        size="small"
+                        @click="option.showComment = !option.showComment"
+                      >
+                        <el-icon><View /></el-icon>
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip v-if="option.showComment" content="备注必填" placement="top">
+                      <el-button
+                        :type="option.remarkRequired ? 'danger' : ''"
+                        link
+                        size="small"
+                        @click="option.remarkRequired = !option.remarkRequired"
+                      >
+                        <el-icon><WarningFilled /></el-icon>
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="删除" placement="top">
+                      <el-button
+                        type="danger"
+                        link
+                        size="small"
+                        @click="removeApprovalOption(index)"
+                        :disabled="approvalForm.options.length <= 1"
+                      >
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </el-tooltip>
                   </el-col>
                 </el-row>
               </div>
@@ -1288,7 +1335,12 @@
       </el-tab-pane>
       
       <!-- ========== 高级配置 ========== -->
-      <el-tab-pane v-if="isTask || isGateway" label="高级" name="advanced">
+      <el-tab-pane v-if="isTask || isGateway" name="advanced">
+        <template #label>
+          <el-tooltip content="配置异步执行、跳过表达式等高级选项" placement="top">
+            <span>高级</span>
+          </el-tooltip>
+        </template>
         <el-form :model="advancedForm" label-width="120px" size="small">
           <el-form-item label="异步执行">
             <el-switch v-model="advancedForm.async" @change="onAsyncChange" />
@@ -1346,7 +1398,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, ArrowUp, ArrowDown, Delete, QuestionFilled, VideoPlay } from '@element-plus/icons-vue'
+import { Plus, ArrowUp, ArrowDown, Delete, QuestionFilled, VideoPlay, InfoFilled, View, WarningFilled } from '@element-plus/icons-vue'
 import { flowActionApi } from '@/api/flowAction'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
@@ -1754,6 +1806,7 @@ const selectedStatusName = computed(() => {
   return status?.statusName || ''
 })
 const hasCondition = ref(false)
+const sourceNodeApprovalOptions = ref([])
 
 const formConfig = ref({ 
   formKey: '',
@@ -1775,12 +1828,16 @@ const approvalForm = ref({
 })
 
 function addApprovalOption() {
-  approvalForm.value.options.push({ value: '', label: '', type: 'primary', showComment: true })
+  approvalForm.value.options.push({ value: '', label: '', type: 'primary', showComment: true, remarkRequired: false })
 }
 
-function removeApprovalOption(index) {
-  if (approvalForm.value.options.length > 1) {
+async function removeApprovalOption(index) {
+  if (approvalForm.value.options.length <= 1) return
+  try {
+    await ElMessageBox.confirm('确定删除该审批选项吗？', '提示', { type: 'warning' })
     approvalForm.value.options.splice(index, 1)
+  } catch {
+    // 用户取消
   }
 }
 
@@ -2131,10 +2188,10 @@ watch(() => props.element, async (newElement) => {
           enabled: approvalConfig.enabled !== false,
           commentLabel: approvalConfig.commentLabel || '审批意见',
           options: Array.isArray(approvalConfig.options) && approvalConfig.options.length > 0
-            ? approvalConfig.options
+            ? approvalConfig.options.map(opt => ({ ...opt, remarkRequired: opt.remarkRequired !== undefined ? opt.remarkRequired : false }))
             : [
-                { value: 'approve', label: '通过', type: 'primary', showComment: true },
-                { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+                { value: 'approve', label: '通过', type: 'primary', showComment: true, remarkRequired: false },
+                { value: 'reject', label: '驳回', type: 'danger', showComment: true, remarkRequired: false }
               ]
         }
       } else {
@@ -2143,8 +2200,8 @@ watch(() => props.element, async (newElement) => {
           enabled: true,
           commentLabel: '审批意见',
           options: [
-            { value: 'approve', label: '通过', type: 'primary', showComment: true },
-            { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+            { value: 'approve', label: '通过', type: 'primary', showComment: true, remarkRequired: false },
+            { value: 'reject', label: '驳回', type: 'danger', showComment: true, remarkRequired: false }
           ]
         }
       }
@@ -2256,6 +2313,9 @@ watch(() => props.element, async (newElement) => {
       
       // 加载连线状态配置
       loadStatusConfig(bo)
+      
+      // 加载源节点的审批选项（用于条件配置 approved 下拉）
+      loadSourceNodeApprovalOptions(bo)
       
       // 加载实体字段（用于条件表达式编辑器）
       if (boundEntity.value?.id) {
@@ -3228,6 +3288,32 @@ async function loadStatusConfig(bo) {
 /**
  * 加载实体预定义的状态列表
  */
+/**
+ * 加载源节点的审批配置选项（用于连线条件中 approved 属性的下拉选择）
+ */
+function loadSourceNodeApprovalOptions(bo) {
+  sourceNodeApprovalOptions.value = []
+  const sourceRef = bo.sourceRef
+  if (!sourceRef) return
+  
+  const extProps = getExtensionProperties(sourceRef)
+  const approvalConfigStr = extProps['approvalConfig']
+  if (approvalConfigStr) {
+    try {
+      const approvalConfig = JSON.parse(approvalConfigStr)
+      if (approvalConfig.options && Array.isArray(approvalConfig.options)) {
+        sourceNodeApprovalOptions.value = approvalConfig.options.map(opt => ({
+          label: opt.label || opt.value,
+          value: String(opt.value)
+        }))
+        console.log('加载源节点审批选项:', bo.id, '源节点:', sourceRef.id, '选项:', sourceNodeApprovalOptions.value)
+      }
+    } catch (e) {
+      console.warn('解析源节点审批配置失败:', e)
+    }
+  }
+}
+
 async function loadEntityStatusList() {
   // 从流程配置中获取实体编码
   const entityCode = boundEntity.value?.entityCode
@@ -3320,7 +3406,9 @@ async function saveStatusConfig() {
 <style scoped>
 .node-config-panel { height: 100%; display: flex; flex-direction: column; }
 .node-type-header { display: flex; align-items: center; gap: 10px; padding: 10px 15px; border-bottom: 1px solid #e4e7ed; background-color: #f5f7fa; }
-.node-id { font-size: 12px; color: #909399; font-family: monospace; }
+.node-id { flex: 1; font-size: 12px; color: #909399; font-family: monospace; }
+.node-info-icon { color: #909399; cursor: pointer; font-size: 16px; }
+.node-info-icon:hover { color: #409eff; }
 .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; }
 .config-tabs { flex: 1; }
 .config-tabs :deep(.el-tabs__content) { padding: 15px; height: calc(100% - 40px); overflow-y: auto; }
@@ -3329,13 +3417,10 @@ async function saveStatusConfig() {
 .unit { margin-left: 8px; color: #606266; }
 .code-input :deep(textarea) { font-family: monospace; }
 
-.node-type-alert { margin-bottom: 15px; }
 .node-type-info { line-height: 1.6; }
 .info-title { font-weight: bold; margin-bottom: 5px; }
 .info-desc { color: #606266; margin-bottom: 8px; }
 .info-scene { display: flex; align-items: center; gap: 8px; }
-.section-alert { margin-bottom: 15px; }
-
 .actions-section { display: flex; flex-direction: column; gap: 10px; }
 .actions-header { display: flex; justify-content: space-between; align-items: center; }
 .action-alert { margin-bottom: 10px; }
@@ -3356,9 +3441,7 @@ async function saveStatusConfig() {
 .form-name { font-weight: 500; }
 .form-key { color: #909399; font-size: 12px; }
 
-.form-preview { border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px; background-color: #fafafa; }
-.preview-title { font-weight: 500; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #e4e7ed; }
-.preview-fields { display: flex; flex-direction: column; gap: 8px; }
+
 .preview-field { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background-color: #fff; border-radius: 3px; border: 1px solid #e4e7ed; }
 .preview-field.required { border-left: 3px solid #f56c6c; }
 .preview-field.readonly { border-left: 3px solid #e6a23c; }
@@ -3521,6 +3604,15 @@ async function saveStatusConfig() {
   border-radius: 4px;
   padding: 10px;
   border: 1px solid #e4e7ed;
+}
+.approval-option-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 2px 6px;
+  background-color: #f0f2f5;
+  border-radius: 4px;
 }
 
 .script-test-result .result-vars {
