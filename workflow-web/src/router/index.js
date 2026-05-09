@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import Layout from '@/views/Layout.vue'
 
@@ -134,6 +135,12 @@ const routes = [
         name: 'OrganizationManagement',
         component: () => import('@/views/system/Organization.vue'),
         meta: { title: '组织部门管理' }
+      },
+      {
+        path: '/system/dev-guide',
+        name: 'DevGuide',
+        component: () => import('@/views/system/DevGuide.vue'),
+        meta: { title: '定制开发指南' }
       }
     ]
   },
@@ -165,12 +172,30 @@ router.beforeEach((to, from, next) => {
   if (!isPublic && !isLoggedIn) {
     // 未登录且访问需要登录的页面，跳转到登录页
     next('/login')
-  } else if (to.path === '/login' && isLoggedIn) {
+    return
+  }
+  
+  if (to.path === '/login' && isLoggedIn) {
     // 已登录但访问登录页，跳转到首页
     next('/')
-  } else {
-    next()
+    return
   }
+  
+  // 拦截被禁用的菜单路径
+  try {
+    const disabledPaths = JSON.parse(localStorage.getItem('disabled_menu_paths') || '[]')
+    const isDisabled = disabledPaths.some(path => {
+      // 支持精确匹配和子路径匹配（如 /entity 匹配 /entity/list/project_nitiation）
+      return to.path === path || to.path.startsWith(path + '/')
+    })
+    if (isDisabled) {
+      ElMessage.warning('该菜单已被禁用，无法访问')
+      next('/home')
+      return
+    }
+  } catch (e) {}
+  
+  next()
 })
 
 export default router

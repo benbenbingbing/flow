@@ -3,6 +3,7 @@ package com.workflow.controller;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.service.EntityDataDynamicService;
+import com.workflow.service.EntityDataListConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +21,7 @@ import java.util.Map;
 public class EntityDataController {
     
     private final EntityDataDynamicService entityDataDynamicService;
+    private final EntityDataListConfigService entityDataListConfigService;
     
     /**
      * 获取某实体的所有数据（支持查询条件）
@@ -35,17 +37,58 @@ public class EntityDataController {
                     condition.put(k, v);
                 }
             });
+            // 排除分页和排序等系统参数，避免被当作查询条件
+            condition.remove("pageNum");
+            condition.remove("pageSize");
+            condition.remove("page");
+            condition.remove("size");
+            condition.remove("offset");
+            condition.remove("limit");
+            condition.remove("sort");
+            condition.remove("orderBy");
+            condition.remove("order");
             if (!condition.isEmpty()) {
                 return ApiResponse.success(entityDataDynamicService.findByCondition(entityCode, condition));
             }
         }
         return ApiResponse.success(entityDataDynamicService.findByEntityCode(entityCode));
     }
+
+    /**
+     * 获取某实体的数据列表（带列表配置扩展字段）
+     */
+    @GetMapping("/entity/{entityCode}/list-with-config")
+    public ApiResponse<List<EntityDataDTO>> listWithConfig(
+            @PathVariable String entityCode,
+            @RequestParam(required = false) String listKey,
+            @RequestParam(required = false) Map<String, String> params) {
+        Map<String, Object> condition = new java.util.HashMap<>();
+        if (params != null && !params.isEmpty()) {
+            params.forEach((k, v) -> {
+                if (v != null && !v.trim().isEmpty()) {
+                    condition.put(k, v);
+                }
+            });
+            // 排除系统参数
+            condition.remove("listKey");
+            condition.remove("pageNum");
+            condition.remove("pageSize");
+            condition.remove("page");
+            condition.remove("size");
+            condition.remove("offset");
+            condition.remove("limit");
+            condition.remove("sort");
+            condition.remove("orderBy");
+            condition.remove("order");
+        }
+        return ApiResponse.success(entityDataListConfigService.findListWithConfig(
+                entityCode, listKey, condition.isEmpty() ? null : condition));
+    }
     
     /**
      * 根据ID获取数据详情
      */
-    @GetMapping("/entity/{entityCode}/{id}")
+    @GetMapping("/entity/{entityCode}/detail/{id}")
     public ApiResponse<EntityDataDTO> getById(@PathVariable String entityCode, @PathVariable String id) {
         return ApiResponse.success(entityDataDynamicService.findById(entityCode, id));
     }
@@ -72,7 +115,7 @@ public class EntityDataController {
     /**
      * 更新数据
      */
-    @PutMapping("/entity/{entityCode}/{id}")
+    @PutMapping("/entity/{entityCode}/detail/{id}")
     public ApiResponse<EntityDataDTO> update(
             @PathVariable String entityCode, 
             @PathVariable String id, 
@@ -83,7 +126,7 @@ public class EntityDataController {
     /**
      * 删除数据
      */
-    @DeleteMapping("/entity/{entityCode}/{id}")
+    @DeleteMapping("/entity/{entityCode}/detail/{id}")
     public ApiResponse<Void> delete(@PathVariable String entityCode, @PathVariable String id) {
         entityDataDynamicService.delete(entityCode, id);
         return ApiResponse.success();

@@ -13,53 +13,39 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
-        <el-menu-item index="/home">
-          <el-icon><HomeFilled /></el-icon>
-          <span>首页</span>
-        </el-menu-item>
-        <el-menu-item index="/process">
-          <el-icon><Share /></el-icon>
-          <span>流程管理</span>
-        </el-menu-item>
-        <el-sub-menu index="/entity">
-          <template #title>
-            <el-icon><Box /></el-icon>
-            <span>实体管理</span>
-          </template>
-          <el-menu-item index="/entity">
-            <span>实体列表</span>
+        <template v-for="menu in menuTree" :key="menu.id">
+          <!-- 有子菜单的，渲染为 sub-menu -->
+          <el-sub-menu v-if="menu.children && menu.children.length > 0" :index="menu.path || menu.id">
+            <template #title>
+              <el-icon v-if="menu.icon"><component :is="iconMap[menu.icon]" /></el-icon>
+              <span>{{ menu.menuName }}</span>
+            </template>
+            <template v-for="child in menu.children" :key="child.id">
+              <!-- 子菜单也有 children，递归渲染 sub-menu（支持三级及以上） -->
+              <el-sub-menu v-if="child.children && child.children.length > 0" :index="child.path || child.id">
+                <template #title>
+                  <el-icon v-if="child.icon"><component :is="iconMap[child.icon]" /></el-icon>
+                  <span>{{ child.menuName }}</span>
+                </template>
+                <template v-for="grandchild in child.children" :key="grandchild.id">
+                  <el-menu-item :index="grandchild.path">
+                    <el-icon v-if="grandchild.icon"><component :is="iconMap[grandchild.icon]" /></el-icon>
+                    <span>{{ grandchild.menuName }}</span>
+                  </el-menu-item>
+                </template>
+              </el-sub-menu>
+              <el-menu-item v-else :index="child.path">
+                <el-icon v-if="child.icon"><component :is="iconMap[child.icon]" /></el-icon>
+                <span>{{ child.menuName }}</span>
+              </el-menu-item>
+            </template>
+          </el-sub-menu>
+          <!-- 无子菜单的，渲染为 menu-item -->
+          <el-menu-item v-else :index="menu.path">
+            <el-icon v-if="menu.icon"><component :is="iconMap[menu.icon]" /></el-icon>
+            <span>{{ menu.menuName }}</span>
           </el-menu-item>
-          <el-menu-item index="/entity/list/project_nitiation">
-            <el-icon><Document /></el-icon>
-            <span>立项管理</span>
-          </el-menu-item>
-        </el-sub-menu>
-        <el-sub-menu index="/system">
-          <template #title>
-            <el-icon><Setting /></el-icon>
-            <span>系统管理</span>
-          </template>
-          <el-menu-item index="/system/user">
-            <el-icon><User /></el-icon>
-            <span>用户管理</span>
-          </el-menu-item>
-          <el-menu-item index="/system/role">
-            <el-icon><UserFilled /></el-icon>
-            <span>角色管理</span>
-          </el-menu-item>
-          <el-menu-item index="/system/group">
-            <el-icon><FolderOpened /></el-icon>
-            <span>用户组管理</span>
-          </el-menu-item>
-          <el-menu-item index="/system/org">
-            <el-icon><OfficeBuilding /></el-icon>
-            <span>组织部门管理</span>
-          </el-menu-item>
-          <el-menu-item index="/system/menu">
-            <el-icon><Menu /></el-icon>
-            <span>菜单管理</span>
-          </el-menu-item>
-        </el-sub-menu>
+        </template>
       </el-menu>
     </el-aside>
     <el-container>
@@ -92,16 +78,88 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
+import { getMenuTree } from '@/api/system/menu'
 
 const router = useRouter()
 const userStore = useUserStore()
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+
+// 菜单树
+const menuTree = ref([])
+
+// 图标映射（将菜单配置中的图标名映射到 Element Plus 图标组件）
+const iconMap = {
+  HomeFilled,
+  Share,
+  Box,
+  Setting,
+  User,
+  UserFilled,
+  FolderOpened,
+  Menu,
+  Connection,
+  ArrowDown,
+  OfficeBuilding,
+  Document
+}
+
+// 收集所有被禁用菜单的路径（用于路由守卫拦截）
+const collectDisabledPaths = (menus) => {
+  const paths = []
+  const walk = (list) => {
+    list?.forEach(m => {
+      if (m.status === '1' && m.path) paths.push(m.path)
+      if (m.children?.length) walk(m.children)
+    })
+  }
+  walk(menus)
+  return paths
+}
+
+// 加载菜单
+const loadMenus = async () => {
+  try {
+    const res = await getMenuTree()
+    // 调试：从原始数据中查找 dev_guide_dir
+    const sysMgmt = res.find(m => m.id === '400')
+    const devGuideRaw = sysMgmt?.children?.find(m => m.id === 'dev_guide_dir')
+    console.log('[MenuDebug] raw dev_guide_dir children:', devGuideRaw?.children)
+    // 保存完整的原始数据，用于提取禁用路径
+    const disabledPaths = collectDisabledPaths(res)
+    localStorage.setItem('disabled_menu_paths', JSON.stringify(disabledPaths))
+    // 递归清洗：只过滤禁用(status=1)菜单；隐藏(visible=1)菜单不显示在侧边栏但保留路由
+    const clean = (menus, parentVisible = '0') => {
+      if (!menus) return []
+      return menus
+        .filter(m => m.status !== '1')
+        .filter(m => parentVisible !== '1' && m.visible !== '1')
+        .map(m => {
+          const item = { ...m }
+          if (item.children && Array.isArray(item.children) && item.children.length > 0) {
+            item.children = clean(item.children, item.visible)
+          }
+          return item
+        })
+    }
+    const cleaned = clean(res)
+    const devGuideCleaned = cleaned.find(m => m.id === '400')?.children?.find(m => m.id === 'dev_guide_dir')
+    console.log('[MenuDebug] cleaned dev_guide_dir children:', devGuideCleaned?.children)
+    menuTree.value = cleaned
+  } catch (error) {
+    console.error('加载菜单失败:', error)
+  }
+}
+
+onMounted(() => {
+  loadMenus()
+})
 
 async function handleCommand(command) {
   if (command === 'logout') {

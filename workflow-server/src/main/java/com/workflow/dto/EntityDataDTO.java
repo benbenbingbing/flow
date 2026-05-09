@@ -43,4 +43,9 @@ public class EntityDataDTO {
      * 流程变量（用于传递额外参数，如会签人员列表等）
      */
     private Map<String, Object> processVariables;
+
+    /**
+     * 扩展数据（用于列表自定义字段数据补充，与 data 隔离避免冲突）
+     */
+    private Map<String, Object> extData;
 }

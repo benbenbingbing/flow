@@ -427,6 +427,9 @@ public class EntityDataDynamicService {
         Map<String, Object> customData = extractCustomFields(data, entityCode);
         dto.setData(customData);
 
+        // 初始化扩展数据容器
+        dto.setExtData(new java.util.HashMap<>());
+
         return dto;
     }
 

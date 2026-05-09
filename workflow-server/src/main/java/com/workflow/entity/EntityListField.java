@@ -76,6 +76,30 @@ public class EntityListField {
     private String align;
 
     /**
+     * 数据源类型：ENTITY_FIELD/REFERENCE/AGGREGATE/CUSTOM_PROVIDER
+     */
+    @TableField("data_source_type")
+    private String dataSourceType;
+
+    /**
+     * 数据源配置JSON
+     */
+    @TableField("data_source_config")
+    private String dataSourceConfig;
+
+    /**
+     * 前端渲染组件名
+     */
+    @TableField("render_component")
+    private String renderComponent;
+
+    /**
+     * 简单格式化表达式
+     */
+    @TableField("formatter")
+    private String formatter;
+
+    /**
      * 是否删除
      */
     @TableField("deleted")

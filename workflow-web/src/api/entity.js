@@ -94,6 +94,15 @@ export const entityDataApi = {
   },
 
   /**
+   * 获取某实体的数据列表（带列表配置扩展字段）
+   */
+  getListWithConfig(entityCode, listKey, params = {}) {
+    const queryParams = { ...params }
+    if (listKey) queryParams.listKey = listKey
+    return request.get(`/entity-data/entity/${entityCode}/list-with-config`, { params: queryParams })
+  },
+
+  /**
    * 根据ID获取数据
    */
   getById(id) {

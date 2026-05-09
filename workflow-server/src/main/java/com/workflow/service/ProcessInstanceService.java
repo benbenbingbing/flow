@@ -45,6 +45,9 @@ public class ProcessInstanceService {
     private final SysUserService sysUserService;
     private final com.workflow.service.EntityDataService entityDataService;
     private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
+    private final com.workflow.service.DynamicTableService dynamicTableService;
+    private final com.workflow.mapper.EntityDataDynamicMapper entityDataDynamicMapper;
+    private final com.workflow.mapper.EntityStatusMapper entityStatusMapper;
     private final com.workflow.service.EntityFormService entityFormService;
     private final com.workflow.mapper.NodeConfigMapper nodeConfigMapper;
     private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
@@ -1652,6 +1655,30 @@ public class ProcessInstanceService {
                 operationLogMapper.insert(log);
             } catch (Exception e) {
                 log.warn("记录终止日志失败", e);
+            }
+            
+            // 4. 更新实体数据状态为终止
+            try {
+                String entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
+                String entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
+                if (entityCode != null && entityDataId != null) {
+                    String tableName = dynamicTableService.getTableName(entityCode);
+                    java.util.Map<String, Object> updateData = new java.util.HashMap<>();
+                    updateData.put("id", entityDataId);
+                    updateData.put("process_end_time", LocalDateTime.now());
+                    updateData.put("updated_at", LocalDateTime.now());
+                    // 获取终止状态码
+                    java.util.List<com.workflow.entity.EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "TERMINATED");
+                    String terminatedStatus = (statuses != null && !statuses.isEmpty()) ? statuses.get(0).getStatusCode() : "REJECTED";
+                    updateData.put("status", terminatedStatus);
+                    updateData.put("current_task_id", null);
+                    updateData.put("current_task_name", null);
+                    updateData.put("current_task_assignee", null);
+                    entityDataDynamicMapper.update(tableName, updateData);
+                    log.info("流程终止，已更新实体数据状态: entityCode={}, entityDataId={}, status={}", entityCode, entityDataId, terminatedStatus);
+                }
+            } catch (Exception ex) {
+                log.warn("终止流程后更新实体数据状态失败: processInstanceId={}", processInstanceId, ex);
             }
             
             log.info("流程终止成功: processInstanceId={}, userId={}, reason={}", processInstanceId, userId, deleteReason);

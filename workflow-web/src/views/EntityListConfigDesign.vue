@@ -50,7 +50,7 @@
                 <el-checkbox v-model="row.isQuery" :disabled="!row.showInList" />
               </template>
             </el-table-column>
-            <el-table-column label="查询方式" width="110">
+            <el-table-column label="查询方式" width="100">
               <template #default="{ row }">
                 <el-select v-model="row.queryType" size="small" :disabled="!row.isQuery || !row.showInList">
                   <el-option label="等于" value="EQ" />
@@ -60,6 +60,25 @@
                   <el-option label="小于" value="LT" />
                   <el-option label="范围" value="BETWEEN" />
                   <el-option label="包含于" value="IN" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="数据源" width="110">
+              <template #default="{ row }">
+                <el-select v-model="row.dataSourceType" size="small" :disabled="!row.showInList">
+                  <el-option label="实体字段" value="ENTITY_FIELD" />
+                  <el-option label="关联查询" value="REFERENCE" />
+                  <el-option label="聚合统计" value="AGGREGATE" />
+                  <el-option label="自定义" value="CUSTOM_PROVIDER" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="渲染组件" width="120">
+              <template #default="{ row }">
+                <el-select v-model="row.renderComponent" size="small" :disabled="!row.showInList" clearable placeholder="默认">
+                  <el-option label="默认文本" value="DefaultText" />
+                  <el-option label="状态标签" value="StatusBadge" />
+                  <el-option label="日期格式" value="DateFormatter" />
                 </el-select>
               </template>
             </el-table-column>
@@ -177,13 +196,21 @@
             <el-table-column
               v-for="field in previewListFields"
               :key="field.fieldCode"
-              :prop="`data.${field.fieldCode}`"
               :label="field.fieldName"
               :width="field.width > 0 ? field.width : undefined"
               :align="field.align"
               min-width="100"
               show-overflow-tooltip
-            />
+            >
+              <template #default="{ row }">
+                <ListCellRenderer
+                  v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+                  :row="row"
+                  :field="field"
+                />
+                <span v-else>{{ row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-' }}</span>
+              </template>
+            </el-table-column>
           </el-table>
 
           <!-- 分页 -->
@@ -215,6 +242,7 @@ import { ArrowLeft, Check, Rank } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi, entityDataApi } from '@/api/entity'
+import ListCellRenderer from '@/components/ListCellRenderer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -235,6 +263,7 @@ let sortableInstance = null
 // 预览相关
 const previewQueryForm = ref({})
 const previewDataList = ref([])
+const previewAllData = ref([])
 const previewLoading = ref(false)
 const previewPageNum = ref(1)
 const previewPageSize = ref(10)
@@ -306,6 +335,10 @@ function mergeFieldConfig(savedFields) {
       queryType: saved?.queryType || 'LIKE',
       width: saved?.width || 0,
       align: saved?.align || 'left',
+      dataSourceType: saved?.dataSourceType || 'ENTITY_FIELD',
+      dataSourceConfig: saved?.dataSourceConfig || '',
+      renderComponent: saved?.renderComponent || '',
+      formatter: saved?.formatter || '',
       sortOrder: saved?.sortOrder ?? index
     }
   })
@@ -346,6 +379,10 @@ async function handleSave() {
     queryType: f.queryType,
     width: f.width,
     align: f.align,
+    dataSourceType: f.dataSourceType || 'ENTITY_FIELD',
+    dataSourceConfig: f.dataSourceConfig || '',
+    renderComponent: f.renderComponent || '',
+    formatter: f.formatter || '',
     sortOrder: index
   })).filter(f => f.showInList)
 
@@ -376,16 +413,21 @@ async function loadPreviewData() {
   if (!entityCode.value) return
   previewLoading.value = true
   try {
-    const params = {
-      pageNum: previewPageNum.value,
-      pageSize: previewPageSize.value,
-      ...previewQueryForm.value
-    }
-    const res = await entityDataApi.getList(entityCode.value, params)
-    previewDataList.value = res?.list || []
-    previewTotal.value = res?.total || 0
+    // 只传查询条件，不传分页参数（后端不分页，返回全部数据）
+    const params = { ...previewQueryForm.value }
+    // 调用带列表配置扩展的接口
+    const res = await entityDataApi.getListWithConfig(entityCode.value, configInfo.value?.listKey, params)
+    previewAllData.value = res || []
+    previewTotal.value = previewAllData.value.length
+    // 前端内存分页
+    const start = (previewPageNum.value - 1) * previewPageSize.value
+    const end = start + previewPageSize.value
+    previewDataList.value = previewAllData.value.slice(start, end)
   } catch (e) {
     console.error('加载预览数据失败:', e)
+    previewAllData.value = []
+    previewDataList.value = []
+    previewTotal.value = 0
   } finally {
     previewLoading.value = false
   }

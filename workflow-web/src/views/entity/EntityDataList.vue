@@ -22,7 +22,8 @@
       <!-- 查询条件 -->
       <el-card class="search-card" v-if="queryFields.length > 0">
         <el-form :model="queryForm" inline>
-          <el-form-item v-for="field in queryFields" :key="field.fieldCode" :label="field.fieldName">
+          <!-- 默认显示前4个查询字段 -->
+          <el-form-item v-for="field in visibleQueryFields" :key="field.fieldCode" :label="field.fieldName">
             <!-- BETWEEN 范围查询 -->
             <template v-if="field.queryType === 'BETWEEN' && useListConfig">
               <el-date-picker v-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'"
@@ -48,6 +49,10 @@
           <el-form-item>
             <el-button type="primary" @click="handleSearch">查询</el-button>
             <el-button @click="handleReset">重置</el-button>
+            <el-button v-if="queryFields.length > 4" link type="primary" @click="searchExpanded = !searchExpanded">
+              <span>{{ searchExpanded ? '收起' : '展开' }}</span>
+              <el-icon><ArrowUp v-if="searchExpanded" /><ArrowDown v-else /></el-icon>
+            </el-button>
           </el-form-item>
         </el-form>
       </el-card>
@@ -65,11 +70,21 @@
               :align="field.align"
               :min-width="field.width > 0 ? undefined : 100"
               show-overflow-tooltip>
-              <template #default="{ row }" v-if="field.fieldCode === 'status'">
-                <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-              </template>
-              <template #default="{ row }" v-else-if="field.fieldCode === 'createdAt' || field.fieldCode === 'processStartTime' || field.fieldCode === 'processEndTime' || field.fieldCode === 'submitTime'">
-                {{ formatDate(row[field.fieldCode]) }}
+              <template #default="{ row }">
+                <!-- 自定义渲染组件 -->
+                <ListCellRenderer
+                  v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+                  :row="row"
+                  :field="field"
+                />
+                <!-- 状态字段特殊渲染 -->
+                <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+                <!-- 日期字段格式化 -->
+                <span v-else-if="field.fieldCode === 'createdAt' || field.fieldCode === 'processStartTime' || field.fieldCode === 'processEndTime' || field.fieldCode === 'submitTime'">
+                  {{ formatDate(row[field.fieldCode]) }}
+                </span>
+                <!-- 默认显示 -->
+                <span v-else>{{ getFieldDisplayValue(row, field) }}</span>
               </template>
             </el-table-column>
           </template>
@@ -203,65 +218,105 @@
       </template>
     </el-dialog>
     
-    <!-- 查看详情对话框 -->
-    <el-dialog v-model="viewDialogVisible" title="数据详情" width="700px">
-      <el-descriptions :column="2" border>
-        <!-- 基础信息 -->
-        <el-descriptions-item label="编号">{{ currentRow.dataNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="数据名称">{{ currentRow.name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="数据编码">{{ currentRow.code || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="getStatusType(currentRow.status)">{{ getStatusText(currentRow.status) }}</el-tag>
-        </el-descriptions-item>
-        
-        <!-- 流程信息 -->
-        <el-descriptions-item label="流程实例ID">{{ currentRow.processInstanceId || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="流程开始时间">{{ formatDate(currentRow.processStartTime) }}</el-descriptions-item>
-        <el-descriptions-item label="流程结束时间">{{ formatDate(currentRow.processEndTime) }}</el-descriptions-item>
-        <el-descriptions-item label="当前任务">{{ currentRow.currentTaskName || '-' }}</el-descriptions-item>
-        
-        <!-- 提交信息 -->
-        <el-descriptions-item label="提交人ID">{{ currentRow.submitterId || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="提交人">{{ currentRow.submitterName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="提交时间">{{ formatDate(currentRow.submitTime) }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ formatDate(currentRow.createdAt) }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{ formatDate(currentRow.updatedAt) }}</el-descriptions-item>
-        <el-descriptions-item label="创建人">{{ currentRow.createdBy || '-' }}</el-descriptions-item>
-      </el-descriptions>
+    <!-- 审批/查看弹窗 -->
+    <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="700px" destroy-on-close>
+      <el-tabs v-model="activeDialogTab" type="border-card">
+        <!-- 审批信息 -->
+        <el-tab-pane label="审批" name="approval">
+          <!-- 实体数据表单 -->
+          <div v-if="entityData" class="entity-form-section">
+            <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
+              <FormPreviewLinkage
+                :form="formConfig"
+                v-model="entityData"
+                :readonly="true"
+                :show-header="false"
+              />
+            </template>
+            <template v-else>
+              <el-form :model="entityData" label-width="100px" class="entity-form">
+                <el-row :gutter="20">
+                  <el-col v-for="(value, key) in entityData" :key="key" :span="12">
+                    <el-form-item :label="key">
+                      <el-input v-model="entityData[key]" :readonly="true" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-form>
+            </template>
+          </div>
+          
+          <el-divider v-if="entityData" />
+          
+          <!-- 审批操作区（非查看模式） -->
+          <template v-if="!isViewMode && effectiveApprovalConfig.enabled !== false">
+            <div class="section-title">审批意见</div>
+            <el-form :model="approveForm" label-width="80px">
+              <el-form-item label="审批操作" required>
+                <el-radio-group v-model="approveForm.action">
+                  <el-radio-button 
+                    v-for="option in effectiveApprovalConfig.options" 
+                    :key="option.value" 
+                    :label="option.value"
+                  >
+                    {{ option.label }}
+                  </el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item 
+                v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+                :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+              >
+                <el-input 
+                  v-model="approveForm.comment" 
+                  type="textarea" 
+                  :rows="3" 
+                  :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`" 
+                />
+              </el-form-item>
+            </el-form>
+          </template>
+        </el-tab-pane>
+
+        <!-- 流程图 -->
+        <el-tab-pane label="流程图" name="diagram">
+          <div style="height: 400px;">
+            <VueBpmnViewer 
+              v-if="bpmnXml && progressData" 
+              :key="currentTask?.processInstanceId"
+              :xml="bpmnXml" 
+              :progress-data="progressData"
+              style="height: 100%;" 
+            />
+            <el-empty v-else description="暂无流程图" />
+          </div>
+        </el-tab-pane>
+
+        <!-- 审批历史 -->
+        <el-tab-pane label="审批历史" name="history">
+          <el-timeline v-if="processHistory.length > 0">
+            <el-timeline-item
+              v-for="(item, index) in processHistory"
+              :key="index"
+              :type="item.type"
+              :timestamp="item.time"
+            >
+              <div class="history-item">
+                <span class="history-title">{{ item.title }}</span>
+                <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (item.status === 'TERMINATED' ? 'danger' : 'warning')">
+                  {{ item.status === 'COMPLETED' ? '已完成' : (item.status === 'TERMINATED' ? '已终止' : '进行中') }}
+                </el-tag>
+              </div>
+              <div class="history-desc">{{ item.description }}</div>
+            </el-timeline-item>
+          </el-timeline>
+          <el-empty v-else description="暂无审批历史" />
+        </el-tab-pane>
+      </el-tabs>
       
-      <el-divider>自定义字段</el-divider>
-      
-      <el-descriptions :column="2" border>
-        <el-descriptions-item :label="field.fieldName" v-for="field in formFields.filter(f => !f.isSystem)" :key="field.fieldCode">
-          {{ currentRow.data?.[field.fieldCode] || '-' }}
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
-    
-    <!-- 审批对话框 -->
-    <el-dialog v-model="approveDialogVisible" :title="approveTask?.name || '任务审批'" width="600px">
-      <el-form label-width="100px">
-        <el-form-item label="审批意见" prop="action">
-          <el-radio-group v-model="approveForm.action">
-            <el-radio-button 
-              v-for="opt in (approveApprovalConfig?.options || [{label:'通过', value:'approve'}, {label:'驳回', value:'reject'}])" 
-              :key="opt.value" 
-              :label="opt.value">
-              {{ opt.label }}
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input 
-            v-model="approveForm.comment" 
-            type="textarea" 
-            :rows="3" 
-            placeholder="请输入审批备注" />
-        </el-form-item>
-      </el-form>
       <template #footer>
-        <el-button @click="approveDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitApprove" :loading="approveLoading">确定</el-button>
+        <el-button @click="processDialogVisible = false">关闭</el-button>
+        <el-button v-if="!isViewMode && activeDialogTab === 'approval'" type="primary" @click="submitApprove" :loading="approveSubmitLoading">确认</el-button>
       </template>
     </el-dialog>
   </div>
@@ -271,14 +326,17 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { useUserStore } from '@/stores/user'
-import { completeTask } from '@/api/processTask'
+import { completeTask, getProcessHistory } from '@/api/processTask'
 import request from '@/utils/request'
 import EntitySelector from '@/components/EntitySelector.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
+import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
+import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import ListCellRenderer from '@/components/ListCellRenderer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -293,9 +351,9 @@ const entityCode = computed(() => route.params.entityCode as string || route.que
 // 状态
 const loading = ref(false)
 const tableLoading = ref(false)
+const searchExpanded = ref(false)
 const submitLoading = ref(false)
 const dialogVisible = ref(false)
-const viewDialogVisible = ref(false)
 const dialogTitle = ref('')
 const currentRow = ref<any>({})
 
@@ -413,6 +471,14 @@ const queryFields = computed(() => {
   return entityFields.value.filter((f: any) => f.isQuery && !f.isSystem)
 })
 
+// 可见的查询字段（默认只显示前4个，展开后显示全部）
+const visibleQueryFields = computed(() => {
+  if (searchExpanded.value || queryFields.value.length <= 4) {
+    return queryFields.value
+  }
+  return queryFields.value.slice(0, 4)
+})
+
 // 列表显示字段（优先使用列表配置，否则用默认的showInList）
 const listFields = computed(() => {
   if (listConfigFields.value.length > 0) {
@@ -438,6 +504,15 @@ const formFields = computed(() => {
 const SYSTEM_FIELDS = new Set(['id', 'dataNo', 'name', 'code', 'status', 'processInstanceId', 'processStartTime', 'processEndTime', 'currentTaskId', 'currentTaskName', 'currentTaskAssignee', 'submitterId', 'submitterName', 'submitTime', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'])
 const getListFieldProp = (fieldCode: string) => {
   return SYSTEM_FIELDS.has(fieldCode) ? fieldCode : `data.${fieldCode}`
+}
+
+// 获取字段显示值（用于默认渲染）
+const getFieldDisplayValue = (row: any, field: any) => {
+  const fieldCode = field.fieldCode
+  if (SYSTEM_FIELDS.has(fieldCode)) {
+    return row[fieldCode] ?? '-'
+  }
+  return row.data?.[fieldCode] ?? '-'
 }
 
 // 解析选项
@@ -545,7 +620,15 @@ const loadDataList = async () => {
         params[key] = value
       }
     })
-    const res = await entityDataApi.getList(entityCode.value, params)
+    
+    // 有列表配置时调用带扩展字段的接口
+    let res
+    if (listConfig.value?.id) {
+      res = await entityDataApi.getListWithConfig(entityCode.value, listConfig.value.listKey, params)
+    } else {
+      res = await entityDataApi.getList(entityCode.value, params)
+    }
+    
     // 后端返回列表，前端做分页
     const allData = res || []
     total.value = allData.length
@@ -630,12 +713,6 @@ const handleEdit = (row: any) => {
   })
 }
 
-// 查看
-const handleView = (row: any) => {
-  currentRow.value = row
-  viewDialogVisible.value = true
-}
-
 // 删除
 const handleDelete = async (row: any) => {
   try {
@@ -658,66 +735,206 @@ const canApprove = (row: any) => {
   return row.currentTaskAssignee === String(userId) || row.currentTaskAssignee === username
 }
 
-// 审批弹窗
-const approveDialogVisible = ref(false)
-const approveLoading = ref(false)
-const approveTask = ref<any>(null)
+// 审批/查看弹窗
+const processDialogVisible = ref(false)
+const activeDialogTab = ref('approval')
+const approveSubmitLoading = ref(false)
+const currentTask = ref<any>(null)
+const isViewMode = ref(false)
+
 const approveForm = reactive({
   action: 'approve',
-  comment: ''
+  comment: '',
+  transferTo: ''
 })
-const approveApprovalConfig = ref<any>(null)
-const approveEntityData = ref<any>(null)
-const approveFormConfig = ref<any>(null)
+
+const bpmnXml = ref('')
+const processHistory = ref<any[]>([])
+const progressData = ref<any>({
+  completedNodes: [],
+  activeNodes: [],
+  executedSequenceFlows: [],
+  nodeAssigneeMap: {}
+})
+const entityData = ref<any>(null)
+const formConfig = ref<any>(null)
+const approvalConfig = ref<any>(null)
+
+// 计算属性：获取当前有效的审批配置
+const effectiveApprovalConfig = computed(() => {
+  if (approvalConfig.value) {
+    return approvalConfig.value
+  }
+  return {
+    enabled: true,
+    commentLabel: '审批意见',
+    options: [
+      { value: 'approve', label: '通过', type: 'primary', showComment: true },
+      { value: 'reject', label: '驳回', type: 'danger', showComment: true }
+    ]
+  }
+})
+
+// 监听审批弹窗 Tab 切换，切换到流程图时重新触发渲染
+watch(activeDialogTab, (newVal) => {
+  if (newVal === 'diagram' && bpmnXml.value && progressData.value) {
+    nextTick(() => {
+      const tempXml = bpmnXml.value
+      bpmnXml.value = ''
+      nextTick(() => {
+        bpmnXml.value = tempXml
+      })
+    })
+  }
+})
+
+// 获取流程状态显示文本
+function getProcessStatusText(status: string) {
+  const textMap: Record<string, string> = {
+    'RUNNING': '运行中',
+    'COMPLETED': '已完成',
+    'SUSPENDED': '已挂起',
+    'TERMINATED': '已终止'
+  }
+  return textMap[status] || status || '-'
+}
+
+// 加载流程详情
+async function loadProcessDetail(instanceId: string) {
+  try {
+    const progressRes = await request.get(`/process-instance/${instanceId}/progress`)
+    if (progressRes) {
+      bpmnXml.value = progressRes.bpmnXml || ''
+      progressData.value = {
+        completedNodes: progressRes.completedNodes || [],
+        activeNodes: progressRes.activeNodes || [],
+        terminatedNodes: progressRes.terminatedNodes || [],
+        executedSequenceFlows: progressRes.executedSequenceFlows || [],
+        nodeAssigneeMap: progressRes.nodeAssigneeMap || {},
+        status: progressRes.status
+      }
+      entityData.value = progressRes.entityData || null
+      if (entityData.value && entityData.value.status) {
+        const statusMap: Record<string, string> = {
+          'DRAFT': '草稿',
+          'PENDING': '审批中',
+          'APPROVED': '已通过',
+          'REJECTED': '已驳回',
+          'COMPLETED': '已完成',
+          'WITHDRAWN': '已撤回'
+        }
+        entityData.value._statusText = statusMap[entityData.value.status] || entityData.value.status
+      }
+      formConfig.value = progressRes.formConfig || null
+      approvalConfig.value = progressRes.approvalConfig || null
+      const config = progressRes.approvalConfig
+      if (config && Array.isArray(config.options) && config.options.length > 0) {
+        const firstOption = config.options[0]
+        if (firstOption && firstOption.value) {
+          approveForm.action = firstOption.value
+        }
+      }
+      if (currentTask.value) {
+        currentTask.value.processStatus = progressRes.status
+        if (progressRes.processName) {
+          currentTask.value.processName = progressRes.processName
+        }
+      }
+    }
+
+    // 加载历史
+    if (progressRes?.nodeHistory && progressRes.nodeHistory.length > 0) {
+      processHistory.value = progressRes.nodeHistory.map((node: any) => {
+        const isStartNode = node.nodeId?.toLowerCase().includes('start') || node.nodeName === '开始'
+        let actionText = ''
+        if (node.action === 'APPROVED') actionText = '通过'
+        else if (node.action === 'REJECTED') actionText = '驳回'
+        else if (node.action === 'TRANSFERRED') actionText = '转办'
+        else if (node.action === 'TERMINATED') actionText = '终止'
+        else if (node.status === 'COMPLETED') actionText = '完成'
+        else if (node.status === 'TERMINATED') actionText = '终止'
+        else actionText = '进行中'
+        const commentText = node.comment ? `（${node.comment}）` : ''
+        return {
+          title: node.nodeName || node.nodeId,
+          description: isStartNode
+            ? `发起人: ${node.assignee || currentTask.value?.startUserName || 'admin'}`
+            : (node.assignee ? `执行人: ${node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
+          time: node.endTime || node.startTime,
+          type: node.action === 'TRANSFERRED' ? 'warning' : (node.status === 'TERMINATED' ? 'danger' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
+          status: node.status,
+          action: node.action
+        }
+      }).reverse()
+    } else {
+      const historyRes = await getProcessHistory(instanceId)
+      processHistory.value = (historyRes || []).map((h: any) => {
+        const isStart = h.action === '发起' || h.taskName?.toLowerCase().includes('start')
+        const isTransfer = h.result === 'transfer' || (h.comment && h.comment.includes('转办'))
+        return {
+          title: h.taskName || '流程节点',
+          description: isStart
+            ? `发起人: ${h.assignee || currentTask.value?.startUserName || 'admin'}`
+            : `${h.assignee || '系统'} ${isTransfer ? '转办' : (h.action || '处理')}`,
+          time: h.endTime || h.startTime,
+          type: isStart ? 'primary' : (isTransfer ? 'warning' : (h.action === '通过' ? 'success' : 'info')),
+          status: h.endTime ? 'COMPLETED' : 'ACTIVE',
+          action: h.result
+        }
+      }).reverse()
+    }
+  } catch (e) {
+    console.error('加载流程详情失败:', e)
+  }
+}
 
 // 打开审批弹窗
 const handleApprove = async (row: any) => {
-  approveTask.value = {
+  isViewMode.value = false
+  currentTask.value = {
     taskId: row.currentTaskId,
     processInstanceId: row.processInstanceId,
     name: row.currentTaskName || '任务审批'
   }
   approveForm.action = 'approve'
   approveForm.comment = ''
-  
-  try {
-    // 加载流程进度
-    const progressRes = await request.get(`/process-instance/${row.processInstanceId}/progress`)
-    if (progressRes) {
-      approveEntityData.value = progressRes.entityData || null
-      approveFormConfig.value = progressRes.formConfig || null
-      approveApprovalConfig.value = progressRes.approvalConfig || null
-      // 默认选中第一个审批选项
-      const config = progressRes.approvalConfig
-      if (config && Array.isArray(config.options) && config.options.length > 0) {
-        approveForm.action = config.options[0].value
-      }
-    }
-    approveDialogVisible.value = true
-  } catch (e) {
-    console.error('加载审批详情失败:', e)
-    ElMessage.error('加载审批详情失败')
+  activeDialogTab.value = 'approval'
+  await loadProcessDetail(row.processInstanceId)
+  processDialogVisible.value = true
+}
+
+// 打开查看弹窗（只读模式）
+const handleView = (row: any) => {
+  isViewMode.value = true
+  currentTask.value = {
+    processInstanceId: row.processInstanceId,
+    name: row.name || '数据详情'
   }
+  activeDialogTab.value = 'approval'
+  if (row.processInstanceId) {
+    loadProcessDetail(row.processInstanceId)
+  }
+  processDialogVisible.value = true
 }
 
 // 提交审批
 const submitApprove = async () => {
-  if (!approveTask.value?.taskId) return
-  approveLoading.value = true
+  if (!currentTask.value?.taskId) return
+  approveSubmitLoading.value = true
   try {
     await completeTask({
-      taskId: approveTask.value.taskId,
+      taskId: currentTask.value.taskId,
       action: approveForm.action,
       comment: approveForm.comment
     })
     ElMessage.success('审批成功')
-    approveDialogVisible.value = false
+    processDialogVisible.value = false
     loadDataList()
   } catch (e) {
     console.error('审批失败:', e)
     ElMessage.error('审批失败')
   } finally {
-    approveLoading.value = false
+    approveSubmitLoading.value = false
   }
 }
 
@@ -802,5 +1019,32 @@ onMounted(() => {
     color: #909399;
     font-size: 12px;
   }
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.history-title {
+  font-weight: 600;
+  color: #303133;
+}
+
+.history-desc {
+  color: #909399;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 16px;
+  padding-left: 8px;
+  border-left: 4px solid #409eff;
 }
 </style>

@@ -26,7 +26,7 @@ public class FlowableEventListenerConfig {
         // 注册任务完成事件监听器（不指定事件类型，监听所有事件，在监听器中过滤）
         runtimeService.addEventListener(entityStatusUpdateListener);
         
-        // 注册流程结束事件监听器
+        // 注册流程结束事件监听器（监听所有事件，在监听器中过滤）
         runtimeService.addEventListener(processEndListener);
         
         // 注册多实例集合变量自动准备监听器

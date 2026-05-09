@@ -12,20 +12,24 @@
     <el-table
       v-loading="loading"
       :data="flattenMenuTree"
+      :key="'table-' + expandedKeys.join(',')"
       row-key="id"
       border
       stripe
     >
       <el-table-column prop="menuName" label="菜单名称" min-width="220">
         <template #default="{ row, $index }">
-          <div class="menu-name-cell" :style="{ paddingLeft: getPaddingLeft(row, $index) + 'px' }">
+          <div class="menu-name-cell" :style="{ paddingLeft: getPaddingLeft(row, $index) + 'px' }" :key="'cell-' + row.id + '-' + expandedKeys.includes(row.id)">
             <!-- 展开/收起图标 -->
             <span 
               v-if="row.children && row.children.length > 0" 
               class="expand-icon"
               @click.stop="toggleExpand(row)"
             >
-              <el-icon><ArrowRight v-if="!isExpanded(row)" /><ArrowDown v-else /></el-icon>
+              <el-icon>
+                <ArrowRight v-if="!expandedKeys.includes(row.id)" />
+                <ArrowDown v-else />
+              </el-icon>
             </span>
             <span v-else class="expand-placeholder"></span>
             <el-icon v-if="row.icon && getIconComponent(row.icon)" class="menu-icon">
@@ -293,7 +297,8 @@ const flattenMenuTree = computed(() => {
   const result: any[] = []
   const flatten = (menus: any[]) => {
     menus.forEach(menu => {
-      result.push(menu)
+      // 使用浅拷贝，确保 el-table 能正确识别行数据变化并重新渲染
+      result.push({ ...menu, _expanded: expandedKeys.value.includes(menu.id) })
       // 如果菜单已展开，递归添加子菜单
       if (menu.children?.length && expandedKeys.value.includes(menu.id)) {
         flatten(menu.children)
@@ -526,9 +531,14 @@ const handleDelete = async (row: any) => {
 
 // 状态变更
 const handleStatusChange = async (row: any) => {
+  const isEnable = row.status === '0'
   try {
     await updateStatus(row.id, row.status)
-    ElMessage.success('状态更新成功')
+    if (isEnable) {
+      ElMessage.success(`菜单「${row.menuName}」已启用，将恢复显示在导航栏且可正常访问`)
+    } else {
+      ElMessage.warning(`菜单「${row.menuName}」已禁用，将从导航栏移除且无法通过URL访问`)
+    }
   } catch {
     row.status = row.status === '0' ? '1' : '0'
   }
@@ -536,9 +546,14 @@ const handleStatusChange = async (row: any) => {
 
 // 显示状态变更
 const handleVisibleChange = async (row: any) => {
+  const isShow = row.visible === '0'
   try {
     await updateVisible(row.id, row.visible)
-    ElMessage.success('显示状态更新成功')
+    if (isShow) {
+      ElMessage.success(`菜单「${row.menuName}」已显示，将重新出现在导航栏`)
+    } else {
+      ElMessage.info(`菜单「${row.menuName}」已隐藏，不会显示在导航栏但可通过URL直接访问`)
+    }
   } catch {
     row.visible = row.visible === '0' ? '1' : '0'
   }
