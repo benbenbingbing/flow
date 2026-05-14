@@ -34,6 +34,7 @@ public class EntityDefinitionService {
     private final EntityDataDynamicMapper entityDataDynamicMapper;
     private final DynamicTableService dynamicTableService;
     private final EntityPublishHistoryService publishHistoryService;
+    private final EntityFieldFileItemService fileItemService;
     private final ObjectMapper objectMapper;
     
     /**
@@ -340,7 +341,21 @@ public class EntityDefinitionService {
                     existingField.setIsQuery(fieldDTO.getIsQuery());
                     existingField.setSortOrder(fieldDTO.getSortOrder());
                     existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
+                    existingField.setFileTypes(fieldDTO.getFileTypes());
+                    existingField.setFileMaxSize(fieldDTO.getFileMaxSize());
+                    existingField.setFileMaxCount(fieldDTO.getFileMaxCount());
+                    // 实体引用/子表单字段
+                    existingField.setRefEntityId(fieldDTO.getRefEntityId());
+                    if (fieldDTO.getRefEntityType() != null && !fieldDTO.getRefEntityType().isEmpty()) {
+                        existingField.setRefEntityType(EntityField.RefEntityType.valueOf(fieldDTO.getRefEntityType()));
+                    } else {
+                        existingField.setRefEntityType(null);
+                    }
+                    existingField.setDisplayMode(fieldDTO.getDisplayMode());
+                    existingField.setRefFieldCode(fieldDTO.getRefFieldCode());
                     fieldMapper.updateById(existingField);
+                    // 级联保存附件项配置
+                    fileItemService.saveFileItems(existingField.getId(), fieldDTO.getFileItems());
                 } else {
                     // 新字段，添加到字段定义表（不立即同步到数据表，等发布时同步）
                     EntityField field = convertToEntity(fieldDTO);
@@ -350,6 +365,8 @@ public class EntityDefinitionService {
                     field.setEditable(true);
                     field.setIsPublished(false); // 新字段标记为未发布
                     fieldMapper.insert(field);
+                    // 级联保存附件项配置
+                    fileItemService.saveFileItems(field.getId(), fieldDTO.getFileItems());
                     
                     // 注意：不再自动添加字段到数据表，只有点击发布时才同步
                 }
@@ -544,6 +561,23 @@ public class EntityDefinitionService {
         dto.setIsSystem(field.getIsSystem());
         dto.setEditable(field.getEditable());
         dto.setIsPublished(field.getIsPublished());
+        dto.setFileTypes(field.getFileTypes());
+        dto.setFileMaxSize(field.getFileMaxSize());
+        dto.setFileMaxCount(field.getFileMaxCount());
+        // 实体引用/子表单字段
+        dto.setRefEntityId(field.getRefEntityId());
+        dto.setRefEntityType(field.getRefEntityType() != null ? field.getRefEntityType().name() : null);
+        dto.setDisplayMode(field.getDisplayMode());
+        dto.setRefFieldCode(field.getRefFieldCode());
+        // 加载文件字段的多组附件配置
+        if (field.getFieldType() == EntityField.FieldType.FILE || field.getFieldType() == EntityField.FieldType.IMAGE) {
+            try {
+                dto.setFileItems(fileItemService.findByFieldId(field.getId()));
+            } catch (Exception e) {
+                // 表可能不存在，忽略异常
+                dto.setFileItems(null);
+            }
+        }
         return dto;
     }
     
@@ -584,6 +618,16 @@ public class EntityDefinitionService {
         field.setShowInList(dto.getShowInList());
         field.setShowInForm(dto.getShowInForm());
         field.setIsQuery(dto.getIsQuery());
+        field.setFileTypes(dto.getFileTypes());
+        field.setFileMaxSize(dto.getFileMaxSize());
+        field.setFileMaxCount(dto.getFileMaxCount());
+        // 实体引用/子表单字段
+        field.setRefEntityId(dto.getRefEntityId());
+        if (dto.getRefEntityType() != null && !dto.getRefEntityType().isEmpty()) {
+            field.setRefEntityType(EntityField.RefEntityType.valueOf(dto.getRefEntityType()));
+        }
+        field.setDisplayMode(dto.getDisplayMode());
+        field.setRefFieldCode(dto.getRefFieldCode());
         return field;
     }
 }

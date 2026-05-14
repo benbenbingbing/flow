@@ -1,9 +1,11 @@
 package com.workflow.controller;
 
 import com.workflow.common.Result;
+import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.entity.EntityField;
 import com.workflow.service.DynamicTableService;
 import com.workflow.service.EntityDataDynamicService;
+import com.workflow.service.EntityDefinitionService;
 import com.workflow.service.EntityFieldService;
 import com.workflow.service.SystemEntityService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ public class EntitySelectorController {
     private final DynamicTableService dynamicTableService;
     private final SystemEntityService systemEntityService;
     private final EntityFieldService entityFieldService;
+    private final EntityDefinitionService entityDefinitionService;
 
     /**
      * 查询实体数据列表（用于选择器）
@@ -42,6 +45,7 @@ public class EntitySelectorController {
     public Result<Map<String, Object>> selectList(
             @PathVariable String entityType,
             @RequestParam(required = false) String entityCode,
+            @RequestParam(required = false) String refEntityId,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize) {
@@ -49,10 +53,11 @@ public class EntitySelectorController {
         // 根据实体类型选择查询方式
         if ("CUSTOM".equalsIgnoreCase(entityType)) {
             // 用户自定义实体
-            if (entityCode == null || entityCode.isEmpty()) {
+            String actualEntityCode = resolveEntityCode(entityCode, refEntityId);
+            if (actualEntityCode == null || actualEntityCode.isEmpty()) {
                 return Result.error("查询用户实体时 entityCode 不能为空");
             }
-            return selectCustomEntity(entityCode, keyword, pageNum, pageSize);
+            return selectCustomEntity(actualEntityCode, keyword, pageNum, pageSize);
         } else {
             // 系统实体（USER/DEPT/ROLE/GROUP）
             return Result.success(systemEntityService.selectList(entityType, keyword, pageNum, pageSize));
@@ -71,18 +76,20 @@ public class EntitySelectorController {
     public Result<Map<String, Object>> getById(
             @PathVariable String entityType,
             @PathVariable String id,
-            @RequestParam(required = false) String entityCode) {
+            @RequestParam(required = false) String entityCode,
+            @RequestParam(required = false) String refEntityId) {
         
         Map<String, Object> data;
+        String actualEntityCode = resolveEntityCode(entityCode, refEntityId);
         
         if ("CUSTOM".equalsIgnoreCase(entityType)) {
-            if (entityCode == null || entityCode.isEmpty()) {
+            if (actualEntityCode == null || actualEntityCode.isEmpty()) {
                 return Result.error("查询用户实体时 entityCode 不能为空");
             }
-            if (!dynamicTableService.tableExists(entityCode)) {
-                return Result.error("实体数据表不存在: " + entityCode);
+            if (!dynamicTableService.tableExists(actualEntityCode)) {
+                return Result.error("实体数据表不存在: " + actualEntityCode);
             }
-            data = entityDataDynamicService.findById(entityCode, id).getData();
+            data = entityDataDynamicService.findById(actualEntityCode, id).getData();
             if (data != null) {
                 data = simplifyEntityData(data);
                 data.put("entityType", "CUSTOM");
@@ -106,7 +113,8 @@ public class EntitySelectorController {
     public Result<List<Map<String, Object>>> getBatch(
             @PathVariable String entityType,
             @RequestParam String ids,
-            @RequestParam(required = false) String entityCode) {
+            @RequestParam(required = false) String entityCode,
+            @RequestParam(required = false) String refEntityId) {
         
         if (ids == null || ids.isEmpty()) {
             return Result.success(new ArrayList<>());
@@ -114,18 +122,19 @@ public class EntitySelectorController {
         
         List<String> idList = Arrays.asList(ids.split(","));
         List<Map<String, Object>> result = new ArrayList<>();
+        String actualEntityCode = resolveEntityCode(entityCode, refEntityId);
         
         if ("CUSTOM".equalsIgnoreCase(entityType)) {
-            if (entityCode == null || entityCode.isEmpty()) {
+            if (actualEntityCode == null || actualEntityCode.isEmpty()) {
                 return Result.error("查询用户实体时 entityCode 不能为空");
             }
-            if (!dynamicTableService.tableExists(entityCode)) {
-                return Result.error("实体数据表不存在: " + entityCode);
+            if (!dynamicTableService.tableExists(actualEntityCode)) {
+                return Result.error("实体数据表不存在: " + actualEntityCode);
             }
             
             for (String id : idList) {
                 try {
-                    Map<String, Object> data = entityDataDynamicService.findById(entityCode, id.trim()).getData();
+                    Map<String, Object> data = entityDataDynamicService.findById(actualEntityCode, id.trim()).getData();
                     if (data != null) {
                         result.add(simplifyEntityData(data));
                     }
@@ -160,10 +169,10 @@ public class EntitySelectorController {
         
         // 根据引用类型返回对应的信息
         if (field.getRefEntityType() == EntityField.RefEntityType.CUSTOM) {
-            // 用户实体，返回实体编码
-            // 需要通过 refEntityId 查询实体编码
+            // 用户实体，通过 refEntityId（实体定义ID）查询实体编码
             config.put("entityType", "CUSTOM");
-            config.put("entityCode", field.getRefEntityId()); // 这里假设 refEntityId 存储的是 entityCode
+            String entityCode = resolveEntityCode(null, field.getRefEntityId());
+            config.put("entityCode", entityCode);
         } else {
             // 系统实体
             config.put("entityType", field.getRefEntityType().name());
@@ -237,5 +246,26 @@ public class EntitySelectorController {
     private String getStringValue(Map<String, Object> data, String key) {
         Object value = data.get(key);
         return value != null ? value.toString() : null;
+    }
+    
+    /**
+     * 解析实体编码
+     * 优先使用直接传入的 entityCode，如果为空则通过 refEntityId（实体定义ID）查询
+     */
+    private String resolveEntityCode(String entityCode, String refEntityId) {
+        if (entityCode != null && !entityCode.isEmpty()) {
+            return entityCode;
+        }
+        if (refEntityId != null && !refEntityId.isEmpty()) {
+            try {
+                EntityDefinitionDTO entity = entityDefinitionService.findById(refEntityId);
+                if (entity != null) {
+                    return entity.getEntityCode();
+                }
+            } catch (Exception e) {
+                // 忽略查询异常
+            }
+        }
+        return null;
     }
 }

@@ -195,11 +195,21 @@
                          entity-type="DEPT"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                          :placeholder="`请选择${field.fieldName}`" />
+          <!-- 文件上传 -->
+          <FileUploader
+            v-else-if="field.fieldType === 'FILE' || field.fieldType === 'IMAGE'"
+            v-model="formData.data[field.fieldCode]"
+            :field="field"
+            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+            :is-image="field.fieldType === 'IMAGE'"
+          />
           <!-- 通用实体引用 -->
           <EntitySelector v-else-if="field.fieldType === 'REFERENCE' || field.fieldType === 'MULTI_REFERENCE'"
                          v-model="formData.data[field.fieldCode]"
                          :entity-type="field.refEntityType || 'CUSTOM'"
                          :entity-code="field.refEntityId"
+                         :ref-entity-id="field.refEntityId"
+                         :api-url="getFieldApiUrl(field)"
                          :multiple="field.fieldType === 'MULTI_REFERENCE'"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                          :placeholder="`请选择${field.fieldName}`" />
@@ -333,6 +343,7 @@ import { useUserStore } from '@/stores/user'
 import { completeTask, getProcessHistory } from '@/api/processTask'
 import request from '@/utils/request'
 import EntitySelector from '@/components/EntitySelector.vue'
+import FileUploader from '@/components/FileUploader.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
@@ -415,6 +426,17 @@ function isFieldVisible(field: any) {
 // 判断字段是否禁用
 function isFieldDisabled(field: any) {
   return linkageState.value.disabled[field.fieldCode] === true
+}
+
+// 从 componentProps 或字段属性中获取数据接口URL
+function getFieldApiUrl(field: any) {
+  if (field.componentProps) {
+    try {
+      const cp = typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps
+      if (cp.refConfig?.apiUrl) return cp.refConfig.apiUrl
+    } catch (e) {}
+  }
+  return field.apiUrl || null
 }
 
 // 获取字段验证规则（含联动必填）

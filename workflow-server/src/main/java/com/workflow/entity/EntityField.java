@@ -183,6 +183,8 @@ public class EntityField {
     @TableField("file_max_count")
     private Integer fileMaxCount;
     
+
+    
     /**
      * 创建时间
      */

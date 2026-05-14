@@ -137,6 +137,12 @@ const routes = [
         meta: { title: '组织部门管理' }
       },
       {
+        path: '/system/dict',
+        name: 'DictManagement',
+        component: () => import('@/views/system/Dict.vue'),
+        meta: { title: '字典设置' }
+      },
+      {
         path: '/system/dev-guide',
         name: 'DevGuide',
         component: () => import('@/views/system/DevGuide.vue'),

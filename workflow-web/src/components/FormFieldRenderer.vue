@@ -129,6 +129,8 @@
       v-model="fieldValue"
       :entity-type="getRefEntityType()"
       :entity-code="field.refEntityId"
+      :ref-entity-id="field.refEntityId"
+      :api-url="getApiUrl(field)"
       :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
       @change="handleEntitySelect"
@@ -140,6 +142,8 @@
       v-model="fieldValue"
       :entity-type="getRefEntityType()"
       :entity-code="field.refEntityId"
+      :ref-entity-id="field.refEntityId"
+      :api-url="field.apiUrl"
       :multiple="true"
       :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
@@ -332,6 +336,17 @@ const getRefEntityType = () => {
   // refEntityType: CUSTOM/USER/DEPT/ROLE/GROUP
   // 默认为 CUSTOM（用户自定义实体）
   return props.field.refEntityType || 'CUSTOM'
+}
+
+// 从 componentProps 或字段属性中获取数据接口URL
+const getApiUrl = (field) => {
+  if (field.componentProps) {
+    try {
+      const cp = typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps
+      if (cp.refConfig?.apiUrl) return cp.refConfig.apiUrl
+    } catch (e) {}
+  }
+  return field.apiUrl || null
 }
 </script>
 

@@ -298,6 +298,38 @@
                 </template>
               </template>
 
+              <!-- 实体引用字段配置 -->
+              <template v-if="(selectedField.componentType || '').toUpperCase() === 'REFERENCE' || (selectedField.componentType || '').toUpperCase() === 'MULTI_REFERENCE'">
+                <el-divider>实体引用配置</el-divider>
+                <el-form-item label="引用类型">
+                  <el-select v-model="selectedField.refEntityType" placeholder="选择引用类型" style="width: 100%">
+                    <el-option label="用户自定义实体" value="CUSTOM" />
+                    <el-option label="系统用户" value="USER" />
+                    <el-option label="系统部门" value="DEPT" />
+                    <el-option label="系统角色" value="ROLE" />
+                    <el-option label="系统用户组" value="GROUP" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="关联实体" v-if="selectedField.refEntityType === 'CUSTOM'">
+                  <el-select
+                    v-model="selectedField.refEntityId"
+                    placeholder="选择关联实体"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="ent in entityList"
+                      :key="ent.id"
+                      :label="ent.entityName"
+                      :value="ent.id"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="数据接口">
+                  <el-input v-model="selectedField.apiUrl" placeholder="可选：定制数据查询接口URL" />
+                  <div class="form-tip">填写接口地址可定制返回数据范围，为空则使用默认查询</div>
+                </el-form-item>
+              </template>
+
               <!-- 字段事件配置 -->
               <template v-if="selectedField">
                 <el-divider>事件配置</el-divider>
@@ -643,6 +675,12 @@ function restoreFieldConfig(field) {
     if (compProps.subFields) {
       field.subFields = compProps.subFields
     }
+    // 恢复实体引用配置
+    if (compProps.refConfig) {
+      field.refEntityType = compProps.refConfig.refEntityType || ''
+      field.refEntityId = compProps.refConfig.refEntityId || ''
+      field.apiUrl = compProps.refConfig.apiUrl || ''
+    }
 
     // 恢复事件配置
     if (compProps.events) {
@@ -675,6 +713,14 @@ function serializeFieldConfig(field) {
         compProps.subFields = field.subFields
       } else {
         delete compProps.subFields
+      }
+    }
+    // 序列化实体引用配置
+    if ((field.componentType || '').toUpperCase() === 'REFERENCE' || (field.componentType || '').toUpperCase() === 'MULTI_REFERENCE') {
+      compProps.refConfig = {
+        refEntityType: field.refEntityType || '',
+        refEntityId: field.refEntityId || '',
+        apiUrl: field.apiUrl || ''
       }
     }
 
@@ -744,6 +790,16 @@ function addField(entityField) {
     sortOrder: formFields.value.length
   }
 
+  // 复制实体引用配置
+  if (entityField.refEntityId) {
+    newField.refEntityId = entityField.refEntityId
+  }
+  if (entityField.refEntityType) {
+    newField.refEntityType = entityField.refEntityType
+  }
+  if (entityField.apiUrl) {
+    newField.apiUrl = entityField.apiUrl
+  }
   // 复制选项数据（用于选项联动等）
   if (entityField.optionsJson) {
     newField.optionsJson = entityField.optionsJson
@@ -772,7 +828,9 @@ function getDefaultComponentType(fieldType) {
     'DATE': 'date',
     'DATETIME': 'datetime',
     'BOOLEAN': 'switch',
-    'SUB_FORM': 'sub_form'
+    'SUB_FORM': 'sub_form',
+    'REFERENCE': 'reference',
+    'MULTI_REFERENCE': 'multi_reference'
   }
   return typeMap[fieldType] || 'input'
 }

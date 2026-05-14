@@ -144,6 +144,16 @@ const props = defineProps({
     type: String,
     default: null
   },
+  // 关联实体ID（当 entityCode 为空时，用于后端查询 entityCode）
+  refEntityId: {
+    type: String,
+    default: null
+  },
+  // 数据接口URL（用于定制返回数据范围）
+  apiUrl: {
+    type: String,
+    default: null
+  },
   // 是否多选
   multiple: {
     type: Boolean,
@@ -220,8 +230,12 @@ async function loadSelectedData() {
     if (!ids) return
     
     const params = new URLSearchParams({ ids })
-    if (props.entityType === 'CUSTOM' && props.entityCode) {
-      params.append('entityCode', props.entityCode)
+    if (props.entityType === 'CUSTOM') {
+      if (props.entityCode) {
+        params.append('entityCode', props.entityCode)
+      } else if (props.refEntityId) {
+        params.append('refEntityId', props.refEntityId)
+      }
     }
     
     const res = await fetch(`/api/entity-selector/${props.entityType}/batch?${params}`, {
@@ -275,11 +289,21 @@ async function loadData() {
     if (searchKeyword.value) {
       params.append('keyword', searchKeyword.value)
     }
-    if (props.entityType === 'CUSTOM' && props.entityCode) {
-      params.append('entityCode', props.entityCode)
+    if (props.entityType === 'CUSTOM') {
+      if (props.entityCode) {
+        params.append('entityCode', props.entityCode)
+      } else if (props.refEntityId) {
+        params.append('refEntityId', props.refEntityId)
+      }
     }
     
-    const res = await fetch(`/api/entity-selector/${props.entityType}?${params}`, {
+    // 如果配置了自定义接口，使用接口获取数据
+    let url = `/api/entity-selector/${props.entityType}?${params}`
+    if (props.apiUrl) {
+      url = `${props.apiUrl}?${params}`
+    }
+    
+    const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     }).then(r => r.json())
     

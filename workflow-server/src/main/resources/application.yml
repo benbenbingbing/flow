@@ -9,7 +9,7 @@ server:
 spring:
   application:
     name: workflow-server
-  
+
   datasource:
     url: jdbc:mysql://localhost:3306/workflow?serverTimezone=UTC&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -17,7 +17,7 @@ spring:
     password: zhoudawei
     hikari:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
-  
+
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -27,7 +27,7 @@ spring:
     sql-migration-suffixes: .sql
     baseline-on-migrate: true
     baseline-version: 0
-  
+
   servlet:
     multipart:
       max-file-size: 50MB
@@ -72,7 +72,13 @@ cors:
 
 # 文件上传配置
 file:
-  upload:
-    path: ./uploads
-  access:
-    url: /uploads
+  storage:
+    type: local # 存储类型：local / minio
+    local:
+      path: /Users/dawei/Documents/ddup/ai/flow/uploads
+      access-url: /Users/dawei/Documents/ddup/ai/flow/uploads
+    minio:
+      endpoint: http://localhost:9000
+      access-key: minioadmin
+      secret-key: minioadmin
+      bucket-name: workflow

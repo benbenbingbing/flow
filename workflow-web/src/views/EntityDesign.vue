@@ -236,43 +236,55 @@
           <!-- 附件配置 -->
           <template v-if="isAttachment">
             <el-divider>附件配置</el-divider>
-            <el-form-item label="文件类型">
-              <el-select 
-                v-model="selectedField.fileTypes" 
-                multiple 
-                placeholder="选择允许的文件类型"
-                style="width: 100%"
-              >
-                <el-option label="图片 (.jpg, .jpeg, .png, .gif)" value=".jpg,.jpeg,.png,.gif" />
-                <el-option label="文档 (.pdf, .doc, .docx)" value=".pdf,.doc,.docx" />
-                <el-option label="表格 (.xls, .xlsx)" value=".xls,.xlsx" />
-                <el-option label="文本 (.txt)" value=".txt" />
-                <el-option label="压缩包 (.zip, .rar)" value=".zip,.rar" />
-              </el-select>
-              <div class="form-tip">不选则表示允许所有类型</div>
-            </el-form-item>
-            <el-form-item label="单文件大小">
-              <el-input-number 
-                v-model="selectedField.fileMaxSize" 
-                :min="1" 
-                :max="100" 
-                placeholder="MB"
-                style="width: 150px"
-              />
-              <span class="unit-text">MB</span>
-              <div class="form-tip">不设置则默认最大 10MB</div>
-            </el-form-item>
-            <el-form-item label="数量限制">
-              <el-input-number 
-                v-model="selectedField.fileMaxCount" 
-                :min="1" 
-                :max="20" 
-                placeholder="个"
-                style="width: 150px"
-              />
-              <span class="unit-text">个</span>
-              <div class="form-tip">不设置则默认最多 5 个</div>
-            </el-form-item>
+            <div v-for="(item, index) in selectedField.fileItems" :key="index" class="file-item-config">
+              <div class="file-item-header">
+                <span class="file-item-title">附件项 {{ index + 1 }}</span>
+                <el-button type="danger" size="small" text @click="removeFileItem(index)">
+                  <el-icon><Delete /></el-icon> 删除
+                </el-button>
+              </div>
+              <el-form-item label="项名称">
+                <el-input v-model="item.itemName" placeholder="如：项目章程、需求文档" />
+              </el-form-item>
+              <el-form-item label="文件类型">
+                <el-select 
+                  v-model="item.fileTypes" 
+                  multiple 
+                  placeholder="选择允许的文件类型"
+                  style="width: 100%"
+                >
+                  <el-option label="图片 (.jpg, .jpeg, .png, .gif)" value=".jpg,.jpeg,.png,.gif" />
+                  <el-option label="文档 (.pdf, .doc, .docx)" value=".pdf,.doc,.docx" />
+                  <el-option label="表格 (.xls, .xlsx)" value=".xls,.xlsx" />
+                  <el-option label="文本 (.txt)" value=".txt" />
+                  <el-option label="压缩包 (.zip, .rar)" value=".zip,.rar" />
+                </el-select>
+                <div class="form-tip">不选则表示允许所有类型</div>
+              </el-form-item>
+              <el-form-item label="单文件大小">
+                <el-input-number 
+                  v-model="item.maxSize" 
+                  :min="1" 
+                  :max="100" 
+                  placeholder="MB"
+                  style="width: 150px"
+                />
+                <span class="unit-text">MB</span>
+              </el-form-item>
+              <el-form-item label="数量限制">
+                <el-input-number 
+                  v-model="item.maxCount" 
+                  :min="1" 
+                  :max="20" 
+                  placeholder="个"
+                  style="width: 150px"
+                />
+                <span class="unit-text">个</span>
+              </el-form-item>
+            </div>
+            <el-button type="primary" size="small" text @click="addFileItem">
+              <el-icon><Plus /></el-icon> 添加附件项
+            </el-button>
           </template>
           
           <!-- 实体引用配置 -->
@@ -518,7 +530,21 @@ const loadEntity = async () => {
   try {
     const data = await entityApi.getById(entityId)
     entityData.value = data
-    fields.value = data.fields || []
+    fields.value = (data.fields || []).map(f => {
+      const field = {
+        ...f,
+        // fileTypes 在数据库中是逗号分隔字符串，但 el-select multiple 需要数组
+        fileTypes: f.fileTypes ? (typeof f.fileTypes === 'string' ? f.fileTypes.split(',') : f.fileTypes) : []
+      }
+      // fileItems 中的 fileTypes 同样需要转换
+      if (field.fileItems && field.fileItems.length > 0) {
+        field.fileItems = field.fileItems.map(item => ({
+          ...item,
+          fileTypes: item.fileTypes ? (typeof item.fileTypes === 'string' ? item.fileTypes.split(',') : item.fileTypes) : []
+        }))
+      }
+      return field
+    })
     // 设置编码规则的实体编码
     if (data.entityCode) {
       codeRule.value.entityCode = data.entityCode
@@ -603,6 +629,16 @@ const selectField = (field) => {
   selectedField.value = field
   refEntityFields.value = []
   
+  // FILE/IMAGE 字段自动初始化 fileItems
+  if ((field.fieldType === 'FILE' || field.fieldType === 'IMAGE') && (!field.fileItems || field.fileItems.length === 0)) {
+    field.fileItems = [{
+      itemName: field.fieldName || '附件',
+      fileTypes: field.fileTypes || [],
+      maxSize: field.fileMaxSize || 10,
+      maxCount: field.fileMaxCount || 5
+    }]
+  }
+  
   if (showOptions.value && field.optionsJson) {
     try {
       const options = JSON.parse(field.optionsJson)
@@ -674,8 +710,9 @@ const convertToFormField = (field) => {
     isRequired: field.isRequired,
     defaultValue: field.defaultValue,
     optionsJson: field.optionsJson,
-    // 子表单相关属性
+    // 子表单/实体引用相关属性
     refEntityId: field.refEntityId,
+    refEntityType: field.refEntityType,
     displayMode: field.displayMode,
     refFieldCode: field.refFieldCode,
     // 附件相关属性
@@ -706,7 +743,14 @@ const handleSave = async () => {
       fields: fields.value.map(f => ({
         ...f,
         // 移除临时ID
-        id: f.id?.startsWith('temp_') ? null : f.id
+        id: f.id?.startsWith('temp_') ? null : f.id,
+        // fileTypes 是数组，需要转为逗号分隔字符串传给后端
+        fileTypes: Array.isArray(f.fileTypes) ? f.fileTypes.join(',') : f.fileTypes,
+        // fileItems 中的 fileTypes 同样需要转换
+        fileItems: f.fileItems ? f.fileItems.map(item => ({
+          ...item,
+          fileTypes: Array.isArray(item.fileTypes) ? item.fileTypes.join(',') : item.fileTypes
+        })) : []
       }))
     })
     ElMessage.success('保存成功')
@@ -714,6 +758,26 @@ const handleSave = async () => {
   } catch (error) {
     console.error(error)
     ElMessage.error('保存失败')
+  }
+}
+
+// 添加附件项
+const addFileItem = () => {
+  if (!selectedField.value.fileItems) {
+    selectedField.value.fileItems = []
+  }
+  selectedField.value.fileItems.push({
+    itemName: '',
+    fileTypes: [],
+    maxSize: 10,
+    maxCount: 5
+  })
+}
+
+// 删除附件项
+const removeFileItem = (index) => {
+  if (selectedField.value.fileItems) {
+    selectedField.value.fileItems.splice(index, 1)
   }
 }
 
@@ -1078,6 +1142,28 @@ onMounted(() => {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #909399;
+}
+
+/* ===== 附件项配置样式 ===== */
+.file-item-config {
+  background: #f8f9fb;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e4e7ed;
+}
+
+.file-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.file-item-title {
+  font-weight: 600;
+  color: #303133;
+  font-size: 13px;
 }
 
 /* ===== 响应式调整 ===== */
