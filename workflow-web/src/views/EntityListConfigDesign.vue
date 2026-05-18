@@ -23,6 +23,18 @@
             <el-text type="info" size="small">拖拽排序，勾选控制显示和查询</el-text>
           </template>
 
+          <!-- 自定义列表组件配置 -->
+          <el-form :model="configInfo" inline size="small" style="margin-bottom: 12px;">
+            <el-form-item label="自定义列表组件">
+              <el-input
+                v-model="configInfo.customComponent"
+                placeholder="输入已注册的自定义列表组件名，留空使用默认渲染"
+                style="width: 360px"
+                clearable
+              />
+            </el-form-item>
+          </el-form>
+
           <el-table
             :data="fieldConfigList"
             row-key="fieldId"
@@ -394,6 +406,7 @@ async function handleSave() {
     listName: configInfo.value.listName,
     description: configInfo.value.description,
     isDefault: configInfo.value.isDefault,
+    customComponent: configInfo.value.customComponent,
     fields
   }
 

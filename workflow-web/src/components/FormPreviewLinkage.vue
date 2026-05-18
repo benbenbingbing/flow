@@ -9,7 +9,19 @@
       <h3>{{ form?.formName }}</h3>
     </div>
     
+    <template v-if="form?.customComponent && hasCustomFormComponent(form.customComponent)">
+      <component
+        :is="getCustomFormComponent(form.customComponent)"
+        :form="form"
+        :modelValue="formData"
+        @update:modelValue="handleCustomFormUpdate"
+        :readonly="readonly"
+        :fields="processedFields"
+        :linkageState="linkageState"
+      />
+    </template>
     <el-form
+      v-else
       ref="formRef"
       :model="formData"
       :label-width="labelWidth"
@@ -104,6 +116,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import LinkageEngine from '../utils/linkageEngine'
+import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 
 const props = defineProps({
   form: {
@@ -125,6 +138,12 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+
+// 自定义表单组件数据更新回调
+function handleCustomFormUpdate(val) {
+  formData.value = { ...val }
+  emit('update:modelValue', formData.value)
+}
 
 const formRef = ref(null)
 const formData = ref({ ...props.modelValue })

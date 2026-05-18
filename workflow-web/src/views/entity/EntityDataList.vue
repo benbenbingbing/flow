@@ -19,6 +19,39 @@
     <el-empty v-else-if="!entityDefinition.id" description="实体不存在或未发布" />
     
     <template v-else>
+      <!-- 自定义列表组件 -->
+      <component
+        v-if="customListComponent && hasCustomListComponent(customListComponent)"
+        :is="getCustomListComponent(customListComponent)"
+        :entityCode="entityCode"
+        :entityDefinition="entityDefinition"
+        :entityName="entityName"
+        :listConfig="listConfig"
+        :listConfigFields="listConfigFields"
+        :listFields="listFields"
+        :queryFields="queryFields"
+        :queryForm="queryForm"
+        :dataList="dataList"
+        :loading="loading"
+        :tableLoading="tableLoading"
+        :total="total"
+        :pageNum="pageNum"
+        :pageSize="pageSize"
+        @search="handleSearch"
+        @reset="handleReset"
+        @sizeChange="handleSizeChange"
+        @pageChange="handlePageChange"
+        @create="handleCreate"
+        @view="handleView"
+        @edit="handleEdit"
+        @delete="handleDelete"
+        @approve="handleApprove"
+        :canApprove="canApprove"
+        :getStatusType="getStatusType"
+        :getStatusText="getStatusText"
+        :formatDate="formatDate"
+      />
+      <template v-else>
       <!-- 查询条件 -->
       <el-card class="search-card" v-if="queryFields.length > 0">
         <el-form :model="queryForm" inline>
@@ -129,11 +162,23 @@
           />
         </div>
       </el-card>
+      </template>
     </template>
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
-      <el-form ref="formRef" :model="formData" label-width="100px">
+      <div v-if="showCustomForm">
+        <component
+          :is="getCustomFormComponent(defaultForm.customComponent)"
+          :entityCode="entityCode"
+          :entityDefinition="entityDefinition"
+          :entityFields="entityFields"
+          v-model="formData"
+          :readonly="false"
+          :mode="dialogTitle.includes('新增') ? 'create' : 'edit'"
+        />
+      </div>
+      <el-form v-else ref="formRef" :model="formData" label-width="100px">
         <el-form-item label="数据名称" prop="name" :rules="[{ required: true, message: '请输入数据名称', trigger: 'blur' }]">
           <el-input v-model="formData.name" placeholder="请输入数据名称" />
         </el-form-item>
@@ -348,6 +393,7 @@ import { LinkageEngine } from '@/utils/linkageEngine'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import { getCustomListComponent, hasCustomListComponent, getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -517,6 +563,17 @@ const listFields = computed(() => {
 // 是否使用列表配置
 const useListConfig = computed(() => listConfigFields.value.length > 0)
 
+// 自定义列表组件名
+const customListComponent = computed(() => listConfig.value?.customComponent || '')
+
+// 默认表单配置（用于自定义表单组件）
+const defaultForm = ref<any>(null)
+
+// 是否使用自定义表单组件
+const showCustomForm = computed(() => {
+  return defaultForm.value?.customComponent && hasCustomFormComponent(defaultForm.value.customComponent)
+})
+
 // 表单字段（配置了showInForm的字段）
 const formFields = computed(() => {
   return entityFields.value.filter((f: any) => f.showInForm && !f.isSystem)
@@ -590,6 +647,9 @@ const loadEntityDefinition = async () => {
     // 加载列表配置
     await loadListConfig()
     
+    // 加载默认表单（用于自定义表单组件）
+    await loadDefaultForm()
+    
     // 初始化查询表单
     queryFields.value.forEach((field: any) => {
       queryForm[field.fieldCode] = ''
@@ -626,6 +686,18 @@ const loadListConfig = async () => {
     console.error('加载列表配置失败:', e)
     listConfig.value = null
     listConfigFields.value = []
+  }
+}
+
+// 加载默认表单
+const loadDefaultForm = async () => {
+  if (!entityDefinition.value?.id) return
+  try {
+    const res = await request.get(`/entity-form/entity/${entityDefinition.value.id}/default`)
+    defaultForm.value = res || null
+  } catch (e) {
+    console.log('加载默认表单失败:', e)
+    defaultForm.value = null
   }
 }
 

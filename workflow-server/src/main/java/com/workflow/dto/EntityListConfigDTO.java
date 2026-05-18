@@ -31,6 +31,11 @@ public class EntityListConfigDTO {
     private LocalDateTime updatedAt;
 
     /**
+     * 自定义列表组件注册名
+     */
+    private String customComponent;
+
+    /**
      * 列表字段配置
      */
     private List<EntityListField> fields;

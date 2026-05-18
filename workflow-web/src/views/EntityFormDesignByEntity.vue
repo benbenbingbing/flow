@@ -69,6 +69,14 @@
             <el-form-item label="表单标识">
               <el-input v-model="form.formKey" placeholder="表单标识" style="width: 150px" />
             </el-form-item>
+            <el-form-item label="自定义组件">
+              <el-input
+                v-model="form.customComponent"
+                placeholder="输入已注册的自定义表单组件名"
+                style="width: 260px"
+                clearable
+              />
+            </el-form-item>
           </el-form>
         </div>
 

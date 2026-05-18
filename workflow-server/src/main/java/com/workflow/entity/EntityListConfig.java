@@ -66,6 +66,12 @@ public class EntityListConfig {
     private LocalDateTime createdAt;
 
     /**
+     * 自定义列表组件注册名
+     */
+    @TableField("custom_component")
+    private String customComponent;
+
+    /**
      * 更新时间
      */
     @TableField("updated_at")

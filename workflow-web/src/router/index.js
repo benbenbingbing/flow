@@ -146,7 +146,19 @@ const routes = [
         path: '/system/dev-guide',
         name: 'DevGuide',
         component: () => import('@/views/system/DevGuide.vue'),
-        meta: { title: '定制开发指南' }
+        meta: { title: '列表字段扩展' }
+      },
+      {
+        path: '/system/custom-list-guide',
+        name: 'CustomListGuide',
+        component: () => import('@/views/system/CustomListGuide.vue'),
+        meta: { title: '自定义列表组件' }
+      },
+      {
+        path: '/system/custom-form-guide',
+        name: 'CustomFormGuide',
+        component: () => import('@/views/system/CustomFormGuide.vue'),
+        meta: { title: '自定义表单组件' }
       }
     ]
   },

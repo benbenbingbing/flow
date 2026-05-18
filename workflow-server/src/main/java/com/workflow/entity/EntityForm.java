@@ -66,6 +66,11 @@ public class EntityForm {
     private LocalDateTime updateTime;
     
     /**
+     * 自定义表单组件注册名
+     */
+    private String customComponent;
+
+    /**
      * 删除标志
      */
     @TableLogic

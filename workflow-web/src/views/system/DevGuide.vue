@@ -33,7 +33,7 @@
                       <span class="code-title">UserNameFieldProvider.java</span>
                     </div>
                   </template>
-                  <pre class="code-block"><code>package com.workflow.service.listfield;
+                  <pre class="code-block" v-pre><code>package com.workflow.service.listfield;
 
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityListField;
@@ -100,7 +100,7 @@ public class UserNameFieldProvider implements ListFieldDataProvider {
                       <span class="code-title">ListFieldDataProvider.java</span>
                     </div>
                   </template>
-                  <pre class="code-block"><code>public interface ListFieldDataProvider {
+                  <pre class="code-block" v-pre><code>public interface ListFieldDataProvider {
 
     /**
      * 返回支持的数据源类型
@@ -151,7 +151,7 @@ public class UserNameFieldProvider implements ListFieldDataProvider {
                       <span class="code-title">UserTag.vue</span>
                     </div>
                   </template>
-                  <pre class="code-block"><code>&lt;template&gt;
+                  <pre class="code-block" v-pre><code>&lt;template&gt;
   &lt;el-tag :type="tagType" size="small"&gt;
     &lt;el-icon v-if="showIcon"&gt;&lt;User /&gt;&lt;/el-icon&gt;
     {{ displayValue }}
@@ -184,7 +184,7 @@ const displayValue = computed(() => props.value || '-')
                       <span class="code-title">main.js</span>
                     </div>
                   </template>
-                  <pre class="code-block"><code>// 在 src/main.js 或任意初始化文件中
+                  <pre class="code-block" v-pre><code>// 在 src/main.js 或任意初始化文件中
 import { registerCellComponent } from '@/utils/listCellRegistry.js'
 import UserTag from '@/components/list-cells/UserTag.vue'
 
@@ -201,7 +201,7 @@ registerCellComponent('UserTag', UserTag)</code></pre>
                       <span class="code-title">Props 定义</span>
                     </div>
                   </template>
-                  <pre class="code-block"><code>// 所有列表单元格组件都会接收以下 props：
+                  <pre class="code-block" v-pre><code>// 所有列表单元格组件都会接收以下 props：
 
 props: {
   // 单元格值（从 extData 或 data 中解析出的字段值）
@@ -250,7 +250,7 @@ props: {
                       <span class="code-title">操作流程</span>
                     </div>
                   </template>
-                  <pre class="code-block"><code>1. 进入「实体管理」→ 选择实体 →「列表配置」→「设计」
+                  <pre class="code-block" v-pre><code>1. 进入「实体管理」→ 选择实体 →「列表配置」→「设计」
 
 2. 在字段配置表格中找到目标字段
 
@@ -282,6 +282,8 @@ props: {
               </div>
             </div>
           </section>
+
+
         </div>
       </div>
 
