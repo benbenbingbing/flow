@@ -68,8 +68,14 @@ public class SysUserController {
      * 更新用户状态
      */
     @PutMapping("/{id}/status")
-    public Result<Void> updateStatus(@PathVariable String id, @RequestParam String status) {
-        userService.updateStatus(id, status);
+    public Result<Void> updateStatus(@PathVariable String id, 
+                                     @RequestParam(required = false) String status,
+                                     @RequestBody(required = false) java.util.Map<String, String> body) {
+        String finalStatus = status != null ? status : (body != null ? body.get("status") : null);
+        if (finalStatus == null) {
+            throw new RuntimeException("status参数不能为空");
+        }
+        userService.updateStatus(id, finalStatus);
         return Result.success();
     }
     

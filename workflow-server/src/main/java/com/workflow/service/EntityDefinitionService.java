@@ -371,6 +371,33 @@ public class EntityDefinitionService {
                     // 注意：不再自动添加字段到数据表，只有点击发布时才同步
                 }
             }
+            
+            // 如果实体已发布，自动同步物理表结构（添加/修改字段）
+            if (isPublished) {
+                try {
+                    // 重新加载完整的实体定义（包含最新字段）
+                    EntityDefinition updatedEntity = entityMapper.selectById(id);
+                    List<EntityField> allFields = fieldMapper.findByEntityId(id);
+                    updatedEntity.setFields(allFields);
+                    
+                    // 同步物理表结构
+                    List<String> ddlStatements = dynamicTableService.syncEntityTableStructure(updatedEntity);
+                    if (!ddlStatements.isEmpty()) {
+                        log.info("实体 [{}] 字段变更后自动同步物理表，执行DDL: {}", entityCode, ddlStatements);
+                    }
+                    
+                    // 将所有未发布的字段标记为已发布
+                    for (EntityField field : allFields) {
+                        if (!Boolean.TRUE.equals(field.getIsSystem()) && !Boolean.TRUE.equals(field.getIsPublished())) {
+                            field.setIsPublished(true);
+                            fieldMapper.updateById(field);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("实体 [{}] 字段变更后自动同步物理表失败: {}", entityCode, e.getMessage(), e);
+                    // 不抛异常，避免影响字段保存操作
+                }
+            }
         }
         
         return convertToDTO(existing);

@@ -80,8 +80,14 @@ public class SysDictController {
      * 更新字典类型状态
      */
     @PutMapping("/{id}/status")
-    public Result<Void> updateStatus(@PathVariable String id, @RequestParam String status) {
-        dictService.updateStatus(id, status);
+    public Result<Void> updateStatus(@PathVariable String id, 
+                                     @RequestParam(required = false) String status,
+                                     @RequestBody(required = false) java.util.Map<String, String> body) {
+        String finalStatus = status != null ? status : (body != null ? body.get("status") : null);
+        if (finalStatus == null) {
+            throw new RuntimeException("status参数不能为空");
+        }
+        dictService.updateStatus(id, finalStatus);
         return Result.success();
     }
 
@@ -133,8 +139,14 @@ public class SysDictController {
      * 更新字典项状态
      */
     @PutMapping("/item/{id}/status")
-    public Result<Void> updateItemStatus(@PathVariable String id, @RequestParam String status) {
-        dictItemService.updateStatus(id, status);
+    public Result<Void> updateItemStatus(@PathVariable String id, 
+                                         @RequestParam(required = false) String status,
+                                         @RequestBody(required = false) java.util.Map<String, String> body) {
+        String finalStatus = status != null ? status : (body != null ? body.get("status") : null);
+        if (finalStatus == null) {
+            throw new RuntimeException("status参数不能为空");
+        }
+        dictItemService.updateStatus(id, finalStatus);
         return Result.success();
     }
 }

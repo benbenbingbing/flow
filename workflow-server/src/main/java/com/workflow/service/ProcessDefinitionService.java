@@ -33,6 +33,88 @@ public class ProcessDefinitionService {
     private final ProcessNodeFormMapper nodeFormMapper;
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
     
+    /**
+     * 确保BPMN XML中的process id不会与其他元素的id冲突。
+     * BPMN XSD要求所有id属性全局唯一。
+     * 如果processKey与任何其他元素的id冲突，修改那些冲突元素的id。
+     */
+    private String resolveBpmnIdConflicts(String bpmnXml, String processKey) {
+        // 提取XML中所有 id="xxx" 的值
+        java.util.regex.Pattern idPattern = java.util.regex.Pattern.compile("id=\"([^\"]+)\"");
+        java.util.regex.Matcher idMatcher = idPattern.matcher(bpmnXml);
+        java.util.Set<String> allIds = new java.util.HashSet<>();
+        while (idMatcher.find()) {
+            allIds.add(idMatcher.group(1));
+        }
+        
+        // 检查 processKey 是否与任何非process的id冲突
+        // process id 的格式: <bpmn:process id="xxx"
+        java.util.regex.Pattern processIdPattern = java.util.regex.Pattern.compile("<bpmn:process\\s+id=\"([^\"]+)\"");
+        java.util.regex.Matcher processIdMatcher = processIdPattern.matcher(bpmnXml);
+        String currentProcessId = processIdMatcher.find() ? processIdMatcher.group(1) : null;
+        
+        // 如果 processKey 已经存在于其他元素中（且不是当前process id）
+        boolean hasConflict = false;
+        for (String id : allIds) {
+            if (id.equals(processKey) && !id.equals(currentProcessId)) {
+                hasConflict = true;
+                break;
+            }
+        }
+        
+        if (!hasConflict) {
+            return bpmnXml; // 无冲突，直接返回
+        }
+        
+        log.warn("BPMN XML中存在ID冲突，processKey='{}'与其他元素ID重复，自动重命名冲突ID", processKey);
+        
+        // 找到所有冲突的id（除了process id本身），并生成新的唯一id
+        java.util.Map<String, String> idMapping = new java.util.HashMap<>();
+        for (String id : allIds) {
+            if (id.equals(processKey) && !id.equals(currentProcessId)) {
+                String newId = id + "_" + System.currentTimeMillis();
+                // 确保新id也不冲突
+                while (allIds.contains(newId)) {
+                    newId = id + "_" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000);
+                }
+                idMapping.put(id, newId);
+            }
+        }
+        
+        // 替换所有冲突的id（属性中的id="xxx"）
+        for (java.util.Map.Entry<String, String> entry : idMapping.entrySet()) {
+            String oldId = entry.getKey();
+            String newId = entry.getValue();
+            // 替换 id="oldId" 为 id="newId"（但跳过 <bpmn:process id=...）
+            bpmnXml = bpmnXml.replaceAll(
+                "(id=\")" + java.util.regex.Pattern.quote(oldId) + "(\"(?!\\s*>\\s*</bpmn:process>))",
+                "$1" + newId + "$2"
+            );
+            // 替换 sourceRef="oldId" 为 sourceRef="newId"
+            bpmnXml = bpmnXml.replaceAll(
+                "(sourceRef=\")" + java.util.regex.Pattern.quote(oldId) + "(\")",
+                "$1" + newId + "$2"
+            );
+            // 替换 targetRef="oldId" 为 targetRef="newId"
+            bpmnXml = bpmnXml.replaceAll(
+                "(targetRef=\")" + java.util.regex.Pattern.quote(oldId) + "(\")",
+                "$1" + newId + "$2"
+            );
+            // 替换 bpmnElement="oldId" 为 bpmnElement="newId"
+            bpmnXml = bpmnXml.replaceAll(
+                "(bpmnElement=\")" + java.util.regex.Pattern.quote(oldId) + "(\")",
+                "$1" + newId + "$2"
+            );
+            // 替换 default="oldId" 为 default="newId"
+            bpmnXml = bpmnXml.replaceAll(
+                "(default=\")" + java.util.regex.Pattern.quote(oldId) + "(\")",
+                "$1" + newId + "$2"
+            );
+        }
+        
+        return bpmnXml;
+    }
+    
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAll() {
         return processMapper.findAllActive().stream()
@@ -484,6 +566,9 @@ public class ProcessDefinitionService {
                 "xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:flowable=\"http://flowable.org/bpmn\""
             );
         }
+        
+        // 在替换 process id 之前，先解决可能的ID冲突
+        bpmnXml = resolveBpmnIdConflicts(bpmnXml, config.getProcessKey());
         
         // 替换 <bpmn:process id="xxx" 为 <bpmn:process id="{processKey}"
         bpmnXml = bpmnXml.replaceAll("<bpmn:process\\s+id=\"[^\"]+\"", 

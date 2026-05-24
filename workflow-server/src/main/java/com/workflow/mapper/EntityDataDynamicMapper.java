@@ -57,7 +57,7 @@ public interface EntityDataDynamicMapper {
      * @return 影响行数
      */
     @InsertProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "insert")
-    @Options(statementType = StatementType.PREPARED, useGeneratedKeys = true, keyProperty = "data.id")
+    @Options(statementType = StatementType.PREPARED)
     int insert(@Param("tableName") String tableName, @Param("data") Map<String, Object> data);
 
     /**
