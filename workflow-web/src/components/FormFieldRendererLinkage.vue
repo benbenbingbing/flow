@@ -77,13 +77,35 @@
       @focus="handleFocus"
     />
     
-    <!-- 下拉选择 - 支持动态选项 -->
+    <!-- 下拉选择（单选）- 支持动态选项 -->
     <el-select
       v-else-if="renderType === 'select'"
       v-model="fieldValue"
       :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
+      clearable
+      v-on="customEventListeners"
+      @change="handleValueChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
+    >
+      <el-option
+        v-for="opt in currentOptions"
+        :key="opt.value"
+        :label="opt.label"
+        :value="opt.value"
+      />
+    </el-select>
+    
+    <!-- 下拉选择（多选）- 支持动态选项 -->
+    <el-select
+      v-else-if="renderType === 'select_multiple'"
+      v-model="fieldValue"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
+      :disabled="disabled"
+      style="width: 100%"
+      multiple
       clearable
       v-on="customEventListeners"
       @change="handleValueChange"

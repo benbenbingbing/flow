@@ -50,13 +50,31 @@
       style="width: 100%"
     />
     
-    <!-- 下拉选择 -->
+    <!-- 下拉选择（单选） -->
     <el-select
       v-else-if="renderType === 'select'"
       v-model="fieldValue"
       :placeholder="field.placeholder || `请选择${fieldLabel}`"
       :disabled="disabled"
       style="width: 100%"
+      clearable
+    >
+      <el-option
+        v-for="opt in options"
+        :key="opt.value"
+        :label="opt.label"
+        :value="opt.value"
+      />
+    </el-select>
+    
+    <!-- 下拉选择（多选） -->
+    <el-select
+      v-else-if="renderType === 'select_multiple'"
+      v-model="fieldValue"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
+      :disabled="disabled"
+      style="width: 100%"
+      multiple
       clearable
     >
       <el-option

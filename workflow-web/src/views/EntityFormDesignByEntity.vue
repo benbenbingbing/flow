@@ -187,9 +187,10 @@
                   <el-option label="数字" value="number" />
                   <el-option label="日期" value="date" />
                   <el-option label="日期时间" value="datetime" />
-                  <el-option label="下拉选择" value="select" />
-                  <el-option label="单选" value="radio" />
-                  <el-option label="多选" value="checkbox" />
+                  <el-option label="下拉选择（单选）" value="select" />
+                  <el-option label="下拉选择（多选）" value="select_multiple" />
+                  <el-option label="单选框" value="radio" />
+                  <el-option label="复选框" value="checkbox" />
                   <el-option label="开关" value="switch" />
                   <el-option label="文件" value="file" />
                   <el-option label="级联选择" value="cascader" />
@@ -290,7 +291,7 @@
                           <el-option label="文本" value="TEXT" />
                           <el-option label="数字" value="NUMBER" />
                           <el-option label="日期" value="DATE" />
-                          <el-option label="下拉" value="SELECT" />
+                          <el-option label="选择" value="SELECT" />
                         </el-select>
 
                         <el-button type="danger" size="small" text @click="removeSubField(idx)">
@@ -838,7 +839,11 @@ function getDefaultComponentType(fieldType) {
     'BOOLEAN': 'switch',
     'SUB_FORM': 'sub_form',
     'REFERENCE': 'reference',
-    'MULTI_REFERENCE': 'multi_reference'
+    'MULTI_REFERENCE': 'multi_reference',
+    'SELECT': 'select',
+    'MULTI_SELECT': 'select_multiple',
+    'RADIO': 'radio',
+    'CHECKBOX': 'checkbox'
   }
   return typeMap[fieldType] || 'input'
 }

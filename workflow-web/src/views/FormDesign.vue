@@ -128,9 +128,9 @@ const componentList = [
   { type: 'NUMBER', label: '数字', icon: 'Sort' },
   { type: 'DATE', label: '日期', icon: 'Calendar' },
   { type: 'DATETIME', label: '日期时间', icon: 'Timer' },
-  { type: 'SELECT', label: '下拉选择', icon: 'ArrowDown' },
-  { type: 'RADIO', label: '单选', icon: 'CircleCheck' },
-  { type: 'CHECKBOX', label: '多选', icon: 'Checked' },
+  { type: 'SELECT', label: '选择', icon: 'ArrowDown' },
+  { type: 'RADIO', label: '选择（单选框）', icon: 'CircleCheck' },
+  { type: 'CHECKBOX', label: '选择（复选框）', icon: 'Checked' },
   { type: 'FILE', label: '文件', icon: 'DocumentChecked' },
   { type: 'USER', label: '用户选择', icon: 'User' }
 ]
@@ -142,7 +142,7 @@ const draggedComponent = ref(null)
 const optionsText = ref('')
 
 const showOptions = computed(() => {
-  return selectedField.value && ['SELECT', 'RADIO', 'CHECKBOX'].includes(selectedField.value.fieldType)
+  return selectedField.value && ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(selectedField.value.fieldType)
 })
 
 // 监听选项文本变化

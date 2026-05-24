@@ -26,7 +26,7 @@
         <div class="panel-title">字段类型</div>
         <div class="field-type-list">
           <div
-            v-for="type in fieldTypes"
+            v-for="type in fieldTypes.filter(t => !['RADIO', 'CHECKBOX'].includes(t.value))"
             :key="type.value"
             class="field-type-item"
             draggable="true"
@@ -422,10 +422,10 @@ const fieldTypes = [
   { value: 'DATE', label: '日期', icon: 'Calendar' },
   { value: 'DATETIME', label: '日期时间', icon: 'Timer' },
   { value: 'BOOLEAN', label: '布尔', icon: 'Check' },
-  { value: 'SELECT', label: '下拉选择', icon: 'ArrowDown' },
-  { value: 'MULTI_SELECT', label: '多选', icon: 'Collection' },
-  { value: 'RADIO', label: '单选', icon: 'CircleCheck' },
-  { value: 'CHECKBOX', label: '复选框', icon: 'Checked' },
+  { value: 'SELECT', label: '选择', icon: 'ArrowDown' },
+  { value: 'MULTI_SELECT', label: '选择（多选）', icon: 'Collection' },
+  { value: 'RADIO', label: '选择（单选框）', icon: 'CircleCheck' },
+  { value: 'CHECKBOX', label: '选择（复选框）', icon: 'Checked' },
   { value: 'FILE', label: '文件', icon: 'DocumentChecked' },
   { value: 'IMAGE', label: '图片', icon: 'Picture' },
   { value: 'USER', label: '用户', icon: 'User' },
@@ -696,6 +696,11 @@ const getFieldTypeTag = (type) => {
 }
 
 const getFieldTypeLabel = (type) => {
+  // 选择类字段统一显示为"选择"
+  if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type)) {
+    const found = fieldTypes.find(t => t.value === type)
+    return found?.label || '选择'
+  }
   const found = fieldTypes.find(t => t.value === type)
   return found?.label || type
 }

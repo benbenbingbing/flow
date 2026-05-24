@@ -16,12 +16,29 @@
         <el-form-item v-for="field in queryFields" :key="field.fieldCode" :label="field.fieldName">
           <el-input v-if="field.fieldType === 'STRING' || field.fieldType === 'TEXT'" 
                     v-model="queryForm[field.fieldCode]" :placeholder="`请输入${field.fieldName}`" />
-          <el-select v-else-if="field.fieldType === 'SELECT'" 
-                     v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" clearable>
+          <el-select v-else-if="['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)" 
+                     v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" 
+                     :multiple="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX' || field.componentType === 'select_multiple'"
+                     clearable collapse-tags style="width: 200px">
             <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
-          <el-date-picker v-else-if="field.fieldType === 'DATE'" 
-                         v-model="queryForm[field.fieldCode]" type="date" :placeholder="`选择${field.fieldName}`" />
+          <EntitySelector v-else-if="field.fieldType === 'REFERENCE'"
+                         v-model="queryForm[field.fieldCode]"
+                         :entity-type="field.refEntityType || 'CUSTOM'"
+                         :entity-code="field.refEntityId"
+                         :ref-entity-id="field.refEntityId"
+                         :placeholder="`请选择${field.fieldName}`"
+                         style="width: 200px" />
+          <EntitySelector v-else-if="field.fieldType === 'MULTI_REFERENCE'"
+                         v-model="queryForm[field.fieldCode]"
+                         :entity-type="field.refEntityType || 'CUSTOM'"
+                         :entity-code="field.refEntityId"
+                         :ref-entity-id="field.refEntityId"
+                         :multiple="true"
+                         :placeholder="`请选择${field.fieldName}`"
+                         style="width: 200px" />
+          <el-date-picker v-else-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'" 
+                         v-model="queryForm[field.fieldCode]" type="date" :placeholder="`选择${field.fieldName}`" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
@@ -36,7 +53,11 @@
         <el-table-column type="index" width="50" />
         <el-table-column prop="dataNo" label="编号" width="150" />
         <el-table-column v-for="field in listFields" :key="field.fieldCode" 
-                        :prop="`data.${field.fieldCode}`" :label="field.fieldName" min-width="120" show-overflow-tooltip />
+                        :label="field.fieldName" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ getListFieldValue(field, row) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="submitterName" label="提交人" width="100" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
@@ -107,25 +128,66 @@
                     v-model="formData.data[field.fieldCode || field.fieldId]"
                     :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                     @change="(val) => executeFieldEvent(field, 'onChange', val)" />
-          <el-select v-else-if="field.fieldType === 'SELECT'"
-                    v-model="formData.data[field.fieldCode || field.fieldId]"
-                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                    @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                    style="width: 100%" clearable>
-            <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-          <el-checkbox-group v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'"
-                            v-model="formData.data[field.fieldCode || field.fieldId]"
-                            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                            @change="(val) => executeFieldEvent(field, 'onChange', val)">
-            <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
-          </el-checkbox-group>
-          <el-radio-group v-else-if="field.fieldType === 'RADIO'"
-                         v-model="formData.data[field.fieldCode || field.fieldId]"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         @change="(val) => executeFieldEvent(field, 'onChange', val)">
-            <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
-          </el-radio-group>
+          <!-- 选择类型字段（支持 componentType 切换展示方式） -->
+          <template v-else-if="['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)">
+            <!-- 下拉单选 -->
+            <el-select
+              v-if="!field.componentType || field.componentType === 'select'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)"
+              style="width: 100%" clearable>
+              <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+            <!-- 下拉多选 -->
+            <el-select
+              v-else-if="field.componentType === 'select_multiple'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)"
+              style="width: 100%" multiple clearable>
+              <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+            <!-- 单选框 -->
+            <el-radio-group
+              v-else-if="field.componentType === 'radio'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)">
+              <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
+            </el-radio-group>
+            <!-- 复选框 -->
+            <el-checkbox-group
+              v-else-if="field.componentType === 'checkbox'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)">
+              <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
+            </el-checkbox-group>
+            <!-- 默认回退：根据 fieldType 渲染 -->
+            <el-select
+              v-else-if="field.fieldType === 'SELECT'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)"
+              style="width: 100%" clearable>
+              <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+            <el-checkbox-group
+              v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)">
+              <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
+            </el-checkbox-group>
+            <el-radio-group
+              v-else-if="field.fieldType === 'RADIO'"
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              @change="(val) => executeFieldEvent(field, 'onChange', val)">
+              <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
+            </el-radio-group>
+          </template>
           <!-- 文件上传 -->
           <el-upload v-else-if="field.fieldType === 'FILE'"
                     :file-list="getFileList(field.fieldCode || field.fieldId)"
@@ -172,6 +234,27 @@
               <div class="el-upload__tip">支持 JPG/PNG/GIF 格式，大小不超过5MB</div>
             </template>
           </el-upload>
+          <!-- 用户选择 -->
+          <EntitySelector v-else-if="field.fieldType === 'USER' || (field.fieldType === 'REFERENCE' && field.refEntityType === 'USER')"
+                         v-model="formData.data[field.fieldCode || field.fieldId]"
+                         entity-type="USER"
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
+          <!-- 部门选择 -->
+          <EntitySelector v-else-if="field.fieldType === 'DEPT' || (field.fieldType === 'REFERENCE' && field.refEntityType === 'DEPT')"
+                         v-model="formData.data[field.fieldCode || field.fieldId]"
+                         entity-type="DEPT"
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
+          <!-- 通用实体引用 -->
+          <EntitySelector v-else-if="field.fieldType === 'REFERENCE' || field.fieldType === 'MULTI_REFERENCE'"
+                         v-model="formData.data[field.fieldCode || field.fieldId]"
+                         :entity-type="field.refEntityType || 'CUSTOM'"
+                         :entity-code="field.refEntityId"
+                         :ref-entity-id="field.refEntityId"
+                         :multiple="field.fieldType === 'MULTI_REFERENCE'"
+                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                         :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
         </el-form-item>
 
         <!-- Tab 模式的子表单 -->
@@ -305,6 +388,7 @@ import { getFormForNewData, getFormForViewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
+import EntitySelector from '@/components/EntitySelector.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -512,6 +596,7 @@ const loadData = async () => {
   loading.value = true
   try {
     dataList.value = await entityDataApi.getList(entityCode)
+    await loadRefEntityNames()
   } catch (error) {
     console.error(error)
   } finally {
@@ -606,6 +691,12 @@ const getFileList = (fieldCode) => {
 }
 
 // 格式化字段值（处理文件/图片显示）
+// 列表字段显示值（支持选择类型显示 label）
+const getListFieldValue = (field, row) => {
+  const value = row.data?.[field.fieldCode]
+  return formatFieldValue(field, value)
+}
+
 const formatFieldValue = (field, value) => {
   if (value === null || value === undefined) return '-'
   if (field.fieldType === 'FILE') {
@@ -614,15 +705,37 @@ const formatFieldValue = (field, value) => {
   if (field.fieldType === 'IMAGE') {
     return value ? `<img src="${value}" style="max-width: 100px; max-height: 100px;" />` : '-'
   }
-  if (['SELECT', 'RADIO'].includes(field.fieldType)) {
+  // 选择类型字段（考虑 componentType）
+  if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)) {
     const options = parseOptions(field.optionsJson)
+    // 多选模式：componentType 为 select_multiple 或 fieldType 为 MULTI_SELECT/CHECKBOX
+    const isMultiple = field.componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)
+    if (isMultiple) {
+      if (!Array.isArray(value)) return value || '-'
+      return value.map(v => options.find(o => o.value === v)?.label || v).join(', ') || '-'
+    }
     const opt = options.find(o => o.value === value)
     return opt?.label || value
   }
-  if (['MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)) {
-    if (!Array.isArray(value)) return value
-    const options = parseOptions(field.optionsJson)
-    return value.map(v => options.find(o => o.value === v)?.label || v).join(', ')
+  // 单选实体引用
+  if (field.fieldType === 'REFERENCE') {
+    const entityType = field.refEntityType || 'CUSTOM'
+    const refEntityId = field.refEntityId || ''
+    const groupKey = `${entityType}:${refEntityId}`
+    const cacheKey = `${groupKey}:${value}`
+    return refEntityNameMap.value[cacheKey] || value
+  }
+  // 多选实体引用
+  if (field.fieldType === 'MULTI_REFERENCE') {
+    const entityType = field.refEntityType || 'CUSTOM'
+    const refEntityId = field.refEntityId || ''
+    const groupKey = `${entityType}:${refEntityId}`
+    let ids = value
+    if (typeof ids === 'string') {
+      try { ids = JSON.parse(ids) } catch { ids = ids.split(',').filter(Boolean) }
+    }
+    if (!Array.isArray(ids) || !ids.length) return value || '-'
+    return ids.map(id => refEntityNameMap.value[`${groupKey}:${id}`] || id).join(', ') || '-'
   }
   if (field.fieldType === 'DATE') {
     return dayjs(value).format('YYYY-MM-DD')
@@ -645,6 +758,79 @@ const getStatusText = (status) => {
 
 const formatDate = (date) => {
   return date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-'
+}
+
+// 引用实体名称缓存
+const refEntityNameMap = ref({})
+
+// 加载引用实体名称
+async function loadRefEntityNames() {
+  if (!dataList.value.length || !fields.value.length) return
+  
+  const refFields = fields.value.filter(f => f.fieldType === 'REFERENCE' || f.fieldType === 'MULTI_REFERENCE')
+  if (!refFields.length) return
+  
+  // 按 entityType + refEntityId 分组收集 IDs
+  const groupMap = new Map()
+  
+  for (const row of dataList.value) {
+    for (const field of refFields) {
+      const val = row.data?.[field.fieldCode]
+      if (!val) continue
+      
+      const entityType = field.refEntityType || 'CUSTOM'
+      const refEntityId = field.refEntityId || ''
+      const groupKey = `${entityType}:${refEntityId}`
+      
+      let idSet = groupMap.get(groupKey)
+      if (!idSet) {
+        idSet = new Set()
+        groupMap.set(groupKey, idSet)
+      }
+      
+      if (field.fieldType === 'MULTI_REFERENCE') {
+        let ids = val
+        if (typeof ids === 'string') {
+          try { ids = JSON.parse(ids) } catch { ids = [ids] }
+        }
+        if (Array.isArray(ids)) {
+          ids.forEach(id => id && idSet.add(String(id)))
+        }
+      } else {
+        idSet.add(String(val))
+      }
+    }
+  }
+  
+  // 批量查询
+  const promises = []
+  for (const [groupKey, idSet] of groupMap) {
+    if (!idSet.size) continue
+    const [entityType, refEntityId] = groupKey.split(':')
+    const ids = Array.from(idSet).join(',')
+    const params = new URLSearchParams({ ids })
+    if (refEntityId) {
+      params.append('refEntityId', refEntityId)
+    }
+    
+    promises.push(
+      fetch(`/api/entity-selector/${entityType}/batch?${params}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(r => r.json())
+        .then(res => {
+          if (res.code === 200 && res.data) {
+            for (const item of res.data) {
+              const cacheKey = `${groupKey}:${item.id}`
+              refEntityNameMap.value[cacheKey] = item.name || item.code || item.id
+            }
+          }
+        })
+        .catch(err => console.error('加载引用实体名称失败:', err))
+    )
+  }
+  
+  await Promise.all(promises)
 }
 
 const handleSearch = () => {
@@ -826,7 +1012,7 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (isEdit.value) {
-      await entityDataApi.update(formData.value.id, formData.value)
+      await entityDataApi.update(entityCode, formData.value.id, formData.value)
       ElMessage.success('更新成功')
     } else {
       await entityDataApi.save(formData.value, formData.value.startProcess)

@@ -71,10 +71,27 @@
             <template v-else>
               <el-input v-if="field.fieldType === 'STRING' || field.fieldType === 'TEXT'" 
                         v-model="queryForm[field.fieldCode]" :placeholder="`请输入${field.fieldName}`" />
-              <el-select v-else-if="field.fieldType === 'SELECT'" 
-                         v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" clearable>
+              <el-select v-else-if="['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)" 
+                         v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" 
+                         :multiple="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX' || field.componentType === 'select_multiple'"
+                         clearable collapse-tags style="width: 200px">
                 <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
+              <EntitySelector v-else-if="field.fieldType === 'REFERENCE'"
+                             v-model="queryForm[field.fieldCode]"
+                             :entity-type="field.refEntityType || 'CUSTOM'"
+                             :entity-code="field.refEntityId"
+                             :ref-entity-id="field.refEntityId"
+                             :placeholder="`请选择${field.fieldName}`"
+                             style="width: 200px" />
+              <EntitySelector v-else-if="field.fieldType === 'MULTI_REFERENCE'"
+                             v-model="queryForm[field.fieldCode]"
+                             :entity-type="field.refEntityType || 'CUSTOM'"
+                             :entity-code="field.refEntityId"
+                             :ref-entity-id="field.refEntityId"
+                             :multiple="true"
+                             :placeholder="`请选择${field.fieldName}`"
+                             style="width: 200px" />
               <el-date-picker v-else-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'" 
                              v-model="queryForm[field.fieldCode]" type="date" :placeholder="`选择${field.fieldName}`" value-format="YYYY-MM-DD" />
             </template>
@@ -126,7 +143,11 @@
             <el-table-column prop="dataNo" label="编号" width="150" />
             <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
             <el-table-column v-for="field in listFields" :key="field.fieldCode" 
-                            :prop="`data.${field.fieldCode}`" :label="field.fieldName" min-width="120" show-overflow-tooltip />
+                            :label="field.fieldName" min-width="120" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ getFieldDisplayValue(row, field) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="submitterName" label="提交人" width="100" />
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
@@ -591,7 +612,113 @@ const getFieldDisplayValue = (row: any, field: any) => {
   if (SYSTEM_FIELDS.has(fieldCode)) {
     return row[fieldCode] ?? '-'
   }
-  return row.data?.[fieldCode] ?? '-'
+  const value = row.data?.[fieldCode]
+  if (value === null || value === undefined) return '-'
+  // 选择类型字段显示 label
+  if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)) {
+    const options = parseOptions(field.optionsJson)
+    const isMultiple = field.componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)
+    if (isMultiple) {
+      if (!Array.isArray(value)) return value
+      return value.map((v: any) => options.find((o: any) => o.value === v)?.label || v).join(', ') || '-'
+    }
+    const opt = options.find((o: any) => o.value === value)
+    return opt?.label || value
+  }
+  // 单选实体引用
+  if (field.fieldType === 'REFERENCE') {
+    const entityType = field.refEntityType || 'CUSTOM'
+    const refEntityId = field.refEntityId || ''
+    const groupKey = `${entityType}:${refEntityId}`
+    const cacheKey = `${groupKey}:${value}`
+    return refEntityNameMap.value[cacheKey] || value
+  }
+  // 多选实体引用
+  if (field.fieldType === 'MULTI_REFERENCE') {
+    const entityType = field.refEntityType || 'CUSTOM'
+    const refEntityId = field.refEntityId || ''
+    const groupKey = `${entityType}:${refEntityId}`
+    let ids = value
+    if (typeof ids === 'string') {
+      try { ids = JSON.parse(ids) } catch { ids = ids.split(',').filter(Boolean) }
+    }
+    if (!Array.isArray(ids) || !ids.length) return value || '-'
+    return ids.map((id: any) => refEntityNameMap.value[`${groupKey}:${id}`] || id).join(', ') || '-'
+  }
+  return value ?? '-'
+}
+
+// 引用实体名称缓存
+const refEntityNameMap = ref<Record<string, string>>({})
+
+// 加载引用实体名称
+async function loadRefEntityNames() {
+  if (!dataList.value.length || !fields.value.length) return
+  
+  const refFields = fields.value.filter((f: any) => f.fieldType === 'REFERENCE' || f.fieldType === 'MULTI_REFERENCE')
+  if (!refFields.length) return
+  
+  // 按 entityType + refEntityId 分组收集 IDs
+  const groupMap = new Map<string, Set<string>>()
+  
+  for (const row of dataList.value) {
+    for (const field of refFields) {
+      const val = row.data?.[field.fieldCode]
+      if (!val) continue
+      
+      const entityType = field.refEntityType || 'CUSTOM'
+      const refEntityId = field.refEntityId || ''
+      const groupKey = `${entityType}:${refEntityId}`
+      
+      let idSet = groupMap.get(groupKey)
+      if (!idSet) {
+        idSet = new Set<string>()
+        groupMap.set(groupKey, idSet)
+      }
+      
+      if (field.fieldType === 'MULTI_REFERENCE') {
+        let ids = val
+        if (typeof ids === 'string') {
+          try { ids = JSON.parse(ids) } catch { ids = [ids] }
+        }
+        if (Array.isArray(ids)) {
+          ids.forEach((id: any) => id && idSet.add(String(id)))
+        }
+      } else {
+        idSet.add(String(val))
+      }
+    }
+  }
+  
+  // 批量查询
+  const promises = []
+  for (const [groupKey, idSet] of groupMap) {
+    if (!idSet.size) continue
+    const [entityType, refEntityId] = groupKey.split(':')
+    const ids = Array.from(idSet).join(',')
+    const params = new URLSearchParams({ ids })
+    if (refEntityId) {
+      params.append('refEntityId', refEntityId)
+    }
+    
+    promises.push(
+      fetch(`/api/entity-selector/${entityType}/batch?${params}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(r => r.json())
+        .then((res: any) => {
+          if (res.code === 200 && res.data) {
+            for (const item of res.data) {
+              const cacheKey = `${groupKey}:${item.id}`
+              refEntityNameMap.value[cacheKey] = item.name || item.code || item.id
+            }
+          }
+        })
+        .catch(err => console.error('加载引用实体名称失败:', err))
+    )
+  }
+  
+  await Promise.all(promises)
 }
 
 // 解析选项
@@ -731,6 +858,7 @@ const loadDataList = async () => {
     const start = (pageNum.value - 1) * pageSize.value
     const end = start + pageSize.value
     dataList.value = allData.slice(start, end)
+    await loadRefEntityNames()
   } catch (error) {
     console.error('加载数据列表失败:', error)
   } finally {
@@ -1047,7 +1175,7 @@ const handleSubmit = async () => {
     }
     
     if (formData.id) {
-      await entityDataApi.update(formData.id, data)
+      await entityDataApi.update(entityCode.value, formData.id, data)
       ElMessage.success('更新成功')
     } else {
       await entityDataApi.save(data, data.startProcess)

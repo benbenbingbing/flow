@@ -222,6 +222,11 @@ watch(() => props.modelValue, (val) => {
 async function loadSelectedData() {
   if (!props.entityType) return
   
+  // CUSTOM 类型必须配置 entityCode 或 refEntityId
+  if (props.entityType === 'CUSTOM' && !props.entityCode && !props.refEntityId) {
+    return
+  }
+  
   try {
     const ids = props.multiple && Array.isArray(props.modelValue) 
       ? props.modelValue.join(',') 
@@ -280,6 +285,12 @@ async function openSelector() {
 
 // 加载数据
 async function loadData() {
+  // CUSTOM 类型必须配置 entityCode 或 refEntityId
+  if (props.entityType === 'CUSTOM' && !props.entityCode && !props.refEntityId) {
+    ElMessage.warning('该实体引用字段未配置关联实体，请先配置')
+    return
+  }
+  
   loading.value = true
   try {
     const params = new URLSearchParams({

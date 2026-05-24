@@ -67,6 +67,9 @@
                 <el-select v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" style="width: 100%" filterable clearable>
                   <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
                 </el-select>
+                <el-select v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'select_multiple'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" style="width: 100%" multiple filterable clearable>
+                  <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
                 <el-input v-else v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" />
                 <div v-if="getFieldError(index, field.fieldKey)" class="field-error">{{ getFieldError(index, field.fieldKey) }}</div>
               </template>
@@ -153,6 +156,25 @@
                 size="small"
                 :placeholder="field.placeholder"
                 style="width: 100%"
+                filterable
+                clearable
+              >
+                <el-option
+                  v-for="opt in getFieldOptions(field)"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+
+              <!-- 下拉多选 -->
+              <el-select
+                v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'select_multiple'"
+                v-model="row[field.fieldKey]"
+                size="small"
+                :placeholder="field.placeholder"
+                style="width: 100%"
+                multiple
                 filterable
                 clearable
               >
@@ -341,6 +363,19 @@ function formatCellValue(value, field) {
     const options = getFieldOptions(field)
     const option = options.find(o => o.value === value)
     return option?.label || value
+  }
+  
+  if (field.fieldType === 'MULTI_SELECT' || field.fieldType === 'select_multiple') {
+    const options = getFieldOptions(field)
+    if (Array.isArray(value)) {
+      const labels = value.map(v => {
+        const option = options.find(o => o.value === v)
+        return option?.label || v
+      })
+      return labels.join(', ') || '-'
+    }
+    const option = options.find(o => o.value === value)
+    return option?.label || value || '-'
   }
   
   return value
