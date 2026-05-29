@@ -396,7 +396,7 @@ async function handleSave() {
     renderComponent: f.renderComponent || '',
     formatter: f.formatter || '',
     sortOrder: index
-  })).filter(f => f.showInList)
+  }))
 
   const dto = {
     id: configInfo.value.id,
@@ -428,6 +428,13 @@ async function loadPreviewData() {
   try {
     // 只传查询条件，不传分页参数（后端不分页，返回全部数据）
     const params = { ...previewQueryForm.value }
+    // 添加查询方式参数（EQ/LIKE/GT/LT 等）
+    previewQueryFields.value.forEach((field) => {
+      const code = field.fieldCode
+      if (code && params[code] !== undefined && field.queryType) {
+        params[code + '_op'] = field.queryType
+      }
+    })
     // 调用带列表配置扩展的接口
     const res = await entityDataApi.getListWithConfig(entityCode.value, configInfo.value?.listKey, params)
     previewAllData.value = res || []

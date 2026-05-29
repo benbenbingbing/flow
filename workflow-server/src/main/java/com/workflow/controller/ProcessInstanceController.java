@@ -61,7 +61,10 @@ public class ProcessInstanceController {
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String processName) {
-        String userId = UserContext.getUsername();
+        String userId = UserContext.getUserId();
+        if (userId == null || userId.isEmpty()) {
+            userId = UserContext.getUsername();
+        }
         if (userId == null || userId.isEmpty()) {
             userId = "admin"; // 默认用户，用于测试
         }
@@ -79,7 +82,10 @@ public class ProcessInstanceController {
     public Result<Void> terminateProcess(
             @PathVariable String processInstanceId,
             @RequestBody(required = false) Map<String, String> requestBody) {
-        String userId = UserContext.getUsername();
+        String userId = UserContext.getUserId();
+        if (userId == null || userId.isEmpty()) {
+            userId = UserContext.getUsername();
+        }
         if (userId == null || userId.isEmpty()) {
             userId = "admin"; // 默认用户，用于测试
         }

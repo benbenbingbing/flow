@@ -144,6 +144,7 @@
         <el-table-column prop="processName" label="流程名称" min-width="150" show-overflow-tooltip />
         <el-table-column prop="code" label="编码" min-width="150" show-overflow-tooltip />
         <el-table-column prop="name" label="标题" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="startUserName" label="发起人" width="100" />
         <el-table-column prop="currentNodeName" label="当前节点" min-width="120" show-overflow-tooltip />
         <el-table-column label="发起时间" width="160">
           <template #default="{ row }">{{ formatDate(row.startTime) }}</template>
@@ -176,7 +177,9 @@
 
     <!-- 审批弹窗 -->
     <el-dialog v-model="dialogVisible" :title="`${currentTask?.name || '任务审批'}（${getProcessStatusText(currentTask?.processStatus)}）`" width="700px">
-      <el-tabs v-model="activeDialogTab" type="border-card">
+      <!-- 用 key 强制重新渲染整个弹窗内容，避免 tabs 状态在不同任务间残留 -->
+      <div :key="dialogKey">
+        <el-tabs v-model="activeDialogTab" type="border-card">
         <!-- 审批信息 -->
         <el-tab-pane label="审批" name="approval">
           <!-- 实体数据表单 -->
@@ -196,7 +199,60 @@
                 <el-row :gutter="20">
                   <el-col v-for="(value, key) in entityData" :key="key" :span="12">
                     <el-form-item :label="key">
-                      <el-input v-model="entityData[key]" :readonly="true" />
+                      <!-- 对象值（多组分类文件） -->
+                      <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
+                        <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
+                          <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+                            <div class="file-info">
+                              <el-icon><Document /></el-icon>
+                              <span class="file-name">{{ url.split('/').pop() }}</span>
+                              <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                            </div>
+                            <div class="file-actions">
+                              <el-button type="primary" link size="small" @click="previewFile(url)">
+                                <el-icon><View /></el-icon> 预览
+                              </el-button>
+                              <el-button type="success" link size="small" @click="downloadFile(url)">
+                                <el-icon><Download /></el-icon> 下载
+                              </el-button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- 数组值（多文件） -->
+                      <div v-else-if="Array.isArray(value)" class="file-list-readonly">
+                        <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
+                          <div class="file-info">
+                            <el-icon><Document /></el-icon>
+                            <span class="file-name">{{ url.split('/').pop() }}</span>
+                          </div>
+                          <div class="file-actions">
+                            <el-button type="primary" link size="small" @click="previewFile(url)">
+                              <el-icon><View /></el-icon> 预览
+                            </el-button>
+                            <el-button type="success" link size="small" @click="downloadFile(url)">
+                              <el-icon><Download /></el-icon> 下载
+                            </el-button>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- 字符串文件路径 -->
+                      <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
+                        <div class="file-info">
+                          <el-icon><Document /></el-icon>
+                          <span class="file-name">{{ value.split('/').pop() }}</span>
+                        </div>
+                        <div class="file-actions">
+                          <el-button type="primary" link size="small" @click="previewFile(value)">
+                            <el-icon><View /></el-icon> 预览
+                          </el-button>
+                          <el-button type="success" link size="small" @click="downloadFile(value)">
+                            <el-icon><Download /></el-icon> 下载
+                          </el-button>
+                        </div>
+                      </div>
+                      <!-- 其他普通值 -->
+                      <el-input v-else v-model="entityData[key]" :readonly="true" />
                     </el-form-item>
                   </el-col>
                 </el-row>
@@ -238,12 +294,13 @@
         <!-- 流程图 -->
         <el-tab-pane label="流程图" name="diagram">
           <div style="height: 400px;">
-            <VueBpmnViewer 
-              v-if="bpmnXml && progressData" 
+            <!-- 仅在流程图 tab 激活时才渲染，避免在隐藏 tab 中初始化 bpmn-js 导致竞态 -->
+            <VueBpmnViewer
+              v-if="activeDialogTab === 'diagram' && bpmnXml && progressData"
               :key="currentTask?.processInstanceId"
-              :xml="bpmnXml" 
+              :xml="bpmnXml"
               :progress-data="progressData"
-              style="height: 100%;" 
+              style="height: 100%;"
             />
             <el-empty v-else description="暂无流程图" />
           </div>
@@ -270,7 +327,8 @@
           <el-empty v-else description="暂无审批历史" />
         </el-tab-pane>
       </el-tabs>
-      
+      </div>
+
       <template #footer>
         <el-button @click="dialogVisible = false">关闭</el-button>
         <el-button v-if="activeDialogTab === 'approval'" type="primary" @click="submitApprove" :loading="submitLoading">确认</el-button>
@@ -300,7 +358,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
+import { Bell, Check, Share, Timer, Document, View, Download } from '@element-plus/icons-vue'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, terminateProcess, getProcessHistory } from '@/api/processTask'
@@ -342,6 +400,7 @@ const userOptions = ref([])
 
 // 审批弹窗
 const dialogVisible = ref(false)
+const dialogKey = ref(0)  // 用于强制重新渲染弹窗内容，修复 tabs 状态残留
 const activeDialogTab = ref('approval')
 const submitLoading = ref(false)
 const currentTask = ref(null)
@@ -404,17 +463,35 @@ watch(activeTab, () => {
   else loadStartedList()
 })
 
-// 监听审批弹窗 Tab 切换，切换到流程图时重新触发渲染
+// 监听审批弹窗 Tab 切换，切换到流程图时通知组件调整尺寸
 watch(activeDialogTab, (newVal) => {
   if (newVal === 'diagram' && bpmnXml.value && progressData.value) {
-    // 强制重新渲染流程图
+    // 延迟确保 tab-pane 已显示，再通知流程图调整视口
     nextTick(() => {
-      const tempXml = bpmnXml.value
-      bpmnXml.value = ''
-      nextTick(() => {
-        bpmnXml.value = tempXml
-      })
+      setTimeout(() => {
+        // 通过事件总线或直接操作 DOM 触发流程图 resize
+        window.dispatchEvent(new Event('resize'))
+      }, 100)
     })
+  }
+})
+
+// 弹窗关闭时延迟清空数据，避免关闭动画期间内容闪烁
+watch(dialogVisible, (val) => {
+  if (!val) {
+    setTimeout(() => {
+      bpmnXml.value = ''
+      progressData.value = {
+        completedNodes: [],
+        activeNodes: [],
+        executedSequenceFlows: [],
+        nodeAssigneeMap: {}
+      }
+      entityData.value = null
+      formConfig.value = null
+      approvalConfig.value = null
+      processHistory.value = []
+    }, 300)
   }
 })
 
@@ -447,6 +524,21 @@ function formatDate(dateStr) {
   if (isNaN(date.getTime())) return dateStr
   const pad = (n) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+// 预览文件
+function previewFile(url) {
+  if (!url) return
+  window.open(url, '_blank')
+}
+
+// 下载文件
+function downloadFile(url) {
+  if (!url) return
+  const a = document.createElement('a')
+  a.href = url
+  a.download = url.split('/').pop() || 'file'
+  a.click()
 }
 
 // 加载统计数据
@@ -516,6 +608,7 @@ async function loadUsers() {
 
 // 审批
 function handleApprove(row) {
+  dialogKey.value++
   currentTask.value = row
   approveForm.action = 'approve'
   approveForm.comment = ''
@@ -527,6 +620,7 @@ function handleApprove(row) {
 
 // 查看进度
 function viewProgress(row) {
+  dialogKey.value++
   currentTask.value = row
   activeDialogTab.value = 'diagram'
   loadProcessDetail(row.processInstanceId)
@@ -871,5 +965,59 @@ function handleCurrentChange(val) {
 .entity-form .el-input-number,
 .entity-form .el-select {
   width: 100%;
+}
+
+/* 文件只读展示样式 */
+.file-display-readonly {
+  width: 100%;
+}
+
+.file-list-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-group-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.file-item-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.file-info .el-icon {
+  color: #409eff;
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 4px;
 }
 </style>

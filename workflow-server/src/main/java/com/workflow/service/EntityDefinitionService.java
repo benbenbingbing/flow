@@ -193,10 +193,16 @@ public class EntityDefinitionService {
         fieldMapper.insert(submitterIdField);
         
         // 8. submitterName - 提交人姓名（不可编辑）
-        EntityField submitterNameField = createSystemField(entityId, "submitterName", "提交人", 
+        EntityField submitterNameField = createSystemField(entityId, "submitterName", "提交人",
                 EntityField.FieldType.STRING, "varchar(100)", 100, false, ++sortOrder);
         fieldMapper.insert(submitterNameField);
-        
+
+        // 9. deptId - 所属部门（可编辑，关联系统组织表）
+        EntityField deptIdField = createSystemField(entityId, "deptId", "所属部门",
+                EntityField.FieldType.REFERENCE, "varchar(64)", 64, true, ++sortOrder);
+        deptIdField.setRefEntityType(EntityField.RefEntityType.DEPT);
+        fieldMapper.insert(deptIdField);
+
         log.info("已为实体 [{}] 添加系统标准字段", entityId);
     }
     
@@ -216,8 +222,6 @@ public class EntityDefinitionService {
         field.setIsRequired(false);
         field.setIsSystem(true); // 标记为系统字段
         field.setEditable(editable); // 是否可编辑
-        field.setShowInList(true);
-        field.setShowInForm(true);
         field.setSortOrder(sortOrder);
         return field;
     }
@@ -317,46 +321,51 @@ public class EntityDefinitionService {
                 }
             }
             
-            // 保存新字段（跳过系统字段和已存在的字段）
+            // 保存字段（系统字段允许更新部分属性，非系统字段正常更新）
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
-                // 跳过系统字段的重复添加
-                if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
-                    continue;
-                }
-                
                 String fieldCode = fieldDTO.getFieldCode();
-                
+
                 if (existingFieldMap.containsKey(fieldCode)) {
-                    // 字段已存在，更新字段定义（仅更新元数据，不修改数据库列）
                     EntityField existingField = existingFieldMap.get(fieldCode);
-                    existingField.setFieldName(fieldDTO.getFieldName());
-                    existingField.setFieldLength(fieldDTO.getFieldLength());
-                    existingField.setFieldPrecision(fieldDTO.getFieldPrecision());
-                    existingField.setIsRequired(fieldDTO.getIsRequired());
-                    existingField.setIsUnique(fieldDTO.getIsUnique());
-                    existingField.setDefaultValue(fieldDTO.getDefaultValue());
-                    existingField.setOptionsJson(fieldDTO.getOptionsJson());
-                    existingField.setShowInList(fieldDTO.getShowInList());
-                    existingField.setShowInForm(fieldDTO.getShowInForm());
-                    existingField.setIsQuery(fieldDTO.getIsQuery());
-                    existingField.setSortOrder(fieldDTO.getSortOrder());
-                    existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
-                    existingField.setFileTypes(fieldDTO.getFileTypes());
-                    existingField.setFileMaxSize(fieldDTO.getFileMaxSize());
-                    existingField.setFileMaxCount(fieldDTO.getFileMaxCount());
-                    // 实体引用/子表单字段
-                    existingField.setRefEntityId(fieldDTO.getRefEntityId());
-                    if (fieldDTO.getRefEntityType() != null && !fieldDTO.getRefEntityType().isEmpty()) {
-                        existingField.setRefEntityType(EntityField.RefEntityType.valueOf(fieldDTO.getRefEntityType()));
+                    if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
+                        // 系统字段只允许更新部分属性（名称、必填、默认值、选项、排序等），不允许修改编码和类型
+                        existingField.setFieldName(fieldDTO.getFieldName());
+                        existingField.setIsRequired(fieldDTO.getIsRequired());
+                        existingField.setDefaultValue(fieldDTO.getDefaultValue());
+                        existingField.setOptionsJson(fieldDTO.getOptionsJson());
+                        existingField.setSortOrder(fieldDTO.getSortOrder());
                     } else {
-                        existingField.setRefEntityType(null);
+                        // 非系统字段，更新字段定义（仅更新元数据，不修改数据库列）
+                        existingField.setFieldName(fieldDTO.getFieldName());
+                        existingField.setFieldLength(fieldDTO.getFieldLength());
+                        existingField.setFieldPrecision(fieldDTO.getFieldPrecision());
+                        existingField.setIsRequired(fieldDTO.getIsRequired());
+                        existingField.setIsUnique(fieldDTO.getIsUnique());
+                        existingField.setDefaultValue(fieldDTO.getDefaultValue());
+                        existingField.setOptionsJson(fieldDTO.getOptionsJson());
+                        existingField.setSortOrder(fieldDTO.getSortOrder());
+                        existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
+                        existingField.setFileTypes(fieldDTO.getFileTypes());
+                        existingField.setFileMaxSize(fieldDTO.getFileMaxSize());
+                        existingField.setFileMaxCount(fieldDTO.getFileMaxCount());
+                        // 实体引用/子表单字段
+                        existingField.setRefEntityId(fieldDTO.getRefEntityId());
+                        if (fieldDTO.getRefEntityType() != null && !fieldDTO.getRefEntityType().isEmpty()) {
+                            existingField.setRefEntityType(EntityField.RefEntityType.valueOf(fieldDTO.getRefEntityType()));
+                        } else {
+                            existingField.setRefEntityType(null);
+                        }
+                        existingField.setDisplayMode(fieldDTO.getDisplayMode());
+                        existingField.setRefFieldCode(fieldDTO.getRefFieldCode());
                     }
-                    existingField.setDisplayMode(fieldDTO.getDisplayMode());
-                    existingField.setRefFieldCode(fieldDTO.getRefFieldCode());
                     fieldMapper.updateById(existingField);
                     // 级联保存附件项配置
                     fileItemService.saveFileItems(existingField.getId(), fieldDTO.getFileItems());
                 } else {
+                    // 跳过系统字段的新增（系统字段已在初始化时创建）
+                    if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
+                        continue;
+                    }
                     // 新字段，添加到字段定义表（不立即同步到数据表，等发布时同步）
                     EntityField field = convertToEntity(fieldDTO);
                     field.setId(null);
@@ -582,9 +591,6 @@ public class EntityDefinitionService {
         dto.setOptionsJson(field.getOptionsJson());
         dto.setValidateRules(field.getValidateRules());
         dto.setSortOrder(field.getSortOrder());
-        dto.setShowInList(field.getShowInList());
-        dto.setShowInForm(field.getShowInForm());
-        dto.setIsQuery(field.getIsQuery());
         dto.setIsSystem(field.getIsSystem());
         dto.setEditable(field.getEditable());
         dto.setIsPublished(field.getIsPublished());
@@ -642,9 +648,6 @@ public class EntityDefinitionService {
         field.setOptionsJson(dto.getOptionsJson());
         field.setValidateRules(dto.getValidateRules());
         field.setSortOrder(dto.getSortOrder());
-        field.setShowInList(dto.getShowInList());
-        field.setShowInForm(dto.getShowInForm());
-        field.setIsQuery(dto.getIsQuery());
         field.setFileTypes(dto.getFileTypes());
         field.setFileMaxSize(dto.getFileMaxSize());
         field.setFileMaxCount(dto.getFileMaxCount());

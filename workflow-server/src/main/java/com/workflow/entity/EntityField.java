@@ -101,24 +101,6 @@ public class EntityField {
     private Integer sortOrder;
     
     /**
-     * 是否在列表显示
-     */
-    @TableField("show_in_list")
-    private Boolean showInList;
-    
-    /**
-     * 是否在表单显示
-     */
-    @TableField("show_in_form")
-    private Boolean showInForm;
-    
-    /**
-     * 是否查询条件
-     */
-    @TableField("is_query")
-    private Boolean isQuery;
-    
-    /**
      * 是否系统字段（系统自动添加的字段，不可删除）
      */
     @TableField("is_system")
@@ -200,6 +182,7 @@ public class EntityField {
     public enum FieldType {
         STRING,         // 字符串
         TEXT,           // 长文本
+        RICH_TEXT,      // 富文本
         INTEGER,        // 整数
         LONG,           // 长整数
         DECIMAL,        // 小数

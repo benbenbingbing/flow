@@ -98,6 +98,23 @@ public class EntityFormField {
      */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String optionsJson;
+
+    /**
+     * 关联实体ID（用于引用实体字段，非数据库字段，从entity_field补充）
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String refEntityId;
+
+    /**
+     * 引用实体类型（用于引用实体字段，非数据库字段，从entity_field补充）
+     * CUSTOM - 用户自定义实体
+     * USER - 系统用户
+     * DEPT - 系统部门
+     * ROLE - 系统角色
+     * GROUP - 系统用户组
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String refEntityType;
     
     /**
      * 栅格宽度（1-24）

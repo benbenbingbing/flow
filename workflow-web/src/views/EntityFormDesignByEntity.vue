@@ -226,6 +226,17 @@
                   </el-radio-group>
                 </el-form-item>
 
+                <el-form-item label="可重复添加">
+                  <el-switch
+                    v-model="selectedField.repeatable"
+                    :active-value="true"
+                    :inactive-value="false"
+                    active-text="是"
+                    inactive-text="否"
+                  />
+                  <span class="form-tip" style="margin-left: 8px">关闭后只显示一行，不显示添加/删除按钮</span>
+                </el-form-item>
+
                 <el-form-item label="引用类型">
                   <el-radio-group v-model="selectedField.subFormType" @change="handleSubFormTypeChange">
                     <el-radio label="embedded">内嵌定义</el-radio>
@@ -680,6 +691,7 @@ function restoreFieldConfig(field) {
       field.displayMode = compProps.subFormConfig.displayMode || 'embedded'
       field.refEntityId = compProps.subFormConfig.refEntityId || ''
       field.refFormId = compProps.subFormConfig.refFormId || ''
+      field.repeatable = compProps.subFormConfig.repeatable === true
     }
     if (compProps.subFields) {
       field.subFields = compProps.subFields
@@ -716,7 +728,8 @@ function serializeFieldConfig(field) {
         type: field.subFormType || 'embedded',
         displayMode: field.displayMode || 'embedded',
         refEntityId: field.refEntityId || '',
-        refFormId: field.refFormId || ''
+        refFormId: field.refFormId || '',
+        repeatable: field.repeatable === true
       }
       if (field.subFields && field.subFields.length > 0) {
         compProps.subFields = field.subFields

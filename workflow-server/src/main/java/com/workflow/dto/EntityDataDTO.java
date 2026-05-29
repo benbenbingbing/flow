@@ -28,6 +28,8 @@ public class EntityDataDTO {
     private Map<String, Object> data;       // 自定义字段数据
     private String submitterId;             // 提交人ID
     private String submitterName;           // 提交人姓名
+    private String deptId;                  // 所属部门ID
+    private String deptName;                // 所属部门名称
     private LocalDateTime submitTime;       // 提交时间
     private LocalDateTime createdAt;        // 创建时间
     private LocalDateTime updatedAt;        // 更新时间

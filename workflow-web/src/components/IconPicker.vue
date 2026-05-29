@@ -49,10 +49,6 @@
         </div>
       </div>
       
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmSelect">确定</el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -69,7 +65,6 @@ const emit = defineEmits(['update:modelValue'])
 
 const dialogVisible = ref(false)
 const searchText = ref('')
-const tempSelectedIcon = ref('')
 
 const selectedIcon = computed({
   get: () => props.modelValue,
@@ -118,11 +113,7 @@ const getIconComponent = (iconName: string) => {
 }
 
 const selectIcon = (icon: string) => {
-  tempSelectedIcon.value = icon
-}
-
-const confirmSelect = () => {
-  selectedIcon.value = tempSelectedIcon.value
+  selectedIcon.value = icon
   dialogVisible.value = false
 }
 
@@ -132,7 +123,6 @@ const clearIcon = () => {
 
 watch(() => dialogVisible.value, (val) => {
   if (val) {
-    tempSelectedIcon.value = selectedIcon.value
     searchText.value = ''
   }
 })

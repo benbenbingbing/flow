@@ -63,71 +63,14 @@ public class EntityDataSqlProvider {
         String tableName = (String) params.get("tableName");
         @SuppressWarnings("unchecked")
         Map<String, Object> condition = (Map<String, Object>) params.get("condition");
-        
-        SQL sql = new SQL() {{
-            SELECT("*");
-            FROM(tableName);
-            WHERE("deleted = 0");
-        }};
-        
-        if (condition != null) {
-            // 分离 start/end 和普通条件
-            Map<String, Object> startMap = new java.util.HashMap<>();
-            Map<String, Object> endMap = new java.util.HashMap<>();
-            Map<String, Object> normalConditions = new java.util.HashMap<>();
-            
-            for (Map.Entry<String, Object> entry : condition.entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                // 跳过 null 和空字符串
-                if (value == null || (value instanceof String && ((String) value).trim().isEmpty())) {
-                    continue;
-                }
-                if (key.endsWith("_start")) {
-                    startMap.put(key.substring(0, key.length() - 6), value);
-                } else if (key.endsWith("_end")) {
-                    endMap.put(key.substring(0, key.length() - 4), value);
-                } else {
-                    normalConditions.put(key, value);
-                }
-            }
-            
-            // 处理 BETWEEN 条件（同时有 start 和 end）
-            java.util.Set<String> betweenKeys = new java.util.HashSet<>(startMap.keySet());
-            betweenKeys.retainAll(endMap.keySet());
-            for (String fieldKey : betweenKeys) {
-                String columnName = camelToUnderscore(fieldKey);
-                sql.WHERE(columnName + " >= #{condition." + fieldKey + "_start} AND " + columnName + " <= #{condition." + fieldKey + "_end}");
-            }
-            // 只有 start 没有 end
-            for (Map.Entry<String, Object> entry : startMap.entrySet()) {
-                if (!endMap.containsKey(entry.getKey())) {
-                    String columnName = camelToUnderscore(entry.getKey());
-                    sql.WHERE(columnName + " >= #{condition." + entry.getKey() + "_start}");
-                }
-            }
-            // 只有 end 没有 start
-            for (Map.Entry<String, Object> entry : endMap.entrySet()) {
-                if (!startMap.containsKey(entry.getKey())) {
-                    String columnName = camelToUnderscore(entry.getKey());
-                    sql.WHERE(columnName + " <= #{condition." + entry.getKey() + "_end}");
-                }
-            }
-            
-            // 处理普通条件（字符串使用 LIKE 模糊查询）
-            for (Map.Entry<String, Object> entry : normalConditions.entrySet()) {
-                String columnName = camelToUnderscore(entry.getKey());
-                Object value = entry.getValue();
-                if (value instanceof String) {
-                    sql.WHERE(columnName + " LIKE CONCAT('%', #{condition." + entry.getKey() + "}, '%')");
-                } else {
-                    sql.WHERE(columnName + " = #{condition." + entry.getKey() + "}");
-                }
-            }
-        }
-        
-        sql.ORDER_BY("created_at DESC");
-        
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT * FROM ").append(tableName);
+        sql.append(" WHERE deleted = 0");
+
+        appendConditionSql(sql, condition);
+
+        sql.append(" ORDER BY created_at DESC");
         return sql.toString();
     }
 
@@ -205,18 +148,142 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 查询列表（带数据权限过滤）
+     */
+    public String selectListWithPermission(Map<String, Object> params) {
+        String tableName = (String) params.get("tableName");
+        String permissionSql = (String) params.get("permissionSql");
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT * FROM ").append(tableName);
+        sql.append(" WHERE deleted = 0");
+        if (permissionSql != null && !permissionSql.isEmpty()) {
+            sql.append(" AND (").append(permissionSql).append(")");
+        }
+        sql.append(" ORDER BY created_at DESC");
+        return sql.toString();
+    }
+
+    /**
+     * 条件查询（带数据权限过滤）
+     */
+    public String selectByConditionWithPermission(Map<String, Object> params) {
+        String tableName = (String) params.get("tableName");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> condition = (Map<String, Object>) params.get("condition");
+        String permissionSql = (String) params.get("permissionSql");
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT * FROM ").append(tableName);
+        sql.append(" WHERE deleted = 0");
+
+        // 添加权限条件
+        if (permissionSql != null && !permissionSql.isEmpty()) {
+            sql.append(" AND (").append(permissionSql).append(")");
+        }
+
+        // 添加查询条件
+        appendConditionSql(sql, condition);
+
+        sql.append(" ORDER BY created_at DESC");
+        return sql.toString();
+    }
+
+    /**
      * 统计查询
      */
     public String count(Map<String, Object> params) {
         String tableName = (String) params.get("tableName");
-        
+
         return new SQL() {{
             SELECT("COUNT(*)");
             FROM(tableName);
             WHERE("deleted = 0");
         }}.toString();
     }
-    
+
+    // ============ 私有辅助方法 ============
+
+    /**
+     * 追加查询条件到 SQL
+     * 支持查询方式：EQ(等于)、NE(不等于)、LIKE(包含)、GT(大于)、LT(小于)、BETWEEN(范围)
+     * 通过 _op 后缀参数指定查询方式，例如：name=xxx&name_op=EQ
+     */
+    private void appendConditionSql(StringBuilder sql, Map<String, Object> condition) {
+        if (condition == null) {
+            return;
+        }
+
+        // 分离 start/end/op 和普通条件
+        Map<String, Object> startMap = new java.util.HashMap<>();
+        Map<String, Object> endMap = new java.util.HashMap<>();
+        Map<String, String> opMap = new java.util.HashMap<>();
+        Map<String, Object> normalConditions = new java.util.HashMap<>();
+
+        for (Map.Entry<String, Object> entry : condition.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            // 跳过 null 和空字符串
+            if (value == null || (value instanceof String && ((String) value).trim().isEmpty())) {
+                continue;
+            }
+            if (key.endsWith("_start")) {
+                startMap.put(key.substring(0, key.length() - 6), value);
+            } else if (key.endsWith("_end")) {
+                endMap.put(key.substring(0, key.length() - 4), value);
+            } else if (key.endsWith("_op")) {
+                String fieldKey = key.substring(0, key.length() - 3);
+                opMap.put(fieldKey, ((String) value).toUpperCase());
+            } else {
+                normalConditions.put(key, value);
+            }
+        }
+
+        // 处理 BETWEEN 条件（同时有 start 和 end）
+        java.util.Set<String> betweenKeys = new java.util.HashSet<>(startMap.keySet());
+        betweenKeys.retainAll(endMap.keySet());
+        for (String fieldKey : betweenKeys) {
+            String columnName = camelToUnderscore(fieldKey);
+            sql.append(" AND ").append(columnName).append(" >= #{condition.").append(fieldKey).append("_start} AND ").append(columnName).append(" <= #{condition.").append(fieldKey).append("_end}");
+        }
+        // 只有 start 没有 end
+        for (Map.Entry<String, Object> entry : startMap.entrySet()) {
+            if (!endMap.containsKey(entry.getKey())) {
+                String columnName = camelToUnderscore(entry.getKey());
+                sql.append(" AND ").append(columnName).append(" >= #{condition.").append(entry.getKey()).append("_start}");
+            }
+        }
+        // 只有 end 没有 start
+        for (Map.Entry<String, Object> entry : endMap.entrySet()) {
+            if (!startMap.containsKey(entry.getKey())) {
+                String columnName = camelToUnderscore(entry.getKey());
+                sql.append(" AND ").append(columnName).append(" <= #{condition.").append(entry.getKey()).append("_end}");
+            }
+        }
+
+        // 处理普通条件（根据查询方式生成对应 SQL）
+        for (Map.Entry<String, Object> entry : normalConditions.entrySet()) {
+            String fieldKey = entry.getKey();
+            String columnName = camelToUnderscore(fieldKey);
+            Object value = entry.getValue();
+            String op = opMap.getOrDefault(fieldKey, "");
+
+            if ("EQ".equals(op)) {
+                sql.append(" AND ").append(columnName).append(" = #{condition.").append(fieldKey).append("}");
+            } else if ("NE".equals(op)) {
+                sql.append(" AND ").append(columnName).append(" <> #{condition.").append(fieldKey).append("}");
+            } else if ("GT".equals(op)) {
+                sql.append(" AND ").append(columnName).append(" > #{condition.").append(fieldKey).append("}");
+            } else if ("LT".equals(op)) {
+                sql.append(" AND ").append(columnName).append(" < #{condition.").append(fieldKey).append("}");
+            } else if ("LIKE".equals(op) || (op.isEmpty() && value instanceof String)) {
+                sql.append(" AND ").append(columnName).append(" LIKE CONCAT('%', #{condition.").append(fieldKey).append("}, '%')");
+            } else {
+                sql.append(" AND ").append(columnName).append(" = #{condition.").append(fieldKey).append("}");
+            }
+        }
+    }
+
     /**
      * 驼峰命名转换为下划线命名
      * 例如：processInstanceId -> process_instance_id

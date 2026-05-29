@@ -20,6 +20,14 @@
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
     />
+
+    <!-- 富文本 -->
+    <RichTextEditor
+      v-else-if="renderType === 'rich_text'"
+      v-model="fieldValue"
+      :disabled="disabled"
+      :height="200"
+    />
     
     <!-- 数字 -->
     <el-input-number
@@ -184,6 +192,7 @@ import { Upload } from '@element-plus/icons-vue'
 import SubFormRenderer from './SubFormRenderer.vue'
 import FileUploader from './FileUploader.vue'
 import EntitySelector from './EntitySelector.vue'
+import RichTextEditor from './RichTextEditor.vue'
 import { getFormFields } from '@/api/entityForm'
 
 const props = defineProps({

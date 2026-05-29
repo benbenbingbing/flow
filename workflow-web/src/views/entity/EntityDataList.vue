@@ -279,8 +279,15 @@
                          :multiple="field.fieldType === 'MULTI_REFERENCE'"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                          :placeholder="`请选择${field.fieldName}`" />
+          <!-- 子表单 -->
+          <FormFieldRendererLinkage
+            v-else-if="field.fieldType === 'SUB_FORM'"
+            :field="field"
+            v-model="formData.data[field.fieldCode]"
+            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+          />
         </el-form-item>
-        
+
         <el-divider v-if="entityDefinition.enableProcess" />
         <el-form-item v-if="entityDefinition.enableProcess" label="发起流程">
           <el-switch v-model="formData.startProcess" />
@@ -297,8 +304,8 @@
     <!-- 审批/查看弹窗 -->
     <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="700px" destroy-on-close>
       <el-tabs v-model="activeDialogTab" type="border-card">
-        <!-- 审批信息 -->
-        <el-tab-pane label="审批" name="approval">
+        <!-- 无 tab 子表单时：保留审批 tab -->
+        <el-tab-pane v-if="!approvalHasTabSubForms" label="审批" name="approval">
           <!-- 实体数据表单 -->
           <div v-if="entityData" class="entity-form-section">
             <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
@@ -314,55 +321,172 @@
                 <el-row :gutter="20">
                   <el-col v-for="(value, key) in entityData" :key="key" :span="12">
                     <el-form-item :label="key">
-                      <el-input v-model="entityData[key]" :readonly="true" />
+                      <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
+                        <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
+                          <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                          <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+                            <a :href="url" target="_blank" class="file-link">
+                              <el-icon><Document /></el-icon>
+                              {{ url.split('/').pop() }}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-else-if="Array.isArray(value)" class="file-list-readonly">
+                        <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
+                          <a v-if="typeof url === 'string' && url.startsWith('/')" :href="url" target="_blank" class="file-link">
+                            <el-icon><Document /></el-icon>
+                            {{ url.split('/').pop() }}
+                          </a>
+                          <span v-else>{{ url }}</span>
+                        </div>
+                      </div>
+                      <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
+                        <a :href="value" target="_blank" class="file-link">
+                          <el-icon><Document /></el-icon>
+                          {{ value.split('/').pop() }}
+                        </a>
+                      </div>
+                      <el-input v-else v-model="entityData[key]" :readonly="true" />
                     </el-form-item>
                   </el-col>
                 </el-row>
               </el-form>
             </template>
           </div>
-          
           <el-divider v-if="entityData" />
-          
-          <!-- 审批操作区（非查看模式） -->
           <template v-if="!isViewMode && effectiveApprovalConfig.enabled !== false">
             <div class="section-title">审批意见</div>
             <el-form :model="approveForm" label-width="80px">
               <el-form-item label="审批操作" required>
                 <el-radio-group v-model="approveForm.action">
-                  <el-radio-button 
-                    v-for="option in effectiveApprovalConfig.options" 
-                    :key="option.value" 
+                  <el-radio-button
+                    v-for="option in effectiveApprovalConfig.options"
+                    :key="option.value"
                     :label="option.value"
                   >
                     {{ option.label }}
                   </el-radio-button>
                 </el-radio-group>
               </el-form-item>
-              <el-form-item 
+              <el-form-item
                 v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
                 :label="effectiveApprovalConfig.commentLabel || '审批备注'"
               >
-                <el-input 
-                  v-model="approveForm.comment" 
-                  type="textarea" 
-                  :rows="3" 
-                  :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`" 
+                <el-input
+                  v-model="approveForm.comment"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
                 />
               </el-form-item>
             </el-form>
           </template>
         </el-tab-pane>
 
+        <!-- 有 tab 子表单时：基本信息 tab（普通字段 + 审批意见） -->
+        <el-tab-pane v-if="approvalHasTabSubForms" label="基本信息" name="basic">
+          <div v-if="entityData" class="entity-form-section">
+            <template v-if="approvalNormalForm && approvalNormalForm.fields && approvalNormalForm.fields.length > 0">
+              <FormPreviewLinkage
+                :form="approvalNormalForm"
+                v-model="entityData"
+                :readonly="true"
+                :show-header="false"
+                :no-internal-tabs="true"
+              />
+            </template>
+            <template v-else>
+              <el-form :model="entityData" label-width="100px" class="entity-form">
+                <el-row :gutter="20">
+                  <el-col v-for="(value, key) in entityData" :key="key" :span="12">
+                    <el-form-item :label="key">
+                      <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
+                        <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
+                          <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                          <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+                            <a :href="url" target="_blank" class="file-link">
+                              <el-icon><Document /></el-icon>
+                              {{ url.split('/').pop() }}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-else-if="Array.isArray(value)" class="file-list-readonly">
+                        <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
+                          <a v-if="typeof url === 'string' && url.startsWith('/')" :href="url" target="_blank" class="file-link">
+                            <el-icon><Document /></el-icon>
+                            {{ url.split('/').pop() }}
+                          </a>
+                          <span v-else>{{ url }}</span>
+                        </div>
+                      </div>
+                      <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
+                        <a :href="value" target="_blank" class="file-link">
+                          <el-icon><Document /></el-icon>
+                          {{ value.split('/').pop() }}
+                        </a>
+                      </div>
+                      <el-input v-else v-model="entityData[key]" :readonly="true" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-form>
+            </template>
+          </div>
+          <el-divider v-if="entityData" />
+          <template v-if="!isViewMode && effectiveApprovalConfig.enabled !== false">
+            <div class="section-title">审批意见</div>
+            <el-form :model="approveForm" label-width="80px">
+              <el-form-item label="审批操作" required>
+                <el-radio-group v-model="approveForm.action">
+                  <el-radio-button
+                    v-for="option in effectiveApprovalConfig.options"
+                    :key="option.value"
+                    :label="option.value"
+                  >
+                    {{ option.label }}
+                  </el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item
+                v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+                :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+              >
+                <el-input
+                  v-model="approveForm.comment"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
+                />
+              </el-form-item>
+            </el-form>
+          </template>
+        </el-tab-pane>
+
+        <!-- 子表单 tabs（有 tab 子表单时） -->
+        <el-tab-pane
+          v-for="(field, idx) in approvalTabSubForms"
+          :key="'approval-subform-' + idx"
+          :label="field.fieldName"
+          :name="'subform_' + idx"
+        >
+          <FormFieldRendererLinkage
+            :field="field"
+            v-model="entityData[field.fieldCode]"
+            :disabled="true"
+          />
+        </el-tab-pane>
+
         <!-- 流程图 -->
         <el-tab-pane label="流程图" name="diagram">
           <div style="height: 400px;">
-            <VueBpmnViewer 
-              v-if="bpmnXml && progressData" 
+            <VueBpmnViewer
+              v-if="bpmnXml && progressData"
               :key="currentTask?.processInstanceId"
-              :xml="bpmnXml" 
+              :xml="bpmnXml"
               :progress-data="progressData"
-              style="height: 100%;" 
+              style="height: 100%;"
             />
             <el-empty v-else description="暂无流程图" />
           </div>
@@ -389,10 +513,10 @@
           <el-empty v-else description="暂无审批历史" />
         </el-tab-pane>
       </el-tabs>
-      
+
       <template #footer>
         <el-button @click="processDialogVisible = false">关闭</el-button>
-        <el-button v-if="!isViewMode && activeDialogTab === 'approval'" type="primary" @click="submitApprove" :loading="approveSubmitLoading">确认</el-button>
+        <el-button v-if="!isViewMode && (activeDialogTab === 'approval' || activeDialogTab === 'basic')" type="primary" @click="submitApprove" :loading="approveSubmitLoading">确认</el-button>
       </template>
     </el-dialog>
   </div>
@@ -402,7 +526,7 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, ArrowUp, ArrowDown, Document } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { useUserStore } from '@/stores/user'
@@ -413,6 +537,7 @@ import FileUploader from '@/components/FileUploader.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { getCustomListComponent, hasCustomListComponent, getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 
@@ -461,6 +586,7 @@ const formData = reactive({
 })
 
 const formRef = ref()
+const previewRef = ref()
 
 // 字段联动状态
 const linkageState = ref({
@@ -546,7 +672,7 @@ watch(() => formData.data, () => {
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
 
-// 查询字段（优先使用列表配置，否则用默认的isQuery）
+// 查询字段（使用列表配置）
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
     // 使用列表配置的查询字段
@@ -554,10 +680,17 @@ const queryFields = computed(() => {
       .filter((f: any) => f.isQuery && f.showInList)
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
-        return { ...f, fieldType: originField?.fieldType || 'STRING', optionsJson: originField?.optionsJson, queryType: f.queryType || 'LIKE' }
+        return {
+          ...f,
+          fieldType: originField?.fieldType || 'STRING',
+          optionsJson: originField?.optionsJson,
+          refEntityType: originField?.refEntityType,
+          refEntityId: originField?.refEntityId,
+          queryType: f.queryType || 'LIKE'
+        }
       })
   }
-  return entityFields.value.filter((f: any) => f.isQuery && !f.isSystem)
+  return entityFields.value.filter((f: any) => !f.isSystem)
 })
 
 // 可见的查询字段（默认只显示前4个，展开后显示全部）
@@ -568,17 +701,23 @@ const visibleQueryFields = computed(() => {
   return queryFields.value.slice(0, 4)
 })
 
-// 列表显示字段（优先使用列表配置，否则用默认的showInList）
+// 列表显示字段（使用列表配置）
 const listFields = computed(() => {
   if (listConfigFields.value.length > 0) {
     return listConfigFields.value
       .filter((f: any) => f.showInList)
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
-        return { ...f, fieldType: originField?.fieldType || 'STRING', optionsJson: originField?.optionsJson }
+        return {
+          ...f,
+          fieldType: originField?.fieldType || 'STRING',
+          optionsJson: originField?.optionsJson,
+          refEntityType: originField?.refEntityType,
+          refEntityId: originField?.refEntityId
+        }
       })
   }
-  return entityFields.value.filter((f: any) => f.showInList && !f.isSystem)
+  return entityFields.value.filter((f: any) => !f.isSystem)
 })
 
 // 是否使用列表配置
@@ -595,9 +734,9 @@ const showCustomForm = computed(() => {
   return defaultForm.value?.customComponent && hasCustomFormComponent(defaultForm.value.customComponent)
 })
 
-// 表单字段（配置了showInForm的字段）
+// 表单字段（排除系统字段）
 const formFields = computed(() => {
-  return entityFields.value.filter((f: any) => f.showInForm && !f.isSystem)
+  return entityFields.value.filter((f: any) => !f.isSystem)
 })
 
 // 获取列表字段对应的 prop（系统字段在 row 顶层，自定义字段在 row.data 中）
@@ -653,9 +792,13 @@ const refEntityNameMap = ref<Record<string, string>>({})
 
 // 加载引用实体名称
 async function loadRefEntityNames() {
-  if (!dataList.value.length || !fields.value.length) return
-  
-  const refFields = fields.value.filter((f: any) => f.fieldType === 'REFERENCE' || f.fieldType === 'MULTI_REFERENCE')
+  if (!dataList.value.length) return
+
+  // 优先从当前实际显示的列表字段中查找引用字段（列表配置模式下 fields.value 可能不完整）
+  const sourceFields = listFields.value.length > 0 ? listFields.value : fields.value
+  if (!sourceFields.length) return
+
+  const refFields = sourceFields.filter((f: any) => f.fieldType === 'REFERENCE' || f.fieldType === 'MULTI_REFERENCE')
   if (!refFields.length) return
   
   // 按 entityType + refEntityId 分组收集 IDs
@@ -841,6 +984,13 @@ const loadDataList = async () => {
         params[key] = value
       }
     })
+    // 添加查询方式参数（EQ/LIKE/GT/LT 等），后端据此生成精确或模糊查询 SQL
+    queryFields.value.forEach((field: any) => {
+      const code = field.fieldCode
+      if (code && params[code] !== undefined && field.queryType) {
+        params[code + '_op'] = field.queryType
+      }
+    })
     
     // 有列表配置时调用带扩展字段的接口
     let res
@@ -997,6 +1147,44 @@ const effectiveApprovalConfig = computed(() => {
   }
 })
 
+// 审批弹窗中是否有 Tab 子表单
+const approvalHasTabSubForms = computed(() => {
+  const fields = formConfig.value?.fields || []
+  return fields.some((f: any) => isTabSubForm(f))
+})
+
+// 审批弹窗中的 Tab 子表单字段
+const approvalTabSubForms = computed(() => {
+  const fields = formConfig.value?.fields || []
+  return fields.filter((f: any) => isTabSubForm(f))
+})
+
+// 审批弹窗中普通字段组成的 form（给 FormPreviewLinkage 用，不含 tab 子表单）
+const approvalNormalForm = computed(() => {
+  const fields = (formConfig.value?.fields || []).filter((f: any) => !isTabSubForm(f))
+  return {
+    ...formConfig.value,
+    fields
+  }
+})
+
+// 判断是否为 Tab 模式的子表单
+function isTabSubForm(field: any) {
+  if (!field) return false
+  const type = (field.componentType || field.fieldType || '').toUpperCase()
+  if (type !== 'SUB_FORM') return false
+  if (field.displayMode === 'tab') return true
+  if (field.componentProps) {
+    try {
+      const compProps = typeof field.componentProps === 'string'
+        ? JSON.parse(field.componentProps)
+        : field.componentProps
+      return compProps.subFormConfig?.displayMode === 'tab'
+    } catch (e) {}
+  }
+  return false
+}
+
 // 监听审批弹窗 Tab 切换，切换到流程图时重新触发渲染
 watch(activeDialogTab, (newVal) => {
   if (newVal === 'diagram' && bpmnXml.value && progressData.value) {
@@ -1048,6 +1236,9 @@ async function loadProcessDetail(instanceId: string) {
         entityData.value._statusText = statusMap[entityData.value.status] || entityData.value.status
       }
       formConfig.value = progressRes.formConfig || null
+      // 根据是否有 tab 子表单设置默认 tab
+      const hasTabs = (formConfig.value?.fields || []).some((f: any) => isTabSubForm(f))
+      activeDialogTab.value = hasTabs ? 'basic' : 'approval'
       approvalConfig.value = progressRes.approvalConfig || null
       const config = progressRes.approvalConfig
       if (config && Array.isArray(config.options) && config.options.length > 0) {
@@ -1268,5 +1459,48 @@ onMounted(() => {
   margin-bottom: 16px;
   padding-left: 8px;
   border-left: 4px solid #409eff;
+}
+
+/* 文件只读展示样式 */
+.file-display-readonly {
+  width: 100%;
+}
+
+.file-list-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-group-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.file-item-readonly {
+  display: flex;
+  align-items: center;
+}
+
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #409eff;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #ecf5ff;
+  transition: all 0.3s;
+}
+
+.file-link:hover {
+  background-color: #409eff;
+  color: #fff;
 }
 </style>

@@ -827,7 +827,12 @@ public class ProcessInstanceService {
                     fieldMap.put("fieldName", field.getFieldName());
                     fieldMap.put("fieldLabel", field.getFieldLabel());
                     fieldMap.put("fieldType", field.getFieldType());
-                    fieldMap.put("componentType", field.getComponentType());
+                    // 如果 componentType 为空，尝试从 fieldType 推断（避免前端无法识别组件类型）
+                    String componentType = field.getComponentType();
+                    if ((componentType == null || componentType.isEmpty()) && field.getFieldType() != null) {
+                        componentType = field.getFieldType().toLowerCase();
+                    }
+                    fieldMap.put("componentType", componentType);
                     fieldMap.put("isRequired", field.getIsRequired());
                     // 如果节点映射表配置了只读，覆盖字段的 isReadonly
                     if (nodeFormReadonly != null) {
@@ -839,6 +844,14 @@ public class ProcessInstanceService {
                     fieldMap.put("sortOrder", field.getSortOrder());
                     fieldMap.put("gridSpan", field.getGridSpan());
                     
+                    // 引用实体配置（用于单选实体/多选实体字段）
+                    if (field.getRefEntityId() != null) {
+                        fieldMap.put("refEntityId", field.getRefEntityId());
+                    }
+                    if (field.getRefEntityType() != null) {
+                        fieldMap.put("refEntityType", field.getRefEntityType());
+                    }
+
                     // 组件属性保持原始 JSON 字符串，由前端解析
                     if (field.getComponentProps() != null) {
                         fieldMap.put("componentProps", field.getComponentProps());
@@ -1471,7 +1484,12 @@ public class ProcessInstanceService {
             vo.setProcessInstanceId(historicInstance.getId());
             vo.setProcessDefinitionId(historicInstance.getProcessDefinitionId());
             vo.setBusinessKey(historicInstance.getBusinessKey());
-            vo.setStartUser(historicInstance.getStartUserId());
+            String startUserId = historicInstance.getStartUserId();
+            vo.setStartUser(startUserId);
+            if (startUserId != null && !startUserId.isEmpty()) {
+                String nickname = sysUserService.getNicknameByUsername(startUserId);
+                vo.setStartUserName(nickname != null && !nickname.isEmpty() ? nickname : startUserId);
+            }
             vo.setStartTime(formatDate(historicInstance.getStartTime()));
             vo.setEndTime(formatDate(historicInstance.getEndTime()));
             
@@ -1632,7 +1650,16 @@ public class ProcessInstanceService {
             return Result.error(403, "只有发起人可以终止流程");
         }
         
-        // 3. 终止流程
+        // 3. 终止流程（删除前先获取实体关联信息）
+        String entityCode = null;
+        String entityDataId = null;
+        try {
+            entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
+            entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
+        } catch (Exception e) {
+            log.warn("终止前获取流程变量失败: processInstanceId={}", processInstanceId, e);
+        }
+
         try {
             String deleteReason = "发起人主动终止";
             if (reason != null && !reason.isEmpty()) {
@@ -1641,7 +1668,7 @@ public class ProcessInstanceService {
             runtimeService.deleteProcessInstance(processInstanceId, deleteReason);
             // 清理本地待办
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
-            
+
             // 记录终止日志到 process_operation_log
             try {
                 com.workflow.entity.ProcessOperationLog log = new com.workflow.entity.ProcessOperationLog();
@@ -1656,11 +1683,9 @@ public class ProcessInstanceService {
             } catch (Exception e) {
                 log.warn("记录终止日志失败", e);
             }
-            
+
             // 4. 更新实体数据状态为终止
             try {
-                String entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
-                String entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
                 if (entityCode != null && entityDataId != null) {
                     String tableName = dynamicTableService.getTableName(entityCode);
                     java.util.Map<String, Object> updateData = new java.util.HashMap<>();

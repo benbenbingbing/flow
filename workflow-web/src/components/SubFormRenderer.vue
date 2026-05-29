@@ -1,7 +1,7 @@
 <template>
   <div class="sub-form-renderer">
-    <!-- 子表单标题和操作 -->
-    <div class="sub-form-header">
+    <!-- 子表单标题和操作：仅可重复添加时显示 -->
+    <div v-if="isRepeatable" class="sub-form-header">
       <span class="sub-form-title">{{ title || config.label || '明细' }}</span>
       <el-tag v-if="config.required" type="danger" size="small" effect="plain">必填</el-tag>
       <span class="sub-form-summary" v-if="showSummary">
@@ -10,10 +10,10 @@
           {{ sum.label }}: {{ sum.value }}
         </span>
       </span>
-      <el-button 
-        v-if="!disabled && !readonly" 
-        type="primary" 
-        size="small" 
+      <el-button
+        v-if="!disabled && !readonly"
+        type="primary"
+        size="small"
         @click="addRow"
         :disabled="rowData.length >= maxRows"
       >
@@ -23,25 +23,28 @@
 
     <!-- 表单布局 -->
     <template v-if="config.layout === 'form'">
-      <!-- 空状态 -->
+      <!-- 空状态：只读/禁用模式下显示字段预览；编辑模式由 watch 自动初始化，这里兜底 -->
       <template v-if="rowData.length === 0">
-        <el-empty description="暂无数据，点击添加" :image-size="60">
-          <template v-if="!disabled && !readonly">
-            <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
-          </template>
-        </el-empty>
-        <!-- 字段预览：空状态也显示字段结构 -->
-        <div v-if="config.fields && config.fields.length > 0" class="form-fields-preview">
-          <div v-for="field in config.fields" :key="field.fieldKey" class="preview-field-item">
-            <span class="preview-label">{{ field.fieldName }}</span>
-            <span class="preview-placeholder">—</span>
+        <template v-if="disabled || readonly">
+          <div v-if="config.fields && config.fields.length > 0" class="form-fields-preview">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="preview-field-item">
+              <span class="preview-label">{{ field.fieldName }}</span>
+              <span class="preview-placeholder">—</span>
+            </div>
           </div>
-        </div>
+          <el-empty v-else description="暂无数据" :image-size="60" />
+        </template>
+        <template v-else>
+          <el-empty v-if="isRepeatable" description="暂无数据，点击添加" :image-size="60">
+            <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+          </el-empty>
+          <el-empty v-else description="暂无数据" :image-size="60" />
+        </template>
       </template>
-      
-      <!-- 表单卡片列表 -->
-      <div v-for="(row, index) in rowData" :key="index" class="form-row-card">
-        <div class="form-row-header">
+
+      <!-- 表单卡片列表（单条记录时不显示记录标题） -->
+      <div v-for="(row, index) in rowData" :key="index" :class="['form-row-card', { 'single-record': rowData.length === 1 }]">
+        <div v-if="isRepeatable && rowData.length > 1" class="form-row-header">
           <span class="row-title">记录 {{ index + 1 }}</span>
           <el-button v-if="!disabled && !readonly" type="danger" size="small" text @click="removeRow(index)">
             <el-icon><Delete /></el-icon>删除
@@ -91,8 +94,8 @@
       >
         <!-- 空状态插槽 -->
         <template #empty>
-          <el-empty description="暂无数据，点击添加" :image-size="60">
-            <template v-if="!disabled && !readonly">
+          <el-empty :description="isRepeatable ? '暂无数据，点击添加' : '暂无数据'" :image-size="60">
+            <template v-if="isRepeatable && !disabled && !readonly">
               <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
             </template>
           </el-empty>
@@ -202,8 +205,8 @@
           </template>
         </el-table-column>
 
-        <!-- 操作列 -->
-        <el-table-column v-if="!disabled && !readonly" label="操作" width="80" align="center" fixed="right">
+        <!-- 操作列：仅可重复添加时显示 -->
+        <el-table-column v-if="isRepeatable && !disabled && !readonly" label="操作" width="80" align="center" fixed="right">
           <template #default="{ $index }">
             <el-button type="danger" size="small" text @click="removeRow($index)">
               <el-icon><Delete /></el-icon>
@@ -228,7 +231,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -253,7 +256,8 @@ const props = defineProps({
       fields: [],
       showSummary: false,
       summaryFields: [],
-      layout: 'table'
+      layout: 'table',
+      repeatable: false
     })
   },
   // 数据绑定
@@ -290,12 +294,12 @@ watch(() => props.modelValue, (newVal) => {
   }
 }, { immediate: true, deep: true })
 
-// 表单布局下，字段加载完成后自动初始化一行空数据
+// 字段加载完成后自动初始化一行空数据（预览/编辑/新增都直接显示表单）
 watch(() => props.config.fields, (fields) => {
-  if (fields && fields.length > 0 && rowData.value.length === 0 && props.config.layout === 'form' && !props.readonly && !props.disabled) {
+  if (fields && fields.length > 0 && rowData.value.length === 0) {
     addRow()
   }
-}, { immediate: true })
+}, { immediate: true, deep: true })
 
 // 数据变化时触发更新
 watch(rowData, (newVal) => {
@@ -304,11 +308,23 @@ watch(rowData, (newVal) => {
   calculateSummary()
 }, { deep: true })
 
-// 最大行数
-const maxRows = computed(() => props.config.maxRows || 100)
+// 兜底：挂载后若仍为空则自动初始化，避免异步数据未加载完导致显示空状态
+onMounted(() => {
+  nextTick(() => {
+    if (props.config.fields?.length > 0 && rowData.value.length === 0) {
+      addRow()
+    }
+  })
+})
+
+// 最大行数（不可重复时最多1条）
+const maxRows = computed(() => isRepeatable.value ? (props.config.maxRows || 100) : 1)
 
 // 最小行数
 const minRows = computed(() => props.config.minRows || 0)
+
+// 是否可重复添加（默认false：单条平铺，不显示添加按钮和记录标题）
+const isRepeatable = computed(() => props.config.repeatable === true)
 
 // 是否显示汇总
 const showSummary = computed(() => {
@@ -561,6 +577,15 @@ defineExpose({
   border-radius: 8px;
   margin-bottom: 16px;
   padding: 16px;
+}
+
+/* 单条记录时去掉卡片样式，直接平铺显示 */
+.form-row-card.single-record {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 0;
 }
 
 .form-row-header {

@@ -273,6 +273,17 @@ public class EntityFormResolveService {
                     if (entityField.getOptionsJson() != null && !entityField.getOptionsJson().isEmpty()) {
                         field.setOptionsJson(entityField.getOptionsJson());
                     }
+                    // 从实体字段补充默认值（实体设计中设置的默认值）
+                    if (field.getDefaultValue() == null && entityField.getDefaultValue() != null) {
+                        field.setDefaultValue(entityField.getDefaultValue());
+                    }
+                    // 从实体字段补充引用实体配置
+                    if (entityField.getRefEntityId() != null) {
+                        field.setRefEntityId(entityField.getRefEntityId());
+                    }
+                    if (entityField.getRefEntityType() != null) {
+                        field.setRefEntityType(entityField.getRefEntityType().name());
+                    }
                 } else {
                     // 查询不到，直接使用 fieldId 作为 fieldCode
                     field.setFieldCode(field.getFieldId());

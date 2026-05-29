@@ -59,6 +59,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="submitterName" label="提交人" width="100" />
+        <el-table-column prop="deptId" label="所属部门" width="120" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
@@ -107,6 +108,11 @@
                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                    @change="(val) => executeFieldEvent(field, 'onChange', val)"
                    type="textarea" rows="3" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
+          <RichTextEditor v-else-if="field.fieldType === 'RICH_TEXT'"
+                          v-model="formData.data[field.fieldCode || field.fieldId]"
+                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+                          :height="200"
+                          @change="(val) => executeFieldEvent(field, 'onChange', val)" />
           <el-input-number v-else-if="field.fieldType === 'INTEGER' || field.fieldType === 'DECIMAL'"
                           v-model="formData.data[field.fieldCode || field.fieldId]"
                           :disabled="isFieldDisabled(field) || field.isReadonly === 1"
@@ -188,52 +194,24 @@
               <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
             </el-radio-group>
           </template>
-          <!-- 文件上传 -->
-          <el-upload v-else-if="field.fieldType === 'FILE'"
-                    :file-list="getFileList(field.fieldCode || field.fieldId)"
-                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                    :auto-upload="false"
-                    :limit="1"
-                    :before-upload="(file) => beforeFileUpload(file, 'FILE')"
-                    :on-change="(file) => handleFileUpload(file, field.fieldCode || field.fieldId)"
-                    :on-remove="() => handleFileRemove(field.fieldCode || field.fieldId)"
-                    accept="*/*"
-                    v-loading="uploadLoading"
-                    class="file-upload"
-                    action="#">
-            <el-button type="primary" :icon="Upload">
-              <span v-if="formData.data[field.fieldCode || field.fieldId]">更换文件</span>
-              <span v-else>选择文件</span>
-            </el-button>
-            <template #tip>
-              <div class="el-upload__tip">支持任意格式文件，大小不超过20MB</div>
-            </template>
-          </el-upload>
-          
+          <!-- 文件上传（支持多组分类） -->
+          <FileUploader
+            v-else-if="field.fieldType === 'FILE'"
+            v-model="formData.data[field.fieldCode || field.fieldId]"
+            :field="field"
+            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+            @change="(val) => executeFieldEvent(field, 'onChange', val)"
+          />
+
           <!-- 图片上传 -->
-          <el-upload v-else-if="field.fieldType === 'IMAGE'"
-                    :file-list="getFileList(field.fieldCode || field.fieldId)"
-                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                    :auto-upload="false"
-                    :limit="1"
-                    :before-upload="(file) => beforeFileUpload(file, 'IMAGE')"
-                    :on-change="(file) => handleImageUpload(file, field.fieldCode || field.fieldId)"
-                    :on-remove="() => handleFileRemove(field.fieldCode || field.fieldId)"
-                    accept="image/*"
-                    list-type="picture-card"
-                    v-loading="uploadLoading"
-                    class="image-upload"
-                    action="#"
-                    @preview="handlePictureCardPreview"
-                    >
-            <div v-if="!formData.data[field.fieldCode || field.fieldId]">
-              <el-icon><Plus /></el-icon>
-              <div class="el-upload__text">点击上传</div>
-            </div>
-            <template #tip>
-              <div class="el-upload__tip">支持 JPG/PNG/GIF 格式，大小不超过5MB</div>
-            </template>
-          </el-upload>
+          <FileUploader
+            v-else-if="field.fieldType === 'IMAGE'"
+            v-model="formData.data[field.fieldCode || field.fieldId]"
+            :field="field"
+            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+            :is-image="true"
+            @change="(val) => executeFieldEvent(field, 'onChange', val)"
+          />
           <!-- 用户选择 -->
           <EntitySelector v-else-if="field.fieldType === 'USER' || (field.fieldType === 'REFERENCE' && field.refEntityType === 'USER')"
                          v-model="formData.data[field.fieldCode || field.fieldId]"
@@ -255,7 +233,29 @@
                          :multiple="field.fieldType === 'MULTI_REFERENCE'"
                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
                          :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
+          <!-- 子表单（兜底渲染，如果字段未被过滤掉） -->
+          <FormFieldRendererLinkage
+            v-else-if="field.fieldType === 'SUB_FORM'"
+            :field="field"
+            v-model="formData.data[field.fieldCode || field.fieldId]"
+            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+          />
         </el-form-item>
+
+        <!-- 嵌入模式的子表单 -->
+        <div v-if="embeddedSubFormFields.length > 0" class="embedded-subforms-wrapper" style="width: 100%; margin-top: 16px;">
+          <div
+            v-for="field in embeddedSubFormFields"
+            :key="field.fieldId || field.id"
+            class="embedded-subform-item"
+          >
+            <FormFieldRendererLinkage
+              :field="field"
+              v-model="formData.data[field.fieldCode || field.fieldId || field.id]"
+              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+            />
+          </div>
+        </div>
 
         <!-- Tab 模式的子表单 -->
         <div v-if="tabSubFormFields.length > 0" class="tab-subforms-wrapper" style="width: 100%; margin-top: 16px;">
@@ -275,11 +275,13 @@
           </el-tabs>
         </div>
         
-        <el-divider v-if="entityDefinition.enableProcess" />
-        <el-form-item v-if="entityDefinition.enableProcess" label="发起流程">
-          <el-switch v-model="formData.startProcess" />
-          <span class="tip-text">保存数据时同时发起审批流程</span>
-        </el-form-item>
+        <template v-if="!isEdit && entityDefinition.enableProcess">
+          <el-divider />
+          <el-form-item label="发起流程">
+            <el-switch v-model="formData.startProcess" />
+            <span class="tip-text">保存数据时同时发起审批流程</span>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -307,6 +309,7 @@
         <!-- 提交信息 -->
         <el-descriptions-item label="提交人ID">{{ currentRow.submitterId || '-' }}</el-descriptions-item>
         <el-descriptions-item label="提交人">{{ currentRow.submitterName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="所属部门">{{ currentRow.deptId || '-' }}</el-descriptions-item>
         <el-descriptions-item label="提交时间">{{ formatDate(currentRow.submitTime) }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDate(currentRow.createdAt) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDate(currentRow.updatedAt) }}</el-descriptions-item>
@@ -322,44 +325,90 @@
           :key="field.id" 
           :label="field.fieldName"
         >
-          <!-- 文件类型显示下载链接 -->
-          <a v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" 
-             :href="currentRow.data[field.fieldCode]" 
-             target="_blank"
-             class="file-link">
-            <el-icon><Document /></el-icon>
-            {{ currentRow.data[field.fieldCode].split('/').pop() }}
-          </a>
+          <!-- 文件类型显示（支持单文件/多文件/多组分类） -->
+          <div v-else-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" class="file-display-readonly">
+            <div v-if="typeof currentRow.data[field.fieldCode] === 'string'" class="file-item-readonly">
+              <a :href="currentRow.data[field.fieldCode]" target="_blank" class="file-link">
+                <el-icon><Document /></el-icon>
+                {{ currentRow.data[field.fieldCode].split('/').pop() }}
+              </a>
+            </div>
+            <div v-else-if="Array.isArray(currentRow.data[field.fieldCode])" class="file-list-readonly">
+              <div v-for="(url, idx) in currentRow.data[field.fieldCode]" :key="idx" class="file-item-readonly">
+                <a :href="url" target="_blank" class="file-link">
+                  <el-icon><Document /></el-icon>
+                  {{ url.split('/').pop() }}
+                </a>
+              </div>
+            </div>
+            <div v-else-if="typeof currentRow.data[field.fieldCode] === 'object'" class="file-list-readonly">
+              <div v-for="(urls, groupName) in currentRow.data[field.fieldCode]" :key="groupName" class="file-group-readonly">
+                <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+                  <a :href="url" target="_blank" class="file-link">
+                    <el-icon><Document /></el-icon>
+                    {{ url.split('/').pop() }}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- 图片类型显示缩略图 -->
           <el-image v-else-if="field.fieldType === 'IMAGE' && currentRow.data?.[field.fieldCode]"
-                   :src="currentRow.data[field.fieldCode]" 
+                   :src="currentRow.data[field.fieldCode]"
                    :preview-src-list="[currentRow.data[field.fieldCode]]"
                    fit="cover"
                    style="width: 100px; height: 100px;"
                    class="preview-image" />
+          <!-- 富文本类型使用 v-html -->
+          <div v-else-if="field.fieldType === 'RICH_TEXT' && currentRow.data?.[field.fieldCode]"
+               class="rich-text-preview" v-html="currentRow.data[field.fieldCode]" />
           <!-- 其他类型正常显示 -->
           <span v-else>{{ formatFieldValue(field, currentRow.data?.[field.fieldCode]) }}</span>
         </el-descriptions-item>
       </el-descriptions>
-      
+
       <!-- 没有解析到表单时，使用实体字段显示 -->
       <el-descriptions v-else :column="2" border>
         <el-descriptions-item v-for="field in formFields.filter(f => !f.isSystem)" :key="field.fieldCode" :label="field.fieldName">
-          <!-- 文件类型显示下载链接 -->
-          <a v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" 
-             :href="currentRow.data[field.fieldCode]" 
-             target="_blank"
-             class="file-link">
-            <el-icon><Document /></el-icon>
-            {{ currentRow.data[field.fieldCode].split('/').pop() }}
-          </a>
+          <!-- 文件类型显示（支持单文件/多文件/多组分类） -->
+          <div v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" class="file-display-readonly">
+            <div v-if="typeof currentRow.data[field.fieldCode] === 'string'" class="file-item-readonly">
+              <a :href="currentRow.data[field.fieldCode]" target="_blank" class="file-link">
+                <el-icon><Document /></el-icon>
+                {{ currentRow.data[field.fieldCode].split('/').pop() }}
+              </a>
+            </div>
+            <div v-else-if="Array.isArray(currentRow.data[field.fieldCode])" class="file-list-readonly">
+              <div v-for="(url, idx) in currentRow.data[field.fieldCode]" :key="idx" class="file-item-readonly">
+                <a :href="url" target="_blank" class="file-link">
+                  <el-icon><Document /></el-icon>
+                  {{ url.split('/').pop() }}
+                </a>
+              </div>
+            </div>
+            <div v-else-if="typeof currentRow.data[field.fieldCode] === 'object'" class="file-list-readonly">
+              <div v-for="(urls, groupName) in currentRow.data[field.fieldCode]" :key="groupName" class="file-group-readonly">
+                <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+                  <a :href="url" target="_blank" class="file-link">
+                    <el-icon><Document /></el-icon>
+                    {{ url.split('/').pop() }}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- 图片类型显示缩略图 -->
           <el-image v-else-if="field.fieldType === 'IMAGE' && currentRow.data?.[field.fieldCode]"
-                   :src="currentRow.data[field.fieldCode]" 
+                   :src="currentRow.data[field.fieldCode]"
                    :preview-src-list="[currentRow.data[field.fieldCode]]"
                    fit="cover"
                    style="width: 100px; height: 100px;"
                    class="preview-image" />
+          <!-- 富文本类型使用 v-html -->
+          <div v-else-if="field.fieldType === 'RICH_TEXT' && currentRow.data?.[field.fieldCode]"
+               class="rich-text-preview" v-html="currentRow.data[field.fieldCode]" />
           <!-- 其他类型正常显示 -->
           <span v-else>{{ formatFieldValue(field, currentRow.data?.[field.fieldCode]) }}</span>
         </el-descriptions-item>
@@ -389,6 +438,8 @@ import { useUserStore } from '@/stores/user'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import EntitySelector from '@/components/EntitySelector.vue'
+import RichTextEditor from '@/components/RichTextEditor.vue'
+import FileUploader from '@/components/FileUploader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -528,20 +579,25 @@ watch(() => formData.value.data, () => {
   updateLinkageState()
 }, { deep: true })
 
-// 列表显示字段
+// 列表显示字段（显示前5个非系统字段）
 const listFields = computed(() => {
-  return fields.value.filter(f => f.showInList !== false).slice(0, 5) // 最多显示5个
+  return fields.value.filter(f => !f.isSystem).slice(0, 5)
 })
 
-// 查询字段
+// 查询字段（所有非系统字段均可作为查询条件）
 const queryFields = computed(() => {
-  return fields.value.filter(f => f.isQuery)
+  return fields.value.filter(f => !f.isSystem)
 })
+
+// 判断是否为子表单（任何模式）
+function isSubForm(field) {
+  const type = (field.componentType || field.fieldType || '').toUpperCase()
+  return type === 'SUB_FORM'
+}
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field) {
-  const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (type !== 'SUB_FORM') return false
+  if (!isSubForm(field)) return false
   if (field.displayMode === 'tab') return true
   if (field.componentProps) {
     try {
@@ -554,15 +610,20 @@ function isTabSubForm(field) {
   return false
 }
 
-// 表单字段 - 新增时使用解析后的表单字段，编辑时使用实体字段（过滤掉 Tab 子表单）
+// 判断是否为嵌入模式的子表单
+function isEmbeddedSubForm(field) {
+  return isSubForm(field) && !isTabSubForm(field)
+}
+
+// 表单字段 - 过滤掉所有子表单（嵌入和Tab都单独渲染）
 const formFields = computed(() => {
   let result
   if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
     result = resolvedForm.value.fields.filter(f => f.status !== 0)
   } else {
-    result = fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
+    result = fields.value.filter(f => !f.isSystem).sort((a, b) => a.sortOrder - b.sortOrder)
   }
-  return result.filter(f => !isTabSubForm(f))
+  return result.filter(f => !isSubForm(f))
 })
 
 // Tab 模式的子表单字段
@@ -571,9 +632,20 @@ const tabSubFormFields = computed(() => {
   if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
     result = resolvedForm.value.fields.filter(f => f.status !== 0)
   } else {
-    result = fields.value.filter(f => f.showInForm !== false).sort((a, b) => a.sortOrder - b.sortOrder)
+    result = fields.value.filter(f => !f.isSystem).sort((a, b) => a.sortOrder - b.sortOrder)
   }
   return result.filter(f => isTabSubForm(f))
+})
+
+// 嵌入模式的子表单字段
+const embeddedSubFormFields = computed(() => {
+  let result
+  if (!isEdit.value && resolvedForm.value && resolvedForm.value.fields) {
+    result = resolvedForm.value.fields.filter(f => f.status !== 0)
+  } else {
+    result = fields.value.filter(f => !f.isSystem).sort((a, b) => a.sortOrder - b.sortOrder)
+  }
+  return result.filter(f => isEmbeddedSubForm(f))
 })
 
 const activeTabSubForm = ref('')
@@ -743,6 +815,18 @@ const formatFieldValue = (field, value) => {
   if (field.fieldType === 'DATETIME') {
     return dayjs(value).format('YYYY-MM-DD HH:mm')
   }
+  // 子表单：显示为简化的表格
+  if (field.fieldType === 'SUB_FORM') {
+    if (!Array.isArray(value) || value.length === 0) return '-'
+    const subFields = field.subFields || field.fields || []
+    if (subFields.length === 0) return `${value.length} 条数据`
+    // 取前两行数据展示
+    const rows = value.slice(0, 2).map(row => {
+      return subFields.map(f => `${f.fieldName || f.label}: ${row[f.fieldKey || f.key] || '-'}`).join(', ')
+    }).join('；')
+    const more = value.length > 2 ? ` 等共 ${value.length} 条` : ''
+    return rows + more
+  }
   return value
 }
 
@@ -860,7 +944,18 @@ const handleCreate = async () => {
         // 设置默认值 - 使用 fieldCode 作为数据的 key
         const key = field.fieldCode || field.fieldId
         if (field.defaultValue) {
-          initialData[key] = field.defaultValue
+          let defaultValue = field.defaultValue
+          // 对选项类字段，确保默认值类型与选项 value 类型一致（避免 el-select 显示 key 而非 label）
+          if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)) {
+            const options = getFieldOptions(field)
+            if (options && options.length > 0) {
+              const matchedOpt = options.find(o => o.value == defaultValue)
+              if (matchedOpt) {
+                defaultValue = matchedOpt.value
+              }
+            }
+          }
+          initialData[key] = defaultValue
         }
       })
       formData.value = {
@@ -1125,5 +1220,31 @@ onMounted(() => {
 .preview-image:hover {
   border-color: #409eff;
   box-shadow: 0 2px 12px rgba(64, 158, 255, 0.3);
+}
+
+/* 文件只读展示样式 */
+.file-display-readonly {
+  width: 100%;
+}
+
+.file-list-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-group-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.file-item-readonly {
+  display: flex;
+  align-items: center;
 }
 </style>

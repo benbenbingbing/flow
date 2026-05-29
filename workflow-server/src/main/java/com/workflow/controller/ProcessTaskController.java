@@ -136,8 +136,11 @@ public class ProcessTaskController {
     @GetMapping("/statistics")
     public Result<Map<String, Object>> getStatistics() {
         try {
-            String currentUser = UserContext.getUsername();
-            if (currentUser == null) {
+            String currentUser = UserContext.getUserId();
+            if (currentUser == null || currentUser.isEmpty()) {
+                currentUser = UserContext.getUsername();
+            }
+            if (currentUser == null || currentUser.isEmpty()) {
                 currentUser = "admin";
             }
             Map<String, Object> stats = taskActionService.getTaskStatistics(currentUser);

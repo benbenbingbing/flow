@@ -77,7 +77,8 @@
             <el-switch v-model="selectedField.isRequired" />
           </el-form-item>
           <el-form-item label="默认值">
-            <el-input v-model="selectedField.defaultValue" />
+            <el-input v-model="selectedField.defaultValue" :placeholder="showOptions ? '请输入选项的 value 值（如 1）' : '请输入默认值'" />
+            <div v-if="showOptions" class="form-tip">默认值应填写选项的 value（key），而非显示文本 label</div>
           </el-form-item>
           <el-form-item label="选项" v-if="showOptions">
             <el-input

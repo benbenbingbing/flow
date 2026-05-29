@@ -63,6 +63,12 @@ public class EntityFormService {
                     com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
                     if (entityField != null) {
                         field.setFieldCode(entityField.getFieldCode());
+                        if (entityField.getRefEntityId() != null) {
+                            field.setRefEntityId(entityField.getRefEntityId());
+                        }
+                        if (entityField.getRefEntityType() != null) {
+                            field.setRefEntityType(entityField.getRefEntityType().name());
+                        }
                     }
                 }
             }
@@ -149,6 +155,12 @@ public class EntityFormService {
                     com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
                     if (entityField != null) {
                         field.setFieldCode(entityField.getFieldCode());
+                        if (entityField.getRefEntityId() != null) {
+                            field.setRefEntityId(entityField.getRefEntityId());
+                        }
+                        if (entityField.getRefEntityType() != null) {
+                            field.setRefEntityType(entityField.getRefEntityType().name());
+                        }
                     }
                 }
             }
@@ -217,6 +229,12 @@ public class EntityFormService {
                     com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
                     if (entityField != null) {
                         field.setFieldCode(entityField.getFieldCode());
+                        if (entityField.getRefEntityId() != null) {
+                            field.setRefEntityId(entityField.getRefEntityId());
+                        }
+                        if (entityField.getRefEntityType() != null) {
+                            field.setRefEntityType(entityField.getRefEntityType().name());
+                        }
                     }
                 }
             }

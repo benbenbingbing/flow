@@ -4,18 +4,20 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
+import com.workflow.dto.permission.DataPermissionResult;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
-import com.workflow.entity.ProcessTask;
-import org.flowable.task.api.Task;
 import com.workflow.entity.EntityStatus;
+import com.workflow.entity.ProcessTask;
+import com.workflow.entity.SysUser;
+import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityStatusMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessTaskMapper;
-import com.workflow.listener.MultiInstanceCollectionListener;
+import com.workflow.service.permission.DataPermissionEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.IdentityService;
@@ -23,6 +25,7 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -55,26 +58,46 @@ public class EntityDataDynamicService {
     private final ObjectMapper objectMapper;
     private final ProcessTaskService processTaskService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final DataPermissionEngine dataPermissionEngine;
+    private final SysUserService sysUserService;
 
     /**
-     * 查询某实体的所有数据
+     * 查询某实体的所有数据（带数据权限过滤）
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findByEntityCode(String entityCode) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        List<Map<String, Object>> dataList = dynamicMapper.selectList(tableName);
+        DataPermissionResult permission = getDataPermission(entityCode);
+
+        List<Map<String, Object>> dataList;
+        if (!permission.isHasPermission()) {
+            dataList = new ArrayList<>();
+        } else if (!permission.isNeedFilter()) {
+            dataList = dynamicMapper.selectList(tableName);
+        } else {
+            dataList = dynamicMapper.selectListWithPermission(tableName, permission.getSqlCondition());
+        }
+
         return dataList.stream()
                 .map(data -> convertToDTO(data, entityCode))
                 .collect(Collectors.toList());
     }
 
     /**
-     * 查询某实体的所有数据（返回原始Map，用于选择器）
+     * 查询某实体的所有数据（返回原始Map，用于选择器，带数据权限过滤）
      */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findByEntityCodeSimple(String entityCode) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        return dynamicMapper.selectList(tableName);
+        DataPermissionResult permission = getDataPermission(entityCode);
+
+        if (!permission.isHasPermission()) {
+            return new ArrayList<>();
+        } else if (!permission.isNeedFilter()) {
+            return dynamicMapper.selectList(tableName);
+        } else {
+            return dynamicMapper.selectListWithPermission(tableName, permission.getSqlCondition());
+        }
     }
 
     /**
@@ -152,6 +175,12 @@ public class EntityDataDynamicService {
             dto.setSubmitterId(currentUserId);
             dto.setSubmitterName(currentUserName);
 
+            // 设置部门ID（用于数据权限）
+            String currentDeptId = getCurrentDeptId();
+            if (currentDeptId != null) {
+                data.put("dept_id", currentDeptId);
+            }
+
             // 设置默认状态（从实体状态配置中获取 NEW 分类的第一个状态）
             String defaultStatus = getDefaultStatus(entityCode);
             data.put("status", defaultStatus);
@@ -216,21 +245,97 @@ public class EntityDataDynamicService {
             throw new RuntimeException("数据不存在: " + id);
         }
 
-        // 合并数据
-        formData.put("id", id);
-        formData.put("updated_by", UserContext.getUserId());
-        formData.put("updated_at", LocalDateTime.now());
+        // 构建更新数据：以 existingData 的列为基础（确保不更新不存在的列）
+        Map<String, Object> updateData = new HashMap<>();
+        updateData.put("id", id);
+        updateData.put("updated_by", UserContext.getUserId());
+        updateData.put("updated_at", LocalDateTime.now());
 
-        // 补充缺失的字段
-        existingData.forEach((key, value) -> {
-            if (!formData.containsKey(key)) {
-                formData.put(key, value);
+        // 系统字段映射（前端 camelCase -> 数据库 snake_case）
+        Map<String, String> standardFieldMap = new HashMap<>();
+        standardFieldMap.put("name", "name");
+        standardFieldMap.put("code", "code");
+        standardFieldMap.put("status", "status");
+        standardFieldMap.put("title", "title");
+        standardFieldMap.put("dataNo", "data_no");
+        standardFieldMap.put("processInstanceId", "process_instance_id");
+        standardFieldMap.put("processStartTime", "process_start_time");
+        standardFieldMap.put("processEndTime", "process_end_time");
+        standardFieldMap.put("currentTaskId", "current_task_id");
+        standardFieldMap.put("currentTaskName", "current_task_name");
+        standardFieldMap.put("currentTaskAssignee", "current_task_assignee");
+        standardFieldMap.put("submitterId", "submitter_id");
+        standardFieldMap.put("submitterName", "submitter_name");
+        standardFieldMap.put("deptId", "dept_id");
+        standardFieldMap.put("submitTime", "submit_time");
+
+        // 1. 从 formData 直接提取标准字段
+        standardFieldMap.forEach((frontendKey, dbKey) -> {
+            if (formData.containsKey(frontendKey)) {
+                Object value = formData.get(frontendKey);
+                if (value instanceof String && ((String) value).isEmpty()) {
+                    value = null;
+                }
+                updateData.put(dbKey, value);
             }
         });
 
-        dynamicMapper.update(tableName, formData);
+        // 2. 从 formData.data 提取自定义字段（排除系统字段，camelCase 转 snake_case）
+        Set<String> systemFields = new HashSet<>(Arrays.asList(
+                "id", "dataNo", "data_no", "title", "name", "code", "status",
+                "processInstanceId", "process_instance_id",
+                "processStartTime", "process_start_time",
+                "processEndTime", "process_end_time",
+                "currentTaskId", "current_task_id",
+                "currentTaskName", "current_task_name",
+                "currentTaskAssignee", "current_task_assignee",
+                "submitterId", "submitter_id",
+                "submitterName", "submitter_name",
+                "deptId", "dept_id",
+                "submitTime", "submit_time",
+                "createdAt", "created_at", "updatedAt", "updated_at",
+                "createdBy", "created_by", "updatedBy", "updated_by",
+                "deleted", "entityCode", "entity_code", "startProcess", "start_process"
+        ));
 
-        return convertToDTO(formData, entityCode);
+        Object dataObj = formData.get("data");
+        if (dataObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> customData = (Map<String, Object>) dataObj;
+            for (Map.Entry<String, Object> entry : customData.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (key == null || key.isEmpty() || systemFields.contains(key)) {
+                    continue;
+                }
+                String columnName = camelToUnderscore(key);
+                if (systemFields.contains(columnName)) {
+                    continue;
+                }
+                if (value instanceof String && ((String) value).isEmpty()) {
+                    value = null;
+                }
+                if (value instanceof Map || value instanceof List) {
+                    try {
+                        value = objectMapper.writeValueAsString(value);
+                    } catch (Exception e) {
+                        log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
+                    }
+                }
+                updateData.put(columnName, value);
+            }
+        }
+
+        // 3. 补充 existingData 中缺失的字段（保持原有值）
+        existingData.forEach((key, value) -> {
+            if (!updateData.containsKey(key)) {
+                updateData.put(key, value);
+            }
+        });
+
+        dynamicMapper.update(tableName, updateData);
+
+        return convertToDTO(updateData, entityCode);
     }
 
     /**
@@ -252,24 +357,50 @@ public class EntityDataDynamicService {
     }
 
     /**
-     * 条件查询
+     * 条件查询（带数据权限过滤）
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findByCondition(String entityCode, Map<String, Object> condition) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        List<Map<String, Object>> dataList = dynamicMapper.selectByCondition(tableName, condition);
+        DataPermissionResult permission = getDataPermission(entityCode);
+
+        List<Map<String, Object>> dataList;
+        if (!permission.isHasPermission()) {
+            dataList = new ArrayList<>();
+        } else if (!permission.isNeedFilter()) {
+            dataList = dynamicMapper.selectByCondition(tableName, condition);
+        } else {
+            dataList = dynamicMapper.selectByConditionWithPermission(tableName, condition, permission.getSqlCondition());
+        }
+
         return dataList.stream()
                 .map(data -> convertToDTO(data, entityCode))
                 .collect(Collectors.toList());
     }
 
     /**
-     * 统计数量
+     * 统计数量（带数据权限过滤）
      */
     @Transactional(readOnly = true)
     public long count(String entityCode) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        return dynamicMapper.count(tableName);
+        DataPermissionResult permission = getDataPermission(entityCode);
+
+        if (!permission.isHasPermission()) {
+            return 0;
+        } else if (!permission.isNeedFilter()) {
+            return dynamicMapper.count(tableName);
+        } else {
+            // 带权限条件的统计：使用原生SQL执行
+            String sql = "SELECT COUNT(*) FROM " + tableName +
+                    " WHERE deleted = 0 AND (" + permission.getSqlCondition() + ")";
+            List<Map<String, Object>> result = dynamicMapper.executeQuery(sql);
+            if (result != null && !result.isEmpty()) {
+                Object count = result.get(0).values().iterator().next();
+                return count != null ? Long.parseLong(count.toString()) : 0;
+            }
+            return 0;
+        }
     }
 
     // ============ 私有方法 ============
@@ -417,6 +548,7 @@ public class EntityDataDynamicService {
         dto.setCurrentTaskAssignee(getString(data, "current_task_assignee"));
         dto.setSubmitterId(getString(data, "submitter_id"));
         dto.setSubmitterName(getString(data, "submitter_name"));
+        dto.setDeptId(getString(data, "dept_id"));
         dto.setSubmitTime(getDateTime(data, "submit_time"));
         dto.setCreatedAt(getDateTime(data, "created_at"));
         dto.setUpdatedAt(getDateTime(data, "updated_at"));
@@ -481,6 +613,9 @@ public class EntityDataDynamicService {
         if (dto.getSubmitterName() != null) {
             data.put("submitter_name", dto.getSubmitterName());
         }
+        if (dto.getDeptId() != null) {
+            data.put("dept_id", dto.getDeptId());
+        }
         if (dto.getSubmitTime() != null) {
             data.put("submit_time", dto.getSubmitTime());
         }
@@ -497,6 +632,7 @@ public class EntityDataDynamicService {
                     "currentTaskName", "current_task_name",
                     "submitterId", "submitter_id",
                     "submitterName", "submitter_name",
+                    "deptId", "dept_id",
                     "submitTime", "submit_time",
                     "createdAt", "created_at", "updatedAt", "updated_at",
                     "createdBy", "created_by", "updatedBy", "updated_by",
@@ -516,6 +652,14 @@ public class EntityDataDynamicService {
                     // 将空字符串转为 null，避免唯一约束冲突
                     if (value instanceof String && ((String) value).isEmpty()) {
                         value = null;
+                    }
+                    // 复杂对象（Map/List）序列化为 JSON 字符串，避免 MyBatis 默认 Java 序列化
+                    if (value instanceof Map || value instanceof List) {
+                        try {
+                            value = objectMapper.writeValueAsString(value);
+                        } catch (Exception e) {
+                            log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
+                        }
                     }
                     data.put(columnName, value);
                 }
@@ -561,7 +705,19 @@ public class EntityDataDynamicService {
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             if (!systemFields.contains(entry.getKey())) {
                 String camelKey = underscoreToCamel(entry.getKey());
-                customData.put(camelKey, entry.getValue());
+                Object value = entry.getValue();
+                // 尝试将 JSON 字符串反序列化为对象（Map/List），便于前端直接使用
+                if (value instanceof String) {
+                    String str = (String) value;
+                    if (str.trim().startsWith("{") || str.trim().startsWith("[")) {
+                        try {
+                            value = objectMapper.readValue(str, Object.class);
+                        } catch (Exception e) {
+                            // 不是有效 JSON，保持原字符串
+                        }
+                    }
+                }
+                customData.put(camelKey, value);
             }
         }
         return customData;
@@ -617,6 +773,41 @@ public class EntityDataDynamicService {
         }
         String userName = UserContext.getUsername();
         return userName != null ? userName : "系统";
+    }
+
+    /**
+     * 获取当前用户部门ID
+     */
+    private String getCurrentDeptId() {
+        String userId = UserContext.getUserId();
+        if (userId == null) {
+            return null;
+        }
+        SysUser user = sysUserService.getById(userId);
+        return user != null ? user.getDeptId() : null;
+    }
+
+    /**
+     * 获取当前登录用户完整信息（用于数据权限计算）
+     */
+    private SysUser getCurrentSysUser() {
+        String userId = UserContext.getUserId();
+        if (userId == null) {
+            return null;
+        }
+        return sysUserService.getById(userId);
+    }
+
+    /**
+     * 计算数据权限结果
+     */
+    private DataPermissionResult getDataPermission(String entityCode) {
+        SysUser user = getCurrentSysUser();
+        if (user == null) {
+            // 未登录用户，默认仅本人（实际上看不到任何数据，因为没有用户ID匹配）
+            return DataPermissionResult.withCondition("created_by = ''");
+        }
+        return dataPermissionEngine.calculatePermission(entityCode, user);
     }
 
     private String generateId() {

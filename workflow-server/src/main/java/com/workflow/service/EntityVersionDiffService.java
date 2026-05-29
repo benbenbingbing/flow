@@ -228,12 +228,6 @@ public class EntityVersionDiffService {
         if (!Objects.equals(oldField.getDefaultValue(), newField.getDefaultValue())) {
             changes.add("默认值: " + oldField.getDefaultValue() + " → " + newField.getDefaultValue());
         }
-        if (!Objects.equals(oldField.getShowInList(), newField.getShowInList())) {
-            changes.add("列表显示: " + oldField.getShowInList() + " → " + newField.getShowInList());
-        }
-        if (!Objects.equals(oldField.getShowInForm(), newField.getShowInForm())) {
-            changes.add("表单显示: " + oldField.getShowInForm() + " → " + newField.getShowInForm());
-        }
         // 字段长度/精度/列名：只有两边都不为null才比较，避免历史版本缺失这些数据导致误判
         if (oldField.getFieldLength() != null && newField.getFieldLength() != null
                 && !Objects.equals(oldField.getFieldLength(), newField.getFieldLength())) {
@@ -285,12 +279,6 @@ public class EntityVersionDiffService {
         }
         if (!Objects.equals(oldField.getDefaultValue(), newField.getDefaultValue())) {
             changes.add("默认值: " + oldField.getDefaultValue() + " → " + newField.getDefaultValue());
-        }
-        if (!Objects.equals(oldField.getShowInList(), newField.getShowInList())) {
-            changes.add("列表显示: " + oldField.getShowInList() + " → " + newField.getShowInList());
-        }
-        if (!Objects.equals(oldField.getShowInForm(), newField.getShowInForm())) {
-            changes.add("表单显示: " + oldField.getShowInForm() + " → " + newField.getShowInForm());
         }
         // 字段长度/精度/列名：只有两边都不为null才比较，避免历史版本缺失这些数据导致误判
         if (oldField.getFieldLength() != null && newField.getFieldLength() != null

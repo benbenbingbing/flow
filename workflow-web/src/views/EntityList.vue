@@ -32,7 +32,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
             <el-button
@@ -51,19 +51,12 @@
             >
               重新发布
             </el-button>
+            <el-button link type="primary" @click="handleListConfig(row)">列表</el-button>
+            <el-button link type="primary" @click="handleForm(row)">表单</el-button>
             <el-dropdown>
               <el-button link type="info">···</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="handleData(row)">
-                    <el-icon><DataLine /></el-icon>数据管理
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="handleListConfig(row)">
-                    <el-icon><List /></el-icon>列表
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="handleForm(row)">
-                    <el-icon><Document /></el-icon>表单
-                  </el-dropdown-item>
                   <el-dropdown-item @click="handleStatusConfig(row)">
                     <el-icon><SetUp /></el-icon>状态配置
                   </el-dropdown-item>
@@ -449,7 +442,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Rank, View, ArrowRight, ArrowDown, DataLine, Document, SetUp, Link, Clock, Delete } from '@element-plus/icons-vue'
+import { Plus, Rank, View, ArrowRight, ArrowDown, SetUp, Link, Clock, Delete } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
 import { entityVersionDiffApi } from '@/api/entityVersionDiff'

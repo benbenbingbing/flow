@@ -141,9 +141,9 @@ public class DynamicTableService {
                     jdbcTemplate.execute(sql);
                     executedDdls.add(sql);
                     
-                    // 创建索引
-                    if (Boolean.TRUE.equals(field.getIsQuery()) || Boolean.TRUE.equals(field.getIsUnique())) {
-                        createIndexForColumn(tableName, dbColumnName, field.getIsUnique());
+                    // 创建索引（仅对唯一字段创建唯一索引）
+                    if (Boolean.TRUE.equals(field.getIsUnique())) {
+                        createIndexForColumn(tableName, dbColumnName, true);
                     }
                     
                     log.info("为表 {} 添加字段: {}", tableName, dbColumnName);
@@ -192,8 +192,8 @@ public class DynamicTableService {
         jdbcTemplate.execute(sql);
         
         // 如果字段需要索引，创建索引
-        if (Boolean.TRUE.equals(field.getIsQuery()) || Boolean.TRUE.equals(field.getIsUnique())) {
-            createIndexForColumn(tableName, field.getFieldCode(), field.getIsUnique());
+        if (Boolean.TRUE.equals(field.getIsUnique())) {
+            createIndexForColumn(tableName, field.getFieldCode(), true);
         }
         
         log.info("为表 {} 添加字段: {}", tableName, field.getFieldCode());
@@ -254,6 +254,7 @@ public class DynamicTableService {
         sql.append("  `submitter_id` VARCHAR(64) DEFAULT NULL COMMENT '提交人ID',\n");
         sql.append("  `submitter_name` VARCHAR(100) DEFAULT NULL COMMENT '提交人姓名',\n");
         sql.append("  `submit_time` DATETIME DEFAULT NULL COMMENT '提交时间',\n");
+        sql.append("  `dept_id` VARCHAR(64) DEFAULT NULL COMMENT '所属部门ID（数据权限用）',\n");
         sql.append("  `created_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人',\n");
         sql.append("  `updated_by` VARCHAR(64) DEFAULT NULL COMMENT '更新人',\n");
         sql.append("  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',\n");
@@ -265,7 +266,8 @@ public class DynamicTableService {
                 "name", "code", "status", "processInstanceId", "processInstance_id",
                 "processStartTime", "process_startTime", "processStart_time",
                 "processEndTime", "process_endTime", "processEnd_time",
-                "submitterId", "submitter_id", "submitterName", "submitter_name"
+                "submitterId", "submitter_id", "submitterName", "submitter_name",
+                "deptId", "dept_id"
         ));
         
         for (EntityField field : fields) {
@@ -350,6 +352,7 @@ public class DynamicTableService {
                 int length = field.getFieldLength() != null ? field.getFieldLength() : 200;
                 return "VARCHAR(" + length + ")";
             case TEXT:
+            case RICH_TEXT:
                 return "TEXT";
             case INTEGER:
                 return "INT";
@@ -399,9 +402,6 @@ public class DynamicTableService {
         
         // 字段索引
         for (EntityField field : fields) {
-            if (Boolean.TRUE.equals(field.getIsQuery())) {
-                createIndexForColumn(tableName, field.getFieldCode(), false);
-            }
             if (Boolean.TRUE.equals(field.getIsUnique())) {
                 createIndexForColumn(tableName, field.getFieldCode(), true);
             }

@@ -61,10 +61,10 @@
             <el-button type="success" link size="small" @click="downloadFile(file.url)">
               <el-icon><Download /></el-icon> 下载
             </el-button>
-            <el-button type="warning" link size="small" @click="updateFile(file)">
+            <el-button v-if="!disabled" type="warning" link size="small" @click="updateFile(file)">
               <el-icon><RefreshRight /></el-icon> 更新
             </el-button>
-            <el-button type="danger" link size="small" @click="removeFileByIndex(file.groupIndex, file.fileIndex)">
+            <el-button v-if="!disabled" type="danger" link size="small" @click="removeFileByIndex(file.groupIndex, file.fileIndex)">
               <el-icon><Delete /></el-icon> 删除
             </el-button>
           </div>

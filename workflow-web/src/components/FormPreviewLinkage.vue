@@ -28,10 +28,10 @@
       :label-position="labelPosition"
       class="preview-form"
     >
-      <!-- 没有 Tab 子表单时，正常渲染所有字段 -->
-      <template v-if="tabSubForms.length === 0">
+      <!-- 没有 Tab 子表单，或外部接管 tabs 时，只渲染普通字段 -->
+      <template v-if="tabSubForms.length === 0 || noInternalTabs">
         <div
-          v-for="field in processedFields"
+          v-for="field in (noInternalTabs ? normalFields : processedFields)"
           :key="field.id"
           class="preview-field-wrapper"
           :style="getFieldStyle(field)"
@@ -57,7 +57,6 @@
       <template v-else>
         <div class="form-tabs-wrapper">
           <el-tabs
-            :key="'tabs-' + normalFields.length + '-' + tabSubForms.length"
             v-model="activeTabSubForm"
             type="border-card"
           >
@@ -113,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, watchEffect, onMounted } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
@@ -134,6 +133,11 @@ const props = defineProps({
   showHeader: {
     type: Boolean,
     default: true
+  },
+  // 是否禁用内部 Tab 组织（用于外部接管 tabs，如审批弹窗）
+  noInternalTabs: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -205,19 +209,19 @@ const tabSubForms = computed(() => {
 })
 
 // 自动设置第一个 tab 为激活状态
-watch([tabSubForms, normalFields], ([tabs, normals]) => {
+watchEffect(() => {
+  const tabs = tabSubForms.value
+  const normals = normalFields.value
   if (tabs.length > 0) {
-    // 有普通字段时默认激活"基本信息"Tab，否则激活第一个子表单Tab
-    const defaultKey = normals.length > 0 ? 'basic' : 'tab_0'
     const allTabNames = [
       ...(normals.length > 0 ? ['basic'] : []),
-      ...tabs.map((t, i) => 'tab_' + i)
+      ...tabs.map((_, i) => 'tab_' + i)
     ]
     if (!allTabNames.includes(activeTabSubForm.value)) {
-      activeTabSubForm.value = defaultKey
+      activeTabSubForm.value = allTabNames[0] || ''
     }
   }
-}, { immediate: true })
+})
 
 // 标签位置
 const labelPosition = computed(() => {

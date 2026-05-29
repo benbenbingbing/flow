@@ -86,6 +86,23 @@ public interface EntityDataDynamicMapper {
     int physicalDeleteById(@Param("tableName") String tableName, @Param("id") String id);
 
     /**
+     * 查询列表（带数据权限过滤）
+     */
+    @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "selectListWithPermission")
+    @Options(statementType = StatementType.PREPARED)
+    List<Map<String, Object>> selectListWithPermission(@Param("tableName") String tableName,
+                                                        @Param("permissionSql") String permissionSql);
+
+    /**
+     * 条件查询（带数据权限过滤）
+     */
+    @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "selectByConditionWithPermission")
+    @Options(statementType = StatementType.PREPARED)
+    List<Map<String, Object>> selectByConditionWithPermission(@Param("tableName") String tableName,
+                                                               @Param("condition") Map<String, Object> condition,
+                                                               @Param("permissionSql") String permissionSql);
+
+    /**
      * 统计数量
      */
     @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "count")

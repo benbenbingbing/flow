@@ -386,7 +386,22 @@ const fetchMenuTree = async () => {
 // 获取图标组件
 const getIconComponent = (iconName: string) => {
   if (!iconName) return null
-  return (ElementPlusIconsVue as any)[iconName] || null
+  const name = iconName.trim()
+  // 精确匹配
+  const exact = (ElementPlusIconsVue as any)[name]
+  if (exact) return exact
+  // 尝试首字母大写（处理全小写情况）
+  const capitalized = name.charAt(0).toUpperCase() + name.slice(1)
+  const capitalizedMatch = (ElementPlusIconsVue as any)[capitalized]
+  if (capitalizedMatch) return capitalizedMatch
+  // 调试：打印相近的图标名
+  if (typeof window !== 'undefined') {
+    const similar = Object.keys(ElementPlusIconsVue).filter(k =>
+      k.toLowerCase().includes(name.toLowerCase())
+    ).slice(0, 5)
+    console.warn(`[Menu] Icon not found: "${name}", similar:`, similar)
+  }
+  return null
 }
 
 // 计算左侧缩进（根据层级）
@@ -632,12 +647,30 @@ onMounted(() => {
   }
 }
 
+// 隐藏 el-table 内置的树形展开图标（使用自定义展开图标代替）
+:deep(.el-table__expand-icon) {
+  display: none !important;
+}
+
+// 隐藏展开图标的占位元素
+:deep(.el-table__placeholder) {
+  display: none !important;
+}
+
+// 隐藏展开列的 cell  padding 让自定义图标更贴边
+:deep(.el-table__cell.el-table__expand-column) {
+  padding: 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  border: none !important;
+}
+
 // 修改 switch 样式，使文字不换行
 :deep(.el-switch) {
   .el-switch__label {
     white-space: nowrap;
   }
-  
+
   &.el-switch--default {
     .el-switch__label {
       font-size: 12px;

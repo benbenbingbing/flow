@@ -5,9 +5,66 @@
 
 <template>
   <div class="form-field-renderer-linkage">
+    <!-- 最高优先级：disabled 模式下值看起来像文件数据，直接渲染文件列表（避免 Object 显示为 [object Object]） -->
+    <template v-if="disabled && isFileLikeValue">
+      <!-- 多组模式：对象 { groupName: [urls] } -->
+      <div v-if="fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)" class="file-display-readonly">
+        <div v-for="(urls, groupName) in fieldValue" :key="groupName" class="file-group-readonly">
+          <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+            <div class="file-info">
+              <el-icon><Document /></el-icon>
+              <span class="file-name">{{ getFileName(url) }}</span>
+              <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+            </div>
+            <div class="file-actions">
+              <el-button type="primary" link size="small" @click="previewFile(url)">
+                <el-icon><View /></el-icon> 预览
+              </el-button>
+              <el-button type="success" link size="small" @click="downloadFile(url)">
+                <el-icon><Download /></el-icon> 下载
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 数组模式：多文件 [urls] -->
+      <div v-else-if="Array.isArray(fieldValue)" class="file-list-readonly">
+        <div v-for="(url, idx) in fieldValue" :key="idx" class="file-item-readonly">
+          <div class="file-info">
+            <el-icon><Document /></el-icon>
+            <span class="file-name">{{ getFileName(url) }}</span>
+          </div>
+          <div class="file-actions">
+            <el-button type="primary" link size="small" @click="previewFile(url)">
+              <el-icon><View /></el-icon> 预览
+            </el-button>
+            <el-button type="success" link size="small" @click="downloadFile(url)">
+              <el-icon><Download /></el-icon> 下载
+            </el-button>
+          </div>
+        </div>
+      </div>
+      <!-- 单文件字符串 -->
+      <div v-else-if="typeof fieldValue === 'string' && fieldValue.startsWith('/')" class="file-item-readonly">
+        <div class="file-info">
+          <el-icon><Document /></el-icon>
+          <span class="file-name">{{ getFileName(fieldValue) }}</span>
+        </div>
+        <div class="file-actions">
+          <el-button type="primary" link size="small" @click="previewFile(fieldValue)">
+            <el-icon><View /></el-icon> 预览
+          </el-button>
+          <el-button type="success" link size="small" @click="downloadFile(fieldValue)">
+            <el-icon><Download /></el-icon> 下载
+          </el-button>
+        </div>
+      </div>
+      <el-input v-else v-model="fieldValue" :readonly="true" />
+    </template>
+
     <!-- 文本输入 -->
     <el-input
-      v-if="renderType === 'input'"
+      v-else-if="renderType === 'input'"
       v-model="fieldValue"
       :placeholder="field.placeholder || `请输入${fieldLabel}`"
       :disabled="disabled"
@@ -164,14 +221,71 @@
     />
     
     <!-- 文件上传 -->
-    <FileUploader
-      v-else-if="renderType === 'file' || renderType === 'image'"
-      v-model="fieldValue"
-      :field="field"
-      :disabled="disabled"
-      :is-image="renderType === 'image'"
-      @change="handleValueChange"
-    />
+    <template v-else-if="renderType === 'file' || renderType === 'image'">
+      <!-- 只读模式：复用顶部统一的文件列表渲染（避免样式不一致） -->
+      <template v-if="disabled">
+        <!-- 此分支通常被顶部的 isFileLikeValue 覆盖，保留简单兜底 -->
+        <div v-if="fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)" class="file-display-readonly">
+          <div v-for="(urls, groupName) in fieldValue" :key="groupName" class="file-group-readonly">
+            <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+              <div class="file-info">
+                <el-icon><Document /></el-icon>
+                <span class="file-name">{{ getFileName(url) }}</span>
+                <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+              </div>
+              <div class="file-actions">
+                <el-button type="primary" link size="small" @click="previewFile(url)">
+                  <el-icon><View /></el-icon> 预览
+                </el-button>
+                <el-button type="success" link size="small" @click="downloadFile(url)">
+                  <el-icon><Download /></el-icon> 下载
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="Array.isArray(fieldValue)" class="file-list-readonly">
+          <div v-for="(url, idx) in fieldValue" :key="idx" class="file-item-readonly">
+            <div class="file-info">
+              <el-icon><Document /></el-icon>
+              <span class="file-name">{{ getFileName(url) }}</span>
+            </div>
+            <div class="file-actions">
+              <el-button type="primary" link size="small" @click="previewFile(url)">
+                <el-icon><View /></el-icon> 预览
+              </el-button>
+              <el-button type="success" link size="small" @click="downloadFile(url)">
+                <el-icon><Download /></el-icon> 下载
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="typeof fieldValue === 'string' && fieldValue.startsWith('/')" class="file-item-readonly">
+          <div class="file-info">
+            <el-icon><Document /></el-icon>
+            <span class="file-name">{{ getFileName(fieldValue) }}</span>
+          </div>
+          <div class="file-actions">
+            <el-button type="primary" link size="small" @click="previewFile(fieldValue)">
+              <el-icon><View /></el-icon> 预览
+            </el-button>
+            <el-button type="success" link size="small" @click="downloadFile(fieldValue)">
+              <el-icon><Download /></el-icon> 下载
+            </el-button>
+          </div>
+        </div>
+        <el-input v-else v-model="fieldValue" :readonly="true" />
+      </template>
+      <!-- 编辑模式：使用 FileUploader -->
+      <FileUploader
+        v-else
+        v-model="fieldValue"
+        :field="field"
+        :disabled="disabled"
+        :is-image="renderType === 'image'"
+        @change="handleValueChange"
+      />
+    </template>
     
     <!-- 用户选择 -->
     <el-select-v2
@@ -213,7 +327,34 @@
       :disabled="disabled"
       @change="handleValueChange"
     />
-    
+
+    <!-- 单选实体 -->
+    <EntitySelector
+      v-else-if="renderType === 'reference' || renderType === 'REFERENCE'"
+      v-model="fieldValue"
+      :entity-type="getRefEntityType()"
+      :entity-code="field.refEntityId"
+      :ref-entity-id="field.refEntityId"
+      :api-url="getApiUrl(field)"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
+      :disabled="disabled"
+      @change="handleEntitySelect"
+    />
+
+    <!-- 多选实体 -->
+    <EntitySelector
+      v-else-if="renderType === 'multi_reference' || renderType === 'MULTI_REFERENCE'"
+      v-model="fieldValue"
+      :entity-type="getRefEntityType()"
+      :entity-code="field.refEntityId"
+      :ref-entity-id="field.refEntityId"
+      :api-url="getApiUrl(field)"
+      :multiple="true"
+      :placeholder="field.placeholder || `请选择${fieldLabel}`"
+      :disabled="disabled"
+      @change="handleEntitySelect"
+    />
+
     <!-- 默认文本输入 -->
     <el-input
       v-else
@@ -231,8 +372,10 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { Document, View, Download } from '@element-plus/icons-vue'
 import FileUploader from './FileUploader.vue'
 import SubFormRenderer from './SubFormRenderer.vue'
+import EntitySelector from './EntitySelector.vue'
 import { getFormFields } from '../api/entityForm'
 
 const props = defineProps({
@@ -305,6 +448,25 @@ const renderType = computed(() => {
 // 字段显示标签
 const fieldLabel = computed(() => {
   return props.field.fieldLabel || props.field.fieldName || ''
+})
+
+// 判断字段值是否看起来像文件数据（disabled 模式下兜底渲染文件列表）
+const isFileLikeValue = computed(() => {
+  const val = props.modelValue
+  if (val == null) return false
+  if (typeof val === 'object') {
+    if (Array.isArray(val)) {
+      return val.some(item => typeof item === 'string' && item.startsWith('/'))
+    }
+    return Object.values(val).some(v => {
+      if (Array.isArray(v)) {
+        return v.some(item => typeof item === 'string' && item.startsWith('/'))
+      }
+      return typeof v === 'string' && v.startsWith('/')
+    })
+  }
+  if (typeof val === 'string' && val.startsWith('/')) return true
+  return false
 })
 
 // 当前选项（优先使用传入的动态选项）
@@ -450,13 +612,51 @@ function mapFieldType(type) {
   return map[(type || '').toLowerCase()] || 'TEXT'
 }
 
+// 从字段中读取子表单字段列表（支持根属性和 componentProps）
+function getSubFieldsFromField(field) {
+  if (field.subFields?.length) return field.subFields
+  if (field.fields?.length) return field.fields
+  if (field.componentProps) {
+    try {
+      const cp = typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps
+      if (cp.subFormConfig?.fields?.length) return cp.subFormConfig.fields
+      if (cp.fields?.length) return cp.fields
+      if (cp.subFields?.length) return cp.subFields
+    } catch (e) {}
+  }
+  return []
+}
+
 // 子表单配置
 const subFormConfig = computed(() => {
   const field = props.field
   const isRef = subFormMeta.value.subFormType === 'ref' && externalFormFields.value.length > 0
   const fields = isRef
     ? externalFormFields.value
-    : (field.subFields || field.fields || [])
+    : getSubFieldsFromField(field)
+
+  // 优先从字段配置读取布局，默认表单布局
+  let layout = 'form'
+  if (field.layout) {
+    layout = field.layout
+  } else if (field.componentProps) {
+    try {
+      const cp = typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps
+      if (cp.subFormConfig?.layout) layout = cp.subFormConfig.layout
+    } catch (e) {}
+  }
+
+  // 读取是否可重复添加
+  let repeatable = false
+  if (field.repeatable != null) {
+    repeatable = field.repeatable
+  } else if (field.componentProps) {
+    try {
+      const cp = typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps
+      if (cp.subFormConfig?.repeatable != null) repeatable = cp.subFormConfig.repeatable
+    } catch (e) {}
+  }
+
   return {
     label: field.fieldName || '明细',
     fieldKey: field.fieldKey || 'detailList',
@@ -466,7 +666,8 @@ const subFormConfig = computed(() => {
     fields: fields,
     showSummary: field.showSummary || false,
     summaryFields: field.summaryFields || [],
-    layout: isRef ? 'form' : 'table'
+    layout: layout,
+    repeatable: repeatable
   }
 })
 
@@ -526,6 +727,28 @@ const userOptions = ref([
 // 处理值变化
 function handleChange(val) {
   emit('change', val)
+}
+
+// 从 URL 获取文件名
+function getFileName(url) {
+  if (!url) return '未知文件'
+  const parts = String(url).split('/')
+  return parts[parts.length - 1] || '未知文件'
+}
+
+// 预览文件
+function previewFile(url) {
+  if (!url) return
+  window.open(url, '_blank')
+}
+
+// 下载文件
+function downloadFile(url) {
+  if (!url) return
+  const a = document.createElement('a')
+  a.href = url
+  a.download = getFileName(url)
+  a.click()
 }
 
 // 获取中国省市区数据（简化版）
@@ -593,6 +816,28 @@ function getChinaRegionData() {
   ]
 }
 
+// 获取引用实体类型
+const getRefEntityType = () => {
+  return props.field.refEntityType || 'CUSTOM'
+}
+
+// 从 componentProps 或字段属性中获取数据接口URL
+const getApiUrl = (field) => {
+  if (field.componentProps) {
+    try {
+      const cp = typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps
+      if (cp.refConfig?.apiUrl) return cp.refConfig.apiUrl
+    } catch (e) {}
+  }
+  return field.apiUrl || null
+}
+
+// 实体选择变化
+const handleEntitySelect = (val) => {
+  emit('update:modelValue', val)
+  emit('change', val)
+}
+
 // 设置默认值
 watch(() => props.field.defaultValue, (val) => {
   if (val && !props.modelValue) {
@@ -604,5 +849,76 @@ watch(() => props.field.defaultValue, (val) => {
 <style scoped>
 .form-field-renderer-linkage {
   width: 100%;
+}
+
+/* 文件只读展示样式 */
+.file-display-readonly {
+  width: 100%;
+}
+
+.file-list-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-group-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.file-item-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.file-info .el-icon {
+  color: #409eff;
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #409eff;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #ecf5ff;
+  transition: all 0.3s;
+}
+
+.file-link:hover {
+  background-color: #409eff;
+  color: #fff;
 }
 </style>

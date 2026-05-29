@@ -57,7 +57,12 @@ public class MyStartedProcessVO {
      * 发起人
      */
     private String startUser;
-    
+
+    /**
+     * 发起人名称（昵称）
+     */
+    private String startUserName;
+
     /**
      * 发起时间
      */

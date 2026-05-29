@@ -14,6 +14,9 @@
         <el-button @click="codeRuleVisible = true">
           <el-icon><Ticket /></el-icon>编码规则
         </el-button>
+        <el-button @click="permissionVisible = true">
+          <el-icon><Lock /></el-icon>数据权限
+        </el-button>
         <el-button type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>保存
         </el-button>
@@ -88,13 +91,16 @@
             <el-input v-model="selectedField.fieldName" placeholder="请输入字段名称" />
           </el-form-item>
           <el-form-item label="字段编码" required>
-            <el-input 
-              v-model="selectedField.fieldCode" 
+            <el-input
+              v-model="selectedField.fieldCode"
               placeholder="请输入字段编码"
-              :disabled="selectedField.isPublished"
+              :disabled="selectedField.isPublished || selectedField.isSystem"
             />
             <div v-if="selectedField.isPublished" class="form-tip text-warning">
               已发布字段的编码不能修改
+            </div>
+            <div v-else-if="selectedField.isSystem" class="form-tip text-warning">
+              系统字段的编码不能修改
             </div>
           </el-form-item>
           <el-form-item label="数据库列名">
@@ -104,11 +110,11 @@
             />
           </el-form-item>
           <el-form-item label="字段类型" required>
-            <el-select 
-              v-model="selectedField.fieldType" 
-              placeholder="选择类型" 
+            <el-select
+              v-model="selectedField.fieldType"
+              placeholder="选择类型"
               style="width: 100%"
-              :disabled="selectedField.isPublished"
+              :disabled="selectedField.isPublished || selectedField.isSystem"
             >
               <el-option
                 v-for="type in fieldTypes"
@@ -119,6 +125,9 @@
             </el-select>
             <div v-if="selectedField.isPublished" class="form-tip text-warning">
               已发布字段的类型不能修改
+            </div>
+            <div v-else-if="selectedField.isSystem" class="form-tip text-warning">
+              系统字段的类型不能修改
             </div>
           </el-form-item>
           
@@ -164,17 +173,9 @@
           <el-form-item label="是否唯一">
             <el-switch v-model="selectedField.isUnique" />
           </el-form-item>
-          <el-form-item label="列表显示">
-            <el-switch v-model="selectedField.showInList" />
-          </el-form-item>
-          <el-form-item label="表单显示">
-            <el-switch v-model="selectedField.showInForm" />
-          </el-form-item>
-          <el-form-item label="查询条件">
-            <el-switch v-model="selectedField.isQuery" />
-          </el-form-item>
           <el-form-item label="默认值">
-            <el-input v-model="selectedField.defaultValue" placeholder="请输入默认值" />
+            <el-input v-model="selectedField.defaultValue" :placeholder="showOptions ? '请输入选项的 value 值（如 1）' : '请输入默认值'" />
+            <div v-if="showOptions" class="form-tip">默认值应填写选项的 value（key），而非显示文本 label</div>
           </el-form-item>
           <el-form-item label="选项配置" v-if="showOptions">
             <el-input
@@ -399,6 +400,160 @@
       </template>
     </el-dialog>
   </div>
+
+  <!-- 数据权限配置对话框 -->
+  <el-dialog v-model="permissionVisible" title="数据权限配置" width="900px" :close-on-click-modal="false">
+    <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+      配置当前实体列表的数据查看权限。没有配置规则时，默认仅允许查看本人创建的数据。
+    </el-alert>
+    <div class="permission-header">
+      <el-button type="primary" size="small" @click="handleAddPermission">
+        <el-icon><Plus /></el-icon>添加规则
+      </el-button>
+    </div>
+    <el-table :data="permissionList" border size="small" style="margin-top: 12px">
+      <el-table-column prop="ruleName" label="规则名称" width="150" />
+      <el-table-column prop="priority" label="优先级" width="80" align="center" />
+      <el-table-column label="匹配范围" min-width="200">
+        <template #default="{ row }">
+          <span>{{ formatMatchSummary(row) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="数据范围" width="120" align="center">
+        <template #default="{ row }">
+          <el-tag :type="getFilterTypeTag(row.filterType)" size="small">{{ getFilterTypeLabel(row.filterType) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="启用" width="80" align="center">
+        <template #default="{ row }">
+          <el-switch v-model="row.enabled" :active-value="1" :inactive-value="0" @change="togglePermission(row)" />
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="150" align="center" fixed="right">
+        <template #default="{ row }">
+          <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
+          <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-dialog>
+
+  <!-- 规则编辑对话框 -->
+  <el-dialog v-model="permissionEditVisible" :title="permissionForm.id ? '编辑规则' : '新增规则'" width="700px" :close-on-click-modal="false">
+    <el-form :model="permissionForm" label-width="100px" size="default">
+      <el-form-item label="规则名称" required>
+        <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
+      </el-form-item>
+      <el-form-item label="优先级">
+        <el-input-number v-model="permissionForm.priority" :min="0" :max="999" style="width: 120px" />
+        <span class="form-tip" style="margin-left: 8px">数字越小优先级越高</span>
+      </el-form-item>
+      <el-form-item label="是否启用">
+        <el-switch v-model="permissionForm.enabled" :active-value="1" :inactive-value="0" />
+      </el-form-item>
+
+      <el-divider content-position="left">匹配配置（谁适用这条规则）</el-divider>
+      <el-form-item label="逻辑关系">
+        <el-radio-group v-model="permissionForm.matchLogic">
+          <el-radio-button label="OR">满足任一条件</el-radio-button>
+          <el-radio-button label="AND">满足所有条件</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+
+      <div v-for="(cond, index) in permissionForm.matchConditions" :key="index" class="condition-card">
+        <div class="condition-header">
+          <span>条件 {{ index + 1 }}</span>
+          <el-button type="danger" size="small" text @click="removeMatchCondition(index)">
+            <el-icon><Delete /></el-icon>删除
+          </el-button>
+        </div>
+        <el-form-item label="范围类型" required>
+          <el-select v-model="cond.scopeType" placeholder="选择范围类型" style="width: 100%">
+            <el-option label="全部用户" value="ALL_USERS" />
+            <el-option label="指定用户" value="USER" />
+            <el-option label="指定角色" value="ROLE" />
+            <el-option label="指定部门" value="DEPT" />
+            <el-option label="表达式" value="EXPRESSION" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="cond.scopeType === 'USER'" label="用户ID">
+          <el-input v-model="cond.targetIdsText" placeholder="逗号分隔的用户ID" />
+        </el-form-item>
+        <el-form-item v-if="cond.scopeType === 'ROLE'" label="角色ID">
+          <el-input v-model="cond.targetIdsText" placeholder="逗号分隔的角色ID" />
+        </el-form-item>
+        <el-form-item v-if="cond.scopeType === 'ROLE'" label="匹配方式">
+          <el-radio-group v-model="cond.operator">
+            <el-radio label="ANY">拥有任一角色</el-radio>
+            <el-radio label="ALL">拥有全部角色</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="cond.scopeType === 'DEPT'" label="部门ID">
+          <el-input v-model="cond.targetIdsText" placeholder="逗号分隔的部门ID" />
+        </el-form-item>
+        <el-form-item v-if="cond.scopeType === 'DEPT'" label="包含子部门">
+          <el-switch v-model="cond.includeSubDept" />
+        </el-form-item>
+        <el-form-item v-if="cond.scopeType === 'EXPRESSION'" label="表达式">
+          <el-input v-model="cond.expression" placeholder="如：user.deptId == '123'" />
+        </el-form-item>
+      </div>
+      <el-button type="primary" size="small" text @click="addMatchCondition">
+        <el-icon><Plus /></el-icon>添加匹配条件
+      </el-button>
+
+      <el-divider content-position="left">过滤配置（能看到什么数据）</el-divider>
+      <el-form-item label="数据范围" required>
+        <el-select v-model="permissionForm.filterType" placeholder="选择数据范围" style="width: 100%">
+          <el-option label="全部数据" value="ALL" />
+          <el-option label="仅本人" value="PERSONAL" />
+          <el-option label="本部门" value="DEPT" />
+          <el-option label="本部门及子部门" value="DEPT_TREE" />
+          <el-option label="表达式" value="EXPRESSION" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item v-if="permissionForm.filterType !== 'ALL'" label="字段映射">
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-input v-model="permissionForm.fieldMapping.userField" placeholder="用户字段" />
+            <div class="form-tip">默认 created_by</div>
+          </el-col>
+          <el-col :span="8">
+            <el-input v-model="permissionForm.fieldMapping.deptField" placeholder="部门字段" />
+            <div class="form-tip">默认 dept_id</div>
+          </el-col>
+          <el-col :span="8">
+            <el-input v-model="permissionForm.fieldMapping.statusField" placeholder="状态字段" />
+            <div class="form-tip">默认 status</div>
+          </el-col>
+        </el-row>
+      </el-form-item>
+
+      <el-form-item label="状态限制">
+        <el-switch v-model="permissionForm.statusLimit.enabled" />
+        <span style="margin-left: 8px">启用状态过滤</span>
+      </el-form-item>
+      <template v-if="permissionForm.statusLimit.enabled">
+        <el-form-item label="限制模式">
+          <el-radio-group v-model="permissionForm.statusLimit.mode">
+            <el-radio-button label="IN">允许以下状态</el-radio-button>
+            <el-radio-button label="NOT_IN">排除以下状态</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="状态值">
+          <el-select v-model="permissionForm.statusLimit.values" multiple placeholder="选择状态" style="width: 100%">
+            <el-option v-for="status in availableStatuses" :key="status.statusCode" :label="status.statusName" :value="status.statusCode" />
+          </el-select>
+        </el-form-item>
+      </template>
+    </el-form>
+
+    <template #footer>
+      <el-button @click="permissionEditVisible = false">取消</el-button>
+      <el-button type="primary" @click="savePermission">保存</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -407,6 +562,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { entityApi } from '@/api/entity'
 import { codeRuleApi } from '@/api/codeRule'
+import { entityListPermissionApi } from '@/api/entityListPermission'
+import { getEntityStatusList } from '@/api/entityStatus'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 
 const route = useRoute()
@@ -417,6 +574,7 @@ const entityId = route.params.id
 const fieldTypes = [
   { value: 'STRING', label: '文本', icon: 'Document' },
   { value: 'TEXT', label: '长文本', icon: 'Tickets' },
+  { value: 'RICH_TEXT', label: '富文本', icon: 'DocumentCopy' },
   { value: 'INTEGER', label: '整数', icon: 'Sort' },
   { value: 'DECIMAL', label: '小数', icon: 'Money' },
   { value: 'DATE', label: '日期', icon: 'Calendar' },
@@ -454,6 +612,28 @@ const codeRule = ref({
   seqType: 'DAY',
   example: ''
 })
+
+// 数据权限配置
+const permissionVisible = ref(false)
+const permissionList = ref([])
+const permissionEditVisible = ref(false)
+const permissionForm = ref(createEmptyPermissionForm())
+const availableStatuses = ref([])
+
+function createEmptyPermissionForm() {
+  return {
+    id: null,
+    entityCode: '',
+    ruleName: '',
+    priority: 0,
+    enabled: 1,
+    matchLogic: 'OR',
+    matchConditions: [],
+    filterType: 'PERSONAL',
+    fieldMapping: { userField: 'created_by', deptField: 'dept_id', statusField: 'status' },
+    statusLimit: { enabled: false, mode: 'IN', values: [] }
+  }
+}
 
 // 是否显示选项配置
 const showOptions = computed(() => {
@@ -615,9 +795,6 @@ const handleAddField = (type) => {
     fieldType: type?.value || 'STRING',
     isRequired: false,
     isUnique: false,
-    showInList: true,
-    showInForm: true,
-    isQuery: false,
     sortOrder: fields.value.length
   }
   fields.value.push(newField)
@@ -766,6 +943,172 @@ const handleSave = async () => {
   }
 }
 
+// ============ 数据权限方法 ============
+const loadPermissions = async () => {
+  if (!entityData.value.entityCode) return
+  try {
+    const data = await entityListPermissionApi.getByEntityCode(entityData.value.entityCode)
+    permissionList.value = (data || []).map(item => {
+      const match = parseJson(item.matchConfig, { logic: 'OR', conditions: [] })
+      const filter = parseJson(item.filterConfig, { type: 'PERSONAL', fieldMapping: {}, statusLimit: {} })
+      return {
+        ...item,
+        matchLogic: match.logic || 'OR',
+        matchConditions: (match.conditions || []).map(c => ({
+          ...c,
+          targetIdsText: (c.targetIds || []).join(',')
+        })),
+        filterType: filter.type || 'PERSONAL',
+        fieldMapping: filter.fieldMapping || { userField: 'created_by', deptField: 'dept_id', statusField: 'status' },
+        statusLimit: filter.statusLimit || { enabled: false, mode: 'IN', values: [] }
+      }
+    })
+  } catch (error) {
+    console.error('加载权限规则失败:', error)
+  }
+}
+
+const loadAvailableStatuses = async () => {
+  if (!entityData.value.entityCode) return
+  try {
+    const data = await getEntityStatusList(entityData.value.entityCode)
+    availableStatuses.value = data || []
+  } catch (error) {
+    console.error('加载状态列表失败:', error)
+  }
+}
+
+const parseJson = (str, defaultVal) => {
+  if (!str) return defaultVal
+  try {
+    return JSON.parse(str)
+  } catch (e) {
+    return defaultVal
+  }
+}
+
+const handleAddPermission = () => {
+  permissionForm.value = createEmptyPermissionForm()
+  permissionForm.value.entityCode = entityData.value.entityCode
+  permissionEditVisible.value = true
+  loadAvailableStatuses()
+}
+
+const handleEditPermission = (row) => {
+  permissionForm.value = { ...row }
+  permissionEditVisible.value = true
+  loadAvailableStatuses()
+}
+
+const handleDeletePermission = async (row) => {
+  try {
+    await entityListPermissionApi.delete(row.id)
+    ElMessage.success('删除成功')
+    loadPermissions()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('删除失败')
+  }
+}
+
+const togglePermission = async (row) => {
+  try {
+    await entityListPermissionApi.toggleEnabled(row.id)
+    ElMessage.success('状态更新成功')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('状态更新失败')
+    row.enabled = row.enabled === 1 ? 0 : 1
+  }
+}
+
+const addMatchCondition = () => {
+  permissionForm.value.matchConditions.push({
+    scopeType: 'ROLE',
+    targetIds: [],
+    targetIdsText: '',
+    operator: 'ANY',
+    includeSubDept: false,
+    expression: ''
+  })
+}
+
+const removeMatchCondition = (index) => {
+  permissionForm.value.matchConditions.splice(index, 1)
+}
+
+const formatMatchSummary = (row) => {
+  const conditions = row.matchConditions || []
+  if (!conditions.length) return '-'
+  const parts = conditions.map(c => {
+    const map = { ALL_USERS: '全部用户', USER: '指定用户', ROLE: '指定角色', DEPT: '指定部门', EXPRESSION: '表达式' }
+    return map[c.scopeType] || c.scopeType
+  })
+  const logic = row.matchLogic === 'AND' ? ' 且 ' : ' 或 '
+  return parts.join(logic)
+}
+
+const getFilterTypeTag = (type) => {
+  const tags = { ALL: 'success', PERSONAL: '', DEPT: 'warning', DEPT_TREE: 'warning', EXPRESSION: 'info' }
+  return tags[type] || ''
+}
+
+const getFilterTypeLabel = (type) => {
+  const labels = { ALL: '全部数据', PERSONAL: '仅本人', DEPT: '本部门', DEPT_TREE: '本部门及子部门', EXPRESSION: '表达式' }
+  return labels[type] || type
+}
+
+const savePermission = async () => {
+  const form = permissionForm.value
+  if (!form.ruleName) {
+    ElMessage.warning('请输入规则名称')
+    return
+  }
+
+  // 处理 matchConditions 中的 targetIds
+  const matchConditions = (form.matchConditions || []).map(c => ({
+    scopeType: c.scopeType,
+    targetIds: c.targetIdsText ? c.targetIdsText.split(',').map(s => s.trim()).filter(Boolean) : [],
+    operator: c.operator,
+    includeSubDept: c.includeSubDept,
+    expression: c.expression
+  }))
+
+  const matchConfig = JSON.stringify({
+    logic: form.matchLogic,
+    conditions: matchConditions
+  })
+
+  const filterConfig = JSON.stringify({
+    type: form.filterType,
+    fieldMapping: form.fieldMapping,
+    statusLimit: form.statusLimit
+  })
+
+  const payload = {
+    entityCode: form.entityCode || entityData.value.entityCode,
+    ruleName: form.ruleName,
+    priority: form.priority,
+    enabled: form.enabled,
+    matchConfig,
+    filterConfig
+  }
+
+  try {
+    if (form.id) {
+      await entityListPermissionApi.update(form.id, payload)
+    } else {
+      await entityListPermissionApi.create(payload)
+    }
+    ElMessage.success('保存成功')
+    permissionEditVisible.value = false
+    loadPermissions()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('保存失败')
+  }
+}
+
 // 添加附件项
 const addFileItem = () => {
   if (!selectedField.value.fileItems) {
@@ -790,6 +1133,12 @@ const removeFileItem = (index) => {
 const handleDragStart = (type) => {
   draggedType.value = type
 }
+
+watch(permissionVisible, (val) => {
+  if (val) {
+    loadPermissions()
+  }
+})
 
 onMounted(() => {
   loadEntity()
@@ -1034,13 +1383,9 @@ onMounted(() => {
 
 .field-actions {
   display: flex;
-  gap: 6px;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.field-item:hover .field-actions {
+  gap: 8px;
   opacity: 1;
+  align-items: center;
 }
 
 .action-btn {
@@ -1050,18 +1395,30 @@ onMounted(() => {
   padding: 6px;
   border-radius: 6px;
   transition: all 0.2s;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .action-btn:hover {
   background: #ecf5ff;
+  border-color: #409eff;
+  transform: scale(1.05);
 }
 
 .action-btn.delete {
   color: #f56c6c;
+  background: #fef0f0;
+  border-color: #fbc4c4;
 }
 
 .action-btn.delete:hover {
-  background: #fef0f0;
+  background: #fde2e2;
+  border-color: #f56c6c;
 }
 
 /* ===== 右侧属性面板 ===== */
@@ -1166,6 +1523,31 @@ onMounted(() => {
 }
 
 .file-item-title {
+  font-weight: 600;
+  color: #303133;
+  font-size: 13px;
+}
+
+/* ===== 数据权限配置样式 ===== */
+.permission-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.condition-card {
+  background: #f8f9fb;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e4e7ed;
+}
+
+.condition-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
   font-weight: 600;
   color: #303133;
   font-size: 13px;

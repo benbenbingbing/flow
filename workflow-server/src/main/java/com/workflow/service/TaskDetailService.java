@@ -384,16 +384,19 @@ public class TaskDetailService {
             }
         }
         
-        // 如果映射中没有，尝试直接查询 EntityField
-        if (fieldCode == null && fieldId != null && !fieldId.isEmpty()) {
+        // 查询 EntityField（获取 fieldCode 及引用实体配置）
+        com.workflow.entity.EntityField entityField = null;
+        if (fieldId != null && !fieldId.isEmpty()) {
             try {
-                com.workflow.entity.EntityField entityField = entityFieldMapper.selectById(fieldId);
+                entityField = entityFieldMapper.selectById(fieldId);
                 if (entityField != null) {
-                    fieldCode = entityField.getFieldCode();
+                    if (fieldCode == null) {
+                        fieldCode = entityField.getFieldCode();
+                    }
                     if (entityField.getFieldName() != null) {
                         fieldName = entityField.getFieldName();
                     }
-                    log.debug("从EntityField获取: fieldId={}, fieldCode={}, fieldName={}", 
+                    log.debug("从EntityField获取: fieldId={}, fieldCode={}, fieldName={}",
                             fieldId, fieldCode, fieldName);
                 } else {
                     log.warn("EntityField不存在: fieldId={}", fieldId);
@@ -427,6 +430,15 @@ public class TaskDetailService {
         field.put("placeholder", f.getPlaceholder());
         field.put("sortOrder", f.getSortOrder());
         field.put("gridSpan", f.getGridSpan());
+        // 引用实体配置（用于单选实体/多选实体字段）
+        if (entityField != null) {
+            if (entityField.getRefEntityId() != null) {
+                field.put("refEntityId", entityField.getRefEntityId());
+            }
+            if (entityField.getRefEntityType() != null) {
+                field.put("refEntityType", entityField.getRefEntityType().name());
+            }
+        }
         // 解析组件属性JSON
         if (f.getComponentProps() != null) {
             try {

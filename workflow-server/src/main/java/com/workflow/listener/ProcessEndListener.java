@@ -57,9 +57,9 @@ public class ProcessEndListener implements FlowableEventListener {
             String processInstanceId = processInstance.getId();
 
             try {
-                // 获取流程变量
-                String entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
-                String entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
+                // 获取流程变量（运行时可能已清理，改查历史变量）
+                String entityCode = getHistoricVariable(processInstanceId, "entityCode");
+                String entityDataId = getHistoricVariable(processInstanceId, "entityDataId");
 
                 if (entityCode == null || entityDataId == null) {
                     log.debug("流程未关联实体数据: processInstanceId={}", processInstanceId);
@@ -117,6 +117,22 @@ public class ProcessEndListener implements FlowableEventListener {
         }
         // 兜底默认值
         return "TERMINATED".equals(category) ? "REJECTED" : "APPROVED";
+    }
+
+    /**
+     * 从历史变量查询指定变量值
+     */
+    private String getHistoricVariable(String processInstanceId, String variableName) {
+        try {
+            var varInstance = historyService.createHistoricVariableInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .variableName(variableName)
+                    .singleResult();
+            return varInstance != null ? (String) varInstance.getValue() : null;
+        } catch (Exception e) {
+            log.warn("查询历史变量失败: processInstanceId={}, variableName={}", processInstanceId, variableName, e);
+            return null;
+        }
     }
 
     @Override
