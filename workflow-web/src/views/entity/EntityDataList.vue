@@ -199,6 +199,27 @@
           :mode="dialogTitle.includes('新增') ? 'create' : 'edit'"
         />
       </div>
+      <template v-else-if="defaultForm && defaultForm.fields && defaultForm.fields.length > 0">
+        <!-- 有表单配置时：用 FormPreviewLinkage 渲染（支持 tab 子表单、联动） -->
+        <el-form label-width="100px">
+          <el-form-item label="数据名称" :rules="[{ required: true, message: '请输入数据名称', trigger: 'blur' }]">
+            <el-input v-model="formData.name" placeholder="请输入数据名称" />
+          </el-form-item>
+        </el-form>
+        <FormPreviewLinkage
+          ref="previewRef"
+          :form="defaultForm"
+          v-model="formData.data"
+          :show-header="false"
+        />
+        <el-form label-width="100px" v-if="entityDefinition.enableProcess">
+          <el-divider />
+          <el-form-item label="发起流程">
+            <el-switch v-model="formData.startProcess" />
+            <span class="form-tip">保存数据同时发起流程</span>
+          </el-form-item>
+        </el-form>
+      </template>
       <el-form v-else ref="formRef" :model="formData" label-width="100px">
         <el-form-item label="数据名称" prop="name" :rules="[{ required: true, message: '请输入数据名称', trigger: 'blur' }]">
           <el-input v-model="formData.name" placeholder="请输入数据名称" />
@@ -1353,8 +1374,18 @@ const submitApprove = async () => {
 
 // 提交
 const handleSubmit = async () => {
-  await formRef.value?.validate()
-  
+  // 有表单配置时用 FormPreviewLinkage 校验，否则用原表单校验
+  if (defaultForm.value?.fields?.length > 0 && !showCustomForm.value) {
+    if (!formData.name) {
+      ElMessage.error('请输入数据名称')
+      return
+    }
+    const valid = await previewRef.value?.validate()
+    if (!valid) return
+  } else {
+    await formRef.value?.validate()
+  }
+
   submitLoading.value = true
   try {
     const data = {
@@ -1364,7 +1395,7 @@ const handleSubmit = async () => {
       data: formData.data,
       startProcess: formData.startProcess
     }
-    
+
     if (formData.id) {
       await entityDataApi.update(entityCode.value, formData.id, data)
       ElMessage.success('更新成功')
@@ -1372,7 +1403,7 @@ const handleSubmit = async () => {
       await entityDataApi.save(data, data.startProcess)
       ElMessage.success('创建成功')
     }
-    
+
     dialogVisible.value = false
     loadDataList()
   } catch (error: any) {

@@ -180,158 +180,214 @@
       <!-- 用 key 强制重新渲染整个弹窗内容，避免 tabs 状态在不同任务间残留 -->
       <div :key="dialogKey">
         <el-tabs v-model="activeDialogTab" type="border-card">
-        <!-- 审批信息 -->
-        <el-tab-pane label="审批" name="approval">
-          <!-- 实体数据表单 -->
-          <div v-if="entityData" class="entity-form-section">
-            <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
-              <!-- 使用节点配置的表单渲染 -->
-              <FormPreviewLinkage
-                :form="formConfig"
-                v-model="entityData"
-                :readonly="true"
-                :show-header="false"
-              />
-            </template>
-            <template v-else>
-              <!-- 默认显示 -->
-              <el-form :model="entityData" label-width="100px" class="entity-form">
-                <el-row :gutter="20">
-                  <el-col v-for="(value, key) in entityData" :key="key" :span="12">
-                    <el-form-item :label="key">
-                      <!-- 对象值（多组分类文件） -->
-                      <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
-                        <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
-                          <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+          <!-- 无 Tab 子表单时：保持原来的"审批"tab -->
+          <template v-if="!approvalHasTabSubForms">
+            <el-tab-pane label="审批" name="approval">
+              <!-- 实体数据表单 -->
+              <div v-if="entityData" class="entity-form-section">
+                <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
+                  <FormPreviewLinkage
+                    :form="formConfig"
+                    v-model="entityData"
+                    :readonly="true"
+                    :show-header="false"
+                  />
+                </template>
+                <template v-else>
+                  <el-form :model="entityData" label-width="100px" class="entity-form">
+                    <el-row :gutter="20">
+                      <el-col v-for="(value, key) in entityData" :key="key" :span="12">
+                        <el-form-item :label="key">
+                          <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
+                            <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
+                              <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
+                                <div class="file-info">
+                                  <el-icon><Document /></el-icon>
+                                  <span class="file-name">{{ url.split('/').pop() }}</span>
+                                  <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                                </div>
+                                <div class="file-actions">
+                                  <el-button type="primary" link size="small" @click="previewFile(url)">
+                                    <el-icon><View /></el-icon> 预览
+                                  </el-button>
+                                  <el-button type="success" link size="small" @click="downloadFile(url)">
+                                    <el-icon><Download /></el-icon> 下载
+                                  </el-button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div v-else-if="Array.isArray(value)" class="file-list-readonly">
+                            <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
+                              <div class="file-info">
+                                <el-icon><Document /></el-icon>
+                                <span class="file-name">{{ url.split('/').pop() }}</span>
+                              </div>
+                              <div class="file-actions">
+                                <el-button type="primary" link size="small" @click="previewFile(url)">
+                                  <el-icon><View /></el-icon> 预览
+                                </el-button>
+                                <el-button type="success" link size="small" @click="downloadFile(url)">
+                                  <el-icon><Download /></el-icon> 下载
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                          <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
                             <div class="file-info">
                               <el-icon><Document /></el-icon>
-                              <span class="file-name">{{ url.split('/').pop() }}</span>
-                              <el-tag size="small" type="primary">{{ groupName }}</el-tag>
+                              <span class="file-name">{{ value.split('/').pop() }}</span>
                             </div>
                             <div class="file-actions">
-                              <el-button type="primary" link size="small" @click="previewFile(url)">
+                              <el-button type="primary" link size="small" @click="previewFile(value)">
                                 <el-icon><View /></el-icon> 预览
                               </el-button>
-                              <el-button type="success" link size="small" @click="downloadFile(url)">
+                              <el-button type="success" link size="small" @click="downloadFile(value)">
                                 <el-icon><Download /></el-icon> 下载
                               </el-button>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                      <!-- 数组值（多文件） -->
-                      <div v-else-if="Array.isArray(value)" class="file-list-readonly">
-                        <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
-                          <div class="file-info">
-                            <el-icon><Document /></el-icon>
-                            <span class="file-name">{{ url.split('/').pop() }}</span>
-                          </div>
-                          <div class="file-actions">
-                            <el-button type="primary" link size="small" @click="previewFile(url)">
-                              <el-icon><View /></el-icon> 预览
-                            </el-button>
-                            <el-button type="success" link size="small" @click="downloadFile(url)">
-                              <el-icon><Download /></el-icon> 下载
-                            </el-button>
-                          </div>
-                        </div>
-                      </div>
-                      <!-- 字符串文件路径 -->
-                      <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
-                        <div class="file-info">
-                          <el-icon><Document /></el-icon>
-                          <span class="file-name">{{ value.split('/').pop() }}</span>
-                        </div>
-                        <div class="file-actions">
-                          <el-button type="primary" link size="small" @click="previewFile(value)">
-                            <el-icon><View /></el-icon> 预览
-                          </el-button>
-                          <el-button type="success" link size="small" @click="downloadFile(value)">
-                            <el-icon><Download /></el-icon> 下载
-                          </el-button>
-                        </div>
-                      </div>
-                      <!-- 其他普通值 -->
-                      <el-input v-else v-model="entityData[key]" :readonly="true" />
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-              </el-form>
-            </template>
-          </div>
-          
-          <el-divider v-if="entityData" />
-          
-          <template v-if="effectiveApprovalConfig.enabled !== false">
-            <div class="section-title">审批意见</div>
-            <el-form :model="approveForm" label-width="80px">
-              <el-form-item label="审批操作" required>
-                <el-radio-group v-model="approveForm.action">
-                  <el-radio-button 
-                    v-for="option in effectiveApprovalConfig.options" 
-                    :key="option.value" 
-                    :label="option.value"
-                  >
-                    {{ option.label }}
-                  </el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item 
-                v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
-                :label="effectiveApprovalConfig.commentLabel || '审批备注'"
-              >
-                <el-input 
-                  v-model="approveForm.comment" 
-                  type="textarea" 
-                  :rows="3" 
-                  :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`" 
-                />
-              </el-form-item>
-            </el-form>
-          </template>
-        </el-tab-pane>
-
-        <!-- 流程图 -->
-        <el-tab-pane label="流程图" name="diagram">
-          <div style="height: 400px;">
-            <!-- 仅在流程图 tab 激活时才渲染，避免在隐藏 tab 中初始化 bpmn-js 导致竞态 -->
-            <VueBpmnViewer
-              v-if="activeDialogTab === 'diagram' && bpmnXml && progressData"
-              :key="currentTask?.processInstanceId"
-              :xml="bpmnXml"
-              :progress-data="progressData"
-              style="height: 100%;"
-            />
-            <el-empty v-else description="暂无流程图" />
-          </div>
-        </el-tab-pane>
-
-        <!-- 审批历史 -->
-        <el-tab-pane label="审批历史" name="history">
-          <el-timeline v-if="processHistory.length > 0">
-            <el-timeline-item
-              v-for="(item, index) in processHistory"
-              :key="index"
-              :type="item.type"
-              :timestamp="item.time"
-            >
-              <div class="history-item">
-                <span class="history-title">{{ item.title }}</span>
-                <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (item.status === 'TERMINATED' ? 'danger' : 'warning')">
-                  {{ item.status === 'COMPLETED' ? '已完成' : (item.status === 'TERMINATED' ? '已终止' : '进行中') }}
-                </el-tag>
+                          <el-input v-else v-model="entityData[key]" :readonly="true" />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                  </el-form>
+                </template>
               </div>
-              <div class="history-desc">{{ item.description }}</div>
-            </el-timeline-item>
-          </el-timeline>
-          <el-empty v-else description="暂无审批历史" />
-        </el-tab-pane>
-      </el-tabs>
+              <el-divider v-if="entityData" />
+              <template v-if="effectiveApprovalConfig.enabled !== false">
+                <div class="section-title">审批意见</div>
+                <el-form :model="approveForm" label-width="80px">
+                  <el-form-item label="审批操作" required>
+                    <el-radio-group v-model="approveForm.action">
+                      <el-radio-button
+                        v-for="option in effectiveApprovalConfig.options"
+                        :key="option.value"
+                        :label="option.value"
+                      >
+                        {{ option.label }}
+                      </el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item
+                    v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+                    :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+                  >
+                    <el-input
+                      v-model="approveForm.comment"
+                      type="textarea"
+                      :rows="3"
+                      :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
+                    />
+                  </el-form-item>
+                </el-form>
+              </template>
+            </el-tab-pane>
+          </template>
+
+          <!-- 有 Tab 子表单时：扁平化到外层 tabs，替换审批 tab -->
+          <template v-else>
+            <!-- 基本信息：普通字段 + 审批意见 -->
+            <el-tab-pane label="基本信息" name="basic">
+              <div v-if="entityData" class="entity-form-section">
+                <FormPreviewLinkage
+                  v-if="approvalNormalForm.fields && approvalNormalForm.fields.length > 0"
+                  :form="approvalNormalForm"
+                  v-model="entityData"
+                  :readonly="true"
+                  :show-header="false"
+                  :no-internal-tabs="true"
+                />
+                <el-empty v-else description="暂无字段" />
+              </div>
+              <el-divider v-if="entityData" />
+              <template v-if="effectiveApprovalConfig.enabled !== false">
+                <div class="section-title">审批意见</div>
+                <el-form :model="approveForm" label-width="80px">
+                  <el-form-item label="审批操作" required>
+                    <el-radio-group v-model="approveForm.action">
+                      <el-radio-button
+                        v-for="option in effectiveApprovalConfig.options"
+                        :key="option.value"
+                        :label="option.value"
+                      >
+                        {{ option.label }}
+                      </el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item
+                    v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+                    :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+                  >
+                    <el-input
+                      v-model="approveForm.comment"
+                      type="textarea"
+                      :rows="3"
+                      :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
+                    />
+                  </el-form-item>
+                </el-form>
+              </template>
+            </el-tab-pane>
+
+            <!-- 每个 Tab 子表单独立成一个 tab -->
+            <el-tab-pane
+              v-for="(field, idx) in approvalTabSubForms"
+              :key="'approval-subform-' + idx + '-' + (field.id || field.fieldCode || field.fieldKey || '')"
+              :label="field.fieldLabel || field.fieldName"
+              :name="'tab_' + idx"
+            >
+              <div v-if="entityData" class="entity-form-section">
+                <FormFieldRendererLinkage
+                  :field="field"
+                  v-model="entityData[getFieldKey(field)]"
+                  :disabled="true"
+                />
+              </div>
+              <el-empty v-else description="暂无数据" />
+            </el-tab-pane>
+          </template>
+
+          <!-- 流程图 -->
+          <el-tab-pane label="流程图" name="diagram">
+            <div style="height: 400px;">
+              <VueBpmnViewer
+                v-if="activeDialogTab === 'diagram' && bpmnXml && progressData"
+                :key="currentTask?.processInstanceId"
+                :xml="bpmnXml"
+                :progress-data="progressData"
+                style="height: 100%;"
+              />
+              <el-empty v-else description="暂无流程图" />
+            </div>
+          </el-tab-pane>
+
+          <!-- 审批历史 -->
+          <el-tab-pane label="审批历史" name="history">
+            <el-timeline v-if="processHistory.length > 0">
+              <el-timeline-item
+                v-for="(item, index) in processHistory"
+                :key="index"
+                :type="item.type"
+                :timestamp="item.time"
+              >
+                <div class="history-item">
+                  <span class="history-title">{{ item.title }}</span>
+                  <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (item.status === 'TERMINATED' ? 'danger' : 'warning')">
+                    {{ item.status === 'COMPLETED' ? '已完成' : (item.status === 'TERMINATED' ? '已终止' : '进行中') }}
+                  </el-tag>
+                </div>
+                <div class="history-desc">{{ item.description }}</div>
+              </el-timeline-item>
+            </el-timeline>
+            <el-empty v-else description="暂无审批历史" />
+          </el-tab-pane>
+        </el-tabs>
       </div>
 
       <template #footer>
         <el-button @click="dialogVisible = false">关闭</el-button>
-        <el-button v-if="activeDialogTab === 'approval'" type="primary" @click="submitApprove" :loading="submitLoading">确认</el-button>
+        <el-button v-if="activeDialogTab === 'approval' || activeDialogTab === 'basic'" type="primary" @click="submitApprove" :loading="submitLoading">确认</el-button>
       </template>
     </el-dialog>
 
@@ -361,6 +417,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell, Check, Share, Timer, Document, View, Download } from '@element-plus/icons-vue'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, terminateProcess, getProcessHistory } from '@/api/processTask'
 import { getUserList } from '@/api/system/user'
 import request from '@/utils/request'
@@ -436,6 +493,49 @@ const effectiveApprovalConfig = computed(() => {
     ]
   }
 })
+
+// 审批弹窗中是否有 Tab 子表单
+const approvalHasTabSubForms = computed(() => {
+  const fields = formConfig.value?.fields || []
+  return fields.some(f => isTabSubForm(f))
+})
+
+// 审批弹窗中的 Tab 子表单字段
+const approvalTabSubForms = computed(() => {
+  const fields = formConfig.value?.fields || []
+  return fields.filter(f => isTabSubForm(f))
+})
+
+// 审批弹窗中普通字段组成的 form（给 FormPreviewLinkage 用，不含 tab 子表单）
+const approvalNormalForm = computed(() => {
+  const fields = (formConfig.value?.fields || []).filter(f => !isTabSubForm(f))
+  return {
+    ...formConfig.value,
+    fields
+  }
+})
+
+// 判断是否为 Tab 模式的子表单
+function isTabSubForm(field) {
+  if (!field) return false
+  const type = (field.componentType || field.fieldType || '').toUpperCase()
+  if (type !== 'SUB_FORM') return false
+  if (field.displayMode === 'tab') return true
+  if (field.componentProps) {
+    try {
+      const compProps = typeof field.componentProps === 'string'
+        ? JSON.parse(field.componentProps)
+        : field.componentProps
+      return compProps.subFormConfig?.displayMode === 'tab'
+    } catch (e) {}
+  }
+  return false
+}
+
+// 获取字段唯一键
+function getFieldKey(field) {
+  return String(field.fieldCode || field.fieldKey || field.fieldId || field.id || '')
+}
 
 // 转办弹窗
 const transferDialogVisible = ref(false)
@@ -607,14 +707,19 @@ async function loadUsers() {
 }
 
 // 审批
-function handleApprove(row) {
+async function handleApprove(row) {
   dialogKey.value++
   currentTask.value = row
   approveForm.action = 'approve'
   approveForm.comment = ''
   approveForm.transferTo = ''
-  activeDialogTab.value = 'approval'
-  loadProcessDetail(row.processInstanceId)
+  await loadProcessDetail(row.processInstanceId)
+  // 加载完成后，根据是否有 tab 子表单设置默认页签
+  if (formConfig.value?.fields?.some(f => isTabSubForm(f))) {
+    activeDialogTab.value = 'basic'
+  } else {
+    activeDialogTab.value = 'approval'
+  }
   dialogVisible.value = true
 }
 
