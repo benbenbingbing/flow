@@ -476,6 +476,7 @@ const progressData = ref({
 })
 const entityData = ref(null)
 const formConfig = ref(null)
+const formConfigs = ref([])
 const approvalConfig = ref(null)
 
 // 计算属性：获取当前有效的审批配置（带默认值 fallback）
@@ -514,6 +515,37 @@ const approvalNormalForm = computed(() => {
     fields
   }
 })
+
+function normalizeRuntimeFormConfigs(progressRes) {
+  if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
+    return progressRes.formConfigs
+  }
+  return progressRes?.formConfig ? [progressRes.formConfig] : []
+}
+
+function mergeRuntimeFormConfigs(configs) {
+  if (!configs || configs.length === 0) return null
+  if (configs.length === 1) return configs[0]
+  const seen = new Set()
+  const fields = []
+  configs.forEach((config, formIndex) => {
+    ;(config.fields || []).forEach((field, fieldIndex) => {
+      const fieldKey = getFieldKey(field) || `${formIndex}_${fieldIndex}`
+      if (seen.has(fieldKey)) return
+      seen.add(fieldKey)
+      fields.push({
+        ...field,
+        id: `${config.formId || config.entityFormId || formIndex}_${field.id || fieldKey}`,
+        sortOrder: formIndex * 10000 + (field.sortOrder || fieldIndex)
+      })
+    })
+  })
+  return {
+    ...configs[0],
+    formName: configs.map(config => config.formName).filter(Boolean).join(' / ') || configs[0].formName,
+    fields
+  }
+}
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field) {
@@ -589,6 +621,7 @@ watch(dialogVisible, (val) => {
       }
       entityData.value = null
       formConfig.value = null
+      formConfigs.value = []
       approvalConfig.value = null
       processHistory.value = []
     }, 300)
@@ -761,7 +794,8 @@ async function loadProcessDetail(instanceId) {
         }
         entityData.value.status = statusMap[entityData.value.status] || entityData.value.status
       }
-      formConfig.value = progressRes.formConfig || null
+      formConfigs.value = normalizeRuntimeFormConfigs(progressRes)
+      formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)
       approvalConfig.value = progressRes.approvalConfig || null
       // 同步审批操作默认值为第一个选项
       const config = progressRes.approvalConfig

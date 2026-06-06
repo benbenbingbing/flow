@@ -392,7 +392,7 @@
         >
           <FormFieldRendererLinkage
             :field="field"
-            v-model="entityData[field.fieldCode]"
+            v-model="entityData[getFieldKey(field)]"
             :disabled="true"
           />
         </el-tab-pane>
@@ -1087,6 +1087,7 @@ const progressData = ref<any>({
 })
 const entityData = ref<any>(null)
 const formConfig = ref<any>(null)
+const formConfigs = ref<any[]>([])
 const approvalConfig = ref<any>(null)
 
 // 计算属性：获取当前有效的审批配置
@@ -1124,6 +1125,41 @@ const approvalNormalForm = computed(() => {
     fields
   }
 })
+
+function getFieldKey(field: any) {
+  return String(field?.fieldCode || field?.fieldKey || field?.fieldId || field?.id || '')
+}
+
+function normalizeRuntimeFormConfigs(progressRes: any) {
+  if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
+    return progressRes.formConfigs
+  }
+  return progressRes?.formConfig ? [progressRes.formConfig] : []
+}
+
+function mergeRuntimeFormConfigs(configs: any[]) {
+  if (!configs || configs.length === 0) return null
+  if (configs.length === 1) return configs[0]
+  const seen = new Set<string>()
+  const fields: any[] = []
+  configs.forEach((config: any, formIndex: number) => {
+    ;(config.fields || []).forEach((field: any, fieldIndex: number) => {
+      const fieldKey = getFieldKey(field) || `${formIndex}_${fieldIndex}`
+      if (seen.has(fieldKey)) return
+      seen.add(fieldKey)
+      fields.push({
+        ...field,
+        id: `${config.formId || config.entityFormId || formIndex}_${field.id || fieldKey}`,
+        sortOrder: formIndex * 10000 + (field.sortOrder || fieldIndex)
+      })
+    })
+  })
+  return {
+    ...configs[0],
+    formName: configs.map((config: any) => config.formName).filter(Boolean).join(' / ') || configs[0].formName,
+    fields
+  }
+}
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field: any) {
@@ -1192,7 +1228,8 @@ async function loadProcessDetail(instanceId: string) {
         }
         entityData.value._statusText = statusMap[entityData.value.status] || entityData.value.status
       }
-      formConfig.value = progressRes.formConfig || null
+      formConfigs.value = normalizeRuntimeFormConfigs(progressRes)
+      formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)
       // 根据是否有 tab 子表单设置默认 tab
       const hasTabs = (formConfig.value?.fields || []).some((f: any) => isTabSubForm(f))
       activeDialogTab.value = hasTabs ? 'basic' : 'approval'
