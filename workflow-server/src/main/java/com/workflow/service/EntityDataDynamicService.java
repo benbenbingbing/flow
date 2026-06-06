@@ -110,7 +110,9 @@ public class EntityDataDynamicService {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + id);
         }
-        return convertToDTO(data, entityCode);
+        EntityDataDTO dto = convertToDTO(data, entityCode);
+        loadSubFormData(dto);
+        return dto;
     }
 
     /**
@@ -123,7 +125,9 @@ public class EntityDataDynamicService {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + processInstanceId);
         }
-        return convertToDTO(data, entityCode);
+        EntityDataDTO dto = convertToDTO(data, entityCode);
+        loadSubFormData(dto);
+        return dto;
     }
 
     /**
@@ -136,6 +140,11 @@ public class EntityDataDynamicService {
         String entityCode = dto.getEntityCode();
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
                 .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
+        List<EntityField> entityFields = loadEntityFields(definition);
+        List<EntityField> subFormFields = getSubFormFields(entityFields);
+        Map<String, Object> originalData = dto.getData();
+        Map<String, Object> parentData = withoutSubFormData(originalData, subFormFields);
+        Map<String, List<Map<String, Object>>> subFormData = extractSubFormData(originalData, subFormFields);
 
         // 验证实体是否启用流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
@@ -157,7 +166,9 @@ public class EntityDataDynamicService {
         String currentUserName = getCurrentUserName(dto.getSubmitterName());
 
         // 准备数据
+        dto.setData(parentData);
         Map<String, Object> data = convertToMap(dto);
+        dto.setData(originalData);
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
             // ========== 新增数据 ==========
@@ -223,6 +234,8 @@ public class EntityDataDynamicService {
             dynamicMapper.update(tableName, data);
         }
 
+        saveSubFormData(dto.getId(), subFormFields, subFormData);
+
         // 如果需要发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
                 definition.getProcessDefinitionId() != null) {
@@ -238,6 +251,12 @@ public class EntityDataDynamicService {
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO update(String entityCode, String id, Map<String, Object> formData) {
         String tableName = dynamicTableService.getTableName(entityCode);
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
+                .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
+        List<EntityField> entityFields = loadEntityFields(definition);
+        List<EntityField> subFormFields = getSubFormFields(entityFields);
+        Map<String, Object> parentFormData = withoutSubFormDataFromRequest(formData, subFormFields);
+        Map<String, List<Map<String, Object>>> subFormData = extractSubFormDataFromRequest(formData, subFormFields);
 
         // 查询原数据
         Map<String, Object> existingData = dynamicMapper.selectById(tableName, id);
@@ -271,8 +290,8 @@ public class EntityDataDynamicService {
 
         // 1. 从 formData 直接提取标准字段
         standardFieldMap.forEach((frontendKey, dbKey) -> {
-            if (formData.containsKey(frontendKey)) {
-                Object value = formData.get(frontendKey);
+            if (parentFormData.containsKey(frontendKey)) {
+                Object value = parentFormData.get(frontendKey);
                 if (value instanceof String && ((String) value).isEmpty()) {
                     value = null;
                 }
@@ -298,7 +317,7 @@ public class EntityDataDynamicService {
                 "deleted", "entityCode", "entity_code", "startProcess", "start_process"
         ));
 
-        Object dataObj = formData.get("data");
+        Object dataObj = parentFormData.get("data");
         if (dataObj instanceof Map) {
             @SuppressWarnings("unchecked")
             Map<String, Object> customData = (Map<String, Object>) dataObj;
@@ -334,8 +353,253 @@ public class EntityDataDynamicService {
         });
 
         dynamicMapper.update(tableName, updateData);
+        saveSubFormData(id, subFormFields, subFormData);
 
-        return convertToDTO(updateData, entityCode);
+        EntityDataDTO dto = convertToDTO(updateData, entityCode);
+        if (dto.getData() != null) {
+            dto.getData().putAll(subFormData);
+        }
+        return dto;
+    }
+
+    private List<EntityField> loadEntityFields(EntityDefinition definition) {
+        if (definition == null || definition.getId() == null) {
+            return List.of();
+        }
+        List<EntityField> fields = fieldMapper.findByEntityId(definition.getId());
+        return fields != null ? fields : List.of();
+    }
+
+    private List<EntityField> getSubFormFields(List<EntityField> fields) {
+        if (fields == null || fields.isEmpty()) {
+            return List.of();
+        }
+        return fields.stream()
+                .filter(this::isSubFormField)
+                .collect(Collectors.toList());
+    }
+
+    private boolean isSubFormField(EntityField field) {
+        return field != null && (field.getFieldType() == EntityField.FieldType.SUB_FORM
+                || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST);
+    }
+
+    private Map<String, Object> withoutSubFormData(Map<String, Object> data, List<EntityField> subFormFields) {
+        if (data == null || data.isEmpty()) {
+            return data;
+        }
+        Map<String, Object> parentData = new HashMap<>(data);
+        for (EntityField field : subFormFields) {
+            String fieldCode = field.getFieldCode();
+            if (fieldCode != null) {
+                parentData.remove(fieldCode);
+            }
+        }
+        return parentData;
+    }
+
+    private Map<String, Object> withoutSubFormDataFromRequest(Map<String, Object> formData, List<EntityField> subFormFields) {
+        if (formData == null || formData.isEmpty()) {
+            return formData;
+        }
+        Map<String, Object> parentFormData = new HashMap<>(formData);
+        Object dataObj = formData.get("data");
+        if (dataObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> customData = (Map<String, Object>) dataObj;
+            parentFormData.put("data", withoutSubFormData(customData, subFormFields));
+        }
+        return parentFormData;
+    }
+
+    private Map<String, List<Map<String, Object>>> extractSubFormData(Map<String, Object> data, List<EntityField> subFormFields) {
+        Map<String, List<Map<String, Object>>> result = new HashMap<>();
+        if (data == null || data.isEmpty()) {
+            return result;
+        }
+        for (EntityField field : subFormFields) {
+            String fieldCode = field.getFieldCode();
+            Object value = fieldCode != null ? data.get(fieldCode) : null;
+            List<Map<String, Object>> rows = toMapRows(value);
+            if (!rows.isEmpty()) {
+                result.put(fieldCode, rows);
+            }
+        }
+        return result;
+    }
+
+    private Map<String, List<Map<String, Object>>> extractSubFormDataFromRequest(Map<String, Object> formData, List<EntityField> subFormFields) {
+        if (formData == null) {
+            return Map.of();
+        }
+        Object dataObj = formData.get("data");
+        if (dataObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> customData = (Map<String, Object>) dataObj;
+            return extractSubFormData(customData, subFormFields);
+        }
+        return extractSubFormData(formData, subFormFields);
+    }
+
+    private List<Map<String, Object>> toMapRows(Object value) {
+        if (!(value instanceof List)) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object item : (List<?>) value) {
+            if (item instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> row = (Map<String, Object>) item;
+                rows.add(new HashMap<>(row));
+            }
+        }
+        return rows;
+    }
+
+    private void saveSubFormData(String parentId, List<EntityField> subFormFields, Map<String, List<Map<String, Object>>> subFormData) {
+        if (parentId == null || parentId.isEmpty() || subFormFields == null || subFormFields.isEmpty() || subFormData == null || subFormData.isEmpty()) {
+            return;
+        }
+        for (EntityField field : subFormFields) {
+            String fieldCode = field.getFieldCode();
+            List<Map<String, Object>> rows = subFormData.get(fieldCode);
+            if (rows == null || rows.isEmpty()) {
+                continue;
+            }
+            EntityDefinition childDefinition = loadRefEntity(field);
+            if (childDefinition == null || childDefinition.getEntityCode() == null) {
+                log.warn("子表单缺少关联实体，跳过保存: fieldCode={}", fieldCode);
+                continue;
+            }
+            String refFieldCode = field.getRefFieldCode();
+            if (refFieldCode == null || refFieldCode.isEmpty()) {
+                log.warn("子表单缺少关联字段，跳过保存: fieldCode={}", fieldCode);
+                continue;
+            }
+
+            ensureEntityTable(childDefinition);
+            String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            markExistingSubFormRowsDeleted(childTableName, refFieldCode, parentId);
+            for (Map<String, Object> row : rows) {
+                saveSubFormRow(childTableName, row, refFieldCode, parentId);
+            }
+        }
+    }
+
+    private EntityDefinition loadRefEntity(EntityField field) {
+        if (field.getRefEntityId() == null || field.getRefEntityId().isEmpty()) {
+            return null;
+        }
+        EntityDefinition childDefinition = definitionMapper.selectById(field.getRefEntityId());
+        if (childDefinition != null) {
+            childDefinition.setFields(loadEntityFields(childDefinition));
+        }
+        return childDefinition;
+    }
+
+    private void ensureEntityTable(EntityDefinition definition) {
+        if (!dynamicTableService.tableExists(definition.getEntityCode())) {
+            dynamicTableService.createEntityTable(definition);
+        }
+    }
+
+    private void saveSubFormRow(String childTableName, Map<String, Object> row, String refFieldCode, String parentId) {
+        Map<String, Object> childData = new HashMap<>(row);
+        childData.put(refFieldCode, parentId);
+        childData.put("updated_by", UserContext.getUserId());
+        childData.put("updated_at", LocalDateTime.now());
+        childData.put("deleted", 0);
+        normalizeJsonValues(childData);
+
+        Object id = childData.get("id");
+        if (id == null || String.valueOf(id).isEmpty()) {
+            childData.put("id", generateId());
+            childData.put("created_by", UserContext.getUserId());
+            childData.put("created_at", LocalDateTime.now());
+            dynamicMapper.insert(childTableName, childData);
+        } else {
+            dynamicMapper.update(childTableName, childData);
+        }
+    }
+
+    private void markExistingSubFormRowsDeleted(String tableName, String refFieldCode, String parentId) {
+        String refColumn = safeDbIdentifier(camelToUnderscore(refFieldCode));
+        String sql = "UPDATE " + safeDbIdentifier(tableName)
+                + " SET deleted = 1, updated_at = NOW()"
+                + " WHERE " + refColumn + " = '" + escapeSql(parentId) + "' AND deleted = 0";
+        dynamicMapper.executeUpdate(sql);
+    }
+
+    private void loadSubFormData(EntityDataDTO dto) {
+        if (dto == null || dto.getId() == null || dto.getEntityCode() == null) {
+            return;
+        }
+        EntityDefinition definition = definitionMapper.findByEntityCode(dto.getEntityCode()).orElse(null);
+        if (definition == null) {
+            return;
+        }
+        List<EntityField> subFormFields = getSubFormFields(loadEntityFields(definition));
+        if (subFormFields.isEmpty()) {
+            return;
+        }
+        if (dto.getData() == null) {
+            dto.setData(new HashMap<>());
+        }
+        for (EntityField field : subFormFields) {
+            EntityDefinition childDefinition = loadRefEntity(field);
+            if (childDefinition == null || childDefinition.getEntityCode() == null || field.getRefFieldCode() == null || field.getRefFieldCode().isEmpty()) {
+                continue;
+            }
+            if (!dynamicTableService.tableExists(childDefinition.getEntityCode())) {
+                dto.getData().put(field.getFieldCode(), List.of());
+                continue;
+            }
+            String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            Map<String, Object> condition = new HashMap<>();
+            condition.put(field.getRefFieldCode(), dto.getId());
+            condition.put(field.getRefFieldCode() + "_op", "EQ");
+            List<Map<String, Object>> rows = dynamicMapper.selectByCondition(childTableName, condition);
+            List<Map<String, Object>> childRows = rows == null ? List.of() : rows.stream()
+                    .map(row -> toChildFormRow(row, childDefinition.getEntityCode()))
+                    .collect(Collectors.toList());
+            dto.getData().put(field.getFieldCode(), childRows);
+        }
+    }
+
+    private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {
+        EntityDataDTO childDto = convertToDTO(row, entityCode);
+        Map<String, Object> data = new HashMap<>();
+        if (childDto.getData() != null) {
+            data.putAll(childDto.getData());
+        }
+        if (childDto.getId() != null) {
+            data.put("id", childDto.getId());
+        }
+        return data;
+    }
+
+    private void normalizeJsonValues(Map<String, Object> data) {
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map || value instanceof List) {
+                try {
+                    entry.setValue(objectMapper.writeValueAsString(value));
+                } catch (Exception e) {
+                    log.warn("字段 {} 序列化 JSON 失败: {}", entry.getKey(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    private String safeDbIdentifier(String value) {
+        if (value == null || !value.matches("[A-Za-z0-9_]+")) {
+            throw new IllegalArgumentException("非法数据库标识: " + value);
+        }
+        return "`" + value + "`";
+    }
+
+    private String escapeSql(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 
     /**
