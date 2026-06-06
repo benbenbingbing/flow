@@ -241,6 +241,35 @@ CREATE TABLE IF NOT EXISTS `entity_field` (
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实体字段表';
 
+-- 实体关系定义表
+-- 子表单、一对一、一对多关系的事实来源
+CREATE TABLE IF NOT EXISTS `entity_relation` (
+    `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
+    `parent_entity_id` VARCHAR(64) NOT NULL COMMENT '主实体ID',
+    `parent_entity_code` VARCHAR(100) NOT NULL COMMENT '主实体编码',
+    `parent_field_id` VARCHAR(64) COMMENT '主实体关系字段ID',
+    `parent_field_code` VARCHAR(100) NOT NULL COMMENT '主实体关系字段编码',
+    `relation_code` VARCHAR(100) NOT NULL COMMENT '关系编码',
+    `relation_name` VARCHAR(200) COMMENT '关系名称',
+    `child_entity_id` VARCHAR(64) NOT NULL COMMENT '子实体ID',
+    `child_entity_code` VARCHAR(100) NOT NULL COMMENT '子实体编码',
+    `child_ref_field_code` VARCHAR(100) NOT NULL COMMENT '子实体回填主数据ID字段',
+    `relation_type` VARCHAR(20) NOT NULL DEFAULT 'ONE_TO_MANY' COMMENT '关系类型：ONE_TO_ONE/ONE_TO_MANY',
+    `cascade_delete` TINYINT(1) DEFAULT 1 COMMENT '主数据删除时是否级联删除子数据',
+    `required` TINYINT(1) DEFAULT 0 COMMENT '是否必填',
+    `sort_order` INT DEFAULT 0 COMMENT '排序',
+    `enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+    `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_parent_field` (`parent_entity_id`, `parent_field_code`),
+    KEY `idx_parent_entity` (`parent_entity_id`, `enabled`, `deleted`),
+    KEY `idx_parent_code` (`parent_entity_code`, `enabled`, `deleted`),
+    KEY `idx_child_entity` (`child_entity_id`),
+    KEY `idx_relation_code` (`relation_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实体关系定义表';
+
 -- 实体表单表
 -- 定义实体的表单布局
 CREATE TABLE IF NOT EXISTS `entity_form` (

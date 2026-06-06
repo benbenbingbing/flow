@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
+import com.workflow.entity.EntityRelation;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
+import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.EntityStatusMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -58,6 +60,37 @@ class EntityDataDynamicServiceSubFormTest {
     }
 
     @Test
+    void saveWritesNestedRelationRowsRecursively() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setSubmitterId("admin");
+        dto.setSubmitterName("管理员");
+        dto.setData(new HashMap<>(Map.of(
+                "name", "主数据",
+                "detailList", new ArrayList<>(List.of(new HashMap<>(Map.of(
+                        "itemName", "明细一",
+                        "taxRows", new ArrayList<>(List.of(Map.of("taxName", "税一")))
+                ))))
+        )));
+
+        service.save(dto);
+
+        ArgumentCaptor<Map<String, Object>> childCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).insert(eq("wf_child"), childCaptor.capture());
+        String childId = String.valueOf(childCaptor.getValue().get("id"));
+        assertNotNull(childId);
+
+        ArgumentCaptor<Map<String, Object>> taxCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).insert(eq("wf_tax"), taxCaptor.capture());
+        Map<String, Object> taxData = taxCaptor.getValue();
+        assertEquals("税一", taxData.get("taxName"));
+        assertEquals(childId, taxData.get("childId"));
+    }
+
+    @Test
     void findByIdLoadsSubFormRowsByReferenceField() {
         Fixture fixture = new Fixture();
         EntityDataDynamicService service = fixture.service();
@@ -74,6 +107,13 @@ class EntityDataDynamicServiceSubFormTest {
                         "item_name", "明细一",
                         "deleted", 0
                 ))));
+        when(fixture.dynamicMapper.selectByCondition(eq("wf_tax"), org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(List.of(new HashMap<>(Map.of(
+                        "id", "tax-1",
+                        "child_id", "child-1",
+                        "tax_name", "税一",
+                        "deleted", 0
+                ))));
 
         EntityDataDTO dto = service.findById("parent", "parent-1");
 
@@ -84,14 +124,20 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals("child-1", row.get("id"));
         assertEquals("明细一", row.get("itemName"));
         assertEquals("parent-1", row.get("parentId"));
+        List<?> taxes = (List<?>) row.get("taxRows");
+        assertEquals(1, taxes.size());
+        assertEquals("税一", ((Map<?, ?>) taxes.get(0)).get("taxName"));
         verify(fixture.dynamicMapper).selectByCondition(eq("wf_child"), org.mockito.ArgumentMatchers.argThat(condition ->
                 "parent-1".equals(condition.get("parentId")) && "EQ".equals(condition.get("parentId_op"))));
+        verify(fixture.dynamicMapper).selectByCondition(eq("wf_tax"), org.mockito.ArgumentMatchers.argThat(condition ->
+                "child-1".equals(condition.get("childId")) && "EQ".equals(condition.get("childId_op"))));
     }
 
     private static class Fixture {
         final EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);
         final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         final EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
+        final EntityRelationMapper relationMapper = mock(EntityRelationMapper.class);
         final EntityStatusMapper entityStatusMapper = mock(EntityStatusMapper.class);
         final DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         final EntityCodeGeneratorService codeGeneratorService = mock(EntityCodeGeneratorService.class);
@@ -99,23 +145,39 @@ class EntityDataDynamicServiceSubFormTest {
         Fixture() {
             EntityDefinition parent = entity("parent-id", "parent");
             EntityDefinition child = entity("child-id", "child");
+            EntityDefinition tax = entity("tax-id", "tax");
             EntityField subForm = subFormField();
 
             when(definitionMapper.findByEntityCode("parent")).thenReturn(Optional.of(parent));
+            when(definitionMapper.findByEntityCode("child")).thenReturn(Optional.of(child));
             when(definitionMapper.selectById("child-id")).thenReturn(child);
+            when(definitionMapper.selectById("tax-id")).thenReturn(tax);
             when(fieldMapper.findByEntityId("parent-id")).thenReturn(List.of(subForm));
             when(fieldMapper.findByEntityId("child-id")).thenReturn(List.of());
+            when(fieldMapper.findByEntityId("tax-id")).thenReturn(List.of());
+            when(relationMapper.selectByParentEntityId("parent-id")).thenReturn(List.of(relation(
+                    "parent-id", "parent", "detailList", "child-id", "child", "parentId", EntityRelation.RelationType.ONE_TO_MANY, 1)));
+            when(relationMapper.selectByParentEntityId("child-id")).thenReturn(List.of(relation(
+                    "child-id", "child", "taxRows", "tax-id", "tax", "childId", EntityRelation.RelationType.ONE_TO_MANY, 1)));
+            when(relationMapper.selectByParentEntityId("tax-id")).thenReturn(List.of());
+            when(relationMapper.selectByParentEntityCode("parent")).thenReturn(List.of(relation(
+                    "parent-id", "parent", "detailList", "child-id", "child", "parentId", EntityRelation.RelationType.ONE_TO_MANY, 1)));
+            when(relationMapper.selectByParentEntityCode("child")).thenReturn(List.of(relation(
+                    "child-id", "child", "taxRows", "tax-id", "tax", "childId", EntityRelation.RelationType.ONE_TO_MANY, 1)));
+            when(relationMapper.selectByParentEntityCode("tax")).thenReturn(List.of());
             when(dynamicTableService.getTableName("parent")).thenReturn("wf_parent");
             when(dynamicTableService.getTableName("child")).thenReturn("wf_child");
+            when(dynamicTableService.getTableName("tax")).thenReturn("wf_tax");
             when(dynamicTableService.tableExists("parent")).thenReturn(true);
             when(dynamicTableService.tableExists("child")).thenReturn(true);
+            when(dynamicTableService.tableExists("tax")).thenReturn(true);
             when(codeGeneratorService.generateCode("parent")).thenReturn("P001");
             when(entityStatusMapper.findByCategory("parent", "NEW")).thenReturn(List.of());
         }
 
         EntityDataDynamicService service() {
             return new EntityDataDynamicService(
-                    dynamicMapper, definitionMapper, fieldMapper, entityStatusMapper,
+                    dynamicMapper, definitionMapper, fieldMapper, relationMapper, entityStatusMapper,
                     null, null, dynamicTableService, null, null, null, null,
                     codeGeneratorService, new ObjectMapper(), null, null, null, null);
         }
@@ -136,6 +198,26 @@ class EntityDataDynamicServiceSubFormTest {
             field.setRefEntityId("child-id");
             field.setRefFieldCode("parentId");
             return field;
+        }
+
+        private static EntityRelation relation(String parentId, String parentCode, String parentFieldCode,
+                                               String childId, String childCode, String childRefFieldCode,
+                                               EntityRelation.RelationType relationType, int sortOrder) {
+            EntityRelation relation = new EntityRelation();
+            relation.setParentEntityId(parentId);
+            relation.setParentEntityCode(parentCode);
+            relation.setParentFieldCode(parentFieldCode);
+            relation.setRelationCode(parentCode + "_" + parentFieldCode);
+            relation.setRelationName(parentFieldCode);
+            relation.setChildEntityId(childId);
+            relation.setChildEntityCode(childCode);
+            relation.setChildRefFieldCode(childRefFieldCode);
+            relation.setRelationType(relationType);
+            relation.setCascadeDelete(true);
+            relation.setRequired(false);
+            relation.setEnabled(true);
+            relation.setSortOrder(sortOrder);
+            return relation;
         }
     }
 }

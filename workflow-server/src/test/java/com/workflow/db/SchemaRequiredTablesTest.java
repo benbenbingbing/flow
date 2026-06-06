@@ -21,6 +21,8 @@ class SchemaRequiredTablesTest {
                 "schema.sql must define process_node_approval used by ProcessNodeApprovalMapper");
         assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `process_cc_record`"),
                 "schema.sql must define process_cc_record used by ProcessCcRecordMapper");
+        assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `entity_relation`"),
+                "schema.sql must define entity_relation used by EntityRelationMapper");
     }
 
     @Test
@@ -49,5 +51,17 @@ class SchemaRequiredTablesTest {
                 "migration must create process_node_approval");
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS `process_cc_record`"),
                 "migration must create process_cc_record");
+    }
+
+    @Test
+    void migrationCreatesEntityRelationTable() throws Exception {
+        Path migration = Path.of("src/main/resources/db/migration/V36__create_entity_relation_table.sql");
+
+        assertTrue(Files.exists(migration),
+                "migration must create entity_relation for existing databases");
+
+        String sql = Files.readString(migration);
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS `entity_relation`"),
+                "migration must create entity_relation");
     }
 }
