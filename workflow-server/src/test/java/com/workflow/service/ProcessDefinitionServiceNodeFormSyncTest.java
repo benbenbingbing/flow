@@ -19,7 +19,7 @@ class ProcessDefinitionServiceNodeFormSyncTest {
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         ProcessDefinitionService service = new ProcessDefinitionService(
                 null, null, null, null, null, null, null, null, null, null, null,
-                nodeFormMapper, null);
+                null, nodeFormMapper, null);
 
         Method method = ProcessDefinitionService.class.getDeclaredMethod("syncNodeFormsFromBpmn", String.class, String.class);
         method.setAccessible(true);
