@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.ProcessNodeForm;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -29,6 +30,6 @@ public interface ProcessNodeFormMapper extends BaseMapper<ProcessNodeForm> {
     /**
      * 删除流程的所有节点表单绑定
      */
-    @Select("DELETE FROM process_node_form WHERE process_config_id = #{processConfigId}")
+    @Delete("DELETE FROM process_node_form WHERE process_config_id = #{processConfigId}")
     void deleteByProcessConfigId(@Param("processConfigId") String processConfigId);
 }

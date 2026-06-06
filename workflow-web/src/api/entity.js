@@ -128,7 +128,7 @@ export const entityDataApi = {
   /**
    * 删除数据
    */
-  delete(id) {
-    return request.delete(`/entity-data/${id}`)
+  delete(entityCode, id) {
+    return request.delete(`/entity-data/entity/${entityCode}/detail/${id}`)
   }
 }

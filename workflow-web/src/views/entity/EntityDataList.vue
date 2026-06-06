@@ -1046,7 +1046,7 @@ const handleEdit = (row: any) => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm('确定删除该数据吗？', '提示', { type: 'warning' })
-    await entityDataApi.delete(row.id)
+    await entityDataApi.delete(entityCode.value, row.id)
     ElMessage.success('删除成功')
     loadDataList()
   } catch (error: any) {

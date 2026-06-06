@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.EntityField;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -23,7 +24,7 @@ public interface EntityFieldMapper extends BaseMapper<EntityField> {
     /**
      * 根据实体ID删除字段
      */
-    @Select("DELETE FROM entity_field WHERE entity_id = #{entityId}")
+    @Delete("DELETE FROM entity_field WHERE entity_id = #{entityId}")
     void deleteByEntityId(@Param("entityId") String entityId);
 
     /**

@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.NodeConfig;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -23,7 +24,7 @@ public interface NodeConfigMapper extends BaseMapper<NodeConfig> {
     /**
      * 根据流程配置ID删除节点
      */
-    @Select("DELETE FROM node_config WHERE process_config_id = #{processConfigId}")
+    @Delete("DELETE FROM node_config WHERE process_config_id = #{processConfigId}")
     void deleteByProcessConfigId(@Param("processConfigId") String processConfigId);
     
     /**
