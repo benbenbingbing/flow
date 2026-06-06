@@ -185,9 +185,8 @@ class EntityDataDynamicServiceSubFormTest {
                     dynamicTableService, objectMapper, recordMapper);
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
-                    null, null, dynamicTableService, null, null, null, null,
-                    codeGeneratorService, recordMapper, relationRuntimeService,
-                    null, null, null, null);
+                    dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
+                    null, null, null);
         }
 
         private static EntityDefinition entity(String id, String code) {

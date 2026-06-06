@@ -6,25 +6,16 @@ import com.workflow.dto.permission.DataPermissionResult;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityRelation;
 import com.workflow.entity.EntityStatus;
-import com.workflow.entity.ProcessTask;
 import com.workflow.entity.SysUser;
 import com.workflow.entity.runtime.EntityRelationRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
-import com.workflow.listener.MultiInstanceCollectionListener;
+import com.workflow.entity.runtime.EntityWorkflowRuntimeService;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityStatusMapper;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessTaskMapper;
 import com.workflow.service.permission.DataPermissionEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flowable.engine.IdentityService;
-import org.flowable.engine.RepositoryService;
-import org.flowable.engine.RuntimeService;
-import org.flowable.engine.repository.ProcessDefinition;
-import org.flowable.engine.runtime.ProcessInstance;
-import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -45,18 +36,11 @@ public class EntityDataDynamicService {
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityStatusMapper entityStatusMapper;
-    private final ProcessTaskMapper processTaskMapper;
-    private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final DynamicTableService dynamicTableService;
-    private final RuntimeService runtimeService;
-    private final RepositoryService repositoryService;
-    private final IdentityService identityService;
-    private final org.flowable.engine.TaskService taskService;
     private final EntityCodeGeneratorService codeGeneratorService;
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityRelationRuntimeService relationRuntimeService;
-    private final ProcessTaskService processTaskService;
-    private final MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final EntityWorkflowRuntimeService workflowRuntimeService;
     private final DataPermissionEngine dataPermissionEngine;
     private final SysUserService sysUserService;
 
@@ -237,7 +221,7 @@ public class EntityDataDynamicService {
         // 如果需要发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
                 definition.getProcessDefinitionId() != null) {
-            startProcess(dto, definition, data);
+            workflowRuntimeService.startProcess(dto, definition);
         }
 
         return dto;
@@ -377,123 +361,12 @@ public class EntityDataDynamicService {
         }
     }
 
-    // ============ 私有方法 ============
-
-    /**
-     * 发起流程
-     */
-    private void startProcess(EntityDataDTO dto, EntityDefinition definition, Map<String, Object> data) {
-        String processConfigId = definition.getProcessDefinitionId();
-        if (processConfigId == null || processConfigId.isEmpty()) {
-            throw new RuntimeException("实体未绑定流程定义");
-        }
-        
-        // 获取流程配置，获取流程key
-        com.workflow.entity.ProcessDefinitionConfig processConfig = 
-                processDefinitionConfigMapper.selectById(processConfigId);
-        if (processConfig == null) {
-            throw new RuntimeException("流程定义不存在: " + processConfigId);
-        }
-        if (processConfig.getStatus() == com.workflow.entity.ProcessDefinitionConfig.ProcessStatus.DISABLED) {
-            throw new RuntimeException("流程已禁用，无法发起: " + processConfig.getProcessName());
-        }
-        
-        String processKey = processConfig.getProcessKey();
-
-        // 设置流程变量
-        Map<String, Object> variables = new HashMap<>();
-        variables.put("entityCode", dto.getEntityCode());
-        variables.put("entityDataId", dto.getId());
-        variables.put("dataNo", dto.getDataNo());
-        variables.put("submitterId", dto.getSubmitterId());
-        variables.put("submitterName", dto.getSubmitterName());
-        
-        // 设置 skipNodeEnabled 变量，用于支持节点自动跳过功能
-        // 如果节点设置了 skipNode=true，且该节点的 skipExpression 为 ${skipNodeEnabled}，
-        // 则该节点会被自动跳过
-        variables.put("skipNodeEnabled", true);
-        
-        // 设置 initiator 变量（流程中使用 ${initiator} 表达式）
-        if (dto.getSubmitterId() != null) {
-            variables.put("initiator", dto.getSubmitterId());
-        }
-
-        // 添加表单数据到流程变量
-        if (dto.getData() != null) {
-            variables.putAll(dto.getData());
-        }
-        
-        // 添加自定义流程变量（如会签人员列表等）
-        if (dto.getProcessVariables() != null) {
-            variables.putAll(dto.getProcessVariables());
-        }
-
-        // 预计算多实例集合变量（根据节点配置的审批人自动计算）
-        multiInstanceCollectionListener.prepareVariables(processConfigId, variables);
-
-        // 设置流程发起人
-        String submitterId = dto.getSubmitterId();
-        if (submitterId != null && !submitterId.isEmpty()) {
-            identityService.setAuthenticatedUserId(submitterId);
-        }
-
-        // 启动流程（使用流程key）
-        ProcessInstance processInstance = runtimeService
-                .startProcessInstanceByKey(processKey, dto.getId(), variables);
-
-        // 查询当前活动任务
-        Task currentTask = taskService.createTaskQuery()
-                .processInstanceId(processInstance.getId())
-                .active()
-                .singleResult();
-
-        // 更新数据表中的流程信息
-        String tableName = dynamicTableService.getTableName(dto.getEntityCode());
-        Map<String, Object> updateData = new HashMap<>();
-        updateData.put("id", dto.getId());
-        // 设置流程实例ID
-        updateData.put("process_instance_id", processInstance.getId());
-        // 设置流程开始时间
-        updateData.put("process_start_time", LocalDateTime.now());
-        // 设置流程状态（从实体状态配置中获取 PROCESSING 分类的第一个状态）
-        String processingStatus = getProcessingStatus(dto.getEntityCode());
-        updateData.put("status", processingStatus);
-        updateData.put("updated_at", LocalDateTime.now());
-        
-        // 设置当前任务ID、名称和审批人
-        if (currentTask != null) {
-            updateData.put("current_task_id", currentTask.getId());
-            updateData.put("current_task_name", currentTask.getName());
-            updateData.put("current_task_assignee", currentTask.getAssignee());
-        }
-
-        dynamicMapper.update(tableName, updateData);
-        
-        // 更新DTO对象
-        dto.setProcessInstanceId(processInstance.getId());
-        dto.setStatus(processingStatus);
-        if (currentTask != null) {
-            dto.setCurrentTaskId(currentTask.getId());
-            dto.setCurrentTaskName(currentTask.getName());
-            dto.setCurrentTaskAssignee(currentTask.getAssignee());
-        }
-
-        // 同步待办任务
-        processTaskService.syncTasksFromFlowable(processInstance.getId());
-
-        log.info("实体数据 {} 发起流程 {}，流程实例ID: {}",
-                dto.getId(), processKey, processInstance.getId());
-    }
-    
     /**
      * 更新实体数据的当前任务信息
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName, String currentTaskAssignee) {
-        String tableName = dynamicTableService.getTableName(entityCode);
-        dynamicMapper.updateCurrentTask(tableName, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
-        log.debug("更新实体当前任务: entityCode={}, entityDataId={}, taskId={}, taskName={}, assignee={}",
-                entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
+        workflowRuntimeService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
     }
 
     private String getCurrentUserId(String defaultValue) {
@@ -578,20 +451,4 @@ public class EntityDataDynamicService {
         return "DRAFT";
     }
 
-    /**
-     * 获取实体的流程中状态（PROCESSING分类的第一个状态）
-     */
-    private String getProcessingStatus(String entityCode) {
-        try {
-            List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "PROCESSING");
-            if (statuses != null && !statuses.isEmpty()) {
-                // 返回排序号最小的状态
-                return statuses.get(0).getStatusCode();
-            }
-        } catch (Exception e) {
-            log.warn("获取实体[{}]流程中状态失败: {}", entityCode, e.getMessage());
-        }
-        // 默认返回 PENDING
-        return "PENDING";
-    }
 }
