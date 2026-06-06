@@ -35,6 +35,12 @@ public class EntityPublishHistory {
     private String entityName;
 
     /**
+     * 发布时绑定的流程定义ID
+     */
+    @TableField("process_definition_id")
+    private String processDefinitionId;
+
+    /**
      * 版本号（从1开始递增）
      */
     @TableField("version")

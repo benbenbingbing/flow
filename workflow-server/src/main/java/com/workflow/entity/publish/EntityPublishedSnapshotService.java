@@ -2,10 +2,8 @@ package com.workflow.entity.publish;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityPublishHistory;
-import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityPublishHistoryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,7 +19,6 @@ import java.util.List;
 public class EntityPublishedSnapshotService {
 
     private final EntityPublishHistoryMapper historyMapper;
-    private final EntityDefinitionMapper definitionMapper;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -35,9 +32,11 @@ public class EntityPublishedSnapshotService {
 
     @Transactional(readOnly = true)
     public EntityPublishedSnapshot getLatestByEntityCode(String entityCode) {
-        EntityDefinition entity = definitionMapper.findByEntityCode(entityCode)
-                .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
-        return getLatestByEntityId(entity.getId());
+        EntityPublishHistory history = historyMapper.findLatestByEntityCode(entityCode);
+        if (history == null) {
+            throw new RuntimeException("实体未发布: " + entityCode);
+        }
+        return toSnapshot(history);
     }
 
     private EntityPublishedSnapshot toSnapshot(EntityPublishHistory history) {
@@ -46,6 +45,7 @@ public class EntityPublishedSnapshotService {
         snapshot.setEntityId(history.getEntityId());
         snapshot.setEntityCode(history.getEntityCode());
         snapshot.setEntityName(history.getEntityName());
+        snapshot.setProcessDefinitionId(history.getProcessDefinitionId());
         snapshot.setVersion(history.getVersion());
         snapshot.setFields(parseFields(history));
         return snapshot;

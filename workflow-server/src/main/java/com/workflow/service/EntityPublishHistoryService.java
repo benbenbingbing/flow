@@ -67,6 +67,7 @@ public class EntityPublishHistoryService {
         history.setEntityId(entity.getId());
         history.setEntityCode(entity.getEntityCode());
         history.setEntityName(entity.getEntityName());
+        history.setProcessDefinitionId(entity.getProcessDefinitionId());
         history.setVersion(nextVersion);
         history.setVersionDescription(publishType == EntityPublishHistory.PublishType.CREATE 
                 ? "首次发布" : (changesDesc != null ? changesDesc : "字段变更"));
@@ -136,6 +137,7 @@ public class EntityPublishHistoryService {
         dto.setEntityId(history.getEntityId());
         dto.setEntityCode(history.getEntityCode());
         dto.setEntityName(history.getEntityName());
+        dto.setProcessDefinitionId(history.getProcessDefinitionId());
         dto.setVersion(history.getVersion());
         dto.setVersionDescription(history.getVersionDescription());
         dto.setFieldsSnapshot(history.getFieldsSnapshot());

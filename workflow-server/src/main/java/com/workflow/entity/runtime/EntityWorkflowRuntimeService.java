@@ -4,6 +4,8 @@ import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.ProcessDefinitionConfig;
+import com.workflow.entity.publish.EntityPublishedSnapshot;
+import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityStatusMapper;
@@ -42,11 +44,13 @@ public class EntityWorkflowRuntimeService {
     private final org.flowable.engine.TaskService taskService;
     private final ProcessTaskService processTaskService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final EntityPublishedSnapshotService snapshotService;
 
     public void startProcess(EntityDataDTO dto, EntityDefinition definition) {
-        String processConfigId = definition.getProcessDefinitionId();
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(dto.getEntityCode());
+        String processConfigId = snapshot.getProcessDefinitionId();
         if (!StringUtils.hasText(processConfigId)) {
-            throw new RuntimeException("实体未绑定流程定义");
+            throw new RuntimeException("实体发布快照未绑定流程定义: " + dto.getEntityCode());
         }
 
         ProcessDefinitionConfig processConfig = processDefinitionConfigMapper.selectById(processConfigId);

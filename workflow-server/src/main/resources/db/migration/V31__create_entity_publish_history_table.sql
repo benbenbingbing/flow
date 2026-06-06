@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS `entity_publish_history` (
   `entity_id` VARCHAR(64) NOT NULL COMMENT '实体定义ID',
   `entity_code` VARCHAR(100) NOT NULL COMMENT '实体编码',
   `entity_name` VARCHAR(200) NOT NULL COMMENT '实体名称',
+  `process_definition_id` VARCHAR(64) DEFAULT NULL COMMENT '发布时绑定流程定义ID',
   `version` INT NOT NULL COMMENT '版本号',
   `version_description` VARCHAR(500) DEFAULT NULL COMMENT '版本描述',
   `fields_snapshot` LONGTEXT DEFAULT NULL COMMENT '字段定义快照JSON',
@@ -16,5 +17,6 @@ CREATE TABLE IF NOT EXISTS `entity_publish_history` (
   PRIMARY KEY (`id`),
   KEY `idx_entity_publish_history_entity` (`entity_id`, `version`),
   KEY `idx_entity_publish_history_code` (`entity_code`),
+  KEY `idx_entity_publish_history_process` (`process_definition_id`),
   KEY `idx_entity_publish_history_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实体发布版本历史';

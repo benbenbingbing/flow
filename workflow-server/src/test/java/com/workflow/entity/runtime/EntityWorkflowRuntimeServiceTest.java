@@ -4,6 +4,8 @@ import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.ProcessDefinitionConfig;
+import com.workflow.entity.publish.EntityPublishedSnapshot;
+import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityStatusMapper;
@@ -42,10 +44,12 @@ class EntityWorkflowRuntimeServiceTest {
         dto.setSubmitterName("管理员");
         dto.setData(Map.of("amount", 100));
         EntityDefinition definition = new EntityDefinition();
-        definition.setProcessDefinitionId("process-config-1");
+        definition.setProcessDefinitionId("draft-process-config");
 
         service.startProcess(dto, definition);
 
+        verify(fixture.snapshotService).getLatestByEntityCode("expense");
+        verify(fixture.processDefinitionConfigMapper).selectById("process-config-1");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> variableCaptor = ArgumentCaptor.forClass(Map.class);
         verify(fixture.runtimeService).startProcessInstanceByKey(
@@ -91,8 +95,15 @@ class EntityWorkflowRuntimeServiceTest {
         final org.flowable.engine.TaskService taskService = mock(org.flowable.engine.TaskService.class);
         final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
         final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(MultiInstanceCollectionListener.class);
+        final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
 
         Fixture() {
+            EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
+            snapshot.setEntityId("entity-1");
+            snapshot.setEntityCode("expense");
+            snapshot.setProcessDefinitionId("process-config-1");
+            when(snapshotService.getLatestByEntityCode("expense")).thenReturn(snapshot);
+
             ProcessDefinitionConfig config = new ProcessDefinitionConfig();
             config.setProcessKey("expense_flow");
             config.setProcessName("费用审批");
@@ -125,7 +136,7 @@ class EntityWorkflowRuntimeServiceTest {
             return new EntityWorkflowRuntimeService(
                     dynamicMapper, entityStatusMapper, processDefinitionConfigMapper,
                     dynamicTableService, runtimeService, identityService, taskService,
-                    processTaskService, multiInstanceCollectionListener);
+                    processTaskService, multiInstanceCollectionListener, snapshotService);
         }
     }
 }

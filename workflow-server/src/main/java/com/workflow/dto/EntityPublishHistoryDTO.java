@@ -16,6 +16,7 @@ public class EntityPublishHistoryDTO {
     private String entityId;
     private String entityCode;
     private String entityName;
+    private String processDefinitionId;
     private Integer version;
     private String versionDescription;
     private String fieldsSnapshot;
