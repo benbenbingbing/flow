@@ -3,12 +3,16 @@ package com.workflow.process.runtime;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessNodeApprovalMapper;
-import com.workflow.mapper.ProcessNodeFormMapper;
 import com.workflow.mapper.ProcessOperationLogMapper;
 import com.workflow.mapper.ProcessTaskMapper;
 import com.workflow.mapper.SysGroupMapper;
 import com.workflow.mapper.SysUserGroupMapper;
 import com.workflow.mapper.SysUserMapper;
+import com.workflow.entity.EntityDefinition;
+import com.workflow.entity.EntityForm;
+import com.workflow.entity.ProcessNodeForm;
+import com.workflow.process.publish.ProcessPublishedSnapshotService;
+import com.workflow.dto.EntityDataDTO;
 import com.workflow.service.EntityDataDynamicService;
 import com.workflow.service.EntityFormService;
 import com.workflow.service.SysUserService;
@@ -39,6 +43,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProcessProgressRuntimeServiceTest {
@@ -71,6 +76,29 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("管理员", progress.getNodeAssigneeMap().get("task-1").getAssigneeName());
     }
 
+    @Test
+    void getProcessProgressLoadsFormsFromPublishedSnapshot() {
+        Fixture fixture = new Fixture();
+        ProcessProgressRuntimeService service = fixture.service();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        fixture.entityVariables();
+        fixture.entityDefinition();
+        fixture.entityData();
+        fixture.publishedNodeForms();
+
+        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+
+        assertEquals(1, progress.getFormConfigs().size());
+        assertEquals("form-1", progress.getFormConfig().getFormId());
+        assertEquals("审批表单", progress.getFormConfig().getFormName());
+        verify(fixture.snapshotService).getNodeForms("expense_flow", "task-1");
+    }
+
     private static class Fixture {
         final RuntimeService runtimeService = mock(RuntimeService.class);
         final HistoryService historyService = mock(HistoryService.class);
@@ -86,8 +114,8 @@ class ProcessProgressRuntimeServiceTest {
         final SysUserGroupMapper sysUserGroupMapper = mock(SysUserGroupMapper.class);
         final SysUserMapper sysUserMapper = mock(SysUserMapper.class);
         final ProcessOperationLogMapper operationLogMapper = mock(ProcessOperationLogMapper.class);
-        final ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         final ProcessNodeApprovalMapper nodeApprovalMapper = mock(ProcessNodeApprovalMapper.class);
+        final ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
 
         final ProcessInstanceQuery processInstanceQuery = mock(ProcessInstanceQuery.class);
         final ProcessDefinitionQuery processDefinitionQuery = mock(ProcessDefinitionQuery.class);
@@ -185,12 +213,48 @@ class ProcessProgressRuntimeServiceTest {
             when(operationLogMapper.selectList(any())).thenReturn(List.of());
         }
 
+        void entityVariables() {
+            when(runtimeService.getVariable("pi-1", "entityCode")).thenReturn("expense");
+            when(runtimeService.getVariable("pi-1", "entityDataId")).thenReturn("data-1");
+            when(runtimeService.getVariable("pi-1", "formKey")).thenReturn(null);
+        }
+
+        void entityDefinition() {
+            EntityDefinition definition = new EntityDefinition();
+            definition.setId("entity-1");
+            definition.setEntityCode("expense");
+            when(entityDefinitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(definition));
+        }
+
+        void entityData() {
+            EntityDataDTO dto = new EntityDataDTO();
+            dto.setId("data-1");
+            dto.setDataNo("EXP-1");
+            when(entityDataDynamicService.findById("expense", "data-1")).thenReturn(dto);
+        }
+
+        void publishedNodeForms() {
+            ProcessNodeForm nodeForm = new ProcessNodeForm();
+            nodeForm.setNodeId("task-1");
+            nodeForm.setFormId("form-1");
+            nodeForm.setIsReadonly(1);
+            nodeForm.setSortOrder(0);
+            when(snapshotService.getNodeForms("expense_flow", "task-1")).thenReturn(List.of(nodeForm));
+
+            EntityForm form = new EntityForm();
+            form.setId("form-1");
+            form.setFormName("审批表单");
+            form.setFormKey("approval-form");
+            form.setLayoutType("vertical");
+            when(entityFormService.getById("form-1")).thenReturn(form);
+        }
+
         ProcessProgressRuntimeService service() {
             return new ProcessProgressRuntimeService(
                     runtimeService, historyService, repositoryService, taskService,
                     processConfigMapper, sysUserService, entityDataDynamicService, entityFormService,
                     entityDefinitionMapper, processTaskMapper, sysGroupMapper, sysUserGroupMapper,
-                    sysUserMapper, operationLogMapper, nodeFormMapper, nodeApprovalMapper);
+                    sysUserMapper, operationLogMapper, nodeApprovalMapper, snapshotService);
         }
     }
 }

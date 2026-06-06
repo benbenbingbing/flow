@@ -53,6 +53,12 @@ public class ProcessVersionHistory {
     private String bpmnXml;
 
     /**
+     * 节点表单绑定快照
+     */
+    @TableField("node_forms_snapshot")
+    private String nodeFormsSnapshot;
+
+    /**
      * 发布时间
      */
     @TableField("published_at")

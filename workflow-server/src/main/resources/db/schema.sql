@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS `process_version_history` (
     `version` INT NOT NULL COMMENT '版本号',
     `version_description` VARCHAR(500) COMMENT '版本说明',
     `bpmn_xml` LONGTEXT COMMENT 'BPMN XML内容',
+    `node_forms_snapshot` LONGTEXT COMMENT '节点表单绑定快照JSON',
     `deployment_id` VARCHAR(64) COMMENT 'Flowable部署ID',
     `status` VARCHAR(20) DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE有效/ROLLED_BACK已回滚/DISABLED已禁用',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',

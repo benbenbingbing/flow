@@ -38,4 +38,10 @@ public interface ProcessVersionHistoryMapper extends BaseMapper<ProcessVersionHi
      */
     @Select("SELECT * FROM process_version_history WHERE deployment_id = #{deploymentId} AND (deleted = 0 OR deleted IS NULL)")
     Optional<ProcessVersionHistory> findByDeploymentId(@Param("deploymentId") String deploymentId);
+
+    /**
+     * 根据流程标识查询最新发布版本
+     */
+    @Select("SELECT * FROM process_version_history WHERE process_key = #{processKey} AND status = 'ACTIVE' AND (deleted = 0 OR deleted IS NULL) ORDER BY version DESC LIMIT 1")
+    ProcessVersionHistory findLatestByProcessKey(@Param("processKey") String processKey);
 }

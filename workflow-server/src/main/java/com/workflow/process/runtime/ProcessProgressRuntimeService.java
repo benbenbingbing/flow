@@ -5,12 +5,12 @@ import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessNodeApprovalMapper;
-import com.workflow.mapper.ProcessNodeFormMapper;
 import com.workflow.mapper.ProcessOperationLogMapper;
 import com.workflow.mapper.ProcessTaskMapper;
 import com.workflow.mapper.SysGroupMapper;
 import com.workflow.mapper.SysUserGroupMapper;
 import com.workflow.mapper.SysUserMapper;
+import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import com.workflow.service.EntityDataDynamicService;
 import com.workflow.service.EntityFormService;
 import com.workflow.service.SysUserService;
@@ -59,8 +59,8 @@ public class ProcessProgressRuntimeService {
     private final SysUserGroupMapper sysUserGroupMapper;
     private final SysUserMapper sysUserMapper;
     private final ProcessOperationLogMapper operationLogMapper;
-    private final ProcessNodeFormMapper nodeFormMapper;
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
+    private final ProcessPublishedSnapshotService processPublishedSnapshotService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -727,30 +727,28 @@ public class ProcessProgressRuntimeService {
                 }
             }
             
-            // 3. 加载表单详情（优先级：process_node_form 映射表 > 默认）
+            // 3. 加载表单详情（优先级：流程发布快照 > 默认）
             List<ProcessProgressDTO.FormConfigDTO> formConfigs = new ArrayList<>();
             
-            // 3a. 最高优先级：从 process_node_form 映射表查询节点表单绑定
+            // 3a. 最高优先级：从流程发布快照查询节点表单绑定
             if (processKey != null && !processKey.isEmpty() && targetNodeId != null && !targetNodeId.isEmpty()) {
                 try {
-                    ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
-                    if (config != null) {
-                        List<com.workflow.entity.ProcessNodeForm> nodeForms = nodeFormMapper.selectListByNodeId(config.getId(), targetNodeId);
-                        for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
-                            if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
-                                continue;
-                            }
-                            com.workflow.entity.EntityForm entityForm = entityFormService.getById(nodeForm.getFormId());
-                            if (entityForm != null) {
-                                Boolean nodeFormReadonly = nodeForm.getIsReadonly() != null && nodeForm.getIsReadonly() == 1;
-                                formConfigs.add(buildProgressFormConfig(entityForm, nodeFormReadonly));
-                                log.info("从 process_node_form 映射表查询到节点表单: nodeId={}, formId={}, formName={}",
-                                    targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
-                            }
+                    List<com.workflow.entity.ProcessNodeForm> nodeForms =
+                            processPublishedSnapshotService.getNodeForms(processKey, targetNodeId);
+                    for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
+                        if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
+                            continue;
+                        }
+                        com.workflow.entity.EntityForm entityForm = entityFormService.getById(nodeForm.getFormId());
+                        if (entityForm != null) {
+                            Boolean nodeFormReadonly = nodeForm.getIsReadonly() != null && nodeForm.getIsReadonly() == 1;
+                            formConfigs.add(buildProgressFormConfig(entityForm, nodeFormReadonly));
+                            log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
+                                targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
                         }
                     }
                 } catch (Exception e) {
-                    log.warn("从 process_node_form 查询节点表单失败: {}", e.getMessage());
+                    log.warn("从流程发布快照查询节点表单失败: {}", e.getMessage());
                 }
             }
             
