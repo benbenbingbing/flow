@@ -49,12 +49,14 @@
       <div class="file-list all-files" v-if="allFiles.length > 0">
         <div class="file-list-header">附件列表</div>
         <div v-for="(file, index) in allFiles" :key="index" class="file-item">
-          <div class="file-info">
+          <div class="file-col file-col-name">
             <el-icon><Document /></el-icon>
-            <span class="file-name">{{ file.name }}</span>
-            <el-tag size="small" :type="getGroupTagType(file.groupIndex)">{{ file.groupName }}</el-tag>
+            <span class="file-name" :title="file.name">{{ truncateFileName(file.name) }}</span>
           </div>
-          <div class="file-actions">
+          <div class="file-col file-col-group">
+            <el-tag size="small" :type="getGroupTagType(file.groupIndex)">{{ truncateGroupName(file.groupName) }}</el-tag>
+          </div>
+          <div class="file-col file-col-actions">
             <el-button type="primary" link size="small" @click="previewFile(file.url)">
               <el-icon><View /></el-icon> 预览
             </el-button>
@@ -115,6 +117,7 @@
           :on-remove="handleRemove"
           :on-error="handleError"
           :on-exceed="handleExceed"
+          :show-file-list="false"
           drag
         >
           <el-icon class="el-icon--upload"><Upload /></el-icon>
@@ -131,20 +134,25 @@
         </el-upload>
       </template>
 
-      <!-- 文件列表显示 -->
-      <div class="file-list" v-if="!isImage && fileList.length > 0">
+      <!-- 统一的文件列表（单组/图片共用，与多组模式样式一致） -->
+      <div class="file-list all-files" v-if="!isImage && fileList.length > 0">
+        <div class="file-list-header">附件列表</div>
         <div v-for="(file, index) in fileList" :key="index" class="file-item">
-          <el-icon><Document /></el-icon>
-          <span class="file-name">{{ file.name || file.fileName }}</span>
-          <el-button
-            v-if="!disabled"
-            type="danger"
-            link
-            size="small"
-            @click="removeFile(index)"
-          >
-            删除
-          </el-button>
+          <div class="file-info">
+            <el-icon><Document /></el-icon>
+            <span class="file-name">{{ file.name || file.fileName }}</span>
+          </div>
+          <div class="file-actions">
+            <el-button type="primary" link size="small" @click="previewFile(file.url)">
+              <el-icon><View /></el-icon> 预览
+            </el-button>
+            <el-button type="success" link size="small" @click="downloadFile(file.url)">
+              <el-icon><Download /></el-icon> 下载
+            </el-button>
+            <el-button v-if="!disabled" type="danger" link size="small" @click="removeFile(index)">
+              <el-icon><Delete /></el-icon> 删除
+            </el-button>
+          </div>
         </div>
       </div>
     </template>
@@ -230,9 +238,12 @@ const allFiles = computed(() => {
     const key = item.itemName || `附件项${gIndex + 1}`
     const urls = model[key] || []
     const arr = Array.isArray(urls) ? urls : (urls ? [urls] : [])
-    arr.forEach((url, fIndex) => {
+    arr.forEach((itemOrUrl, fIndex) => {
+      const isObj = itemOrUrl && typeof itemOrUrl === 'object'
+      const url = isObj ? (itemOrUrl.url || '') : itemOrUrl
+      const name = isObj ? (itemOrUrl.name || itemOrUrl.originalName || getFileNameFromUrl(url)) : getFileNameFromUrl(itemOrUrl)
       result.push({
-        name: getFileNameFromUrl(url),
+        name: name,
         url: url,
         groupIndex: gIndex,
         groupName: item.itemName || `附件项${gIndex + 1}`,
@@ -290,9 +301,10 @@ const handleSuccessActive = (response, file) => {
     if (!item) return
     const key = item.itemName || `附件项${gIndex + 1}`
     const url = response.data?.url || response.data
+    const originalName = response.data?.originalName || file.name || getFileNameFromUrl(url)
     const current = groupModelValue.value[key] || []
     const arr = Array.isArray(current) ? [...current] : (current ? [current] : [])
-    arr.push(url)
+    arr.push({ url, name: originalName })
     const newValue = { ...groupModelValue.value, [key]: arr }
     emit('update:modelValue', newValue)
     ElMessage.success('上传成功')
@@ -347,6 +359,22 @@ const getGroupTooltip = (item) => {
     parts.push(`最多 ${item.maxCount} 个`)
   }
   return parts.join('，') || '无限制'
+}
+
+const truncateGroupName = (name) => {
+  if (!name || name.length <= 4) return name
+  return name.slice(0, 2) + '...' + name.slice(-1)
+}
+
+const truncateFileName = (name, maxLen = 24) => {
+  if (!name || name.length <= maxLen) return name
+  const lastDot = name.lastIndexOf('.')
+  if (lastDot <= 0) return name.slice(0, maxLen - 3) + '...'
+  const ext = name.slice(lastDot)
+  const prefix = name.slice(0, lastDot)
+  const keepPrefix = maxLen - ext.length - 3
+  if (keepPrefix <= 3) return '...' + ext
+  return prefix.slice(0, keepPrefix) + '...' + ext
 }
 
 // ==================== 单组模式（原有逻辑） ====================
@@ -500,14 +528,19 @@ watch(() => props.modelValue, () => {
 }
 
 .group-tag {
-  padding: 6px 16px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  line-height: 22px;
+  padding: 0 10px;
   border-radius: 4px;
   border: 1px solid #dcdfe6;
   background: #fff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   color: #606266;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .group-tag:hover {
@@ -553,18 +586,20 @@ watch(() => props.modelValue, () => {
   margin-top: 12px;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  padding: 8px;
+  padding: 0;
 }
 
 .file-list.all-files {
   padding: 0;
-  border: none;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .file-list-header {
   font-weight: 600;
   color: #303133;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid #ebeef5;
   background: #f5f7fa;
   border-radius: 4px 4px 0 0;
@@ -573,8 +608,7 @@ watch(() => props.modelValue, () => {
 .file-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid #ebeef5;
 }
 
@@ -582,6 +616,50 @@ watch(() => props.modelValue, () => {
   border-bottom: none;
 }
 
+/* 多组模式：三列比例布局 */
+.file-col {
+  display: flex;
+  align-items: center;
+}
+
+.file-col-name {
+  flex: 11;
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.file-col-name .file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: none;
+}
+
+.file-col-group {
+  flex: 0 0 90px;
+  padding: 0 6px;
+  justify-content: flex-start;
+}
+
+.file-col-actions {
+  flex: 0 0 25%;
+  justify-content: flex-end;
+  gap: 1px;
+}
+
+.file-col-actions :deep(.el-button) {
+  padding: 0 1px;
+  font-size: 11px;
+  margin-left: 0 !important;
+}
+
+.file-col-actions :deep(.el-button .el-icon) {
+  margin-right: 1px;
+  font-size: 11px;
+}
+
+/* 单组模式 */
 .file-info {
   display: flex;
   align-items: center;

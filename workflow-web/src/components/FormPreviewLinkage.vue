@@ -46,7 +46,7 @@
             <FormFieldRendererLinkage
               :field="field"
               v-model="formData[getFieldKey(field)]"
-              :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+              :disabled="isFieldDisabled(field)"
               :options="linkageState.options[getFieldKey(field)] || field.options"
             />
           </el-form-item>
@@ -83,7 +83,7 @@
                   <FormFieldRendererLinkage
                     :field="field"
                     v-model="formData[getFieldKey(field)]"
-                    :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+                    :disabled="isFieldDisabled(field)"
                     :options="linkageState.options[getFieldKey(field)] || field.options"
                   />
                 </el-form-item>
@@ -100,7 +100,7 @@
               <FormFieldRendererLinkage
                 :field="field"
                 v-model="formData[getFieldKey(field)]"
-                :disabled="readonly || field.isReadonly === 1 || linkageState.disabled[getFieldKey(field)]"
+                :disabled="isFieldDisabled(field)"
                 :options="linkageState.options[getFieldKey(field)] || field.options"
               />
             </el-tab-pane>
@@ -112,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, watchEffect, onMounted } from 'vue'
+import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
@@ -150,7 +150,7 @@ function handleCustomFormUpdate(val) {
 }
 
 const formRef = ref(null)
-const formData = ref({ ...props.modelValue })
+const formData = ref(props.modelValue || {})
 const linkageState = ref({
   visibility: {},
   disabled: {},
@@ -177,18 +177,18 @@ function isTabSubForm(field) {
   return result
 }
 
-// 同步外部数据
+// 同步外部数据（只在引用变化时同步，避免与内部 watcher 循环）
 watch(() => props.modelValue, (val) => {
-  formData.value = { ...val }
+  if (val === formData.value) return
+  formData.value = val || {}
   updateLinkageState()
-}, { deep: true })
+})
 
 // 同步内部数据到外部，并触发联动更新
 watch(formData, (val) => {
-
   emit('update:modelValue', val)
   updateLinkageState()
-  // 计算字段自动赋值
+  applyLinkageValues()
   applyCalculatedValues()
 }, { deep: true })
 
@@ -276,6 +276,21 @@ function getFieldKey(field) {
   return String(field.fieldCode || field.fieldKey || field.fieldId || field.id || '')
 }
 
+// 判断字段是否禁用（实体引用字段不受 isReadonly 影响，需保持可交互以选择数据）
+function isFieldDisabled(field) {
+  if (props.readonly) return true
+  const fieldKey = getFieldKey(field)
+  if (linkageState.value.disabled[fieldKey]) return true
+  if (field.isReadonly === 1) {
+    const refType = (field.refEntityType || '').toUpperCase()
+    if (['USER', 'DEPT', 'ROLE', 'GROUP', 'CUSTOM'].includes(refType)) {
+      return false
+    }
+    return true
+  }
+  return false
+}
+
 // 获取字段验证规则
 function getFieldRules(field) {
   const fieldKey = getFieldKey(field)
@@ -293,17 +308,44 @@ function getFieldRules(field) {
   return rules
 }
 
-// 更新联动状态
+function isLinkageStateEqual(a, b) {
+  if (a === b) return true
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  return keysA.every(k => {
+    const va = a[k]
+    const vb = b[k]
+    if (va === vb) return true
+    if (typeof va === 'object' && typeof vb === 'object' && va !== null && vb !== null) {
+      const subKeysA = Object.keys(va)
+      const subKeysB = Object.keys(vb)
+      if (subKeysA.length !== subKeysB.length) return false
+      return subKeysA.every(sk => va[sk] === vb[sk])
+    }
+    return false
+  })
+}
+
+// 更新联动状态（只更新 linkageState，不直接修改 formData，避免 watcher 递归）
 function updateLinkageState() {
   const fields = props.form?.fields || []
+  const newState = LinkageEngine.processAllLinkages(fields, formData.value)
+  if (!isLinkageStateEqual(linkageState.value, newState)) {
+    linkageState.value = newState
+  }
+}
 
-  linkageState.value = LinkageEngine.processAllLinkages(fields, formData.value)
-  // 应用值联动和计算字段的结果
-  if (linkageState.value.values) {
-    Object.entries(linkageState.value.values).forEach(([key, val]) => {
-      if (val !== null && val !== undefined && formData.value[key] !== val) {
+// 应用值联动和计算字段的结果（使用 nextTick 避免在 watcher 回调中递归）
+function applyLinkageValues() {
+  const values = linkageState.value.values
+  if (!values) return
+  const entries = Object.entries(values).filter(([key, val]) => val !== null && val !== undefined && formData.value[key] !== val)
+  if (entries.length > 0) {
+    nextTick(() => {
+      entries.forEach(([key, val]) => {
         formData.value[key] = val
-      }
+      })
     })
   }
 }
@@ -311,15 +353,17 @@ function updateLinkageState() {
 // 应用计算字段值
 function applyCalculatedValues() {
   const fields = props.form?.fields || []
-  fields.forEach(field => {
-    const rules = LinkageEngine.getFieldLinkageRules(field)
-    if (rules.calculationFormula) {
-      const fieldKey = field.fieldCode || field.fieldKey
-      const calculatedValue = LinkageEngine.calculate(rules.calculationFormula, formData.value)
-      if (calculatedValue !== null && formData.value[fieldKey] !== calculatedValue) {
-        formData.value[fieldKey] = calculatedValue
+  nextTick(() => {
+    fields.forEach(field => {
+      const rules = LinkageEngine.getFieldLinkageRules(field)
+      if (rules.calculationFormula) {
+        const fieldKey = field.fieldCode || field.fieldKey
+        const calculatedValue = LinkageEngine.calculate(rules.calculationFormula, formData.value)
+        if (calculatedValue !== null && formData.value[fieldKey] !== calculatedValue) {
+          formData.value[fieldKey] = calculatedValue
+        }
       }
-    }
+    })
   })
 }
 
@@ -328,17 +372,16 @@ function handleFieldChange(fieldKey, value) {
   // 更新当前字段值
   formData.value[fieldKey] = value
 
-  // 重新计算联动状态
+  // 重新计算联动状态并应用
   updateLinkageState()
-
-  // 处理计算字段自动赋值
+  applyLinkageValues()
   applyCalculatedValues()
 }
 
 // 初始化
 onMounted(() => {
   updateLinkageState()
-  // 初始化计算字段
+  applyLinkageValues()
   applyCalculatedValues()
 })
 

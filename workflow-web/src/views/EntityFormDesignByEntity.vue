@@ -194,6 +194,8 @@
                   <el-option label="开关" value="switch" />
                   <el-option label="文件" value="file" />
                   <el-option label="级联选择" value="cascader" />
+                  <el-option label="实体引用（单选）" value="reference" />
+                  <el-option label="实体引用（多选）" value="multi_reference" />
                   <el-option label="子表单" value="SUB_FORM" />
                 </el-select>
               </el-form-item>
@@ -224,6 +226,14 @@
                     <el-radio label="embedded">嵌入表单</el-radio>
                     <el-radio label="tab">Tab 页签</el-radio>
                   </el-radio-group>
+                </el-form-item>
+
+                <el-form-item label="内部布局">
+                  <el-radio-group v-model="selectedField.layout">
+                    <el-radio label="form">表单卡片</el-radio>
+                    <el-radio label="table">数据表格</el-radio>
+                  </el-radio-group>
+                  <span class="form-tip" style="margin-left: 8px">表单卡片适合字段较少，表格适合字段较多</span>
                 </el-form-item>
 
                 <el-form-item label="可重复添加">
@@ -322,7 +332,7 @@
               <template v-if="(selectedField.componentType || '').toUpperCase() === 'REFERENCE' || (selectedField.componentType || '').toUpperCase() === 'MULTI_REFERENCE'">
                 <el-divider>实体引用配置</el-divider>
                 <el-form-item label="引用类型">
-                  <el-select v-model="selectedField.refEntityType" placeholder="选择引用类型" style="width: 100%">
+                  <el-select v-model="selectedField.refEntityType" :disabled="!!selectedField.fieldId" placeholder="选择引用类型" style="width: 100%">
                     <el-option label="用户自定义实体" value="CUSTOM" />
                     <el-option label="系统用户" value="USER" />
                     <el-option label="系统部门" value="DEPT" />
@@ -330,9 +340,10 @@
                     <el-option label="系统用户组" value="GROUP" />
                   </el-select>
                 </el-form-item>
-                <el-form-item label="关联实体" v-if="selectedField.refEntityType === 'CUSTOM'">
+                <el-form-item label="关联实体" v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'">
                   <el-select
                     v-model="selectedField.refEntityId"
+                    :disabled="!!selectedField.fieldId"
                     placeholder="选择关联实体"
                     style="width: 100%"
                   >
@@ -343,6 +354,9 @@
                       :value="ent.id"
                     />
                   </el-select>
+                  <div v-if="selectedField.refEntityId" class="form-tip">
+                    当前关联：{{ getEntityNameById(selectedField.refEntityId) }}
+                  </div>
                 </el-form-item>
                 <el-form-item label="数据接口">
                   <el-input v-model="selectedField.apiUrl" placeholder="可选：定制数据查询接口URL" />
@@ -459,11 +473,7 @@ const formListByEntity = ref([])
 // Tab 模式的子表单字段（必须在 formFields 定义之后）
 const tabSubFormFields = ref([])
 watch(formFields, (fields) => {
-  const result = fields.filter(f => isTabSubForm(f))
-  tabSubFormFields.value = result
-  if (result.length > 0) {
-    console.log('[tabSubFormFields] count:', result.length, 'names:', result.map(f => f.fieldName))
-  }
+  tabSubFormFields.value = fields.filter(f => isTabSubForm(f))
 }, { deep: true, immediate: true })
 
 const form = ref({
@@ -583,11 +593,21 @@ async function loadEntityInfo() {
   }
 }
 
+// 根据实体ID获取实体名称
+function getEntityNameById(id) {
+  if (!id) return '-'
+  const ent = entityList.value.find(e => String(e.id) === String(id))
+  return ent?.entityName || String(id)
+}
+
 // 加载所有实体列表（用于子表单引用选择）
 async function loadEntityList() {
   try {
     const res = await entityApi.getList()
-    entityList.value = res.data || []
+    // request 拦截器已提取 response.data.data，res 直接是数组
+    const list = Array.isArray(res) ? res : (res.data || [])
+    // 统一将 id 转为字符串，避免 el-select value 类型不匹配显示 raw value
+    entityList.value = list.map(ent => ({ ...ent, id: String(ent.id) }))
   } catch (e) {
     console.error('加载实体列表失败:', e)
   }
@@ -689,6 +709,7 @@ function restoreFieldConfig(field) {
     if (compProps.subFormConfig) {
       field.subFormType = compProps.subFormConfig.type || 'embedded'
       field.displayMode = compProps.subFormConfig.displayMode || 'embedded'
+      field.layout = compProps.subFormConfig.layout || 'form'
       field.refEntityId = compProps.subFormConfig.refEntityId || ''
       field.refFormId = compProps.subFormConfig.refFormId || ''
       field.repeatable = compProps.subFormConfig.repeatable === true
@@ -699,7 +720,7 @@ function restoreFieldConfig(field) {
     // 恢复实体引用配置
     if (compProps.refConfig) {
       field.refEntityType = compProps.refConfig.refEntityType || ''
-      field.refEntityId = compProps.refConfig.refEntityId || ''
+      field.refEntityId = String(compProps.refConfig.refEntityId || '')
       field.apiUrl = compProps.refConfig.apiUrl || ''
     }
 
@@ -727,6 +748,7 @@ function serializeFieldConfig(field) {
       compProps.subFormConfig = {
         type: field.subFormType || 'embedded',
         displayMode: field.displayMode || 'embedded',
+        layout: field.layout || 'form',
         refEntityId: field.refEntityId || '',
         refFormId: field.refFormId || '',
         repeatable: field.repeatable === true
@@ -782,6 +804,12 @@ async function loadFormFields() {
 
   try {
     formFields.value = await getFormFields(formId)
+    // 统一将 refEntityId 转为字符串，避免 el-select 类型不匹配显示原始值
+    formFields.value.forEach(field => {
+      if (field.refEntityId != null) {
+        field.refEntityId = String(field.refEntityId)
+      }
+    })
     formFields.value.forEach(restoreFieldConfig)
     enrichFieldCodes()
   } catch (e) {
@@ -812,9 +840,9 @@ function addField(entityField) {
     sortOrder: formFields.value.length
   }
 
-  // 复制实体引用配置
+  // 复制实体引用配置（统一将 refEntityId 转为字符串，避免 el-select 类型不匹配）
   if (entityField.refEntityId) {
-    newField.refEntityId = entityField.refEntityId
+    newField.refEntityId = String(entityField.refEntityId)
   }
   if (entityField.refEntityType) {
     newField.refEntityType = entityField.refEntityType
@@ -822,6 +850,11 @@ function addField(entityField) {
   if (entityField.apiUrl) {
     newField.apiUrl = entityField.apiUrl
   }
+  // 子表单默认 layout 为 form
+  if (newField.componentType === 'sub_form' || newField.componentType === 'SUB_FORM') {
+    newField.layout = 'form'
+  }
+
   // 复制选项数据（用于选项联动等）
   if (entityField.optionsJson) {
     newField.optionsJson = entityField.optionsJson
@@ -1043,8 +1076,9 @@ onMounted(async () => {
   await loadEntityInfo()
   await loadFormInfo()
   await loadEntityFields()
-  await loadFormFields()
+  // 先加载实体列表，确保 el-select 有选项后再加载并恢复表单字段
   await loadEntityList()
+  await loadFormFields()
 })
 </script>
 

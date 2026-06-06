@@ -14,31 +14,10 @@
     <el-card class="search-card" v-if="queryFields.length > 0">
       <el-form :model="queryForm" inline>
         <el-form-item v-for="field in queryFields" :key="field.fieldCode" :label="field.fieldName">
-          <el-input v-if="field.fieldType === 'STRING' || field.fieldType === 'TEXT'" 
-                    v-model="queryForm[field.fieldCode]" :placeholder="`请输入${field.fieldName}`" />
-          <el-select v-else-if="['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)" 
-                     v-model="queryForm[field.fieldCode]" :placeholder="`请选择${field.fieldName}`" 
-                     :multiple="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX' || field.componentType === 'select_multiple'"
-                     clearable collapse-tags style="width: 200px">
-            <el-option v-for="opt in parseOptions(field.optionsJson)" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-          <EntitySelector v-else-if="field.fieldType === 'REFERENCE'"
-                         v-model="queryForm[field.fieldCode]"
-                         :entity-type="field.refEntityType || 'CUSTOM'"
-                         :entity-code="field.refEntityId"
-                         :ref-entity-id="field.refEntityId"
-                         :placeholder="`请选择${field.fieldName}`"
-                         style="width: 200px" />
-          <EntitySelector v-else-if="field.fieldType === 'MULTI_REFERENCE'"
-                         v-model="queryForm[field.fieldCode]"
-                         :entity-type="field.refEntityType || 'CUSTOM'"
-                         :entity-code="field.refEntityId"
-                         :ref-entity-id="field.refEntityId"
-                         :multiple="true"
-                         :placeholder="`请选择${field.fieldName}`"
-                         style="width: 200px" />
-          <el-date-picker v-else-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'" 
-                         v-model="queryForm[field.fieldCode]" type="date" :placeholder="`选择${field.fieldName}`" value-format="YYYY-MM-DD" />
+          <FormFieldRenderer
+            v-model="queryForm[field.fieldCode]"
+            :field="field"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
@@ -97,148 +76,12 @@
                      v-show="isFieldVisible(field)"
                      :label="field.fieldLabel || field.fieldName" :prop="`data.${field.fieldCode || field.fieldId}`"
                      :rules="getFieldRules(field)">
-          <!-- 根据字段类型渲染不同组件 -->
-          <el-input v-if="field.fieldType === 'STRING'"
-                   v-model="formData.data[field.fieldCode || field.fieldId]"
-                   :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                   @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                   :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
-          <el-input v-else-if="field.fieldType === 'TEXT'"
-                   v-model="formData.data[field.fieldCode || field.fieldId]"
-                   :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                   @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                   type="textarea" rows="3" :placeholder="`请输入${field.fieldLabel || field.fieldName}`" />
-          <RichTextEditor v-else-if="field.fieldType === 'RICH_TEXT'"
-                          v-model="formData.data[field.fieldCode || field.fieldId]"
-                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                          :height="200"
-                          @change="(val) => executeFieldEvent(field, 'onChange', val)" />
-          <el-input-number v-else-if="field.fieldType === 'INTEGER' || field.fieldType === 'DECIMAL'"
-                          v-model="formData.data[field.fieldCode || field.fieldId]"
-                          :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                          @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                          style="width: 100%" />
-          <el-date-picker v-else-if="field.fieldType === 'DATE'"
-                         v-model="formData.data[field.fieldCode || field.fieldId]"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                         type="date" style="width: 100%"
-                         value-format="YYYY-MM-DD" />
-          <el-date-picker v-else-if="field.fieldType === 'DATETIME'"
-                         v-model="formData.data[field.fieldCode || field.fieldId]"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         @change="(val) => executeFieldEvent(field, 'onChange', val)"
-                         type="datetime" style="width: 100%"
-                         value-format="YYYY-MM-DD HH:mm:ss" />
-          <el-switch v-else-if="field.fieldType === 'BOOLEAN'"
-                    v-model="formData.data[field.fieldCode || field.fieldId]"
-                    :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                    @change="(val) => executeFieldEvent(field, 'onChange', val)" />
-          <!-- 选择类型字段（支持 componentType 切换展示方式） -->
-          <template v-else-if="['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)">
-            <!-- 下拉单选 -->
-            <el-select
-              v-if="!field.componentType || field.componentType === 'select'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)"
-              style="width: 100%" clearable>
-              <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-            <!-- 下拉多选 -->
-            <el-select
-              v-else-if="field.componentType === 'select_multiple'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)"
-              style="width: 100%" multiple clearable>
-              <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-            <!-- 单选框 -->
-            <el-radio-group
-              v-else-if="field.componentType === 'radio'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)">
-              <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
-            </el-radio-group>
-            <!-- 复选框 -->
-            <el-checkbox-group
-              v-else-if="field.componentType === 'checkbox'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)">
-              <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
-            </el-checkbox-group>
-            <!-- 默认回退：根据 fieldType 渲染 -->
-            <el-select
-              v-else-if="field.fieldType === 'SELECT'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)"
-              style="width: 100%" clearable>
-              <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-            <el-checkbox-group
-              v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'CHECKBOX'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)">
-              <el-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-checkbox>
-            </el-checkbox-group>
-            <el-radio-group
-              v-else-if="field.fieldType === 'RADIO'"
-              v-model="formData.data[field.fieldCode || field.fieldId]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-              @change="(val) => executeFieldEvent(field, 'onChange', val)">
-              <el-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.value">{{ opt.label }}</el-radio>
-            </el-radio-group>
-          </template>
-          <!-- 文件上传（支持多组分类） -->
-          <FileUploader
-            v-else-if="field.fieldType === 'FILE'"
-            v-model="formData.data[field.fieldCode || field.fieldId]"
-            :field="field"
-            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-            @change="(val) => executeFieldEvent(field, 'onChange', val)"
-          />
-
-          <!-- 图片上传 -->
-          <FileUploader
-            v-else-if="field.fieldType === 'IMAGE'"
-            v-model="formData.data[field.fieldCode || field.fieldId]"
-            :field="field"
-            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-            :is-image="true"
-            @change="(val) => executeFieldEvent(field, 'onChange', val)"
-          />
-          <!-- 用户选择 -->
-          <EntitySelector v-else-if="field.fieldType === 'USER' || (field.fieldType === 'REFERENCE' && field.refEntityType === 'USER')"
-                         v-model="formData.data[field.fieldCode || field.fieldId]"
-                         entity-type="USER"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
-          <!-- 部门选择 -->
-          <EntitySelector v-else-if="field.fieldType === 'DEPT' || (field.fieldType === 'REFERENCE' && field.refEntityType === 'DEPT')"
-                         v-model="formData.data[field.fieldCode || field.fieldId]"
-                         entity-type="DEPT"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
-          <!-- 通用实体引用 -->
-          <EntitySelector v-else-if="field.fieldType === 'REFERENCE' || field.fieldType === 'MULTI_REFERENCE'"
-                         v-model="formData.data[field.fieldCode || field.fieldId]"
-                         :entity-type="field.refEntityType || 'CUSTOM'"
-                         :entity-code="field.refEntityId"
-                         :ref-entity-id="field.refEntityId"
-                         :multiple="field.fieldType === 'MULTI_REFERENCE'"
-                         :disabled="isFieldDisabled(field) || field.isReadonly === 1"
-                         :placeholder="`请选择${field.fieldLabel || field.fieldName}`" />
-          <!-- 子表单（兜底渲染，如果字段未被过滤掉） -->
+          <!-- 使用 FormFieldRendererLinkage 统一渲染 -->
           <FormFieldRendererLinkage
-            v-else-if="field.fieldType === 'SUB_FORM'"
-            :field="field"
             v-model="formData.data[field.fieldCode || field.fieldId]"
-            :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+            :field="field"
+            :disabled="isFieldDisabled(field)"
+            :options="getFieldOptions(field)"
           />
         </el-form-item>
 
@@ -252,7 +95,7 @@
             <FormFieldRendererLinkage
               :field="field"
               v-model="formData.data[field.fieldCode || field.fieldId || field.id]"
-              :disabled="isFieldDisabled(field) || field.isReadonly === 1"
+              :disabled="isFieldDisabled(field)"
             />
           </div>
         </div>
@@ -326,7 +169,7 @@
           :label="field.fieldName"
         >
           <!-- 文件类型显示（支持单文件/多文件/多组分类） -->
-          <div v-else-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" class="file-display-readonly">
+          <div v-if="field.fieldType === 'FILE' && currentRow.data?.[field.fieldCode]" class="file-display-readonly">
             <div v-if="typeof currentRow.data[field.fieldCode] === 'string'" class="file-item-readonly">
               <a :href="currentRow.data[field.fieldCode]" target="_blank" class="file-link">
                 <el-icon><Document /></el-icon>
@@ -429,17 +272,15 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
-import { Plus, Upload, Document } from '@element-plus/icons-vue'
+import { Plus, Document } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { processTaskApi } from '@/api/processTask'
 import { fileApi } from '@/api/file'
 import { getFormForNewData, getFormForViewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { LinkageEngine } from '@/utils/linkageEngine'
+import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
-import EntitySelector from '@/components/EntitySelector.vue'
-import RichTextEditor from '@/components/RichTextEditor.vue'
-import FileUploader from '@/components/FileUploader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -508,10 +349,18 @@ function isFieldVisible(field) {
   return linkageState.value.visibility[key] !== false
 }
 
-// 判断字段是否禁用
+// 判断字段是否禁用（实体引用字段不受 isReadonly 影响，需保持可交互以选择数据）
 function isFieldDisabled(field) {
   const key = field.fieldCode || field.fieldId
-  return linkageState.value.disabled[key] === true
+  if (linkageState.value.disabled[key] === true) return true
+  if (field.isReadonly === 1) {
+    const refType = (field.refEntityType || '').toUpperCase()
+    if (['USER', 'DEPT', 'ROLE', 'GROUP', 'CUSTOM'].includes(refType)) {
+      return false
+    }
+    return true
+  }
+  return false
 }
 
 // 获取字段验证规则（含联动必填）

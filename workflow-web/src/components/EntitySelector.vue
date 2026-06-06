@@ -221,19 +221,44 @@ watch(() => props.modelValue, (val) => {
 // 加载已选择的数据（用于回显）
 async function loadSelectedData() {
   if (!props.entityType) return
-  
-  // CUSTOM 类型必须配置 entityCode 或 refEntityId
+
+  // 多选模式：如果 modelValue 已经是对象数组（含 name），直接回显，不去后台
+  if (props.multiple && Array.isArray(props.modelValue) && props.modelValue.length > 0) {
+    const first = props.modelValue[0]
+    if (first && typeof first === 'object' && (first.name || first.code)) {
+      selectedList.value = props.modelValue.map(item => ({
+        id: item.id || item,
+        name: item.name || item.code || item.id,
+        code: item.code,
+        entityType: item.entityType || props.entityType
+      }))
+      return
+    }
+  }
+
+  // 单选模式：如果 modelValue 已经是对象（含 name），直接回显
+  if (!props.multiple && props.modelValue && typeof props.modelValue === 'object') {
+    selectedData.value = {
+      id: props.modelValue.id,
+      name: props.modelValue.name || props.modelValue.code || props.modelValue.id,
+      code: props.modelValue.code,
+      entityType: props.modelValue.entityType || props.entityType
+    }
+    return
+  }
+
+  // 纯 ID 模式：去后台查询详情
   if (props.entityType === 'CUSTOM' && !props.entityCode && !props.refEntityId) {
     return
   }
-  
+
   try {
-    const ids = props.multiple && Array.isArray(props.modelValue) 
-      ? props.modelValue.join(',') 
+    const ids = props.multiple && Array.isArray(props.modelValue)
+      ? props.modelValue.join(',')
       : props.modelValue
-    
+
     if (!ids) return
-    
+
     const params = new URLSearchParams({ ids })
     if (props.entityType === 'CUSTOM') {
       if (props.entityCode) {
@@ -242,11 +267,11 @@ async function loadSelectedData() {
         params.append('refEntityId', props.refEntityId)
       }
     }
-    
+
     const res = await fetch(`/api/entity-selector/${props.entityType}/batch?${params}`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     }).then(r => r.json())
-    
+
     if (res.code === 200) {
       if (props.multiple) {
         selectedList.value = res.data || []
@@ -270,10 +295,14 @@ async function openSelector() {
   
   // 回显已选项
   if (props.multiple && tableRef.value) {
+    // 防御性提取已选 id（兼容对象数组）
+    const selectedIds = Array.isArray(props.modelValue)
+      ? props.modelValue.map(v => v && typeof v === 'object' ? v.id : v)
+      : []
     setTimeout(() => {
       tableData.value.forEach(row => {
-        const isSelected = props.multiple 
-          ? props.modelValue?.includes(row.id)
+        const isSelected = props.multiple
+          ? selectedIds.includes(row.id)
           : props.modelValue === row.id
         if (isSelected) {
           tableRef.value.toggleRowSelection(row, true)
@@ -290,7 +319,7 @@ async function loadData() {
     ElMessage.warning('该实体引用字段未配置关联实体，请先配置')
     return
   }
-  
+
   loading.value = true
   try {
     const params = new URLSearchParams({

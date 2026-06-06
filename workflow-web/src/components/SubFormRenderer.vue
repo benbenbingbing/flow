@@ -63,17 +63,11 @@
               </template>
               <!-- 编辑模式 -->
               <template v-else>
-                <el-input v-if="field.fieldType === 'TEXT' || field.fieldType === 'input' || field.fieldType === 'string'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" @blur="validateField(row, field, index)" />
-                <el-input-number v-else-if="field.fieldType === 'NUMBER' || field.fieldType === 'number' || field.fieldType === 'integer' || field.fieldType === 'long' || field.fieldType === 'double' || field.fieldType === 'decimal'" v-model="row[field.fieldKey]" size="default" :precision="field.precision || 2" :min="field.min" :max="field.max" style="width: 100%" @change="handleNumberChange(row, field, index)" />
-                <el-date-picker v-else-if="field.fieldType === 'DATE' || field.fieldType === 'date'" v-model="row[field.fieldKey]" type="date" size="default" :placeholder="field.placeholder" style="width: 100%" value-format="YYYY-MM-DD" />
-                <el-date-picker v-else-if="field.fieldType === 'DATETIME' || field.fieldType === 'datetime'" v-model="row[field.fieldKey]" type="datetime" size="default" :placeholder="field.placeholder" style="width: 100%" value-format="YYYY-MM-DD HH:mm:ss" />
-                <el-select v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" style="width: 100%" filterable clearable>
-                  <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
-                </el-select>
-                <el-select v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'select_multiple'" v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" style="width: 100%" multiple filterable clearable>
-                  <el-option v-for="opt in getFieldOptions(field)" :key="opt.value" :label="opt.label" :value="opt.value" />
-                </el-select>
-                <el-input v-else v-model="row[field.fieldKey]" size="default" :placeholder="field.placeholder" />
+                <FormFieldRenderer
+                  v-model="row[field.fieldKey]"
+                  :field="field"
+                  @blur="validateField(row, field, index)"
+                />
                 <div v-if="getFieldError(index, field.fieldKey)" class="field-error">{{ getFieldError(index, field.fieldKey) }}</div>
               </template>
             </div>
@@ -120,81 +114,10 @@
 
             <!-- 编辑模式 -->
             <template v-else>
-              <!-- 文本输入 -->
-              <el-input
-                v-if="field.fieldType === 'TEXT' || field.fieldType === 'input'"
+              <FormFieldRenderer
                 v-model="row[field.fieldKey]"
-                size="small"
-                :placeholder="field.placeholder"
+                :field="field"
                 @blur="validateField(row, field, $index)"
-              />
-
-              <!-- 数字输入 -->
-              <el-input-number
-                v-else-if="field.fieldType === 'NUMBER' || field.fieldType === 'number'"
-                v-model="row[field.fieldKey]"
-                size="small"
-                :precision="field.precision || 2"
-                :min="field.min"
-                :max="field.max"
-                style="width: 100%"
-                @change="handleNumberChange(row, field, $index)"
-              />
-
-              <!-- 日期选择 -->
-              <el-date-picker
-                v-else-if="field.fieldType === 'DATE' || field.fieldType === 'date'"
-                v-model="row[field.fieldKey]"
-                type="date"
-                size="small"
-                :placeholder="field.placeholder"
-                style="width: 100%"
-                value-format="YYYY-MM-DD"
-              />
-
-              <!-- 下拉选择 -->
-              <el-select
-                v-else-if="field.fieldType === 'SELECT' || field.fieldType === 'select'"
-                v-model="row[field.fieldKey]"
-                size="small"
-                :placeholder="field.placeholder"
-                style="width: 100%"
-                filterable
-                clearable
-              >
-                <el-option
-                  v-for="opt in getFieldOptions(field)"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-
-              <!-- 下拉多选 -->
-              <el-select
-                v-else-if="field.fieldType === 'MULTI_SELECT' || field.fieldType === 'select_multiple'"
-                v-model="row[field.fieldKey]"
-                size="small"
-                :placeholder="field.placeholder"
-                style="width: 100%"
-                multiple
-                filterable
-                clearable
-              >
-                <el-option
-                  v-for="opt in getFieldOptions(field)"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-
-              <!-- 默认文本 -->
-              <el-input
-                v-else
-                v-model="row[field.fieldKey]"
-                size="small"
-                :placeholder="field.placeholder"
               />
 
               <!-- 字段校验错误提示 -->
@@ -233,6 +156,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
+import FormFieldRenderer from './FormFieldRenderer.vue'
 
 const props = defineProps({
   // 兼容旧版属性
@@ -285,24 +209,32 @@ const rowData = ref([])
 // 校验错误
 const fieldErrors = ref({})
 
-// 初始化数据
+// 初始化数据（引用相同则跳过，避免父组件传回同一引用时无限 clone）
 watch(() => props.modelValue, (newVal) => {
+  if (newVal === rowData.value) return
   if (newVal && Array.isArray(newVal)) {
     rowData.value = JSON.parse(JSON.stringify(newVal))
   } else {
     rowData.value = []
   }
-}, { immediate: true, deep: true })
+  // 对话框复用组件时，modelValue 被清空但字段配置仍在，自动初始化一行
+  if (rowData.value.length === 0 && props.config.fields?.length > 0) {
+    nextTick(() => {
+      if (rowData.value.length === 0) addRow()
+    })
+  }
+}, { immediate: true })
 
 // 字段加载完成后自动初始化一行空数据（预览/编辑/新增都直接显示表单）
-watch(() => props.config.fields, (fields) => {
-  if (fields && fields.length > 0 && rowData.value.length === 0) {
+watch(() => [props.config.fields, props.config.fields?.length], () => {
+  if (props.config.fields?.length > 0 && rowData.value.length === 0) {
     addRow()
   }
-}, { immediate: true, deep: true })
+}, { immediate: true })
 
-// 数据变化时触发更新
+// 数据变化时触发更新（避免 emit 回父组件的同一引用）
 watch(rowData, (newVal) => {
+  if (newVal === props.modelValue) return
   emit('update:modelValue', newVal)
   emit('change', newVal)
   calculateSummary()

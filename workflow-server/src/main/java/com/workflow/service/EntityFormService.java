@@ -61,22 +61,14 @@ public class EntityFormService {
             for (EntityFormField field : fields) {
                 if (field.getFieldId() != null) {
                     com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
-                    if (entityField != null) {
-                        field.setFieldCode(entityField.getFieldCode());
-                        if (entityField.getRefEntityId() != null) {
-                            field.setRefEntityId(entityField.getRefEntityId());
-                        }
-                        if (entityField.getRefEntityType() != null) {
-                            field.setRefEntityType(entityField.getRefEntityType().name());
-                        }
-                    }
+                    enrichFormField(field, entityField);
                 }
             }
             form.setFields(fields);
         }
         return form;
     }
-    
+
     /**
      * 保存表单
      */
@@ -153,22 +145,14 @@ public class EntityFormService {
             for (EntityFormField field : fields) {
                 if (field.getFieldId() != null) {
                     com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
-                    if (entityField != null) {
-                        field.setFieldCode(entityField.getFieldCode());
-                        if (entityField.getRefEntityId() != null) {
-                            field.setRefEntityId(entityField.getRefEntityId());
-                        }
-                        if (entityField.getRefEntityType() != null) {
-                            field.setRefEntityType(entityField.getRefEntityType().name());
-                        }
-                    }
+                    enrichFormField(field, entityField);
                 }
             }
             form.setFields(fields);
         }
         return form;
     }
-    
+
     /**
      * 删除表单
      */
@@ -212,7 +196,14 @@ public class EntityFormService {
      * 获取表单字段
      */
     public List<EntityFormField> getFormFields(String formId) {
-        return formFieldMapper.selectByFormId(formId);
+        List<EntityFormField> fields = formFieldMapper.selectByFormId(formId);
+        for (EntityFormField field : fields) {
+            if (field.getFieldId() != null) {
+                com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
+                enrichFormField(field, entityField);
+            }
+        }
+        return fields;
     }
     
     /**
@@ -227,22 +218,14 @@ public class EntityFormService {
             for (EntityFormField field : fields) {
                 if (field.getFieldId() != null) {
                     com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
-                    if (entityField != null) {
-                        field.setFieldCode(entityField.getFieldCode());
-                        if (entityField.getRefEntityId() != null) {
-                            field.setRefEntityId(entityField.getRefEntityId());
-                        }
-                        if (entityField.getRefEntityType() != null) {
-                            field.setRefEntityType(entityField.getRefEntityType().name());
-                        }
-                    }
+                    enrichFormField(field, entityField);
                 }
             }
             form.setFields(fields);
         }
         return form;
     }
-    
+
     /**
      * 根据实体编码获取实体定义
      */
@@ -256,7 +239,30 @@ public class EntityFormService {
     public List<EntityField> getEntityFields(String entityId) {
         return fieldMapper.findByEntityId(entityId);
     }
-    
+
+    /**
+     * 补充表单字段的元数据（从 entity_field 查询）
+     */
+    private void enrichFormField(EntityFormField field, EntityField entityField) {
+        if (entityField == null) {
+            return;
+        }
+        field.setFieldCode(entityField.getFieldCode());
+        if (entityField.getFieldType() != null) {
+            field.setFieldType(entityField.getFieldType().name());
+        }
+        if (entityField.getRefEntityId() != null) {
+            field.setRefEntityId(entityField.getRefEntityId());
+        }
+        if (entityField.getRefEntityType() != null) {
+            field.setRefEntityType(entityField.getRefEntityType().name());
+        }
+        // 系统可编辑字段强制非只读（避免表单设计器误设为只读导致无法交互）
+        if (Boolean.TRUE.equals(entityField.getIsSystem()) && Boolean.TRUE.equals(entityField.getEditable())) {
+            field.setIsReadonly(0);
+        }
+    }
+
     /**
      * 填充表单详情
      */
