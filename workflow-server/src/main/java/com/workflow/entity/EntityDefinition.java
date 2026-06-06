@@ -14,7 +14,7 @@ import java.util.List;
 @TableName("entity_definition")
 public class EntityDefinition {
     
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
     /**

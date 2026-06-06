@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS `entity_definition` (
     `table_name` VARCHAR(100) COMMENT '对应数据库表名',
     `enable_process` TINYINT DEFAULT 0 COMMENT '是否启用流程：0否/1是',
     `process_definition_id` VARCHAR(64) COMMENT '绑定的流程定义ID',
+    `status` VARCHAR(20) DEFAULT 'DRAFT' COMMENT '状态：DRAFT草稿/PUBLISHED已发布/DISABLED已禁用',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_by` VARCHAR(64) COMMENT '创建人',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -165,6 +166,7 @@ CREATE TABLE IF NOT EXISTS `entity_definition` (
     UNIQUE KEY `uk_entity_code` (`entity_code`),
     KEY `idx_process_def` (`process_definition_id`),
     KEY `idx_enable_process` (`enable_process`),
+    KEY `idx_status` (`status`),
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实体定义表';
 
@@ -286,7 +288,7 @@ CREATE TABLE IF NOT EXISTS `entity_data` (
 -- 流程待办任务表
 -- 同步Flowable的任务到本地，用于快速查询
 CREATE TABLE IF NOT EXISTS `process_task` (
-    `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `process_instance_id` VARCHAR(64) NOT NULL COMMENT '流程实例ID',
     `process_definition_id` VARCHAR(64) COMMENT '流程定义ID',
     `process_key` VARCHAR(100) COMMENT '流程标识',
@@ -300,13 +302,19 @@ CREATE TABLE IF NOT EXISTS `process_task` (
     `entity_data_id` VARCHAR(64) COMMENT '实体数据ID',
     `form_key` VARCHAR(100) COMMENT '表单标识',
     `assignee_id` VARCHAR(64) COMMENT '执行人ID',
+    `assignee_name` VARCHAR(100) COMMENT '执行人姓名',
     `assignee_type` VARCHAR(20) DEFAULT 'user' COMMENT '执行人类型：user/group',
+    `form_data` JSON COMMENT '表单数据',
     `status` VARCHAR(20) DEFAULT 'todo' COMMENT '状态：todo待办/done已办/transfer已转办/skip已跳过/withdrawn已撤回',
     `action` VARCHAR(20) COMMENT '处理动作：approve通过/reject驳回/transfer转办',
     `comment` TEXT COMMENT '处理意见',
     `start_time` DATETIME COMMENT '任务开始时间',
     `end_time` DATETIME COMMENT '任务结束时间',
+    `due_time` DATETIME COMMENT '截止时间',
     `duration` BIGINT COMMENT '处理时长（毫秒）',
+    `timeout_hours` INT COMMENT '超时时间（小时）',
+    `timeout_action` VARCHAR(50) COMMENT '超时处理策略',
+    `timeout_handled` TINYINT(1) DEFAULT 0 COMMENT '是否已处理超时',
     `priority` INT DEFAULT 0 COMMENT '优先级',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -319,6 +327,7 @@ CREATE TABLE IF NOT EXISTS `process_task` (
     KEY `idx_status` (`status`),
     KEY `idx_entity` (`entity_code`, `entity_data_id`),
     KEY `idx_start_time` (`start_time`),
+    KEY `idx_created_at` (`created_at`),
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程待办任务表';
 
@@ -378,10 +387,12 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
     `email` VARCHAR(100) COMMENT '邮箱',
     `phone` VARCHAR(20) COMMENT '手机号',
     `avatar` VARCHAR(200) COMMENT '头像URL',
-    `status` TINYINT DEFAULT 1 COMMENT '状态：0禁用/1启用',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0启用/1禁用',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `org_id` VARCHAR(64) COMMENT '组织ID',
+    `dept_id` VARCHAR(64) COMMENT '部门ID',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_username` (`username`),
     KEY `idx_status` (`status`),
@@ -396,7 +407,7 @@ CREATE TABLE IF NOT EXISTS `sys_group` (
     `description` VARCHAR(500) COMMENT '组描述',
     `parent_id` VARCHAR(64) COMMENT '父组ID',
     `sort_order` INT DEFAULT 0 COMMENT '排序号',
-    `status` TINYINT DEFAULT 1 COMMENT '状态：0禁用/1启用',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0启用/1禁用',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -414,7 +425,7 @@ CREATE TABLE IF NOT EXISTS `sys_role` (
     `role_name` VARCHAR(200) NOT NULL COMMENT '角色名称',
     `description` VARCHAR(500) COMMENT '角色描述',
     `sort_order` INT DEFAULT 0 COMMENT '排序号',
-    `status` TINYINT DEFAULT 1 COMMENT '状态：0禁用/1启用',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0启用/1禁用',
     `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -454,23 +465,23 @@ CREATE TABLE IF NOT EXISTS `sys_user_role` (
 
 -- 初始化系统用户（密码：admin123）
 INSERT INTO `sys_user` (`id`, `username`, `password`, `nickname`, `email`, `status`) VALUES
-('1', 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '系统管理员', 'admin@example.com', 1),
-('2', 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '张三', 'zhangsan@example.com', 1),
-('3', 'lisi', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '李四', 'lisi@example.com', 1)
+('1', 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '系统管理员', 'admin@example.com', 0),
+('2', 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '张三', 'zhangsan@example.com', 0),
+('3', 'lisi', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '李四', 'lisi@example.com', 0)
 ON DUPLICATE KEY UPDATE `username` = `username`;
 
 -- 初始化系统角色
 INSERT INTO `sys_role` (`id`, `role_code`, `role_name`, `description`, `sort_order`, `status`) VALUES
-('1', 'admin', '系统管理员', '拥有系统所有权限', 1, 1),
-('2', 'manager', '部门经理', '部门经理，可审批部门内申请', 2, 1),
-('3', 'staff', '普通员工', '普通员工，可发起申请', 3, 1)
+('1', 'admin', '系统管理员', '拥有系统所有权限', 1, 0),
+('2', 'manager', '部门经理', '部门经理，可审批部门内申请', 2, 0),
+('3', 'staff', '普通员工', '普通员工，可发起申请', 3, 0)
 ON DUPLICATE KEY UPDATE `role_code` = `role_code`;
 
 -- 初始化系统用户组
 INSERT INTO `sys_group` (`id`, `group_code`, `group_name`, `description`, `sort_order`, `status`) VALUES
-('1', 'dev_dept', '研发部', '研发部门', 1, 1),
-('2', 'hr_dept', '人事部', '人事部门', 2, 1),
-('3', 'finance_dept', '财务部', '财务部门', 3, 1)
+('1', 'dev_dept', '研发部', '研发部门', 1, 0),
+('2', 'hr_dept', '人事部', '人事部门', 2, 0),
+('3', 'finance_dept', '财务部', '财务部门', 3, 0)
 ON DUPLICATE KEY UPDATE `group_code` = `group_code`;
 
 -- 用户-角色关联

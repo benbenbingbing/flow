@@ -9,8 +9,11 @@ CREATE TABLE IF NOT EXISTS sys_menu (
     path VARCHAR(200) COMMENT '路由地址',
     component VARCHAR(255) COMMENT '组件路径',
     perm VARCHAR(200) COMMENT '权限标识，如：system:user:list',
-    status CHAR(1) DEFAULT '1' COMMENT '状态：0-禁用 1-启用',
-    visible CHAR(1) DEFAULT '1' COMMENT '显示状态：0-隐藏 1-显示',
+    status CHAR(1) DEFAULT '0' COMMENT '状态：0-启用 1-禁用',
+    visible CHAR(1) DEFAULT '0' COMMENT '显示状态：0-显示 1-隐藏',
+    is_frame CHAR(1) DEFAULT '0' COMMENT '是否外链：0-否 1-是',
+    is_cache CHAR(1) DEFAULT '0' COMMENT '是否缓存：0-缓存 1-不缓存',
+    query VARCHAR(255) COMMENT '路由参数',
     keep_alive CHAR(1) DEFAULT '0' COMMENT '是否缓存：0-不缓存 1-缓存',
     breadcrumb CHAR(1) DEFAULT '1' COMMENT '是否显示面包屑：0-否 1-是',
     remark VARCHAR(500) COMMENT '备注',
@@ -27,10 +30,10 @@ CREATE TABLE IF NOT EXISTS sys_menu (
 
 -- 插入默认菜单数据
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, icon, sort, path, component, perm, status, visible) VALUES
-('1', '0', '系统管理', 'M', 'Setting', 1, '/system', NULL, NULL, '1', '1'),
-('2', '1', '菜单管理', 'C', 'Menu', 1, 'menu', '/views/system/MenuManage', 'system:menu:list', '1', '1'),
-('3', '2', '菜单查询', 'F', NULL, 1, NULL, NULL, 'system:menu:query', '1', '1'),
-('4', '2', '菜单新增', 'F', NULL, 2, NULL, NULL, 'system:menu:add', '1', '1'),
-('5', '2', '菜单编辑', 'F', NULL, 3, NULL, NULL, 'system:menu:edit', '1', '1'),
-('6', '2', '菜单删除', 'F', NULL, 4, NULL, NULL, 'system:menu:delete', '1', '1'),
-('7', '2', '菜单导出', 'F', NULL, 5, NULL, NULL, 'system:menu:export', '1', '1');
+('1', '0', '系统管理', 'M', 'Setting', 1, '/system', NULL, NULL, '0', '0'),
+('2', '1', '菜单管理', 'C', 'Menu', 1, '/system/menu', '/views/system/Menu.vue', 'system:menu:list', '0', '0'),
+('3', '2', '菜单查询', 'F', NULL, 1, NULL, NULL, 'system:menu:query', '0', '0'),
+('4', '2', '菜单新增', 'F', NULL, 2, NULL, NULL, 'system:menu:add', '0', '0'),
+('5', '2', '菜单编辑', 'F', NULL, 3, NULL, NULL, 'system:menu:edit', '0', '0'),
+('6', '2', '菜单删除', 'F', NULL, 4, NULL, NULL, 'system:menu:delete', '0', '0'),
+('7', '2', '菜单导出', 'F', NULL, 5, NULL, NULL, 'system:menu:export', '0', '0');

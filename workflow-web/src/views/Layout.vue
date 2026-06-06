@@ -81,7 +81,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document } from '@element-plus/icons-vue'
+import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document, Notebook } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
 import { getMenuTree } from '@/api/system/menu'
@@ -107,7 +107,8 @@ const iconMap = {
   Connection,
   ArrowDown,
   OfficeBuilding,
-  Document
+  Document,
+  Notebook
 }
 
 // 收集所有被禁用菜单的路径（用于路由守卫拦截）
@@ -139,11 +140,13 @@ const loadMenus = async () => {
       if (!menus) return []
       return menus
         .filter(m => m.status !== '1')
+        .filter(m => m.menuType !== 'F')
         .filter(m => parentVisible !== '1' && m.visible !== '1')
         .map(m => {
           const item = { ...m }
           if (item.children && Array.isArray(item.children) && item.children.length > 0) {
-            item.children = clean(item.children, item.visible)
+            const children = clean(item.children, item.visible)
+            item.children = children.length > 0 ? children : undefined
           }
           return item
         })
