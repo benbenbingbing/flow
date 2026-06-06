@@ -6,6 +6,7 @@ import com.workflow.entity.*;
 import com.workflow.mapper.*;
 import com.workflow.process.definition.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.ProcessFlowableDeploymentService;
+import com.workflow.process.definition.ProcessPublishHistoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.repository.Deployment;
@@ -30,6 +31,7 @@ public class ProcessDefinitionService {
     private final FormConfigMapper formMapper;
     private final FormFieldConfigMapper fieldMapper;
     private final ProcessFlowableDeploymentService flowableDeploymentService;
+    private final ProcessPublishHistoryService publishHistoryService;
     private final ObjectMapper objectMapper;
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionService flowActionService;
@@ -452,9 +454,7 @@ public class ProcessDefinitionService {
             throw new RuntimeException("BPMN XML is required for publishing");
         }
         
-        // 计算新版本号
-        Integer maxVersion = versionHistoryMapper.findMaxVersionByProcessConfigId(id);
-        int newVersion = (maxVersion == null ? 0 : maxVersion) + 1;
+        int newVersion = publishHistoryService.nextVersion(id);
         
         // 将 processKey 写入 XML 的 process id 属性，确保 Flowable 使用正确的 key
         String bpmnXml = config.getBpmnXml();
@@ -471,21 +471,7 @@ public class ProcessDefinitionService {
         // 保存修改后的XML到流程配置
         config.setBpmnXml(bpmnXml);
         
-        // 保存版本历史记录
-        ProcessVersionHistory versionHistory = new ProcessVersionHistory();
-        versionHistory.setProcessConfigId(id);
-        versionHistory.setProcessKey(config.getProcessKey());
-        versionHistory.setProcessName(config.getProcessName());
-        versionHistory.setVersion(newVersion);
-        versionHistory.setVersionDescription(versionDescription);
-        versionHistory.setBpmnXml(bpmnXml);
-        versionHistory.setPublishedAt(java.time.LocalDateTime.now());
-        versionHistory.setDeploymentId(deployment.getId());
-        versionHistory.setStatus(ProcessVersionHistory.Status.ACTIVE.name());
-        versionHistoryMapper.insert(versionHistory);
-        
-        // 发布流程动作（将草稿动作复制到版本）
-        flowActionService.publishActions(id, versionHistory.getId());
+        publishHistoryService.recordPublish(config, bpmnXml, deployment.getId(), newVersion, versionDescription);
         
         // 从 BPMN XML 解析并保存节点配置
         parseAndSaveNodeConfigs(id, bpmnXml);        
