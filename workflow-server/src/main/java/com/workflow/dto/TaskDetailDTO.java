@@ -30,6 +30,11 @@ public class TaskDetailDTO {
      * 表单配置
      */
     private FormConfigDTO formConfig;
+
+    /**
+     * 多表单配置列表。保留 formConfig 作为第一个表单的兼容字段。
+     */
+    private List<FormConfigDTO> formConfigs;
     
     /**
      * 流程实例信息
@@ -67,6 +72,14 @@ public class TaskDetailDTO {
     
     public void setFormConfig(FormConfigDTO formConfig) {
         this.formConfig = formConfig;
+    }
+
+    public List<FormConfigDTO> getFormConfigs() {
+        return formConfigs;
+    }
+
+    public void setFormConfigs(List<FormConfigDTO> formConfigs) {
+        this.formConfigs = formConfigs;
     }
     
     public ProcessInstanceDTO getProcessInstance() {

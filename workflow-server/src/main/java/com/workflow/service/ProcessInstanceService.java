@@ -774,20 +774,23 @@ public class ProcessInstanceService {
                 }
             }
             
-            // 3. 加载表单详情（优先级：process_node_form 映射表 > BPMN XML > 流程变量 > 默认）
-            com.workflow.entity.EntityForm entityForm = null;
-            Boolean nodeFormReadonly = null;
+            // 3. 加载表单详情（优先级：process_node_form 映射表 > 默认）
+            List<ProcessProgressDTO.FormConfigDTO> formConfigs = new ArrayList<>();
             
             // 3a. 最高优先级：从 process_node_form 映射表查询节点表单绑定
             if (processKey != null && !processKey.isEmpty() && targetNodeId != null && !targetNodeId.isEmpty()) {
                 try {
                     ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
                     if (config != null) {
-                        com.workflow.entity.ProcessNodeForm nodeForm = nodeFormMapper.selectByNodeId(config.getId(), targetNodeId);
-                        if (nodeForm != null && nodeForm.getFormId() != null && !nodeForm.getFormId().isEmpty()) {
-                            entityForm = entityFormService.getById(nodeForm.getFormId());
+                        List<com.workflow.entity.ProcessNodeForm> nodeForms = nodeFormMapper.selectListByNodeId(config.getId(), targetNodeId);
+                        for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
+                            if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
+                                continue;
+                            }
+                            com.workflow.entity.EntityForm entityForm = entityFormService.getById(nodeForm.getFormId());
                             if (entityForm != null) {
-                                nodeFormReadonly = nodeForm.getIsReadonly() != null && nodeForm.getIsReadonly() == 1;
+                                Boolean nodeFormReadonly = nodeForm.getIsReadonly() != null && nodeForm.getIsReadonly() == 1;
+                                formConfigs.add(buildProgressFormConfig(entityForm, nodeFormReadonly));
                                 log.info("从 process_node_form 映射表查询到节点表单: nodeId={}, formId={}, formName={}",
                                     targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
                             }
@@ -799,43 +802,47 @@ public class ProcessInstanceService {
             }
             
             // 3b. 映射表中没有表单绑定，尝试使用默认表单
-            if (entityForm == null) {
-                entityForm = entityFormService.getDefaultForm(entityDef.getId());
+            if (formConfigs.isEmpty()) {
+                com.workflow.entity.EntityForm entityForm = entityFormService.getDefaultForm(entityDef.getId());
                 if (entityForm != null) {
+                    formConfigs.add(buildProgressFormConfig(entityForm, null));
                     log.debug("节点未配置表单，回退到默认表单: nodeId={}, formId={}", targetNodeId, entityForm.getId());
                 }
             }
             
-            if (entityForm == null) {
+            if (formConfigs.isEmpty()) {
                 log.warn("无法加载表单: entityId={}, nodeId={}", entityDef.getId(), targetNodeId);
                 return;
             }
-            
-            // 6. 构建 FormConfigDTO
-            ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
-            formConfig.setFormId(entityForm.getId());
-            formConfig.setFormName(entityForm.getFormName());
-            formConfig.setFormKey(entityForm.getFormKey());
-            formConfig.setLayoutType(entityForm.getLayoutType());
-            
-            // 转换字段配置
-            if (entityForm.getFields() != null) {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                List<Map<String, Object>> fields = new ArrayList<>();
-                for (com.workflow.entity.EntityFormField field : entityForm.getFields()) {
-                    fields.add(EntityFormFieldRuntimeMapper.toMap(field, nodeFormReadonly, mapper));
-                }
-                formConfig.setFields(fields);
-            }
-            
-            progress.setFormConfig(formConfig);
-            log.debug("表单配置加载成功: entityCode={}, formKey={}, fieldsCount={}", 
-                entityCode, entityForm.getFormKey(), 
-                formConfig.getFields() != null ? formConfig.getFields().size() : 0);
+
+            progress.setFormConfigs(formConfigs);
+            progress.setFormConfig(formConfigs.get(0));
+            log.debug("表单配置加载成功: entityCode={}, formCount={}, firstFormKey={}, firstFieldsCount={}",
+                entityCode, formConfigs.size(), formConfigs.get(0).getFormKey(),
+                formConfigs.get(0).getFields() != null ? formConfigs.get(0).getFields().size() : 0);
             
         } catch (Exception e) {
             log.warn("加载表单配置失败: {}", e.getMessage(), e);
         }
+    }
+
+    private ProcessProgressDTO.FormConfigDTO buildProgressFormConfig(com.workflow.entity.EntityForm entityForm, Boolean readonlyOverride) {
+        ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
+        formConfig.setFormId(entityForm.getId());
+        formConfig.setFormName(entityForm.getFormName());
+        formConfig.setFormKey(entityForm.getFormKey());
+        formConfig.setLayoutType(entityForm.getLayoutType());
+
+        if (entityForm.getFields() != null) {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<Map<String, Object>> fields = new ArrayList<>();
+            for (com.workflow.entity.EntityFormField field : entityForm.getFields()) {
+                fields.add(EntityFormFieldRuntimeMapper.toMap(field, readonlyOverride, mapper));
+            }
+            formConfig.setFields(fields);
+        }
+
+        return formConfig;
     }
     
     /**

@@ -86,6 +86,11 @@ public class ProcessProgressDTO {
      * 表单配置
      */
     private FormConfigDTO formConfig;
+
+    /**
+     * 多表单配置列表。保留 formConfig 作为第一个表单的兼容字段。
+     */
+    private List<FormConfigDTO> formConfigs;
     
     /**
      * 审批配置

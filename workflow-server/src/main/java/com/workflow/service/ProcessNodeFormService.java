@@ -42,6 +42,15 @@ public class ProcessNodeFormService {
         }
         return nodeForm;
     }
+
+    /**
+     * 查询节点的全部表单绑定
+     */
+    public List<ProcessNodeForm> getListByNodeId(String processConfigId, String nodeId) {
+        List<ProcessNodeForm> list = nodeFormMapper.selectListByNodeId(processConfigId, nodeId);
+        list.forEach(this::fillFormInfo);
+        return list;
+    }
     
     /**
      * 保存节点表单绑定
@@ -91,8 +100,12 @@ public class ProcessNodeFormService {
         
         // 保存新绑定
         if (nodeForms != null && !nodeForms.isEmpty()) {
-            for (ProcessNodeForm nodeForm : nodeForms) {
+            for (int i = 0; i < nodeForms.size(); i++) {
+                ProcessNodeForm nodeForm = nodeForms.get(i);
                 nodeForm.setProcessConfigId(processConfigId);
+                if (nodeForm.getSortOrder() == null) {
+                    nodeForm.setSortOrder(i);
+                }
                 nodeForm.setCreateTime(LocalDateTime.now());
                 nodeForm.setUpdateTime(LocalDateTime.now());
                 nodeFormMapper.insert(nodeForm);
