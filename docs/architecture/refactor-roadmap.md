@@ -65,6 +65,8 @@ src/features/system       用户、角色、组织、菜单、字典
 
 ## P2：领域模型统一
 
+详细边界见 [领域模型边界](domain-model-boundaries.md)。
+
 建立三层模型：
 
 ```text
