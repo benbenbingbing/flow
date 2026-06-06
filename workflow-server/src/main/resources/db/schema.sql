@@ -569,7 +569,7 @@ CREATE TABLE IF NOT EXISTS `sys_role_menu` (
 -- 7. 初始化数据
 -- --------------------------------------------------------
 
--- 初始化系统用户（密码：admin123）
+-- 初始化系统用户（密码：admin）
 INSERT INTO `sys_user` (`id`, `username`, `password`, `nickname`, `email`, `status`) VALUES
 ('1', 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '系统管理员', 'admin@example.com', 0),
 ('2', 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '张三', 'zhangsan@example.com', 0),

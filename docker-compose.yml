@@ -26,7 +26,7 @@ services:
     environment:
       DB_USERNAME: root
       DB_PASSWORD: ${DB_PASSWORD:-workflow}
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=Asia/Shanghai&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=Asia/Shanghai&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
       SERVER_PORT: 8080
       FLOWABLE_SCHEMA_UPDATE: ${FLOWABLE_SCHEMA_UPDATE:-true}
       FILE_STORAGE_PATH: /app/uploads

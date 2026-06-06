@@ -5,7 +5,7 @@
 - JDK 21
 - Maven 3.9+
 - Node.js 22+
-- MySQL 8+
+- MySQL 8.4
 - Docker 24+（可选）
 
 ## 本地启动
@@ -79,4 +79,6 @@ npm run build
 
 数据库结构变更通过 `workflow-server/src/main/resources/db/migration` 管理。
 
-老库如果没有 Flyway 历史表，需要先备份数据库，再按版本顺序补齐缺失迁移。不要直接修改业务表结构。
+当前公开版本从 `V001` 业务基线开始。Flowable 引擎表由 Flowable 自动维护，业务表由 Flyway 维护。
+
+新增迁移按 `V003__xxx.sql` 递增。不要修改已发布迁移。
