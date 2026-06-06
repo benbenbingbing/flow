@@ -38,9 +38,9 @@ export function useFormField(props, emit) {
       // 子表单按关系类型处理
       if (type === 'sub_form' && !Array.isArray(val)) {
         if (props.field?.relationType === 'ONE_TO_ONE' || props.field?.relation?.type === 'ONE_TO_ONE') {
-          return val || null
+          return val && typeof val === 'object' ? val : null
         }
-        return val != null ? [val] : []
+        return val && typeof val === 'object' ? [val] : []
       }
 
       return val

@@ -1,7 +1,7 @@
 <template>
   <div class="sub-form-renderer">
     <div v-if="isRepeatable || showSummary" class="sub-form-header">
-      <span class="sub-form-title">{{ title || config.label || '明细' }}</span>
+      <span class="sub-form-title">{{ config.label || '明细' }}</span>
       <el-tag v-if="config.required" type="danger" size="small" effect="plain">必填</el-tag>
       <span class="sub-form-summary" v-if="showSummary">
         共 {{ rowData.length }} 条，
@@ -139,16 +139,6 @@ import { Plus, Delete } from '@element-plus/icons-vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'
 
 const props = defineProps({
-  // 兼容旧版属性
-  refEntityId: String,
-  displayMode: {
-    type: String,
-    default: 'embedded'
-  },
-  subFormType: String,
-  title: String,
-  
-  // 新版子表单配置
   config: {
     type: Object,
     default: () => ({
@@ -164,17 +154,14 @@ const props = defineProps({
       repeatable: false
     })
   },
-  // 数据绑定
   modelValue: {
     type: [Array, Object],
     default: () => []
   },
-  // 是否只读
   readonly: {
     type: Boolean,
     default: false
   },
-  // 是否禁用
   disabled: {
     type: Boolean,
     default: false
@@ -183,24 +170,34 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change', 'validate'])
 
-// 内部数据副本
 const rowData = ref([])
 
-// 校验错误
 const fieldErrors = ref({})
 
 const canEdit = computed(() => !props.disabled && !props.readonly)
 
 const isOneToOne = computed(() => props.config.relationType === 'ONE_TO_ONE')
 
-// 是否可重复添加
 const isRepeatable = computed(() => !isOneToOne.value && props.config.repeatable === true)
+
+const maxRows = computed(() => isRepeatable.value ? (props.config.maxRows || 100) : 1)
+
+const minRows = computed(() => props.config.minRows || 0)
+
+const showSummary = computed(() => {
+  return props.config.showSummary && props.config.summaryFields?.length > 0
+})
+
+const summaryData = ref({})
+
+const validationErrors = computed(() => {
+  return Object.values(fieldErrors.value).filter(e => e)
+})
 
 function outputValue() {
   return isOneToOne.value ? (rowData.value[0] || null) : rowData.value
 }
 
-// 初始化数据（引用相同则跳过，避免父组件传回同一引用时无限 clone）
 watch(() => props.modelValue, (newVal) => {
   if (newVal === rowData.value) return
   if (Array.isArray(newVal)) {
@@ -210,18 +207,10 @@ watch(() => props.modelValue, (newVal) => {
   } else {
     rowData.value = []
   }
-  if (canEdit.value && rowData.value.length === 0 && props.config.fields?.length > 0) {
-    nextTick(() => {
-      if (rowData.value.length === 0) addRow()
-    })
-  }
+  ensureMinRows()
 }, { immediate: true })
 
-watch(() => [props.config.fields, props.config.fields?.length], () => {
-  if (canEdit.value && props.config.fields?.length > 0 && rowData.value.length === 0) {
-    addRow()
-  }
-}, { immediate: true })
+watch(() => [props.config.fields, props.config.fields?.length], ensureMinRows, { immediate: true })
 
 watch(rowData, (newVal) => {
   if (newVal === props.modelValue) return
@@ -233,30 +222,17 @@ watch(rowData, (newVal) => {
 
 onMounted(() => {
   nextTick(() => {
-    if (canEdit.value && props.config.fields?.length > 0 && rowData.value.length === 0) {
-      addRow()
-    }
+    ensureMinRows()
   })
 })
 
-// 最大行数（不可重复时最多1条）
-const maxRows = computed(() => isRepeatable.value ? (props.config.maxRows || 100) : 1)
-
-// 最小行数
-const minRows = computed(() => props.config.minRows || 0)
-
-// 是否显示汇总
-const showSummary = computed(() => {
-  return props.config.showSummary && props.config.summaryFields?.length > 0
-})
-
-// 汇总数据
-const summaryData = ref({})
-
-// 校验错误列表
-const validationErrors = computed(() => {
-  return Object.values(fieldErrors.value).filter(e => e)
-})
+function ensureMinRows() {
+  if (!canEdit.value || !props.config.fields?.length) return
+  const targetRows = Math.min(minRows.value, maxRows.value)
+  while (rowData.value.length < targetRows) {
+    appendBlankRow()
+  }
+}
 
 // 计算汇总
 function calculateSummary() {
@@ -336,9 +312,12 @@ function addRow() {
   if (rowData.value.length >= maxRows.value) {
     return
   }
-  
+  appendBlankRow()
+  emit('change', outputValue())
+}
+
+function appendBlankRow() {
   const newRow = {}
-  // 初始化字段默认值
   props.config.fields.forEach(field => {
     if (field.defaultValue != null) {
       newRow[field.fieldKey] = field.defaultValue
@@ -348,7 +327,6 @@ function addRow() {
   })
   
   rowData.value.push(newRow)
-  emit('change', outputValue())
 }
 
 // 删除行

@@ -36,20 +36,7 @@ const subFormMeta = computed(() => {
   const childRefFieldCode = field?.childRefFieldCode || field?.refFieldCode || config.childRefFieldCode || ''
   const refFormId = field?.refFormId || config.refFormId || null
 
-  if (field?.subFormType === 'ref' && field?.refFormId) {
-    return { subFormType: 'ref', refFormId, refEntityId, relationType, childRefFieldCode }
-  }
-  if (config.type === 'ref' && config.refFormId) {
-    return {
-      subFormType: 'ref',
-      refFormId,
-      refEntityId,
-      relationType,
-      childRefFieldCode
-    }
-  }
   return {
-    subFormType: field?.subFormType || (refFormId || refEntityId ? 'ref' : 'embedded'),
     refFormId,
     refEntityId,
     relationType,
@@ -142,13 +129,7 @@ function mapComponentType(type) {
 }
 
 function getSubFieldsFromField(field) {
-  if (field?.subFields?.length) return field.subFields
   if (field?.fields?.length) return field.fields
-  if (parsedComponentProps.value.subFormConfig?.fields?.length) {
-    return parsedComponentProps.value.subFormConfig.fields
-  }
-  if (parsedComponentProps.value.fields?.length) return parsedComponentProps.value.fields
-  if (parsedComponentProps.value.subFields?.length) return parsedComponentProps.value.subFields
   return []
 }
 

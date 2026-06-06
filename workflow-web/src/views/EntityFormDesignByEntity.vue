@@ -646,7 +646,6 @@ function restoreFieldConfig(field) {
 
     // 恢复子表单配置
     if (compProps.subFormConfig) {
-      field.subFormType = 'ref'
       field.displayMode = compProps.subFormConfig.displayMode || 'embedded'
       field.layout = compProps.subFormConfig.layout || 'form'
       field.refEntityId = compProps.subFormConfig.refEntityId || field.childEntityId || field.refEntityId || ''
@@ -654,9 +653,6 @@ function restoreFieldConfig(field) {
       field.repeatable = field.relationType !== 'ONE_TO_ONE'
       field.childEntityId = field.childEntityId || field.refEntityId || ''
       field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
-    }
-    if (compProps.subFields) {
-      field.subFields = compProps.subFields
     }
     // 恢复实体引用配置
     if (compProps.refConfig) {
@@ -687,7 +683,6 @@ function serializeFieldConfig(field) {
     // 序列化子表单配置
     if ((field.componentType || '').toUpperCase() === 'SUB_FORM') {
       compProps.subFormConfig = {
-        type: 'ref',
         displayMode: field.displayMode || 'embedded',
         layout: field.layout || 'form',
         refEntityId: field.childEntityId || field.refEntityId || '',
@@ -696,6 +691,7 @@ function serializeFieldConfig(field) {
         relationType: field.relationType || 'ONE_TO_MANY',
         childRefFieldCode: field.childRefFieldCode || field.refFieldCode || ''
       }
+      delete compProps.fields
       delete compProps.subFields
     }
     // 序列化实体引用配置
@@ -813,7 +809,6 @@ function addField(entityField) {
   if (newField.componentType === 'sub_form' || newField.componentType === 'SUB_FORM') {
     newField.layout = 'form'
     newField.displayMode = 'embedded'
-    newField.subFormType = 'ref'
     newField.repeatable = newField.relationType !== 'ONE_TO_ONE'
     if (newField.refEntityId) {
       loadFormListByEntity(newField.refEntityId)
@@ -963,35 +958,6 @@ function parseComponentProps(propsStr) {
 // 引用实体变化时加载表单列表
 function handleRefEntityChange(entityId) {
   loadFormListByEntity(entityId || entityInfo.value.id)
-}
-
-// 子表单引用类型切换时加载表单列表
-function handleSubFormTypeChange(val) {
-  if (val === 'ref' && selectedField.value) {
-    const refEntityId = selectedField.value.refEntityId || entityInfo.value.id
-    loadFormListByEntity(refEntityId)
-  }
-}
-
-// 添加子表单字段
-function addSubField() {
-  if (!selectedField.value) return
-  if (!selectedField.value.subFields) {
-    selectedField.value.subFields = []
-  }
-  selectedField.value.subFields.push({
-    fieldName: '',
-    fieldType: 'TEXT',
-    isRequired: false,
-    isEditable: true
-  })
-}
-
-// 移除子表单字段
-function removeSubField(index) {
-  if (selectedField.value && selectedField.value.subFields) {
-    selectedField.value.subFields.splice(index, 1)
-  }
 }
 
 // 保存表单

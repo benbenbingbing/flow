@@ -669,14 +669,7 @@ const formatFieldValue = (field, value) => {
   // 子表单：显示为简化的表格
   if (['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType)) {
     if (!Array.isArray(value) || value.length === 0) return '-'
-    const subFields = field.subFields || field.fields || []
-    if (subFields.length === 0) return `${value.length} 条数据`
-    // 取前两行数据展示
-    const rows = value.slice(0, 2).map(row => {
-      return subFields.map(f => `${f.fieldName || f.label}: ${row[f.fieldKey || f.key] || '-'}`).join(', ')
-    }).join('；')
-    const more = value.length > 2 ? ` 等共 ${value.length} 条` : ''
-    return rows + more
+    return `${value.length} 行`
   }
   return value
 }

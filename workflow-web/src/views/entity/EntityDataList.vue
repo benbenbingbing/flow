@@ -714,6 +714,9 @@ const getFieldDisplayValue = (row: any, field: any) => {
   }
   const value = row.data?.[fieldCode]
   if (value === null || value === undefined) return '-'
+  if (['SUB_FORM', 'SUB_FORM_LIST'].includes((field.fieldType || '').toUpperCase())) {
+    return Array.isArray(value) && value.length > 0 ? `${value.length} 行` : '-'
+  }
   // 选择类型字段显示 label
   if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)) {
     const options = parseOptions(field.optionsJson)
