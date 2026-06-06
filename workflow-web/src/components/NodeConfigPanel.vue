@@ -1201,10 +1201,14 @@
           <template v-if="formConfig.formSource === 'entity'">
             <el-form-item label="选择表单">
               <el-select
-                v-model="formConfig.entityFormId"
-                placeholder="请选择实体表单"
+                v-model="formConfig.entityFormIds"
+                placeholder="请选择一个或多个实体表单"
                 style="width: 100%"
                 filterable
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                :max-collapse-tags="2"
                 @change="onEntityFormChange"
               >
                 <el-option
@@ -1813,6 +1817,7 @@ const formConfig = ref({
   formKey: '',
   formSource: 'entity',  // 默认实体表单
   entityFormId: '',
+  entityFormIds: [],
   isReadonly: false,
   entityCode: ''
 })
@@ -1851,9 +1856,39 @@ const roleOptions = ref([])
 const entityFormOptions = ref([])
 const selectedFormFields = ref([])
 const selectedForm = computed(() => {
-  if (!formConfig.value.entityFormId) return null
-  return entityFormOptions.value.find(f => f.id === formConfig.value.entityFormId)
+  const formId = getPrimaryEntityFormId()
+  if (!formId) return null
+  return entityFormOptions.value.find(f => f.id === formId)
 })
+
+function normalizeEntityFormIds(value) {
+  const ids = Array.isArray(value) ? value : (value ? [value] : [])
+  return [...new Set(ids.map(id => String(id || '').trim()).filter(Boolean))]
+}
+
+function parseEntityFormIds(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return normalizeEntityFormIds(value)
+  const raw = String(value).trim()
+  if (!raw) return []
+  if (raw.startsWith('[')) {
+    try {
+      return normalizeEntityFormIds(JSON.parse(raw))
+    } catch (e) {
+      console.warn('解析 entityFormIds 失败，按逗号列表处理:', e)
+    }
+  }
+  return normalizeEntityFormIds(raw.split(','))
+}
+
+function getSelectedEntityFormIds() {
+  const ids = normalizeEntityFormIds(formConfig.value.entityFormIds)
+  return ids.length ? ids : normalizeEntityFormIds(formConfig.value.entityFormId)
+}
+
+function getPrimaryEntityFormId() {
+  return getSelectedEntityFormIds()[0] || ''
+}
 
 // 加载用户列表
 async function loadUsers() {
@@ -2325,27 +2360,31 @@ watch(() => props.element, async (newElement) => {
     }
     if (isTask.value || isStartEvent.value) {
       // 从扩展属性中读取表单绑定信息
+      const entityFormIds = parseEntityFormIds(extProps['entityFormIds'])
       const entityFormId = extProps['entityFormId']
+      const selectedEntityFormIds = entityFormIds.length ? entityFormIds : normalizeEntityFormIds(entityFormId)
       const entityFormReadonly = extProps['entityFormReadonly'] === 'true'
       const entityCode = extProps['entityCode'] || ''
       
-      if (entityFormId) {
+      if (selectedEntityFormIds.length) {
         // 实体表单绑定
         formConfig.value = {
           formSource: 'entity',
           formKey: '',
-          entityFormId: entityFormId,
+          entityFormId: selectedEntityFormIds[0],
+          entityFormIds: selectedEntityFormIds,
           isReadonly: entityFormReadonly,
           entityCode: entityCode
         }
         // 加载表单字段
-        loadFormFields(entityFormId)
+        loadFormFields(selectedEntityFormIds[0])
       } else if (bo.formKey) {
         // 自定义表单
         formConfig.value = {
           formSource: 'custom',
           formKey: bo.formKey,
           entityFormId: '',
+          entityFormIds: [],
           isReadonly: false,
           entityCode: ''
         }
@@ -2358,12 +2397,14 @@ watch(() => props.element, async (newElement) => {
             formSource: 'entity',
             formKey: '',
             entityFormId: defaultForm.id,
+            entityFormIds: [defaultForm.id],
             isReadonly: false,
             entityCode: boundEntity.value.entityCode || ''
           }
           loadFormFields(defaultForm.id)
           // 自动保存到BPMN
           updateExtensionProperty('entityFormId', defaultForm.id)
+          updateExtensionProperty('entityFormIds', JSON.stringify([defaultForm.id]))
           updateExtensionProperty('entityFormReadonly', 'false')
           updateExtensionProperty('entityCode', boundEntity.value.entityCode || '')
         } else {
@@ -2372,6 +2413,7 @@ watch(() => props.element, async (newElement) => {
             formSource: 'none',
             formKey: '',
             entityFormId: '',
+            entityFormIds: [],
             isReadonly: false,
             entityCode: ''
           }
@@ -2382,6 +2424,7 @@ watch(() => props.element, async (newElement) => {
           formSource: 'none',
           formKey: '',
           entityFormId: '',
+          entityFormIds: [],
           isReadonly: false,
           entityCode: ''
         }
@@ -2846,22 +2889,29 @@ function onFormSourceChange(source) {
     updateProperty('formKey', '')
   } else if (source === 'custom') {
     formConfig.value.entityFormId = ''
+    formConfig.value.entityFormIds = []
     formConfig.value.isReadonly = false
   } else {
     // none - 清除所有配置
     formConfig.value.formKey = ''
     formConfig.value.entityFormId = ''
+    formConfig.value.entityFormIds = []
     formConfig.value.isReadonly = false
     updateProperty('formKey', '')
   }
   updateNodeFormBind()
 }
 
-async function onEntityFormChange(formId) {
-  if (formId) {
-    await loadFormFields(formId)
-    const selectedForm = entityFormOptions.value.find(f => f.id === formId)
-    formConfig.value.entityCode = selectedForm?.entityCode || ''
+async function onEntityFormChange(formIds) {
+  const selectedIds = normalizeEntityFormIds(formIds)
+  const primaryFormId = selectedIds[0] || ''
+  formConfig.value.entityFormIds = selectedIds
+  formConfig.value.entityFormId = primaryFormId
+
+  if (primaryFormId) {
+    await loadFormFields(primaryFormId)
+    const selectedForm = entityFormOptions.value.find(f => f.id === primaryFormId)
+    formConfig.value.entityCode = selectedForm?.entityCode || boundEntity.value?.entityCode || ''
   } else {
     selectedFormFields.value = []
     formConfig.value.entityCode = ''
@@ -2875,13 +2925,18 @@ function updateNodeFormBind() {
   const bo = rawElement.businessObject
   const modeling = getModeling()
   
-  if (formConfig.value.formSource === 'entity' && formConfig.value.entityFormId) {
+  const entityFormIds = getSelectedEntityFormIds()
+
+  if (formConfig.value.formSource === 'entity' && entityFormIds.length) {
     // 实体表单绑定
+    formConfig.value.entityFormId = entityFormIds[0]
+    formConfig.value.entityFormIds = entityFormIds
     if (modeling) {
       modeling.updateProperties(rawElement, { 'flowable:formKey': null, 'flowable:formData': null })
     }
     // 扩展属性存储表单绑定信息
-    updateExtensionProperty('entityFormId', formConfig.value.entityFormId)
+    updateExtensionProperty('entityFormId', entityFormIds[0])
+    updateExtensionProperty('entityFormIds', JSON.stringify(entityFormIds))
     updateExtensionProperty('entityFormReadonly', formConfig.value.isReadonly ? 'true' : 'false')
     updateExtensionProperty('entityCode', formConfig.value.entityCode)
   } else if (formConfig.value.formSource === 'custom' && formConfig.value.formKey) {
@@ -2891,12 +2946,14 @@ function updateNodeFormBind() {
       modeling.updateProperties(rawElement, { 'flowable:formData': null })
     }
     updateExtensionProperty('entityFormId', null)
+    updateExtensionProperty('entityFormIds', null)
     updateExtensionProperty('entityFormReadonly', null)
     updateExtensionProperty('entityCode', null)
   } else {
     // 无表单
     updateProperty('formKey', '')
     updateExtensionProperty('entityFormId', null)
+    updateExtensionProperty('entityFormIds', null)
     updateExtensionProperty('entityFormReadonly', null)
     updateExtensionProperty('entityCode', null)
   }
