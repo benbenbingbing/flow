@@ -402,7 +402,7 @@
       <!-- ========== 服务配置（服务任务） ========== -->
       <el-tab-pane v-if="isServiceTask" name="service">
         <template #label>
-          <el-tooltip content="自动执行Java代码、调用外部服务或发送HTTP请求，无需人工干预" placement="top">
+          <el-tooltip content="执行 Java、外部服务或 HTTP 请求" placement="top">
             <span>服务</span>
           </el-tooltip>
         </template>
@@ -541,7 +541,7 @@
       <!-- ========== 发送配置（发送任务） ========== -->
       <el-tab-pane v-if="isSendTask" name="send">
         <template #label>
-          <el-tooltip content="自动发送消息（邮件、短信、站内信）给指定人员" placement="top">
+          <el-tooltip content="发送邮件、短信或站内信" placement="top">
             <span>发送</span>
           </el-tooltip>
         </template>
@@ -677,7 +677,7 @@
       <!-- ========== 业务规则配置（业务规则任务） ========== -->
       <el-tab-pane v-if="isBusinessRuleTask" name="rule">
         <template #label>
-          <el-tooltip content="执行DMN决策表，根据规则自动决策流程走向" placement="top">
+          <el-tooltip content="执行 DMN 决策表" placement="top">
             <span>规则</span>
           </el-tooltip>
         </template>
@@ -795,7 +795,7 @@
           
           <el-form-item label="自动存储">
             <el-switch v-model="scriptForm.autoStoreVariables" />
-            <div class="form-tip">自动将脚本变量存储到流程上下文</div>
+            <div class="form-tip">脚本变量写入流程上下文</div>
           </el-form-item>
         </el-form>
         <div class="tab-footer">
@@ -1387,7 +1387,7 @@
           
           <el-alert v-else-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
             <template #title>
-              开启后，流程执行到此节点时将自动跳过，直接流转到下一节点
+              执行到此节点时直接流转
             </template>
           </el-alert>
         </el-form>
@@ -1408,6 +1408,7 @@ import { getEntityStatusList } from '@/api/entityStatus'
 import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { buildAssigneeConfig, getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
 
 const router = useRouter()
 
@@ -1585,101 +1586,12 @@ function goToFormDesign() {
 
 // ========== 节点类型说明 ==========
 const nodeTypeDesc = computed(() => {
-  const descs = {
-    'bpmn:UserTask': {
-      title: '用户任务 - 人工审批',
-      desc: '需要人工参与处理的任务，生成待办事项，支持审批、会签、或签等操作',
-      scene: '请假审批、报销审核、合同签署等需要人工决策的场景'
-    },
-    'bpmn:ServiceTask': {
-      title: '服务任务 - 自动执行',
-      desc: '自动执行Java代码或调用外部服务，无需人工干预，用于数据处理、状态更新等',
-      scene: '审批通过后自动更新业务表状态、发送系统通知、调用第三方接口等'
-    },
-    'bpmn:SendTask': {
-      title: '发送任务 - 消息通知',
-      desc: '向外部系统或用户发送消息（邮件、短信、站内信），流程执行时自动触发',
-      scene: '节点完成后自动发送邮件通知、向消息队列发送事件等'
-    },
-    'bpmn:ReceiveTask': {
-      title: '接收任务 - 等待触发',
-      desc: '暂停流程执行，等待外部系统或事件触发后才继续，实现异步等待',
-      scene: '等待第三方系统回调结果、等待用户在外部系统完成操作等'
-    },
-    'bpmn:ManualTask': {
-      title: '手动任务 - 线下记录',
-      desc: '标记需要在流程系统外完成的工作，仅作记录，不生成待办任务',
-      scene: '打印纸质文件、现场设备调试等非系统操作'
-    },
-    'bpmn:BusinessRuleTask': {
-      title: '业务规则任务 - 自动决策',
-      desc: '执行DMN决策表，根据预定义规则自动决策流程走向',
-      scene: '根据金额、部门等条件自动判断审批层级、风险等级等'
-    },
-    'bpmn:ScriptTask': {
-      title: '脚本任务 - 轻量处理',
-      desc: '执行脚本代码（JavaScript/Groovy），用于轻量级的数据处理和转换',
-      scene: '简单的数据计算、格式转换、变量赋值等'
-    },
-    'bpmn:CallActivity': {
-      title: '调用活动 - 子流程复用',
-      desc: '调用另一个独立的子流程，实现流程模块化和复用',
-      scene: '合同审批中调用盖章子流程，子流程可在多个主流程中复用'
-    },
-    'bpmn:SubProcess': {
-      title: '子流程 - 逻辑封装',
-      desc: '将一组相关的任务封装在父节点内，可折叠/展开，简化主流程视图',
-      scene: '将多级审批等复杂逻辑封装，使主流程更清晰'
-    },
-    'bpmn:SequenceFlow': {
-      title: '顺序流 - 流程连线',
-      desc: '连接各个节点的箭头，可配置流转条件和执行动作',
-      scene: '控制流程走向，设置分支条件和后续处理动作'
-    },
-    'bpmn:StartEvent': {
-      title: '开始事件 - 流程起点',
-      desc: '流程的起始节点，触发流程实例的创建',
-      scene: '流程的入口'
-    },
-    'bpmn:EndEvent': {
-      title: '结束事件 - 流程终点',
-      desc: '流程的终止节点，标志着流程实例的完成',
-      scene: '流程的出口'
-    }
-  }
-  return descs[props.element?.type] || { title: '未知节点', desc: '', scene: '' }
+  return getNodeTypeDescription(props.element?.type)
 })
 
 const nodeTypeText = computed(() => {
-  const types = {
-    'bpmn:StartEvent': '开始事件',
-    'bpmn:EndEvent': '结束事件',
-    'bpmn:UserTask': '用户任务',
-    'bpmn:ServiceTask': '服务任务',
-    'bpmn:ManualTask': '手动任务',
-    'bpmn:ScriptTask': '脚本任务',
-    'bpmn:BusinessRuleTask': '业务规则任务',
-    'bpmn:SendTask': '发送任务',
-    'bpmn:ReceiveTask': '接收任务',
-    'bpmn:CallActivity': '调用活动',
-    'bpmn:SubProcess': '子流程',
-    'bpmn:ExclusiveGateway': '排他网关',
-    'bpmn:ParallelGateway': '并行网关',
-    'bpmn:InclusiveGateway': '包容网关',
-    'bpmn:SequenceFlow': '顺序流'
-  }
-  return types[props.element?.type] || props.element?.type || '未知'
+  return getNodeTypeText(props.element?.type)
 })
-
-function getNodeTypeTag(type) {
-  if (type?.includes('StartEvent')) return 'success'
-  if (type?.includes('EndEvent')) return 'danger'
-  if (type?.includes('UserTask')) return 'primary'
-  if (type?.includes('ServiceTask') || type?.includes('Script') || type?.includes('BusinessRule')) return 'warning'
-  if (type?.includes('SendTask') || type?.includes('ReceiveTask')) return 'info'
-  if (type?.includes('Gateway')) return 'warning'
-  return ''
-}
 
 function getNamePlaceholder() {
   if (isUserTask.value) return '如：经理审批'
@@ -3091,29 +3003,7 @@ function updateAssigneeInterface() {
 }
 
 function updateAssigneeConfig() {
-  // 根据类型提取 assigneeValue
-  let assigneeValue = ''
-  const type = assigneeForm.value.assigneeType
-  if (type === 'user') {
-    assigneeValue = assigneeForm.value.assignee || ''
-  } else if (type === 'group' || type === 'role') {
-    assigneeValue = assigneeForm.value.candidateGroups || ''
-  } else if (type === 'expression') {
-    assigneeValue = assigneeForm.value.candidateUsers || assigneeForm.value.candidateGroups || ''
-  }
-  // 保存执行人配置类型（使用 flowable:Properties）
-  const config = {
-    assigneeType: assigneeForm.value.assigneeType,
-    assigneeValue: assigneeValue,
-    interfaceType: assigneeForm.value.interfaceType,
-    interfaceName: assigneeForm.value.interfaceName,
-    interfaceMethod: assigneeForm.value.interfaceMethod,
-    interfaceParams: assigneeForm.value.interfaceParams,
-    restMethod: assigneeForm.value.restMethod,
-    resultMapping: assigneeForm.value.resultMapping,
-    collectionSource: assigneeForm.value.collectionSource,
-    collectionInterface: assigneeForm.value.collectionInterface
-  }
+  const config = buildAssigneeConfig(assigneeForm.value)
   // 使用 updateExtensionProperty 存储 JSON 字符串
   updateExtensionProperty('assigneeConfig', JSON.stringify(config))
   emit('save')
