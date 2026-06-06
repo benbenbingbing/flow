@@ -127,6 +127,30 @@ public class EntityFormField {
      */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refFieldCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String relationCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String relationName;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String childEntityId;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String childEntityCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String childRefFieldCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String relationType;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean cascadeDelete;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean relationRequired;
     
     /**
      * 栅格宽度（1-24）

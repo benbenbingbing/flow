@@ -43,6 +43,31 @@ public final class EntityFormFieldRuntimeMapper {
         if (field.getRefFieldCode() != null) {
             result.put("refFieldCode", field.getRefFieldCode());
         }
+        if (field.getRelationCode() != null) {
+            result.put("relationCode", field.getRelationCode());
+        }
+        if (field.getRelationName() != null) {
+            result.put("relationName", field.getRelationName());
+        }
+        if (field.getChildEntityId() != null) {
+            result.put("childEntityId", field.getChildEntityId());
+        }
+        if (field.getChildEntityCode() != null) {
+            result.put("childEntityCode", field.getChildEntityCode());
+        }
+        if (field.getChildRefFieldCode() != null) {
+            result.put("childRefFieldCode", field.getChildRefFieldCode());
+        }
+        if (field.getRelationType() != null) {
+            result.put("relationType", field.getRelationType());
+        }
+        if (field.getCascadeDelete() != null) {
+            result.put("cascadeDelete", field.getCascadeDelete());
+        }
+        if (field.getRelationRequired() != null) {
+            result.put("relationRequired", field.getRelationRequired());
+        }
+        putRelationObject(result, field);
         if (field.getComponentProps() != null) {
             result.put("componentProps", parseComponentProps(field.getComponentProps(), objectMapper));
         }
@@ -58,6 +83,22 @@ public final class EntityFormFieldRuntimeMapper {
             return field.getFieldType().toLowerCase();
         }
         return null;
+    }
+
+    private static void putRelationObject(Map<String, Object> result, EntityFormField field) {
+        if (field.getChildEntityId() == null && field.getChildEntityCode() == null && field.getChildRefFieldCode() == null) {
+            return;
+        }
+        Map<String, Object> relation = new HashMap<>();
+        relation.put("code", field.getRelationCode());
+        relation.put("name", field.getRelationName());
+        relation.put("childEntityId", field.getChildEntityId());
+        relation.put("childEntityCode", field.getChildEntityCode());
+        relation.put("childRefFieldCode", field.getChildRefFieldCode());
+        relation.put("type", field.getRelationType());
+        relation.put("cascadeDelete", field.getCascadeDelete());
+        relation.put("required", field.getRelationRequired());
+        result.put("relation", relation);
     }
 
     private static Object parseComponentProps(String componentProps, ObjectMapper objectMapper) {

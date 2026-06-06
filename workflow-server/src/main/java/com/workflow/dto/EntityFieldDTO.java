@@ -37,6 +37,16 @@ public class EntityFieldDTO {
     private String refEntityType;   // 引用实体类型（CUSTOM/USER/DEPT/ROLE/GROUP）
     private String displayMode;     // 显示方式（embedded/tab）
     private String refFieldCode;    // 关联字段编码
+
+    // 子表单关系配置
+    private String relationCode;
+    private String relationName;
+    private String childEntityId;
+    private String childEntityCode;
+    private String childRefFieldCode;
+    private String relationType;    // ONE_TO_ONE/ONE_TO_MANY
+    private Boolean cascadeDelete;
+    private Boolean relationRequired;
     
     // 文件字段多组附件配置
     private List<EntityFieldFileItem> fileItems;

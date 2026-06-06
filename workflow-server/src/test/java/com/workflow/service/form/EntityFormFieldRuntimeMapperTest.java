@@ -23,6 +23,11 @@ class EntityFormFieldRuntimeMapperTest {
         field.setRefEntityId("child-entity");
         field.setRefEntityType("CUSTOM");
         field.setRefFieldCode("parent_id");
+        field.setChildEntityId("child-entity");
+        field.setChildEntityCode("child");
+        field.setChildRefFieldCode("parentId");
+        field.setRelationType("ONE_TO_MANY");
+        field.setCascadeDelete(true);
         field.setComponentProps("{\"subFormConfig\":{\"type\":\"ref\",\"refFormId\":\"form-child\"}}");
         field.setIsReadonly(0);
 
@@ -35,6 +40,12 @@ class EntityFormFieldRuntimeMapperTest {
         assertEquals("child-entity", result.get("refEntityId"));
         assertEquals("CUSTOM", result.get("refEntityType"));
         assertEquals("parent_id", result.get("refFieldCode"));
+        assertEquals("child-entity", result.get("childEntityId"));
+        assertEquals("child", result.get("childEntityCode"));
+        assertEquals("parentId", result.get("childRefFieldCode"));
+        assertEquals("ONE_TO_MANY", result.get("relationType"));
+        assertEquals(true, result.get("cascadeDelete"));
+        assertEquals("parentId", ((Map<?, ?>) result.get("relation")).get("childRefFieldCode"));
         assertEquals("form-child", ((Map<?, ?>) ((Map<?, ?>) result.get("componentProps")).get("subFormConfig")).get("refFormId"));
     }
 }
