@@ -23,9 +23,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 登录接口放行
+        // 登录、退出接口放行
         String uri = request.getRequestURI();
-        if (uri.startsWith("/api/auth/")) {
+        if (uri.equals("/api/auth/login") || uri.equals("/api/auth/logout")) {
             return true;
         }
         
