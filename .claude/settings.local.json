@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(java|xml|yml\\)$\")",
+      "Bash(npx vue-tsc *)",
+      "Bash(npm run *)",
+      "Bash(mvn compile *)",
+      "Bash(git add *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(ls ~/.ssh/id_* 2>/dev/null | head -5)",
+      "Bash(git config *)",
+      "Bash(security find-generic-password *)",
+      "Bash(ssh -T git@github.com)"
+    ]
+  }
+}
