@@ -306,7 +306,7 @@ class SysMenuServiceTest {
 
         menuService.updateStatus("test-id-1", "1");
 
-        verify(menuMapper).updateById(argThat(menu -> 
+        verify(menuMapper).updateById(argThat((SysMenu menu) ->
             "test-id-1".equals(menu.getId()) && "1".equals(menu.getStatus())
         ));
     }
@@ -318,7 +318,7 @@ class SysMenuServiceTest {
 
         menuService.updateVisible("test-id-1", "1");
 
-        verify(menuMapper).updateById(argThat(menu -> 
+        verify(menuMapper).updateById(argThat((SysMenu menu) ->
             "test-id-1".equals(menu.getId()) && "1".equals(menu.getVisible())
         ));
     }
