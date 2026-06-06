@@ -35,7 +35,7 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForSecondNode() throws Exception {
-        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ProcessInstanceService service = service();
         Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
@@ -46,7 +46,7 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForFirstNode() throws Exception {
-        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ProcessInstanceService service = service();
         Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
@@ -57,11 +57,17 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForNonExistentNode() throws Exception {
-        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ProcessInstanceService service = service();
         Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
         String result = (String) method.invoke(service, "NonExistent", TEST_BPMN_XML);
         assertNull(result, "不存在的节点应该返回 null");
+    }
+
+    private ProcessInstanceService service() {
+        return new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null);
     }
 }
