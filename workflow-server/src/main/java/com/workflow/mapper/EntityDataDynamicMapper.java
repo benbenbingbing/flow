@@ -72,6 +72,17 @@ public interface EntityDataDynamicMapper {
     int update(@Param("tableName") String tableName, @Param("data") Map<String, Object> data);
 
     /**
+     * 更新当前任务信息，允许清空任务字段
+     */
+    @UpdateProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "updateCurrentTask")
+    @Options(statementType = StatementType.PREPARED)
+    int updateCurrentTask(@Param("tableName") String tableName,
+                          @Param("id") String id,
+                          @Param("currentTaskId") String currentTaskId,
+                          @Param("currentTaskName") String currentTaskName,
+                          @Param("currentTaskAssignee") String currentTaskAssignee);
+
+    /**
      * 逻辑删除
      */
     @UpdateProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "deleteById")

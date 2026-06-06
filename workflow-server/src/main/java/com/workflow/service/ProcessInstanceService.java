@@ -1670,10 +1670,8 @@ public class ProcessInstanceService {
                     java.util.List<com.workflow.entity.EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "TERMINATED");
                     String terminatedStatus = (statuses != null && !statuses.isEmpty()) ? statuses.get(0).getStatusCode() : "REJECTED";
                     updateData.put("status", terminatedStatus);
-                    updateData.put("current_task_id", null);
-                    updateData.put("current_task_name", null);
-                    updateData.put("current_task_assignee", null);
                     entityDataDynamicMapper.update(tableName, updateData);
+                    entityDataDynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);
                     log.info("流程终止，已更新实体数据状态: entityCode={}, entityDataId={}, status={}", entityCode, entityDataId, terminatedStatus);
                 }
             } catch (Exception ex) {

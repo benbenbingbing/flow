@@ -125,6 +125,22 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 更新当前任务信息，允许显式置空任务字段
+     */
+    public String updateCurrentTask(Map<String, Object> params) {
+        String tableName = tableName(params);
+
+        return new SQL() {{
+            UPDATE(tableName);
+            SET("current_task_id = #{currentTaskId}");
+            SET("current_task_name = #{currentTaskName}");
+            SET("current_task_assignee = #{currentTaskAssignee}");
+            SET("updated_at = NOW()");
+            WHERE("id = #{id}");
+        }}.toString();
+    }
+
+    /**
      * 逻辑删除
      */
     public String deleteById(Map<String, Object> params) {

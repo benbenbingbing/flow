@@ -871,13 +871,7 @@ public class EntityDataDynamicService {
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName, String currentTaskAssignee) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        Map<String, Object> updateData = new HashMap<>();
-        updateData.put("id", entityDataId);
-        updateData.put("current_task_id", currentTaskId);
-        updateData.put("current_task_name", currentTaskName);
-        updateData.put("current_task_assignee", currentTaskAssignee);
-        updateData.put("updated_at", LocalDateTime.now());
-        dynamicMapper.update(tableName, updateData);
+        dynamicMapper.updateCurrentTask(tableName, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
         log.debug("更新实体当前任务: entityCode={}, entityDataId={}, taskId={}, taskName={}, assignee={}",
                 entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
     }
