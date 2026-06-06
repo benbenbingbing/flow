@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:unit": "node src/utils/__tests__/calcEngine.spec.js"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

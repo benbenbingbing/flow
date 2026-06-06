@@ -59,7 +59,7 @@ function rejectWithMessage(message, source) {
 }
 
 const request = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json;charset=UTF-8'
