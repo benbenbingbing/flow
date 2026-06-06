@@ -11,7 +11,10 @@ import org.flowable.engine.repository.Deployment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -288,61 +291,122 @@ public class ProcessDefinitionService {
                     continue;
                 }
                 
-                // 查找 extensionElements -> properties -> property name="entityFormId"
-                String entityFormId = null;
-                org.w3c.dom.NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
-                for (int j = 0; j < extElements.getLength(); j++) {
-                    org.w3c.dom.Element extElement = (org.w3c.dom.Element) extElements.item(j);
-                    org.w3c.dom.NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
-                    for (int k = 0; k < properties.getLength(); k++) {
-                        org.w3c.dom.Element props = (org.w3c.dom.Element) properties.item(k);
-                        org.w3c.dom.NodeList propList = props.getElementsByTagNameNS("*", "property");
-                        for (int m = 0; m < propList.getLength(); m++) {
-                            org.w3c.dom.Element prop = (org.w3c.dom.Element) propList.item(m);
-                            String name = prop.getAttribute("name");
-                            String value = prop.getAttribute("value");
-                            if ("entityFormId".equals(name) && value != null && !value.isEmpty()) {
-                                entityFormId = value;
-                            }
-                            // 同时读取 isReadonly
-                            if ("entityFormReadonly".equals(name) && value != null) {
-                                // 后续处理
-                            }
-                        }
-                    }
-                }
+                Map<String, String> extensionProperties = readExtensionProperties(userTask);
+                List<String> entityFormIds = resolveEntityFormIds(extensionProperties);
+                Integer isReadonly = isTruthy(extensionProperties.get("entityFormReadonly")) ? 1 : 0;
                 
-                if (entityFormId != null) {
-                    // 检查是否已存在
-                    ProcessNodeForm existing = nodeFormMapper.selectByNodeId(processConfigId, nodeId);
-                    if (existing != null) {
-                        existing.setFormId(entityFormId);
-                        existing.setNodeName(nodeName);
-                        existing.setUpdateTime(java.time.LocalDateTime.now());
-                        nodeFormMapper.updateById(existing);
-                    } else {
+                if (!entityFormIds.isEmpty()) {
+                    nodeFormMapper.deleteByProcessConfigIdAndNodeId(processConfigId, nodeId);
+                    for (int sortOrder = 0; sortOrder < entityFormIds.size(); sortOrder++) {
                         ProcessNodeForm nodeForm = new ProcessNodeForm();
                         nodeForm.setProcessConfigId(processConfigId);
                         nodeForm.setNodeId(nodeId);
                         nodeForm.setNodeName(nodeName);
-                        nodeForm.setFormId(entityFormId);
-                        nodeForm.setIsReadonly(0);
+                        nodeForm.setFormId(entityFormIds.get(sortOrder));
+                        nodeForm.setIsReadonly(isReadonly);
+                        nodeForm.setSortOrder(sortOrder);
                         nodeForm.setCreateTime(java.time.LocalDateTime.now());
                         nodeForm.setUpdateTime(java.time.LocalDateTime.now());
                         nodeFormMapper.insert(nodeForm);
                     }
-                    log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formId={}", processConfigId, nodeId, entityFormId);
+                    log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formIds={}", processConfigId, nodeId, entityFormIds);
                 } else {
-                    // 如果 BPMN 中没有 entityFormId，删除已有的绑定
-                    ProcessNodeForm existing = nodeFormMapper.selectByNodeId(processConfigId, nodeId);
-                    if (existing != null) {
-                        nodeFormMapper.deleteById(existing.getId());
-                    }
+                    // 如果 BPMN 中没有表单配置，删除已有的绑定
+                    nodeFormMapper.deleteByProcessConfigIdAndNodeId(processConfigId, nodeId);
                 }
             }
         } catch (Exception e) {
             log.warn("同步节点表单配置失败: {}", e.getMessage());
         }
+    }
+
+    private Map<String, String> readExtensionProperties(org.w3c.dom.Element userTask) {
+        Map<String, String> values = new java.util.HashMap<>();
+        org.w3c.dom.NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
+        for (int j = 0; j < extElements.getLength(); j++) {
+            org.w3c.dom.Element extElement = (org.w3c.dom.Element) extElements.item(j);
+            org.w3c.dom.NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
+            for (int k = 0; k < properties.getLength(); k++) {
+                org.w3c.dom.Element props = (org.w3c.dom.Element) properties.item(k);
+                org.w3c.dom.NodeList propList = props.getElementsByTagNameNS("*", "property");
+                for (int m = 0; m < propList.getLength(); m++) {
+                    org.w3c.dom.Element prop = (org.w3c.dom.Element) propList.item(m);
+                    String name = prop.getAttribute("name");
+                    String value = prop.getAttribute("value");
+                    if (name != null && !name.isEmpty() && value != null) {
+                        values.put(name, decodeXmlAttributeValue(value));
+                    }
+                }
+            }
+        }
+        return values;
+    }
+
+    private List<String> resolveEntityFormIds(Map<String, String> extensionProperties) {
+        List<String> formIds = parseFormIdList(extensionProperties.get("entityFormIds"));
+        if (!formIds.isEmpty()) {
+            return formIds;
+        }
+        return parseFormIdList(extensionProperties.get("entityFormId"));
+    }
+
+    private List<String> parseFormIdList(String value) {
+        LinkedHashSet<String> formIds = new LinkedHashSet<>();
+        String normalized = decodeXmlAttributeValue(value);
+        if (normalized == null || normalized.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        if (normalized.startsWith("[") && normalized.endsWith("]")) {
+            try {
+                ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(normalized);
+                if (node.isArray()) {
+                    node.forEach(item -> {
+                        if (item.isTextual() && !item.asText().isBlank()) {
+                            formIds.add(item.asText().trim());
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                log.warn("解析 entityFormIds 失败，按逗号列表兼容处理: {}", e.getMessage());
+            }
+        }
+
+        if (formIds.isEmpty()) {
+            for (String part : normalized.split(",")) {
+                String formId = part.trim();
+                if (!formId.isEmpty()) {
+                    formIds.add(formId);
+                }
+            }
+        }
+
+        return new ArrayList<>(formIds);
+    }
+
+    private boolean isTruthy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim();
+        return "true".equalsIgnoreCase(normalized) || "1".equals(normalized);
+    }
+
+    private String decodeXmlAttributeValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value
+                .replace("&quot;", "\"")
+                .replace("&#34;", "\"")
+                .replace("&amp;", "&")
+                .replace("&#38;", "&")
+                .replace("&lt;", "<")
+                .replace("&#60;", "<")
+                .replace("&gt;", ">")
+                .replace("&#62;", ">")
+                .replace("&#39;", "'");
     }
     
     /**
