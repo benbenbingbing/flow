@@ -4,11 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.dto.permission.*;
 import com.workflow.entity.EntityListPermission;
 import com.workflow.entity.EntityListPermissionDelegate;
-import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysUser;
 import com.workflow.mapper.EntityListPermissionDelegateMapper;
 import com.workflow.mapper.EntityListPermissionMapper;
-import com.workflow.mapper.SysOrganizationMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -27,8 +25,9 @@ public class DataPermissionEngine {
 
     private final EntityListPermissionMapper permissionMapper;
     private final EntityListPermissionDelegateMapper delegateMapper;
-    private final SysOrganizationMapper orgMapper;
     private final ObjectMapper objectMapper;
+    private final PermissionRuleMatcher ruleMatcher;
+    private final PermissionSqlBuilder sqlBuilder;
 
     /** 数据权限委托相关字段 */
     private static final String DELEGATE_USER_FIELD = "created_by";
@@ -59,19 +58,19 @@ public class DataPermissionEngine {
         if (rules.isEmpty()) {
             // 没有配置规则，默认仅本人
             return DataPermissionResult.withCondition(
-                    "created_by = '" + escapeSql(user.getId()) + "'"
+                    "created_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
             );
         }
 
         // 2. 过滤出匹配的规则
         List<EntityListPermission> matchedRules = rules.stream()
-                .filter(rule -> isMatch(rule, user))
+                .filter(rule -> ruleMatcher.matches(parseMatchConfig(rule.getMatchConfig()), user))
                 .collect(Collectors.toList());
 
         if (matchedRules.isEmpty()) {
             // 没有匹配规则 = 默认仅本人
             return DataPermissionResult.withCondition(
-                    "created_by = '" + escapeSql(user.getId()) + "'"
+                    "created_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
             );
         }
 
@@ -94,7 +93,7 @@ public class DataPermissionEngine {
             FilterConfigDTO filter = parseFilterConfig(rule.getFilterConfig());
             if (filter == null) continue;
 
-            String sql = buildFilterSql(filter, user);
+            String sql = sqlBuilder.buildFilterSql(filter, user);
             if (sql != null && !sql.isEmpty()) {
                 conditions.add(sql);
                 matchedNames.add(rule.getRuleName());
@@ -144,7 +143,7 @@ public class DataPermissionEngine {
         }
 
         String escapedIds = fromUserIds.stream()
-                .map(this::escapeSql)
+                .map(sqlBuilder::escapeLiteral)
                 .collect(Collectors.joining("','"));
         String delegateSql = DELEGATE_USER_FIELD + " IN ('" + escapedIds + "')";
 
@@ -152,191 +151,6 @@ public class DataPermissionEngine {
         DataPermissionResult result = DataPermissionResult.withCondition(combinedSql);
         result.setMatchedRuleNames(baseResult.getMatchedRuleNames());
         return result;
-    }
-
-    /**
-     * 判断用户是否匹配某条规则
-     */
-    private boolean isMatch(EntityListPermission rule, SysUser user) {
-        MatchConfigDTO match = parseMatchConfig(rule.getMatchConfig());
-        if (match == null || match.getConditions() == null || match.getConditions().isEmpty()) {
-            return false;
-        }
-
-        String logic = match.getLogic();
-        if (logic == null) logic = "OR";
-
-        List<Boolean> results = new ArrayList<>();
-        for (MatchConfigDTO.MatchConditionDTO condition : match.getConditions()) {
-            results.add(matchSingleCondition(condition, user));
-        }
-
-        if ("AND".equalsIgnoreCase(logic)) {
-            return results.stream().allMatch(Boolean::booleanValue);
-        } else {
-            return results.stream().anyMatch(Boolean::booleanValue);
-        }
-    }
-
-    /**
-     * 匹配单条条件
-     */
-    private boolean matchSingleCondition(MatchConfigDTO.MatchConditionDTO condition, SysUser user) {
-        String scopeType = condition.getScopeType();
-        List<String> targetIds = condition.getTargetIds();
-
-        switch (scopeType) {
-            case "ALL_USERS":
-                return true;
-            case "USER":
-                return targetIds != null && targetIds.contains(user.getId());
-            case "ROLE":
-                return matchRole(condition, user);
-            case "DEPT":
-                return matchDept(condition, user);
-            case "EXPRESSION":
-                // 表达式匹配（简化版，实际可扩展Groovy）
-                return false;
-            default:
-                return false;
-        }
-    }
-
-    /**
-     * 匹配角色
-     */
-    private boolean matchRole(MatchConfigDTO.MatchConditionDTO condition, SysUser user) {
-        List<String> targetIds = condition.getTargetIds();
-        if (targetIds == null || targetIds.isEmpty()) return false;
-
-        List<String> userRoleIds = user.getRoleIds();
-        if (userRoleIds == null || userRoleIds.isEmpty()) return false;
-
-        String operator = condition.getOperator();
-        if (operator == null) operator = "ANY";
-
-        if ("ALL".equalsIgnoreCase(operator)) {
-            return userRoleIds.containsAll(targetIds);
-        } else {
-            // ANY：任一角色匹配即可
-            return targetIds.stream().anyMatch(userRoleIds::contains);
-        }
-    }
-
-    /**
-     * 匹配部门
-     */
-    private boolean matchDept(MatchConfigDTO.MatchConditionDTO condition, SysUser user) {
-        List<String> targetIds = condition.getTargetIds();
-        if (targetIds == null || targetIds.isEmpty()) return false;
-
-        String userDeptId = user.getDeptId();
-        if (userDeptId == null) return false;
-
-        Boolean includeSub = condition.getIncludeSubDept();
-        if (includeSub != null && includeSub) {
-            // 包含子部门：查询用户部门路径，判断是否包含任一目标部门
-            SysOrganization userOrg = orgMapper.selectById(userDeptId);
-            if (userOrg != null && userOrg.getPath() != null) {
-                String path = userOrg.getPath();
-                for (String targetId : targetIds) {
-                    if (path.contains("/" + targetId + "/")) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        } else {
-            return targetIds.contains(userDeptId);
-        }
-    }
-
-    /**
-     * 构建单条规则的过滤 SQL
-     */
-    private String buildFilterSql(FilterConfigDTO filter, SysUser user) {
-        if (filter == null) return null;
-
-        StringBuilder sql = new StringBuilder();
-        String type = filter.getType();
-        FilterConfigDTO.FieldMappingDTO mapping = filter.getFieldMapping();
-        if (mapping == null) mapping = new FilterConfigDTO.FieldMappingDTO();
-
-        String deptField = mapping.getDeptField();
-        String userField = mapping.getUserField();
-
-        switch (type) {
-            case "PERSONAL":
-                sql.append(userField).append(" = '" ).append(escapeSql(user.getId())).append("'");
-                break;
-            case "DEPT":
-                if (user.getDeptId() != null) {
-                    sql.append(deptField).append(" = '").append(escapeSql(user.getDeptId())).append("'");
-                } else {
-                    sql.append("1=0"); // 无部门 = 看不到数据
-                }
-                break;
-            case "DEPT_TREE":
-                String deptTreeSql = buildDeptTreeSql(deptField, user.getDeptId());
-                sql.append(deptTreeSql);
-                break;
-            case "ALL":
-                return "1=1";
-            case "EXPRESSION":
-                // 表达式类型暂不实现，返回本人条件兜底
-                sql.append(userField).append(" = '").append(escapeSql(user.getId())).append("'");
-                break;
-            default:
-                sql.append(userField).append(" = '").append(escapeSql(user.getId())).append("'");
-        }
-
-        // 附加状态限制
-        String statusSql = buildStatusSql(filter.getStatusLimit(), mapping.getStatusField());
-        if (statusSql != null) {
-            sql.append(" AND ").append(statusSql);
-        }
-
-        return sql.toString();
-    }
-
-    /**
-     * 构建部门树 SQL（含子部门）
-     */
-    private String buildDeptTreeSql(String deptField, String deptId) {
-        if (deptId == null || deptId.isEmpty()) {
-            return "1=0";
-        }
-        // 使用 sys_organization 的 path 字段查子部门
-        return deptField + " IN (" +
-                "SELECT id FROM sys_organization " +
-                "WHERE id = '" + escapeSql(deptId) + "' " +
-                "OR path LIKE '%/" + escapeSql(deptId) + "/%')";
-    }
-
-    /**
-     * 构建状态限制 SQL
-     */
-    private String buildStatusSql(FilterConfigDTO.StatusLimitDTO statusLimit, String statusField) {
-        if (statusLimit == null || !Boolean.TRUE.equals(statusLimit.getEnabled())) {
-            return null;
-        }
-
-        String mode = statusLimit.getMode();
-        List<String> values = statusLimit.getValues();
-
-        if (values == null || values.isEmpty()) {
-            return null;
-        }
-
-        List<String> escaped = values.stream()
-                .map(this::escapeSql)
-                .collect(Collectors.toList());
-
-        if ("NOT_IN".equalsIgnoreCase(mode)) {
-            return statusField + " NOT IN ('" + String.join("','", escaped) + "')";
-        } else {
-            return statusField + " IN ('" + String.join("','", escaped) + "')";
-        }
     }
 
     /**
@@ -363,11 +177,4 @@ public class DataPermissionEngine {
         }
     }
 
-    /**
-     * SQL 字符串转义（防注入基础处理）
-     */
-    private String escapeSql(String input) {
-        if (input == null) return "";
-        return input.replace("'", "''");
-    }
 }
