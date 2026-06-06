@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.entity.SysMenu;
+import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.SysMenuMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,9 @@ class SysMenuServiceTest {
 
     @Mock
     private SysMenuMapper menuMapper;
+
+    @Mock
+    private EntityDefinitionMapper entityDefinitionMapper;
 
     @InjectMocks
     private SysMenuService menuService;
@@ -91,6 +95,50 @@ class SysMenuServiceTest {
         assertNotNull(tree.get(0).getChildren());
         assertEquals(1, tree.get(0).getChildren().size());
         assertEquals("子菜单", tree.get(0).getChildren().get(0).getMenuName());
+    }
+
+    @Test
+    @DisplayName("测试运行态侧栏菜单过滤不存在实体的数据列表菜单")
+    void testGetSidebarMenuTree_FiltersMissingEntityListMenus() {
+        SysMenu homeMenu = new SysMenu();
+        homeMenu.setId("100");
+        homeMenu.setMenuName("首页");
+        homeMenu.setParentId("0");
+        homeMenu.setSort(1);
+        homeMenu.setPath("/home");
+
+        SysMenu missingByEntityCode = new SysMenu();
+        missingByEntityCode.setId("missing-entity-code");
+        missingByEntityCode.setMenuName("需求申请");
+        missingByEntityCode.setParentId("0");
+        missingByEntityCode.setSort(2);
+        missingByEntityCode.setPath("/entity/list/req01");
+        missingByEntityCode.setEntityCode("req01");
+
+        SysMenu missingByPath = new SysMenu();
+        missingByPath.setId("missing-path-code");
+        missingByPath.setMenuName("立项管理");
+        missingByPath.setParentId("0");
+        missingByPath.setSort(3);
+        missingByPath.setPath("/entity/list/project_nitiation");
+
+        SysMenu validEntityMenu = new SysMenu();
+        validEntityMenu.setId("valid-entity");
+        validEntityMenu.setMenuName("有效实体");
+        validEntityMenu.setParentId("0");
+        validEntityMenu.setSort(4);
+        validEntityMenu.setPath("/entity/list/customer");
+        validEntityMenu.setEntityCode("customer");
+
+        when(menuMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Arrays.asList(homeMenu, missingByEntityCode, missingByPath, validEntityMenu));
+        when(entityDefinitionMapper.findAllEntityCodes()).thenReturn(List.of("customer"));
+
+        List<SysMenu> tree = menuService.getSidebarMenuTree();
+
+        assertEquals(2, tree.size());
+        assertEquals("首页", tree.get(0).getMenuName());
+        assertEquals("有效实体", tree.get(1).getMenuName());
     }
 
     @Test

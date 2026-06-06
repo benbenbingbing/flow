@@ -28,6 +28,12 @@ public interface EntityDefinitionMapper extends BaseMapper<EntityDefinition> {
     List<EntityDefinition> findAllWithFields();
 
     /**
+     * 查询所有实体编码
+     */
+    @Select("SELECT entity_code FROM entity_definition WHERE entity_code IS NOT NULL AND entity_code <> ''")
+    List<String> findAllEntityCodes();
+
+    /**
      * 根据流程定义ID查询绑定的实体
      */
     @Select("SELECT * FROM entity_definition WHERE process_definition_id = #{processDefinitionId} LIMIT 1")

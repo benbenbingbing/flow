@@ -84,7 +84,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document, Notebook } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
-import { getMenuTree } from '@/api/system/menu'
+import { getSidebarMenuTree } from '@/api/system/menu'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -127,11 +127,7 @@ const collectDisabledPaths = (menus) => {
 // 加载菜单
 const loadMenus = async () => {
   try {
-    const res = await getMenuTree()
-    // 调试：从原始数据中查找 dev_guide_dir
-    const sysMgmt = res.find(m => m.id === '400')
-    const devGuideRaw = sysMgmt?.children?.find(m => m.id === 'dev_guide_dir')
-    console.log('[MenuDebug] raw dev_guide_dir children:', devGuideRaw?.children)
+    const res = await getSidebarMenuTree()
     // 保存完整的原始数据，用于提取禁用路径
     const disabledPaths = collectDisabledPaths(res)
     localStorage.setItem('disabled_menu_paths', JSON.stringify(disabledPaths))
@@ -152,8 +148,6 @@ const loadMenus = async () => {
         })
     }
     const cleaned = clean(res)
-    const devGuideCleaned = cleaned.find(m => m.id === '400')?.children?.find(m => m.id === 'dev_guide_dir')
-    console.log('[MenuDebug] cleaned dev_guide_dir children:', devGuideCleaned?.children)
     menuTree.value = cleaned
   } catch (error) {
     console.error('加载菜单失败:', error)

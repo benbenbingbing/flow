@@ -2,7 +2,7 @@
   <div class="entity-data-list">
     <div class="page-header">
       <h2>{{ entityName || '数据列表' }}</h2>
-      <el-button type="primary" @click="handleCreate" v-if="entityCode">
+      <el-button type="primary" @click="handleCreate" v-if="entityDefinition.id">
         <el-icon><Plus /></el-icon>新增数据
       </el-button>
     </div>
@@ -442,7 +442,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowUp, ArrowDown, Document } from '@element-plus/icons-vue'
@@ -866,6 +866,13 @@ const loadEntityDefinition = async () => {
   if (!entityCode.value) return
   
   loading.value = true
+  entityDefinition.value = {}
+  entityFields.value = []
+  listConfig.value = null
+  listConfigFields.value = []
+  dataList.value = []
+  total.value = 0
+  defaultForm.value = null
   try {
     const res = await entityApi.getByCode(entityCode.value)
     entityDefinition.value = res || {}
@@ -886,7 +893,6 @@ const loadEntityDefinition = async () => {
     await loadDataList()
   } catch (error) {
     console.error('加载实体定义失败:', error)
-    ElMessage.error('加载实体定义失败')
   } finally {
     loading.value = false
   }
@@ -1388,12 +1394,6 @@ watch(() => entityCode.value, () => {
     loadEntityDefinition()
   }
 }, { immediate: true })
-
-onMounted(() => {
-  if (entityCode.value) {
-    loadEntityDefinition()
-  }
-})
 </script>
 
 <style scoped lang="scss">

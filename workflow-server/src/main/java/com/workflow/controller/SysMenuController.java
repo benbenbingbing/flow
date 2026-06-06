@@ -27,6 +27,14 @@ public class SysMenuController {
     public Result<List<SysMenu>> tree() {
         return Result.success(menuService.getMenuTree());
     }
+
+    /**
+     * 查询运行态侧栏菜单树
+     */
+    @GetMapping("/sidebar-tree")
+    public Result<List<SysMenu>> sidebarTree() {
+        return Result.success(menuService.getSidebarMenuTree());
+    }
     
     /**
      * 根据ID查询菜单

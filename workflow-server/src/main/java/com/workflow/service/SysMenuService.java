@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.entity.SysMenu;
+import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.SysMenuMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 public class SysMenuService {
     
     private final SysMenuMapper menuMapper;
+    private final EntityDefinitionMapper entityDefinitionMapper;
     
     /**
      * 查询菜单树
@@ -33,6 +35,23 @@ public class SysMenuService {
                 .orderByAsc(SysMenu::getCreateTime)
         );
         return buildTree(allMenus);
+    }
+
+    /**
+     * 查询运行态侧栏菜单树。
+     * 管理端菜单树保留全部菜单；侧栏菜单会过滤已经指向不存在实体的动态数据列表菜单。
+     */
+    public List<SysMenu> getSidebarMenuTree() {
+        List<SysMenu> allMenus = menuMapper.selectList(
+            new LambdaQueryWrapper<SysMenu>()
+                .orderByAsc(SysMenu::getSort)
+                .orderByAsc(SysMenu::getCreateTime)
+        );
+        Set<String> entityCodes = new HashSet<>(entityDefinitionMapper.findAllEntityCodes());
+        List<SysMenu> validMenus = allMenus.stream()
+                .filter(menu -> !isMissingEntityListMenu(menu, entityCodes))
+                .collect(Collectors.toList());
+        return buildTree(validMenus);
     }
     
     /**
@@ -202,6 +221,28 @@ public class SysMenuService {
         tree.sort(Comparator.comparingInt(SysMenu::getSort));
         
         return tree;
+    }
+
+    private boolean isMissingEntityListMenu(SysMenu menu, Set<String> entityCodes) {
+        String entityCode = resolveEntityListCode(menu);
+        return StringUtils.hasText(entityCode) && !entityCodes.contains(entityCode);
+    }
+
+    private String resolveEntityListCode(SysMenu menu) {
+        if (menu == null) {
+            return null;
+        }
+        if (StringUtils.hasText(menu.getEntityCode())) {
+            return menu.getEntityCode();
+        }
+        String path = menu.getPath();
+        String prefix = "/entity/list/";
+        if (!StringUtils.hasText(path) || !path.startsWith(prefix)) {
+            return null;
+        }
+        String code = path.substring(prefix.length());
+        int slashIndex = code.indexOf('/');
+        return slashIndex >= 0 ? code.substring(0, slashIndex) : code;
     }
     
     /**

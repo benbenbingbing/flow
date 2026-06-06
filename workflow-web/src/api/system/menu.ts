@@ -5,6 +5,11 @@ export const getMenuTree = () => {
   return request.get('/system/menu/tree')
 }
 
+// 获取运行态侧栏菜单树
+export const getSidebarMenuTree = () => {
+  return request.get('/system/menu/sidebar-tree')
+}
+
 // 根据ID获取菜单
 export const getMenuById = (id: string) => {
   return request.get(`/system/menu/${id}`)
