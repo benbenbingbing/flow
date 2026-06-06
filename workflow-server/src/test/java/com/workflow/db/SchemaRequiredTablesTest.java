@@ -15,22 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SchemaRequiredTablesTest {
 
     @Test
-    void schemaDefinesTablesUsedByRoleMenuAndNodeFormMappers() throws Exception {
-        String schema = Files.readString(Path.of("src/main/resources/db/schema.sql"));
-
-        assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `sys_role_menu`"),
-                "schema.sql must define sys_role_menu used by SysRoleMenuMapper");
-        assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `process_node_form`"),
-                "schema.sql must define process_node_form used by ProcessNodeFormMapper");
-        assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `process_node_approval`"),
-                "schema.sql must define process_node_approval used by ProcessNodeApprovalMapper");
-        assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `process_cc_record`"),
-                "schema.sql must define process_cc_record used by ProcessCcRecordMapper");
-        assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS `entity_relation`"),
-                "schema.sql must define entity_relation used by EntityRelationMapper");
-    }
-
-    @Test
     void baselineMigrationCreatesTablesUsedByRoleMenuAndNodeFormMappers() throws Exception {
         Path migration = Path.of("src/main/resources/db/migration/V001__business_schema.sql");
 

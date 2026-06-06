@@ -74,12 +74,7 @@ cors:
 # 文件上传配置
 file:
   storage:
-    type: local # 存储类型：local / minio
+    type: local
     local:
       path: ${FILE_STORAGE_PATH:uploads}
       access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
-    minio:
-      endpoint: http://localhost:9000
-      access-key: minioadmin
-      secret-key: minioadmin
-      bucket-name: workflow

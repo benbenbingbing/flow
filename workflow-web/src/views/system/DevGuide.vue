@@ -69,9 +69,8 @@ public class UserNameFieldProvider implements ListFieldDataProvider {
 
         if (userIds.isEmpty()) return;
 
-        // TODO: 批量查询用户名称（替换为你的实际查询逻辑）
-        Map&lt;String, String&gt; userNameMap = new java.util.HashMap&lt;&gt;();
-        // userNameMap = userMapper.selectNamesByIds(userIds);
+        // 按业务数据源批量查询用户名称
+        Map&lt;String, String&gt; userNameMap = userMapper.selectNamesByIds(userIds);
 
         // 将查询结果回填到 extData
         for (EntityDataDTO record : records) {

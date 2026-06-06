@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 public class FileStorageProperties {
 
     /**
-     * 存储类型：local / minio
+     * 存储类型：local
      */
     private String type = "local";
 
@@ -22,44 +22,16 @@ public class FileStorageProperties {
      */
     private LocalConfig local = new LocalConfig();
 
-    /**
-     * MinIO 存储配置
-     */
-    private MinioConfig minio = new MinioConfig();
-
     @Data
     public static class LocalConfig {
         /**
          * 上传文件保存路径
          */
-        private String path = "/Users/dawei/Documents/ddup/ai/flow/uploads";
+        private String path = "uploads";
 
         /**
          * 文件访问URL前缀
          */
-        private String accessUrl = "/Users/dawei/Documents/ddup/ai/flow/uploads";
-    }
-
-    @Data
-    public static class MinioConfig {
-        /**
-         * MinIO 服务端点
-         */
-        private String endpoint;
-
-        /**
-         * 访问密钥
-         */
-        private String accessKey;
-
-        /**
-         * 秘密密钥
-         */
-        private String secretKey;
-
-        /**
-         * 存储桶名称
-         */
-        private String bucketName;
+        private String accessUrl = "/uploads";
     }
 }

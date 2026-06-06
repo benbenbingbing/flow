@@ -35,8 +35,7 @@ public class ScriptTestService {
             return result;
         }
         
-        // 创建模拟 execution 对象
-        MockExecution execution = new MockExecution(dto.getTestVariables());
+        ScriptExecutionContext execution = new ScriptExecutionContext(dto.getTestVariables());
         
         try {
             Object evalResult;
@@ -79,11 +78,11 @@ public class ScriptTestService {
     /**
      * 执行 JavaScript (Nashorn)
      */
-    private Object executeJavaScript(String script, MockExecution execution) throws Exception {
+    private Object executeJavaScript(String script, ScriptExecutionContext execution) throws Exception {
         ScriptEngineManager manager = new ScriptEngineManager();
         ScriptEngine engine = manager.getEngineByName("nashorn");
         if (engine == null) {
-            throw new RuntimeException("Nashorn 引擎不可用（Java 15+ 已移除，请使用 Java 11）");
+            throw new RuntimeException("当前运行环境未提供 JavaScript 脚本引擎");
         }
         engine.put("execution", execution);
         return engine.eval(script);
@@ -92,7 +91,7 @@ public class ScriptTestService {
     /**
      * 执行 Groovy
      */
-    private Object executeGroovy(String script, MockExecution execution) throws Exception {
+    private Object executeGroovy(String script, ScriptExecutionContext execution) throws Exception {
         GroovyShell shell = new GroovyShell();
         shell.setVariable("execution", execution);
         return shell.evaluate(script);
@@ -114,12 +113,12 @@ public class ScriptTestService {
     }
     
     /**
-     * 模拟 Flowable Execution 对象
+     * 脚本测试执行上下文。
      */
-    public static class MockExecution {
+    public static class ScriptExecutionContext {
         private final Map<String, Object> variables = new HashMap<>();
         
-        public MockExecution(Map<String, Object> initialVars) {
+        public ScriptExecutionContext(Map<String, Object> initialVars) {
             if (initialVars != null) {
                 variables.putAll(initialVars);
             }

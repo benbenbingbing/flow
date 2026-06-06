@@ -13,7 +13,7 @@ Flow 是一个低代码流程平台，包含流程设计、实体建模、表单
 ```text
 workflow-server/   后端服务
 workflow-web/      前端应用
-docs/              架构、部署、测试和历史资料
+docs/              架构、部署、数据库和测试资料
 ```
 
 历史文档和旧 SQL 已归档到 `docs/archive`，运行时不依赖这些文件。
@@ -47,6 +47,8 @@ npm ci
 npm run dev
 ```
 
+前端使用 npm 和 `package-lock.json` 管理依赖。
+
 ## 数据库
 
 数据库由 Flyway 初始化：
@@ -54,7 +56,7 @@ npm run dev
 - `V001__business_schema.sql`：业务表结构
 - `V002__seed_builtin_data.sql`：内置账号、菜单、组织、角色、工作台和测试流程
 
-Flowable 引擎表由 Flowable 管理，不放入业务迁移。详见 [docs/database.md](/Users/chuncheng/Downloads/code/flow/docs/database.md)。
+Flowable 引擎表由 Flowable 管理，不放入业务迁移。详见 [docs/database.md](docs/database.md)。
 
 ## 验证
 
@@ -72,3 +74,7 @@ cd workflow-web
 npm run test:unit
 npm run build
 ```
+
+## 贡献
+
+提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。

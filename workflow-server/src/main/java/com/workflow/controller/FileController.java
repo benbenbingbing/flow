@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * 文件上传控制器
- * 支持多种存储策略（本地/MinIO等）
+ * 当前使用本地文件存储策略。
  */
 @Slf4j
 @RestController
