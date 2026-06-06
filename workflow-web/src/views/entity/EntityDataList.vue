@@ -108,7 +108,7 @@
                 <!-- 状态字段特殊渲染 -->
                 <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
                 <!-- 日期字段格式化 -->
-                <span v-else-if="field.fieldCode === 'createdAt' || field.fieldCode === 'processStartTime' || field.fieldCode === 'processEndTime' || field.fieldCode === 'submitTime'">
+                <span v-else-if="isDateFieldCode(field.fieldCode)">
                   {{ formatDate(row[field.fieldCode]) }}
                 </span>
                 <!-- 默认显示 -->
@@ -458,7 +458,8 @@ import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { getCustomListComponent, hasCustomListComponent, getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
-import { getFieldKey, getFieldModelPath, isSystemField, mergeRuntimeFormConfigs, normalizeRuntimeFormConfigs } from '@/shared/form-runtime'
+import { getFieldKey, getFieldModelPath, mergeRuntimeFormConfigs, normalizeRuntimeFormConfigs } from '@/shared/form-runtime'
+import { formatDateValue, formatListFieldValue, isDateFieldCode, parseJsonOptions } from '@/shared/list-runtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -708,47 +709,7 @@ const getListFieldProp = (fieldCode: string) => {
 
 // 获取字段显示值（用于默认渲染）
 const getFieldDisplayValue = (row: any, field: any) => {
-  const fieldCode = field.fieldCode
-  if (isSystemField(fieldCode)) {
-    return row[fieldCode] ?? '-'
-  }
-  const value = row.data?.[fieldCode]
-  if (value === null || value === undefined) return '-'
-  if (['SUB_FORM', 'SUB_FORM_LIST'].includes((field.fieldType || '').toUpperCase())) {
-    return Array.isArray(value) && value.length > 0 ? `${value.length} 行` : '-'
-  }
-  // 选择类型字段显示 label
-  if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)) {
-    const options = parseOptions(field.optionsJson)
-    const isMultiple = field.componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)
-    if (isMultiple) {
-      if (!Array.isArray(value)) return value
-      return value.map((v: any) => options.find((o: any) => o.value === v)?.label || v).join(', ') || '-'
-    }
-    const opt = options.find((o: any) => o.value === value)
-    return opt?.label || value
-  }
-  // 单选实体引用
-  if (field.fieldType === 'REFERENCE') {
-    const entityType = field.refEntityType || 'CUSTOM'
-    const refEntityId = field.refEntityId || ''
-    const groupKey = `${entityType}:${refEntityId}`
-    const cacheKey = `${groupKey}:${value}`
-    return refEntityNameMap.value[cacheKey] || value
-  }
-  // 多选实体引用
-  if (field.fieldType === 'MULTI_REFERENCE') {
-    const entityType = field.refEntityType || 'CUSTOM'
-    const refEntityId = field.refEntityId || ''
-    const groupKey = `${entityType}:${refEntityId}`
-    let ids = value
-    if (typeof ids === 'string') {
-      try { ids = JSON.parse(ids) } catch { ids = ids.split(',').filter(Boolean) }
-    }
-    if (!Array.isArray(ids) || !ids.length) return value || '-'
-    return ids.map((id: any) => refEntityNameMap.value[`${groupKey}:${id}`] || id).join(', ') || '-'
-  }
-  return value ?? '-'
+  return formatListFieldValue(row, field, refEntityNameMap.value)
 }
 
 // 引用实体名称缓存
@@ -830,12 +791,7 @@ async function loadRefEntityNames() {
 
 // 解析选项
 const parseOptions = (optionsJson: string) => {
-  if (!optionsJson) return []
-  try {
-    return JSON.parse(optionsJson)
-  } catch {
-    return []
-  }
+  return parseJsonOptions(optionsJson)
 }
 
 // 获取状态样式
@@ -864,8 +820,7 @@ const getStatusText = (status: string) => {
 
 // 格式化日期
 const formatDate = (date: string) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleString('zh-CN')
+  return formatDateValue(date)
 }
 
 // 加载实体定义
