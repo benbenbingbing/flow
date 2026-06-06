@@ -1,6 +1,6 @@
 <template>
   <div class="sub-form-renderer">
-    <div v-if="isRepeatable || showSummary" class="sub-form-header">
+    <div v-if="showHeader" class="sub-form-header">
       <span class="sub-form-title">{{ config.label || '明细' }}</span>
       <el-tag v-if="config.required" type="danger" size="small" effect="plain">必填</el-tag>
       <span class="sub-form-summary" v-if="showSummary">
@@ -10,11 +10,10 @@
         </span>
       </span>
       <el-button
-        v-if="!disabled && !readonly"
+        v-if="canAddRow"
         type="primary"
         size="small"
         @click="addRow"
-        :disabled="rowData.length >= maxRows"
       >
         <el-icon><Plus /></el-icon>添加一行
       </el-button>
@@ -27,16 +26,18 @@
         </template>
         <template v-else>
           <el-empty v-if="isRepeatable" description="暂无行" :image-size="56">
-            <el-button type="primary" size="small" @click="addRow">添加一行</el-button>
+            <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加一行</el-button>
           </el-empty>
-          <el-empty v-else description="暂无行" :image-size="56" />
+          <el-empty v-else description="暂无行" :image-size="56">
+            <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加一行</el-button>
+          </el-empty>
         </template>
       </template>
 
       <div v-for="(row, index) in rowData" :key="index" class="relation-row">
-        <div v-if="isRepeatable && rowData.length > 1" class="form-row-header">
-          <span class="row-title">第 {{ index + 1 }} 行</span>
-          <el-button v-if="!disabled && !readonly" type="danger" size="small" text @click="removeRow(index)">
+        <div v-if="showRowHeader" class="form-row-header">
+          <span class="row-title">{{ isRepeatable ? `第 ${index + 1} 行` : (config.label || '明细') }}</span>
+          <el-button v-if="canRemoveRow" type="danger" size="small" text @click="removeRow(index)">
             <el-icon><Delete /></el-icon>删除
           </el-button>
         </div>
@@ -184,8 +185,20 @@ const maxRows = computed(() => isRepeatable.value ? (props.config.maxRows || 100
 
 const minRows = computed(() => props.config.minRows || 0)
 
+const canAddRow = computed(() => canEdit.value && rowData.value.length < maxRows.value)
+
+const canRemoveRow = computed(() => canEdit.value && rowData.value.length > minRows.value)
+
 const showSummary = computed(() => {
   return props.config.showSummary && props.config.summaryFields?.length > 0
+})
+
+const showHeader = computed(() => isRepeatable.value || showSummary.value || canAddRow.value)
+
+const showRowHeader = computed(() => {
+  if (!canRemoveRow.value) return false
+  if (isRepeatable.value) return rowData.value.length > 1
+  return !props.config.required
 })
 
 const summaryData = ref({})
