@@ -1,6 +1,5 @@
 package com.workflow.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
@@ -11,6 +10,7 @@ import com.workflow.entity.EntityRelation;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.ProcessTask;
 import com.workflow.entity.SysUser;
+import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
@@ -61,6 +61,7 @@ public class EntityDataDynamicService {
     private final org.flowable.engine.TaskService taskService;
     private final EntityCodeGeneratorService codeGeneratorService;
     private final ObjectMapper objectMapper;
+    private final EntityRuntimeRecordMapper recordMapper;
     private final ProcessTaskService processTaskService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final DataPermissionEngine dataPermissionEngine;
@@ -84,7 +85,7 @@ public class EntityDataDynamicService {
         }
 
         return dataList.stream()
-                .map(data -> convertToDTO(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode))
                 .collect(Collectors.toList());
     }
 
@@ -115,7 +116,7 @@ public class EntityDataDynamicService {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + id);
         }
-        EntityDataDTO dto = convertToDTO(data, entityCode);
+        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
         loadSubFormData(dto);
         return dto;
     }
@@ -130,7 +131,7 @@ public class EntityDataDynamicService {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + processInstanceId);
         }
-        EntityDataDTO dto = convertToDTO(data, entityCode);
+        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
         loadSubFormData(dto);
         return dto;
     }
@@ -171,7 +172,7 @@ public class EntityDataDynamicService {
 
         // 准备数据
         dto.setData(parentData);
-        Map<String, Object> data = convertToMap(dto);
+        Map<String, Object> data = recordMapper.toStorageMap(dto);
         dto.setData(originalData);
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
@@ -302,51 +303,8 @@ public class EntityDataDynamicService {
             }
         });
 
-        // 2. 从 formData.data 提取自定义字段（排除系统字段，camelCase 转 snake_case）
-        Set<String> systemFields = new HashSet<>(Arrays.asList(
-                "id", "dataNo", "data_no", "title", "name", "code", "status",
-                "processInstanceId", "process_instance_id",
-                "processStartTime", "process_start_time",
-                "processEndTime", "process_end_time",
-                "currentTaskId", "current_task_id",
-                "currentTaskName", "current_task_name",
-                "currentTaskAssignee", "current_task_assignee",
-                "submitterId", "submitter_id",
-                "submitterName", "submitter_name",
-                "deptId", "dept_id",
-                "submitTime", "submit_time",
-                "createdAt", "created_at", "updatedAt", "updated_at",
-                "createdBy", "created_by", "updatedBy", "updated_by",
-                "deleted", "entityCode", "entity_code", "startProcess", "start_process"
-        ));
-
-        Object dataObj = parentFormData.get("data");
-        if (dataObj instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> customData = (Map<String, Object>) dataObj;
-            for (Map.Entry<String, Object> entry : customData.entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                if (key == null || key.isEmpty() || systemFields.contains(key)) {
-                    continue;
-                }
-                String columnName = camelToUnderscore(key);
-                if (systemFields.contains(columnName)) {
-                    continue;
-                }
-                if (value instanceof String && ((String) value).isEmpty()) {
-                    value = null;
-                }
-                if (value instanceof Map || value instanceof List) {
-                    try {
-                        value = objectMapper.writeValueAsString(value);
-                    } catch (Exception e) {
-                        log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
-                    }
-                }
-                updateData.put(columnName, value);
-            }
-        }
+        // 2. 从 formData.data 提取自定义字段
+        updateData.putAll(recordMapper.extractRequestCustomData(parentFormData));
 
         // 3. 补充 existingData 中缺失的字段（保持原有值）
         existingData.forEach((key, value) -> {
@@ -358,7 +316,7 @@ public class EntityDataDynamicService {
         dynamicMapper.update(tableName, updateData);
         saveRelationData(id, relations, relationData, 1, new HashSet<>());
 
-        EntityDataDTO dto = convertToDTO(updateData, entityCode);
+        EntityDataDTO dto = recordMapper.toDto(updateData, entityCode);
         if (dto.getData() != null) {
             dto.getData().putAll(relationData);
         }
@@ -630,7 +588,7 @@ public class EntityDataDynamicService {
     }
 
     private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {
-        EntityDataDTO childDto = convertToDTO(row, entityCode);
+        EntityDataDTO childDto = recordMapper.toDto(row, entityCode);
         Map<String, Object> data = new HashMap<>();
         if (childDto.getData() != null) {
             data.putAll(childDto.getData());
@@ -736,7 +694,7 @@ public class EntityDataDynamicService {
         }
 
         return dataList.stream()
-                .map(data -> convertToDTO(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode))
                 .collect(Collectors.toList());
     }
 
@@ -874,237 +832,6 @@ public class EntityDataDynamicService {
         dynamicMapper.updateCurrentTask(tableName, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
         log.debug("更新实体当前任务: entityCode={}, entityDataId={}, taskId={}, taskName={}, assignee={}",
                 entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
-    }
-
-    /**
-     * 转换为 DTO
-     */
-    private EntityDataDTO convertToDTO(Map<String, Object> data, String entityCode) {
-        EntityDataDTO dto = new EntityDataDTO();
-        dto.setId(getString(data, "id"));
-        dto.setEntityCode(entityCode);
-        dto.setDataNo(getString(data, "data_no"));
-        dto.setTitle(getString(data, "title"));
-        dto.setName(getString(data, "name"));
-        dto.setCode(getString(data, "code"));
-        dto.setStatus(getString(data, "status"));
-        dto.setProcessInstanceId(getString(data, "process_instance_id"));
-        dto.setProcessStartTime(getDateTime(data, "process_start_time"));
-        dto.setProcessEndTime(getDateTime(data, "process_end_time"));
-        dto.setCurrentTaskId(getString(data, "current_task_id"));
-        dto.setCurrentTaskName(getString(data, "current_task_name"));
-        dto.setCurrentTaskAssignee(getString(data, "current_task_assignee"));
-        dto.setSubmitterId(getString(data, "submitter_id"));
-        dto.setSubmitterName(getString(data, "submitter_name"));
-        dto.setDeptId(getString(data, "dept_id"));
-        dto.setSubmitTime(getDateTime(data, "submit_time"));
-        dto.setCreatedAt(getDateTime(data, "created_at"));
-        dto.setUpdatedAt(getDateTime(data, "updated_at"));
-        dto.setCreatedBy(getString(data, "created_by"));
-        dto.setUpdatedBy(getString(data, "updated_by"));
-
-        // 提取自定义字段
-        Map<String, Object> customData = extractCustomFields(data, entityCode);
-        dto.setData(customData);
-
-        // 初始化扩展数据容器
-        dto.setExtData(new java.util.HashMap<>());
-
-        return dto;
-    }
-
-    /**
-     * 转换为 Map
-     */
-    private Map<String, Object> convertToMap(EntityDataDTO dto) {
-        Map<String, Object> data = new HashMap<>();
-
-        if (dto.getId() != null) {
-            data.put("id", dto.getId());
-        }
-        if (dto.getDataNo() != null) {
-            data.put("data_no", dto.getDataNo());
-        }
-        if (dto.getTitle() != null) {
-            data.put("title", dto.getTitle());
-        }
-        if (dto.getName() != null) {
-            data.put("name", dto.getName());
-        }
-        if (dto.getCode() != null) {
-            data.put("code", dto.getCode());
-        }
-        if (dto.getStatus() != null) {
-            data.put("status", dto.getStatus());
-        }
-        if (dto.getProcessInstanceId() != null) {
-            data.put("process_instance_id", dto.getProcessInstanceId());
-        }
-        if (dto.getProcessStartTime() != null) {
-            data.put("process_start_time", dto.getProcessStartTime());
-        }
-        if (dto.getProcessEndTime() != null) {
-            data.put("process_end_time", dto.getProcessEndTime());
-        }
-        if (dto.getCurrentTaskId() != null) {
-            data.put("current_task_id", dto.getCurrentTaskId());
-        }
-        if (dto.getCurrentTaskName() != null) {
-            data.put("current_task_name", dto.getCurrentTaskName());
-        }
-        if (dto.getCurrentTaskAssignee() != null) {
-            data.put("current_task_assignee", dto.getCurrentTaskAssignee());
-        }
-        if (dto.getSubmitterId() != null) {
-            data.put("submitter_id", dto.getSubmitterId());
-        }
-        if (dto.getSubmitterName() != null) {
-            data.put("submitter_name", dto.getSubmitterName());
-        }
-        if (dto.getDeptId() != null) {
-            data.put("dept_id", dto.getDeptId());
-        }
-        if (dto.getSubmitTime() != null) {
-            data.put("submit_time", dto.getSubmitTime());
-        }
-
-        // 添加自定义字段（排除系统字段，避免重复）
-        if (dto.getData() != null) {
-            // 系统字段集合（驼峰和下划线命名都要排除）
-            Set<String> systemFields = new HashSet<>(Arrays.asList(
-                    "id", "dataNo", "data_no", "title", "name", "code", "status",
-                    "processInstanceId", "process_instance_id", 
-                    "processStartTime", "process_start_time",
-                    "processEndTime", "process_end_time",
-                    "currentTaskId", "current_task_id",
-                    "currentTaskName", "current_task_name",
-                    "submitterId", "submitter_id",
-                    "submitterName", "submitter_name",
-                    "deptId", "dept_id",
-                    "submitTime", "submit_time",
-                    "createdAt", "created_at", "updatedAt", "updated_at",
-                    "createdBy", "created_by", "updatedBy", "updated_by",
-                    "deleted"
-            ));
-            
-            for (Map.Entry<String, Object> entry : dto.getData().entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                // 过滤无效的字段名
-                if (key == null || key.isEmpty() || "undefined".equals(key) || "null".equals(key)) {
-                    continue;
-                }
-                if (!systemFields.contains(key)) {
-                    // 将字段名转换为下划线命名
-                    String columnName = camelToUnderscore(key);
-                    // 将空字符串转为 null，避免唯一约束冲突
-                    if (value instanceof String && ((String) value).isEmpty()) {
-                        value = null;
-                    }
-                    // 复杂对象（Map/List）序列化为 JSON 字符串，避免 MyBatis 默认 Java 序列化
-                    if (value instanceof Map || value instanceof List) {
-                        try {
-                            value = objectMapper.writeValueAsString(value);
-                        } catch (Exception e) {
-                            log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
-                        }
-                    }
-                    data.put(columnName, value);
-                }
-            }
-        }
-
-        return data;
-    }
-    
-    /**
-     * 驼峰命名转换为下划线命名
-     */
-    private String camelToUnderscore(String camelCase) {
-        if (camelCase == null || camelCase.isEmpty()) {
-            return camelCase;
-        }
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < camelCase.length(); i++) {
-            char c = camelCase.charAt(i);
-            if (Character.isUpperCase(c)) {
-                result.append("_").append(Character.toLowerCase(c));
-            } else {
-                result.append(c);
-            }
-        }
-        return result.toString();
-    }
-
-    /**
-     * 提取自定义字段（排除系统字段，列名下划线转驼峰）
-     */
-    private Map<String, Object> extractCustomFields(Map<String, Object> data, String entityCode) {
-        // 系统字段集合
-        Set<String> systemFields = new HashSet<>(Arrays.asList(
-                "id", "data_no", "title", "name", "code", "status",
-                "process_instance_id", "process_start_time", "process_end_time",
-                "current_task_id", "current_task_name", "current_task_assignee",
-                "submitter_id", "submitter_name", "submit_time",
-                "created_at", "updated_at", "created_by", "updated_by", "deleted"
-        ));
-
-        Map<String, Object> customData = new HashMap<>();
-        for (Map.Entry<String, Object> entry : data.entrySet()) {
-            if (!systemFields.contains(entry.getKey())) {
-                String camelKey = underscoreToCamel(entry.getKey());
-                Object value = entry.getValue();
-                // 尝试将 JSON 字符串反序列化为对象（Map/List），便于前端直接使用
-                if (value instanceof String) {
-                    String str = (String) value;
-                    if (str.trim().startsWith("{") || str.trim().startsWith("[")) {
-                        try {
-                            value = objectMapper.readValue(str, Object.class);
-                        } catch (Exception e) {
-                            // 不是有效 JSON，保持原字符串
-                        }
-                    }
-                }
-                customData.put(camelKey, value);
-            }
-        }
-        return customData;
-    }
-
-    /**
-     * 下划线命名转驼峰命名
-     */
-    private String underscoreToCamel(String underscore) {
-        if (underscore == null || underscore.isEmpty()) {
-            return underscore;
-        }
-        StringBuilder result = new StringBuilder();
-        boolean nextUpper = false;
-        for (int i = 0; i < underscore.length(); i++) {
-            char c = underscore.charAt(i);
-            if (c == '_') {
-                nextUpper = true;
-            } else if (nextUpper) {
-                result.append(Character.toUpperCase(c));
-                nextUpper = false;
-            } else {
-                result.append(c);
-            }
-        }
-        return result.toString();
-    }
-
-    private String getString(Map<String, Object> data, String key) {
-        Object value = data.get(key);
-        return value != null ? value.toString() : null;
-    }
-
-    private LocalDateTime getDateTime(Map<String, Object> data, String key) {
-        Object value = data.get(key);
-        if (value instanceof LocalDateTime) {
-            return (LocalDateTime) value;
-        }
-        return null;
     }
 
     private String getCurrentUserId(String defaultValue) {

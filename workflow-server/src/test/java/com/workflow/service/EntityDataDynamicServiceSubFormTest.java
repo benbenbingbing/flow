@@ -5,6 +5,7 @@ import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityRelation;
+import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
@@ -179,7 +180,8 @@ class EntityDataDynamicServiceSubFormTest {
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, fieldMapper, relationMapper, entityStatusMapper,
                     null, null, dynamicTableService, null, null, null, null,
-                    codeGeneratorService, new ObjectMapper(), null, null, null, null);
+                    codeGeneratorService, new ObjectMapper(), new EntityRuntimeRecordMapper(new ObjectMapper()),
+                    null, null, null, null);
         }
 
         private static EntityDefinition entity(String id, String code) {
