@@ -5,9 +5,9 @@ import com.workflow.dto.*;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
 import com.workflow.process.definition.ProcessBpmnPublishSanitizer;
+import com.workflow.process.definition.ProcessFlowableDeploymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +29,7 @@ public class ProcessDefinitionService {
     private final AssigneeConfigMapper assigneeMapper;
     private final FormConfigMapper formMapper;
     private final FormFieldConfigMapper fieldMapper;
-    private final RepositoryService activitiRepositoryService;
+    private final ProcessFlowableDeploymentService flowableDeploymentService;
     private final ObjectMapper objectMapper;
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionService flowActionService;
@@ -466,14 +466,7 @@ public class ProcessDefinitionService {
         
         bpmnXml = bpmnPublishSanitizer.sanitize(bpmnXml, config.getProcessKey());
         
-        // Deploy to Flowable
-        Deployment deployment = activitiRepositoryService.createDeployment()
-                .addString(config.getProcessKey() + ".bpmn20.xml", bpmnXml)
-                .name(config.getProcessName() + " - v" + newVersion)
-                .deploy();
-        
-        log.info("Deployed process {} version {} with deployment id {}", 
-                config.getProcessKey(), newVersion, deployment.getId());
+        Deployment deployment = flowableDeploymentService.deploy(config, bpmnXml, newVersion);
         
         // 保存修改后的XML到流程配置
         config.setBpmnXml(bpmnXml);
