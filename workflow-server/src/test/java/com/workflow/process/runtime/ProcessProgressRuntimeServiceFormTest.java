@@ -1,16 +1,15 @@
-package com.workflow.service;
+package com.workflow.process.runtime;
 
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 测试 BPMN XML 表单绑定解析
+ * BPMN 表单绑定解析测试。
  */
-public class ProcessInstanceServiceFormTest {
+public class ProcessProgressRuntimeServiceFormTest {
 
     private static final String TEST_BPMN_XML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
         "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:flowable=\"http://flowable.org/bpmn\" id=\"Definitions_1\" targetNamespace=\"http://bpmn.io/schema/bpmn\">\n" +
@@ -35,8 +34,8 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForSecondNode() throws Exception {
-        ProcessInstanceService service = service();
-        Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
+        ProcessProgressRuntimeService service = service();
+        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
         String result = (String) method.invoke(service, "Activity_1stkhyf", TEST_BPMN_XML);
@@ -46,8 +45,8 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForFirstNode() throws Exception {
-        ProcessInstanceService service = service();
-        Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
+        ProcessProgressRuntimeService service = service();
+        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
         String result = (String) method.invoke(service, "Activity_0c9s28z", TEST_BPMN_XML);
@@ -57,17 +56,16 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForNonExistentNode() throws Exception {
-        ProcessInstanceService service = service();
-        Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
+        ProcessProgressRuntimeService service = service();
+        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
         String result = (String) method.invoke(service, "NonExistent", TEST_BPMN_XML);
         assertNull(result, "不存在的节点应该返回 null");
     }
 
-    private ProcessInstanceService service() {
-        return new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null);
+    private ProcessProgressRuntimeService service() {
+        return new ProcessProgressRuntimeService(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
     }
 }
