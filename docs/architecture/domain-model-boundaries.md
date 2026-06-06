@@ -34,6 +34,8 @@
 - 设计态：`EntityDefinition`、`EntityField`、`EntityRelation`。
 - 发布态：`EntityPublishHistory.fieldsSnapshot`，后续补表单、列表、关系快照。
 - 运行态：动态实体表、实体关系运行时、实体状态。
+- 关系运行态入口：`EntityRelationRuntimeService` 负责子表单拆分、保存、读取、级联删除。
+- `EntityRelationMapper` 只用于关系定义维护和运行时服务内部加载，不在业务数据服务中直接散落调用。
 
 ### 表单
 
