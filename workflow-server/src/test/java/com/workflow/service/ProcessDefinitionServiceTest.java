@@ -6,6 +6,7 @@ import com.workflow.dto.ProcessVersionHistoryDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.mapper.*;
+import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,9 @@ public class ProcessDefinitionServiceTest {
 
     @Mock
     private RepositoryService activitiRepositoryService;
+
+    @Mock
+    private ProcessDefinitionNodeSyncService nodeSyncService;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -169,6 +173,7 @@ public class ProcessDefinitionServiceTest {
         assertNotNull(result);
         verify(processMapper, times(1)).selectById("1");
         verify(processMapper, times(1)).updateById(any(ProcessDefinitionConfig.class));
+        verify(nodeSyncService).syncBpmnNodeBindings(eq("1"), eq("<bpmn:definitions>updated</bpmn:definitions>"));
     }
 
     @Test
