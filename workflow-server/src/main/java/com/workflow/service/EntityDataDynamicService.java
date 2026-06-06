@@ -4,9 +4,12 @@ import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.permission.DataPermissionResult;
 import com.workflow.entity.EntityDefinition;
+import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityRelation;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.SysUser;
+import com.workflow.entity.publish.EntityPublishedSnapshot;
+import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.entity.runtime.EntityRelationRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.entity.runtime.EntityWorkflowRuntimeService;
@@ -43,6 +46,7 @@ public class EntityDataDynamicService {
     private final EntityWorkflowRuntimeService workflowRuntimeService;
     private final DataPermissionEngine dataPermissionEngine;
     private final SysUserService sysUserService;
+    private final EntityPublishedSnapshotService snapshotService;
 
     /**
      * 查询某实体的所有数据（带数据权限过滤）
@@ -151,6 +155,7 @@ public class EntityDataDynamicService {
         dto.setData(parentData);
         Map<String, Object> data = recordMapper.toStorageMap(dto);
         dto.setData(originalData);
+        validatePublishedRequiredFields(entityCode, data);
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
             // ========== 新增数据 ==========
@@ -289,6 +294,7 @@ public class EntityDataDynamicService {
                 updateData.put(key, value);
             }
         });
+        validatePublishedRequiredFields(entityCode, updateData);
 
         dynamicMapper.update(tableName, updateData);
         relationRuntimeService.saveRelationData(id, relations, relationData);
@@ -432,6 +438,32 @@ public class EntityDataDynamicService {
         String timePart = timestamp.substring(Math.max(0, timestamp.length() - 8));
         String random = String.format("%06d", (int) (Math.random() * 1000000));
         return prefix + "-" + timePart + random;
+    }
+
+    private void validatePublishedRequiredFields(String entityCode, Map<String, Object> storageData) {
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+        if (snapshot.getFields() == null || snapshot.getFields().isEmpty()) {
+            return;
+        }
+        for (EntityField field : snapshot.getFields()) {
+            if (!Boolean.TRUE.equals(field.getIsRequired()) || isRelationField(field)) {
+                continue;
+            }
+            String columnName = recordMapper.toColumnName(field.getFieldCode());
+            Object value = storageData.get(columnName);
+            if (isBlankValue(value)) {
+                throw new RuntimeException("字段必填: " + field.getFieldName());
+            }
+        }
+    }
+
+    private boolean isRelationField(EntityField field) {
+        return field.getFieldType() == EntityField.FieldType.SUB_FORM
+                || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
+    }
+
+    private boolean isBlankValue(Object value) {
+        return value == null || (value instanceof String str && str.isBlank());
     }
 
     /**

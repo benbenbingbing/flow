@@ -5,6 +5,8 @@ import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityRelation;
+import com.workflow.entity.publish.EntityPublishedSnapshot;
+import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.entity.runtime.EntityRelationRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.mapper.EntityDataDynamicMapper;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -93,6 +96,33 @@ class EntityDataDynamicServiceSubFormTest {
     }
 
     @Test
+    void saveValidatesRequiredFieldsFromPublishedSnapshot() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+        EntityField requiredAmount = new EntityField();
+        requiredAmount.setFieldCode("amount");
+        requiredAmount.setFieldName("金额");
+        requiredAmount.setIsRequired(true);
+        EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
+        snapshot.setEntityCode("parent");
+        snapshot.setFields(List.of(requiredAmount));
+        when(fixture.snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot);
+
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setSubmitterId("admin");
+        dto.setSubmitterName("管理员");
+        dto.setData(new HashMap<>(Map.of("name", "主数据")));
+
+        RuntimeException exception = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                () -> service.save(dto));
+
+        assertEquals("字段必填: 金额", exception.getMessage());
+        verify(fixture.snapshotService).getLatestByEntityCode("parent");
+        verify(fixture.dynamicMapper, never()).insert(eq("wf_parent"), org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
     void findByIdLoadsSubFormRowsByReferenceField() {
         Fixture fixture = new Fixture();
         EntityDataDynamicService service = fixture.service();
@@ -143,6 +173,7 @@ class EntityDataDynamicServiceSubFormTest {
         final EntityStatusMapper entityStatusMapper = mock(EntityStatusMapper.class);
         final DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         final EntityCodeGeneratorService codeGeneratorService = mock(EntityCodeGeneratorService.class);
+        final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
 
         Fixture() {
             EntityDefinition parent = entity("parent-id", "parent");
@@ -175,6 +206,7 @@ class EntityDataDynamicServiceSubFormTest {
             when(dynamicTableService.tableExists("tax")).thenReturn(true);
             when(codeGeneratorService.generateCode("parent")).thenReturn("P001");
             when(entityStatusMapper.findByCategory("parent", "NEW")).thenReturn(List.of());
+            when(snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot("parent"));
         }
 
         EntityDataDynamicService service() {
@@ -186,7 +218,14 @@ class EntityDataDynamicServiceSubFormTest {
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
                     dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
-                    null, null, null);
+                    null, null, null, snapshotService);
+        }
+
+        private static EntityPublishedSnapshot snapshot(String entityCode) {
+            EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
+            snapshot.setEntityCode(entityCode);
+            snapshot.setFields(List.of());
+            return snapshot;
         }
 
         private static EntityDefinition entity(String id, String code) {
