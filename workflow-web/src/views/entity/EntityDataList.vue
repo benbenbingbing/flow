@@ -458,6 +458,7 @@ import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { getCustomListComponent, hasCustomListComponent, getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
+import { getFieldKey, getFieldModelPath, isSystemField, mergeRuntimeFormConfigs, normalizeRuntimeFormConfigs } from '@/shared/form-runtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -701,15 +702,14 @@ const formFields = computed(() => {
 })
 
 // 获取列表字段对应的 prop（系统字段在 row 顶层，自定义字段在 row.data 中）
-const SYSTEM_FIELDS = new Set(['id', 'dataNo', 'name', 'code', 'status', 'processInstanceId', 'processStartTime', 'processEndTime', 'currentTaskId', 'currentTaskName', 'currentTaskAssignee', 'submitterId', 'submitterName', 'submitTime', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'])
 const getListFieldProp = (fieldCode: string) => {
-  return SYSTEM_FIELDS.has(fieldCode) ? fieldCode : `data.${fieldCode}`
+  return getFieldModelPath(fieldCode)
 }
 
 // 获取字段显示值（用于默认渲染）
 const getFieldDisplayValue = (row: any, field: any) => {
   const fieldCode = field.fieldCode
-  if (SYSTEM_FIELDS.has(fieldCode)) {
+  if (isSystemField(fieldCode)) {
     return row[fieldCode] ?? '-'
   }
   const value = row.data?.[fieldCode]
@@ -1139,41 +1139,6 @@ const approvalNormalForm = computed(() => {
     fields
   }
 })
-
-function getFieldKey(field: any) {
-  return String(field?.fieldCode || field?.fieldKey || field?.fieldId || field?.id || '')
-}
-
-function normalizeRuntimeFormConfigs(progressRes: any) {
-  if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
-    return progressRes.formConfigs
-  }
-  return progressRes?.formConfig ? [progressRes.formConfig] : []
-}
-
-function mergeRuntimeFormConfigs(configs: any[]) {
-  if (!configs || configs.length === 0) return null
-  if (configs.length === 1) return configs[0]
-  const seen = new Set<string>()
-  const fields: any[] = []
-  configs.forEach((config: any, formIndex: number) => {
-    ;(config.fields || []).forEach((field: any, fieldIndex: number) => {
-      const fieldKey = getFieldKey(field) || `${formIndex}_${fieldIndex}`
-      if (seen.has(fieldKey)) return
-      seen.add(fieldKey)
-      fields.push({
-        ...field,
-        id: `${config.formId || config.entityFormId || formIndex}_${field.id || fieldKey}`,
-        sortOrder: formIndex * 10000 + (field.sortOrder || fieldIndex)
-      })
-    })
-  })
-  return {
-    ...configs[0],
-    formName: configs.map((config: any) => config.formName).filter(Boolean).join(' / ') || configs[0].formName,
-    fields
-  }
-}
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field: any) {
