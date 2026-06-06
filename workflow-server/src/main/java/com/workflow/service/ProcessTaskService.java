@@ -403,28 +403,27 @@ public class ProcessTaskService {
         
         if (flowableTasks.isEmpty()) {
             log.debug("流程实例 {} 没有待同步的任务", processInstanceId);
-            return;
-        }
-        
-        Map<String, Object> variables = null;
-        for (Task flowableTask : flowableTasks) {
-            try {
-                // 检查是否已存在
-                ProcessTask existing = taskMapper.selectByTaskId(flowableTask.getId());
-                if (existing != null) {
-                    log.debug("任务 {} 已存在，跳过同步", flowableTask.getId());
-                    continue;
+        } else {
+            Map<String, Object> variables = null;
+            for (Task flowableTask : flowableTasks) {
+                try {
+                    // 检查是否已存在
+                    ProcessTask existing = taskMapper.selectByTaskId(flowableTask.getId());
+                    if (existing != null) {
+                        log.debug("任务 {} 已存在，跳过同步", flowableTask.getId());
+                        continue;
+                    }
+
+                    // 延迟加载变量，只在第一次使用时获取
+                    if (variables == null) {
+                        variables = runtimeService.getVariables(processInstanceId);
+                    }
+
+                    createTask(flowableTask, variables);
+                } catch (Exception e) {
+                    log.error("同步任务 {} 失败: {}", flowableTask.getId(), e.getMessage(), e);
+                    // 继续同步其他任务
                 }
-                
-                // 延迟加载变量，只在第一次使用时获取
-                if (variables == null) {
-                    variables = runtimeService.getVariables(processInstanceId);
-                }
-                
-                createTask(flowableTask, variables);
-            } catch (Exception e) {
-                log.error("同步任务 {} 失败: {}", flowableTask.getId(), e.getMessage(), e);
-                // 继续同步其他任务
             }
         }
         
@@ -440,9 +439,25 @@ public class ProcessTaskService {
      * 更新实体数据表的当前任务ID和名称
      */
     private void updateEntityCurrentTask(String processInstanceId) {
-        Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
+        Map<String, Object> variables = Map.of();
+        try {
+            variables = runtimeService.getVariables(processInstanceId);
+        } catch (Exception e) {
+            log.debug("获取流程变量失败，使用本地待办兜底: processInstanceId={}, message={}", processInstanceId, e.getMessage());
+        }
+
         String entityCode = (String) variables.get("entityCode");
         String entityDataId = (String) variables.get("entityDataId");
+        if (entityCode == null || entityDataId == null) {
+            List<ProcessTask> localTasks = taskMapper.selectByProcessInstance(processInstanceId);
+            for (ProcessTask localTask : localTasks) {
+                if (localTask.getEntityCode() != null && localTask.getEntityDataId() != null) {
+                    entityCode = localTask.getEntityCode();
+                    entityDataId = localTask.getEntityDataId();
+                    break;
+                }
+            }
+        }
         if (entityCode == null || entityDataId == null) {
             return;
         }
