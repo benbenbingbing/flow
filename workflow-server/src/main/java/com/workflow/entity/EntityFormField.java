@@ -136,10 +136,12 @@ public class EntityFormField {
     /**
      * 创建时间
      */
+    @com.baomidou.mybatisplus.annotation.TableField("created_at")
     private LocalDateTime createTime;
     
     /**
      * 更新时间
      */
+    @com.baomidou.mybatisplus.annotation.TableField("updated_at")
     private LocalDateTime updateTime;
 }

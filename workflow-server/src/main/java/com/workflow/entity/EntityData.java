@@ -34,7 +34,7 @@ import java.time.LocalDateTime;
 @TableName("entity_data")
 public class EntityData {
     
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
     /**

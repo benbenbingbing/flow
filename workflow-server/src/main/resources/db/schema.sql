@@ -138,6 +138,24 @@ CREATE TABLE IF NOT EXISTS `process_node_form` (
     KEY `idx_sort_order` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程节点表单绑定表';
 
+-- 流程节点审批配置表
+-- 存储流程节点的审批意见与审批按钮配置
+CREATE TABLE IF NOT EXISTS `process_node_approval` (
+    `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
+    `process_config_id` VARCHAR(64) NOT NULL COMMENT '流程配置ID',
+    `node_id` VARCHAR(100) NOT NULL COMMENT '节点ID（BPMN元素ID）',
+    `node_name` VARCHAR(200) COMMENT '节点名称',
+    `enabled` TINYINT DEFAULT 1 COMMENT '是否启用审批意见：0否/1是',
+    `comment_label` VARCHAR(100) DEFAULT '审批意见' COMMENT '审批意见标签',
+    `options_json` TEXT COMMENT '审批选项JSON',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_process_node_approval` (`process_config_id`, `node_id`),
+    KEY `idx_process_config` (`process_config_id`),
+    KEY `idx_node_id` (`node_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程节点审批配置表';
+
 -- 表单字段配置表
 -- 存储表单中的字段配置
 CREATE TABLE IF NOT EXISTS `form_field_config` (
@@ -348,6 +366,34 @@ CREATE TABLE IF NOT EXISTS `process_task` (
     KEY `idx_created_at` (`created_at`),
     KEY `idx_deleted` (`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程待办任务表';
+
+-- 流程抄送记录表
+-- 存储流程抄送/知会信息
+CREATE TABLE IF NOT EXISTS `process_cc_record` (
+    `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
+    `process_instance_id` VARCHAR(64) NOT NULL COMMENT '流程实例ID',
+    `process_definition_id` VARCHAR(64) COMMENT '流程定义ID',
+    `process_key` VARCHAR(100) COMMENT '流程Key',
+    `process_name` VARCHAR(200) COMMENT '流程名称',
+    `business_key` VARCHAR(200) COMMENT '业务Key',
+    `node_id` VARCHAR(100) COMMENT '节点ID',
+    `node_name` VARCHAR(200) COMMENT '节点名称',
+    `cc_user_id` VARCHAR(64) COMMENT '抄送人ID',
+    `cc_user_name` VARCHAR(100) COMMENT '抄送人名称',
+    `cc_type` VARCHAR(20) DEFAULT 'AUTO' COMMENT '抄送类型：AUTO自动/MANUAL手动',
+    `cc_timing` VARCHAR(20) COMMENT '抄送时机',
+    `read_status` VARCHAR(20) DEFAULT 'UNREAD' COMMENT '阅读状态：UNREAD未读/READ已读',
+    `read_time` DATETIME COMMENT '阅读时间',
+    `deleted` TINYINT DEFAULT 0 COMMENT '是否删除',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_process_instance` (`process_instance_id`),
+    KEY `idx_cc_user` (`cc_user_id`, `read_status`),
+    KEY `idx_process_key` (`process_key`),
+    KEY `idx_deleted` (`deleted`),
+    KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程抄送记录表';
 
 -- --------------------------------------------------------
 -- 5. 流程动作相关表

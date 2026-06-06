@@ -139,6 +139,10 @@ export function resolveFieldComponent(field) {
   const componentType = (field?.componentType || '').toLowerCase()
   const fieldType = (field?.fieldType || '').toLowerCase()
 
+  if (['sub_form', 'sub_form_list'].includes(componentType) || ['sub_form', 'sub_form_list'].includes(fieldType)) {
+    return SubFormField
+  }
+
   // 如果 refEntityType 是系统实体类型，直接判定为实体引用字段
   const refEntityType = (field?.refEntityType || '').toUpperCase()
   if (['USER', 'DEPT', 'ROLE', 'GROUP'].includes(refEntityType)) {

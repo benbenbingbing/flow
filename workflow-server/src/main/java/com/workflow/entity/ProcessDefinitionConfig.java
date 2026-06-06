@@ -19,9 +19,9 @@ import java.util.List;
 public class ProcessDefinitionConfig {
 
     /**
-     * 主键ID，自增
+     * 主键ID
      */
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
     /**

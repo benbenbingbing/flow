@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @TableName("process_version_history")
 public class ProcessVersionHistory {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
     /**

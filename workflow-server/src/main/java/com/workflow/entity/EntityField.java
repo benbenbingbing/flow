@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @TableName("entity_field")
 public class EntityField {
     
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
     /**
