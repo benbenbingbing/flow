@@ -1,0 +1,389 @@
+package com.workflow.entity.runtime;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.UserContext;
+import com.workflow.dto.EntityDataDTO;
+import com.workflow.entity.EntityDefinition;
+import com.workflow.entity.EntityField;
+import com.workflow.entity.EntityRelation;
+import com.workflow.mapper.EntityDataDynamicMapper;
+import com.workflow.mapper.EntityDefinitionMapper;
+import com.workflow.mapper.EntityFieldMapper;
+import com.workflow.mapper.EntityRelationMapper;
+import com.workflow.service.DynamicTableService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/**
+ * 动态实体关系运行时。
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class EntityRelationRuntimeService {
+
+    private static final int MAX_RELATION_DEPTH = 8;
+
+    private final EntityDataDynamicMapper dynamicMapper;
+    private final EntityDefinitionMapper definitionMapper;
+    private final EntityFieldMapper fieldMapper;
+    private final EntityRelationMapper relationMapper;
+    private final DynamicTableService dynamicTableService;
+    private final ObjectMapper objectMapper;
+    private final EntityRuntimeRecordMapper recordMapper;
+
+    public List<EntityRelation> loadRelations(EntityDefinition definition) {
+        if (definition == null || definition.getId() == null) {
+            return List.of();
+        }
+        List<EntityRelation> relations = relationMapper.selectByParentEntityId(definition.getId());
+        return relations != null ? relations : List.of();
+    }
+
+    public Map<String, Object> withoutRelationData(Map<String, Object> data, List<EntityRelation> relations) {
+        if (data == null || data.isEmpty() || relations == null || relations.isEmpty()) {
+            return data;
+        }
+        Map<String, Object> parentData = new HashMap<>(data);
+        for (EntityRelation relation : relations) {
+            if (StringUtils.hasText(relation.getParentFieldCode())) {
+                parentData.remove(relation.getParentFieldCode());
+            }
+        }
+        return parentData;
+    }
+
+    public Map<String, Object> withoutRelationDataFromRequest(Map<String, Object> formData, List<EntityRelation> relations) {
+        if (formData == null || formData.isEmpty()) {
+            return formData;
+        }
+        Map<String, Object> parentFormData = new HashMap<>(formData);
+        Object dataObj = formData.get("data");
+        if (dataObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> customData = (Map<String, Object>) dataObj;
+            parentFormData.put("data", withoutRelationData(customData, relations));
+        } else {
+            parentFormData = withoutRelationData(parentFormData, relations);
+        }
+        return parentFormData;
+    }
+
+    public Map<String, Object> extractRelationData(Map<String, Object> data, List<EntityRelation> relations) {
+        Map<String, Object> result = new HashMap<>();
+        if (data == null || data.isEmpty() || relations == null || relations.isEmpty()) {
+            return result;
+        }
+        for (EntityRelation relation : relations) {
+            String fieldCode = relation.getParentFieldCode();
+            if (StringUtils.hasText(fieldCode) && data.containsKey(fieldCode)) {
+                result.put(fieldCode, data.get(fieldCode));
+            }
+        }
+        return result;
+    }
+
+    public Map<String, Object> extractRelationDataFromRequest(Map<String, Object> formData, List<EntityRelation> relations) {
+        if (formData == null) {
+            return Map.of();
+        }
+        Object dataObj = formData.get("data");
+        if (dataObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> customData = (Map<String, Object>) dataObj;
+            return extractRelationData(customData, relations);
+        }
+        return extractRelationData(formData, relations);
+    }
+
+    public void saveRelationData(String parentId, List<EntityRelation> relations, Map<String, Object> relationData) {
+        saveRelationData(parentId, relations, relationData, 1, new HashSet<>());
+    }
+
+    public void loadRelationData(EntityDataDTO dto) {
+        if (dto == null || dto.getId() == null || dto.getEntityCode() == null) {
+            return;
+        }
+        EntityDefinition definition = definitionMapper.findByEntityCode(dto.getEntityCode()).orElse(null);
+        if (definition == null) {
+            return;
+        }
+        if (dto.getData() == null) {
+            dto.setData(new HashMap<>());
+        }
+        loadRelationData(definition, dto.getId(), dto.getData(), 1, new HashSet<>());
+    }
+
+    public void cascadeDeleteRelations(EntityDefinition parentDefinition, String parentId, boolean physical) {
+        cascadeDeleteRelations(parentDefinition, parentId, physical, 1, new HashSet<>());
+    }
+
+    private void saveRelationData(String parentId, List<EntityRelation> relations, Map<String, Object> relationData,
+                                  int depth, Set<String> path) {
+        if (!StringUtils.hasText(parentId) || relations == null || relations.isEmpty()
+                || relationData == null || relationData.isEmpty() || depth > MAX_RELATION_DEPTH) {
+            return;
+        }
+        for (EntityRelation relation : relations) {
+            String fieldCode = relation.getParentFieldCode();
+            if (!StringUtils.hasText(fieldCode) || !relationData.containsKey(fieldCode)) {
+                continue;
+            }
+
+            String pathKey = relation.getParentEntityCode() + ":" + fieldCode;
+            if (!path.add(pathKey)) {
+                log.warn("关系存在循环，跳过: {}", pathKey);
+                continue;
+            }
+
+            EntityDefinition childDefinition = loadChildEntity(relation);
+            if (childDefinition == null || !StringUtils.hasText(childDefinition.getEntityCode())
+                    || !StringUtils.hasText(relation.getChildRefFieldCode())) {
+                path.remove(pathKey);
+                continue;
+            }
+
+            ensureEntityTable(childDefinition);
+            String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            List<Map<String, Object>> existingRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            List<Map<String, Object>> incomingRows = toRelationRows(relationData.get(fieldCode), relation.getRelationType());
+            Set<String> activeIds = new HashSet<>();
+
+            List<EntityRelation> childRelations = loadRelations(childDefinition);
+            for (Map<String, Object> row : incomingRows) {
+                Map<String, Object> childRelationData = extractRelationData(row, childRelations);
+                Map<String, Object> childData = withoutRelationData(row, childRelations);
+                childData.put(relation.getChildRefFieldCode(), parentId);
+                childData.put("updated_by", UserContext.getUserId());
+                childData.put("updated_at", LocalDateTime.now());
+                childData.put("deleted", 0);
+                normalizeJsonValues(childData);
+
+                String childId = stringValue(childData.get("id"));
+                if (!StringUtils.hasText(childId)) {
+                    childId = generateId();
+                    childData.put("id", childId);
+                    childData.put("created_by", UserContext.getUserId());
+                    childData.put("created_at", LocalDateTime.now());
+                    dynamicMapper.insert(childTableName, childData);
+                } else {
+                    dynamicMapper.update(childTableName, childData);
+                }
+                activeIds.add(childId);
+                saveRelationData(childId, childRelations, childRelationData, depth + 1, path);
+            }
+
+            deleteMissingRows(childTableName, existingRows, activeIds);
+            path.remove(pathKey);
+        }
+    }
+
+    private void loadRelationData(EntityDefinition parentDefinition, String parentId, Map<String, Object> target,
+                                  int depth, Set<String> path) {
+        if (parentDefinition == null || !StringUtils.hasText(parentId) || target == null || depth > MAX_RELATION_DEPTH) {
+            return;
+        }
+        List<EntityRelation> relations = loadRelations(parentDefinition);
+        for (EntityRelation relation : relations) {
+            String fieldCode = relation.getParentFieldCode();
+            if (!StringUtils.hasText(fieldCode)) {
+                continue;
+            }
+
+            String pathKey = relation.getParentEntityCode() + ":" + fieldCode;
+            if (!path.add(pathKey)) {
+                continue;
+            }
+
+            EntityDefinition childDefinition = loadChildEntity(relation);
+            if (childDefinition == null || !StringUtils.hasText(childDefinition.getEntityCode())
+                    || !StringUtils.hasText(relation.getChildRefFieldCode())) {
+                path.remove(pathKey);
+                continue;
+            }
+
+            if (!dynamicTableService.tableExists(childDefinition.getEntityCode())) {
+                target.put(fieldCode, emptyRelationValue(relation));
+                path.remove(pathKey);
+                continue;
+            }
+            String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            List<Map<String, Object>> rows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            List<Map<String, Object>> childRows = rows == null ? List.of() : rows.stream()
+                    .map(row -> {
+                        Map<String, Object> childRow = toChildFormRow(row, childDefinition.getEntityCode());
+                        String childId = stringValue(childRow.get("id"));
+                        loadRelationData(childDefinition, childId, childRow, depth + 1, path);
+                        return childRow;
+                    })
+                    .collect(Collectors.toList());
+            if (relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE) {
+                target.put(fieldCode, childRows.isEmpty() ? null : childRows.get(0));
+            } else {
+                target.put(fieldCode, childRows);
+            }
+            path.remove(pathKey);
+        }
+    }
+
+    private void cascadeDeleteRelations(EntityDefinition parentDefinition, String parentId, boolean physical,
+                                        int depth, Set<String> path) {
+        if (parentDefinition == null || !StringUtils.hasText(parentId) || depth > MAX_RELATION_DEPTH) {
+            return;
+        }
+        for (EntityRelation relation : loadRelations(parentDefinition)) {
+            if (!Boolean.TRUE.equals(relation.getCascadeDelete()) || !StringUtils.hasText(relation.getParentFieldCode())) {
+                continue;
+            }
+            String pathKey = relation.getParentEntityCode() + ":" + relation.getParentFieldCode();
+            if (!path.add(pathKey)) {
+                continue;
+            }
+            EntityDefinition childDefinition = loadChildEntity(relation);
+            if (childDefinition == null || !StringUtils.hasText(childDefinition.getEntityCode())
+                    || !StringUtils.hasText(relation.getChildRefFieldCode())
+                    || !dynamicTableService.tableExists(childDefinition.getEntityCode())) {
+                path.remove(pathKey);
+                continue;
+            }
+            String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            List<Map<String, Object>> childRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            for (Map<String, Object> childRow : childRows) {
+                String childId = stringValue(childRow.get("id"));
+                if (!StringUtils.hasText(childId)) {
+                    continue;
+                }
+                cascadeDeleteRelations(childDefinition, childId, physical, depth + 1, path);
+                if (physical) {
+                    dynamicMapper.physicalDeleteById(childTableName, childId);
+                } else {
+                    dynamicMapper.deleteById(childTableName, childId);
+                }
+            }
+            path.remove(pathKey);
+        }
+    }
+
+    private EntityDefinition loadChildEntity(EntityRelation relation) {
+        EntityDefinition childDefinition = null;
+        if (StringUtils.hasText(relation.getChildEntityId())) {
+            childDefinition = definitionMapper.selectById(relation.getChildEntityId());
+        }
+        if (childDefinition == null && StringUtils.hasText(relation.getChildEntityCode())) {
+            childDefinition = definitionMapper.findByEntityCode(relation.getChildEntityCode()).orElse(null);
+        }
+        if (childDefinition != null) {
+            childDefinition.setFields(loadEntityFields(childDefinition));
+        }
+        return childDefinition;
+    }
+
+    private List<EntityField> loadEntityFields(EntityDefinition definition) {
+        if (definition == null || definition.getId() == null) {
+            return List.of();
+        }
+        List<EntityField> fields = fieldMapper.findByEntityId(definition.getId());
+        return fields != null ? fields : List.of();
+    }
+
+    private void ensureEntityTable(EntityDefinition definition) {
+        if (!dynamicTableService.tableExists(definition.getEntityCode())) {
+            dynamicTableService.createEntityTable(definition);
+        }
+    }
+
+    private List<Map<String, Object>> toRelationRows(Object value, EntityRelation.RelationType relationType) {
+        if (value == null) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (value instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> row = (Map<String, Object>) value;
+            rows.add(new HashMap<>(row));
+            return rows;
+        }
+        if (value instanceof List) {
+            for (Object item : (List<?>) value) {
+                if (item instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> row = (Map<String, Object>) item;
+                    rows.add(new HashMap<>(row));
+                }
+            }
+        }
+        if (relationType == EntityRelation.RelationType.ONE_TO_ONE && rows.size() > 1) {
+            return List.of(rows.get(0));
+        }
+        return rows;
+    }
+
+    private List<Map<String, Object>> findRowsByReference(String tableName, String refFieldCode, String parentId) {
+        Map<String, Object> condition = new HashMap<>();
+        condition.put(refFieldCode, parentId);
+        condition.put(refFieldCode + "_op", "EQ");
+        List<Map<String, Object>> rows = dynamicMapper.selectByCondition(tableName, condition);
+        return rows != null ? rows : List.of();
+    }
+
+    private void deleteMissingRows(String tableName, List<Map<String, Object>> existingRows, Set<String> activeIds) {
+        if (existingRows == null || existingRows.isEmpty()) {
+            return;
+        }
+        for (Map<String, Object> row : existingRows) {
+            String id = stringValue(row.get("id"));
+            if (StringUtils.hasText(id) && !activeIds.contains(id)) {
+                dynamicMapper.deleteById(tableName, id);
+            }
+        }
+    }
+
+    private Object emptyRelationValue(EntityRelation relation) {
+        return relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE ? null : List.of();
+    }
+
+    private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {
+        EntityDataDTO childDto = recordMapper.toDto(row, entityCode);
+        Map<String, Object> data = new HashMap<>();
+        if (childDto.getData() != null) {
+            data.putAll(childDto.getData());
+        }
+        if (childDto.getId() != null) {
+            data.put("id", childDto.getId());
+        }
+        return data;
+    }
+
+    private void normalizeJsonValues(Map<String, Object> data) {
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map || value instanceof List) {
+                try {
+                    entry.setValue(objectMapper.writeValueAsString(value));
+                } catch (Exception e) {
+                    log.warn("字段 {} 序列化 JSON 失败: {}", entry.getKey(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    private String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : null;
+    }
+
+    private String generateId() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+}

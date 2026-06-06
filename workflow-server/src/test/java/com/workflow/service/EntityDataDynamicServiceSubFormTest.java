@@ -5,6 +5,7 @@ import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityRelation;
+import com.workflow.entity.runtime.EntityRelationRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
@@ -177,10 +178,15 @@ class EntityDataDynamicServiceSubFormTest {
         }
 
         EntityDataDynamicService service() {
+            ObjectMapper objectMapper = new ObjectMapper();
+            EntityRuntimeRecordMapper recordMapper = new EntityRuntimeRecordMapper(objectMapper);
+            EntityRelationRuntimeService relationRuntimeService = new EntityRelationRuntimeService(
+                    dynamicMapper, definitionMapper, fieldMapper, relationMapper,
+                    dynamicTableService, objectMapper, recordMapper);
             return new EntityDataDynamicService(
-                    dynamicMapper, definitionMapper, fieldMapper, relationMapper, entityStatusMapper,
+                    dynamicMapper, definitionMapper, entityStatusMapper,
                     null, null, dynamicTableService, null, null, null, null,
-                    codeGeneratorService, new ObjectMapper(), new EntityRuntimeRecordMapper(new ObjectMapper()),
+                    codeGeneratorService, recordMapper, relationRuntimeService,
                     null, null, null, null);
         }
 
