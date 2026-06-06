@@ -257,6 +257,12 @@ public class EntityFormService {
         if (entityField.getRefEntityType() != null) {
             field.setRefEntityType(entityField.getRefEntityType().name());
         }
+        if (entityField.getDisplayMode() != null) {
+            field.setDisplayMode(entityField.getDisplayMode());
+        }
+        if (entityField.getRefFieldCode() != null) {
+            field.setRefFieldCode(entityField.getRefFieldCode());
+        }
         // 系统可编辑字段强制非只读（避免表单设计器误设为只读导致无法交互）
         if (Boolean.TRUE.equals(entityField.getIsSystem()) && Boolean.TRUE.equals(entityField.getEditable())) {
             field.setIsReadonly(0);

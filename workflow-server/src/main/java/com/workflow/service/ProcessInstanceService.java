@@ -5,6 +5,7 @@ import com.workflow.common.Result;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.service.form.EntityFormFieldRuntimeMapper;
 import com.workflow.vo.MyStartedProcessVO;
 import com.workflow.vo.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
@@ -819,44 +820,10 @@ public class ProcessInstanceService {
             
             // 转换字段配置
             if (entityForm.getFields() != null) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 List<Map<String, Object>> fields = new ArrayList<>();
                 for (com.workflow.entity.EntityFormField field : entityForm.getFields()) {
-                    Map<String, Object> fieldMap = new HashMap<>();
-                    fieldMap.put("id", field.getId());
-                    fieldMap.put("fieldCode", field.getFieldCode() != null ? field.getFieldCode() : field.getFieldId());
-                    fieldMap.put("fieldName", field.getFieldName());
-                    fieldMap.put("fieldLabel", field.getFieldLabel());
-                    fieldMap.put("fieldType", field.getFieldType());
-                    // 如果 componentType 为空，尝试从 fieldType 推断（避免前端无法识别组件类型）
-                    String componentType = field.getComponentType();
-                    if ((componentType == null || componentType.isEmpty()) && field.getFieldType() != null) {
-                        componentType = field.getFieldType().toLowerCase();
-                    }
-                    fieldMap.put("componentType", componentType);
-                    fieldMap.put("isRequired", field.getIsRequired());
-                    // 如果节点映射表配置了只读，覆盖字段的 isReadonly
-                    if (nodeFormReadonly != null) {
-                        fieldMap.put("isReadonly", nodeFormReadonly);
-                    } else {
-                        fieldMap.put("isReadonly", field.getIsReadonly());
-                    }
-                    fieldMap.put("isHidden", field.getIsHidden());
-                    fieldMap.put("sortOrder", field.getSortOrder());
-                    fieldMap.put("gridSpan", field.getGridSpan());
-                    
-                    // 引用实体配置（用于单选实体/多选实体字段）
-                    if (field.getRefEntityId() != null) {
-                        fieldMap.put("refEntityId", field.getRefEntityId());
-                    }
-                    if (field.getRefEntityType() != null) {
-                        fieldMap.put("refEntityType", field.getRefEntityType());
-                    }
-
-                    // 组件属性保持原始 JSON 字符串，由前端解析
-                    if (field.getComponentProps() != null) {
-                        fieldMap.put("componentProps", field.getComponentProps());
-                    }
-                    fields.add(fieldMap);
+                    fields.add(EntityFormFieldRuntimeMapper.toMap(field, nodeFormReadonly, mapper));
                 }
                 formConfig.setFields(fields);
             }

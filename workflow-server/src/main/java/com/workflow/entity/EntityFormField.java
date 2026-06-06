@@ -115,6 +115,18 @@ public class EntityFormField {
      */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refEntityType;
+
+    /**
+     * 子表单显示方式（embedded/tab），非数据库字段，从entity_field补充
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String displayMode;
+
+    /**
+     * 子表单关联字段编码，非数据库字段，从entity_field补充
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String refFieldCode;
     
     /**
      * 栅格宽度（1-24）
