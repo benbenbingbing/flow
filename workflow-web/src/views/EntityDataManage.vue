@@ -298,6 +298,8 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const currentRow = ref({})
 const formRef = ref()
+const entityName = computed(() => entityDefinition.value?.entityName || entityDefinition.value?.name || '')
+const formRules = {}
 
 // 新增/查看数据时解析的表单（流程节点表单或默认表单）
 const resolvedForm = ref(null)
@@ -435,13 +437,13 @@ const listFields = computed(() => {
 
 // 查询字段（所有非系统字段均可作为查询条件）
 const queryFields = computed(() => {
-  return fields.value.filter(f => !f.isSystem)
+  return fields.value.filter(f => !f.isSystem && !isSubForm(f))
 })
 
 // 判断是否为子表单（任何模式）
 function isSubForm(field) {
   const type = (field.componentType || field.fieldType || '').toUpperCase()
-  return type === 'SUB_FORM'
+  return ['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
 }
 
 // 判断是否为 Tab 模式的子表单
@@ -665,7 +667,7 @@ const formatFieldValue = (field, value) => {
     return dayjs(value).format('YYYY-MM-DD HH:mm')
   }
   // 子表单：显示为简化的表格
-  if (field.fieldType === 'SUB_FORM') {
+  if (['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType)) {
     if (!Array.isArray(value) || value.length === 0) return '-'
     const subFields = field.subFields || field.fields || []
     if (subFields.length === 0) return `${value.length} 条数据`
@@ -852,17 +854,18 @@ const handleCreate = async () => {
   })
 }
 
-const handleEdit = (row) => {
+const handleEdit = async (row) => {
   isEdit.value = true
   dialogTitle.value = '编辑数据'
   resolvedForm.value = null // 编辑时不使用解析的表单，使用实体字段
+  const detail = await entityDataApi.getDetail(entityCode, row.id).catch(() => row)
   formData.value = {
-    id: row.id,
+    id: detail.id,
     entityCode: entityCode,
-    title: row.title,
-    data: { ...row.data },
-    submitterId: row.submitterId,
-    submitterName: row.submitterName,
+    title: detail.title,
+    data: { ...(detail.data || {}) },
+    submitterId: detail.submitterId,
+    submitterName: detail.submitterName,
     startProcess: false
   }
   dialogVisible.value = true

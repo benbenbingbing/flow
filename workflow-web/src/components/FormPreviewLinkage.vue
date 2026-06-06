@@ -173,7 +173,7 @@ function isTabSubForm(field) {
     }
     return false
   })()
-  if (type !== 'SUB_FORM') return false
+  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
   return result
 }
 

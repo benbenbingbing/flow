@@ -551,7 +551,7 @@ function mergeRuntimeFormConfigs(configs) {
 function isTabSubForm(field) {
   if (!field) return false
   const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (type !== 'SUB_FORM') return false
+  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
   if (field.displayMode === 'tab') return true
   if (field.componentProps) {
     try {

@@ -219,113 +219,52 @@
               
               <!-- 子表单特殊配置 -->
               <template v-if="(selectedField.componentType || '').toUpperCase() === 'SUB_FORM'">
-                <el-divider>子表单配置</el-divider>
+                <el-divider>子表单</el-divider>
 
-                <el-form-item label="显示方式">
+                <div class="relation-summary">
+                  <div>
+                    <span>子实体</span>
+                    <strong>{{ getEntityNameById(selectedField.childEntityId || selectedField.refEntityId) || '-' }}</strong>
+                  </div>
+                  <div>
+                    <span>关系</span>
+                    <strong>{{ selectedField.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多' }}</strong>
+                  </div>
+                  <div>
+                    <span>外键</span>
+                    <strong>{{ selectedField.childRefFieldCode || selectedField.refFieldCode || '-' }}</strong>
+                  </div>
+                </div>
+
+                <el-form-item label="显示">
                   <el-radio-group v-model="selectedField.displayMode">
-                    <el-radio label="embedded">嵌入表单</el-radio>
-                    <el-radio label="tab">Tab 页签</el-radio>
+                    <el-radio-button label="embedded">嵌入</el-radio-button>
+                    <el-radio-button label="tab">页签</el-radio-button>
                   </el-radio-group>
                 </el-form-item>
 
-                <el-form-item label="内部布局">
+                <el-form-item label="布局">
                   <el-radio-group v-model="selectedField.layout">
-                    <el-radio label="form">表单卡片</el-radio>
-                    <el-radio label="table">数据表格</el-radio>
-                  </el-radio-group>
-                  <span class="form-tip" style="margin-left: 8px">表单卡片适合字段较少，表格适合字段较多</span>
-                </el-form-item>
-
-                <el-form-item label="可重复添加">
-                  <el-switch
-                    v-model="selectedField.repeatable"
-                    :active-value="true"
-                    :inactive-value="false"
-                    active-text="是"
-                    inactive-text="否"
-                  />
-                  <span class="form-tip" style="margin-left: 8px">关闭后只显示一行，不显示添加/删除按钮</span>
-                </el-form-item>
-
-                <el-form-item label="引用类型">
-                  <el-radio-group v-model="selectedField.subFormType" @change="handleSubFormTypeChange">
-                    <el-radio label="embedded">内嵌定义</el-radio>
-                    <el-radio label="ref">引用实体表单</el-radio>
+                    <el-radio-button label="form">分行</el-radio-button>
+                    <el-radio-button label="table">表格</el-radio-button>
                   </el-radio-group>
                 </el-form-item>
 
-                <!-- 引用实体表单配置 -->
-                <template v-if="selectedField.subFormType === 'ref'">
-                  <el-form-item label="引用实体">
-                    <el-select
-                      v-model="selectedField.refEntityId"
-                      placeholder="选择实体（空表示当前实体）"
-                      clearable
-                      style="width: 100%"
-                      @change="handleRefEntityChange"
-                    >
-                      <el-option label="当前实体" value="" />
-                      <el-option
-                        v-for="ent in entityList"
-                        :key="ent.id"
-                        :label="ent.entityName"
-                        :value="ent.id"
-                      />
-                    </el-select>
-                  </el-form-item>
-
-                  <el-form-item label="引用表单">
-                    <el-select
-                      v-model="selectedField.refFormId"
-                      placeholder="选择表单"
-                      style="width: 100%"
-                    >
-                      <el-option
-                        v-for="fm in formListByEntity"
-                        :key="fm.id"
-                        :label="fm.formName"
-                        :value="fm.id"
-                      />
-                    </el-select>
-                  </el-form-item>
-                </template>
-
-                <!-- 内嵌定义配置 -->
-                <template v-else>
-                  <el-form-item label="最少行数">
-                    <el-input-number v-model="selectedField.minRows" :min="0" />
-                  </el-form-item>
-
-                  <el-form-item label="最多行数">
-                    <el-input-number v-model="selectedField.maxRows" :min="1" />
-                  </el-form-item>
-
-                  <el-form-item label="显示汇总">
-                    <el-switch v-model="selectedField.showSummary" />
-                  </el-form-item>
-
-                  <el-form-item label="子表字段">
-                    <div class="sub-form-fields">
-                      <div v-for="(subField, idx) in selectedField.subFields" :key="idx" class="sub-field-item">
-                        <el-input v-model="subField.fieldName" placeholder="字段名" size="small" style="width: 100px" />
-                        <el-select v-model="subField.fieldType" placeholder="类型" size="small" style="width: 90px">
-                          <el-option label="文本" value="TEXT" />
-                          <el-option label="数字" value="NUMBER" />
-                          <el-option label="日期" value="DATE" />
-                          <el-option label="选择" value="SELECT" />
-                        </el-select>
-
-                        <el-button type="danger" size="small" text @click="removeSubField(idx)">
-                          <el-icon><Delete /></el-icon>
-                        </el-button>
-                      </div>
-
-                      <el-button type="primary" size="small" text @click="addSubField">
-                        <el-icon><Plus /></el-icon> 添加子字段
-                      </el-button>
-                    </div>
-                  </el-form-item>
-                </template>
+                <el-form-item label="子表表单">
+                  <el-select
+                    v-model="selectedField.refFormId"
+                    placeholder="默认表单"
+                    clearable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="fm in formListByEntity"
+                      :key="fm.id"
+                      :label="fm.formName"
+                      :value="fm.id"
+                    />
+                  </el-select>
+                </el-form-item>
               </template>
 
               <!-- 实体引用字段配置 -->
@@ -449,7 +388,7 @@ const activeDesignTab = ref('')
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field) {
   const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (type !== 'SUB_FORM') return false
+  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
   if (field.displayMode === 'tab') return true
   if (field.componentProps) {
     try {
@@ -707,12 +646,14 @@ function restoreFieldConfig(field) {
 
     // 恢复子表单配置
     if (compProps.subFormConfig) {
-      field.subFormType = compProps.subFormConfig.type || 'embedded'
+      field.subFormType = 'ref'
       field.displayMode = compProps.subFormConfig.displayMode || 'embedded'
       field.layout = compProps.subFormConfig.layout || 'form'
-      field.refEntityId = compProps.subFormConfig.refEntityId || ''
+      field.refEntityId = compProps.subFormConfig.refEntityId || field.childEntityId || field.refEntityId || ''
       field.refFormId = compProps.subFormConfig.refFormId || ''
-      field.repeatable = compProps.subFormConfig.repeatable === true
+      field.repeatable = field.relationType !== 'ONE_TO_ONE'
+      field.childEntityId = field.childEntityId || field.refEntityId || ''
+      field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
     }
     if (compProps.subFields) {
       field.subFields = compProps.subFields
@@ -746,18 +687,16 @@ function serializeFieldConfig(field) {
     // 序列化子表单配置
     if ((field.componentType || '').toUpperCase() === 'SUB_FORM') {
       compProps.subFormConfig = {
-        type: field.subFormType || 'embedded',
+        type: 'ref',
         displayMode: field.displayMode || 'embedded',
         layout: field.layout || 'form',
-        refEntityId: field.refEntityId || '',
+        refEntityId: field.childEntityId || field.refEntityId || '',
         refFormId: field.refFormId || '',
-        repeatable: field.repeatable === true
+        repeatable: field.relationType !== 'ONE_TO_ONE',
+        relationType: field.relationType || 'ONE_TO_MANY',
+        childRefFieldCode: field.childRefFieldCode || field.refFieldCode || ''
       }
-      if (field.subFields && field.subFields.length > 0) {
-        compProps.subFields = field.subFields
-      } else {
-        delete compProps.subFields
-      }
+      delete compProps.subFields
     }
     // 序列化实体引用配置
     if ((field.componentType || '').toUpperCase() === 'REFERENCE' || (field.componentType || '').toUpperCase() === 'MULTI_REFERENCE') {
@@ -809,6 +748,15 @@ async function loadFormFields() {
       if (field.refEntityId != null) {
         field.refEntityId = String(field.refEntityId)
       }
+      if (field.childEntityId != null) {
+        field.childEntityId = String(field.childEntityId)
+      }
+      if ((field.componentType || '').toUpperCase() === 'SUB_FORM') {
+        field.childEntityId = field.childEntityId || field.refEntityId || ''
+        field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
+        field.relationType = field.relationType || 'ONE_TO_MANY'
+        field.repeatable = field.relationType !== 'ONE_TO_ONE'
+      }
     })
     formFields.value.forEach(restoreFieldConfig)
     enrichFieldCodes()
@@ -850,9 +798,26 @@ function addField(entityField) {
   if (entityField.apiUrl) {
     newField.apiUrl = entityField.apiUrl
   }
-  // 子表单默认 layout 为 form
+  if (entityField.childEntityId) {
+    newField.childEntityId = String(entityField.childEntityId)
+    newField.refEntityId = String(entityField.childEntityId)
+  }
+  if (entityField.childRefFieldCode) {
+    newField.childRefFieldCode = entityField.childRefFieldCode
+    newField.refFieldCode = entityField.childRefFieldCode
+  }
+  if (entityField.relationType) {
+    newField.relationType = entityField.relationType
+  }
+  // 子表单默认展示
   if (newField.componentType === 'sub_form' || newField.componentType === 'SUB_FORM') {
     newField.layout = 'form'
+    newField.displayMode = 'embedded'
+    newField.subFormType = 'ref'
+    newField.repeatable = newField.relationType !== 'ONE_TO_ONE'
+    if (newField.refEntityId) {
+      loadFormListByEntity(newField.refEntityId)
+    }
   }
 
   // 复制选项数据（用于选项联动等）
@@ -884,6 +849,7 @@ function getDefaultComponentType(fieldType) {
     'DATETIME': 'datetime',
     'BOOLEAN': 'switch',
     'SUB_FORM': 'sub_form',
+    'SUB_FORM_LIST': 'sub_form',
     'REFERENCE': 'reference',
     'MULTI_REFERENCE': 'multi_reference',
     'SELECT': 'select',
@@ -897,9 +863,12 @@ function getDefaultComponentType(fieldType) {
 // 选择字段
 function selectField(field) {
   selectedField.value = field
-  // 如果选中的字段是子表单且配置了引用实体，加载对应表单列表
-  if (field && (field.componentType || '').toUpperCase() === 'SUB_FORM' && field.subFormType === 'ref') {
-    const refEntityId = field.refEntityId || entityInfo.value.id
+  if (field && (field.componentType || '').toUpperCase() === 'SUB_FORM') {
+    field.childEntityId = field.childEntityId || field.refEntityId || ''
+    field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
+    field.relationType = field.relationType || 'ONE_TO_MANY'
+    field.repeatable = field.relationType !== 'ONE_TO_ONE'
+    const refEntityId = field.childEntityId || field.refEntityId || entityInfo.value.id
     loadFormListByEntity(refEntityId)
   }
 }
@@ -1357,6 +1326,37 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.relation-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 8px 0 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.relation-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.relation-summary span {
+  color: #909399;
+}
+
+.relation-summary strong {
+  max-width: 150px;
+  overflow: hidden;
+  color: #303133;
+  font-weight: 500;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .slider-value {

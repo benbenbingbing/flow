@@ -1,7 +1,6 @@
 <template>
   <div class="sub-form-renderer">
-    <!-- 子表单标题和操作：仅可重复添加时显示 -->
-    <div v-if="isRepeatable" class="sub-form-header">
+    <div v-if="isRepeatable || showSummary" class="sub-form-header">
       <span class="sub-form-title">{{ title || config.label || '明细' }}</span>
       <el-tag v-if="config.required" type="danger" size="small" effect="plain">必填</el-tag>
       <span class="sub-form-summary" v-if="showSummary">
@@ -17,35 +16,26 @@
         @click="addRow"
         :disabled="rowData.length >= maxRows"
       >
-        <el-icon><Plus /></el-icon>添加
+        <el-icon><Plus /></el-icon>添加一行
       </el-button>
     </div>
 
-    <!-- 表单布局 -->
     <template v-if="config.layout === 'form'">
-      <!-- 空状态：只读/禁用模式下显示字段预览；编辑模式由 watch 自动初始化，这里兜底 -->
       <template v-if="rowData.length === 0">
         <template v-if="disabled || readonly">
-          <div v-if="config.fields && config.fields.length > 0" class="form-fields-preview">
-            <div v-for="field in config.fields" :key="field.fieldKey" class="preview-field-item">
-              <span class="preview-label">{{ field.fieldName }}</span>
-              <span class="preview-placeholder">—</span>
-            </div>
-          </div>
-          <el-empty v-else description="暂无数据" :image-size="60" />
+          <el-empty description="暂无行" :image-size="56" />
         </template>
         <template v-else>
-          <el-empty v-if="isRepeatable" description="暂无数据，点击添加" :image-size="60">
-            <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+          <el-empty v-if="isRepeatable" description="暂无行" :image-size="56">
+            <el-button type="primary" size="small" @click="addRow">添加一行</el-button>
           </el-empty>
-          <el-empty v-else description="暂无数据" :image-size="60" />
+          <el-empty v-else description="暂无行" :image-size="56" />
         </template>
       </template>
 
-      <!-- 表单卡片列表（单条记录时不显示记录标题） -->
-      <div v-for="(row, index) in rowData" :key="index" :class="['form-row-card', { 'single-record': rowData.length === 1 }]">
+      <div v-for="(row, index) in rowData" :key="index" class="relation-row">
         <div v-if="isRepeatable && rowData.length > 1" class="form-row-header">
-          <span class="row-title">记录 {{ index + 1 }}</span>
+          <span class="row-title">第 {{ index + 1 }} 行</span>
           <el-button v-if="!disabled && !readonly" type="danger" size="small" text @click="removeRow(index)">
             <el-icon><Delete /></el-icon>删除
           </el-button>
@@ -76,7 +66,6 @@
       </div>
     </template>
 
-    <!-- 表格布局 -->
     <template v-else>
       <el-table 
         :data="rowData" 
@@ -86,18 +75,15 @@
         class="sub-form-table"
         :max-height="config.maxHeight || 400"
       >
-        <!-- 空状态插槽 -->
         <template #empty>
-          <el-empty :description="isRepeatable ? '暂无数据，点击添加' : '暂无数据'" :image-size="60">
+          <el-empty description="暂无行" :image-size="56">
             <template v-if="isRepeatable && !disabled && !readonly">
-              <el-button type="primary" size="small" @click="addRow">添加明细</el-button>
+              <el-button type="primary" size="small" @click="addRow">添加一行</el-button>
             </template>
           </el-empty>
         </template>
-        <!-- 序号列 -->
         <el-table-column type="index" width="50" align="center" />
 
-        <!-- 动态字段列 -->
         <el-table-column 
           v-for="field in config.fields" 
           :key="field.fieldKey"
@@ -107,20 +93,16 @@
           :show-overflow-tooltip="!field.isEditable"
         >
           <template #default="{ row, $index }">
-            <!-- 只读模式 -->
             <template v-if="readonly || disabled || !field.isEditable">
               <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
             </template>
 
-            <!-- 编辑模式 -->
             <template v-else>
               <FormFieldRenderer
                 v-model="row[field.fieldKey]"
                 :field="field"
                 @blur="validateField(row, field, $index)"
               />
-
-              <!-- 字段校验错误提示 -->
               <div v-if="getFieldError($index, field.fieldKey)" class="field-error">
                 {{ getFieldError($index, field.fieldKey) }}
               </div>
@@ -128,8 +110,7 @@
           </template>
         </el-table-column>
 
-        <!-- 操作列：仅可重复添加时显示 -->
-        <el-table-column v-if="isRepeatable && !disabled && !readonly" label="操作" width="80" align="center" fixed="right">
+        <el-table-column v-if="isRepeatable && !disabled && !readonly" label="" width="64" align="center" fixed="right">
           <template #default="{ $index }">
             <el-button type="danger" size="small" text @click="removeRow($index)">
               <el-icon><Delete /></el-icon>
@@ -139,7 +120,6 @@
       </el-table>
     </template>
 
-    <!-- 校验错误汇总 -->
     <el-alert 
       v-if="validationErrors.length > 0" 
       type="error" 
@@ -186,7 +166,7 @@ const props = defineProps({
   },
   // 数据绑定
   modelValue: {
-    type: Array,
+    type: [Array, Object],
     default: () => []
   },
   // 是否只读
@@ -209,41 +189,51 @@ const rowData = ref([])
 // 校验错误
 const fieldErrors = ref({})
 
+const canEdit = computed(() => !props.disabled && !props.readonly)
+
+const isOneToOne = computed(() => props.config.relationType === 'ONE_TO_ONE')
+
+// 是否可重复添加
+const isRepeatable = computed(() => !isOneToOne.value && props.config.repeatable === true)
+
+function outputValue() {
+  return isOneToOne.value ? (rowData.value[0] || null) : rowData.value
+}
+
 // 初始化数据（引用相同则跳过，避免父组件传回同一引用时无限 clone）
 watch(() => props.modelValue, (newVal) => {
   if (newVal === rowData.value) return
-  if (newVal && Array.isArray(newVal)) {
+  if (Array.isArray(newVal)) {
     rowData.value = JSON.parse(JSON.stringify(newVal))
+  } else if (newVal && typeof newVal === 'object') {
+    rowData.value = [JSON.parse(JSON.stringify(newVal))]
   } else {
     rowData.value = []
   }
-  // 对话框复用组件时，modelValue 被清空但字段配置仍在，自动初始化一行
-  if (rowData.value.length === 0 && props.config.fields?.length > 0) {
+  if (canEdit.value && rowData.value.length === 0 && props.config.fields?.length > 0) {
     nextTick(() => {
       if (rowData.value.length === 0) addRow()
     })
   }
 }, { immediate: true })
 
-// 字段加载完成后自动初始化一行空数据（预览/编辑/新增都直接显示表单）
 watch(() => [props.config.fields, props.config.fields?.length], () => {
-  if (props.config.fields?.length > 0 && rowData.value.length === 0) {
+  if (canEdit.value && props.config.fields?.length > 0 && rowData.value.length === 0) {
     addRow()
   }
 }, { immediate: true })
 
-// 数据变化时触发更新（避免 emit 回父组件的同一引用）
 watch(rowData, (newVal) => {
   if (newVal === props.modelValue) return
-  emit('update:modelValue', newVal)
-  emit('change', newVal)
+  const value = outputValue()
+  emit('update:modelValue', value)
+  emit('change', value)
   calculateSummary()
 }, { deep: true })
 
-// 兜底：挂载后若仍为空则自动初始化，避免异步数据未加载完导致显示空状态
 onMounted(() => {
   nextTick(() => {
-    if (props.config.fields?.length > 0 && rowData.value.length === 0) {
+    if (canEdit.value && props.config.fields?.length > 0 && rowData.value.length === 0) {
       addRow()
     }
   })
@@ -254,9 +244,6 @@ const maxRows = computed(() => isRepeatable.value ? (props.config.maxRows || 100
 
 // 最小行数
 const minRows = computed(() => props.config.minRows || 0)
-
-// 是否可重复添加（默认false：单条平铺，不显示添加按钮和记录标题）
-const isRepeatable = computed(() => props.config.repeatable === true)
 
 // 是否显示汇总
 const showSummary = computed(() => {
@@ -361,7 +348,7 @@ function addRow() {
   })
   
   rowData.value.push(newRow)
-  emit('change', rowData.value)
+  emit('change', outputValue())
 }
 
 // 删除行
@@ -372,7 +359,7 @@ function removeRow(index) {
   
   rowData.value.splice(index, 1)
   clearRowErrors(index)
-  emit('change', rowData.value)
+  emit('change', outputValue())
 }
 
 // 数字变化处理
@@ -456,18 +443,15 @@ defineExpose({
 
 <style scoped>
 .sub-form-renderer {
-  padding: 10px;
-  border: 1px dashed #dcdfe6;
-  border-radius: 4px;
-  background-color: #fafafa;
+  width: 100%;
 }
 
 .sub-form-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #ebeef5;
 }
 
@@ -478,7 +462,7 @@ defineExpose({
 
 .sub-form-summary {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   color: #606266;
 }
 
@@ -489,7 +473,7 @@ defineExpose({
 }
 
 .sub-form-table {
-  margin-top: 10px;
+  width: 100%;
 }
 
 .field-error {
@@ -502,31 +486,21 @@ defineExpose({
   margin-top: 10px;
 }
 
-/* 表单布局样式 */
-.form-row-card {
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  padding: 16px;
+.relation-row {
+  padding: 12px 0;
+  border-top: 1px solid #ebeef5;
 }
 
-/* 单条记录时去掉卡片样式，直接平铺显示 */
-.form-row-card.single-record {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  margin-bottom: 0;
+.relation-row:first-of-type {
+  border-top: none;
+  padding-top: 0;
 }
 
 .form-row-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 10px;
 }
 
 .row-title {
@@ -536,13 +510,13 @@ defineExpose({
 }
 
 .form-field-item {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .field-label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 14px;
+  margin-bottom: 5px;
+  font-size: 13px;
   color: #606266;
   line-height: 1.4;
 }
@@ -566,35 +540,4 @@ defineExpose({
   overflow-x: auto;
 }
 
-/* 空状态字段预览 */
-.form-fields-preview {
-  margin-top: 16px;
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  border: 1px dashed #dcdfe6;
-}
-
-.preview-field-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.preview-field-item:last-child {
-  border-bottom: none;
-}
-
-.preview-label {
-  width: 120px;
-  color: #606266;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.preview-placeholder {
-  color: #c0c4cc;
-  font-size: 14px;
-}
 </style>

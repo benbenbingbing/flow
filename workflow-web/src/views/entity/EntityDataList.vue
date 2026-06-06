@@ -646,8 +646,12 @@ const queryFields = computed(() => {
           queryType: f.queryType || 'LIKE'
         }
       })
+      .filter((f: any) => !['SUB_FORM', 'SUB_FORM_LIST'].includes((f.componentType || f.fieldType || '').toUpperCase()))
   }
-  return entityFields.value.filter((f: any) => !f.isSystem)
+  return entityFields.value.filter((f: any) => {
+    const type = (f.componentType || f.fieldType || '').toUpperCase()
+    return !f.isSystem && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
+  })
 })
 
 // 可见的查询字段（默认只显示前4个，展开后显示全部）
@@ -1037,10 +1041,11 @@ const handleCreate = () => {
 }
 
 // 编辑
-const handleEdit = (row: any) => {
-  formData.id = row.id
-  formData.name = row.name
-  formData.data = { ...row.data }
+const handleEdit = async (row: any) => {
+  const detail = await entityDataApi.getDetail(entityCode.value, row.id).catch(() => row)
+  formData.id = detail.id
+  formData.name = detail.name
+  formData.data = { ...(detail.data || {}) }
   dialogTitle.value = '编辑数据'
   dialogVisible.value = true
   nextTick(() => {
@@ -1171,7 +1176,7 @@ function mergeRuntimeFormConfigs(configs: any[]) {
 function isTabSubForm(field: any) {
   if (!field) return false
   const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (type !== 'SUB_FORM') return false
+  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
   if (field.displayMode === 'tab') return true
   if (field.componentProps) {
     try {
