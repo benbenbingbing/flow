@@ -5,6 +5,7 @@ import com.workflow.common.Result;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.runtime.ProcessTerminationService;
 import com.workflow.service.form.EntityFormFieldRuntimeMapper;
 import com.workflow.vo.MyStartedProcessVO;
 import com.workflow.vo.ProcessDetailVO;
@@ -61,6 +62,7 @@ public class ProcessInstanceService {
     private final ProcessTaskService processTaskService;
     private final com.workflow.mapper.ProcessNodeFormMapper nodeFormMapper;
     private final com.workflow.mapper.ProcessNodeApprovalMapper nodeApprovalMapper;
+    private final ProcessTerminationService processTerminationService;
     
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
@@ -1598,92 +1600,7 @@ public class ProcessInstanceService {
      * @return 是否成功
      */
     public Result<Void> terminateProcess(String processInstanceId, String userId, String reason) {
-        // 1. 验证流程实例是否存在
-        ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-        
-        if (processInstance == null) {
-            // 检查是否已结束
-            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
-                    .processInstanceId(processInstanceId)
-                    .singleResult();
-            if (historicInstance == null) {
-                return Result.error(404, "流程实例不存在");
-            }
-            if (historicInstance.getEndTime() != null) {
-                return Result.error(400, "流程已结束，无法终止");
-            }
-        }
-        
-        // 2. 验证是否是发起人（可选，根据业务需求）
-        HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-        if (historicInstance != null && !userId.equals(historicInstance.getStartUserId())) {
-            return Result.error(403, "只有发起人可以终止流程");
-        }
-        
-        // 3. 终止流程（删除前先获取实体关联信息）
-        String entityCode = null;
-        String entityDataId = null;
-        try {
-            entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
-            entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
-        } catch (Exception e) {
-            log.warn("终止前获取流程变量失败: processInstanceId={}", processInstanceId, e);
-        }
-
-        try {
-            String deleteReason = "发起人主动终止";
-            if (reason != null && !reason.isEmpty()) {
-                deleteReason = reason;
-            }
-            runtimeService.deleteProcessInstance(processInstanceId, deleteReason);
-            // 清理本地待办
-            processTaskService.deleteTasksByProcessInstance(processInstanceId);
-
-            // 记录终止日志到 process_operation_log
-            try {
-                com.workflow.entity.ProcessOperationLog log = new com.workflow.entity.ProcessOperationLog();
-                log.setProcessInstanceId(processInstanceId);
-                log.setOperationType("TERMINATE");
-                log.setOperatorId(userId);
-                String operatorName = sysUserService.getNicknameByUsername(userId);
-                log.setOperatorName(operatorName != null ? operatorName : userId);
-                log.setOperationTime(LocalDateTime.now());
-                log.setOperationComment(deleteReason);
-                operationLogMapper.insert(log);
-            } catch (Exception e) {
-                log.warn("记录终止日志失败", e);
-            }
-
-            // 4. 更新实体数据状态为终止
-            try {
-                if (entityCode != null && entityDataId != null) {
-                    String tableName = dynamicTableService.getTableName(entityCode);
-                    java.util.Map<String, Object> updateData = new java.util.HashMap<>();
-                    updateData.put("id", entityDataId);
-                    updateData.put("process_end_time", LocalDateTime.now());
-                    updateData.put("updated_at", LocalDateTime.now());
-                    // 获取终止状态码
-                    java.util.List<com.workflow.entity.EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "TERMINATED");
-                    String terminatedStatus = (statuses != null && !statuses.isEmpty()) ? statuses.get(0).getStatusCode() : "REJECTED";
-                    updateData.put("status", terminatedStatus);
-                    entityDataDynamicMapper.update(tableName, updateData);
-                    entityDataDynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);
-                    log.info("流程终止，已更新实体数据状态: entityCode={}, entityDataId={}, status={}", entityCode, entityDataId, terminatedStatus);
-                }
-            } catch (Exception ex) {
-                log.warn("终止流程后更新实体数据状态失败: processInstanceId={}", processInstanceId, ex);
-            }
-            
-            log.info("流程终止成功: processInstanceId={}, userId={}, reason={}", processInstanceId, userId, deleteReason);
-            return Result.success(null);
-        } catch (Exception e) {
-            log.error("流程终止失败: processInstanceId={}, userId={}", processInstanceId, userId, e);
-            return Result.error(500, "流程终止失败: " + e.getMessage());
-        }
+        return processTerminationService.terminateProcess(processInstanceId, userId, reason);
     }
 
     /**

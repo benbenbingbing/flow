@@ -35,7 +35,7 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForSecondNode() throws Exception {
-        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
@@ -46,7 +46,7 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForFirstNode() throws Exception {
-        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
@@ -57,7 +57,7 @@ public class ProcessInstanceServiceFormTest {
 
     @Test
     void testResolveFormKeyFromBpmnForNonExistentNode() throws Exception {
-        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ProcessInstanceService service = new ProcessInstanceService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         Method method = ProcessInstanceService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
         method.setAccessible(true);
 
