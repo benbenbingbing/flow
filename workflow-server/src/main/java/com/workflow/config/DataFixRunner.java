@@ -2,16 +2,13 @@ package com.workflow.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
 
-import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 
 /**
  * 数据修复Runner
@@ -19,11 +16,11 @@ import java.nio.file.Paths;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "workflow.data-fix.full-test-process", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class DataFixRunner implements CommandLineRunner {
 
     private final JdbcTemplate jdbcTemplate;
-    private final DataSource dataSource;
 
     @Override
     public void run(String... args) throws Exception {

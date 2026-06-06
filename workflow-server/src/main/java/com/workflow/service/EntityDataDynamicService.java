@@ -753,15 +753,7 @@ public class EntityDataDynamicService {
         } else if (!permission.isNeedFilter()) {
             return dynamicMapper.count(tableName);
         } else {
-            // 带权限条件的统计：使用原生SQL执行
-            String sql = "SELECT COUNT(*) FROM " + tableName +
-                    " WHERE deleted = 0 AND (" + permission.getSqlCondition() + ")";
-            List<Map<String, Object>> result = dynamicMapper.executeQuery(sql);
-            if (result != null && !result.isEmpty()) {
-                Object count = result.get(0).values().iterator().next();
-                return count != null ? Long.parseLong(count.toString()) : 0;
-            }
-            return 0;
+            return dynamicMapper.countWithPermission(tableName, permission.getSqlCondition());
         }
     }
 

@@ -4,6 +4,11 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,5 +68,26 @@ class SchemaRequiredTablesTest {
         String sql = Files.readString(migration);
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS `entity_relation`"),
                 "migration must create entity_relation");
+    }
+
+    @Test
+    void flywayMigrationVersionsAreUnique() throws Exception {
+        Pattern versionPattern = Pattern.compile("^V([^_]+)__.+\\.sql$");
+        List<String> versions = Files.list(Path.of("src/main/resources/db/migration"))
+                .map(path -> path.getFileName().toString())
+                .map(versionPattern::matcher)
+                .filter(Matcher::matches)
+                .map(matcher -> matcher.group(1))
+                .collect(Collectors.toList());
+
+        Map<String, Long> counts = versions.stream()
+                .collect(Collectors.groupingBy(version -> version, Collectors.counting()));
+        List<String> duplicates = counts.entrySet().stream()
+                .filter(entry -> entry.getValue() > 1)
+                .map(Map.Entry::getKey)
+                .sorted()
+                .collect(Collectors.toList());
+
+        assertTrue(duplicates.isEmpty(), "duplicate Flyway versions: " + duplicates);
     }
 }

@@ -110,19 +110,10 @@ public interface EntityDataDynamicMapper {
     long count(@Param("tableName") String tableName);
 
     /**
-     * 执行原生SQL查询（用于复杂查询）
-     * 
-     * @param sql 完整SQL语句（已在Service层组装好）
-     * @return 结果列表
+     * 统计数量（带数据权限过滤）
      */
-    @Select("${sql}")
+    @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "countWithPermission")
     @Options(statementType = StatementType.PREPARED)
-    List<Map<String, Object>> executeQuery(@Param("sql") String sql);
-
-    /**
-     * 执行原生SQL更新
-     */
-    @Update("${sql}")
-    @Options(statementType = StatementType.PREPARED)
-    int executeUpdate(@Param("sql") String sql);
+    long countWithPermission(@Param("tableName") String tableName,
+                             @Param("permissionSql") String permissionSql);
 }
