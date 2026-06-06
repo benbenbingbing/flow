@@ -1,10 +1,12 @@
 package com.workflow.service;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
+@Disabled("手工集成测试依赖完整数据库字典表结构，不参与单元测试套件")
 public class ProcessDefinitionServiceParseTest {
     
     @Autowired

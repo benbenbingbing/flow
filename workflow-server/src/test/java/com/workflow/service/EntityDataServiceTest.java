@@ -49,6 +49,9 @@ public class EntityDataServiceTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Mock
+    private EntityCodeGeneratorService codeGeneratorService;
+
     @InjectMocks
     private EntityDataService entityDataService;
 
@@ -150,6 +153,7 @@ public class EntityDataServiceTest {
         dto.setStartProcess(false);
 
         when(definitionMapper.findByEntityCode("test_entity")).thenReturn(Optional.of(testDefinition));
+        when(codeGeneratorService.generateCode("test_entity")).thenReturn("TEST-001");
         when(objectMapper.writeValueAsString(any())).thenReturn("{\"name\":\"test\"}");
         when(dataMapper.insert(any(EntityData.class))).thenAnswer(invocation -> {
             EntityData data = invocation.getArgument(0);

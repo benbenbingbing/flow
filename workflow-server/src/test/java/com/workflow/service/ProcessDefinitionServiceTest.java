@@ -73,14 +73,14 @@ public class ProcessDefinitionServiceTest {
 
     @Test
     void testFindAll() {
-        when(processMapper.selectList(null)).thenReturn(Arrays.asList(testProcess));
+        when(processMapper.findAllActive()).thenReturn(Arrays.asList(testProcess));
 
         List<ProcessDefinitionDTO> result = processService.findAll();
 
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals("leave_process", result.get(0).getProcessKey());
-        verify(processMapper, times(1)).selectList(null);
+        verify(processMapper, times(1)).findAllActive();
     }
 
     @Test
@@ -187,13 +187,12 @@ public class ProcessDefinitionServiceTest {
 
     @Test
     void testDelete() {
-        when(versionHistoryMapper.delete(any())).thenReturn(1);
-        when(processMapper.deleteById("1")).thenReturn(1);
+        when(processMapper.selectById("1")).thenReturn(testProcess);
+        when(processMapper.updateById(any(ProcessDefinitionConfig.class))).thenReturn(1);
 
         processService.delete("1");
 
-        verify(versionHistoryMapper, times(1)).delete(any());
-        verify(processMapper, times(1)).deleteById("1");
+        verify(processMapper, times(1)).updateById(any(ProcessDefinitionConfig.class));
     }
 
     @Test

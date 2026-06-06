@@ -6,6 +6,7 @@ import com.workflow.dto.EntityFieldDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.ProcessDefinitionConfig;
+import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
@@ -42,6 +43,18 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private ObjectMapper objectMapper;
+
+    @Mock
+    private EntityDataDynamicMapper entityDataDynamicMapper;
+
+    @Mock
+    private DynamicTableService dynamicTableService;
+
+    @Mock
+    private EntityPublishHistoryService publishHistoryService;
+
+    @Mock
+    private EntityFieldFileItemService fileItemService;
 
     @InjectMocks
     private EntityDefinitionService entityService;
@@ -212,6 +225,8 @@ public class EntityDefinitionServiceTest {
     @Test
     void testPublish() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(testField));
+        when(dynamicTableService.syncEntityTableStructure(any(EntityDefinition.class))).thenReturn(Collections.emptyList());
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         EntityDefinitionDTO result = entityService.publish("1", "user1", "测试用户");
@@ -235,6 +250,8 @@ public class EntityDefinitionServiceTest {
     @Test
     void testBindProcess() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(dynamicTableService.getTableName("test_entity")).thenReturn("wf_test_entity");
+        when(dynamicTableService.tableExists("test_entity")).thenReturn(false);
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         EntityDefinitionDTO result = entityService.bindProcess("1", "proc-2");

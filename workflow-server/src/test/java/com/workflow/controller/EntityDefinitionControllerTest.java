@@ -130,14 +130,14 @@ public class EntityDefinitionControllerTest {
 
     @Test
     void testPublish() throws Exception {
-        when(entityService.publish(anyString(), anyString(), anyString())).thenReturn(testEntity);
+        when(entityService.publish(eq("1"), nullable(String.class), nullable(String.class))).thenReturn(testEntity);
 
         mockMvc.perform(post("/api/entity/1/publish"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"));
 
-        verify(entityService, times(1)).publish(anyString(), anyString(), anyString());
+        verify(entityService, times(1)).publish(eq("1"), nullable(String.class), nullable(String.class));
     }
 
     @Test
