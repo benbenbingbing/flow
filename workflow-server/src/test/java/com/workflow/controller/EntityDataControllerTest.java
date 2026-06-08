@@ -3,7 +3,8 @@ package com.workflow.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityData;
-import com.workflow.service.EntityDataService;
+import com.workflow.service.EntityDataDynamicService;
+import com.workflow.service.EntityDataListConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +34,10 @@ public class EntityDataControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private EntityDataService entityDataService;
+    private EntityDataDynamicService entityDataDynamicService;
+
+    @MockBean
+    private EntityDataListConfigService entityDataListConfigService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -59,7 +63,7 @@ public class EntityDataControllerTest {
     @Test
     void testListByEntity() throws Exception {
         List<EntityDataDTO> dataList = Arrays.asList(testData);
-        when(entityDataService.findByEntityCode("test_entity")).thenReturn(dataList);
+        when(entityDataDynamicService.findByEntityCode("test_entity")).thenReturn(dataList);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity"))
                 .andExpect(status().isOk())
@@ -67,37 +71,37 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.data[0].entityCode").value("test_entity"))
                 .andExpect(jsonPath("$.data[0].dataNo").value("TEST-001"));
 
-        verify(entityDataService, times(1)).findByEntityCode("test_entity");
+        verify(entityDataDynamicService, times(1)).findByEntityCode("test_entity");
     }
 
     @Test
     void testGetById() throws Exception {
-        when(entityDataService.findById("1")).thenReturn(testData);
+        when(entityDataDynamicService.findById("test_entity", "1")).thenReturn(testData);
 
-        mockMvc.perform(get("/api/entity-data/1"))
+        mockMvc.perform(get("/api/entity-data/entity/test_entity/detail/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"))
                 .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
 
-        verify(entityDataService, times(1)).findById("1");
+        verify(entityDataDynamicService, times(1)).findById("test_entity", "1");
     }
 
     @Test
     void testGetByProcessInstance() throws Exception {
-        when(entityDataService.findByProcessInstanceId("proc-1")).thenReturn(testData);
+        when(entityDataDynamicService.findByProcessInstanceId("test_entity", "proc-1")).thenReturn(testData);
 
-        mockMvc.perform(get("/api/entity-data/process/proc-1"))
+        mockMvc.perform(get("/api/entity-data/entity/test_entity/process/proc-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"));
 
-        verify(entityDataService, times(1)).findByProcessInstanceId("proc-1");
+        verify(entityDataDynamicService, times(1)).findByProcessInstanceId("test_entity", "proc-1");
     }
 
     @Test
     void testSave() throws Exception {
-        when(entityDataService.save(any(EntityDataDTO.class))).thenReturn(testData);
+        when(entityDataDynamicService.save(any(EntityDataDTO.class))).thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -106,31 +110,31 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
 
-        verify(entityDataService, times(1)).save(any(EntityDataDTO.class));
+        verify(entityDataDynamicService, times(1)).save(any(EntityDataDTO.class));
     }
 
     @Test
     void testUpdate() throws Exception {
-        when(entityDataService.update(eq("1"), any(EntityDataDTO.class))).thenReturn(testData);
+        when(entityDataDynamicService.update(eq("test_entity"), eq("1"), anyMap())).thenReturn(testData);
 
-        mockMvc.perform(put("/api/entity-data/1")
+        mockMvc.perform(put("/api/entity-data/entity/test_entity/detail/1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(testData)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"));
 
-        verify(entityDataService, times(1)).update(eq("1"), any(EntityDataDTO.class));
+        verify(entityDataDynamicService, times(1)).update(eq("test_entity"), eq("1"), anyMap());
     }
 
     @Test
     void testDelete() throws Exception {
-        doNothing().when(entityDataService).delete("1");
+        doNothing().when(entityDataDynamicService).delete("test_entity", "1");
 
-        mockMvc.perform(delete("/api/entity-data/1"))
+        mockMvc.perform(delete("/api/entity-data/entity/test_entity/detail/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(entityDataService, times(1)).delete("1");
+        verify(entityDataDynamicService, times(1)).delete("test_entity", "1");
     }
 }

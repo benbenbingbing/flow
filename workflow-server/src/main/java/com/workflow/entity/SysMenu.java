@@ -73,11 +73,13 @@ public class SysMenu {
     /**
      * 是否外链：0-否 1-是
      */
+    @TableField("is_frame")
     private String isFrame;
     
     /**
      * 是否缓存：0-缓存 1-不缓存
      */
+    @TableField("is_cache")
     private String isCache;
     
     /**

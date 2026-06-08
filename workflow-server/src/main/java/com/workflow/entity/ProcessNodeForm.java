@@ -42,6 +42,11 @@ public class ProcessNodeForm {
      * 是否只读：0-否 1-是
      */
     private Integer isReadonly;
+
+    /**
+     * 排序号
+     */
+    private Integer sortOrder;
     
     /**
      * 创建时间

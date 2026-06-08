@@ -11,10 +11,10 @@ spring:
     name: workflow-server
 
   datasource:
-    url: jdbc:mysql://localhost:3306/workflow?serverTimezone=UTC&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:workflow}?serverTimezone=Asia/Shanghai&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: zhoudawei
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
     hikari:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
 
@@ -27,6 +27,7 @@ spring:
     sql-migration-suffixes: .sql
     baseline-on-migrate: true
     baseline-version: 0
+    placeholder-replacement: false
 
   servlet:
     multipart:
@@ -49,7 +50,7 @@ mybatis-plus:
 
 # Flowable 配置
 flowable:
-  database-schema-update: false
+  database-schema-update: ${FLOWABLE_SCHEMA_UPDATE:true}
   async-executor-activate: true
   history-level: full
   db-history-used: true
@@ -73,12 +74,7 @@ cors:
 # 文件上传配置
 file:
   storage:
-    type: local # 存储类型：local / minio
+    type: local
     local:
-      path: /Users/dawei/Documents/ddup/ai/flow/uploads
-      access-url: /Users/dawei/Documents/ddup/ai/flow/uploads
-    minio:
-      endpoint: http://localhost:9000
-      access-key: minioadmin
-      secret-key: minioadmin
-      bucket-name: workflow
+      path: ${FILE_STORAGE_PATH:uploads}
+      access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}

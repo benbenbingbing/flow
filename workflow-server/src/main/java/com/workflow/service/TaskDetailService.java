@@ -11,6 +11,7 @@ import com.workflow.mapper.EntityDataMapper;
 import com.workflow.mapper.NodeConfigMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessTaskMapper;
+import com.workflow.service.form.EntityFormFieldRuntimeMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
@@ -363,9 +364,6 @@ public class TaskDetailService {
      * @param entityFieldCodeMap 实体字段ID到fieldCode的映射
      */
     private Map<String, Object> convertFieldToMap(EntityFormField f, Map<String, String> entityFieldCodeMap) {
-        Map<String, Object> field = new HashMap<>();
-        field.put("id", f.getId());
-        
         // entity_form_field.field_id 存储的是 entity_field.id
         // 需要通过映射获取 fieldCode（如 "name", "gender"）
         String fieldCode = null;
@@ -417,37 +415,25 @@ public class TaskDetailService {
             fieldCode = fieldName != null ? fieldName : "field_" + f.getId();
             log.warn("fieldCode为空，使用fallback: {}", fieldCode);
         }
-        
-        field.put("fieldCode", fieldCode);
-        field.put("fieldName", fieldName);
-        field.put("fieldLabel", f.getFieldLabel());
-        field.put("fieldType", f.getFieldType());
-        field.put("componentType", f.getComponentType());
-        field.put("isRequired", f.getIsRequired());
-        field.put("isReadonly", f.getIsReadonly());
-        field.put("isHidden", f.getIsHidden());
-        field.put("defaultValue", f.getDefaultValue());
-        field.put("placeholder", f.getPlaceholder());
-        field.put("sortOrder", f.getSortOrder());
-        field.put("gridSpan", f.getGridSpan());
-        // 引用实体配置（用于单选实体/多选实体字段）
+
+        f.setFieldCode(fieldCode);
+        f.setFieldName(fieldName);
         if (entityField != null) {
             if (entityField.getRefEntityId() != null) {
-                field.put("refEntityId", entityField.getRefEntityId());
+                f.setRefEntityId(entityField.getRefEntityId());
             }
             if (entityField.getRefEntityType() != null) {
-                field.put("refEntityType", entityField.getRefEntityType().name());
+                f.setRefEntityType(entityField.getRefEntityType().name());
+            }
+            if (entityField.getDisplayMode() != null) {
+                f.setDisplayMode(entityField.getDisplayMode());
+            }
+            if (entityField.getRefFieldCode() != null) {
+                f.setRefFieldCode(entityField.getRefFieldCode());
             }
         }
-        // 解析组件属性JSON
-        if (f.getComponentProps() != null) {
-            try {
-                field.put("componentProps", objectMapper.readValue(f.getComponentProps(), Map.class));
-            } catch (Exception e) {
-                field.put("componentProps", new HashMap<>());
-            }
-        }
-        return field;
+
+        return EntityFormFieldRuntimeMapper.toMap(f, null, objectMapper);
     }
     
     /**

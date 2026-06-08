@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -80,8 +81,10 @@ public class TaskActionService {
         // 检查是否是多实例任务（会签/或签）
         boolean isMultiInstance = isMultiInstanceTask(task);
         
+        String normalizedAction = normalizeAction(action);
+
         // 根据不同操作类型处理
-        switch (action) {
+        switch (normalizedAction) {
             case "approve":
                 handleApprove(task, userId, comment, isMultiInstance);
                 break;
@@ -142,6 +145,19 @@ public class TaskActionService {
             // 注意：实体数据状态由 EntityStatusUpdateListener 监听器自动更新
             // 不需要在这里手动更新，避免重复更新
         }
+    }
+
+    private String normalizeAction(String action) {
+        if (action == null || action.isBlank()) {
+            return "approve";
+        }
+
+        return switch (action.trim().toUpperCase(Locale.ROOT)) {
+            case "APPROVE", "APPROVED" -> "approve";
+            case "REJECT", "REJECTED" -> "reject";
+            case "TRANSFER", "TRANSFERRED" -> "transfer";
+            default -> action;
+        };
     }
     
     /**

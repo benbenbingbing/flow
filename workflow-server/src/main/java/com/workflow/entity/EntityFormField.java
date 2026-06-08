@@ -115,6 +115,42 @@ public class EntityFormField {
      */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refEntityType;
+
+    /**
+     * 子表单显示方式（embedded/tab），非数据库字段，从entity_field补充
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String displayMode;
+
+    /**
+     * 子表单关联字段编码，非数据库字段，从entity_field补充
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String refFieldCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String relationCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String relationName;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String childEntityId;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String childEntityCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String childRefFieldCode;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String relationType;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean cascadeDelete;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean relationRequired;
     
     /**
      * 栅格宽度（1-24）
@@ -124,10 +160,12 @@ public class EntityFormField {
     /**
      * 创建时间
      */
+    @com.baomidou.mybatisplus.annotation.TableField("created_at")
     private LocalDateTime createTime;
     
     /**
      * 更新时间
      */
+    @com.baomidou.mybatisplus.annotation.TableField("updated_at")
     private LocalDateTime updateTime;
 }

@@ -8,8 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 /**
@@ -23,9 +23,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 登录接口放行
+        // 登录、退出接口放行
         String uri = request.getRequestURI();
-        if (uri.startsWith("/api/auth/")) {
+        if (uri.equals("/api/auth/login") || uri.equals("/api/auth/logout")) {
             return true;
         }
         
@@ -61,7 +61,7 @@ public class AuthInterceptor implements HandlerInterceptor {
     
     private void writeErrorResponse(HttpServletResponse response, int code, String message) throws IOException {
         response.setContentType("application/json;charset=UTF-8");
-        response.setStatus(200);
-        response.getWriter().write(objectMapper.writeValueAsString(Result.error(message)));
+        response.setStatus(code);
+        response.getWriter().write(objectMapper.writeValueAsString(Result.error(code, message)));
     }
 }

@@ -1,31 +1,24 @@
 package com.workflow.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.permission.DataPermissionResult;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
+import com.workflow.entity.EntityRelation;
 import com.workflow.entity.EntityStatus;
-import com.workflow.entity.ProcessTask;
 import com.workflow.entity.SysUser;
-import com.workflow.listener.MultiInstanceCollectionListener;
+import com.workflow.entity.publish.EntityPublishedSnapshot;
+import com.workflow.entity.publish.EntityPublishedSnapshotService;
+import com.workflow.entity.runtime.EntityRelationRuntimeService;
+import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
+import com.workflow.entity.runtime.EntityWorkflowRuntimeService;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityStatusMapper;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessTaskMapper;
 import com.workflow.service.permission.DataPermissionEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flowable.engine.IdentityService;
-import org.flowable.engine.RepositoryService;
-import org.flowable.engine.RuntimeService;
-import org.flowable.engine.repository.ProcessDefinition;
-import org.flowable.engine.runtime.ProcessInstance;
-import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -45,21 +38,15 @@ public class EntityDataDynamicService {
 
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
-    private final EntityFieldMapper fieldMapper;
     private final EntityStatusMapper entityStatusMapper;
-    private final ProcessTaskMapper processTaskMapper;
-    private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final DynamicTableService dynamicTableService;
-    private final RuntimeService runtimeService;
-    private final RepositoryService repositoryService;
-    private final IdentityService identityService;
-    private final org.flowable.engine.TaskService taskService;
     private final EntityCodeGeneratorService codeGeneratorService;
-    private final ObjectMapper objectMapper;
-    private final ProcessTaskService processTaskService;
-    private final MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final EntityRuntimeRecordMapper recordMapper;
+    private final EntityRelationRuntimeService relationRuntimeService;
+    private final EntityWorkflowRuntimeService workflowRuntimeService;
     private final DataPermissionEngine dataPermissionEngine;
     private final SysUserService sysUserService;
+    private final EntityPublishedSnapshotService snapshotService;
 
     /**
      * 查询某实体的所有数据（带数据权限过滤）
@@ -79,7 +66,7 @@ public class EntityDataDynamicService {
         }
 
         return dataList.stream()
-                .map(data -> convertToDTO(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode))
                 .collect(Collectors.toList());
     }
 
@@ -110,7 +97,9 @@ public class EntityDataDynamicService {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + id);
         }
-        return convertToDTO(data, entityCode);
+        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        relationRuntimeService.loadRelationData(dto);
+        return dto;
     }
 
     /**
@@ -123,7 +112,9 @@ public class EntityDataDynamicService {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + processInstanceId);
         }
-        return convertToDTO(data, entityCode);
+        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        relationRuntimeService.loadRelationData(dto);
+        return dto;
     }
 
     /**
@@ -136,6 +127,10 @@ public class EntityDataDynamicService {
         String entityCode = dto.getEntityCode();
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
                 .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
+        List<EntityRelation> relations = relationRuntimeService.loadRelations(definition);
+        Map<String, Object> originalData = dto.getData();
+        Map<String, Object> parentData = relationRuntimeService.withoutRelationData(originalData, relations);
+        Map<String, Object> relationData = relationRuntimeService.extractRelationData(originalData, relations);
 
         // 验证实体是否启用流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
@@ -157,7 +152,10 @@ public class EntityDataDynamicService {
         String currentUserName = getCurrentUserName(dto.getSubmitterName());
 
         // 准备数据
-        Map<String, Object> data = convertToMap(dto);
+        dto.setData(parentData);
+        Map<String, Object> data = recordMapper.toStorageMap(dto);
+        dto.setData(originalData);
+        validatePublishedRequiredFields(entityCode, data);
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
             // ========== 新增数据 ==========
@@ -223,10 +221,12 @@ public class EntityDataDynamicService {
             dynamicMapper.update(tableName, data);
         }
 
+        relationRuntimeService.saveRelationData(dto.getId(), relations, relationData);
+
         // 如果需要发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
                 definition.getProcessDefinitionId() != null) {
-            startProcess(dto, definition, data);
+            workflowRuntimeService.startProcess(dto, definition);
         }
 
         return dto;
@@ -238,6 +238,11 @@ public class EntityDataDynamicService {
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO update(String entityCode, String id, Map<String, Object> formData) {
         String tableName = dynamicTableService.getTableName(entityCode);
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
+                .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
+        List<EntityRelation> relations = relationRuntimeService.loadRelations(definition);
+        Map<String, Object> parentFormData = relationRuntimeService.withoutRelationDataFromRequest(formData, relations);
+        Map<String, Object> relationData = relationRuntimeService.extractRelationDataFromRequest(formData, relations);
 
         // 查询原数据
         Map<String, Object> existingData = dynamicMapper.selectById(tableName, id);
@@ -271,8 +276,8 @@ public class EntityDataDynamicService {
 
         // 1. 从 formData 直接提取标准字段
         standardFieldMap.forEach((frontendKey, dbKey) -> {
-            if (formData.containsKey(frontendKey)) {
-                Object value = formData.get(frontendKey);
+            if (parentFormData.containsKey(frontendKey)) {
+                Object value = parentFormData.get(frontendKey);
                 if (value instanceof String && ((String) value).isEmpty()) {
                     value = null;
                 }
@@ -280,51 +285,8 @@ public class EntityDataDynamicService {
             }
         });
 
-        // 2. 从 formData.data 提取自定义字段（排除系统字段，camelCase 转 snake_case）
-        Set<String> systemFields = new HashSet<>(Arrays.asList(
-                "id", "dataNo", "data_no", "title", "name", "code", "status",
-                "processInstanceId", "process_instance_id",
-                "processStartTime", "process_start_time",
-                "processEndTime", "process_end_time",
-                "currentTaskId", "current_task_id",
-                "currentTaskName", "current_task_name",
-                "currentTaskAssignee", "current_task_assignee",
-                "submitterId", "submitter_id",
-                "submitterName", "submitter_name",
-                "deptId", "dept_id",
-                "submitTime", "submit_time",
-                "createdAt", "created_at", "updatedAt", "updated_at",
-                "createdBy", "created_by", "updatedBy", "updated_by",
-                "deleted", "entityCode", "entity_code", "startProcess", "start_process"
-        ));
-
-        Object dataObj = formData.get("data");
-        if (dataObj instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> customData = (Map<String, Object>) dataObj;
-            for (Map.Entry<String, Object> entry : customData.entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                if (key == null || key.isEmpty() || systemFields.contains(key)) {
-                    continue;
-                }
-                String columnName = camelToUnderscore(key);
-                if (systemFields.contains(columnName)) {
-                    continue;
-                }
-                if (value instanceof String && ((String) value).isEmpty()) {
-                    value = null;
-                }
-                if (value instanceof Map || value instanceof List) {
-                    try {
-                        value = objectMapper.writeValueAsString(value);
-                    } catch (Exception e) {
-                        log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
-                    }
-                }
-                updateData.put(columnName, value);
-            }
-        }
+        // 2. 从 formData.data 提取自定义字段
+        updateData.putAll(recordMapper.extractRequestCustomData(parentFormData));
 
         // 3. 补充 existingData 中缺失的字段（保持原有值）
         existingData.forEach((key, value) -> {
@@ -332,10 +294,16 @@ public class EntityDataDynamicService {
                 updateData.put(key, value);
             }
         });
+        validatePublishedRequiredFields(entityCode, updateData);
 
         dynamicMapper.update(tableName, updateData);
+        relationRuntimeService.saveRelationData(id, relations, relationData);
 
-        return convertToDTO(updateData, entityCode);
+        EntityDataDTO dto = recordMapper.toDto(updateData, entityCode);
+        if (dto.getData() != null) {
+            dto.getData().putAll(relationData);
+        }
+        return dto;
     }
 
     /**
@@ -343,6 +311,8 @@ public class EntityDataDynamicService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String entityCode, String id) {
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
+        relationRuntimeService.cascadeDeleteRelations(definition, id, false);
         String tableName = dynamicTableService.getTableName(entityCode);
         dynamicMapper.deleteById(tableName, id);
     }
@@ -352,6 +322,8 @@ public class EntityDataDynamicService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void physicalDelete(String entityCode, String id) {
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
+        relationRuntimeService.cascadeDeleteRelations(definition, id, true);
         String tableName = dynamicTableService.getTableName(entityCode);
         dynamicMapper.physicalDeleteById(tableName, id);
     }
@@ -374,7 +346,7 @@ public class EntityDataDynamicService {
         }
 
         return dataList.stream()
-                .map(data -> convertToDTO(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode))
                 .collect(Collectors.toList());
     }
 
@@ -391,372 +363,16 @@ public class EntityDataDynamicService {
         } else if (!permission.isNeedFilter()) {
             return dynamicMapper.count(tableName);
         } else {
-            // 带权限条件的统计：使用原生SQL执行
-            String sql = "SELECT COUNT(*) FROM " + tableName +
-                    " WHERE deleted = 0 AND (" + permission.getSqlCondition() + ")";
-            List<Map<String, Object>> result = dynamicMapper.executeQuery(sql);
-            if (result != null && !result.isEmpty()) {
-                Object count = result.get(0).values().iterator().next();
-                return count != null ? Long.parseLong(count.toString()) : 0;
-            }
-            return 0;
+            return dynamicMapper.countWithPermission(tableName, permission.getSqlCondition());
         }
     }
 
-    // ============ 私有方法 ============
-
-    /**
-     * 发起流程
-     */
-    private void startProcess(EntityDataDTO dto, EntityDefinition definition, Map<String, Object> data) {
-        String processConfigId = definition.getProcessDefinitionId();
-        if (processConfigId == null || processConfigId.isEmpty()) {
-            throw new RuntimeException("实体未绑定流程定义");
-        }
-        
-        // 获取流程配置，获取流程key
-        com.workflow.entity.ProcessDefinitionConfig processConfig = 
-                processDefinitionConfigMapper.selectById(processConfigId);
-        if (processConfig == null) {
-            throw new RuntimeException("流程定义不存在: " + processConfigId);
-        }
-        if (processConfig.getStatus() == com.workflow.entity.ProcessDefinitionConfig.ProcessStatus.DISABLED) {
-            throw new RuntimeException("流程已禁用，无法发起: " + processConfig.getProcessName());
-        }
-        
-        String processKey = processConfig.getProcessKey();
-
-        // 设置流程变量
-        Map<String, Object> variables = new HashMap<>();
-        variables.put("entityCode", dto.getEntityCode());
-        variables.put("entityDataId", dto.getId());
-        variables.put("dataNo", dto.getDataNo());
-        variables.put("submitterId", dto.getSubmitterId());
-        variables.put("submitterName", dto.getSubmitterName());
-        
-        // 设置 skipNodeEnabled 变量，用于支持节点自动跳过功能
-        // 如果节点设置了 skipNode=true，且该节点的 skipExpression 为 ${skipNodeEnabled}，
-        // 则该节点会被自动跳过
-        variables.put("skipNodeEnabled", true);
-        
-        // 设置 initiator 变量（流程中使用 ${initiator} 表达式）
-        if (dto.getSubmitterId() != null) {
-            variables.put("initiator", dto.getSubmitterId());
-        }
-
-        // 添加表单数据到流程变量
-        if (dto.getData() != null) {
-            variables.putAll(dto.getData());
-        }
-        
-        // 添加自定义流程变量（如会签人员列表等）
-        if (dto.getProcessVariables() != null) {
-            variables.putAll(dto.getProcessVariables());
-        }
-
-        // 预计算多实例集合变量（根据节点配置的审批人自动计算）
-        multiInstanceCollectionListener.prepareVariables(processConfigId, variables);
-
-        // 设置流程发起人
-        String submitterId = dto.getSubmitterId();
-        if (submitterId != null && !submitterId.isEmpty()) {
-            identityService.setAuthenticatedUserId(submitterId);
-        }
-
-        // 启动流程（使用流程key）
-        ProcessInstance processInstance = runtimeService
-                .startProcessInstanceByKey(processKey, dto.getId(), variables);
-
-        // 查询当前活动任务
-        Task currentTask = taskService.createTaskQuery()
-                .processInstanceId(processInstance.getId())
-                .active()
-                .singleResult();
-
-        // 更新数据表中的流程信息
-        String tableName = dynamicTableService.getTableName(dto.getEntityCode());
-        Map<String, Object> updateData = new HashMap<>();
-        updateData.put("id", dto.getId());
-        // 设置流程实例ID
-        updateData.put("process_instance_id", processInstance.getId());
-        // 设置流程开始时间
-        updateData.put("process_start_time", LocalDateTime.now());
-        // 设置流程状态（从实体状态配置中获取 PROCESSING 分类的第一个状态）
-        String processingStatus = getProcessingStatus(dto.getEntityCode());
-        updateData.put("status", processingStatus);
-        updateData.put("updated_at", LocalDateTime.now());
-        
-        // 设置当前任务ID、名称和审批人
-        if (currentTask != null) {
-            updateData.put("current_task_id", currentTask.getId());
-            updateData.put("current_task_name", currentTask.getName());
-            updateData.put("current_task_assignee", currentTask.getAssignee());
-        }
-
-        dynamicMapper.update(tableName, updateData);
-        
-        // 更新DTO对象
-        dto.setProcessInstanceId(processInstance.getId());
-        dto.setStatus(processingStatus);
-        if (currentTask != null) {
-            dto.setCurrentTaskId(currentTask.getId());
-            dto.setCurrentTaskName(currentTask.getName());
-            dto.setCurrentTaskAssignee(currentTask.getAssignee());
-        }
-
-        // 同步待办任务
-        processTaskService.syncTasksFromFlowable(processInstance.getId());
-
-        log.info("实体数据 {} 发起流程 {}，流程实例ID: {}",
-                dto.getId(), processKey, processInstance.getId());
-    }
-    
     /**
      * 更新实体数据的当前任务信息
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName, String currentTaskAssignee) {
-        String tableName = dynamicTableService.getTableName(entityCode);
-        Map<String, Object> updateData = new HashMap<>();
-        updateData.put("id", entityDataId);
-        updateData.put("current_task_id", currentTaskId);
-        updateData.put("current_task_name", currentTaskName);
-        updateData.put("current_task_assignee", currentTaskAssignee);
-        updateData.put("updated_at", LocalDateTime.now());
-        dynamicMapper.update(tableName, updateData);
-        log.debug("更新实体当前任务: entityCode={}, entityDataId={}, taskId={}, taskName={}, assignee={}",
-                entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
-    }
-
-    /**
-     * 转换为 DTO
-     */
-    private EntityDataDTO convertToDTO(Map<String, Object> data, String entityCode) {
-        EntityDataDTO dto = new EntityDataDTO();
-        dto.setId(getString(data, "id"));
-        dto.setEntityCode(entityCode);
-        dto.setDataNo(getString(data, "data_no"));
-        dto.setTitle(getString(data, "title"));
-        dto.setName(getString(data, "name"));
-        dto.setCode(getString(data, "code"));
-        dto.setStatus(getString(data, "status"));
-        dto.setProcessInstanceId(getString(data, "process_instance_id"));
-        dto.setProcessStartTime(getDateTime(data, "process_start_time"));
-        dto.setProcessEndTime(getDateTime(data, "process_end_time"));
-        dto.setCurrentTaskId(getString(data, "current_task_id"));
-        dto.setCurrentTaskName(getString(data, "current_task_name"));
-        dto.setCurrentTaskAssignee(getString(data, "current_task_assignee"));
-        dto.setSubmitterId(getString(data, "submitter_id"));
-        dto.setSubmitterName(getString(data, "submitter_name"));
-        dto.setDeptId(getString(data, "dept_id"));
-        dto.setSubmitTime(getDateTime(data, "submit_time"));
-        dto.setCreatedAt(getDateTime(data, "created_at"));
-        dto.setUpdatedAt(getDateTime(data, "updated_at"));
-        dto.setCreatedBy(getString(data, "created_by"));
-        dto.setUpdatedBy(getString(data, "updated_by"));
-
-        // 提取自定义字段
-        Map<String, Object> customData = extractCustomFields(data, entityCode);
-        dto.setData(customData);
-
-        // 初始化扩展数据容器
-        dto.setExtData(new java.util.HashMap<>());
-
-        return dto;
-    }
-
-    /**
-     * 转换为 Map
-     */
-    private Map<String, Object> convertToMap(EntityDataDTO dto) {
-        Map<String, Object> data = new HashMap<>();
-
-        if (dto.getId() != null) {
-            data.put("id", dto.getId());
-        }
-        if (dto.getDataNo() != null) {
-            data.put("data_no", dto.getDataNo());
-        }
-        if (dto.getTitle() != null) {
-            data.put("title", dto.getTitle());
-        }
-        if (dto.getName() != null) {
-            data.put("name", dto.getName());
-        }
-        if (dto.getCode() != null) {
-            data.put("code", dto.getCode());
-        }
-        if (dto.getStatus() != null) {
-            data.put("status", dto.getStatus());
-        }
-        if (dto.getProcessInstanceId() != null) {
-            data.put("process_instance_id", dto.getProcessInstanceId());
-        }
-        if (dto.getProcessStartTime() != null) {
-            data.put("process_start_time", dto.getProcessStartTime());
-        }
-        if (dto.getProcessEndTime() != null) {
-            data.put("process_end_time", dto.getProcessEndTime());
-        }
-        if (dto.getCurrentTaskId() != null) {
-            data.put("current_task_id", dto.getCurrentTaskId());
-        }
-        if (dto.getCurrentTaskName() != null) {
-            data.put("current_task_name", dto.getCurrentTaskName());
-        }
-        if (dto.getCurrentTaskAssignee() != null) {
-            data.put("current_task_assignee", dto.getCurrentTaskAssignee());
-        }
-        if (dto.getSubmitterId() != null) {
-            data.put("submitter_id", dto.getSubmitterId());
-        }
-        if (dto.getSubmitterName() != null) {
-            data.put("submitter_name", dto.getSubmitterName());
-        }
-        if (dto.getDeptId() != null) {
-            data.put("dept_id", dto.getDeptId());
-        }
-        if (dto.getSubmitTime() != null) {
-            data.put("submit_time", dto.getSubmitTime());
-        }
-
-        // 添加自定义字段（排除系统字段，避免重复）
-        if (dto.getData() != null) {
-            // 系统字段集合（驼峰和下划线命名都要排除）
-            Set<String> systemFields = new HashSet<>(Arrays.asList(
-                    "id", "dataNo", "data_no", "title", "name", "code", "status",
-                    "processInstanceId", "process_instance_id", 
-                    "processStartTime", "process_start_time",
-                    "processEndTime", "process_end_time",
-                    "currentTaskId", "current_task_id",
-                    "currentTaskName", "current_task_name",
-                    "submitterId", "submitter_id",
-                    "submitterName", "submitter_name",
-                    "deptId", "dept_id",
-                    "submitTime", "submit_time",
-                    "createdAt", "created_at", "updatedAt", "updated_at",
-                    "createdBy", "created_by", "updatedBy", "updated_by",
-                    "deleted"
-            ));
-            
-            for (Map.Entry<String, Object> entry : dto.getData().entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                // 过滤无效的字段名
-                if (key == null || key.isEmpty() || "undefined".equals(key) || "null".equals(key)) {
-                    continue;
-                }
-                if (!systemFields.contains(key)) {
-                    // 将字段名转换为下划线命名
-                    String columnName = camelToUnderscore(key);
-                    // 将空字符串转为 null，避免唯一约束冲突
-                    if (value instanceof String && ((String) value).isEmpty()) {
-                        value = null;
-                    }
-                    // 复杂对象（Map/List）序列化为 JSON 字符串，避免 MyBatis 默认 Java 序列化
-                    if (value instanceof Map || value instanceof List) {
-                        try {
-                            value = objectMapper.writeValueAsString(value);
-                        } catch (Exception e) {
-                            log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
-                        }
-                    }
-                    data.put(columnName, value);
-                }
-            }
-        }
-
-        return data;
-    }
-    
-    /**
-     * 驼峰命名转换为下划线命名
-     */
-    private String camelToUnderscore(String camelCase) {
-        if (camelCase == null || camelCase.isEmpty()) {
-            return camelCase;
-        }
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < camelCase.length(); i++) {
-            char c = camelCase.charAt(i);
-            if (Character.isUpperCase(c)) {
-                result.append("_").append(Character.toLowerCase(c));
-            } else {
-                result.append(c);
-            }
-        }
-        return result.toString();
-    }
-
-    /**
-     * 提取自定义字段（排除系统字段，列名下划线转驼峰）
-     */
-    private Map<String, Object> extractCustomFields(Map<String, Object> data, String entityCode) {
-        // 系统字段集合
-        Set<String> systemFields = new HashSet<>(Arrays.asList(
-                "id", "data_no", "title", "name", "code", "status",
-                "process_instance_id", "process_start_time", "process_end_time",
-                "current_task_id", "current_task_name", "current_task_assignee",
-                "submitter_id", "submitter_name", "submit_time",
-                "created_at", "updated_at", "created_by", "updated_by", "deleted"
-        ));
-
-        Map<String, Object> customData = new HashMap<>();
-        for (Map.Entry<String, Object> entry : data.entrySet()) {
-            if (!systemFields.contains(entry.getKey())) {
-                String camelKey = underscoreToCamel(entry.getKey());
-                Object value = entry.getValue();
-                // 尝试将 JSON 字符串反序列化为对象（Map/List），便于前端直接使用
-                if (value instanceof String) {
-                    String str = (String) value;
-                    if (str.trim().startsWith("{") || str.trim().startsWith("[")) {
-                        try {
-                            value = objectMapper.readValue(str, Object.class);
-                        } catch (Exception e) {
-                            // 不是有效 JSON，保持原字符串
-                        }
-                    }
-                }
-                customData.put(camelKey, value);
-            }
-        }
-        return customData;
-    }
-
-    /**
-     * 下划线命名转驼峰命名
-     */
-    private String underscoreToCamel(String underscore) {
-        if (underscore == null || underscore.isEmpty()) {
-            return underscore;
-        }
-        StringBuilder result = new StringBuilder();
-        boolean nextUpper = false;
-        for (int i = 0; i < underscore.length(); i++) {
-            char c = underscore.charAt(i);
-            if (c == '_') {
-                nextUpper = true;
-            } else if (nextUpper) {
-                result.append(Character.toUpperCase(c));
-                nextUpper = false;
-            } else {
-                result.append(c);
-            }
-        }
-        return result.toString();
-    }
-
-    private String getString(Map<String, Object> data, String key) {
-        Object value = data.get(key);
-        return value != null ? value.toString() : null;
-    }
-
-    private LocalDateTime getDateTime(Map<String, Object> data, String key) {
-        Object value = data.get(key);
-        if (value instanceof LocalDateTime) {
-            return (LocalDateTime) value;
-        }
-        return null;
+        workflowRuntimeService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
     }
 
     private String getCurrentUserId(String defaultValue) {
@@ -824,6 +440,32 @@ public class EntityDataDynamicService {
         return prefix + "-" + timePart + random;
     }
 
+    private void validatePublishedRequiredFields(String entityCode, Map<String, Object> storageData) {
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+        if (snapshot.getFields() == null || snapshot.getFields().isEmpty()) {
+            return;
+        }
+        for (EntityField field : snapshot.getFields()) {
+            if (!Boolean.TRUE.equals(field.getIsRequired()) || isRelationField(field)) {
+                continue;
+            }
+            String columnName = recordMapper.toColumnName(field.getFieldCode());
+            Object value = storageData.get(columnName);
+            if (isBlankValue(value)) {
+                throw new RuntimeException("字段必填: " + field.getFieldName());
+            }
+        }
+    }
+
+    private boolean isRelationField(EntityField field) {
+        return field.getFieldType() == EntityField.FieldType.SUB_FORM
+                || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
+    }
+
+    private boolean isBlankValue(Object value) {
+        return value == null || (value instanceof String str && str.isBlank());
+    }
+
     /**
      * 获取实体的默认状态（NEW分类的第一个状态）
      */
@@ -841,20 +483,4 @@ public class EntityDataDynamicService {
         return "DRAFT";
     }
 
-    /**
-     * 获取实体的流程中状态（PROCESSING分类的第一个状态）
-     */
-    private String getProcessingStatus(String entityCode) {
-        try {
-            List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "PROCESSING");
-            if (statuses != null && !statuses.isEmpty()) {
-                // 返回排序号最小的状态
-                return statuses.get(0).getStatusCode();
-            }
-        } catch (Exception e) {
-            log.warn("获取实体[{}]流程中状态失败: {}", entityCode, e.getMessage());
-        }
-        // 默认返回 PENDING
-        return "PENDING";
-    }
 }

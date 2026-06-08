@@ -65,6 +65,8 @@ Thumbs.db
 # Application
 *.log
 logs/
+uploads/
+.claude/
 *.pid
 *.seed
 *.pid.lock

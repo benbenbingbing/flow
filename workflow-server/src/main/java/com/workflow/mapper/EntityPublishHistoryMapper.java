@@ -32,4 +32,10 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
      */
     @Select("SELECT * FROM entity_publish_history WHERE entity_id = #{entityId} ORDER BY version DESC LIMIT 1")
     EntityPublishHistory findLatestByEntityId(@Param("entityId") String entityId);
+
+    /**
+     * 按实体编码查询最新发布记录
+     */
+    @Select("SELECT * FROM entity_publish_history WHERE entity_code = #{entityCode} ORDER BY version DESC LIMIT 1")
+    EntityPublishHistory findLatestByEntityCode(@Param("entityCode") String entityCode);
 }

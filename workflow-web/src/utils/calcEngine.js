@@ -8,7 +8,6 @@ export function evaluateExpression(expression, formData) {
   if (!expression || !formData) return null
   
   try {
-    // 替换变量为实际值
     let expr = expression
     
     // 匹配 ${fieldKey} 或 #{fieldKey} 格式的变量
@@ -32,18 +31,190 @@ export function evaluateExpression(expression, formData) {
         return value.getTime()
       }
       
-      // 其他情况返回 0 或空字符串
-      return typeof value === 'string' ? `"${value}"` : 0
+      return typeof value === 'string' ? JSON.stringify(value) : 0
     })
     
-    // 安全的求值
-    // eslint-disable-next-line no-eval
-    const result = eval(expr)
-    
-    return result
+    return evaluateSafeExpression(expr)
   } catch (e) {
     console.warn('计算表达式求值失败:', expression, e)
     return null
+  }
+}
+
+function evaluateSafeExpression(expression) {
+  const parser = new ExpressionParser(tokenizeExpression(expression))
+  const result = parser.parse()
+  return Number.isNaN(result) ? null : result
+}
+
+function tokenizeExpression(expression) {
+  const tokens = []
+  let index = 0
+
+  while (index < expression.length) {
+    const char = expression[index]
+    if (/\s/.test(char)) {
+      index++
+      continue
+    }
+
+    if (/[+\-*/%(),]/.test(char)) {
+      tokens.push({ type: char, value: char })
+      index++
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      const quote = char
+      let value = ''
+      index++
+      while (index < expression.length && expression[index] !== quote) {
+        if (expression[index] === '\\' && index + 1 < expression.length) {
+          value += expression[index + 1]
+          index += 2
+        } else {
+          value += expression[index]
+          index++
+        }
+      }
+      if (expression[index] !== quote) {
+        throw new Error('字符串未闭合')
+      }
+      tokens.push({ type: 'string', value })
+      index++
+      continue
+    }
+
+    if (/\d|\./.test(char)) {
+      let value = ''
+      while (index < expression.length && /[\d.]/.test(expression[index])) {
+        value += expression[index]
+        index++
+      }
+      if (!/^\d+(\.\d+)?$|^\.\d+$/.test(value)) {
+        throw new Error('数字格式错误')
+      }
+      tokens.push({ type: 'number', value: Number(value) })
+      continue
+    }
+
+    if (/[a-zA-Z_]/.test(char)) {
+      let value = ''
+      while (index < expression.length && /\w/.test(expression[index])) {
+        value += expression[index]
+        index++
+      }
+      tokens.push({ type: 'identifier', value })
+      continue
+    }
+
+    throw new Error(`不支持的字符: ${char}`)
+  }
+
+  tokens.push({ type: 'eof', value: null })
+  return tokens
+}
+
+class ExpressionParser {
+  constructor(tokens) {
+    this.tokens = tokens
+    this.position = 0
+  }
+
+  parse() {
+    const value = this.parseExpression()
+    this.expect('eof')
+    return value
+  }
+
+  parseExpression() {
+    let value = this.parseTerm()
+    while (this.match('+') || this.match('-')) {
+      const operator = this.previous().type
+      const right = this.parseTerm()
+      value = operator === '+' ? value + right : value - right
+    }
+    return value
+  }
+
+  parseTerm() {
+    let value = this.parseUnary()
+    while (this.match('*') || this.match('/') || this.match('%')) {
+      const operator = this.previous().type
+      const right = this.parseUnary()
+      if (operator === '*') value *= right
+      if (operator === '/') value /= right
+      if (operator === '%') value %= right
+    }
+    return value
+  }
+
+  parseUnary() {
+    if (this.match('-')) return -this.parseUnary()
+    if (this.match('+')) return this.parseUnary()
+    return this.parsePrimary()
+  }
+
+  parsePrimary() {
+    if (this.match('number') || this.match('string')) {
+      return this.previous().value
+    }
+
+    if (this.match('identifier')) {
+      const functionName = this.previous().value
+      this.expect('(')
+      const args = []
+      if (!this.check(')')) {
+        do {
+          args.push(this.parseExpression())
+        } while (this.match(','))
+      }
+      this.expect(')')
+      return this.callFunction(functionName, args)
+    }
+
+    if (this.match('(')) {
+      const value = this.parseExpression()
+      this.expect(')')
+      return value
+    }
+
+    throw new Error('表达式格式错误')
+  }
+
+  callFunction(functionName, args) {
+    const functions = {
+      datediff,
+      workdaydiff
+    }
+    const fn = functions[functionName]
+    if (!fn) {
+      throw new Error(`不支持的函数: ${functionName}`)
+    }
+    return fn(...args)
+  }
+
+  match(type) {
+    if (!this.check(type)) return false
+    this.position++
+    return true
+  }
+
+  expect(type) {
+    if (this.match(type)) return this.previous()
+    throw new Error(`期望 ${type}`)
+  }
+
+  check(type) {
+    return this.peek().type === type
+  }
+
+  peek() {
+    return this.tokens[this.position]
+  }
+
+  previous() {
+    return this.tokens[this.position - 1]
   }
 }
 

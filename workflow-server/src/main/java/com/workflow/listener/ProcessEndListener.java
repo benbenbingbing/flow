@@ -87,12 +87,8 @@ public class ProcessEndListener implements FlowableEventListener {
                 if (statusCode != null) {
                     updateData.put("status", statusCode);
                 }
-                // 清空当前任务信息
-                updateData.put("current_task_id", null);
-                updateData.put("current_task_name", null);
-                updateData.put("current_task_assignee", null);
-
                 dynamicMapper.update(tableName, updateData);
+                dynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);
 
                 log.info("流程结束，已更新实体数据: entityCode={}, entityDataId={}, processInstanceId={}, statusCategory={}, statusCode={}",
                         entityCode, entityDataId, processInstanceId, statusCategory, statusCode);

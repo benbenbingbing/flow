@@ -1,2 +1,0 @@
--- 已废弃，请使用 V27__entity_list_permission.sql
--- 原因：V17 版本号与其他迁移脚本冲突，导致 Flyway 未执行

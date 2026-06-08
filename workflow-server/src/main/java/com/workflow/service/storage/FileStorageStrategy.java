@@ -6,7 +6,7 @@ import java.util.Map;
 
 /**
  * 文件存储策略接口
- * 支持本地存储、MinIO、OSS 等不同实现
+ * 当前内置本地存储实现，其他存储后端需提供完整策略后再启用。
  */
 public interface FileStorageStrategy {
 

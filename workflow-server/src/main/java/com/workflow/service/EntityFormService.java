@@ -5,10 +5,12 @@ import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
+import com.workflow.entity.EntityRelation;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFormFieldMapper;
 import com.workflow.mapper.EntityFormMapper;
+import com.workflow.mapper.EntityRelationMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ public class EntityFormService {
     private final EntityFormFieldMapper formFieldMapper;
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
+    private final EntityRelationMapper relationMapper;
     
     /**
      * 查询所有表单列表
@@ -257,10 +260,37 @@ public class EntityFormService {
         if (entityField.getRefEntityType() != null) {
             field.setRefEntityType(entityField.getRefEntityType().name());
         }
+        if (entityField.getDisplayMode() != null) {
+            field.setDisplayMode(entityField.getDisplayMode());
+        }
+        if (entityField.getRefFieldCode() != null) {
+            field.setRefFieldCode(entityField.getRefFieldCode());
+        }
+        enrichRelationMetadata(field, entityField);
         // 系统可编辑字段强制非只读（避免表单设计器误设为只读导致无法交互）
         if (Boolean.TRUE.equals(entityField.getIsSystem()) && Boolean.TRUE.equals(entityField.getEditable())) {
             field.setIsReadonly(0);
         }
+    }
+
+    private void enrichRelationMetadata(EntityFormField field, EntityField entityField) {
+        if (entityField.getEntityId() == null || entityField.getFieldCode() == null) {
+            return;
+        }
+        EntityRelation relation = relationMapper.selectByParentField(entityField.getEntityId(), entityField.getFieldCode());
+        if (relation == null) {
+            return;
+        }
+        field.setRelationCode(relation.getRelationCode());
+        field.setRelationName(relation.getRelationName());
+        field.setChildEntityId(relation.getChildEntityId());
+        field.setChildEntityCode(relation.getChildEntityCode());
+        field.setChildRefFieldCode(relation.getChildRefFieldCode());
+        field.setRelationType(relation.getRelationType() != null ? relation.getRelationType().name() : null);
+        field.setCascadeDelete(relation.getCascadeDelete());
+        field.setRelationRequired(relation.getRequired());
+        field.setRefEntityId(relation.getChildEntityId());
+        field.setRefFieldCode(relation.getChildRefFieldCode());
     }
 
     /**

@@ -6,6 +6,7 @@ import com.workflow.dto.ProcessVersionHistoryDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.mapper.*;
+import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,9 @@ public class ProcessDefinitionServiceTest {
     private RepositoryService activitiRepositoryService;
 
     @Mock
+    private ProcessDefinitionNodeSyncService nodeSyncService;
+
+    @Mock
     private ObjectMapper objectMapper;
 
     @InjectMocks
@@ -73,14 +77,14 @@ public class ProcessDefinitionServiceTest {
 
     @Test
     void testFindAll() {
-        when(processMapper.selectList(null)).thenReturn(Arrays.asList(testProcess));
+        when(processMapper.findAllActive()).thenReturn(Arrays.asList(testProcess));
 
         List<ProcessDefinitionDTO> result = processService.findAll();
 
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals("leave_process", result.get(0).getProcessKey());
-        verify(processMapper, times(1)).selectList(null);
+        verify(processMapper, times(1)).findAllActive();
     }
 
     @Test
@@ -169,6 +173,7 @@ public class ProcessDefinitionServiceTest {
         assertNotNull(result);
         verify(processMapper, times(1)).selectById("1");
         verify(processMapper, times(1)).updateById(any(ProcessDefinitionConfig.class));
+        verify(nodeSyncService).syncBpmnNodeBindings(eq("1"), eq("<bpmn:definitions>updated</bpmn:definitions>"));
     }
 
     @Test
@@ -187,13 +192,12 @@ public class ProcessDefinitionServiceTest {
 
     @Test
     void testDelete() {
-        when(versionHistoryMapper.delete(any())).thenReturn(1);
-        when(processMapper.deleteById("1")).thenReturn(1);
+        when(processMapper.selectById("1")).thenReturn(testProcess);
+        when(processMapper.updateById(any(ProcessDefinitionConfig.class))).thenReturn(1);
 
         processService.delete("1");
 
-        verify(versionHistoryMapper, times(1)).delete(any());
-        verify(processMapper, times(1)).deleteById("1");
+        verify(processMapper, times(1)).updateById(any(ProcessDefinitionConfig.class));
     }
 
     @Test

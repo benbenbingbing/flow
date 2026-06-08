@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.EntityListField;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -23,6 +24,6 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
     /**
      * 根据列表配置ID删除字段（物理删除）
      */
-    @Select("DELETE FROM entity_list_field WHERE list_config_id = #{listConfigId}")
+    @Delete("DELETE FROM entity_list_field WHERE list_config_id = #{listConfigId}")
     void deleteByListConfigId(@Param("listConfigId") String listConfigId);
 }

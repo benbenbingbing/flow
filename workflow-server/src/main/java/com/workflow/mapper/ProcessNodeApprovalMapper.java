@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.ProcessNodeApproval;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -29,6 +30,6 @@ public interface ProcessNodeApprovalMapper extends BaseMapper<ProcessNodeApprova
     /**
      * 删除流程的所有节点审批配置
      */
-    @Select("DELETE FROM process_node_approval WHERE process_config_id = #{processConfigId}")
+    @Delete("DELETE FROM process_node_approval WHERE process_config_id = #{processConfigId}")
     void deleteByProcessConfigId(@Param("processConfigId") String processConfigId);
 }

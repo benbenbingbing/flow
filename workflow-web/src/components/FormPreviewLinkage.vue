@@ -116,6 +116,7 @@ import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
+import { getFieldKey } from '@/shared/form-runtime'
 
 const props = defineProps({
   form: {
@@ -173,7 +174,7 @@ function isTabSubForm(field) {
     }
     return false
   })()
-  if (type !== 'SUB_FORM') return false
+  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
   return result
 }
 
@@ -269,11 +270,6 @@ function getFieldStyle(field) {
     width: '100%',
     padding: '4px 0'
   }
-}
-
-// 获取字段唯一键（兼容多种字段结构）
-function getFieldKey(field) {
-  return String(field.fieldCode || field.fieldKey || field.fieldId || field.id || '')
 }
 
 // 判断字段是否禁用（实体引用字段不受 isReadonly 影响，需保持可交互以选择数据）

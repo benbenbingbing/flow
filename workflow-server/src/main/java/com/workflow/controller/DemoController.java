@@ -8,8 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 服务任务 REST 接口示例
- * 提供不修改任何数据的测试接口，供 BPMN 服务任务调用
+ * 服务任务 REST 回调接口。
+ * 用于 BPMN 服务任务联调，不修改业务数据。
  */
 @Slf4j
 @RestController
@@ -17,7 +17,7 @@ import java.util.Map;
 public class DemoController {
 
     /**
-     * 示例 GET 接口：返回固定数据，不修改任何数据
+     * GET 回调：返回固定数据，不修改任何数据
      */
     @GetMapping("/hello")
     public ApiResponse<Map<String, Object>> hello(
@@ -36,7 +36,7 @@ public class DemoController {
     }
 
     /**
-     * 示例 POST 接口：接收 JSON，返回处理结果，不修改任何数据
+     * POST 回调：接收 JSON，返回处理结果，不修改任何数据
      */
     @PostMapping("/process")
     public ApiResponse<Map<String, Object>> process(@RequestBody Map<String, Object> body) {

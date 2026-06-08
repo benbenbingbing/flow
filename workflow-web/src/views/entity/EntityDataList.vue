@@ -2,7 +2,7 @@
   <div class="entity-data-list">
     <div class="page-header">
       <h2>{{ entityName || '数据列表' }}</h2>
-      <el-button type="primary" @click="handleCreate" v-if="entityCode">
+      <el-button type="primary" @click="handleCreate" v-if="entityDefinition.id">
         <el-icon><Plus /></el-icon>新增数据
       </el-button>
     </div>
@@ -108,7 +108,7 @@
                 <!-- 状态字段特殊渲染 -->
                 <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
                 <!-- 日期字段格式化 -->
-                <span v-else-if="field.fieldCode === 'createdAt' || field.fieldCode === 'processStartTime' || field.fieldCode === 'processEndTime' || field.fieldCode === 'submitTime'">
+                <span v-else-if="isDateFieldCode(field.fieldCode)">
                   {{ formatDate(row[field.fieldCode]) }}
                 </span>
                 <!-- 默认显示 -->
@@ -392,7 +392,7 @@
         >
           <FormFieldRendererLinkage
             :field="field"
-            v-model="entityData[field.fieldCode]"
+            v-model="entityData[getFieldKey(field)]"
             :disabled="true"
           />
         </el-tab-pane>
@@ -442,7 +442,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowUp, ArrowDown, Document } from '@element-plus/icons-vue'
@@ -458,6 +458,8 @@ import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { getCustomListComponent, hasCustomListComponent, getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
+import { getFieldKey, getFieldModelPath, mergeRuntimeFormConfigs, normalizeRuntimeFormConfigs } from '@/shared/form-runtime'
+import { formatDateValue, formatListFieldValue, isDateFieldCode, parseJsonOptions } from '@/shared/list-runtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -646,8 +648,12 @@ const queryFields = computed(() => {
           queryType: f.queryType || 'LIKE'
         }
       })
+      .filter((f: any) => !['SUB_FORM', 'SUB_FORM_LIST'].includes((f.componentType || f.fieldType || '').toUpperCase()))
   }
-  return entityFields.value.filter((f: any) => !f.isSystem)
+  return entityFields.value.filter((f: any) => {
+    const type = (f.componentType || f.fieldType || '').toUpperCase()
+    return !f.isSystem && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
+  })
 })
 
 // 可见的查询字段（默认只显示前4个，展开后显示全部）
@@ -697,51 +703,13 @@ const formFields = computed(() => {
 })
 
 // 获取列表字段对应的 prop（系统字段在 row 顶层，自定义字段在 row.data 中）
-const SYSTEM_FIELDS = new Set(['id', 'dataNo', 'name', 'code', 'status', 'processInstanceId', 'processStartTime', 'processEndTime', 'currentTaskId', 'currentTaskName', 'currentTaskAssignee', 'submitterId', 'submitterName', 'submitTime', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'])
 const getListFieldProp = (fieldCode: string) => {
-  return SYSTEM_FIELDS.has(fieldCode) ? fieldCode : `data.${fieldCode}`
+  return getFieldModelPath(fieldCode)
 }
 
 // 获取字段显示值（用于默认渲染）
 const getFieldDisplayValue = (row: any, field: any) => {
-  const fieldCode = field.fieldCode
-  if (SYSTEM_FIELDS.has(fieldCode)) {
-    return row[fieldCode] ?? '-'
-  }
-  const value = row.data?.[fieldCode]
-  if (value === null || value === undefined) return '-'
-  // 选择类型字段显示 label
-  if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)) {
-    const options = parseOptions(field.optionsJson)
-    const isMultiple = field.componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(field.fieldType)
-    if (isMultiple) {
-      if (!Array.isArray(value)) return value
-      return value.map((v: any) => options.find((o: any) => o.value === v)?.label || v).join(', ') || '-'
-    }
-    const opt = options.find((o: any) => o.value === value)
-    return opt?.label || value
-  }
-  // 单选实体引用
-  if (field.fieldType === 'REFERENCE') {
-    const entityType = field.refEntityType || 'CUSTOM'
-    const refEntityId = field.refEntityId || ''
-    const groupKey = `${entityType}:${refEntityId}`
-    const cacheKey = `${groupKey}:${value}`
-    return refEntityNameMap.value[cacheKey] || value
-  }
-  // 多选实体引用
-  if (field.fieldType === 'MULTI_REFERENCE') {
-    const entityType = field.refEntityType || 'CUSTOM'
-    const refEntityId = field.refEntityId || ''
-    const groupKey = `${entityType}:${refEntityId}`
-    let ids = value
-    if (typeof ids === 'string') {
-      try { ids = JSON.parse(ids) } catch { ids = ids.split(',').filter(Boolean) }
-    }
-    if (!Array.isArray(ids) || !ids.length) return value || '-'
-    return ids.map((id: any) => refEntityNameMap.value[`${groupKey}:${id}`] || id).join(', ') || '-'
-  }
-  return value ?? '-'
+  return formatListFieldValue(row, field, refEntityNameMap.value)
 }
 
 // 引用实体名称缓存
@@ -823,12 +791,7 @@ async function loadRefEntityNames() {
 
 // 解析选项
 const parseOptions = (optionsJson: string) => {
-  if (!optionsJson) return []
-  try {
-    return JSON.parse(optionsJson)
-  } catch {
-    return []
-  }
+  return parseJsonOptions(optionsJson)
 }
 
 // 获取状态样式
@@ -857,8 +820,7 @@ const getStatusText = (status: string) => {
 
 // 格式化日期
 const formatDate = (date: string) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleString('zh-CN')
+  return formatDateValue(date)
 }
 
 // 加载实体定义
@@ -866,6 +828,13 @@ const loadEntityDefinition = async () => {
   if (!entityCode.value) return
   
   loading.value = true
+  entityDefinition.value = {}
+  entityFields.value = []
+  listConfig.value = null
+  listConfigFields.value = []
+  dataList.value = []
+  total.value = 0
+  defaultForm.value = null
   try {
     const res = await entityApi.getByCode(entityCode.value)
     entityDefinition.value = res || {}
@@ -886,7 +855,6 @@ const loadEntityDefinition = async () => {
     await loadDataList()
   } catch (error) {
     console.error('加载实体定义失败:', error)
-    ElMessage.error('加载实体定义失败')
   } finally {
     loading.value = false
   }
@@ -1031,10 +999,11 @@ const handleCreate = () => {
 }
 
 // 编辑
-const handleEdit = (row: any) => {
-  formData.id = row.id
-  formData.name = row.name
-  formData.data = { ...row.data }
+const handleEdit = async (row: any) => {
+  const detail = await entityDataApi.getDetail(entityCode.value, row.id).catch(() => row)
+  formData.id = detail.id
+  formData.name = detail.name
+  formData.data = { ...(detail.data || {}) }
   dialogTitle.value = '编辑数据'
   dialogVisible.value = true
   nextTick(() => {
@@ -1046,7 +1015,7 @@ const handleEdit = (row: any) => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm('确定删除该数据吗？', '提示', { type: 'warning' })
-    await entityDataApi.delete(row.id)
+    await entityDataApi.delete(entityCode.value, row.id)
     ElMessage.success('删除成功')
     loadDataList()
   } catch (error: any) {
@@ -1087,6 +1056,7 @@ const progressData = ref<any>({
 })
 const entityData = ref<any>(null)
 const formConfig = ref<any>(null)
+const formConfigs = ref<any[]>([])
 const approvalConfig = ref<any>(null)
 
 // 计算属性：获取当前有效的审批配置
@@ -1129,7 +1099,7 @@ const approvalNormalForm = computed(() => {
 function isTabSubForm(field: any) {
   if (!field) return false
   const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (type !== 'SUB_FORM') return false
+  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
   if (field.displayMode === 'tab') return true
   if (field.componentProps) {
     try {
@@ -1192,7 +1162,8 @@ async function loadProcessDetail(instanceId: string) {
         }
         entityData.value._statusText = statusMap[entityData.value.status] || entityData.value.status
       }
-      formConfig.value = progressRes.formConfig || null
+      formConfigs.value = normalizeRuntimeFormConfigs(progressRes)
+      formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)
       // 根据是否有 tab 子表单设置默认 tab
       const hasTabs = (formConfig.value?.fields || []).some((f: any) => isTabSubForm(f))
       activeDialogTab.value = hasTabs ? 'basic' : 'approval'
@@ -1351,12 +1322,6 @@ watch(() => entityCode.value, () => {
     loadEntityDefinition()
   }
 }, { immediate: true })
-
-onMounted(() => {
-  if (entityCode.value) {
-    loadEntityDefinition()
-  }
-})
 </script>
 
 <style scoped lang="scss">

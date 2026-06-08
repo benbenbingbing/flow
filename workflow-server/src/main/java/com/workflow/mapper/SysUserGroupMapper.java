@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.SysUserGroup;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -29,12 +30,12 @@ public interface SysUserGroupMapper extends BaseMapper<SysUserGroup> {
     /**
      * 删除用户的所有组关联
      */
-    @Select("DELETE FROM sys_user_group WHERE user_id = #{userId}")
+    @Delete("DELETE FROM sys_user_group WHERE user_id = #{userId}")
     void deleteByUserId(@Param("userId") String userId);
     
     /**
      * 删除组的所有用户关联
      */
-    @Select("DELETE FROM sys_user_group WHERE group_id = #{groupId}")
+    @Delete("DELETE FROM sys_user_group WHERE group_id = #{groupId}")
     void deleteByGroupId(@Param("groupId") String groupId);
 }

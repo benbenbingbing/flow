@@ -5,14 +5,18 @@ import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityFieldDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
+import com.workflow.entity.EntityRelation;
 import com.workflow.entity.ProcessDefinitionConfig;
+import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
+import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -38,10 +42,25 @@ public class EntityDefinitionServiceTest {
     private EntityFieldMapper fieldMapper;
 
     @Mock
+    private EntityRelationMapper relationMapper;
+
+    @Mock
     private ProcessDefinitionConfigMapper processMapper;
 
     @Mock
     private ObjectMapper objectMapper;
+
+    @Mock
+    private EntityDataDynamicMapper entityDataDynamicMapper;
+
+    @Mock
+    private DynamicTableService dynamicTableService;
+
+    @Mock
+    private EntityPublishHistoryService publishHistoryService;
+
+    @Mock
+    private EntityFieldFileItemService fileItemService;
 
     @InjectMocks
     private EntityDefinitionService entityService;
@@ -103,6 +122,7 @@ public class EntityDefinitionServiceTest {
     void testFindById() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
         when(fieldMapper.findByEntityId("1")).thenReturn(Arrays.asList(testField));
+        when(relationMapper.selectByParentEntityId("1")).thenReturn(Collections.emptyList());
         when(processMapper.selectById("proc-1")).thenReturn(testProcess);
 
         EntityDefinitionDTO result = entityService.findById("1");
@@ -115,6 +135,44 @@ public class EntityDefinitionServiceTest {
         assertEquals("name", result.getFields().get(0).getFieldCode());
         verify(entityMapper, times(1)).selectById("1");
         verify(fieldMapper, times(1)).findByEntityId("1");
+    }
+
+    @Test
+    void testFindByIdReturnsRelationMetadata() {
+        EntityField subField = new EntityField();
+        subField.setId("field-detail");
+        subField.setEntityId("1");
+        subField.setFieldCode("detailList");
+        subField.setFieldName("明细");
+        subField.setFieldType(EntityField.FieldType.SUB_FORM_LIST);
+
+        EntityRelation relation = new EntityRelation();
+        relation.setParentEntityId("1");
+        relation.setParentEntityCode("test_entity");
+        relation.setParentFieldId("field-detail");
+        relation.setParentFieldCode("detailList");
+        relation.setRelationCode("test_entity_detailList");
+        relation.setRelationName("明细");
+        relation.setChildEntityId("child-1");
+        relation.setChildEntityCode("child");
+        relation.setChildRefFieldCode("parentId");
+        relation.setRelationType(EntityRelation.RelationType.ONE_TO_MANY);
+        relation.setCascadeDelete(true);
+        relation.setRequired(false);
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(subField));
+        when(relationMapper.selectByParentEntityId("1")).thenReturn(List.of(relation));
+        when(processMapper.selectById("proc-1")).thenReturn(testProcess);
+
+        EntityDefinitionDTO result = entityService.findById("1");
+        EntityFieldDTO field = result.getFields().get(0);
+
+        assertEquals("child-1", field.getChildEntityId());
+        assertEquals("child", field.getChildEntityCode());
+        assertEquals("parentId", field.getChildRefFieldCode());
+        assertEquals("ONE_TO_MANY", field.getRelationType());
+        assertEquals(true, field.getCascadeDelete());
     }
 
     @Test
@@ -187,6 +245,56 @@ public class EntityDefinitionServiceTest {
     }
 
     @Test
+    void testUpdateSyncsSubFormRelation() {
+        EntityDefinition child = new EntityDefinition();
+        child.setId("child-1");
+        child.setEntityCode("child");
+
+        EntityField detailField = new EntityField();
+        detailField.setId("field-detail");
+        detailField.setEntityId("1");
+        detailField.setFieldCode("detailList");
+        detailField.setFieldName("明细");
+        detailField.setFieldType(EntityField.FieldType.SUB_FORM_LIST);
+
+        EntityFieldDTO detailDTO = new EntityFieldDTO();
+        detailDTO.setFieldCode("detailList");
+        detailDTO.setFieldName("明细");
+        detailDTO.setFieldType(EntityField.FieldType.SUB_FORM_LIST);
+        detailDTO.setChildEntityId("child-1");
+        detailDTO.setChildRefFieldCode("parentId");
+        detailDTO.setRelationType("ONE_TO_MANY");
+        detailDTO.setCascadeDelete(true);
+        detailDTO.setSortOrder(20);
+
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityName("测试实体");
+        dto.setDescription("测试描述");
+        dto.setFields(List.of(detailDTO));
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.selectById("child-1")).thenReturn(child);
+        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(detailField));
+        when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
+
+        entityService.update("1", dto);
+
+        ArgumentCaptor<EntityRelation> relationCaptor = ArgumentCaptor.forClass(EntityRelation.class);
+        verify(relationMapper).deleteByParentEntityId("1");
+        verify(relationMapper).insert(relationCaptor.capture());
+        EntityRelation relation = relationCaptor.getValue();
+        assertEquals("1", relation.getParentEntityId());
+        assertEquals("test_entity", relation.getParentEntityCode());
+        assertEquals("field-detail", relation.getParentFieldId());
+        assertEquals("detailList", relation.getParentFieldCode());
+        assertEquals("child-1", relation.getChildEntityId());
+        assertEquals("child", relation.getChildEntityCode());
+        assertEquals("parentId", relation.getChildRefFieldCode());
+        assertEquals(EntityRelation.RelationType.ONE_TO_MANY, relation.getRelationType());
+        assertEquals(true, relation.getCascadeDelete());
+    }
+
+    @Test
     void testUpdateNotFound() {
         when(entityMapper.selectById("999")).thenReturn(null);
 
@@ -212,6 +320,8 @@ public class EntityDefinitionServiceTest {
     @Test
     void testPublish() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(testField));
+        when(dynamicTableService.syncEntityTableStructure(any(EntityDefinition.class))).thenReturn(Collections.emptyList());
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         EntityDefinitionDTO result = entityService.publish("1", "user1", "测试用户");
@@ -235,6 +345,8 @@ public class EntityDefinitionServiceTest {
     @Test
     void testBindProcess() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(dynamicTableService.getTableName("test_entity")).thenReturn("wf_test_entity");
+        when(dynamicTableService.tableExists("test_entity")).thenReturn(false);
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         EntityDefinitionDTO result = entityService.bindProcess("1", "proc-2");

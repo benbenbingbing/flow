@@ -256,7 +256,7 @@ const loadProcessProgress = async () => {
 
 /**
  * 为 BPMN XML 添加布局信息（DI）
- * 使用 bpmn-auto-layout 库自动生成专业布局
+ * 使用 bpmn-auto-layout 生成布局
  */
 const addLayoutToXml = async (xml) => {
   try {

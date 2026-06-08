@@ -196,41 +196,45 @@
           
           <!-- 子表单配置 -->
           <template v-if="isSubForm">
-            <el-divider>子表单配置</el-divider>
-            <el-form-item label="关联实体" required>
+            <el-divider>关系</el-divider>
+            <el-form-item label="类型" required>
+              <el-radio-group v-model="selectedField.relationType">
+                <el-radio-button label="ONE_TO_ONE">一对一</el-radio-button>
+                <el-radio-button label="ONE_TO_MANY">一对多</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="子实体" required>
               <el-select 
-                v-model="selectedField.refEntityId" 
-                placeholder="选择关联实体"
+                v-model="selectedField.childEntityId"
+                placeholder="选择实体"
                 style="width: 100%"
-                @change="onRefEntityChange"
+                @change="onChildEntityChange"
               >
                 <el-option
                   v-for="entity in availableEntities"
                   :key="entity.id"
-                  :label="entity.entityName"
+                  :label="entity.entityName || entity.entityCode"
                   :value="entity.id"
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="显示方式">
-              <el-radio-group v-model="selectedField.displayMode">
-                <el-radio label="embedded">嵌入</el-radio>
-                <el-radio label="tab">Tab页</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="关联字段" v-if="selectedField.refEntityId">
+            <el-form-item label="子表外键" v-if="selectedField.childEntityId">
               <el-select 
-                v-model="selectedField.refFieldCode" 
-                placeholder="选择关联字段（用于数据关联）"
+                v-model="selectedField.childRefFieldCode"
+                placeholder="选择字段"
                 style="width: 100%"
+                @change="syncRelationRefs"
               >
                 <el-option
                   v-for="field in refEntityFields"
                   :key="field.fieldCode"
-                  :label="field.fieldName"
+                  :label="`${field.fieldName || field.fieldCode} / ${field.fieldCode}`"
                   :value="field.fieldCode"
                 />
               </el-select>
+            </el-form-item>
+            <el-form-item label="级联删除">
+              <el-switch v-model="selectedField.cascadeDelete" />
             </el-form-item>
           </template>
           
@@ -565,34 +569,14 @@ import { codeRuleApi } from '@/api/codeRule'
 import { entityListPermissionApi } from '@/api/entityListPermission'
 import { getEntityStatusList } from '@/api/entityStatus'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
+import { ENTITY_FIELD_TYPES, getEntityFieldTypeLabel, getEntityFieldTypeTag } from '@/shared/entity-design'
 
 const route = useRoute()
 const router = useRouter()
 const entityId = route.params.id
 
 // 字段类型定义
-const fieldTypes = [
-  { value: 'STRING', label: '文本', icon: 'Document' },
-  { value: 'TEXT', label: '长文本', icon: 'Tickets' },
-  { value: 'RICH_TEXT', label: '富文本', icon: 'DocumentCopy' },
-  { value: 'INTEGER', label: '整数', icon: 'Sort' },
-  { value: 'DECIMAL', label: '小数', icon: 'Money' },
-  { value: 'DATE', label: '日期', icon: 'Calendar' },
-  { value: 'DATETIME', label: '日期时间', icon: 'Timer' },
-  { value: 'BOOLEAN', label: '布尔', icon: 'Check' },
-  { value: 'SELECT', label: '选择', icon: 'ArrowDown' },
-  { value: 'MULTI_SELECT', label: '选择（多选）', icon: 'Collection' },
-  { value: 'RADIO', label: '选择（单选框）', icon: 'CircleCheck' },
-  { value: 'CHECKBOX', label: '选择（复选框）', icon: 'Checked' },
-  { value: 'FILE', label: '文件', icon: 'DocumentChecked' },
-  { value: 'IMAGE', label: '图片', icon: 'Picture' },
-  { value: 'USER', label: '用户', icon: 'User' },
-  { value: 'DEPT', label: '部门', icon: 'OfficeBuilding' },
-  { value: 'REFERENCE', label: '单选实体', icon: 'Connection' },
-  { value: 'MULTI_REFERENCE', label: '多选实体', icon: 'Share' },
-  { value: 'SUB_FORM', label: '子表单', icon: 'Grid' },
-  { value: 'SUB_FORM_LIST', label: '子表单列表', icon: 'List' }
-]
+const fieldTypes = ENTITY_FIELD_TYPES
 
 const entityData = ref({})
 const fields = ref([])
@@ -713,6 +697,10 @@ const loadEntity = async () => {
     fields.value = (data.fields || []).map(f => {
       const field = {
         ...f,
+        childEntityId: f.childEntityId || f.refEntityId || '',
+        childRefFieldCode: f.childRefFieldCode || f.refFieldCode || '',
+        relationType: f.relationType || (f.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : f.fieldType === 'SUB_FORM_LIST' ? 'ONE_TO_MANY' : undefined),
+        cascadeDelete: f.cascadeDelete !== false,
         // fileTypes 在数据库中是逗号分隔字符串，但 el-select multiple 需要数组
         fileTypes: f.fileTypes ? (typeof f.fileTypes === 'string' ? f.fileTypes.split(',') : f.fileTypes) : []
       }
@@ -797,6 +785,13 @@ const handleAddField = (type) => {
     isUnique: false,
     sortOrder: fields.value.length
   }
+  if (['SUB_FORM', 'SUB_FORM_LIST'].includes(newField.fieldType)) {
+    newField.relationType = newField.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : 'ONE_TO_MANY'
+    newField.cascadeDelete = true
+    newField.refEntityType = 'CUSTOM'
+    newField.childEntityId = ''
+    newField.childRefFieldCode = ''
+  }
   fields.value.push(newField)
   selectField(newField)
 }
@@ -828,9 +823,32 @@ const selectField = (field) => {
   }
   
   // 如果是子表单字段，加载关联实体的字段
-  if (isSubForm.value && field.refEntityId) {
-    onRefEntityChange(field.refEntityId)
+  if (isSubForm.value) {
+    field.childEntityId = field.childEntityId || field.refEntityId || ''
+    field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
+    field.relationType = field.relationType || (field.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : 'ONE_TO_MANY')
+    field.cascadeDelete = field.cascadeDelete !== false
+    syncRelationRefs()
+    if (field.childEntityId) {
+      onRefEntityChange(field.childEntityId)
+    }
   }
+}
+
+const onChildEntityChange = async (value) => {
+  if (!selectedField.value) return
+  selectedField.value.refEntityId = value
+  selectedField.value.refEntityType = 'CUSTOM'
+  selectedField.value.childRefFieldCode = ''
+  selectedField.value.refFieldCode = ''
+  await onRefEntityChange(value)
+}
+
+const syncRelationRefs = () => {
+  if (!selectedField.value) return
+  selectedField.value.refEntityId = selectedField.value.childEntityId || selectedField.value.refEntityId || ''
+  selectedField.value.refFieldCode = selectedField.value.childRefFieldCode || selectedField.value.refFieldCode || ''
+  selectedField.value.refEntityType = 'CUSTOM'
 }
 
 // 删除字段
@@ -859,27 +877,11 @@ const moveField = (index, direction) => {
 
 // 获取字段类型标签
 const getFieldTypeTag = (type) => {
-  const tags = { 
-    'STRING': '', 
-    'TEXT': 'info', 
-    'INTEGER': 'success', 
-    'DECIMAL': 'success', 
-    'DATE': 'warning', 
-    'DATETIME': 'warning',
-    'REFERENCE': 'primary',
-    'MULTI_REFERENCE': 'primary'
-  }
-  return tags[type] || ''
+  return getEntityFieldTypeTag(type)
 }
 
 const getFieldTypeLabel = (type) => {
-  // 选择类字段统一显示为"选择"
-  if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type)) {
-    const found = fieldTypes.find(t => t.value === type)
-    return found?.label || '选择'
-  }
-  const found = fieldTypes.find(t => t.value === type)
-  return found?.label || type
+  return getEntityFieldTypeLabel(type)
 }
 
 // 转换为表单字段格式
@@ -897,6 +899,10 @@ const convertToFormField = (field) => {
     refEntityType: field.refEntityType,
     displayMode: field.displayMode,
     refFieldCode: field.refFieldCode,
+    childEntityId: field.childEntityId || field.refEntityId,
+    childRefFieldCode: field.childRefFieldCode || field.refFieldCode,
+    relationType: field.relationType,
+    cascadeDelete: field.cascadeDelete,
     // 附件相关属性
     fileTypes: field.fileTypes,
     fileMaxSize: field.fileMaxSize,
@@ -917,6 +923,16 @@ const handleSave = async () => {
       ElMessage.warning('请完善字段信息')
       return
     }
+    if (['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType)) {
+      if (!field.childEntityId && !field.refEntityId) {
+        ElMessage.warning(`请选择子实体：${field.fieldName}`)
+        return
+      }
+      if (!field.childRefFieldCode && !field.refFieldCode) {
+        ElMessage.warning(`请选择子表外键：${field.fieldName}`)
+        return
+      }
+    }
   }
 
   try {
@@ -924,6 +940,12 @@ const handleSave = async () => {
       ...entityData.value,
       fields: fields.value.map(f => ({
         ...f,
+        childEntityId: f.childEntityId || f.refEntityId || '',
+        childRefFieldCode: f.childRefFieldCode || f.refFieldCode || '',
+        refEntityId: f.refEntityId || f.childEntityId || '',
+        refFieldCode: f.refFieldCode || f.childRefFieldCode || '',
+        relationType: f.relationType || (f.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : f.fieldType === 'SUB_FORM_LIST' ? 'ONE_TO_MANY' : undefined),
+        cascadeDelete: f.cascadeDelete !== false,
         // 移除临时ID
         id: f.id?.startsWith('temp_') ? null : f.id,
         // fileTypes 是数组，需要转为逗号分隔字符串传给后端

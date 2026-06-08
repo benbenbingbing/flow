@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.SysRoleMenu;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -29,6 +30,6 @@ public interface SysRoleMenuMapper extends BaseMapper<SysRoleMenu> {
     /**
      * 删除角色的所有菜单权限
      */
-    @Select("DELETE FROM sys_role_menu WHERE role_id = #{roleId}")
+    @Delete("DELETE FROM sys_role_menu WHERE role_id = #{roleId}")
     void deleteByRoleId(@Param("roleId") String roleId);
 }

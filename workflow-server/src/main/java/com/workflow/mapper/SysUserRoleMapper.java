@@ -2,6 +2,7 @@ package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.SysUserRole;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -29,6 +30,6 @@ public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
     /**
      * 删除用户的所有角色
      */
-    @Select("DELETE FROM sys_user_role WHERE user_id = #{userId}")
+    @Delete("DELETE FROM sys_user_role WHERE user_id = #{userId}")
     void deleteByUserId(@Param("userId") String userId);
 }

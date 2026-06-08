@@ -14,7 +14,7 @@
 import { computed, ref, watch } from 'vue'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
 import { useFormField } from '../composables/useFormField.js'
-import { getFormFields } from '@/api/entityForm'
+import { getEntityFields, getFormFields } from '@/api/entityForm'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -30,37 +30,39 @@ const { fieldValue, isDisabled, handleChange, parsedComponentProps } = useFormFi
 // 子表单元数据
 const subFormMeta = computed(() => {
   const field = props.field
-  if (field?.subFormType === 'ref' && field?.refFormId) {
-    return { subFormType: 'ref', refFormId: field.refFormId, refEntityId: field.refEntityId || '' }
+  const config = parsedComponentProps.value.subFormConfig || {}
+  const relationType = field?.relationType || field?.relation?.type || config.relationType || 'ONE_TO_MANY'
+  const refEntityId = field?.childEntityId || field?.refEntityId || config.refEntityId || ''
+  const childRefFieldCode = field?.childRefFieldCode || field?.refFieldCode || config.childRefFieldCode || ''
+  const refFormId = field?.refFormId || config.refFormId || null
+
+  return {
+    refFormId,
+    refEntityId,
+    relationType,
+    childRefFieldCode
   }
-  if (parsedComponentProps.value.subFormConfig?.type === 'ref' && parsedComponentProps.value.subFormConfig?.refFormId) {
-    return {
-      subFormType: 'ref',
-      refFormId: parsedComponentProps.value.subFormConfig.refFormId,
-      refEntityId: parsedComponentProps.value.subFormConfig.refEntityId || ''
-    }
-  }
-  return { subFormType: field?.subFormType || 'embedded', refFormId: null, refEntityId: '' }
 })
 
 // 外部表单字段（子表单引用外部表单时使用）
 const externalFormFields = ref([])
 
 watch(
-  () => subFormMeta.value.refFormId,
-  async (formId) => {
-    if (formId && subFormMeta.value.subFormType === 'ref') {
+  () => [subFormMeta.value.refFormId, subFormMeta.value.refEntityId],
+  async ([formId, refEntityId]) => {
+    if (formId) {
       try {
         const res = await getFormFields(formId)
         const fields = Array.isArray(res) ? res : Array.isArray(res.data) ? res.data : []
-        externalFormFields.value = fields.map((f) => ({
-          fieldKey: f.fieldCode || f.fieldId || f.id,
-          fieldName: f.fieldLabel || f.fieldName,
-          fieldType: mapFieldType(f.componentType || f.fieldType),
-          isEditable: true,
-          isRequired: f.isRequired === 1,
-          options: f.options
-        }))
+        externalFormFields.value = normalizeExternalFields(fields)
+      } catch (e) {
+        externalFormFields.value = []
+      }
+    } else if (refEntityId) {
+      try {
+        const res = await getEntityFields(refEntityId)
+        const fields = Array.isArray(res) ? res : Array.isArray(res.data) ? res.data : []
+        externalFormFields.value = normalizeExternalFields(fields)
       } catch (e) {
         externalFormFields.value = []
       }
@@ -70,6 +72,32 @@ watch(
   },
   { immediate: true }
 )
+
+function normalizeExternalFields(fields) {
+  const childRefFieldCode = subFormMeta.value.childRefFieldCode
+  return fields
+    .filter((f) => !f.isSystem && f.fieldCode !== childRefFieldCode)
+    .map((f) => ({
+      fieldKey: f.fieldCode || f.fieldId || f.id,
+      fieldCode: f.fieldCode || f.fieldId || f.id,
+      fieldName: f.fieldLabel || f.fieldName,
+      fieldType: mapFieldType(f.componentType || f.fieldType),
+      componentType: mapComponentType(f.componentType || f.fieldType),
+      isEditable: true,
+      isRequired: f.isRequired === 1 || f.isRequired === true,
+      required: f.isRequired === 1 || f.isRequired === true,
+      defaultValue: f.defaultValue,
+      options: f.options,
+      optionsJson: f.optionsJson,
+      componentProps: f.componentProps,
+      refEntityId: f.childEntityId || f.refEntityId,
+      childEntityId: f.childEntityId || f.refEntityId,
+      refFieldCode: f.childRefFieldCode || f.refFieldCode,
+      childRefFieldCode: f.childRefFieldCode || f.refFieldCode,
+      relationType: f.relationType,
+      relation: f.relation
+    }))
+}
 
 function mapFieldType(type) {
   const map = {
@@ -83,24 +111,33 @@ function mapFieldType(type) {
     radio: 'SELECT',
     checkbox: 'SELECT'
   }
+  if (['sub_form', 'sub_form_list'].includes((type || '').toLowerCase())) {
+    return 'SUB_FORM'
+  }
   return map[(type || '').toLowerCase()] || 'TEXT'
 }
 
+function mapComponentType(type) {
+  const lower = (type || '').toLowerCase()
+  if (['sub_form', 'sub_form_list'].includes(lower)) return 'sub_form'
+  if (['string'].includes(lower)) return 'string'
+  if (['text'].includes(lower)) return 'textarea'
+  if (['integer', 'long', 'decimal', 'double', 'number'].includes(lower)) return 'number'
+  if (['date', 'datetime'].includes(lower)) return lower
+  if (['select', 'multi_select', 'radio', 'checkbox'].includes(lower)) return lower
+  return lower || 'string'
+}
+
 function getSubFieldsFromField(field) {
-  if (field?.subFields?.length) return field.subFields
   if (field?.fields?.length) return field.fields
-  if (parsedComponentProps.value.subFormConfig?.fields?.length) {
-    return parsedComponentProps.value.subFormConfig.fields
-  }
-  if (parsedComponentProps.value.fields?.length) return parsedComponentProps.value.fields
-  if (parsedComponentProps.value.subFields?.length) return parsedComponentProps.value.subFields
   return []
 }
 
 const subFormConfig = computed(() => {
   const field = props.field
-  const isRef = subFormMeta.value.subFormType === 'ref' && externalFormFields.value.length > 0
-  const fields = isRef ? externalFormFields.value : getSubFieldsFromField(field)
+  const fields = externalFormFields.value.length > 0
+    ? externalFormFields.value
+    : getSubFieldsFromField(field)
 
   // 默认使用 form 布局（与设计器预览保持一致），优先读取字段配置
   let layout = 'form'
@@ -110,16 +147,19 @@ const subFormConfig = computed(() => {
     layout = parsedComponentProps.value.subFormConfig.layout
   }
 
-  let repeatable = false
+  let repeatable = subFormMeta.value.relationType !== 'ONE_TO_ONE'
   if (field?.repeatable != null) {
     repeatable = field.repeatable
   } else if (parsedComponentProps.value.subFormConfig?.repeatable != null) {
     repeatable = parsedComponentProps.value.subFormConfig.repeatable
   }
+  if (subFormMeta.value.relationType === 'ONE_TO_ONE') {
+    repeatable = false
+  }
 
   return {
     label: field?.fieldName || '明细',
-    fieldKey: field?.fieldKey || 'detailList',
+    fieldKey: field?.fieldCode || field?.fieldKey || 'detailList',
     required: field?.required || false,
     minRows: field?.minRows || 0,
     maxRows: field?.maxRows || 100,
@@ -127,7 +167,9 @@ const subFormConfig = computed(() => {
     showSummary: field?.showSummary || false,
     summaryFields: field?.summaryFields || [],
     layout,
-    repeatable
+    repeatable,
+    relationType: subFormMeta.value.relationType,
+    childRefFieldCode: subFormMeta.value.childRefFieldCode
   }
 })
 </script>

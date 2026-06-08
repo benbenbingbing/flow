@@ -2,6 +2,7 @@ package com.workflow.runner;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "workflow.data-fix.dept-id", name = "enabled", havingValue = "true")
 @Order(100)
 @RequiredArgsConstructor
 public class DeptIdDataFixRunner implements CommandLineRunner {

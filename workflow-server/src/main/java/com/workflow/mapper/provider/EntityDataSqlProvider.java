@@ -3,6 +3,7 @@ package com.workflow.mapper.provider;
 import org.apache.ibatis.jdbc.SQL;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * 实体数据动态 SQL 提供者
@@ -10,11 +11,13 @@ import java.util.Map;
  */
 public class EntityDataSqlProvider {
 
+    private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
+
     /**
      * 根据 ID 查询
      */
     public String selectById(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         
         return new SQL() {{
             SELECT("*");
@@ -28,7 +31,7 @@ public class EntityDataSqlProvider {
      * 根据流程实例ID查询
      */
     public String selectByProcessInstanceId(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         
         return new SQL() {{
             SELECT("*");
@@ -42,7 +45,7 @@ public class EntityDataSqlProvider {
      * 查询列表（支持排序）
      */
     public String selectList(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         
         SQL sql = new SQL() {{
             SELECT("*");
@@ -60,7 +63,7 @@ public class EntityDataSqlProvider {
      * 条件查询（支持 LIKE 模糊查询和 BETWEEN 范围查询）
      */
     public String selectByCondition(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         @SuppressWarnings("unchecked")
         Map<String, Object> condition = (Map<String, Object>) params.get("condition");
 
@@ -78,7 +81,7 @@ public class EntityDataSqlProvider {
      * 插入数据（动态字段）
      */
     public String insert(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) params.get("data");
         
@@ -88,7 +91,7 @@ public class EntityDataSqlProvider {
         // 添加所有非空字段（驼峰命名转换为下划线命名）
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             if (entry.getValue() != null) {
-                String columnName = camelToUnderscore(entry.getKey());
+                String columnName = columnName(entry.getKey());
                 sql.VALUES(columnName, "#{data." + entry.getKey() + "}");
             }
         }
@@ -100,7 +103,7 @@ public class EntityDataSqlProvider {
      * 更新数据（动态字段）
      */
     public String update(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) params.get("data");
         
@@ -111,7 +114,7 @@ public class EntityDataSqlProvider {
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             String key = entry.getKey();
             if (!"id".equals(key) && entry.getValue() != null) {
-                String columnName = camelToUnderscore(key);
+                String columnName = columnName(key);
                 sql.SET(columnName + " = #{data." + key + "}");
             }
         }
@@ -122,10 +125,26 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 更新当前任务信息，允许显式置空任务字段
+     */
+    public String updateCurrentTask(Map<String, Object> params) {
+        String tableName = tableName(params);
+
+        return new SQL() {{
+            UPDATE(tableName);
+            SET("current_task_id = #{currentTaskId}");
+            SET("current_task_name = #{currentTaskName}");
+            SET("current_task_assignee = #{currentTaskAssignee}");
+            SET("updated_at = NOW()");
+            WHERE("id = #{id}");
+        }}.toString();
+    }
+
+    /**
      * 逻辑删除
      */
     public String deleteById(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         
         return new SQL() {{
             UPDATE(tableName);
@@ -139,7 +158,7 @@ public class EntityDataSqlProvider {
      * 物理删除
      */
     public String physicalDeleteById(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         
         return new SQL() {{
             DELETE_FROM(tableName);
@@ -151,7 +170,7 @@ public class EntityDataSqlProvider {
      * 查询列表（带数据权限过滤）
      */
     public String selectListWithPermission(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         String permissionSql = (String) params.get("permissionSql");
 
         StringBuilder sql = new StringBuilder();
@@ -168,7 +187,7 @@ public class EntityDataSqlProvider {
      * 条件查询（带数据权限过滤）
      */
     public String selectByConditionWithPermission(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
         @SuppressWarnings("unchecked")
         Map<String, Object> condition = (Map<String, Object>) params.get("condition");
         String permissionSql = (String) params.get("permissionSql");
@@ -193,13 +212,29 @@ public class EntityDataSqlProvider {
      * 统计查询
      */
     public String count(Map<String, Object> params) {
-        String tableName = (String) params.get("tableName");
+        String tableName = tableName(params);
 
         return new SQL() {{
             SELECT("COUNT(*)");
             FROM(tableName);
             WHERE("deleted = 0");
         }}.toString();
+    }
+
+    /**
+     * 统计查询（带数据权限过滤）
+     */
+    public String countWithPermission(Map<String, Object> params) {
+        String tableName = tableName(params);
+        String permissionSql = (String) params.get("permissionSql");
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT COUNT(*) FROM ").append(tableName);
+        sql.append(" WHERE deleted = 0");
+        if (permissionSql != null && !permissionSql.isEmpty()) {
+            sql.append(" AND (").append(permissionSql).append(")");
+        }
+        return sql.toString();
     }
 
     // ============ 私有辅助方法 ============
@@ -233,6 +268,7 @@ public class EntityDataSqlProvider {
                 endMap.put(key.substring(0, key.length() - 4), value);
             } else if (key.endsWith("_op")) {
                 String fieldKey = key.substring(0, key.length() - 3);
+                columnName(fieldKey);
                 opMap.put(fieldKey, ((String) value).toUpperCase());
             } else {
                 normalConditions.put(key, value);
@@ -243,20 +279,20 @@ public class EntityDataSqlProvider {
         java.util.Set<String> betweenKeys = new java.util.HashSet<>(startMap.keySet());
         betweenKeys.retainAll(endMap.keySet());
         for (String fieldKey : betweenKeys) {
-            String columnName = camelToUnderscore(fieldKey);
+            String columnName = columnName(fieldKey);
             sql.append(" AND ").append(columnName).append(" >= #{condition.").append(fieldKey).append("_start} AND ").append(columnName).append(" <= #{condition.").append(fieldKey).append("_end}");
         }
         // 只有 start 没有 end
         for (Map.Entry<String, Object> entry : startMap.entrySet()) {
             if (!endMap.containsKey(entry.getKey())) {
-                String columnName = camelToUnderscore(entry.getKey());
+                String columnName = columnName(entry.getKey());
                 sql.append(" AND ").append(columnName).append(" >= #{condition.").append(entry.getKey()).append("_start}");
             }
         }
         // 只有 end 没有 start
         for (Map.Entry<String, Object> entry : endMap.entrySet()) {
             if (!startMap.containsKey(entry.getKey())) {
-                String columnName = camelToUnderscore(entry.getKey());
+                String columnName = columnName(entry.getKey());
                 sql.append(" AND ").append(columnName).append(" <= #{condition.").append(entry.getKey()).append("_end}");
             }
         }
@@ -264,7 +300,7 @@ public class EntityDataSqlProvider {
         // 处理普通条件（根据查询方式生成对应 SQL）
         for (Map.Entry<String, Object> entry : normalConditions.entrySet()) {
             String fieldKey = entry.getKey();
-            String columnName = camelToUnderscore(fieldKey);
+            String columnName = columnName(fieldKey);
             Object value = entry.getValue();
             String op = opMap.getOrDefault(fieldKey, "");
 
@@ -282,6 +318,21 @@ public class EntityDataSqlProvider {
                 sql.append(" AND ").append(columnName).append(" = #{condition.").append(fieldKey).append("}");
             }
         }
+    }
+
+    private String tableName(Map<String, Object> params) {
+        return requireIdentifier((String) params.get("tableName"), "表名");
+    }
+
+    private String columnName(String fieldKey) {
+        return requireIdentifier(camelToUnderscore(fieldKey), "字段名");
+    }
+
+    private String requireIdentifier(String value, String label) {
+        if (value == null || !SQL_IDENTIFIER.matcher(value).matches()) {
+            throw new IllegalArgumentException(label + "不合法");
+        }
+        return value;
     }
 
     /**

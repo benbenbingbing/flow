@@ -8,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * 文件上传控制器
- * 支持多种存储策略（本地/MinIO等）
+ * 当前使用本地文件存储策略。
  */
 @Slf4j
 @RestController

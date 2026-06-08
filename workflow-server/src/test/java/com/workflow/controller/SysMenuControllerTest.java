@@ -80,6 +80,18 @@ class SysMenuControllerTest {
     }
 
     @Test
+    @DisplayName("测试查询运行态侧栏菜单树接口")
+    void testSidebarTree() throws Exception {
+        when(menuService.getSidebarMenuTree()).thenReturn(Collections.singletonList(testMenu));
+
+        mockMvc.perform(get("/api/system/menu/sidebar-tree"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data[0].menuName").value("测试菜单"));
+    }
+
+    @Test
     @DisplayName("测试根据ID查询菜单接口-成功")
     void testGetById_Success() throws Exception {
         when(menuService.getById("test-id-1")).thenReturn(testMenu);

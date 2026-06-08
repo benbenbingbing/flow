@@ -26,14 +26,21 @@ export function useFormField(props, emit) {
       const val = props.modelValue
       const type = renderType.value
 
+      if (['number', 'integer', 'long', 'decimal', 'double'].includes(type) && val === '') {
+        return null
+      }
+
       // 多选类字段强制数组化
       if ((type === 'checkbox' || type === 'select_multiple') && !Array.isArray(val)) {
         return val != null ? [val] : []
       }
 
-      // 子表单强制数组化
+      // 子表单按关系类型处理
       if (type === 'sub_form' && !Array.isArray(val)) {
-        return []
+        if (props.field?.relationType === 'ONE_TO_ONE' || props.field?.relation?.type === 'ONE_TO_ONE') {
+          return val && typeof val === 'object' ? val : null
+        }
+        return val && typeof val === 'object' ? [val] : []
       }
 
       return val

@@ -2,12 +2,16 @@ package com.workflow.common;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 
 /**
@@ -25,11 +29,13 @@ public class JwtUtil {
     
     private static String STATIC_SECRET;
     private static Long STATIC_EXPIRATION;
+    private static SecretKey STATIC_KEY;
     
     @PostConstruct
     public void init() {
         STATIC_SECRET = secret;
         STATIC_EXPIRATION = expiration;
+        STATIC_KEY = buildSigningKey(secret);
     }
     
     /**
@@ -40,11 +46,11 @@ public class JwtUtil {
         Date expiryDate = new Date(now.getTime() + STATIC_EXPIRATION);
         
         return Jwts.builder()
-                .setSubject(userId)
+                .subject(userId)
                 .claim("username", username)
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(SignatureAlgorithm.HS512, STATIC_SECRET)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(STATIC_KEY, Jwts.SIG.HS512)
                 .compact();
     }
     
@@ -70,9 +76,10 @@ public class JwtUtil {
     public static Claims parseToken(String token) {
         try {
             return Jwts.parser()
-                    .setSigningKey(STATIC_SECRET)
-                    .parseClaimsJws(token)
-                    .getBody();
+                    .verifyWith(STATIC_KEY)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
         } catch (Exception e) {
             log.warn("JWT解析失败: {}", e.getMessage());
             return null;
@@ -88,5 +95,15 @@ public class JwtUtil {
             return false;
         }
         return !claims.getExpiration().before(new Date());
+    }
+
+    private static SecretKey buildSigningKey(String secret) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-512")
+                    .digest(secret.getBytes(StandardCharsets.UTF_8));
+            return Keys.hmacShaKeyFor(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("JWT签名初始化失败", e);
+        }
     }
 }

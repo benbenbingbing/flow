@@ -110,6 +110,13 @@ export const entityDataApi = {
   },
 
   /**
+   * 获取实体数据详情
+   */
+  getDetail(entityCode, id) {
+    return request.get(`/entity-data/entity/${entityCode}/detail/${id}`)
+  },
+
+  /**
    * 保存数据
    * @param data 数据对象
    * @param startProcess 是否同时发起流程
@@ -128,7 +135,7 @@ export const entityDataApi = {
   /**
    * 删除数据
    */
-  delete(id) {
-    return request.delete(`/entity-data/${id}`)
+  delete(entityCode, id) {
+    return request.delete(`/entity-data/entity/${entityCode}/detail/${id}`)
   }
 }
