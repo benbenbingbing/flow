@@ -1,12 +1,5 @@
 <template>
   <div class="entity-data-list">
-    <div class="page-header">
-      <h2>{{ entityName || '数据列表' }}</h2>
-      <el-button type="primary" @click="handleCreate" v-if="entityDefinition.id">
-        <el-icon><Plus /></el-icon>新增数据
-      </el-button>
-    </div>
-    
     <!-- 加载中 -->
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
@@ -87,6 +80,11 @@
 
       <!-- 数据列表 -->
       <el-card>
+        <div class="table-toolbar">
+          <el-button type="primary" @click="handleCreate" v-if="entityDefinition.id">
+            <el-icon><Plus /></el-icon>新增数据
+          </el-button>
+        </div>
         <el-table :data="dataList" v-loading="tableLoading" stripe>
           <el-table-column type="index" width="50" />
           <!-- 使用列表配置时：完全动态列 -->
@@ -450,6 +448,8 @@ import { entityApi, entityDataApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { useUserStore } from '@/stores/user'
 import { completeTask, getProcessHistory } from '@/api/processTask'
+import { getEntityStatusList } from '@/api/entityStatus'
+import { executeFormInitializer } from '@/utils/formInitializer'
 import request from '@/utils/request'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
@@ -797,6 +797,25 @@ const parseOptions = (optionsJson: string) => {
   return parseJsonOptions(optionsJson)
 }
 
+// 实体状态码 -> 状态名称映射
+const entityStatusMap = ref<Record<string, string>>({})
+
+async function loadEntityStatusMap() {
+  if (!entityCode.value) return
+  try {
+    const list = await getEntityStatusList(entityCode.value)
+    const map: Record<string, string> = {}
+    ;(list || []).forEach((s: any) => {
+      if (s.statusCode) {
+        map[s.statusCode] = s.statusName || s.statusCode
+      }
+    })
+    entityStatusMap.value = map
+  } catch (e) {
+    entityStatusMap.value = {}
+  }
+}
+
 // 获取状态样式
 const getStatusType = (status: string) => {
   const map: Record<string, string> = {
@@ -804,21 +823,16 @@ const getStatusType = (status: string) => {
     'PENDING': 'warning',
     'APPROVED': 'success',
     'REJECTED': 'danger',
+    'TERMINATED': 'danger',
     'COMPLETED': 'success'
   }
   return map[status] || ''
 }
 
-// 获取状态文本
+// 获取状态文本（优先读取实体状态配置）
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    'DRAFT': '草稿',
-    'PENDING': '审批中',
-    'APPROVED': '已通过',
-    'REJECTED': '已驳回',
-    'COMPLETED': '已完成'
-  }
-  return map[status] || status
+  if (!status) return ''
+  return entityStatusMap.value[status] || status
 }
 
 // 格式化日期
@@ -848,7 +862,10 @@ const loadEntityDefinition = async () => {
     
     // 加载默认表单（用于自定义表单组件）
     await loadDefaultForm()
-    
+
+    // 加载实体状态映射
+    await loadEntityStatusMap()
+
     // 初始化查询表单
     queryFields.value.forEach((field: any) => {
       queryForm[field.fieldCode] = ''
@@ -992,9 +1009,29 @@ const resetForm = () => {
 }
 
 // 新增
-const handleCreate = () => {
+const handleCreate = async () => {
   resetForm()
   dialogTitle.value = '新增数据'
+
+  // 执行表单初始化配置
+  if (defaultForm.value?.initConfig) {
+    try {
+      const initData = await executeFormInitializer(defaultForm.value.initConfig, {
+        entityCode: entityCode.value,
+        entityDefinition: entityDefinition.value,
+        routeQuery: route.query,
+        userStore: userStore
+      })
+      if (initData && typeof initData === 'object') {
+        Object.entries(initData).forEach(([key, value]) => {
+          formData.data[key] = value
+        })
+      }
+    } catch (e) {
+      console.warn('表单初始化失败:', e)
+    }
+  }
+
   dialogVisible.value = true
   nextTick(() => {
     updateLinkageState()
@@ -1378,25 +1415,18 @@ watch(() => entityCode.value, () => {
 .entity-data-list {
   padding: 20px;
   
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 500;
-    }
-  }
-  
   .loading-container {
     padding: 20px;
   }
   
   .search-card {
     margin-bottom: 20px;
+  }
+  
+  .table-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 15px;
   }
   
   .pagination-container {

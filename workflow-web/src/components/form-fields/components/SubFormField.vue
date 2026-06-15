@@ -14,7 +14,7 @@
 import { computed, ref, watch } from 'vue'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
 import { useFormField } from '../composables/useFormField.js'
-import { getEntityFields, getFormFields } from '@/api/entityForm'
+import { getEntityFields, getFormFields, getFormById } from '@/api/entityForm'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -46,15 +46,22 @@ const subFormMeta = computed(() => {
 
 // 外部表单字段（子表单引用外部表单时使用）
 const externalFormFields = ref([])
+const refFormLayoutType = ref('vertical')
 
 watch(
   () => [subFormMeta.value.refFormId, subFormMeta.value.refEntityId],
   async ([formId, refEntityId]) => {
+    refFormLayoutType.value = 'vertical'
     if (formId) {
       try {
-        const res = await getFormFields(formId)
-        const fields = Array.isArray(res) ? res : Array.isArray(res.data) ? res.data : []
+        const [fieldsRes, formRes] = await Promise.all([
+          getFormFields(formId),
+          getFormById(formId).catch(() => null)
+        ])
+        const fields = Array.isArray(fieldsRes) ? fieldsRes : Array.isArray(fieldsRes.data) ? fieldsRes.data : []
         externalFormFields.value = normalizeExternalFields(fields)
+        const layout = formRes?.data?.layoutType || formRes?.layoutType
+        if (layout) refFormLayoutType.value = layout
       } catch (e) {
         externalFormFields.value = []
       }
@@ -90,6 +97,7 @@ function normalizeExternalFields(fields) {
       options: f.options,
       optionsJson: f.optionsJson,
       componentProps: f.componentProps,
+      gridSpan: f.gridSpan || f.grid_span || 24,
       refEntityId: f.childEntityId || f.refEntityId,
       childEntityId: f.childEntityId || f.refEntityId,
       refFieldCode: f.childRefFieldCode || f.refFieldCode,
@@ -167,6 +175,7 @@ const subFormConfig = computed(() => {
     showSummary: field?.showSummary || false,
     summaryFields: field?.summaryFields || [],
     layout,
+    layoutType: refFormLayoutType.value,
     repeatable,
     relationType: subFormMeta.value.relationType,
     childRefFieldCode: subFormMeta.value.childRefFieldCode

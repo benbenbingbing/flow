@@ -160,12 +160,12 @@ public class EntityFormField {
     /**
      * 创建时间
      */
-    @com.baomidou.mybatisplus.annotation.TableField("created_time")
+    @com.baomidou.mybatisplus.annotation.TableField("create_time")
     private LocalDateTime createTime;
 
     /**
      * 更新时间
      */
-    @com.baomidou.mybatisplus.annotation.TableField("updated_time")
+    @com.baomidou.mybatisplus.annotation.TableField("update_time")
     private LocalDateTime updateTime;
 }

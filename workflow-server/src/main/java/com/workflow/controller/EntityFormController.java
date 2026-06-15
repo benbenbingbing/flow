@@ -5,6 +5,7 @@ import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import com.workflow.service.EntityFormService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -123,5 +124,19 @@ public class EntityFormController {
     public Result<Void> setDefaultForm(@PathVariable String id) {
         formService.setDefaultForm(id);
         return Result.success();
+    }
+    
+    /**
+     * 仅更新表单初始化配置
+     */
+    @PutMapping("/{id}/init-config")
+    public Result<Void> updateInitConfig(@PathVariable String id, @RequestBody InitConfigRequest request) {
+        formService.updateInitConfig(id, request.getInitConfig());
+        return Result.success();
+    }
+    
+    @Data
+    public static class InitConfigRequest {
+        private String initConfig;
     }
 }

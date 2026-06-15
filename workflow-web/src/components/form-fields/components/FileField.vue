@@ -176,18 +176,28 @@ const isFileLikeValue = computed(() => {
   if (val == null) return false
   if (typeof val === 'object') {
     if (Array.isArray(val)) {
-      return val.some(item => typeof item === 'string' && item.startsWith('/'))
+      return val.some(item => isFileLikeItem(item))
     }
     return Object.values(val).some(v => {
       if (Array.isArray(v)) {
-        return v.some(item => typeof item === 'string' && item.startsWith('/'))
+        return v.some(item => isFileLikeItem(item))
       }
-      return typeof v === 'string' && v.startsWith('/')
+      return isFileLikeItem(v)
     })
   }
   if (typeof val === 'string' && val.startsWith('/')) return true
   return false
 })
+
+function isFileLikeItem(item) {
+  if (item == null) return false
+  if (typeof item === 'string') return item.startsWith('/')
+  if (typeof item === 'object') {
+    const url = item.url || item.path || item.fileUrl || ''
+    return typeof url === 'string' && url.startsWith('/')
+  }
+  return false
+}
 
 function resolveUrl(itemOrUrl) {
   if (!itemOrUrl) return ''

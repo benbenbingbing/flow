@@ -112,7 +112,7 @@ public class ProcessEndListener implements FlowableEventListener {
             log.warn("获取实体[{}]状态失败: {}", entityCode, e.getMessage());
         }
         // 兜底默认值
-        return "TERMINATED".equals(category) ? "REJECTED" : "APPROVED";
+        return "TERMINATED".equals(category) ? "TERMINATED" : "APPROVED";
     }
 
     /**

@@ -50,6 +50,17 @@
     </el-aside>
     <el-container>
       <el-header class="header">
+        <div class="header-left">
+          <el-breadcrumb separator="/" class="breadcrumb" v-if="breadcrumb.length > 0">
+            <el-breadcrumb-item
+              v-for="item in breadcrumb"
+              :key="item.id"
+              :to="item.path ? { path: item.path } : undefined"
+            >
+              {{ item.menuName }}
+            </el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
         <div class="header-right">
           <el-dropdown @command="handleCommand">
             <span class="user-info">
@@ -78,8 +89,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document, Notebook } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -87,12 +98,37 @@ import { logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
 // 菜单树
 const menuTree = ref([])
+
+// 根据当前路由生成面包屑
+const breadcrumb = computed(() => {
+  const target = route.path
+  if (!target || !menuTree.value || menuTree.value.length === 0) {
+    return []
+  }
+
+  const findChain = (menus, parents = []) => {
+    for (const m of menus) {
+      const chain = [...parents, m]
+      if (m.path && m.path === target) {
+        return chain
+      }
+      if (m.children && m.children.length > 0) {
+        const res = findChain(m.children, chain)
+        if (res) return res
+      }
+    }
+    return null
+  }
+
+  return findChain(menuTree.value) || []
+})
 
 // 图标映射（将菜单配置中的图标名映射到 Element Plus 图标组件）
 const iconMap = {
@@ -217,7 +253,17 @@ async function handleCommand(command) {
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb {
+  margin-left: 20px;
 }
 
 .header-right {

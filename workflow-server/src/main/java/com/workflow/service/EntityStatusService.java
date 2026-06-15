@@ -43,12 +43,10 @@ public class EntityStatusService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveStatusList(String entityCode, List<EntityStatus> statuses) {
-        // 先物理删除旧的状态（避免主键冲突）
-        entityStatusMapper.delete(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EntityStatus>()
-                .eq(EntityStatus::getEntityCode, entityCode)
-        );
-        
+        // 先物理删除旧的状态（避免主键冲突；全局逻辑删除配置会使 BaseMapper.delete 变成软删，这里必须物理删除）
+        entityStatusMapper.physicalDeleteByEntityCode(entityCode);
+
+
         // 插入新的状态
         if (statuses != null) {
             for (int i = 0; i < statuses.size(); i++) {

@@ -360,10 +360,23 @@ public class EntityRelationRuntimeService {
         if (childDto.getData() != null) {
             data.putAll(childDto.getData());
         }
-        if (childDto.getId() != null) {
-            data.put("id", childDto.getId());
-        }
+        // 把常用系统字段也合并到子表单数据，确保表单字段（如名称、编码等）能正确回显
+        putIfPresent(data, "id", childDto.getId());
+        putIfPresent(data, "name", childDto.getName());
+        putIfPresent(data, "code", childDto.getCode());
+        putIfPresent(data, "title", childDto.getTitle());
+        putIfPresent(data, "dataNo", childDto.getDataNo());
+        putIfPresent(data, "status", childDto.getStatus());
+        putIfPresent(data, "deptId", childDto.getDeptId());
+        putIfPresent(data, "submitterId", childDto.getSubmitterId());
+        putIfPresent(data, "submitterName", childDto.getSubmitterName());
         return data;
+    }
+
+    private void putIfPresent(Map<String, Object> map, String key, Object value) {
+        if (value != null) {
+            map.put(key, value);
+        }
     }
 
     private void normalizeJsonValues(Map<String, Object> data) {

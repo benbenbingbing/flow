@@ -421,7 +421,8 @@ const form = ref({
   formName: '',
   formKey: '',
   layoutType: 'vertical',
-  status: 1
+  status: 1,
+  initConfig: null
 })
 
 // 当前选中字段的事件配置值

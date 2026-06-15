@@ -71,6 +71,12 @@ public class EntityForm {
     private String customComponent;
 
     /**
+     * 表单初始化配置（JSON）
+     */
+    @TableField("init_config")
+    private String initConfig;
+
+    /**
      * 删除标志
      */
     @TableLogic

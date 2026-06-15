@@ -779,7 +779,7 @@ const handleStatusConfig = async (row) => {
         { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '新建数据' },
         { statusCategory: 'PROCESSING', statusCode: 'PENDING', statusName: '审批中', description: '审批进行中' },
         { statusCategory: 'COMPLETED', statusCode: 'APPROVED', statusName: '已通过', description: '审批已通过' },
-        { statusCategory: 'TERMINATED', statusCode: 'REJECTED', statusName: '已驳回', description: '审批已驳回' }
+        { statusCategory: 'TERMINATED', statusCode: 'TERMINATED', statusName: '已终止', description: '流程已终止' }
       ]
     }
     

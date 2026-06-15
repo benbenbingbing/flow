@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityForm;
@@ -172,6 +173,23 @@ public class EntityFormService {
         // 逻辑删除表单
         formMapper.deleteById(id);
         log.info("删除实体表单：{}", form.getFormName());
+    }
+    
+    /**
+     * 仅更新表单初始化配置
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateInitConfig(String id, String initConfig) {
+        EntityForm form = formMapper.selectById(id);
+        if (form == null) {
+            throw new RuntimeException("表单不存在");
+        }
+        UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", id)
+               .set("init_config", initConfig)
+               .set("update_time", LocalDateTime.now());
+        formMapper.update(null, wrapper);
+        log.info("更新表单初始化配置：{}", form.getFormName());
     }
     
     /**

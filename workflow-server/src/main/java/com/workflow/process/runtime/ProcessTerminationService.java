@@ -124,6 +124,6 @@ public class ProcessTerminationService {
 
     private String getTerminatedStatus(String entityCode) {
         List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "TERMINATED");
-        return statuses != null && !statuses.isEmpty() ? statuses.get(0).getStatusCode() : "REJECTED";
+        return statuses != null && !statuses.isEmpty() ? statuses.get(0).getStatusCode() : "TERMINATED";
     }
 }

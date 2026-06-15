@@ -29,8 +29,8 @@
           </el-empty>
         </div>
         <div v-else class="relation-row one-to-one-form">
-          <div class="form-row-body">
-            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item">
+          <div class="form-row-body" :class="formLayoutClass">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
                 {{ field.fieldName }}
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
@@ -73,8 +73,8 @@
               <el-icon><Delete /></el-icon>删除
             </el-button>
           </div>
-          <div class="form-row-body">
-            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item">
+          <div class="form-row-body" :class="formLayoutClass">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
                 {{ field.fieldName }}
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
@@ -244,11 +244,19 @@ const validationErrors = computed(() => {
   return Object.values(fieldErrors.value).filter(e => e)
 })
 
+const formLayoutClass = computed(() => {
+  const type = props.config.layoutType
+  if (type && type !== 'vertical') return `form-layout-${type}`
+  return 'form-layout-vertical'
+})
+
 function outputValue() {
   return isOneToOne.value ? (rowData.value[0] || null) : rowData.value
 }
 
 function resetRowData(newVal) {
+  // 一对一模式下，如果传入的对象就是当前唯一行数据，避免重复深克隆导致循环更新
+  if (isOneToOne.value && rowData.value.length === 1 && rowData.value[0] === newVal) return
   if (newVal === rowData.value) return
   if (Array.isArray(newVal)) {
     rowData.value = JSON.parse(JSON.stringify(newVal))
@@ -322,6 +330,23 @@ function calculateSummary() {
 // 格式化数字
 function formatNumber(num, precision) {
   return num.toFixed(precision)
+}
+
+function getFieldItemStyle(field) {
+  if (props.config.layoutType === 'grid') {
+    const span = field.gridSpan || 24
+    return {
+      width: `${(span / 24) * 100}%`,
+      flex: `0 0 ${(span / 24) * 100}%`
+    }
+  }
+  if (props.config.layoutType === 'horizontal') {
+    return {
+      width: 'calc(50% - 10px)',
+      flex: '0 0 calc(50% - 10px)'
+    }
+  }
+  return {}
 }
 
 // 格式化单元格显示
@@ -578,6 +603,38 @@ defineExpose({
 
 .field-control {
   width: 100%;
+}
+
+.form-row-body.form-layout-horizontal,
+.form-row-body.form-layout-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 0;
+}
+
+.form-row-body.form-layout-horizontal .form-field-item,
+.form-row-body.form-layout-grid .form-field-item {
+  display: flex;
+  align-items: flex-start;
+  box-sizing: border-box;
+  padding: 0 8px;
+  margin-bottom: 8px;
+}
+
+.form-row-body.form-layout-horizontal .field-label,
+.form-row-body.form-layout-grid .field-label {
+  width: 120px;
+  text-align: right;
+  padding-right: 12px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  line-height: 32px;
+}
+
+.form-row-body.form-layout-horizontal .field-control,
+.form-row-body.form-layout-grid .field-control {
+  flex: 1;
+  min-width: 0;
 }
 
 :deep(.el-table__body-wrapper) {

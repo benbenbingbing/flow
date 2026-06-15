@@ -34,7 +34,7 @@ public class EntityRuntimeRecordMapper {
             "submitterName", "submitter_name",
             "deptId", "dept_id",
             "submitTime", "submit_time",
-            "createdTime", "createdTime", "updatedTime", "updated_time",
+            "createdTime", "create_time", "updatedTime", "update_time",
             "createdBy", "created_by", "updatedBy", "updated_by",
             "deleted", "entityCode", "entity_code", "startProcess", "start_process"));
 
@@ -43,7 +43,7 @@ public class EntityRuntimeRecordMapper {
             "process_instance_id", "process_start_time", "process_end_time",
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "dept_id", "submit_time",
-            "create_time", "updated_time", "created_by", "updated_by", "deleted"));
+            "create_time", "update_time", "created_by", "updated_by", "deleted"));
 
     private final ObjectMapper objectMapper;
 
@@ -66,7 +66,7 @@ public class EntityRuntimeRecordMapper {
         dto.setSubmitterName(getString(data, "submitter_name"));
         dto.setDeptId(getString(data, "dept_id"));
         dto.setSubmitTime(getDateTime(data, "submit_time"));
-        dto.setCreatedAt(getDateTime(data, "created_time"));
+        dto.setCreatedAt(getDateTime(data, "create_time"));
         dto.setUpdatedAt(getDateTime(data, "update_time"));
         dto.setCreatedBy(getString(data, "created_by"));
         dto.setUpdatedBy(getString(data, "updated_by"));

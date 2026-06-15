@@ -77,6 +77,11 @@ export const setDefaultForm = (formId: string) => {
   return request.put(`/entity-form/${formId}/default`)
 }
 
+// 仅更新表单初始化配置
+export const updateFormInitConfig = (id: string, initConfig: string | null) => {
+  return request.put(`/entity-form/${id}/init-config`, { initConfig })
+}
+
 // 复制表单
 export const copyForm = (id: string) => {
   return request.post(`/entity-form/${id}/copy`)

@@ -275,6 +275,7 @@ import dayjs from 'dayjs'
 import { Plus, Document } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { processTaskApi } from '@/api/processTask'
+import { getEntityStatusList } from '@/api/entityStatus'
 import { fileApi } from '@/api/file'
 import { getFormForNewData, getFormForViewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
@@ -674,14 +675,32 @@ const formatFieldValue = (field, value) => {
   return value
 }
 
+// 实体状态码 -> 状态名称映射
+const entityStatusMap = ref({})
+
+async function loadEntityStatusMap() {
+  try {
+    const list = await getEntityStatusList(entityCode)
+    const map = {}
+    ;(list || []).forEach((s) => {
+      if (s.statusCode) {
+        map[s.statusCode] = s.statusName || s.statusCode
+      }
+    })
+    entityStatusMap.value = map
+  } catch (e) {
+    entityStatusMap.value = {}
+  }
+}
+
 const getStatusType = (status) => {
-  const types = { 'DRAFT': 'info', 'PENDING': 'warning', 'APPROVED': 'success', 'REJECTED': 'danger', 'WITHDRAWN': 'info' }
+  const types = { 'DRAFT': 'info', 'PENDING': 'warning', 'APPROVED': 'success', 'REJECTED': 'danger', 'TERMINATED': 'danger', 'WITHDRAWN': 'info' }
   return types[status] || 'info'
 }
 
 const getStatusText = (status) => {
-  const texts = { 'DRAFT': '草稿', 'PENDING': '审批中', 'APPROVED': '已通过', 'REJECTED': '已驳回', 'WITHDRAWN': '已撤回' }
-  return texts[status] || status
+  if (!status) return ''
+  return entityStatusMap.value[status] || status
 }
 
 const formatDate = (date) => {
@@ -997,6 +1016,7 @@ const handleDelete = async (row) => {
 
 onMounted(() => {
   loadEntity()
+  loadEntityStatusMap()
   loadData()
 })
 </script>
