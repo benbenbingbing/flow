@@ -1413,20 +1413,20 @@ watch(() => entityCode.value, () => {
 
 <style scoped lang="scss">
 .entity-data-list {
-  padding: 20px;
+  padding: 10px;
   
   .loading-container {
-    padding: 20px;
+    padding: 10px;
   }
   
   .search-card {
-    margin-bottom: 20px;
+    margin-bottom: 10px;
   }
   
   .table-toolbar {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 15px;
+    margin-bottom: 8px;
   }
   
   .pagination-container {
