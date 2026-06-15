@@ -24,7 +24,7 @@ public interface EntityDefinitionMapper extends BaseMapper<EntityDefinition> {
     /**
      * 查询所有实体及其字段
      */
-    @Select("SELECT * FROM entity_definition ORDER BY created_at DESC")
+    @Select("SELECT * FROM entity_definition ORDER BY create_time DESC")
     List<EntityDefinition> findAllWithFields();
 
     /**

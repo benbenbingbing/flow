@@ -17,6 +17,6 @@ public interface FormConfigMapper extends BaseMapper<FormConfig> {
     /**
      * 根据节点配置ID查询表单列表
      */
-    @Select("SELECT * FROM form_config WHERE node_config_id = #{nodeConfigId} ORDER BY created_at ASC")
+    @Select("SELECT * FROM form_config WHERE node_config_id = #{nodeConfigId} ORDER BY create_time ASC")
     List<FormConfig> findByNodeConfigId(@Param("nodeConfigId") String nodeConfigId);
 }

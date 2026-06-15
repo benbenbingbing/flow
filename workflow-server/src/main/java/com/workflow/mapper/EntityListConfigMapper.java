@@ -17,7 +17,7 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
     /**
      * 根据实体ID查询列表配置
      */
-    @Select("SELECT * FROM entity_list_config WHERE entity_id = #{entityId} AND deleted = 0 ORDER BY created_at ASC")
+    @Select("SELECT * FROM entity_list_config WHERE entity_id = #{entityId} AND deleted = 0 ORDER BY create_time ASC")
     List<EntityListConfig> findByEntityId(@Param("entityId") String entityId);
 
     /**

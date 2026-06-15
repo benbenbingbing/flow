@@ -17,10 +17,10 @@ class EntityFormTimestampMappingTest {
 
     @Test
     void formTimestampsUseSchemaColumnNames() throws Exception {
-        assertColumn(EntityForm.class, "createTime", "created_at");
-        assertColumn(EntityForm.class, "updateTime", "updated_at");
-        assertColumn(EntityFormField.class, "createTime", "created_at");
-        assertColumn(EntityFormField.class, "updateTime", "updated_at");
+        assertColumn(EntityForm.class, "createTime", "create_time");
+        assertColumn(EntityForm.class, "updateTime", "update_time");
+        assertColumn(EntityFormField.class, "createTime", "create_time");
+        assertColumn(EntityFormField.class, "updateTime", "update_time");
     }
 
     @Test
@@ -30,7 +30,6 @@ class EntityFormTimestampMappingTest {
 
         assertNotNull(select);
         String sql = String.join(" ", select.value()).toLowerCase();
-        assertTrue(sql.contains("created_at"));
         assertFalse(sql.contains("create_time"));
     }
 

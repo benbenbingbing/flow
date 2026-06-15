@@ -158,7 +158,7 @@ const linkageState = ref({
   required: {},
   options: {}
 })
-const activeTabSubForm = ref('')
+const activeTabSubForm = ref('basic')
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field) {

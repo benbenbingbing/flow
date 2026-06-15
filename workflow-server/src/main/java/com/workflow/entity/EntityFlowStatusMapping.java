@@ -1,12 +1,12 @@
 package com.workflow.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
-
+import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
+import com.baomidou.mybatisplus.annotation.TableField;
 import java.time.LocalDateTime;
-
+import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 实体流程状态映射
  * 存储流程节点流转与实体数据状态的对应关系
@@ -86,10 +86,12 @@ public class EntityFlowStatusMapping {
     /**
      * 创建时间
      */
+        @TableField("create_time")
     private LocalDateTime createdAt;
     
     /**
      * 更新时间
      */
+        @TableField("update_time")
     private LocalDateTime updatedAt;
 }

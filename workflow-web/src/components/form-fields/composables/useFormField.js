@@ -36,8 +36,11 @@ export function useFormField(props, emit) {
       }
 
       // 子表单按关系类型处理
-      if (type === 'sub_form' && !Array.isArray(val)) {
-        if (props.field?.relationType === 'ONE_TO_ONE' || props.field?.relation?.type === 'ONE_TO_ONE') {
+      if ((type === 'sub_form' || type === 'sub_form_list') && !Array.isArray(val)) {
+        const isOneToOne = props.field?.relationType === 'ONE_TO_ONE'
+          || props.field?.relation?.type === 'ONE_TO_ONE'
+          || props.field?.componentType === 'sub_form'
+        if (isOneToOne) {
           return val && typeof val === 'object' ? val : null
         }
         return val && typeof val === 'object' ? [val] : []

@@ -223,8 +223,8 @@
     <!-- 审批/查看弹窗 -->
     <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="700px" destroy-on-close>
       <el-tabs v-model="activeDialogTab" type="border-card">
-        <!-- 无 tab 子表单时：保留审批 tab -->
-        <el-tab-pane v-if="!approvalHasTabSubForms" label="审批" name="approval">
+        <!-- 无 tab 子表单时：基本信息 tab -->
+        <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
           <!-- 实体数据表单 -->
           <div v-if="entityData" class="entity-form-section">
             <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
@@ -397,8 +397,8 @@
           />
         </el-tab-pane>
 
-        <!-- 流程图 -->
-        <el-tab-pane label="流程图" name="diagram">
+        <!-- 流程图（仅在有流程实例时显示）-->
+        <el-tab-pane v-if="currentTask?.processInstanceId" label="流程图" name="diagram">
           <div style="height: 400px;">
             <VueBpmnViewer
               v-if="bpmnXml && progressData"
@@ -411,8 +411,8 @@
           </div>
         </el-tab-pane>
 
-        <!-- 审批历史 -->
-        <el-tab-pane label="审批历史" name="history">
+        <!-- 审批历史（仅在有流程实例时显示） -->
+        <el-tab-pane v-if="currentTask?.processInstanceId" label="审批历史" name="history">
           <el-timeline v-if="processHistory.length > 0">
             <el-timeline-item
               v-for="(item, index) in processHistory"
@@ -723,27 +723,30 @@ async function loadRefEntityNames() {
   const sourceFields = listFields.value.length > 0 ? listFields.value : fields.value
   if (!sourceFields.length) return
 
-  const refFields = sourceFields.filter((f: any) => f.fieldType === 'REFERENCE' || f.fieldType === 'MULTI_REFERENCE')
+  const refFields = sourceFields.filter((f: any) =>
+    ['REFERENCE', 'MULTI_REFERENCE', 'DEPT', 'USER', 'ROLE', 'GROUP'].includes(f.fieldType)
+  )
   if (!refFields.length) return
-  
+
   // 按 entityType + refEntityId 分组收集 IDs
   const groupMap = new Map<string, Set<string>>()
-  
+
   for (const row of dataList.value) {
     for (const field of refFields) {
-      const val = row.data?.[field.fieldCode]
+      // 系统字段值可能在 row 顶层，自定义字段在 row.data 中
+      const val = row.data?.[field.fieldCode] ?? row[field.fieldCode]
       if (!val) continue
-      
-      const entityType = field.refEntityType || 'CUSTOM'
+
+      const entityType = field.refEntityType || field.fieldType || 'CUSTOM'
       const refEntityId = field.refEntityId || ''
       const groupKey = `${entityType}:${refEntityId}`
-      
+
       let idSet = groupMap.get(groupKey)
       if (!idSet) {
         idSet = new Set<string>()
         groupMap.set(groupKey, idSet)
       }
-      
+
       if (field.fieldType === 'MULTI_REFERENCE') {
         let ids = val
         if (typeof ids === 'string') {
@@ -757,7 +760,7 @@ async function loadRefEntityNames() {
       }
     }
   }
-  
+
   // 批量查询
   const promises = []
   for (const [groupKey, idSet] of groupMap) {
@@ -768,7 +771,7 @@ async function loadRefEntityNames() {
     if (refEntityId) {
       params.append('refEntityId', refEntityId)
     }
-    
+
     promises.push(
       fetch(`/api/entity-selector/${entityType}/batch?${params}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -785,7 +788,7 @@ async function loadRefEntityNames() {
         .catch(err => console.error('加载引用实体名称失败:', err))
     )
   }
-  
+
   await Promise.all(promises)
 }
 
@@ -1004,6 +1007,19 @@ const handleEdit = async (row: any) => {
   formData.id = detail.id
   formData.name = detail.name
   formData.data = { ...(detail.data || {}) }
+  // 将系统标准字段也合并到 data 中，确保表单字段（如数据编码、数据名称、部门、提交人等）能正确回显
+  if (detail.name != null) formData.data.name = detail.name
+  if (detail.code != null) formData.data.code = detail.code
+  if (detail.status != null) formData.data.status = detail.status
+  if (detail.dataNo != null) formData.data.dataNo = detail.dataNo
+  if (detail.title != null) formData.data.title = detail.title
+  if (detail.deptId != null) formData.data.deptId = detail.deptId
+  if (detail.submitterId != null) formData.data.submitterId = detail.submitterId
+  if (detail.submitterName != null) formData.data.submitterName = detail.submitterName
+  if (detail.processInstanceId != null) formData.data.processInstanceId = detail.processInstanceId
+  if (detail.currentTaskId != null) formData.data.currentTaskId = detail.currentTaskId
+  if (detail.currentTaskName != null) formData.data.currentTaskName = detail.currentTaskName
+  if (detail.currentTaskAssignee != null) formData.data.currentTaskAssignee = detail.currentTaskAssignee
   dialogTitle.value = '编辑数据'
   dialogVisible.value = true
   nextTick(() => {
@@ -1245,7 +1261,7 @@ const handleApprove = async (row: any) => {
 }
 
 // 打开查看弹窗（只读模式）
-const handleView = (row: any) => {
+const handleView = async (row: any) => {
   isViewMode.value = true
   currentTask.value = {
     processInstanceId: row.processInstanceId,
@@ -1253,7 +1269,41 @@ const handleView = (row: any) => {
   }
   activeDialogTab.value = 'approval'
   if (row.processInstanceId) {
-    loadProcessDetail(row.processInstanceId)
+    await loadProcessDetail(row.processInstanceId)
+  } else {
+    // 草稿状态无流程实例，直接加载实体详情展示
+    try {
+      const detail = await entityDataApi.getDetail(entityCode.value, row.id)
+      entityData.value = {
+        ...(detail.data || {}),
+        name: detail.name,
+        status: detail.status,
+        code: detail.code,
+        dataNo: detail.dataNo,
+        title: detail.title,
+        deptId: detail.deptId,
+        submitterId: detail.submitterId,
+        submitterName: detail.submitterName,
+        processInstanceId: detail.processInstanceId,
+        currentTaskId: detail.currentTaskId,
+        currentTaskName: detail.currentTaskName,
+        currentTaskAssignee: detail.currentTaskAssignee
+      }
+      // 使用默认表单配置渲染，让子表单等字段正常显示
+      if (defaultForm.value && defaultForm.value.fields && defaultForm.value.fields.length > 0) {
+        formConfig.value = defaultForm.value
+        formConfigs.value = [defaultForm.value]
+        const hasTabs = defaultForm.value.fields.some((f: any) => isTabSubForm(f))
+        activeDialogTab.value = hasTabs ? 'basic' : 'approval'
+      } else {
+        formConfig.value = null
+        formConfigs.value = []
+        activeDialogTab.value = 'approval'
+      }
+    } catch (e) {
+      console.error('加载数据详情失败:', e)
+      ElMessage.error('加载详情失败')
+    }
   }
   processDialogVisible.value = true
 }
@@ -1300,7 +1350,7 @@ const handleSubmit = async () => {
     }
 
     if (formData.id) {
-      await entityDataApi.update(entityCode.value, formData.id, data)
+      await entityDataApi.update(entityCode.value, formData.id, data, data.startProcess)
       ElMessage.success('更新成功')
     } else {
       await entityDataApi.save(data, data.startProcess)

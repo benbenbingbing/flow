@@ -62,7 +62,7 @@ public class EntityListConfig {
     /**
      * 创建时间
      */
-    @TableField("created_at")
+        @TableField("create_time")
     private LocalDateTime createdAt;
 
     /**
@@ -74,6 +74,6 @@ public class EntityListConfig {
     /**
      * 更新时间
      */
-    @TableField("updated_at")
+        @TableField("update_time")
     private LocalDateTime updatedAt;
 }

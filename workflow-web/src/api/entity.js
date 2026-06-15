@@ -128,8 +128,8 @@ export const entityDataApi = {
   /**
    * 更新数据
    */
-  update(entityCode, id, data) {
-    return request.put(`/entity-data/entity/${entityCode}/detail/${id}`, data)
+  update(entityCode, id, data, startProcess = false) {
+    return request.put(`/entity-data/entity/${entityCode}/detail/${id}`, { ...data, startProcess })
   },
 
   /**

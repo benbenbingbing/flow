@@ -1,12 +1,12 @@
 package com.workflow.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
-
+import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
+import com.baomidou.mybatisplus.annotation.TableField;
 import java.time.LocalDateTime;
-
+import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 流程动作配置
  * 用于顺序流（SequenceFlow）上配置的接口动作
@@ -76,11 +76,13 @@ public class FlowAction {
     /**
      * 创建时间
      */
+        @TableField("create_time")
     private LocalDateTime createdAt;
     
     /**
      * 更新时间
      */
+        @TableField("update_time")
     private LocalDateTime updatedAt;
     
     /**

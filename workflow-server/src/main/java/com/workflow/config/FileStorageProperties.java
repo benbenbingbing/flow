@@ -27,11 +27,11 @@ public class FileStorageProperties {
         /**
          * 上传文件保存路径
          */
-        private String path = "uploads";
+        private String path = "/Users/dawei/Documents/ddup/ai/flow/uploads";
 
         /**
          * 文件访问URL前缀
          */
-        private String accessUrl = "/uploads";
+        private String accessUrl = "/Users/dawei/Documents/ddup/ai/flow/uploads";
     }
 }

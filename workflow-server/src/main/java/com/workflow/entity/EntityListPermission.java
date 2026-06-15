@@ -48,11 +48,11 @@ public class EntityListPermission {
     private String createdBy;
 
     /** 创建时间 */
-    @TableField("created_at")
+        @TableField("create_time")
     private LocalDateTime createdAt;
 
     /** 更新时间 */
-    @TableField("updated_at")
+        @TableField("update_time")
     private LocalDateTime updatedAt;
 
     /** 是否删除（0否/1是） */

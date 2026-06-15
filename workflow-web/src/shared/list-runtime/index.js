@@ -41,20 +41,41 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
   const fieldCode = field?.fieldCode
   if (!fieldCode) return '-'
 
-  if (isSystemField(fieldCode)) {
-    return row?.[fieldCode] ?? '-'
+  // 获取字段原始值：自定义字段优先从 row.data 读取，系统字段从 row 顶层读取
+  let value
+  if (row?.data && fieldCode in row.data) {
+    value = row.data[fieldCode]
+  } else if (row && fieldCode in row) {
+    value = row[fieldCode]
   }
-
-  const value = row?.data?.[fieldCode]
   if (value === null || value === undefined) return '-'
 
   const fieldType = (field.fieldType || '').toUpperCase()
   const componentType = field.componentType || ''
 
-  if (['SUB_FORM', 'SUB_FORM_LIST'].includes(fieldType)) {
-    return Array.isArray(value) && value.length > 0 ? `${value.length} 行` : '-'
+  // 实体引用字段（含 DEPT/USER/ROLE/GROUP 等系统实体和自定义引用）
+  if (['REFERENCE', 'MULTI_REFERENCE', 'DEPT', 'USER', 'ROLE', 'GROUP'].includes(fieldType)) {
+    const entityType = field.refEntityType || field.fieldType || 'CUSTOM'
+    const refEntityId = field.refEntityId || ''
+    const groupKey = `${entityType}:${refEntityId}`
+
+    if (fieldType === 'MULTI_REFERENCE') {
+      let ids = value
+      if (typeof ids === 'string') {
+        try {
+          ids = JSON.parse(ids)
+        } catch {
+          ids = ids.split(',').filter(Boolean)
+        }
+      }
+      if (!Array.isArray(ids) || !ids.length) return value || '-'
+      return ids.map((id) => refNameMap[`${groupKey}:${id}`] || id).join(', ') || '-'
+    }
+
+    return refNameMap[`${groupKey}:${value}`] || value
   }
 
+  // 选项类字段
   if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(fieldType)) {
     const options = parseJsonOptions(field.optionsJson)
     const isMultiple = componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(fieldType)
@@ -66,23 +87,14 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
     return option?.label || value
   }
 
-  if (fieldType === 'REFERENCE') {
-    const groupKey = `${field.refEntityType || 'CUSTOM'}:${field.refEntityId || ''}`
-    return refNameMap[`${groupKey}:${value}`] || value
+  // 子表单
+  if (['SUB_FORM', 'SUB_FORM_LIST'].includes(fieldType)) {
+    return Array.isArray(value) && value.length > 0 ? `${value.length} 行` : '-'
   }
 
-  if (fieldType === 'MULTI_REFERENCE') {
-    const groupKey = `${field.refEntityType || 'CUSTOM'}:${field.refEntityId || ''}`
-    let ids = value
-    if (typeof ids === 'string') {
-      try {
-        ids = JSON.parse(ids)
-      } catch {
-        ids = ids.split(',').filter(Boolean)
-      }
-    }
-    if (!Array.isArray(ids) || !ids.length) return value || '-'
-    return ids.map((id) => refNameMap[`${groupKey}:${id}`] || id).join(', ') || '-'
+  // 普通系统字段兜底（无特殊转换的）
+  if (isSystemField(fieldCode)) {
+    return value ?? '-'
   }
 
   return value ?? '-'

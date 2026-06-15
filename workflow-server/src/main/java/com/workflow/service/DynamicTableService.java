@@ -255,10 +255,10 @@ public class DynamicTableService {
         sql.append("  `submitter_name` VARCHAR(100) DEFAULT NULL COMMENT '提交人姓名',\n");
         sql.append("  `submit_time` DATETIME DEFAULT NULL COMMENT '提交时间',\n");
         sql.append("  `dept_id` VARCHAR(64) DEFAULT NULL COMMENT '所属部门ID（数据权限用）',\n");
-        sql.append("  `created_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人',\n");
-        sql.append("  `updated_by` VARCHAR(64) DEFAULT NULL COMMENT '更新人',\n");
-        sql.append("  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',\n");
-        sql.append("  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',\n");
+        sql.append("  `create_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人',\n");
+        sql.append("  `update_by` VARCHAR(64) DEFAULT NULL COMMENT '更新人',\n");
+        sql.append("  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',\n");
+        sql.append("  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',\n");
         sql.append("  `deleted` TINYINT DEFAULT 0 COMMENT '是否删除（0否/1是）',\n");
         
         // 动态字段（跳过系统字段和子表单字段）
@@ -398,7 +398,7 @@ public class DynamicTableService {
         jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_status ON " + tableName + " (`status`)");
         jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_process ON " + tableName + " (`process_instance_id`)");
         jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_deleted ON " + tableName + " (`deleted`)");
-        jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_created ON " + tableName + " (`created_at`)");
+        jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_created ON " + tableName + " (`create_time`)");
         
         // 字段索引
         for (EntityField field : fields) {

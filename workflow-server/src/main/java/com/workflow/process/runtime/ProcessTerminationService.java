@@ -111,7 +111,7 @@ public class ProcessTerminationService {
             Map<String, Object> updateData = new HashMap<>();
             updateData.put("id", entityDataId);
             updateData.put("process_end_time", LocalDateTime.now());
-            updateData.put("updated_at", LocalDateTime.now());
+            updateData.put("update_time", LocalDateTime.now());
             updateData.put("status", getTerminatedStatus(entityCode));
             entityDataDynamicMapper.update(tableName, updateData);
             entityDataDynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);

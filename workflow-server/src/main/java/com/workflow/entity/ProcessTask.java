@@ -93,10 +93,8 @@ public class ProcessTask {
     /** 是否已处理超时 */
     private Boolean timeoutHandled;
     
-    @TableField("created_at")
     private LocalDateTime createTime;
     
-    @TableField("updated_at")
     private LocalDateTime updateTime;
     
     @TableLogic

@@ -18,7 +18,7 @@ public interface EntityFieldFileItemMapper extends BaseMapper<EntityFieldFileIte
     /**
      * 根据字段ID查询附件项列表
      */
-    @Select("SELECT * FROM entity_field_file_item WHERE field_id = #{fieldId} ORDER BY sort_order ASC, created_at ASC")
+    @Select("SELECT * FROM entity_field_file_item WHERE field_id = #{fieldId} ORDER BY sort_order ASC, create_time ASC")
     List<EntityFieldFileItem> findByFieldId(@Param("fieldId") String fieldId);
 
     /**

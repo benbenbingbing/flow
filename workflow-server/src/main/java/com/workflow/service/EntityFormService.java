@@ -181,7 +181,7 @@ public class EntityFormService {
     public void saveFormFields(String formId, List<EntityFormField> fields) {
         // 删除原有字段
         formFieldMapper.deleteByFormId(formId);
-        
+
         // 保存新字段
         if (fields != null && !fields.isEmpty()) {
             for (int i = 0; i < fields.size(); i++) {
@@ -190,6 +190,15 @@ public class EntityFormService {
                 field.setSortOrder(i);
                 field.setCreateTime(LocalDateTime.now());
                 field.setUpdateTime(LocalDateTime.now());
+
+                // 如果 fieldCode 为空，尝试从关联的实体字段补充
+                if (!StringUtils.hasText(field.getFieldCode()) && field.getFieldId() != null) {
+                    com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
+                    if (entityField != null && StringUtils.hasText(entityField.getFieldCode())) {
+                        field.setFieldCode(entityField.getFieldCode());
+                    }
+                }
+
                 formFieldMapper.insert(field);
             }
         }
@@ -250,7 +259,10 @@ public class EntityFormService {
         if (entityField == null) {
             return;
         }
-        field.setFieldCode(entityField.getFieldCode());
+        // 优先使用数据库已持久化的 fieldCode，避免关联实体字段变更后回退到 fieldId
+        if (!StringUtils.hasText(field.getFieldCode())) {
+            field.setFieldCode(entityField.getFieldCode());
+        }
         if (entityField.getFieldType() != null) {
             field.setFieldType(entityField.getFieldType().name());
         }

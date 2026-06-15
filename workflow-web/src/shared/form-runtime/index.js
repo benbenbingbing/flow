@@ -12,6 +12,7 @@ export const SYSTEM_FIELD_CODES = [
   'currentTaskAssignee',
   'submitterId',
   'submitterName',
+  'deptId',
   'submitTime',
   'createdAt',
   'updatedAt',

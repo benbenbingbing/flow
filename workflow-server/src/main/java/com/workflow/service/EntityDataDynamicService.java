@@ -161,10 +161,10 @@ public class EntityDataDynamicService {
             // ========== 新增数据 ==========
             String id = generateId();
             data.put("id", id);
-            data.put("created_by", currentUserId);
-            data.put("created_at", LocalDateTime.now());
-            data.put("updated_by", currentUserId);
-            data.put("updated_at", LocalDateTime.now());
+            data.put("create_by", currentUserId);
+            data.put("create_time", LocalDateTime.now());
+            data.put("update_by", currentUserId);
+            data.put("update_time", LocalDateTime.now());
             data.put("deleted", 0);
 
             // 设置提交人（新增时设置，之后不可修改）
@@ -211,8 +211,8 @@ public class EntityDataDynamicService {
         } else {
             // ========== 更新数据 ==========
             // 更新时不能修改提交人
-            data.put("updated_by", currentUserId);
-            data.put("updated_at", LocalDateTime.now());
+            data.put("update_by", currentUserId);
+            data.put("update_time", LocalDateTime.now());
             
             // 移除可能传入的提交人字段，防止被修改
             data.remove("submitter_id");
@@ -253,8 +253,8 @@ public class EntityDataDynamicService {
         // 构建更新数据：以 existingData 的列为基础（确保不更新不存在的列）
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("id", id);
-        updateData.put("updated_by", UserContext.getUserId());
-        updateData.put("updated_at", LocalDateTime.now());
+        updateData.put("update_by", UserContext.getUserId());
+        updateData.put("update_time", LocalDateTime.now());
 
         // 系统字段映射（前端 camelCase -> 数据库 snake_case）
         Map<String, String> standardFieldMap = new HashMap<>();
@@ -274,10 +274,21 @@ public class EntityDataDynamicService {
         standardFieldMap.put("deptId", "dept_id");
         standardFieldMap.put("submitTime", "submit_time");
 
-        // 1. 从 formData 直接提取标准字段
+        // 1. 从 formData 顶层或 formData.data 中提取标准字段
+        Object dataObj = parentFormData.get("data");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> customData = (dataObj instanceof Map) ? (Map<String, Object>) dataObj : null;
         standardFieldMap.forEach((frontendKey, dbKey) -> {
+            Object value = null;
+            boolean hasValue = false;
             if (parentFormData.containsKey(frontendKey)) {
-                Object value = parentFormData.get(frontendKey);
+                value = parentFormData.get(frontendKey);
+                hasValue = true;
+            } else if (customData != null && customData.containsKey(frontendKey)) {
+                value = customData.get(frontendKey);
+                hasValue = true;
+            }
+            if (hasValue) {
                 if (value instanceof String && ((String) value).isEmpty()) {
                     value = null;
                 }
@@ -303,6 +314,34 @@ public class EntityDataDynamicService {
         if (dto.getData() != null) {
             dto.getData().putAll(relationData);
         }
+
+        // 编辑时发起流程：如果请求要求发起流程且数据尚未绑定流程实例
+        Object startProcessObj = formData.get("startProcess");
+        boolean startProcess = Boolean.TRUE.equals(startProcessObj) || "true".equalsIgnoreCase(String.valueOf(startProcessObj));
+        if (startProcess && definition.getProcessDefinitionId() != null) {
+            Object existingProcessInstanceIdObj = existingData.get("process_instance_id");
+            String existingProcessInstanceId = existingProcessInstanceIdObj != null ? existingProcessInstanceIdObj.toString() : null;
+            if (existingProcessInstanceId == null || existingProcessInstanceId.isEmpty()) {
+                if (!Boolean.TRUE.equals(definition.getEnableProcess())) {
+                    throw new RuntimeException("该实体未启用流程，无法发起流程");
+                }
+                dto.setStartProcess(true);
+                dto.setEntityCode(entityCode);
+                Object submitterIdObj = existingData.get("submitter_id");
+                Object submitterNameObj = existingData.get("submitter_name");
+                dto.setSubmitterId(submitterIdObj != null ? submitterIdObj.toString() : null);
+                dto.setSubmitterName(submitterNameObj != null ? submitterNameObj.toString() : null);
+                dto.setProcessVariables(null);
+                workflowRuntimeService.startProcess(dto, definition);
+                // 重新加载最新数据返回
+                Map<String, Object> refreshedData = dynamicMapper.selectById(tableName, id);
+                dto = recordMapper.toDto(refreshedData, entityCode);
+                if (dto.getData() != null) {
+                    dto.getData().putAll(relationData);
+                }
+            }
+        }
+
         return dto;
     }
 
@@ -421,7 +460,7 @@ public class EntityDataDynamicService {
         SysUser user = getCurrentSysUser();
         if (user == null) {
             // 未登录用户，默认仅本人（实际上看不到任何数据，因为没有用户ID匹配）
-            return DataPermissionResult.withCondition("created_by = ''");
+            return DataPermissionResult.withCondition("create_by = ''");
         }
         return dataPermissionEngine.calculatePermission(entityCode, user);
     }

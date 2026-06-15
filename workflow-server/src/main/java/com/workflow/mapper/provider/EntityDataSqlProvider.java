@@ -54,7 +54,7 @@ public class EntityDataSqlProvider {
         }};
         
         // 添加排序
-        sql.ORDER_BY("created_at DESC");
+        sql.ORDER_BY("create_time DESC");
         
         return sql.toString();
     }
@@ -73,7 +73,7 @@ public class EntityDataSqlProvider {
 
         appendConditionSql(sql, condition);
 
-        sql.append(" ORDER BY created_at DESC");
+        sql.append(" ORDER BY create_time DESC");
         return sql.toString();
     }
 
@@ -135,7 +135,7 @@ public class EntityDataSqlProvider {
             SET("current_task_id = #{currentTaskId}");
             SET("current_task_name = #{currentTaskName}");
             SET("current_task_assignee = #{currentTaskAssignee}");
-            SET("updated_at = NOW()");
+            SET("update_time = NOW()");
             WHERE("id = #{id}");
         }}.toString();
     }
@@ -149,7 +149,7 @@ public class EntityDataSqlProvider {
         return new SQL() {{
             UPDATE(tableName);
             SET("deleted = 1");
-            SET("updated_at = NOW()");
+            SET("update_time = NOW()");
             WHERE("id = #{id}");
         }}.toString();
     }
@@ -179,7 +179,7 @@ public class EntityDataSqlProvider {
         if (permissionSql != null && !permissionSql.isEmpty()) {
             sql.append(" AND (").append(permissionSql).append(")");
         }
-        sql.append(" ORDER BY created_at DESC");
+        sql.append(" ORDER BY create_time DESC");
         return sql.toString();
     }
 
@@ -204,7 +204,7 @@ public class EntityDataSqlProvider {
         // 添加查询条件
         appendConditionSql(sql, condition);
 
-        sql.append(" ORDER BY created_at DESC");
+        sql.append(" ORDER BY create_time DESC");
         return sql.toString();
     }
 

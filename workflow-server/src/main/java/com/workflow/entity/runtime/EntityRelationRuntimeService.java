@@ -166,8 +166,8 @@ public class EntityRelationRuntimeService {
                 Map<String, Object> childRelationData = extractRelationData(row, childRelations);
                 Map<String, Object> childData = withoutRelationData(row, childRelations);
                 childData.put(relation.getChildRefFieldCode(), parentId);
-                childData.put("updated_by", UserContext.getUserId());
-                childData.put("updated_at", LocalDateTime.now());
+                childData.put("update_by", UserContext.getUserId());
+                childData.put("update_time", LocalDateTime.now());
                 childData.put("deleted", 0);
                 normalizeJsonValues(childData);
 
@@ -175,8 +175,8 @@ public class EntityRelationRuntimeService {
                 if (!StringUtils.hasText(childId)) {
                     childId = generateId();
                     childData.put("id", childId);
-                    childData.put("created_by", UserContext.getUserId());
-                    childData.put("created_at", LocalDateTime.now());
+                    childData.put("create_by", UserContext.getUserId());
+                    childData.put("create_time", LocalDateTime.now());
                     dynamicMapper.insert(childTableName, childData);
                 } else {
                     dynamicMapper.update(childTableName, childData);

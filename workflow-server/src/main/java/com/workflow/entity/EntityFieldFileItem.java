@@ -1,12 +1,12 @@
 package com.workflow.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
-
+import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
+import com.baomidou.mybatisplus.annotation.TableField;
 import java.time.LocalDateTime;
-
+import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 实体字段附件项配置
  * 用于文件类型字段配置多个独立的附件要求
@@ -51,10 +51,12 @@ public class EntityFieldFileItem {
     /**
      * 创建时间
      */
+        @TableField("create_time")
     private LocalDateTime createdAt;
 
     /**
      * 更新时间
      */
+        @TableField("update_time")
     private LocalDateTime updatedAt;
 }

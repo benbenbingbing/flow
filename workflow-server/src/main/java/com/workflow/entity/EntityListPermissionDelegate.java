@@ -48,6 +48,6 @@ public class EntityListPermissionDelegate {
     private Integer enabled;
 
     /** 创建时间 */
-    @TableField("created_at")
+        @TableField("create_time")
     private LocalDateTime createdAt;
 }

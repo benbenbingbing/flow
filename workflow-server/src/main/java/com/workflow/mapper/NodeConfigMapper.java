@@ -18,7 +18,7 @@ public interface NodeConfigMapper extends BaseMapper<NodeConfig> {
     /**
      * 根据流程配置ID查询节点列表
      */
-    @Select("SELECT * FROM node_config WHERE process_config_id = #{processConfigId} ORDER BY created_at ASC")
+    @Select("SELECT * FROM node_config WHERE process_config_id = #{processConfigId} ORDER BY create_time ASC")
     List<NodeConfig> findByProcessConfigId(@Param("processConfigId") String processConfigId);
 
     /**

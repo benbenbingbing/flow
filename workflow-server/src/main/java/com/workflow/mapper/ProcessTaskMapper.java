@@ -35,7 +35,7 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
             "        AND FIND_IN_SET(g.group_code COLLATE utf8mb4_0900_ai_ci, pt.assignee_id) > 0" +
             "    )" +
             "  )" +
-            ") ORDER BY pt.created_at DESC")
+            ") ORDER BY pt.create_time DESC")
     List<ProcessTask> selectTodoByUser(@Param("userId") String userId);
     
     /**
@@ -51,7 +51,7 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     /**
      * 根据流程实例ID查询待办
      */
-    @Select("SELECT * FROM process_task WHERE process_instance_id = #{processInstanceId} AND deleted = 0 ORDER BY created_at")
+    @Select("SELECT * FROM process_task WHERE process_instance_id = #{processInstanceId} AND deleted = 0 ORDER BY create_time")
     List<ProcessTask> selectByProcessInstance(@Param("processInstanceId") String processInstanceId);
     
     /**

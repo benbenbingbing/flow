@@ -76,13 +76,13 @@ public class ProcessDefinitionConfig {
     /**
      * 创建时间，自动填充
      */
-    @TableField(value = "created_at", fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
     /**
      * 更新时间，自动填充
      */
-    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 
     /**

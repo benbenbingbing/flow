@@ -13,86 +13,86 @@ import java.time.LocalDateTime;
 @Data
 @TableName("entity_form_field")
 public class EntityFormField {
-    
+
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
-    
+
     /**
      * 表单ID
      */
     private String formId;
-    
+
     /**
      * 字段ID（对应entity_field）
      */
     private String fieldId;
-    
+
     /**
-     * 字段编码（对应entity_field的field_code），非数据库字段，用于前端
+     * 字段编码（对应entity_field的field_code），持久化到数据库，用于前端表单字段 key
      */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    @com.baomidou.mybatisplus.annotation.TableField("field_code")
     private String fieldCode;
-    
+
     /**
      * 字段名称
      */
     private String fieldName;
-    
+
     /**
      * 显示标签
      */
     private String fieldLabel;
-    
+
     /**
      * 字段类型
      */
     private String fieldType;
-    
+
     /**
      * 排序
      */
     private Integer sortOrder;
-    
+
     /**
      * 是否必填：0-否 1-是
      */
     private Integer isRequired;
-    
+
     /**
      * 是否只读：0-否 1-是
      */
     private Integer isReadonly;
-    
+
     /**
      * 是否隐藏：0-否 1-是
      */
     private Integer isHidden;
-    
+
     /**
      * 默认值
      */
     private String defaultValue;
-    
+
     /**
      * 占位提示
      */
     private String placeholder;
-    
+
     /**
      * 校验规则JSON
      */
     private String validationRules;
-    
+
     /**
      * 组件类型：input/select/date/number等
      */
     private String componentType;
-    
+
     /**
      * 组件额外配置JSON
      */
     private String componentProps;
-    
+
     /**
      * 选项配置JSON（用于下拉、单选、多选，非数据库字段，从entity_field补充）
      */
@@ -151,21 +151,21 @@ public class EntityFormField {
 
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean relationRequired;
-    
+
     /**
      * 栅格宽度（1-24）
      */
     private Integer gridSpan;
-    
+
     /**
      * 创建时间
      */
-    @com.baomidou.mybatisplus.annotation.TableField("created_at")
+    @com.baomidou.mybatisplus.annotation.TableField("created_time")
     private LocalDateTime createTime;
-    
+
     /**
      * 更新时间
      */
-    @com.baomidou.mybatisplus.annotation.TableField("updated_at")
+    @com.baomidou.mybatisplus.annotation.TableField("updated_time")
     private LocalDateTime updateTime;
 }

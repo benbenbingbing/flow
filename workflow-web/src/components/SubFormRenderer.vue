@@ -20,51 +20,84 @@
     </div>
 
     <template v-if="config.layout === 'form'">
-      <template v-if="rowData.length === 0">
-        <template v-if="disabled || readonly">
-          <el-empty description="暂无行" :image-size="56" />
-        </template>
-        <template v-else>
-          <el-empty v-if="isRepeatable" description="暂无行" :image-size="56">
-            <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加一行</el-button>
+      <!-- 一对一关系：直接用表单渲染，不用列表 -->
+      <template v-if="isOneToOne">
+        <div v-if="rowData.length === 0" class="relation-row one-to-one-form">
+          <el-empty v-if="disabled || readonly" description="暂无数据" :image-size="56" />
+          <el-empty v-else description="暂无数据" :image-size="56">
+            <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加数据</el-button>
           </el-empty>
-          <el-empty v-else description="暂无行" :image-size="56">
-            <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加一行</el-button>
-          </el-empty>
-        </template>
-      </template>
-
-      <div v-for="(row, index) in rowData" :key="index" class="relation-row">
-        <div v-if="showRowHeader" class="form-row-header">
-          <span class="row-title">{{ isRepeatable ? `第 ${index + 1} 行` : (config.label || '明细') }}</span>
-          <el-button v-if="canRemoveRow" type="danger" size="small" text @click="removeRow(index)">
-            <el-icon><Delete /></el-icon>删除
-          </el-button>
         </div>
-        <div class="form-row-body">
-          <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item">
-            <label class="field-label" :class="{ required: field.isRequired }">
-              {{ field.fieldName }}
-              <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
-            </label>
-            <div class="field-control">
-              <!-- 只读模式 -->
-              <template v-if="readonly || disabled || !field.isEditable">
-                <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
-              </template>
-              <!-- 编辑模式 -->
-              <template v-else>
-                <FormFieldRenderer
-                  v-model="row[field.fieldKey]"
-                  :field="field"
-                  @blur="validateField(row, field, index)"
-                />
-                <div v-if="getFieldError(index, field.fieldKey)" class="field-error">{{ getFieldError(index, field.fieldKey) }}</div>
-              </template>
+        <div v-else class="relation-row one-to-one-form">
+          <div class="form-row-body">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item">
+              <label class="field-label" :class="{ required: field.isRequired }">
+                {{ field.fieldName }}
+                <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
+              </label>
+              <div class="field-control">
+                <template v-if="readonly || disabled || !field.isEditable">
+                  <span>{{ formatCellValue(rowData[0]?.[field.fieldKey], field) }}</span>
+                </template>
+                <template v-else>
+                  <FormFieldRenderer
+                    v-model="rowData[0][field.fieldKey]"
+                    :field="field"
+                    @blur="validateField(rowData[0], field, 0)"
+                  />
+                  <div v-if="getFieldError(0, field.fieldKey)" class="field-error">{{ getFieldError(0, field.fieldKey) }}</div>
+                </template>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </template>
+
+      <!-- 一对多关系 -->
+      <template v-else>
+        <template v-if="rowData.length === 0">
+          <template v-if="disabled || readonly">
+            <el-empty description="暂无行" :image-size="56" />
+          </template>
+          <template v-else>
+            <el-empty description="暂无行" :image-size="56">
+              <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加一行</el-button>
+            </el-empty>
+          </template>
+        </template>
+
+        <div v-for="(row, index) in rowData" :key="index" class="relation-row">
+          <div v-if="showRowHeader" class="form-row-header">
+            <span class="row-title">{{ isRepeatable ? `第 ${index + 1} 行` : (config.label || '明细') }}</span>
+            <el-button v-if="canRemoveRow" type="danger" size="small" text @click="removeRow(index)">
+              <el-icon><Delete /></el-icon>删除
+            </el-button>
+          </div>
+          <div class="form-row-body">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item">
+              <label class="field-label" :class="{ required: field.isRequired }">
+                {{ field.fieldName }}
+                <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
+              </label>
+              <div class="field-control">
+                <!-- 只读模式 -->
+                <template v-if="readonly || disabled || !field.isEditable">
+                  <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
+                </template>
+                <!-- 编辑模式 -->
+                <template v-else>
+                  <FormFieldRenderer
+                    v-model="row[field.fieldKey]"
+                    :field="field"
+                    @blur="validateField(row, field, index)"
+                  />
+                  <div v-if="getFieldError(index, field.fieldKey)" class="field-error">{{ getFieldError(index, field.fieldKey) }}</div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
     </template>
 
     <template v-else>
@@ -193,9 +226,13 @@ const showSummary = computed(() => {
   return props.config.showSummary && props.config.summaryFields?.length > 0
 })
 
-const showHeader = computed(() => isRepeatable.value || showSummary.value || canAddRow.value)
+const showHeader = computed(() => {
+  if (isOneToOne.value) return false
+  return isRepeatable.value || showSummary.value || canAddRow.value
+})
 
 const showRowHeader = computed(() => {
+  if (isOneToOne.value) return false
   if (!canRemoveRow.value) return false
   if (isRepeatable.value) return rowData.value.length > 1
   return !props.config.required
@@ -211,7 +248,7 @@ function outputValue() {
   return isOneToOne.value ? (rowData.value[0] || null) : rowData.value
 }
 
-watch(() => props.modelValue, (newVal) => {
+function resetRowData(newVal) {
   if (newVal === rowData.value) return
   if (Array.isArray(newVal)) {
     rowData.value = JSON.parse(JSON.stringify(newVal))
@@ -221,6 +258,10 @@ watch(() => props.modelValue, (newVal) => {
     rowData.value = []
   }
   ensureMinRows()
+}
+
+watch(() => props.modelValue, (newVal) => {
+  resetRowData(newVal)
 }, { immediate: true })
 
 watch(() => [props.config.fields, props.config.fields?.length], ensureMinRows, { immediate: true })
@@ -240,7 +281,15 @@ onMounted(() => {
 })
 
 function ensureMinRows() {
-  if (!canEdit.value || !props.config.fields?.length) return
+  if (!props.config.fields?.length) return
+  if (isOneToOne.value) {
+    // 一对一：编辑模式下无数据时自动初始化一行
+    if (rowData.value.length === 0 && canEdit.value) {
+      appendBlankRow()
+    }
+    return
+  }
+  if (!canEdit.value) return
   const targetRows = Math.min(minRows.value, maxRows.value)
   while (rowData.value.length < targetRows) {
     appendBlankRow()
@@ -482,8 +531,12 @@ defineExpose({
   border-top: 1px solid #ebeef5;
 }
 
-.relation-row:first-of-type {
+.one-to-one-form {
+  padding: 0;
   border-top: none;
+}
+
+.one-to-one-form:first-of-type {
   padding-top: 0;
 }
 

@@ -58,13 +58,11 @@ public class EntityForm {
     /**
      * 创建时间
      */
-    @TableField("created_at")
     private LocalDateTime createTime;
     
     /**
      * 更新时间
      */
-    @TableField("updated_at")
     private LocalDateTime updateTime;
     
     /**

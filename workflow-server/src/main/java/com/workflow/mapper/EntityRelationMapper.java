@@ -12,10 +12,10 @@ import java.util.List;
 @Mapper
 public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
 
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND enabled = 1 AND deleted = 0 ORDER BY sort_order ASC, created_at ASC")
+    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND enabled = 1 AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
     List<EntityRelation> selectByParentEntityId(@Param("parentEntityId") String parentEntityId);
 
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_code = #{parentEntityCode} AND enabled = 1 AND deleted = 0 ORDER BY sort_order ASC, created_at ASC")
+    @Select("SELECT * FROM entity_relation WHERE parent_entity_code = #{parentEntityCode} AND enabled = 1 AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
     List<EntityRelation> selectByParentEntityCode(@Param("parentEntityCode") String parentEntityCode);
 
     @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND parent_field_code = #{parentFieldCode} AND deleted = 0 LIMIT 1")

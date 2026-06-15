@@ -14,12 +14,12 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:workflow}?serverTimezone=Asia/Shanghai&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true}
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:zhoudawei}
     hikari:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
 
   flyway:
-    enabled: true
+    enabled: false
     locations: classpath:db/migration
     encoding: UTF-8
     sql-migration-prefix: V
@@ -76,5 +76,5 @@ file:
   storage:
     type: local
     local:
-      path: ${FILE_STORAGE_PATH:uploads}
-      access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
+      path: ${FILE_STORAGE_PATH:/Users/dawei/Documents/ddup/ai/flow/uploads}
+      access-url: ${FILE_STORAGE_ACCESS_URL:/Users/dawei/Documents/ddup/ai/flow/uploads}

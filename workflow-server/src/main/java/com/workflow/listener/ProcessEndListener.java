@@ -82,7 +82,7 @@ public class ProcessEndListener implements FlowableEventListener {
                 Map<String, Object> updateData = new HashMap<>();
                 updateData.put("id", entityDataId);
                 updateData.put("process_end_time", LocalDateTime.now());
-                updateData.put("updated_at", LocalDateTime.now());
+                updateData.put("update_time", LocalDateTime.now());
                 // 更新状态
                 if (statusCode != null) {
                     updateData.put("status", statusCode);

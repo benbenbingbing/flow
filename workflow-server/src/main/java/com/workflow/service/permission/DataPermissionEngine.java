@@ -30,7 +30,7 @@ public class DataPermissionEngine {
     private final PermissionSqlBuilder sqlBuilder;
 
     /** 数据权限委托相关字段 */
-    private static final String DELEGATE_USER_FIELD = "created_by";
+    private static final String DELEGATE_USER_FIELD = "create_by";
 
     /**
      * 计算某实体列表的数据权限
@@ -58,7 +58,7 @@ public class DataPermissionEngine {
         if (rules.isEmpty()) {
             // 没有配置规则，默认仅本人
             return DataPermissionResult.withCondition(
-                    "created_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+                    "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
             );
         }
 
@@ -70,7 +70,7 @@ public class DataPermissionEngine {
         if (matchedRules.isEmpty()) {
             // 没有匹配规则 = 默认仅本人
             return DataPermissionResult.withCondition(
-                    "created_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+                    "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
             );
         }
 

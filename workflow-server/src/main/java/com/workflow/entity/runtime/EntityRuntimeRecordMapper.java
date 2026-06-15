@@ -34,18 +34,16 @@ public class EntityRuntimeRecordMapper {
             "submitterName", "submitter_name",
             "deptId", "dept_id",
             "submitTime", "submit_time",
-            "createdAt", "created_at", "updatedAt", "updated_at",
+            "createdTime", "createdTime", "updatedTime", "updated_time",
             "createdBy", "created_by", "updatedBy", "updated_by",
-            "deleted", "entityCode", "entity_code", "startProcess", "start_process"
-    ));
+            "deleted", "entityCode", "entity_code", "startProcess", "start_process"));
 
     private static final Set<String> STORAGE_SYSTEM_COLUMNS = new HashSet<>(Arrays.asList(
             "id", "data_no", "title", "name", "code", "status",
             "process_instance_id", "process_start_time", "process_end_time",
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "dept_id", "submit_time",
-            "created_at", "updated_at", "created_by", "updated_by", "deleted"
-    ));
+            "create_time", "updated_time", "created_by", "updated_by", "deleted"));
 
     private final ObjectMapper objectMapper;
 
@@ -68,8 +66,8 @@ public class EntityRuntimeRecordMapper {
         dto.setSubmitterName(getString(data, "submitter_name"));
         dto.setDeptId(getString(data, "dept_id"));
         dto.setSubmitTime(getDateTime(data, "submit_time"));
-        dto.setCreatedAt(getDateTime(data, "created_at"));
-        dto.setUpdatedAt(getDateTime(data, "updated_at"));
+        dto.setCreatedAt(getDateTime(data, "created_time"));
+        dto.setUpdatedAt(getDateTime(data, "update_time"));
         dto.setCreatedBy(getString(data, "created_by"));
         dto.setUpdatedBy(getString(data, "updated_by"));
         dto.setData(extractCustomFields(data));

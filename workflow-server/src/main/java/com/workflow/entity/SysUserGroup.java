@@ -31,6 +31,5 @@ public class SysUserGroup {
     /**
      * 创建时间
      */
-    @TableField("created_at")
     private LocalDateTime createTime;
 }

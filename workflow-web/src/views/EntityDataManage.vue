@@ -852,11 +852,25 @@ const handleEdit = async (row) => {
   dialogTitle.value = '编辑数据'
   resolvedForm.value = null // 编辑时不使用解析的表单，使用实体字段
   const detail = await entityDataApi.getDetail(entityCode, row.id).catch(() => row)
+  const data = { ...(detail.data || {}) }
+  // 将系统标准字段也合并到 data 中，确保表单字段（如数据编码、数据名称、部门、提交人等）能正确回显
+  if (detail.name != null) data.name = detail.name
+  if (detail.code != null) data.code = detail.code
+  if (detail.status != null) data.status = detail.status
+  if (detail.dataNo != null) data.dataNo = detail.dataNo
+  if (detail.title != null) data.title = detail.title
+  if (detail.deptId != null) data.deptId = detail.deptId
+  if (detail.submitterId != null) data.submitterId = detail.submitterId
+  if (detail.submitterName != null) data.submitterName = detail.submitterName
+  if (detail.processInstanceId != null) data.processInstanceId = detail.processInstanceId
+  if (detail.currentTaskId != null) data.currentTaskId = detail.currentTaskId
+  if (detail.currentTaskName != null) data.currentTaskName = detail.currentTaskName
+  if (detail.currentTaskAssignee != null) data.currentTaskAssignee = detail.currentTaskAssignee
   formData.value = {
     id: detail.id,
     entityCode: entityCode,
     title: detail.title,
-    data: { ...(detail.data || {}) },
+    data,
     submitterId: detail.submitterId,
     submitterName: detail.submitterName,
     startProcess: false

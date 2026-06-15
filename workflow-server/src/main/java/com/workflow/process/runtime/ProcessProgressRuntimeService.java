@@ -656,6 +656,9 @@ public class ProcessProgressRuntimeService {
                         if (entityData.getStatus() != null) entityDataMap.put("status", entityData.getStatus());
                         if (entityData.getDataNo() != null) entityDataMap.put("dataNo", entityData.getDataNo());
                         if (entityData.getTitle() != null) entityDataMap.put("title", entityData.getTitle());
+                        if (entityData.getDeptId() != null) entityDataMap.put("deptId", entityData.getDeptId());
+                        if (entityData.getSubmitterId() != null) entityDataMap.put("submitterId", entityData.getSubmitterId());
+                        if (entityData.getSubmitterName() != null) entityDataMap.put("submitterName", entityData.getSubmitterName());
                         progress.setEntityData(entityDataMap);
                     }
                 } catch (Exception e) {

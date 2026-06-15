@@ -118,7 +118,7 @@ public class EntityWorkflowRuntimeService {
         updateData.put("process_instance_id", processInstance.getId());
         updateData.put("process_start_time", LocalDateTime.now());
         updateData.put("status", processingStatus);
-        updateData.put("updated_at", LocalDateTime.now());
+        updateData.put("update_time", LocalDateTime.now());
 
         if (currentTask != null) {
             updateData.put("current_task_id", currentTask.getId());

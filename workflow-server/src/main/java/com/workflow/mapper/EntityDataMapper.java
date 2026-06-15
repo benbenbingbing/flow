@@ -18,7 +18,7 @@ public interface EntityDataMapper extends BaseMapper<EntityData> {
     /**
      * 根据实体编码查询数据列表
      */
-    @Select("SELECT * FROM entity_data WHERE entity_code = #{entityCode} ORDER BY created_at DESC")
+    @Select("SELECT * FROM entity_data WHERE entity_code = #{entityCode} ORDER BY create_time DESC")
     List<EntityData> findByEntityCode(@Param("entityCode") String entityCode);
 
     /**

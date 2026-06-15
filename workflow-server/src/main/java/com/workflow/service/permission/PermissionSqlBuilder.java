@@ -28,7 +28,7 @@ public class PermissionSqlBuilder {
         }
 
         String deptField = safeField(mapping.getDeptField(), "dept_id");
-        String userField = safeField(mapping.getUserField(), "created_by");
+        String userField = safeField(mapping.getUserField(), "create_by");
         String statusField = safeField(mapping.getStatusField(), "status");
         if (deptField == null || userField == null || statusField == null) {
             return "1=0";
