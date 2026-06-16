@@ -21,6 +21,7 @@ import FileField from './components/FileField.vue'
 import EntityField from './components/EntityField.vue'
 import SubFormField from './components/SubFormField.vue'
 import CascaderField from './components/CascaderField.vue'
+import SectionField from './components/SectionField.vue'
 
 // ========== 组件导出 ==========
 
@@ -36,7 +37,8 @@ export {
   FileField,
   EntityField,
   SubFormField,
-  CascaderField
+  CascaderField,
+  SectionField
 }
 
 // ========== 组件映射表 ==========
@@ -94,7 +96,11 @@ export const formFieldComponentMap = {
   sub_form_list: SubFormField,
 
   // 级联
-  cascader: CascaderField
+  cascader: CascaderField,
+
+  // 节/分组标题
+  section: SectionField,
+  SECTION: SectionField
 }
 
 // ========== 扩展注册机制 ==========

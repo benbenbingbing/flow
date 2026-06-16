@@ -72,18 +72,25 @@
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
-        <el-form-item v-for="field in formFields" :key="field.fieldId"
-                     v-show="isFieldVisible(field)"
-                     :label="field.fieldLabel || field.fieldName" :prop="`data.${field.fieldCode || field.fieldId}`"
-                     :rules="getFieldRules(field)">
-          <!-- 使用 FormFieldRendererLinkage 统一渲染 -->
-          <FormFieldRendererLinkage
-            v-model="formData.data[field.fieldCode || field.fieldId]"
-            :field="field"
-            :disabled="isFieldDisabled(field)"
-            :options="getFieldOptions(field)"
-          />
-        </el-form-item>
+        <template v-for="field in formFields" :key="field.fieldId">
+          <div v-if="isSectionField(field)" class="form-section-row">
+            <SectionField :field="field" />
+          </div>
+          <el-form-item
+            v-else
+            v-show="isFieldVisible(field)"
+            :label="field.fieldLabel || field.fieldName" :prop="`data.${field.fieldCode || field.fieldId}`"
+            :rules="getFieldRules(field)"
+          >
+            <!-- 使用 FormFieldRendererLinkage 统一渲染 -->
+            <FormFieldRendererLinkage
+              v-model="formData.data[field.fieldCode || field.fieldId]"
+              :field="field"
+              :disabled="isFieldDisabled(field)"
+              :options="getFieldOptions(field)"
+            />
+          </el-form-item>
+        </template>
 
         <!-- 嵌入模式的子表单 -->
         <div v-if="embeddedSubFormFields.length > 0" class="embedded-subforms-wrapper" style="width: 100%; margin-top: 16px;">
@@ -282,6 +289,7 @@ import { useUserStore } from '@/stores/user'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
+import SectionField from '@/components/form-fields/components/SectionField.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -347,6 +355,11 @@ function updateLinkageState() {
 }
 
 // 判断字段是否可见
+function isSectionField(field) {
+  return (field?.fieldType || '').toUpperCase() === 'SECTION' ||
+    (field?.componentType || '').toLowerCase() === 'section'
+}
+
 function isFieldVisible(field) {
   const key = field.fieldCode || field.fieldId
   return linkageState.value.visibility[key] !== false
@@ -1022,6 +1035,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.form-section-row {
+  width: 100%;
+}
+
 .entity-data-manage {
   padding: 20px;
 }

@@ -8,9 +8,6 @@
         <span class="entity-name">{{ entityData.entityName || '实体设计' }}</span>
       </div>
       <div class="header-right">
-        <el-button @click="handlePreview">
-          <el-icon><View /></el-icon>预览
-        </el-button>
         <el-button @click="codeRuleVisible = true">
           <el-icon><Ticket /></el-icon>编码规则
         </el-button>
@@ -330,20 +327,6 @@
       </div>
     </div>
 
-    <!-- 预览对话框 -->
-    <el-dialog v-model="previewVisible" title="表单预览" width="600px">
-      <el-form label-width="100px">
-        <el-form-item
-          v-for="field in fields"
-          :key="field.fieldCode"
-          :label="field.fieldName"
-          :required="field.isRequired"
-        >
-          <FormFieldRenderer :field="convertToFormField(field)" />
-        </el-form-item>
-      </el-form>
-    </el-dialog>
-
     <!-- 编码规则配置对话框 -->
     <el-dialog v-model="codeRuleVisible" title="数据编码规则配置" width="550px">
       <el-form :model="codeRule" label-width="100px" size="default">
@@ -568,7 +551,6 @@ import { entityApi } from '@/api/entity'
 import { codeRuleApi } from '@/api/codeRule'
 import { entityListPermissionApi } from '@/api/entityListPermission'
 import { getEntityStatusList } from '@/api/entityStatus'
-import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import { ENTITY_FIELD_TYPES, getEntityFieldTypeLabel, getEntityFieldTypeTag } from '@/shared/entity-design'
 
 const route = useRoute()
@@ -581,7 +563,6 @@ const fieldTypes = ENTITY_FIELD_TYPES
 const entityData = ref({})
 const fields = ref([])
 const selectedField = ref(null)
-const previewVisible = ref(false)
 const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
@@ -908,11 +889,6 @@ const convertToFormField = (field) => {
     fileMaxSize: field.fileMaxSize,
     fileMaxCount: field.fileMaxCount
   }
-}
-
-// 预览
-const handlePreview = () => {
-  previewVisible.value = true
 }
 
 // 保存

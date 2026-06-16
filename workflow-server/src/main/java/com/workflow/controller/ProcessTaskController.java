@@ -234,10 +234,7 @@ public class ProcessTaskController {
                     .processInstanceId(task.getProcessInstanceId())
                     .singleResult();
             if (hpi != null && hpi.getStartUserId() != null) {
-                startUserName = sysUserService.getNicknameByUsername(hpi.getStartUserId());
-                if (startUserName == null) {
-                    startUserName = hpi.getStartUserId();
-                }
+                startUserName = sysUserService.getDisplayName(hpi.getStartUserId());
             }
         } catch (Exception e) {
             // ignore

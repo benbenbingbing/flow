@@ -41,6 +41,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
     private final com.workflow.service.EntityFormService entityFormService;
     private final com.workflow.service.EntityDataService entityDataService;
     private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
+    private final com.workflow.service.SysUserService sysUserService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     // 当前用户（模拟，实际应从安全上下文获取）
@@ -547,7 +548,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 .processInstanceId(task.getProcessInstanceId())
                 .singleResult();
         if (hpi != null) {
-            vo.setStartUserName(hpi.getStartUserId());
+            vo.setStartUserName(sysUserService.getDisplayName(hpi.getStartUserId()));
             vo.setBusinessKey(hpi.getBusinessKey());
         }
         
@@ -611,7 +612,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 .processInstanceId(task.getProcessInstanceId())
                 .singleResult();
         if (hpi != null) {
-            vo.setStartUserName(hpi.getStartUserId());
+            vo.setStartUserName(sysUserService.getDisplayName(hpi.getStartUserId()));
             vo.setBusinessKey(hpi.getBusinessKey());
         }
         

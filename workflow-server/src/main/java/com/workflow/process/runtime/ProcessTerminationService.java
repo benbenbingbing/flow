@@ -92,8 +92,8 @@ public class ProcessTerminationService {
             log.setProcessInstanceId(processInstanceId);
             log.setOperationType("TERMINATE");
             log.setOperatorId(userId);
-            String operatorName = sysUserService.getNicknameByUsername(userId);
-            log.setOperatorName(operatorName != null ? operatorName : userId);
+            String operatorName = sysUserService.getDisplayName(userId);
+            log.setOperatorName(operatorName);
             log.setOperationTime(LocalDateTime.now());
             log.setOperationComment(deleteReason);
             operationLogMapper.insert(log);

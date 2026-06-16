@@ -232,8 +232,7 @@ public class ProcessInstanceService {
             String startUserId = historicInstance.getStartUserId();
             vo.setStartUser(startUserId);
             if (startUserId != null && !startUserId.isEmpty()) {
-                String nickname = sysUserService.getNicknameByUsername(startUserId);
-                vo.setStartUserName(nickname != null && !nickname.isEmpty() ? nickname : startUserId);
+                vo.setStartUserName(sysUserService.getDisplayName(startUserId));
             }
             vo.setStartTime(formatDate(historicInstance.getStartTime()));
             vo.setEndTime(formatDate(historicInstance.getEndTime()));

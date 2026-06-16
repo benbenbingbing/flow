@@ -2,11 +2,14 @@ package com.workflow.controller;
 
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.EntityDataDTO;
+import com.workflow.dto.EntityDataExportRequest;
 import com.workflow.service.EntityDataDynamicService;
+import com.workflow.service.EntityDataExportService;
 import com.workflow.service.EntityDataListConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +25,7 @@ public class EntityDataController {
     
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityDataListConfigService entityDataListConfigService;
+    private final EntityDataExportService entityDataExportService;
     
     /**
      * 获取某实体的所有数据（支持查询条件）
@@ -148,5 +152,16 @@ public class EntityDataController {
     @GetMapping("/entity/{entityCode}/count")
     public ApiResponse<Long> count(@PathVariable String entityCode) {
         return ApiResponse.success(entityDataDynamicService.count(entityCode));
+    }
+
+    /**
+     * 导出实体数据（选中或全部）
+     */
+    @PostMapping("/entity/{entityCode}/export")
+    public void export(
+            @PathVariable String entityCode,
+            @RequestBody EntityDataExportRequest request,
+            HttpServletResponse response) {
+        entityDataExportService.export(entityCode, request, response);
     }
 }

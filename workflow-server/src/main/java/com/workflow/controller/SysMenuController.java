@@ -2,6 +2,7 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.entity.SysMenu;
+import com.workflow.mapper.SysMenuMapper;
 import com.workflow.service.SysMenuService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 菜单管理控制器
@@ -19,6 +21,7 @@ import java.util.Map;
 public class SysMenuController {
     
     private final SysMenuService menuService;
+    private final SysMenuMapper menuMapper;
     
     /**
      * 查询菜单树
@@ -101,6 +104,14 @@ public class SysMenuController {
     public Result<Void> updateSort(@RequestBody List<String> menuIds) {
         menuService.updateSort(menuIds);
         return Result.success();
+    }
+    
+    /**
+     * 根据实体编码查询可用的按钮权限码集合
+     */
+    @GetMapping("/perms")
+    public Result<Set<String>> getPermsByEntityCode(@RequestParam String entityCode) {
+        return Result.success(menuMapper.selectPermsByEntityCode(entityCode));
     }
     
     /**

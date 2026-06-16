@@ -88,6 +88,40 @@ public class SysUserService {
     }
     
     /**
+     * 根据用户ID/用户名获取统一显示名称：nickname(username)
+     */
+    public String getDisplayName(String idOrUsername) {
+        if (!StringUtils.hasText(idOrUsername)) {
+            return idOrUsername;
+        }
+        SysUser user = userMapper.selectByUsername(idOrUsername);
+        if (user == null) {
+            user = userMapper.selectById(idOrUsername);
+        }
+        if (user == null) {
+            return idOrUsername;
+        }
+        String nickname = StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getUsername();
+        if (nickname.equals(user.getUsername())) {
+            return nickname;
+        }
+        return nickname + "(" + user.getUsername() + ")";
+    }
+    
+    /**
+     * 根据用户ID/用户名列表获取统一显示名称，逗号分隔
+     */
+    public String getDisplayNames(List<String> idsOrUsernames) {
+        if (idsOrUsernames == null || idsOrUsernames.isEmpty()) {
+            return "";
+        }
+        return idsOrUsernames.stream()
+                .map(this::getDisplayName)
+                .distinct()
+                .collect(Collectors.joining(","));
+    }
+    
+    /**
      * 保存用户
      */
     @Transactional(rollbackFor = Exception.class)

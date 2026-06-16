@@ -35,80 +35,90 @@
             </el-form-item>
           </el-form>
 
-          <el-table
-            :data="fieldConfigList"
-            row-key="fieldId"
-            class="field-config-table"
-            size="small"
-            border
-          >
-            <el-table-column width="40" align="center">
-              <template #default>
-                <el-icon class="drag-handle"><Rank /></el-icon>
-              </template>
-            </el-table-column>
-            <el-table-column label="字段名称" min-width="100">
-              <template #default="{ row }">
-                <el-input v-model="row.fieldName" size="small" />
-              </template>
-            </el-table-column>
-            <el-table-column label="加入列表" width="80" align="center">
-              <template #default="{ row }">
-                <el-checkbox v-model="row.showInList" />
-              </template>
-            </el-table-column>
-            <el-table-column label="查询条件" width="80" align="center">
-              <template #default="{ row }">
-                <el-checkbox v-model="row.isQuery" :disabled="!row.showInList" />
-              </template>
-            </el-table-column>
-            <el-table-column label="查询方式" width="100">
-              <template #default="{ row }">
-                <el-select v-model="row.queryType" size="small" :disabled="!row.isQuery || !row.showInList">
-                  <el-option label="等于" value="EQ" />
-                  <el-option label="不等于" value="NE" />
-                  <el-option label="包含" value="LIKE" />
-                  <el-option label="大于" value="GT" />
-                  <el-option label="小于" value="LT" />
-                  <el-option label="范围" value="BETWEEN" />
-                  <el-option label="包含于" value="IN" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="数据源" width="110">
-              <template #default="{ row }">
-                <el-select v-model="row.dataSourceType" size="small" :disabled="!row.showInList">
-                  <el-option label="实体字段" value="ENTITY_FIELD" />
-                  <el-option label="关联查询" value="REFERENCE" />
-                  <el-option label="聚合统计" value="AGGREGATE" />
-                  <el-option label="自定义" value="CUSTOM_PROVIDER" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="渲染组件" width="120">
-              <template #default="{ row }">
-                <el-select v-model="row.renderComponent" size="small" :disabled="!row.showInList" clearable placeholder="默认">
-                  <el-option label="默认文本" value="DefaultText" />
-                  <el-option label="状态标签" value="StatusBadge" />
-                  <el-option label="日期格式" value="DateFormatter" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="宽度" width="80">
-              <template #default="{ row }">
-                <el-input-number v-model="row.width" :min="0" :max="500" size="small" controls-position="right" :disabled="!row.showInList" />
-              </template>
-            </el-table-column>
-            <el-table-column label="对齐" width="90">
-              <template #default="{ row }">
-                <el-select v-model="row.align" size="small" :disabled="!row.showInList">
-                  <el-option label="左对齐" value="left" />
-                  <el-option label="居中" value="center" />
-                  <el-option label="右对齐" value="right" />
-                </el-select>
-              </template>
-            </el-table-column>
-          </el-table>
+          <el-tabs v-model="activeConfigTab" type="border-card" class="config-tabs">
+            <el-tab-pane label="字段配置" name="fields">
+              <el-table
+                :data="fieldConfigList"
+                row-key="fieldId"
+                class="field-config-table"
+                size="small"
+                border
+              >
+                <el-table-column width="40" align="center">
+                  <template #default>
+                    <el-icon class="drag-handle"><Rank /></el-icon>
+                  </template>
+                </el-table-column>
+                <el-table-column label="字段名称" min-width="100">
+                  <template #default="{ row }">
+                    <el-input v-model="row.fieldName" size="small" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="加入列表" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-checkbox v-model="row.showInList" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="查询条件" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-checkbox v-model="row.isQuery" :disabled="!row.showInList" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="查询方式" width="100">
+                  <template #default="{ row }">
+                    <el-select v-model="row.queryType" size="small" :disabled="!row.isQuery || !row.showInList">
+                      <el-option label="等于" value="EQ" />
+                      <el-option label="不等于" value="NE" />
+                      <el-option label="包含" value="LIKE" />
+                      <el-option label="大于" value="GT" />
+                      <el-option label="小于" value="LT" />
+                      <el-option label="范围" value="BETWEEN" />
+                      <el-option label="包含于" value="IN" />
+                    </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="数据源" width="110">
+                  <template #default="{ row }">
+                    <el-select v-model="row.dataSourceType" size="small" :disabled="!row.showInList">
+                      <el-option label="实体字段" value="ENTITY_FIELD" />
+                      <el-option label="关联查询" value="REFERENCE" />
+                      <el-option label="聚合统计" value="AGGREGATE" />
+                      <el-option label="自定义" value="CUSTOM_PROVIDER" />
+                    </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="渲染组件" width="120">
+                  <template #default="{ row }">
+                    <el-select v-model="row.renderComponent" size="small" :disabled="!row.showInList" clearable placeholder="默认">
+                      <el-option label="默认文本" value="DefaultText" />
+                      <el-option label="状态标签" value="StatusBadge" />
+                      <el-option label="日期格式" value="DateFormatter" />
+                    </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="宽度" width="80">
+                  <template #default="{ row }">
+                    <el-input-number v-model="row.width" :min="0" :max="500" size="small" controls-position="right" :disabled="!row.showInList" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="对齐" width="90">
+                  <template #default="{ row }">
+                    <el-select v-model="row.align" size="small" :disabled="!row.showInList">
+                      <el-option label="左对齐" value="left" />
+                      <el-option label="居中" value="center" />
+                      <el-option label="右对齐" value="right" />
+                    </el-select>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="工具栏按钮" name="toolbar">
+              <ListButtonConfigPanel type="toolbar" v-model="toolbarButtons" :entityCode="entityCode" />
+            </el-tab-pane>
+            <el-tab-pane label="操作列按钮" name="rowActions">
+              <ListButtonConfigPanel type="row" v-model="rowActionButtons" :entityCode="entityCode" />
+            </el-tab-pane>
+          </el-tabs>
         </el-card>
       </div>
 
@@ -255,6 +265,7 @@ import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi, entityDataApi } from '@/api/entity'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -271,6 +282,15 @@ const saving = ref(false)
 // 字段配置列表
 const fieldConfigList = ref([])
 let sortableInstance = null
+
+// 配置 Tab
+const activeConfigTab = ref('fields')
+
+// 工具栏按钮配置
+const toolbarButtons = ref([])
+
+// 操作列按钮配置
+const rowActionButtons = ref([])
 
 // 预览相关
 const previewQueryForm = ref({})
@@ -319,6 +339,9 @@ async function loadData() {
     // 合并字段配置
     mergeFieldConfig(configRes?.fields || [])
 
+    // 解析按钮配置
+    parseButtonConfig(configRes)
+
     // 初始化拖拽
     nextTick(() => {
       initSortable()
@@ -358,6 +381,37 @@ function mergeFieldConfig(savedFields) {
   // 按 sortOrder 排序
   merged.sort((a, b) => a.sortOrder - b.sortOrder)
   fieldConfigList.value = merged
+}
+
+const DEFAULT_TOOLBAR_BUTTONS = [
+  { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
+  { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
+  { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true, perm: '' },
+  { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true, perm: '' }
+]
+
+const DEFAULT_ROW_ACTION_BUTTONS = [
+  { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true, perm: '' },
+  { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true, perm: '' },
+  { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true, perm: '' },
+  { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true, perm: '' }
+]
+
+function safeJsonParse(text) {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    return null
+  }
+}
+
+function parseButtonConfig(configRes) {
+  const toolbar = safeJsonParse(configRes?.toolbarConfig)
+  toolbarButtons.value = toolbar && toolbar.length > 0 ? toolbar : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b }))
+
+  const rowActions = safeJsonParse(configRes?.rowActionConfig)
+  rowActionButtons.value = rowActions && rowActions.length > 0 ? rowActions : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b }))
 }
 
 function initSortable() {
@@ -407,6 +461,8 @@ async function handleSave() {
     description: configInfo.value.description,
     isDefault: configInfo.value.isDefault,
     customComponent: configInfo.value.customComponent,
+    toolbarConfig: JSON.stringify(toolbarButtons.value),
+    rowActionConfig: JSON.stringify(rowActionButtons.value),
     fields
   }
 

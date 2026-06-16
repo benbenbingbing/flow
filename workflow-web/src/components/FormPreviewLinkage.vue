@@ -34,10 +34,15 @@
           v-for="field in (noInternalTabs ? normalFields : processedFields)"
           :key="field.id"
           class="preview-field-wrapper"
-          :style="getFieldStyle(field)"
+          :class="{ 'section-preview': isSectionField(field) }"
+          :style="isSectionField(field) ? { width: '100%' } : getFieldStyle(field)"
           v-show="linkageState.visibility[getFieldKey(field)] !== false"
         >
+          <template v-if="isSectionField(field)">
+            <SectionField :field="field" />
+          </template>
           <el-form-item
+            v-else
             :label="field.fieldLabel || field.fieldName"
             :prop="getFieldKey(field)"
             :rules="getFieldRules(field)"
@@ -71,10 +76,15 @@
                 v-for="field in normalFields"
                 :key="'basic-' + (field.id || field.fieldCode || field.fieldKey)"
                 class="preview-field-wrapper"
-                :style="getFieldStyle(field)"
+                :class="{ 'section-preview': isSectionField(field) }"
+                :style="isSectionField(field) ? { width: '100%' } : getFieldStyle(field)"
                 v-show="linkageState.visibility[getFieldKey(field)] !== false"
               >
+                <template v-if="isSectionField(field)">
+                  <SectionField :field="field" />
+                </template>
                 <el-form-item
+                  v-else
                   :label="field.fieldLabel || field.fieldName"
                   :prop="getFieldKey(field)"
                   :rules="getFieldRules(field)"
@@ -114,6 +124,7 @@
 <script setup>
 import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
+import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { getFieldKey } from '@/shared/form-runtime'
@@ -161,6 +172,11 @@ const linkageState = ref({
 const activeTabSubForm = ref('basic')
 
 // 判断是否为 Tab 模式的子表单
+function isSectionField(field) {
+  return (field?.fieldType || '').toUpperCase() === 'SECTION' ||
+    (field?.componentType || '').toLowerCase() === 'section'
+}
+
 function isTabSubForm(field) {
   const type = (field.componentType || field.fieldType || '').toUpperCase()
   const result = field.displayMode === 'tab' || (() => {

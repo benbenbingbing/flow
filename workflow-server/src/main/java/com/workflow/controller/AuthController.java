@@ -1,6 +1,7 @@
 package com.workflow.controller;
 
 import com.workflow.common.JwtUtil;
+import com.workflow.common.PermissionUtil;
 import com.workflow.common.Result;
 import com.workflow.common.UserContext;
 import com.workflow.dto.LoginDTO;
@@ -12,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -122,5 +124,17 @@ public class AuthController {
     public Result<Void> logout() {
         // 可以在这里记录退出日志
         return Result.success();
+    }
+    
+    /**
+     * 获取当前登录用户的权限码集合
+     */
+    @GetMapping("/permissions")
+    public Result<Set<String>> getPermissions() {
+        String userId = UserContext.getUserId();
+        if (userId == null) {
+            return Result.error("未登录");
+        }
+        return Result.success(PermissionUtil.getUserPermissions(userId));
     }
 }

@@ -62,6 +62,9 @@ class ProcessTaskServiceTest {
     private SysUserMapper sysUserMapper;
 
     @Mock
+    private SysUserService sysUserService;
+
+    @Mock
     private TaskQuery taskQuery;
 
     private ProcessTaskService service;
@@ -80,7 +83,8 @@ class ProcessTaskServiceTest {
                 entityDataDynamicService,
                 sysGroupMapper,
                 sysUserGroupMapper,
-                sysUserMapper
+                sysUserMapper,
+                sysUserService
         );
     }
 

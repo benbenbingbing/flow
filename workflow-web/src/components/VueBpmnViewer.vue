@@ -16,10 +16,6 @@
             <span class="label">{{ tooltip.status === 'active' ? '当前处理人' : '审批人' }}：</span>
             <span class="value">{{ tooltip.assigneeInfo.assigneeName || tooltip.assigneeInfo.assigneeId || '未分配' }}</span>
           </div>
-          <div v-if="tooltip.assigneeInfo.assigneeName && tooltip.assigneeInfo.assigneeId && tooltip.assigneeInfo.assigneeName !== tooltip.assigneeInfo.assigneeId" class="info-row">
-            <span class="label">用户名：</span>
-            <span class="value">{{ tooltip.assigneeInfo.assigneeId }}</span>
-          </div>
           <div class="info-row">
             <span class="label">{{ tooltip.status === 'active' ? '到达时间' : '处理时间' }}：</span>
             <span class="value">{{ tooltip.assigneeInfo.handleTime || '-' }}</span>

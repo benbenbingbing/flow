@@ -29,6 +29,7 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -80,15 +81,19 @@ public class ProcessProgressRuntimeService {
                 .processInstanceId(processInstanceId)
                 .singleResult();
         
+        final String startUserId;
+        HistoricProcessInstance historicInstance = null;
         if (processInstance != null) {
             // 流程正在运行中
             progress.setProcessDefinitionId(processInstance.getProcessDefinitionId());
             progress.setStatus("RUNNING");
+            startUserId = processInstance.getStartUserId();
         } else {
             // 流程已结束或不存在，查询历史记录判断是否为终止
-            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+            historicInstance = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceId(processInstanceId)
                     .singleResult();
+            startUserId = historicInstance != null ? historicInstance.getStartUserId() : null;
             if (historicInstance != null && historicInstance.getDeleteReason() != null
                     && (historicInstance.getDeleteReason().contains("终止") || historicInstance.getDeleteReason().contains("terminated"))) {
                 progress.setStatus("TERMINATED");
@@ -207,7 +212,7 @@ public class ProcessProgressRuntimeService {
         
         // 6.1 终止流程：识别被终止时正在执行的节点
         if ("TERMINATED".equals(progress.getStatus())) {
-            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+            historicInstance = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceId(processInstanceId)
                     .singleResult();
             if (historicInstance != null && historicInstance.getEndTime() != null) {
@@ -233,16 +238,32 @@ public class ProcessProgressRuntimeService {
                 .filter(h -> !"sequenceFlow".equals(h.getActivityType())) // 排除连线
                 .map(h -> {
                     ProcessProgressDTO.NodeHistoryDTO dto = new ProcessProgressDTO.NodeHistoryDTO();
-                    dto.setNodeId(h.getActivityId());
-                    dto.setNodeName(h.getActivityName());
-                    dto.setNodeType(h.getActivityType());
+                    String activityId = h.getActivityId();
+                    dto.setNodeId(activityId);
+                    String activityType = h.getActivityType();
+                    dto.setNodeType(activityType);
+                    String nodeName = h.getActivityName();
                     String assigneeId = h.getAssignee();
+                    // 开始/结束事件特殊处理：补全名称和发起人
+                    if ("startEvent".equals(activityType)) {
+                        if (!StringUtils.hasText(nodeName) || activityId.equals(nodeName)) {
+                            nodeName = "开始";
+                        }
+                        if (!StringUtils.hasText(assigneeId) && StringUtils.hasText(startUserId)) {
+                            assigneeId = startUserId;
+                        }
+                    } else if ("endEvent".equals(activityType)) {
+                        if (!StringUtils.hasText(nodeName) || activityId.equals(nodeName)) {
+                            nodeName = "结束";
+                        }
+                    }
+                    dto.setNodeName(nodeName);
                     dto.setAssignee(assigneeId);
-                    // 将用户ID转换为用户名称
+                    // 将用户ID/用户名转换为统一显示名称：nickname(username)
                     if (assigneeId != null && !assigneeId.isEmpty() && !assigneeId.startsWith("${")) {
-                        String nickname = sysUserService.getNicknameByUsername(assigneeId);
-                        if (nickname != null && !nickname.equals(assigneeId)) {
-                            dto.setAssigneeName(nickname);
+                        String displayName = sysUserService.getDisplayName(assigneeId);
+                        if (!assigneeId.equals(displayName)) {
+                            dto.setAssigneeName(displayName);
                         }
                     }
                     dto.setStartTime(h.getStartTime() != null ? formatDate(h.getStartTime()) : null);
@@ -343,6 +364,7 @@ public class ProcessProgressRuntimeService {
                 dto.setNodeName(nodeName != null ? nodeName : "任务转办");
                 dto.setNodeType("userTask");
                 dto.setAssignee(log.getOperatorId());
+                dto.setAssigneeName(sysUserService.getDisplayName(log.getOperatorId()));
                 dto.setAction("TRANSFERRED");
                 dto.setComment(log.getNewValue() != null ? "转办给: " + log.getNewValue() : log.getOperationComment());
                 String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
@@ -440,7 +462,7 @@ public class ProcessProgressRuntimeService {
                 dto.setNodeName("流程终止");
                 dto.setNodeType("terminate");
                 dto.setAssignee(log.getOperatorId());
-                dto.setAssigneeName(log.getOperatorName());
+                dto.setAssigneeName(sysUserService.getDisplayName(log.getOperatorId()));
                 dto.setAction("TERMINATED");
                 dto.setComment(log.getOperationComment());
                 String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
@@ -468,6 +490,7 @@ public class ProcessProgressRuntimeService {
                         dto.setTaskName(t.getName());
                         dto.setNodeId(t.getTaskDefinitionKey());
                         dto.setAssignee(t.getAssignee());
+                        dto.setAssigneeName(sysUserService.getDisplayName(t.getAssignee()));
                         dto.setCreateTime(t.getCreateTime() != null ? formatDate(t.getCreateTime()) : null);
                         return dto;
                     })
@@ -507,10 +530,9 @@ public class ProcessProgressRuntimeService {
                 
                 ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
                 String userId = task.getAssignee();
-                // 查询用户昵称
-                String nickname = sysUserService.getNicknameByUsername(userId);
+                String displayName = sysUserService.getDisplayName(userId);
                 info.setAssigneeId(userId);
-                info.setAssigneeName(nickname != null ? nickname : userId);
+                info.setAssigneeName(displayName);
                 info.setHandleTime(task.getEndTime() != null ? formatDate(task.getEndTime()) : null);
                 // 从流程变量中获取审批意见（如果有）
                 info.setAction("APPROVED"); // 默认同意，实际可从变量中读取
@@ -565,10 +587,9 @@ public class ProcessProgressRuntimeService {
                     info.setAssigneeName("未分配");
                 }
             } else {
-                // 查询用户昵称
-                String nickname = sysUserService.getNicknameByUsername(userId);
+                String displayName = sysUserService.getDisplayName(userId);
                 info.setAssigneeId(userId);
-                info.setAssigneeName(nickname != null ? nickname : userId);
+                info.setAssigneeName(displayName);
             }
             
             info.setHandleTime(task.getCreateTime() != null ? formatDate(task.getCreateTime()) : null);
@@ -983,7 +1004,7 @@ public class ProcessProgressRuntimeService {
     }
 
     /**
-     * 获取组成员昵称列表（去重）
+     * 获取组成员显示名称列表（去重）
      */
     private String getGroupMemberNames(String groupCode) {
         try {
@@ -995,17 +1016,14 @@ public class ProcessProgressRuntimeService {
             if (userIds == null || userIds.isEmpty()) {
                 return group.getGroupName();
             }
-            List<String> nicknames = new ArrayList<>();
+            List<String> names = new ArrayList<>();
             for (String userId : userIds) {
-                com.workflow.entity.SysUser user = sysUserMapper.selectById(userId);
-                if (user != null) {
-                    String name = user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : user.getUsername();
-                    if (!nicknames.contains(name)) {
-                        nicknames.add(name);
-                    }
+                String displayName = sysUserService.getDisplayName(userId);
+                if (!names.contains(displayName)) {
+                    names.add(displayName);
                 }
             }
-            return nicknames.isEmpty() ? group.getGroupName() : String.join(",", nicknames);
+            return names.isEmpty() ? group.getGroupName() : String.join(",", names);
         } catch (Exception e) {
             log.warn("获取组成员失败: {}", groupCode, e);
             return groupCode;
@@ -1013,24 +1031,9 @@ public class ProcessProgressRuntimeService {
     }
 
     /**
-     * 根据用户ID/用户名列表获取昵称列表
+     * 根据用户ID/用户名列表获取统一显示名称列表
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
-        List<String> names = new ArrayList<>();
-        for (String value : idsOrNames) {
-            try {
-                com.workflow.entity.SysUser user = sysUserMapper.selectByUsername(value);
-                if (user == null) {
-                    user = sysUserMapper.selectById(value);
-                }
-                String name = user != null && user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : value;
-                if (!names.contains(name)) {
-                    names.add(name);
-                }
-            } catch (Exception e) {
-                names.add(value);
-            }
-        }
-        return String.join(",", names);
+        return sysUserService.getDisplayNames(idsOrNames);
     }
 }

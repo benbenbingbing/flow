@@ -21,3 +21,10 @@ export function getCurrentUser() {
 export function logout() {
   return request.post('/auth/logout')
 }
+
+/**
+ * 获取当前登录用户权限码集合
+ */
+export function getPermissions() {
+  return request.get('/auth/permissions')
+}

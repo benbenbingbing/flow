@@ -120,8 +120,8 @@ public class TaskActionService {
                     log.setTaskId(taskId);
                     log.setOperationType("TRANSFER");
                     log.setOperatorId(userId);
-                    String operatorName = sysUserService.getNicknameByUsername(userId);
-                    log.setOperatorName(operatorName != null ? operatorName : userId);
+                    String operatorName = sysUserService.getDisplayName(userId);
+                    log.setOperatorName(operatorName);
                     log.setOperationTime(LocalDateTime.now());
                     log.setOperationComment(comment);
                     log.setOldValue(assignee);

@@ -64,7 +64,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Connection } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { login } from '@/api/auth'
+import { login, getPermissions } from '@/api/auth'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -98,6 +98,15 @@ async function handleLogin() {
     // 保存登录信息
     userStore.setToken(res.token)
     userStore.setUserInfo(res)
+    
+    // 加载权限码
+    try {
+      const perms = await getPermissions()
+      userStore.setPermissions(perms || [])
+    } catch (e) {
+      console.error('加载权限失败:', e)
+      userStore.setPermissions([])
+    }
     
     ElMessage.success('登录成功')
     

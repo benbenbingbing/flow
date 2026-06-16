@@ -58,6 +58,26 @@ function rejectWithMessage(message, source) {
   return Promise.reject(error)
 }
 
+function handleApiPayload(payload) {
+  if (!payload || typeof payload.code === 'undefined') {
+    return payload
+  }
+
+  const { code } = payload
+  if (API_SUCCESS_CODES.has(code)) {
+    return normalizeApiResponse(payload)
+  }
+
+  const message = getApiErrorMessage(payload)
+  if (Number(code) === 401) {
+    redirectToLogin(message)
+    return rejectWithMessage(message, payload)
+  }
+
+  ElMessage.error(message)
+  return rejectWithMessage(message, payload)
+}
+
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: 30000,
@@ -81,23 +101,24 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response) => {
     const payload = response.data
-    if (!payload || typeof payload.code === 'undefined') {
+
+    // Blob 响应：如果后端返回的是 JSON 错误，先解析再按统一逻辑处理
+    if (response.config && response.config.responseType === 'blob') {
+      const contentType = (response.headers && response.headers['content-type']) || ''
+      if (contentType.includes('application/json')) {
+        return payload.text().then((text) => {
+          try {
+            const json = JSON.parse(text)
+            return handleApiPayload(json)
+          } catch (e) {
+            return payload
+          }
+        })
+      }
       return payload
     }
 
-    const { code } = payload
-    if (API_SUCCESS_CODES.has(code)) {
-      return normalizeApiResponse(payload)
-    }
-
-    const message = getApiErrorMessage(payload)
-    if (Number(code) === 401) {
-      redirectToLogin(message)
-      return rejectWithMessage(message, payload)
-    }
-
-    ElMessage.error(message)
-    return rejectWithMessage(message, payload)
+    return handleApiPayload(payload)
   },
   (error) => {
     const { response } = error

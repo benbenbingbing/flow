@@ -36,6 +36,16 @@ public class EntityListConfigDTO {
     private String customComponent;
 
     /**
+     * 工具栏按钮配置JSON
+     */
+    private String toolbarConfig;
+
+    /**
+     * 操作列按钮配置JSON
+     */
+    private String rowActionConfig;
+
+    /**
      * 列表字段配置
      */
     private List<EntityListField> fields;

@@ -81,11 +81,25 @@
       <!-- 数据列表 -->
       <el-card>
         <div class="table-toolbar">
-          <el-button type="primary" @click="handleCreate" v-if="entityDefinition.id">
-            <el-icon><Plus /></el-icon>新增数据
-          </el-button>
+          <template v-for="btn in toolbarButtons" :key="btn.key">
+            <component
+              v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
+              :is="getListButtonComponent(btn.customHandler)"
+              mode="toolbar"
+              :context="{ selectedRows, entityCode: entityCode.value, entityDefinition: entityDefinition.value, refresh: loadDataList }"
+            />
+            <el-button
+              v-else
+              :type="btn.buttonType || 'default'"
+              @click="onToolbarClick(btn)"
+            >
+              <el-icon v-if="btn.icon && iconMap[btn.icon]"><component :is="iconMap[btn.icon]" /></el-icon>
+              {{ btn.label }}
+            </el-button>
+          </template>
         </div>
-        <el-table :data="dataList" v-loading="tableLoading" stripe>
+        <el-table :data="dataList" v-loading="tableLoading" stripe @selection-change="handleSelectionChange">
+          <el-table-column v-if="showSelectionColumn" type="selection" width="50" />
           <el-table-column type="index" width="50" />
           <!-- 使用列表配置时：完全动态列 -->
           <template v-if="useListConfig">
@@ -136,12 +150,25 @@
               </template>
             </el-table-column>
           </template>
-          <el-table-column label="操作" width="220" fixed="right">
+          <el-table-column label="操作" min-width="180" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="handleView(row)">查看</el-button>
-              <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-              <el-button v-if="canApprove(row)" link type="warning" @click="handleApprove(row)">审批</el-button>
-              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+              <template v-for="btn in rowActionButtons" :key="btn.key">
+                <component
+                  v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
+                  :is="getListButtonComponent(btn.customHandler)"
+                  mode="row"
+                  :row="row"
+                  :context="{ entityCode: entityCode.value, entityDefinition: entityDefinition.value, refresh: loadDataList }"
+                />
+                <el-button
+                  v-else
+                  :type="btn.buttonType || 'primary'"
+                  :link="btn.link !== false"
+                  @click="onRowActionClick(btn, row)"
+                >
+                  {{ btn.label }}
+                </el-button>
+              </template>
             </template>
           </el-table-column>
         </el-table>
@@ -192,18 +219,25 @@
         </el-form>
       </template>
       <el-form v-else ref="formRef" :model="formData" label-width="100px">
-        <el-form-item v-for="field in formFields" :key="field.fieldCode"
-                     v-show="isFieldVisible(field)"
-                     :label="field.fieldName" :prop="`data.${field.fieldCode}`"
-                     :rules="getFieldRules(field)">
-          <!-- 使用 FormFieldRendererLinkage 统一渲染 -->
-          <FormFieldRendererLinkage
-            v-model="formData.data[field.fieldCode]"
-            :field="field"
-            :disabled="isFieldDisabled(field)"
-            :options="getFieldOptions(field)"
-          />
-        </el-form-item>
+        <template v-for="field in formFields" :key="field.fieldCode">
+          <div v-if="isSectionField(field)" class="form-section-row">
+            <SectionField :field="field" />
+          </div>
+          <el-form-item
+            v-else
+            v-show="isFieldVisible(field)"
+            :label="field.fieldName" :prop="`data.${field.fieldCode}`"
+            :rules="getFieldRules(field)"
+          >
+            <!-- 使用 FormFieldRendererLinkage 统一渲染 -->
+            <FormFieldRendererLinkage
+              v-model="formData.data[field.fieldCode]"
+              :field="field"
+              :disabled="isFieldDisabled(field)"
+              :options="getFieldOptions(field)"
+            />
+          </el-form-item>
+        </template>
 
         <el-divider v-if="entityDefinition.enableProcess" />
         <el-form-item v-if="entityDefinition.enableProcess" label="发起流程">
@@ -443,7 +477,7 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, ArrowUp, ArrowDown, Document } from '@element-plus/icons-vue'
+import { Plus, ArrowUp, ArrowDown, Document, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { useUserStore } from '@/stores/user'
@@ -456,8 +490,12 @@ import { LinkageEngine } from '@/utils/linkageEngine'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
+import SectionField from '@/components/form-fields/components/SectionField.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { getCustomListComponent, hasCustomListComponent, getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
+import { hasButtonPermission } from '@/utils/listButtonPermission'
+import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
+import { getListButtonComponent, hasListButtonComponent } from '@/utils/listButtonComponentRegistry'
 import { getFieldKey, getFieldModelPath, mergeRuntimeFormConfigs, normalizeRuntimeFormConfigs } from '@/shared/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode, parseJsonOptions } from '@/shared/list-runtime'
 
@@ -487,6 +525,9 @@ const entityFields = ref<any[]>([])
 // 列表配置（entity_list_config）
 const listConfig = ref<any>(null)
 const listConfigFields = ref<any[]>([])
+
+// 表格选中行
+const selectedRows = ref<any[]>([])
 
 // 数据列表
 const dataList = ref<any[]>([])
@@ -558,6 +599,12 @@ function updateLinkageState() {
       })
     }
   }
+}
+
+// 判断是否为节字段
+function isSectionField(field: any) {
+  return (field?.fieldType || '').toUpperCase() === 'SECTION' ||
+    (field?.componentType || '').toLowerCase() === 'section'
 }
 
 // 判断字段是否可见
@@ -688,6 +735,70 @@ const useListConfig = computed(() => listConfigFields.value.length > 0)
 
 // 自定义列表组件名
 const customListComponent = computed(() => listConfig.value?.customComponent || '')
+
+// 图标映射
+const iconMap = {
+  Plus,
+  Download,
+  Delete,
+  View,
+  Edit,
+  Check,
+  Close,
+  Printer,
+  FolderChecked,
+  Document
+}
+
+// 默认工具栏按钮
+const DEFAULT_TOOLBAR_BUTTONS = [
+  { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
+  { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
+  { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true, perm: '' },
+  { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true, perm: '' }
+]
+
+// 默认操作列按钮
+const DEFAULT_ROW_ACTION_BUTTONS = [
+  { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true, perm: '' },
+  { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true, perm: '' },
+  { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true, perm: '' },
+  { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true, perm: '' }
+]
+
+function safeJsonParse(text) {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    return null
+  }
+}
+
+// 工具栏按钮（按配置 + 权限过滤）
+const toolbarButtons = computed(() => {
+  const config = safeJsonParse(listConfig.value?.toolbarConfig)
+  const buttons = (config && config.length > 0 ? config : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b })))
+    .filter(b => b.enabled !== false)
+    .filter(b => hasButtonPermission(b))
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+  return buttons
+})
+
+// 操作列按钮（按配置 + 权限过滤）
+const rowActionButtons = computed(() => {
+  const config = safeJsonParse(listConfig.value?.rowActionConfig)
+  const buttons = (config && config.length > 0 ? config : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b })))
+    .filter(b => b.enabled !== false)
+    .filter(b => hasButtonPermission(b))
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+  return buttons
+})
+
+// 是否显示选择列
+const showSelectionColumn = computed(() => {
+  return toolbarButtons.value.some(b => b.key === 'exportSelected' || b.key === 'batchDelete')
+})
 
 // 默认表单配置（用于自定义表单组件）
 const defaultForm = ref<any>(null)
@@ -1078,6 +1189,87 @@ const handleDelete = async (row: any) => {
   }
 }
 
+// 批量删除
+const handleBatchDelete = async () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择数据')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 条数据吗？`, '提示', { type: 'warning' })
+    for (const row of selectedRows.value) {
+      await entityDataApi.delete(entityCode.value, row.id)
+    }
+    ElMessage.success('批量删除成功')
+    selectedRows.value = []
+    loadDataList()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '批量删除失败')
+    }
+  }
+}
+
+// 导出数据
+const handleExport = async (exportType: string, perm?: string) => {
+  try {
+    const condition = { ...queryForm }
+    const ids = exportType === 'SELECTED' ? selectedRows.value.map(r => r.id) : []
+    const res = await entityDataApi.exportData(entityCode.value, {
+      exportType,
+      ids,
+      listKey: listConfig.value?.listKey,
+      condition,
+      perm
+    })
+    // 下载文件
+    const blob = new Blob([res], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${entityCode.value}_${exportType}_${Date.now()}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (error: any) {
+    ElMessage.error(error.message || '导出失败')
+  }
+}
+
+// 表格选择变化
+const handleSelectionChange = (selection: any[]) => {
+  selectedRows.value = selection
+}
+
+// 内置工具栏动作映射
+const BUILTIN_TOOLBAR_ACTIONS: Record<string, Function> = {
+  create: handleCreate,
+  exportSelected: (btn: any) => handleExport('SELECTED', btn?.perm),
+  exportAll: (btn: any) => handleExport('ALL', btn?.perm),
+  batchDelete: handleBatchDelete
+}
+
+// 工具栏按钮点击分发
+const onToolbarClick = (btn: any) => {
+  if (btn.type === 'built-in') {
+    BUILTIN_TOOLBAR_ACTIONS[btn.key]?.(btn)
+  } else if (btn.type === 'custom') {
+    const handler = getListToolbarAction(btn.customHandler)
+    if (handler) {
+      handler({
+        selectedRows: selectedRows.value,
+        entityCode: entityCode.value,
+        entityDefinition: entityDefinition.value,
+        refresh: loadDataList,
+        config: btn
+      })
+    } else {
+      ElMessage.warning(`未找到自定义执行器：${btn.customHandler}`)
+    }
+  }
+}
+
 // 判断是否可审批
 const canApprove = (row: any) => {
   if (!row.processInstanceId || row.processEndTime) return false
@@ -1252,8 +1444,8 @@ async function loadProcessDetail(instanceId: string) {
         return {
           title: node.nodeName || node.nodeId,
           description: isStartNode
-            ? `发起人: ${node.assignee || currentTask.value?.startUserName || 'admin'}`
-            : (node.assignee ? `执行人: ${node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
+            ? `发起人: ${node.assigneeName || node.assignee || currentTask.value?.startUserName || 'admin'}`
+            : (node.assignee ? `执行人: ${node.assigneeName || node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
           time: node.endTime || node.startTime,
           type: node.action === 'TRANSFERRED' ? 'warning' : (node.status === 'TERMINATED' ? 'danger' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
           status: node.status,
@@ -1268,8 +1460,8 @@ async function loadProcessDetail(instanceId: string) {
         return {
           title: h.taskName || '流程节点',
           description: isStart
-            ? `发起人: ${h.assignee || currentTask.value?.startUserName || 'admin'}`
-            : `${h.assignee || '系统'} ${isTransfer ? '转办' : (h.action || '处理')}`,
+            ? `发起人: ${h.assigneeName || h.assignee || currentTask.value?.startUserName || 'admin'}`
+            : `${h.assigneeName || h.assignee || '系统'} ${isTransfer ? '转办' : (h.action || '处理')}`,
           time: h.endTime || h.startTime,
           type: isStart ? 'primary' : (isTransfer ? 'warning' : (h.action === '通过' ? 'success' : 'info')),
           status: h.endTime ? 'COMPLETED' : 'ACTIVE',
@@ -1345,6 +1537,38 @@ const handleView = async (row: any) => {
   processDialogVisible.value = true
 }
 
+// 内置操作列动作映射
+const BUILTIN_ROW_ACTIONS: Record<string, Function> = {
+  view: handleView,
+  edit: handleEdit,
+  approve: handleApprove,
+  delete: handleDelete
+}
+
+// 操作列按钮点击分发
+const onRowActionClick = (btn: any, row: any) => {
+  if (btn.type === 'built-in') {
+    if (btn.key === 'approve' && !canApprove(row)) {
+      ElMessage.warning('当前数据不可审批')
+      return
+    }
+    BUILTIN_ROW_ACTIONS[btn.key]?.(row)
+  } else if (btn.type === 'custom') {
+    const handler = getListRowAction(btn.customHandler)
+    if (handler) {
+      handler({
+        row,
+        entityCode: entityCode.value,
+        entityDefinition: entityDefinition.value,
+        refresh: loadDataList,
+        config: btn
+      })
+    } else {
+      ElMessage.warning(`未找到自定义执行器：${btn.customHandler}`)
+    }
+  }
+}
+
 // 提交审批
 const submitApprove = async () => {
   if (!currentTask.value?.taskId) return
@@ -1412,6 +1636,10 @@ watch(() => entityCode.value, () => {
 </script>
 
 <style scoped lang="scss">
+.form-section-row {
+  width: 100%;
+}
+
 .entity-data-list {
   padding: 10px;
   

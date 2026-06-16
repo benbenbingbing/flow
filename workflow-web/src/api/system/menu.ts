@@ -59,3 +59,8 @@ export const importMenus = (data: any[]) => {
 export const getMenuTypeOptions = () => {
   return request.get('/system/menu/type-options')
 }
+
+// 根据实体编码获取可用的按钮权限码集合
+export const getPermsByEntityCode = (entityCode: string) => {
+  return request.get('/system/menu/perms', { params: { entityCode } })
+}

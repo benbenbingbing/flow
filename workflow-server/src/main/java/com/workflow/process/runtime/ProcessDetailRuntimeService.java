@@ -168,7 +168,9 @@ public class ProcessDetailRuntimeService {
         if (historicInstance != null) {
             ProcessDetailVO.HistoryVO startHistory = new ProcessDetailVO.HistoryVO();
             startHistory.setTaskName("流程发起");
-            startHistory.setAssignee(historicInstance.getStartUserId());
+            String startUserId = historicInstance.getStartUserId();
+            startHistory.setAssignee(startUserId);
+            startHistory.setAssigneeName(sysUserService.getDisplayName(startUserId));
             startHistory.setAction("发起");
             startHistory.setStartTime(formatDate(historicInstance.getStartTime()));
             startHistory.setEndTime(formatDate(historicInstance.getStartTime()));
@@ -180,9 +182,9 @@ public class ProcessDetailRuntimeService {
             history.setTaskName(task.getName());
             String assigneeId = task.getAssignee();
             history.setAssignee(assigneeId);
-            String nickname = sysUserService.getNicknameByUsername(assigneeId);
-            if (nickname != null && !nickname.equals(assigneeId)) {
-                history.setAssigneeName(nickname);
+            String displayName = sysUserService.getDisplayName(assigneeId);
+            if (!assigneeId.equals(displayName)) {
+                history.setAssigneeName(displayName);
             }
             history.setAction("通过");
             history.setStartTime(formatDate(task.getStartTime()));
@@ -289,9 +291,9 @@ public class ProcessDetailRuntimeService {
         for (HistoricTaskInstance task : historicTasks) {
             ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
             String userId = task.getAssignee();
-            String nickname = sysUserService.getNicknameByUsername(userId);
+            String displayName = sysUserService.getDisplayName(userId);
             assignee.setAssigneeId(userId);
-            assignee.setAssigneeName(nickname != null ? nickname : userId);
+            assignee.setAssigneeName(displayName);
             assignee.setHandleTime(formatDate(task.getEndTime()));
             assignee.setAction("通过");
             assignee.setStatus("completed");
@@ -313,9 +315,9 @@ public class ProcessDetailRuntimeService {
         ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
         String userId = task.getAssignee();
         if (userId != null && !userId.isEmpty()) {
-            String nickname = sysUserService.getNicknameByUsername(userId);
+            String displayName = sysUserService.getDisplayName(userId);
             assignee.setAssigneeId(userId);
-            assignee.setAssigneeName(nickname != null ? nickname : userId);
+            assignee.setAssigneeName(displayName);
         } else {
             fillCandidateAssignee(task, assignee);
         }
@@ -345,7 +347,7 @@ public class ProcessDetailRuntimeService {
                 assignee.setAssigneeName(String.join(",", groupNames) + "（组任务）");
             } else if (!candidateUserIds.isEmpty()) {
                 assignee.setAssigneeId(String.join(",", candidateUserIds));
-                assignee.setAssigneeName(String.join(",", candidateUserIds) + "（候选）");
+                assignee.setAssigneeName(sysUserService.getDisplayNames(candidateUserIds) + "（候选）");
             } else {
                 assignee.setAssigneeId("");
                 assignee.setAssigneeName("未分配");

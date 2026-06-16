@@ -19,14 +19,14 @@ spring:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
 
   flyway:
-    enabled: false
+    enabled: true
     locations: classpath:db/migration
     encoding: UTF-8
     sql-migration-prefix: V
     sql-migration-separator: __
     sql-migration-suffixes: .sql
     baseline-on-migrate: true
-    baseline-version: 0
+    baseline-version: "003"
     placeholder-replacement: false
 
   servlet:

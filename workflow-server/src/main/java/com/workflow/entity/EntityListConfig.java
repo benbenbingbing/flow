@@ -72,6 +72,18 @@ public class EntityListConfig {
     private String customComponent;
 
     /**
+     * 工具栏按钮配置JSON
+     */
+    @TableField("toolbar_config")
+    private String toolbarConfig;
+
+    /**
+     * 操作列按钮配置JSON
+     */
+    @TableField("row_action_config")
+    private String rowActionConfig;
+
+    /**
      * 更新时间
      */
         @TableField("update_time")

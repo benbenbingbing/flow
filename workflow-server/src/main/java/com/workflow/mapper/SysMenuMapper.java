@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 菜单管理 Mapper
@@ -37,4 +38,23 @@ public interface SysMenuMapper extends BaseMapper<SysMenu> {
      */
     @Select("SELECT COUNT(*) > 0 FROM sys_menu WHERE parent_id = #{parentId} AND deleted = 0")
     boolean hasChildren(@Param("parentId") String parentId);
+
+    /**
+     * 根据用户ID查询权限标识集合（F类型按钮菜单）
+     */
+    @Select("SELECT DISTINCT m.perm FROM sys_menu m " +
+            "JOIN sys_role_menu rm ON m.id = rm.menu_id " +
+            "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
+            "WHERE ur.user_id = #{userId} " +
+            "AND m.menu_type = 'F' AND m.status = '0' AND m.deleted = 0 " +
+            "AND m.perm IS NOT NULL AND m.perm != ''")
+    Set<String> selectPermsByUserId(@Param("userId") String userId);
+
+    /**
+     * 根据实体编码查询F类型按钮菜单的权限标识集合
+     */
+    @Select("SELECT DISTINCT perm FROM sys_menu " +
+            "WHERE entity_code = #{entityCode} AND menu_type = 'F' AND status = '0' AND deleted = 0 " +
+            "AND perm IS NOT NULL AND perm != ''")
+    Set<String> selectPermsByEntityCode(@Param("entityCode") String entityCode);
 }

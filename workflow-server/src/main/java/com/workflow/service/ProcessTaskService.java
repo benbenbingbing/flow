@@ -36,6 +36,7 @@ public class ProcessTaskService {
     private final com.workflow.mapper.SysGroupMapper sysGroupMapper;
     private final com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper;
     private final com.workflow.mapper.SysUserMapper sysUserMapper;
+    private final com.workflow.service.SysUserService sysUserService;
     
     public ProcessTaskService(ProcessTaskMapper taskMapper,
                               TaskService flowableTaskService,
@@ -48,7 +49,8 @@ public class ProcessTaskService {
                               @Lazy com.workflow.service.EntityDataDynamicService entityDataDynamicService,
                               com.workflow.mapper.SysGroupMapper sysGroupMapper,
                               com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper,
-                              com.workflow.mapper.SysUserMapper sysUserMapper) {
+                              com.workflow.mapper.SysUserMapper sysUserMapper,
+                              com.workflow.service.SysUserService sysUserService) {
         this.taskMapper = taskMapper;
         this.flowableTaskService = flowableTaskService;
         this.runtimeService = runtimeService;
@@ -61,6 +63,7 @@ public class ProcessTaskService {
         this.sysGroupMapper = sysGroupMapper;
         this.sysUserGroupMapper = sysUserGroupMapper;
         this.sysUserMapper = sysUserMapper;
+        this.sysUserService = sysUserService;
     }
     
     /**
@@ -552,7 +555,7 @@ public class ProcessTaskService {
     }
 
     /**
-     * 获取组成员昵称列表（去重）
+     * 获取组成员显示名称列表（去重）
      */
     private String getGroupMemberNames(String groupCode) {
         try {
@@ -564,17 +567,14 @@ public class ProcessTaskService {
             if (userIds == null || userIds.isEmpty()) {
                 return group.getGroupName();
             }
-            List<String> nicknames = new java.util.ArrayList<>();
+            List<String> names = new java.util.ArrayList<>();
             for (String userId : userIds) {
-                com.workflow.entity.SysUser user = sysUserMapper.selectById(userId);
-                if (user != null) {
-                    String name = user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : user.getUsername();
-                    if (!nicknames.contains(name)) {
-                        nicknames.add(name);
-                    }
+                String displayName = sysUserService.getDisplayName(userId);
+                if (!names.contains(displayName)) {
+                    names.add(displayName);
                 }
             }
-            return nicknames.isEmpty() ? group.getGroupName() : String.join(",", nicknames);
+            return names.isEmpty() ? group.getGroupName() : String.join(",", names);
         } catch (Exception e) {
             log.warn("获取组成员失败: {}", groupCode, e);
             return groupCode;
@@ -582,25 +582,10 @@ public class ProcessTaskService {
     }
 
     /**
-     * 根据用户ID/用户名列表获取昵称列表
+     * 根据用户ID/用户名列表获取统一显示名称列表
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
-        List<String> names = new java.util.ArrayList<>();
-        for (String value : idsOrNames) {
-            try {
-                com.workflow.entity.SysUser user = sysUserMapper.selectByUsername(value);
-                if (user == null) {
-                    user = sysUserMapper.selectById(value);
-                }
-                String name = user != null && user.getNickname() != null && !user.getNickname().isEmpty() ? user.getNickname() : value;
-                if (!names.contains(name)) {
-                    names.add(name);
-                }
-            } catch (Exception e) {
-                names.add(value);
-            }
-        }
-        return String.join(",", names);
+        return sysUserService.getDisplayNames(idsOrNames);
     }
 
 }

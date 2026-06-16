@@ -267,6 +267,11 @@ public class ProcessProgressDTO {
         private String assignee;
         
         /**
+         * 处理人显示名称
+         */
+        private String assigneeName;
+        
+        /**
          * 创建时间
          */
         private String createTime;

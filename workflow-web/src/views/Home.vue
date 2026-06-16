@@ -90,7 +90,7 @@
         <el-table-column prop="code" label="编码" min-width="150" show-overflow-tooltip />
         <el-table-column prop="name" label="标题" min-width="150" show-overflow-tooltip />
         <el-table-column prop="currentTaskName" label="任务名称" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="startUserName" label="发起人" width="100" />
+        <el-table-column prop="startUserName" label="发起人" width="140" />
         <el-table-column label="创建时间" width="160">
           <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
         </el-table-column>
@@ -116,7 +116,7 @@
         <el-table-column prop="code" label="编码" min-width="150" show-overflow-tooltip />
         <el-table-column prop="name" label="标题" min-width="150" show-overflow-tooltip />
         <el-table-column prop="currentTaskName" label="任务名称" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="startUserName" label="发起人" width="100" />
+        <el-table-column prop="startUserName" label="发起人" width="140" />
         <el-table-column label="创建时间" width="160">
           <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
         </el-table-column>
@@ -144,7 +144,7 @@
         <el-table-column prop="processName" label="流程名称" min-width="150" show-overflow-tooltip />
         <el-table-column prop="code" label="编码" min-width="150" show-overflow-tooltip />
         <el-table-column prop="name" label="标题" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="startUserName" label="发起人" width="100" />
+        <el-table-column prop="startUserName" label="发起人" width="140" />
         <el-table-column prop="currentNodeName" label="当前节点" min-width="120" show-overflow-tooltip />
         <el-table-column label="发起时间" width="160">
           <template #default="{ row }">{{ formatDate(row.startTime) }}</template>

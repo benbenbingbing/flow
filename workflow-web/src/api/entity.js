@@ -137,5 +137,14 @@ export const entityDataApi = {
    */
   delete(entityCode, id) {
     return request.delete(`/entity-data/entity/${entityCode}/detail/${id}`)
+  },
+
+  /**
+   * 导出实体数据（选中或全部）
+   */
+  exportData(entityCode, data) {
+    return request.post(`/entity-data/entity/${entityCode}/export`, data, {
+      responseType: 'blob'
+    })
   }
 }

@@ -57,6 +57,9 @@
               <el-radio-button label="horizontal">水平</el-radio-button>
               <el-radio-button label="grid">网格</el-radio-button>
             </el-radio-group>
+            <el-button type="primary" size="small" style="margin-left: 12px" @click="addSection">
+              <el-icon><Plus /></el-icon>添加节
+            </el-button>
           </div>
         </div>
         
@@ -100,9 +103,10 @@
                 :class="{ 
                   active: selectedField?.id === field.id,
                   'grid-item': form.layoutType === 'grid',
-                  'tab-subform': isTabSubForm(field)
+                  'tab-subform': isTabSubForm(field),
+                  'section-field-wrapper': isSectionField(field)
                 }"
-                :style="getGridStyle(field)"
+                :style="isSectionField(field) ? { width: '100%' } : getGridStyle(field)"
                 @click="selectField(field)"
               >
                 <!-- 顺序标记 -->
@@ -110,7 +114,11 @@
                 
                 <!-- 字段内容 - 与预览完全一致的渲染 -->
                 <div class="field-content">
+                  <template v-if="isSectionField(field)">
+                    <SectionField :field="field" />
+                  </template>
                   <el-form-item 
+                    v-else
                     :label="field.fieldLabel || field.fieldName"
                     :required="field.isRequired === 1"
                     class="design-form-item"
@@ -174,44 +182,46 @@
           
           <el-scrollbar height="calc(100vh - 180px)">
             <el-form label-width="90px" size="small" class="property-form">
-              <el-form-item label="字段名称">
-                <el-input v-model="selectedField.fieldName" disabled />
+              <el-form-item :label="isSelectedSection ? '节标题' : '字段名称'">
+                <el-input v-model="selectedField.fieldName" :disabled="!isSelectedSection" />
               </el-form-item>
               <el-form-item label="显示标签">
                 <el-input v-model="selectedField.fieldLabel" />
               </el-form-item>
-              <el-form-item label="组件类型">
-                <el-select v-model="selectedField.componentType" style="width: 100%">
-                  <el-option label="文本输入" value="input" />
-                  <el-option label="多行文本" value="textarea" />
-                  <el-option label="数字" value="number" />
-                  <el-option label="日期" value="date" />
-                  <el-option label="日期时间" value="datetime" />
-                  <el-option label="下拉选择（单选）" value="select" />
-                  <el-option label="下拉选择（多选）" value="select_multiple" />
-                  <el-option label="单选框" value="radio" />
-                  <el-option label="复选框" value="checkbox" />
-                  <el-option label="开关" value="switch" />
-                  <el-option label="文件" value="file" />
-                  <el-option label="级联选择" value="cascader" />
-                  <el-option label="实体引用（单选）" value="reference" />
-                  <el-option label="实体引用（多选）" value="multi_reference" />
-                  <el-option label="子表单" value="SUB_FORM" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="属性">
-                <div class="checkbox-group">
-                  <el-checkbox v-model="selectedField.isRequired" :true-label="1" :false-label="0">必填</el-checkbox>
-                  <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">只读</el-checkbox>
-                  <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">隐藏</el-checkbox>
-                </div>
-              </el-form-item>
-              <el-form-item label="默认值">
-                <el-input v-model="selectedField.defaultValue" placeholder="默认值" />
-              </el-form-item>
-              <el-form-item label="占位提示">
-                <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
-              </el-form-item>
+              <template v-if="!isSelectedSection">
+                <el-form-item label="组件类型">
+                  <el-select v-model="selectedField.componentType" style="width: 100%">
+                    <el-option label="文本输入" value="input" />
+                    <el-option label="多行文本" value="textarea" />
+                    <el-option label="数字" value="number" />
+                    <el-option label="日期" value="date" />
+                    <el-option label="日期时间" value="datetime" />
+                    <el-option label="下拉选择（单选）" value="select" />
+                    <el-option label="下拉选择（多选）" value="select_multiple" />
+                    <el-option label="单选框" value="radio" />
+                    <el-option label="复选框" value="checkbox" />
+                    <el-option label="开关" value="switch" />
+                    <el-option label="文件" value="file" />
+                    <el-option label="级联选择" value="cascader" />
+                    <el-option label="实体引用（单选）" value="reference" />
+                    <el-option label="实体引用（多选）" value="multi_reference" />
+                    <el-option label="子表单" value="SUB_FORM" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="属性">
+                  <div class="checkbox-group">
+                    <el-checkbox v-model="selectedField.isRequired" :true-label="1" :false-label="0">必填</el-checkbox>
+                    <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">只读</el-checkbox>
+                    <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">隐藏</el-checkbox>
+                  </div>
+                </el-form-item>
+                <el-form-item label="默认值">
+                  <el-input v-model="selectedField.defaultValue" placeholder="默认值" />
+                </el-form-item>
+                <el-form-item label="占位提示">
+                  <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
+                </el-form-item>
+              </template>
               <el-form-item label="栅格宽度" v-if="form.layoutType === 'grid'">
                 <el-slider v-model="selectedField.gridSpan" :min="1" :max="24" show-stops />
                 <span class="slider-value">{{ selectedField.gridSpan }}/24</span>
@@ -366,6 +376,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, View, Search, Document, ArrowUp, ArrowDown, Delete, Edit, DocumentAdd, Plus, Connection } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
+import SectionField from '@/components/form-fields/components/SectionField.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
@@ -491,6 +502,9 @@ const formLabelPosition = computed(() => {
       return 'right'
   }
 })
+
+// 当前选中的是否为节
+const isSelectedSection = computed(() => isSectionField(selectedField.value))
 
 // 过滤后的字段
 const filteredEntityFields = computed(() => {
@@ -854,6 +868,35 @@ function getDefaultComponentType(fieldType) {
     'CHECKBOX': 'checkbox'
   }
   return typeMap[fieldType] || 'input'
+}
+
+// 判断是否为节字段
+function isSectionField(field) {
+  return (field?.fieldType || '').toUpperCase() === 'SECTION' ||
+    (field?.componentType || '').toLowerCase() === 'section'
+}
+
+// 添加节
+function addSection() {
+  const ts = Date.now()
+  const section = {
+    id: `section_${ts}`,
+    formId: formId,
+    fieldId: `section_${ts}`,
+    fieldCode: `section_${ts}`,
+    fieldName: '新节',
+    fieldLabel: '新节',
+    fieldType: 'SECTION',
+    componentType: 'section',
+    isRequired: 0,
+    isReadonly: 1,
+    isHidden: 0,
+    gridSpan: 24,
+    sortOrder: formFields.value.length
+  }
+  formFields.value.push(section)
+  selectedField.value = section
+  ElMessage.success('节已添加')
 }
 
 // 选择字段
@@ -1249,6 +1292,16 @@ onMounted(async () => {
 .field-content {
   flex: 1;
   min-width: 0;
+}
+
+/* 节字段在画布中占满一行，且不显示表单项标签 */
+.form-field-wrapper.section-field-wrapper {
+  width: 100% !important;
+  align-items: center;
+}
+
+.form-field-wrapper.section-field-wrapper .field-content {
+  flex: 1;
 }
 
 .design-form-item {
