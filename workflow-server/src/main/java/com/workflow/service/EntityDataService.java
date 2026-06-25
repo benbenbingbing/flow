@@ -44,6 +44,7 @@ public class EntityDataService {
     private final ProcessTaskService processTaskService;
     private final EntityCodeGeneratorService codeGeneratorService;
     private final com.workflow.listener.MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final WorkflowAutoSkipService workflowAutoSkipService;
     
     /**
      * 查询某实体的所有数据
@@ -179,6 +180,9 @@ public class EntityDataService {
                         flowableProcess.getId(), 
                         variables
                 );
+
+                // 兜底：自动完成配置为跳过的节点（防止 flowable:skipExpression 未生效）
+                workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfig.getId());
                 
                 // 更新流程实例ID、状态和流程开始时间
                 data.setProcessInstanceId(processInstance.getId());

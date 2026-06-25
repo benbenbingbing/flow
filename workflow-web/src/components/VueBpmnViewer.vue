@@ -49,7 +49,7 @@ import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css'
 const props = defineProps({
   xml: { type: String, default: '' },
   navigated: { type: Boolean, default: false },
-  fitViewport: { type: Boolean, default: true },
+  fitViewport: { type: Boolean, default: false },
   // 进度相关数据
   progressData: {
     type: Object,
@@ -114,25 +114,90 @@ const initViewer = () => {
   })
 }
 
+const applyViewport = () => {
+  if (!viewer.value || !canvasRef.value) return
+  const canvas = viewer.value.get('canvas')
+  canvas.resized()
+  if (props.fitViewport) {
+    canvas.zoom('fit-viewport', 'auto')
+    // 自适应时让内部容器跟随 SVG 默认尺寸，不强制滚动条
+    const djsContainer = canvasRef.value.querySelector('.djs-container')
+    const svg = canvasRef.value.querySelector('.djs-container svg')
+    if (djsContainer) {
+      djsContainer.style.width = ''
+      djsContainer.style.height = ''
+      djsContainer.style.minWidth = ''
+      djsContainer.style.minHeight = ''
+    }
+    if (svg) {
+      svg.style.width = ''
+      svg.style.height = ''
+      svg.style.minWidth = ''
+      svg.style.minHeight = ''
+      svg.removeAttribute('viewBox')
+    }
+  } else {
+    // 按 100% 显示，不缩放节点；超出容器时通过滚动条查看
+    const svg = canvasRef.value.querySelector('.djs-container svg')
+    const djsContainer = canvasRef.value.querySelector('.djs-container')
+    if (!svg || !djsContainer) return
+
+    const viewbox = canvas.viewbox()
+    if (!viewbox || !viewbox.inner) return
+
+    const padding = 60
+    const inner = viewbox.inner
+
+    // 优先读取 SVG 实际渲染包围盒（包含箭头 marker、标签、徽章等）
+    let minX = inner.x
+    let minY = inner.y
+    let maxX = inner.x + inner.width
+    let maxY = inner.y + inner.height
+    try {
+      const bbox = svg.getBBox()
+      if (bbox && bbox.width > 0 && bbox.height > 0) {
+        minX = Math.min(minX, bbox.x)
+        minY = Math.min(minY, bbox.y)
+        maxX = Math.max(maxX, bbox.x + bbox.width)
+        maxY = Math.max(maxY, bbox.y + bbox.height)
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const width = Math.ceil(maxX - minX + padding * 2)
+    const height = Math.ceil(maxY - minY + padding * 2)
+
+    // 先固定 SVG 像素尺寸，再按 1:1 缩放，最后把 viewBox 对准完整包围盒
+    svg.style.width = width + 'px'
+    svg.style.height = height + 'px'
+    svg.style.minWidth = width + 'px'
+    svg.style.minHeight = height + 'px'
+    djsContainer.style.width = width + 'px'
+    djsContainer.style.height = height + 'px'
+    djsContainer.style.minWidth = width + 'px'
+    djsContainer.style.minHeight = height + 'px'
+
+    // 通过 bpmn-js API 设置 viewbox，同时更新根 group 的 transform，
+    // 保证内容完整显示并且 1:1 不缩放
+    canvas.viewbox({
+      x: minX - padding,
+      y: minY - padding,
+      width,
+      height
+    })
+  }
+}
+
 const importXML = async (xml) => {
   if (!viewer.value) return
   try {
     await viewer.value.importXML(xml)
-    if (props.fitViewport) {
-      const canvas = viewer.value.get('canvas')
-      // 先确保 canvas 尺寸计算正确，再 fit viewport
-      nextTick(() => {
-        canvas.resized()
-        canvas.zoom('fit-viewport', 'auto')
-      })
-    }
+    // 先确保 canvas 尺寸计算正确，再应用 viewport
+    nextTick(() => applyViewport())
     // 延迟高亮，确保 bpmn-js 渲染完成
     setTimeout(() => {
-      if (props.fitViewport && viewer.value) {
-        const canvas = viewer.value.get('canvas')
-        canvas.resized()
-        canvas.zoom('fit-viewport', 'auto')
-      }
+      applyViewport()
       highlightProcess()
       addMouseEventListeners()
       startFlowFixTimer()
@@ -464,11 +529,7 @@ watch(() => props.xml, (newXml) => {
 watch(() => props.progressData, () => {
   setTimeout(() => {
     nextTick(() => {
-      if (viewer.value && props.fitViewport) {
-        const canvas = viewer.value.get('canvas')
-        canvas.resized()
-        canvas.zoom('fit-viewport', 'auto')
-      }
+      applyViewport()
       highlightProcess()
       startFlowFixTimer()
     })
@@ -506,6 +567,16 @@ defineExpose({
 .vue-bpmn-viewer-canvas {
   width: 100%;
   height: 100%;
+  overflow: auto !important;
+  position: relative;
+}
+
+.vue-bpmn-viewer-canvas .djs-container {
+  overflow: visible !important;
+}
+
+.vue-bpmn-viewer-canvas .djs-container svg {
+  display: block;
 }
 
 /* 节点悬停提示框 */

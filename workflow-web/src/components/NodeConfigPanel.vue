@@ -3237,29 +3237,44 @@ async function loadStatusConfig(bo) {
  * 加载实体预定义的状态列表
  */
 /**
- * 加载源节点的审批配置选项（用于连线条件中 approved 属性的下拉选择）
+ * 加载审批结果选项（用于连线条件中 approved 属性的下拉选择）
+ * 聚合当前流程中所有用户任务节点配置的审批选项
  */
 function loadSourceNodeApprovalOptions(bo) {
   sourceNodeApprovalOptions.value = []
-  const sourceRef = bo.sourceRef
-  if (!sourceRef) return
-  
-  const extProps = getExtensionProperties(sourceRef)
-  const approvalConfigStr = extProps['approvalConfig']
-  if (approvalConfigStr) {
+  const modeler = props.element?._modeler
+  if (!modeler) return
+
+  const elementRegistry = modeler.get('elementRegistry')
+  const allElements = elementRegistry.getAll()
+  const optionMap = new Map()
+
+  allElements.forEach(el => {
+    if (el.type !== 'bpmn:UserTask') return
+    const extProps = getExtensionProperties(el.businessObject)
+    const approvalConfigStr = extProps['approvalConfig']
+    if (!approvalConfigStr) return
     try {
       const approvalConfig = JSON.parse(approvalConfigStr)
       if (approvalConfig.options && Array.isArray(approvalConfig.options)) {
-        sourceNodeApprovalOptions.value = approvalConfig.options.map(opt => ({
-          label: opt.label || opt.value,
-          value: String(opt.value)
-        }))
-        console.log('加载源节点审批选项:', bo.id, '源节点:', sourceRef.id, '选项:', sourceNodeApprovalOptions.value)
+        approvalConfig.options.forEach(opt => {
+          const value = String(opt.value)
+          if (!optionMap.has(value)) {
+            optionMap.set(value, opt.label || opt.value)
+          }
+        })
       }
     } catch (e) {
-      console.warn('解析源节点审批配置失败:', e)
+      console.warn('解析审批配置失败:', e)
     }
-  }
+  })
+
+  sourceNodeApprovalOptions.value = Array.from(optionMap.entries()).map(([value, label]) => ({
+    label,
+    value
+  }))
+
+  console.log('加载审批结果选项:', bo.id, '选项:', sourceNodeApprovalOptions.value)
 }
 
 async function loadEntityStatusList() {

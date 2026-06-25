@@ -12,6 +12,7 @@ import com.workflow.mapper.EntityStatusMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.service.DynamicTableService;
 import com.workflow.service.ProcessTaskService;
+import com.workflow.service.WorkflowAutoSkipService;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -94,6 +95,7 @@ class EntityWorkflowRuntimeServiceTest {
         final IdentityService identityService = mock(IdentityService.class);
         final org.flowable.engine.TaskService taskService = mock(org.flowable.engine.TaskService.class);
         final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
+        final WorkflowAutoSkipService workflowAutoSkipService = mock(WorkflowAutoSkipService.class);
         final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(MultiInstanceCollectionListener.class);
         final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
 
@@ -136,7 +138,7 @@ class EntityWorkflowRuntimeServiceTest {
             return new EntityWorkflowRuntimeService(
                     dynamicMapper, entityStatusMapper, processDefinitionConfigMapper,
                     dynamicTableService, runtimeService, identityService, taskService,
-                    processTaskService, multiInstanceCollectionListener, snapshotService);
+                    processTaskService, workflowAutoSkipService, multiInstanceCollectionListener, snapshotService);
         }
     }
 }

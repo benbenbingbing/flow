@@ -12,6 +12,7 @@ import com.workflow.mapper.EntityStatusMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.service.DynamicTableService;
 import com.workflow.service.ProcessTaskService;
+import com.workflow.service.WorkflowAutoSkipService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.IdentityService;
@@ -43,6 +44,7 @@ public class EntityWorkflowRuntimeService {
     private final IdentityService identityService;
     private final org.flowable.engine.TaskService taskService;
     private final ProcessTaskService processTaskService;
+    private final WorkflowAutoSkipService workflowAutoSkipService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityPublishedSnapshotService snapshotService;
 
@@ -70,6 +72,10 @@ public class EntityWorkflowRuntimeService {
         }
 
         ProcessInstance processInstance = runtimeService.startProcessInstanceByKey(processKey, dto.getId(), variables);
+
+        // 兜底：自动完成配置为跳过的节点（防止 flowable:skipExpression 未生效）
+        workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfigId);
+
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())
                 .active()

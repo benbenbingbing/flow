@@ -70,7 +70,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="75%" class="entity-form-dialog">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
         <template v-for="field in formFields" :key="field.fieldId">
           <div v-if="isSectionField(field)" class="form-section-row">
@@ -1035,6 +1035,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 新增/编辑弹窗：上下留白并固定高度，内容超出滚动 */
+.entity-form-dialog {
+  margin-top: 15px !important;
+  margin-bottom: 15px !important;
+  height: auto;
+  max-height: calc(100vh - 30px);
+  display: flex;
+  flex-direction: column;
+}
+.entity-form-dialog .el-dialog__body {
+  flex: 1;
+  overflow-y: auto;
+}
+
 .form-section-row {
   width: 100%;
 }

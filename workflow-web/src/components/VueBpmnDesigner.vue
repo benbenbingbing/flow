@@ -288,7 +288,9 @@ defineExpose({
 }
 </style>
 <style>
-.djs-container {
+/* 仅设计器显示网格背景，查看器不显示 */
+.vue-bpmn-designer-canvas.djs-container,
+.vue-bpmn-designer-canvas .djs-container {
   background-image:
     linear-gradient(to right, #e0e0e0 1px, transparent 1px),
     linear-gradient(to bottom, #e0e0e0 1px, transparent 1px);

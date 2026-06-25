@@ -190,7 +190,7 @@
     </template>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="75%" class="entity-form-dialog">
       <div v-if="showCustomForm">
         <component
           :is="getCustomFormComponent(defaultForm.customComponent)"
@@ -253,7 +253,7 @@
     </el-dialog>
     
     <!-- 审批/查看弹窗 -->
-    <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="700px" destroy-on-close>
+    <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog" destroy-on-close>
       <el-tabs v-model="activeDialogTab" type="border-card">
         <!-- 无 tab 子表单时：基本信息 tab -->
         <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
@@ -1636,6 +1636,20 @@ watch(() => entityCode.value, () => {
 </script>
 
 <style scoped lang="scss">
+/* 新增/编辑/审批弹窗：上下留白并固定高度，内容超出滚动 */
+.entity-form-dialog {
+  margin-top: 15px !important;
+  margin-bottom: 15px !important;
+  height: auto;
+  max-height: calc(100vh - 30px);
+  display: flex;
+  flex-direction: column;
+}
+.entity-form-dialog .el-dialog__body {
+  flex: 1;
+  overflow-y: auto;
+}
+
 .form-section-row {
   width: 100%;
 }
