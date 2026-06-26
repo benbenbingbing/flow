@@ -654,6 +654,9 @@
         ? '以下为该规则单独生效时的数据权限 SQL 片段（不含外层 deleted=0）。'
         : '以下为当前用户在该列表下最终生效的数据权限 SQL 片段（不含外层 deleted=0）。' }}
     </el-alert>
+    <el-alert v-if="permissionSqlPreview.remark" type="warning" :closable="false" style="margin-bottom: 12px">
+      {{ permissionSqlPreview.remark }}
+    </el-alert>
 
     <div v-if="permissionSqlPreview.matchedRules && permissionSqlPreview.matchedRules.length > 0" class="preview-section">
       <div class="preview-section-title">命中规则明细</div>

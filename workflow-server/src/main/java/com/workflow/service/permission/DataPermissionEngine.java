@@ -118,10 +118,31 @@ public class DataPermissionEngine {
             dto.setNeedFilter(false);
         } else {
             String ruleSql = sqlBuilder.buildFilterSql(filter, user);
-            detail.setSql(ruleSql);
             boolean isDeny = "DENY".equalsIgnoreCase(rule.getRuleEffect());
-            dto.setSql(isDeny ? "NOT (" + ruleSql + ")" : ruleSql);
-            dto.setNeedFilter(true);
+
+            // 预览模式下，如果当前用户缺少部门ID，给出模板 SQL 与提示
+            if ("1=0".equals(ruleSql) && ("DEPT".equals(filter.getType()) || "DEPT_TREE".equals(filter.getType()))
+                    && user.getDeptId() == null) {
+                String deptField = getDeptField(filter);
+                String placeholder = "<当前用户部门ID>";
+                String previewSql;
+                if ("DEPT".equals(filter.getType())) {
+                    previewSql = deptField + " = '" + placeholder + "'";
+                } else {
+                    previewSql = deptField + " IN (" +
+                            "SELECT id FROM sys_organization " +
+                            "WHERE id = '" + placeholder + "' " +
+                            "OR path LIKE '%/" + placeholder + "/%')";
+                }
+                detail.setSql(previewSql);
+                dto.setSql(isDeny ? "NOT (" + previewSql + ")" : previewSql);
+                dto.setRemark("当前用户未设置部门ID，以下为模板 SQL，实际执行时会替换为登录用户的部门ID。");
+                dto.setNeedFilter(true);
+            } else {
+                detail.setSql(ruleSql);
+                dto.setSql(isDeny ? "NOT (" + ruleSql + ")" : ruleSql);
+                dto.setNeedFilter(true);
+            }
         }
 
         dto.setHasPermission(true);
@@ -292,6 +313,15 @@ public class DataPermissionEngine {
             log.warn("解析 filter_config 失败: {}", json, e);
             return null;
         }
+    }
+
+    private String getDeptField(FilterConfigDTO filter) {
+        if (filter != null && filter.getFieldMapping() != null
+                && filter.getFieldMapping().getDeptField() != null
+                && !filter.getFieldMapping().getDeptField().isBlank()) {
+            return filter.getFieldMapping().getDeptField();
+        }
+        return "dept_id";
     }
 
     /**

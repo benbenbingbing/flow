@@ -23,6 +23,9 @@ public class PermissionPreviewDTO {
     /** 命中的规则明细 */
     private List<MatchedRuleDTO> matchedRules = new ArrayList<>();
 
+    /** 预览提示/说明（如当前用户缺少某属性时给出提示） */
+    private String remark;
+
     /**
      * 命中规则明细
      */
