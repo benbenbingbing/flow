@@ -48,8 +48,34 @@ public class DataPermissionEngine {
      * @return 权限结果
      */
     public DataPermissionResult calculatePermission(String entityCode, String listConfigId, SysUser user) {
-        DataPermissionResult baseResult = doCalculatePermission(entityCode, listConfigId, user);
-        return applyDelegation(baseResult, entityCode, user);
+        CalculationResult calc = doCalculatePermission(entityCode, listConfigId, user);
+        return applyDelegation(calc.getResult(), entityCode, user);
+    }
+
+    /**
+     * 预览某实体列表生成的权限 SQL（不应用委托）。
+     *
+     * @param entityCode   实体编码
+     * @param listConfigId 列表配置ID
+     * @param user         当前用户
+     * @return 预览结果（含最终 SQL 与命中规则明细）
+     */
+    public PermissionPreviewDTO previewPermissionDetail(String entityCode, String listConfigId, SysUser user) {
+        CalculationResult calc = doCalculatePermission(entityCode, listConfigId, user);
+        DataPermissionResult result = calc.getResult();
+
+        PermissionPreviewDTO dto = new PermissionPreviewDTO();
+        dto.setHasPermission(result.isHasPermission());
+        dto.setNeedFilter(result.isNeedFilter());
+        if (!result.isHasPermission()) {
+            dto.setSql("1=0");
+        } else if (!result.isNeedFilter()) {
+            dto.setSql("1=1");
+        } else {
+            dto.setSql(result.getSqlCondition());
+        }
+        dto.setMatchedRules(calc.getMatchedRuleDetails());
+        return dto;
     }
 
     /**
@@ -61,22 +87,15 @@ public class DataPermissionEngine {
      * @return 生成的 SQL 条件
      */
     public String previewPermissionSql(String entityCode, String listConfigId, SysUser user) {
-        DataPermissionResult result = doCalculatePermission(entityCode, listConfigId, user);
-        if (!result.isHasPermission()) {
-            return "1=0";
-        }
-        if (!result.isNeedFilter()) {
-            return "1=1";
-        }
-        return result.getSqlCondition();
+        return previewPermissionDetail(entityCode, listConfigId, user).getSql();
     }
 
     /**
      * 核心权限计算（不含委托）。
      */
-    private DataPermissionResult doCalculatePermission(String entityCode, String listConfigId, SysUser user) {
+    private CalculationResult doCalculatePermission(String entityCode, String listConfigId, SysUser user) {
         if (user == null) {
-            return DataPermissionResult.denyAll();
+            return new CalculationResult(DataPermissionResult.denyAll(), List.of());
         }
 
         // 1. 查询该实体所有启用的规则
@@ -90,8 +109,11 @@ public class DataPermissionEngine {
 
         if (scopedRules.isEmpty()) {
             // 没有配置规则，默认仅本人
-            return DataPermissionResult.withCondition(
-                    "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+            return new CalculationResult(
+                    DataPermissionResult.withCondition(
+                            "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+                    ),
+                    List.of()
             );
         }
 
@@ -105,14 +127,17 @@ public class DataPermissionEngine {
 
         if (matchedRules.isEmpty()) {
             // 没有匹配规则 = 默认仅本人
-            return DataPermissionResult.withCondition(
-                    "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+            return new CalculationResult(
+                    DataPermissionResult.withCondition(
+                            "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+                    ),
+                    List.of()
             );
         }
 
         // 4. 依次评估规则，进行编排
         DataPermissionResult accumulator = null;
-        List<String> matchedNames = new ArrayList<>();
+        List<PermissionPreviewDTO.MatchedRuleDTO> matchedDetails = new ArrayList<>();
 
         for (EntityListPermission rule : matchedRules) {
             FilterConfigDTO filter = parseFilterConfig(rule.getFilterConfig());
@@ -120,14 +145,21 @@ public class DataPermissionEngine {
                 continue;
             }
 
+            PermissionPreviewDTO.MatchedRuleDTO detail = new PermissionPreviewDTO.MatchedRuleDTO();
+            detail.setRuleName(rule.getRuleName());
+            detail.setRuleEffect(rule.getRuleEffect() == null ? "ALLOW" : rule.getRuleEffect());
+            detail.setCombineMode(rule.getCombineMode() == null ? "UNION" : rule.getCombineMode());
+
             // ALL 类型直接放行
             if ("ALL".equals(filter.getType())) {
+                detail.setSql("1=1");
                 DataPermissionResult result = DataPermissionResult.allowAll();
                 result.setMatchedRuleNames(Collections.singletonList(rule.getRuleName()));
-                return result;
+                return new CalculationResult(result, Collections.singletonList(detail));
             }
 
             String ruleSql = sqlBuilder.buildFilterSql(filter, user);
+            detail.setSql(ruleSql);
             if (ruleSql == null || ruleSql.isBlank()) {
                 continue;
             }
@@ -149,7 +181,7 @@ public class DataPermissionEngine {
                 }
             }
 
-            matchedNames.add(rule.getRuleName());
+            matchedDetails.add(detail);
 
             // 命中后停止评估更低优先级规则
             if (rule.getStopProcessing() != null && rule.getStopProcessing() == 1) {
@@ -158,11 +190,13 @@ public class DataPermissionEngine {
         }
 
         if (accumulator == null) {
-            return DataPermissionResult.denyAll();
+            return new CalculationResult(DataPermissionResult.denyAll(), matchedDetails);
         }
 
-        accumulator.setMatchedRuleNames(matchedNames);
-        return accumulator;
+        accumulator.setMatchedRuleNames(matchedDetails.stream()
+                .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
+                .collect(Collectors.toList()));
+        return new CalculationResult(accumulator, matchedDetails);
     }
 
     /**
@@ -218,6 +252,27 @@ public class DataPermissionEngine {
         } catch (Exception e) {
             log.warn("解析 filter_config 失败: {}", json, e);
             return null;
+        }
+    }
+
+    /**
+     * 内部计算结果包装类。
+     */
+    private static class CalculationResult {
+        private final DataPermissionResult result;
+        private final List<PermissionPreviewDTO.MatchedRuleDTO> matchedRuleDetails;
+
+        CalculationResult(DataPermissionResult result, List<PermissionPreviewDTO.MatchedRuleDTO> matchedRuleDetails) {
+            this.result = result;
+            this.matchedRuleDetails = matchedRuleDetails;
+        }
+
+        DataPermissionResult getResult() {
+            return result;
+        }
+
+        List<PermissionPreviewDTO.MatchedRuleDTO> getMatchedRuleDetails() {
+            return matchedRuleDetails;
         }
     }
 }

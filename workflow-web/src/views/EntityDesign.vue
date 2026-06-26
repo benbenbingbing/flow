@@ -610,7 +610,32 @@
     <el-alert type="info" :closable="false" style="margin-bottom: 12px">
       以下为当前用户在该列表下生效的数据权限 SQL 片段（不含外层 deleted=0）。
     </el-alert>
-    <el-input v-model="permissionSqlPreview" type="textarea" :rows="8" readonly />
+
+    <div v-if="permissionSqlPreview.matchedRules && permissionSqlPreview.matchedRules.length > 0" class="preview-section">
+      <div class="preview-section-title">命中规则明细</div>
+      <el-table :data="permissionSqlPreview.matchedRules" border size="small" style="margin-bottom: 16px">
+        <el-table-column prop="ruleName" label="规则名称" min-width="120" />
+        <el-table-column prop="ruleEffect" label="效果" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="combineMode" label="合并" width="80" align="center">
+          <template #default="{ row }">
+            <span>{{ row.combineMode === 'INTERSECT' ? '交集' : '并集' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
+      </el-table>
+    </div>
+    <div v-else class="preview-section">
+      <el-alert type="warning" :closable="false">没有命中任何规则，使用默认“仅本人”条件。</el-alert>
+    </div>
+
+    <div class="preview-section">
+      <div class="preview-section-title">最终生效 SQL</div>
+      <el-input v-model="permissionSqlPreview.sql" type="textarea" :rows="4" readonly />
+    </div>
   </el-dialog>
 </template>
 
@@ -657,7 +682,7 @@ const permissionEditVisible = ref(false)
 const permissionForm = ref(createEmptyPermissionForm())
 const availableStatuses = ref([])
 const availableListConfigs = ref([])
-const permissionSqlPreview = ref('')
+const permissionSqlPreview = ref({ sql: '', matchedRules: [], hasPermission: true, needFilter: false })
 const permissionSqlPreviewVisible = ref(false)
 
 function createEmptyPermissionForm() {
@@ -1154,8 +1179,8 @@ const getListConfigName = (listConfigId) => {
 const handlePreviewPermissionSql = async (listConfigId) => {
   if (!entityData.value.entityCode) return
   try {
-    const sql = await entityListPermissionApi.previewSql(entityData.value.entityCode, listConfigId || undefined)
-    permissionSqlPreview.value = sql || '1=0'
+    const preview = await entityListPermissionApi.previewSql(entityData.value.entityCode, listConfigId || undefined)
+    permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
     permissionSqlPreviewVisible.value = true
   } catch (error) {
     console.error('预览权限 SQL 失败:', error)
@@ -1658,6 +1683,16 @@ onMounted(() => {
 
 .sql-variable-tags .variable-tag {
   cursor: pointer;
+}
+
+.preview-section {
+  margin-bottom: 16px;
+}
+
+.preview-section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #303133;
 }
 
 .condition-card {

@@ -26,7 +26,7 @@ export const entityListPermissionApi = {
     return request.post(`/entity-list-permission/${id}/toggle`)
   },
 
-  // 预览权限 SQL
+  // 预览权限 SQL（返回 { sql, matchedRules, hasPermission, needFilter }）
   previewSql(entityCode, listConfigId) {
     return request.get('/entity-list-permission/preview-sql', {
       params: { entityCode, listConfigId }

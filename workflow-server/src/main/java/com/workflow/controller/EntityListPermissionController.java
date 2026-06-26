@@ -2,6 +2,7 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.common.UserContext;
+import com.workflow.dto.permission.PermissionPreviewDTO;
 import com.workflow.entity.EntityListPermission;
 import com.workflow.entity.SysUser;
 import com.workflow.service.SysUserService;
@@ -66,12 +67,12 @@ public class EntityListPermissionController {
      * 预览当前用户在指定实体列表下的权限 SQL
      */
     @GetMapping("/preview-sql")
-    public Result<String> previewSql(@RequestParam String entityCode,
-                                     @RequestParam(required = false) String listConfigId) {
+    public Result<PermissionPreviewDTO> previewSql(@RequestParam String entityCode,
+                                                   @RequestParam(required = false) String listConfigId) {
         String userId = UserContext.getUserId();
         SysUser user = userId == null ? null : sysUserService.getById(userId);
-        String sql = dataPermissionEngine.previewPermissionSql(entityCode, listConfigId, user);
-        return Result.success(sql);
+        PermissionPreviewDTO preview = dataPermissionEngine.previewPermissionDetail(entityCode, listConfigId, user);
+        return Result.success(preview);
     }
 
     /**
