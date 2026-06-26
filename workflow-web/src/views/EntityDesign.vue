@@ -442,7 +442,7 @@
       <el-table-column label="操作" width="200" align="center" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
-          <el-button size="small" text @click="handlePreviewPermissionSql(row.listConfigId)">预览SQL</el-button>
+          <el-button size="small" text @click="handlePreviewRuleSql(row)">预览SQL</el-button>
           <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -648,9 +648,11 @@
   </el-dialog>
 
   <!-- 权限 SQL 预览对话框 -->
-  <el-dialog v-model="permissionSqlPreviewVisible" title="权限 SQL 预览" width="700px">
+  <el-dialog v-model="permissionSqlPreviewVisible" :title="permissionSqlPreviewTitle" width="700px">
     <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-      以下为当前用户在该列表下生效的数据权限 SQL 片段（不含外层 deleted=0）。
+      {{ permissionSqlPreview.matchedRules?.length === 1 && permissionSqlPreviewTitle === '规则 SQL 预览'
+        ? '以下为该规则单独生效时的数据权限 SQL 片段（不含外层 deleted=0）。'
+        : '以下为当前用户在该列表下最终生效的数据权限 SQL 片段（不含外层 deleted=0）。' }}
     </el-alert>
 
     <div v-if="permissionSqlPreview.matchedRules && permissionSqlPreview.matchedRules.length > 0" class="preview-section">
@@ -729,6 +731,7 @@ const availableStatuses = ref([])
 const availableListConfigs = ref([])
 const permissionSqlPreview = ref({ sql: '', matchedRules: [], hasPermission: true, needFilter: false })
 const permissionSqlPreviewVisible = ref(false)
+const permissionSqlPreviewTitle = ref('权限 SQL 预览')
 const userOptions = ref([])
 const roleOptions = ref([])
 const orgOptions = ref([])
@@ -1245,9 +1248,23 @@ const handlePreviewPermissionSql = async (listConfigId) => {
   try {
     const preview = await entityListPermissionApi.previewSql(entityData.value.entityCode, listConfigId || undefined)
     permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
+    permissionSqlPreviewTitle.value = listConfigId ? '列表权限 SQL 预览' : '全局权限 SQL 预览'
     permissionSqlPreviewVisible.value = true
   } catch (error) {
     console.error('预览权限 SQL 失败:', error)
+    ElMessage.error('预览失败')
+  }
+}
+
+const handlePreviewRuleSql = async (row) => {
+  if (!row || !row.id) return
+  try {
+    const preview = await entityListPermissionApi.previewRuleSql(row.id)
+    permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
+    permissionSqlPreviewTitle.value = '规则 SQL 预览'
+    permissionSqlPreviewVisible.value = true
+  } catch (error) {
+    console.error('预览规则 SQL 失败:', error)
     ElMessage.error('预览失败')
   }
 }

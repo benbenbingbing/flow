@@ -31,5 +31,10 @@ export const entityListPermissionApi = {
     return request.get('/entity-list-permission/preview-sql', {
       params: { entityCode, listConfigId }
     })
+  },
+
+  // 预览单条规则的 SQL（返回 { sql, matchedRules, hasPermission, needFilter }）
+  previewRuleSql(id) {
+    return request.get(`/entity-list-permission/${id}/preview-sql`)
   }
 }

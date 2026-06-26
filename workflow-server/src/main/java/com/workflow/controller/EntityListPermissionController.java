@@ -76,6 +76,21 @@ public class EntityListPermissionController {
     }
 
     /**
+     * 预览某条规则生成的权限 SQL（不考虑其它规则与优先级编排）。
+     */
+    @GetMapping("/{id}/preview-sql")
+    public Result<PermissionPreviewDTO> previewRuleSql(@PathVariable String id) {
+        EntityListPermission rule = permissionService.getById(id);
+        if (rule == null) {
+            throw new RuntimeException("规则不存在");
+        }
+        String userId = UserContext.getUserId();
+        SysUser user = userId == null ? null : sysUserService.getById(userId);
+        PermissionPreviewDTO preview = dataPermissionEngine.previewRuleSql(rule, user);
+        return Result.success(preview);
+    }
+
+    /**
      * 切换启用状态
      */
     @PostMapping("/{id}/toggle")

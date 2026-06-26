@@ -91,6 +91,45 @@ public class DataPermissionEngine {
     }
 
     /**
+     * 预览单条规则生成的权限 SQL（不考虑其它规则与优先级编排）。
+     *
+     * @param rule 权限规则
+     * @param user 当前用户
+     * @return 预览结果
+     */
+    public PermissionPreviewDTO previewRuleSql(EntityListPermission rule, SysUser user) {
+        PermissionPreviewDTO dto = new PermissionPreviewDTO();
+        if (user == null) {
+            dto.setHasPermission(false);
+            dto.setNeedFilter(false);
+            dto.setSql("1=0");
+            return dto;
+        }
+
+        FilterConfigDTO filter = parseFilterConfig(rule.getFilterConfig());
+        PermissionPreviewDTO.MatchedRuleDTO detail = new PermissionPreviewDTO.MatchedRuleDTO();
+        detail.setRuleName(rule.getRuleName());
+        detail.setRuleEffect(rule.getRuleEffect() == null ? "ALLOW" : rule.getRuleEffect());
+        detail.setCombineMode(rule.getCombineMode() == null ? "UNION" : rule.getCombineMode());
+
+        if (filter == null || "ALL".equals(filter.getType())) {
+            detail.setSql("1=1");
+            dto.setSql("1=1");
+            dto.setNeedFilter(false);
+        } else {
+            String ruleSql = sqlBuilder.buildFilterSql(filter, user);
+            detail.setSql(ruleSql);
+            boolean isDeny = "DENY".equalsIgnoreCase(rule.getRuleEffect());
+            dto.setSql(isDeny ? "NOT (" + ruleSql + ")" : ruleSql);
+            dto.setNeedFilter(true);
+        }
+
+        dto.setHasPermission(true);
+        dto.setMatchedRules(Collections.singletonList(detail));
+        return dto;
+    }
+
+    /**
      * 核心权限计算（不含委托）。
      */
     private CalculationResult doCalculatePermission(String entityCode, String listConfigId, SysUser user) {
