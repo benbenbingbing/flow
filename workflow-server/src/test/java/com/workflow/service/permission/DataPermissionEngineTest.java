@@ -27,7 +27,7 @@ class DataPermissionEngineTest {
                 delegateMapper,
                 new ObjectMapper(),
                 new PermissionRuleMatcher(orgMapper),
-                new PermissionSqlBuilder());
+                new PermissionSqlBuilder(new PermissionVariableResolver()));
         SysUser user = new SysUser();
         user.setId("u'1");
         when(permissionMapper.findEnabledByEntityCode("expense")).thenReturn(List.of());

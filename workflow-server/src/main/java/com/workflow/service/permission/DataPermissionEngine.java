@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 
 /**
  * 数据权限规则引擎
- * 根据当前用户和实体编码，计算数据权限过滤条件
+ * 支持多规则编排（优先级、ALLOW/DENY、UNION/INTERSECT、停止规则）、列表级规则及自定义 SQL。
  */
 @Slf4j
 @Component
@@ -33,21 +33,48 @@ public class DataPermissionEngine {
     private static final String DELEGATE_USER_FIELD = "create_by";
 
     /**
-     * 计算某实体列表的数据权限
-     *
-     * @param entityCode 实体编码
-     * @param user       当前用户
-     * @return 权限结果
+     * 计算某实体的数据权限（不绑定具体列表，仅使用全局规则）。
      */
     public DataPermissionResult calculatePermission(String entityCode, SysUser user) {
-        DataPermissionResult baseResult = doCalculatePermission(entityCode, user);
+        return calculatePermission(entityCode, null, user);
+    }
+
+    /**
+     * 计算某实体列表的数据权限。
+     *
+     * @param entityCode   实体编码
+     * @param listConfigId 列表配置ID（null 表示不绑定具体列表，只使用全局规则）
+     * @param user         当前用户
+     * @return 权限结果
+     */
+    public DataPermissionResult calculatePermission(String entityCode, String listConfigId, SysUser user) {
+        DataPermissionResult baseResult = doCalculatePermission(entityCode, listConfigId, user);
         return applyDelegation(baseResult, entityCode, user);
     }
 
     /**
-     * 核心权限计算（不含委托）
+     * 预览某实体列表生成的权限 SQL（不应用委托）。
+     *
+     * @param entityCode   实体编码
+     * @param listConfigId 列表配置ID
+     * @param user         当前用户
+     * @return 生成的 SQL 条件
      */
-    private DataPermissionResult doCalculatePermission(String entityCode, SysUser user) {
+    public String previewPermissionSql(String entityCode, String listConfigId, SysUser user) {
+        DataPermissionResult result = doCalculatePermission(entityCode, listConfigId, user);
+        if (!result.isHasPermission()) {
+            return "1=0";
+        }
+        if (!result.isNeedFilter()) {
+            return "1=1";
+        }
+        return result.getSqlCondition();
+    }
+
+    /**
+     * 核心权限计算（不含委托）。
+     */
+    private DataPermissionResult doCalculatePermission(String entityCode, String listConfigId, SysUser user) {
         if (user == null) {
             return DataPermissionResult.denyAll();
         }
@@ -55,16 +82,25 @@ public class DataPermissionEngine {
         // 1. 查询该实体所有启用的规则
         List<EntityListPermission> rules = permissionMapper.findEnabledByEntityCode(entityCode);
 
-        if (rules.isEmpty()) {
+        // 2. 按列表过滤：全局规则（list_config_id 为空）或匹配当前列表的规则
+        List<EntityListPermission> scopedRules = rules.stream()
+                .filter(rule -> rule.getListConfigId() == null || rule.getListConfigId().isBlank()
+                        || rule.getListConfigId().equals(listConfigId))
+                .collect(Collectors.toList());
+
+        if (scopedRules.isEmpty()) {
             // 没有配置规则，默认仅本人
             return DataPermissionResult.withCondition(
                     "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
             );
         }
 
-        // 2. 过滤出匹配的规则
-        List<EntityListPermission> matchedRules = rules.stream()
+        // 3. 过滤出匹配当前用户的规则，并按优先级降序排列
+        List<EntityListPermission> matchedRules = scopedRules.stream()
                 .filter(rule -> ruleMatcher.matches(parseMatchConfig(rule.getMatchConfig()), user))
+                .sorted((a, b) -> Integer.compare(
+                        b.getPriority() == null ? 0 : b.getPriority(),
+                        a.getPriority() == null ? 0 : a.getPriority()))
                 .collect(Collectors.toList());
 
         if (matchedRules.isEmpty()) {
@@ -74,54 +110,69 @@ public class DataPermissionEngine {
             );
         }
 
-        // 3. 检查是否有 ALL 类型的规则（直接放行）
-        boolean hasAllRule = matchedRules.stream()
-                .anyMatch(r -> {
-                    FilterConfigDTO filter = parseFilterConfig(r.getFilterConfig());
-                    return filter != null && "ALL".equals(filter.getType());
-                });
-
-        if (hasAllRule) {
-            return DataPermissionResult.allowAll();
-        }
-
-        // 4. 构建每个匹配规则的 SQL 条件
-        List<String> conditions = new ArrayList<>();
+        // 4. 依次评估规则，进行编排
+        DataPermissionResult accumulator = null;
         List<String> matchedNames = new ArrayList<>();
 
         for (EntityListPermission rule : matchedRules) {
             FilterConfigDTO filter = parseFilterConfig(rule.getFilterConfig());
-            if (filter == null) continue;
+            if (filter == null) {
+                continue;
+            }
 
-            String sql = sqlBuilder.buildFilterSql(filter, user);
-            if (sql != null && !sql.isEmpty()) {
-                conditions.add(sql);
-                matchedNames.add(rule.getRuleName());
+            // ALL 类型直接放行
+            if ("ALL".equals(filter.getType())) {
+                DataPermissionResult result = DataPermissionResult.allowAll();
+                result.setMatchedRuleNames(Collections.singletonList(rule.getRuleName()));
+                return result;
+            }
+
+            String ruleSql = sqlBuilder.buildFilterSql(filter, user);
+            if (ruleSql == null || ruleSql.isBlank()) {
+                continue;
+            }
+
+            boolean isDeny = "DENY".equalsIgnoreCase(rule.getRuleEffect());
+            String effectSql = isDeny ? "NOT (" + ruleSql + ")" : ruleSql;
+
+            if (accumulator == null) {
+                accumulator = DataPermissionResult.withCondition(effectSql);
+            } else {
+                String combineMode = rule.getCombineMode();
+                if (combineMode == null || combineMode.isBlank()) {
+                    combineMode = "UNION";
+                }
+                if ("INTERSECT".equalsIgnoreCase(combineMode)) {
+                    accumulator.intersect(effectSql);
+                } else {
+                    accumulator.union(effectSql);
+                }
+            }
+
+            matchedNames.add(rule.getRuleName());
+
+            // 命中后停止评估更低优先级规则
+            if (rule.getStopProcessing() != null && rule.getStopProcessing() == 1) {
+                break;
             }
         }
 
-        if (conditions.isEmpty()) {
+        if (accumulator == null) {
             return DataPermissionResult.denyAll();
         }
 
-        // 5. 合并条件（默认并集）
-        String combinedSql = "(" + String.join(") OR (", conditions) + ")";
-
-        DataPermissionResult result = DataPermissionResult.withCondition(combinedSql);
-        result.setMatchedRuleNames(matchedNames);
-        return result;
+        accumulator.setMatchedRuleNames(matchedNames);
+        return accumulator;
     }
 
     /**
-     * 应用数据权限委托
-     * 将受托方权限与委托方数据范围合并
+     * 应用数据权限委托。
      */
     private DataPermissionResult applyDelegation(DataPermissionResult baseResult, String entityCode, SysUser user) {
         if (user == null || !baseResult.isHasPermission()) {
             return baseResult;
         }
 
-        // allowAll 不需要委托（已经能看到所有数据）
         if (!baseResult.isNeedFilter()) {
             return baseResult;
         }
@@ -131,7 +182,6 @@ public class DataPermissionEngine {
             return baseResult;
         }
 
-        // 收集所有委托方的用户ID
         List<String> fromUserIds = delegates.stream()
                 .map(EntityListPermissionDelegate::getFromUserId)
                 .filter(id -> id != null && !id.isEmpty())
@@ -153,9 +203,6 @@ public class DataPermissionEngine {
         return result;
     }
 
-    /**
-     * 解析匹配配置 JSON
-     */
     private MatchConfigDTO parseMatchConfig(String json) {
         try {
             return objectMapper.readValue(json, MatchConfigDTO.class);
@@ -165,9 +212,6 @@ public class DataPermissionEngine {
         }
     }
 
-    /**
-     * 解析过滤配置 JSON
-     */
     private FilterConfigDTO parseFilterConfig(String json) {
         try {
             return objectMapper.readValue(json, FilterConfigDTO.class);
@@ -176,5 +220,4 @@ public class DataPermissionEngine {
             return null;
         }
     }
-
 }

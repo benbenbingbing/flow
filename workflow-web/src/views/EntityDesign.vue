@@ -397,13 +397,36 @@
       <el-button type="primary" size="small" @click="handleAddPermission">
         <el-icon><Plus /></el-icon>添加规则
       </el-button>
+      <el-button size="small" @click="handlePreviewPermissionSql('')">
+        <el-icon><View /></el-icon>预览 SQL
+      </el-button>
     </div>
     <el-table :data="permissionList" border size="small" style="margin-top: 12px">
-      <el-table-column prop="ruleName" label="规则名称" width="150" />
-      <el-table-column prop="priority" label="优先级" width="80" align="center" />
-      <el-table-column label="匹配范围" min-width="200">
+      <el-table-column prop="ruleName" label="规则名称" width="140" />
+      <el-table-column prop="priority" label="优先级" width="70" align="center" />
+      <el-table-column label="适用列表" width="120" align="center">
+        <template #default="{ row }">
+          <span>{{ getListConfigName(row.listConfigId) || '全部' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="匹配范围" min-width="160">
         <template #default="{ row }">
           <span>{{ formatMatchSummary(row) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="效果" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="合并" width="80" align="center">
+        <template #default="{ row }">
+          <span>{{ row.combineMode === 'INTERSECT' ? '交集' : '并集' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="停止" width="70" align="center">
+        <template #default="{ row }">
+          <span>{{ row.stopProcessing === 1 ? '是' : '否' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="数据范围" width="120" align="center">
@@ -411,14 +434,15 @@
           <el-tag :type="getFilterTypeTag(row.filterType)" size="small">{{ getFilterTypeLabel(row.filterType) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="启用" width="80" align="center">
+      <el-table-column label="启用" width="70" align="center">
         <template #default="{ row }">
           <el-switch v-model="row.enabled" :active-value="1" :inactive-value="0" @change="togglePermission(row)" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" align="center" fixed="right">
+      <el-table-column label="操作" width="200" align="center" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
+          <el-button size="small" text @click="handlePreviewPermissionSql(row.listConfigId)">预览SQL</el-button>
           <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -431,9 +455,31 @@
       <el-form-item label="规则名称" required>
         <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
       </el-form-item>
+      <el-form-item label="适用列表">
+        <el-select v-model="permissionForm.listConfigId" placeholder="留空表示对该实体所有列表生效" clearable style="width: 100%">
+          <el-option label="全部列表" value="" />
+          <el-option v-for="config in availableListConfigs" :key="config.id" :label="config.listName || config.listKey" :value="config.id" />
+        </el-select>
+      </el-form-item>
       <el-form-item label="优先级">
-        <el-input-number v-model="permissionForm.priority" :min="0" :max="999" style="width: 120px" />
-        <span class="form-tip" style="margin-left: 8px">数字越小优先级越高</span>
+        <el-input-number v-model="permissionForm.priority" :min="0" :max="9999" style="width: 120px" />
+        <span class="form-tip" style="margin-left: 8px">数字越大优先级越高</span>
+      </el-form-item>
+      <el-form-item label="规则效果">
+        <el-radio-group v-model="permissionForm.ruleEffect">
+          <el-radio-button label="ALLOW">允许（放行并附加范围）</el-radio-button>
+          <el-radio-button label="DENY">拒绝（排除数据范围）</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item label="合并方式">
+        <el-radio-group v-model="permissionForm.combineMode">
+          <el-radio-button label="UNION">并集（OR）</el-radio-button>
+          <el-radio-button label="INTERSECT">交集（AND）</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item label="命中停止">
+        <el-switch v-model="permissionForm.stopProcessing" :active-value="1" :inactive-value="0" />
+        <span class="form-tip" style="margin-left: 8px">命中后不再评估更低优先级规则</span>
       </el-form-item>
       <el-form-item label="是否启用">
         <el-switch v-model="permissionForm.enabled" :active-value="1" :inactive-value="0" />
@@ -497,10 +543,27 @@
           <el-option label="本部门" value="DEPT" />
           <el-option label="本部门及子部门" value="DEPT_TREE" />
           <el-option label="表达式" value="EXPRESSION" />
+          <el-option label="自定义SQL" value="CUSTOM_SQL" />
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="permissionForm.filterType !== 'ALL'" label="字段映射">
+      <template v-if="permissionForm.filterType === 'CUSTOM_SQL'">
+        <el-form-item label="自定义SQL">
+          <el-input
+            v-model="permissionForm.customSql"
+            type="textarea"
+            :rows="5"
+            placeholder="例如：created_by = ${user.id} AND dept_id = ${user.deptId}"
+          />
+        </el-form-item>
+        <el-form-item label="可用变量">
+          <div class="sql-variable-tags">
+            <el-tag v-for="v in ['${user.id}', '${user.username}', '${user.deptId}', '${user.roleIds}']" :key="v" size="small" class="variable-tag" @click="insertSqlVariable(v)">{{ v }}</el-tag>
+          </div>
+        </el-form-item>
+      </template>
+
+      <el-form-item v-if="permissionForm.filterType !== 'ALL' && permissionForm.filterType !== 'CUSTOM_SQL'" label="字段映射">
         <el-row :gutter="12">
           <el-col :span="8">
             <el-input v-model="permissionForm.fieldMapping.userField" placeholder="用户字段" />
@@ -541,6 +604,14 @@
       <el-button type="primary" @click="savePermission">保存</el-button>
     </template>
   </el-dialog>
+
+  <!-- 权限 SQL 预览对话框 -->
+  <el-dialog v-model="permissionSqlPreviewVisible" title="权限 SQL 预览" width="700px">
+    <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+      以下为当前用户在该列表下生效的数据权限 SQL 片段（不含外层 deleted=0）。
+    </el-alert>
+    <el-input v-model="permissionSqlPreview" type="textarea" :rows="8" readonly />
+  </el-dialog>
 </template>
 
 <script setup>
@@ -550,6 +621,7 @@ import { ElMessage } from 'element-plus'
 import { entityApi } from '@/api/entity'
 import { codeRuleApi } from '@/api/codeRule'
 import { entityListPermissionApi } from '@/api/entityListPermission'
+import { entityListConfigApi } from '@/api/entityListConfig'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { ENTITY_FIELD_TYPES, getEntityFieldTypeLabel, getEntityFieldTypeTag } from '@/shared/entity-design'
 
@@ -584,6 +656,9 @@ const permissionList = ref([])
 const permissionEditVisible = ref(false)
 const permissionForm = ref(createEmptyPermissionForm())
 const availableStatuses = ref([])
+const availableListConfigs = ref([])
+const permissionSqlPreview = ref('')
+const permissionSqlPreviewVisible = ref(false)
 
 function createEmptyPermissionForm() {
   return {
@@ -592,9 +667,14 @@ function createEmptyPermissionForm() {
     ruleName: '',
     priority: 0,
     enabled: 1,
+    listConfigId: '',
+    ruleEffect: 'ALLOW',
+    combineMode: 'UNION',
+    stopProcessing: 0,
     matchLogic: 'OR',
     matchConditions: [],
     filterType: 'PERSONAL',
+    customSql: '',
     fieldMapping: { userField: 'created_by', deptField: 'dept_id', statusField: 'status' },
     statusLimit: { enabled: false, mode: 'IN', values: [] }
   }
@@ -945,18 +1025,27 @@ const handleSave = async () => {
 const loadPermissions = async () => {
   if (!entityData.value.entityCode) return
   try {
-    const data = await entityListPermissionApi.getByEntityCode(entityData.value.entityCode)
-    permissionList.value = (data || []).map(item => {
+    const [permissionData, listConfigData] = await Promise.all([
+      entityListPermissionApi.getByEntityCode(entityData.value.entityCode),
+      entityListConfigApi.getByEntityId(entityId)
+    ])
+    availableListConfigs.value = listConfigData || []
+    permissionList.value = (permissionData || []).map(item => {
       const match = parseJson(item.matchConfig, { logic: 'OR', conditions: [] })
-      const filter = parseJson(item.filterConfig, { type: 'PERSONAL', fieldMapping: {}, statusLimit: {} })
+      const filter = parseJson(item.filterConfig, { type: 'PERSONAL', fieldMapping: {}, statusLimit: {}, customSql: '' })
       return {
         ...item,
+        listConfigId: item.listConfigId || '',
+        ruleEffect: item.ruleEffect || 'ALLOW',
+        combineMode: item.combineMode || 'UNION',
+        stopProcessing: item.stopProcessing || 0,
         matchLogic: match.logic || 'OR',
         matchConditions: (match.conditions || []).map(c => ({
           ...c,
           targetIdsText: (c.targetIds || []).join(',')
         })),
         filterType: filter.type || 'PERSONAL',
+        customSql: filter.customSql || '',
         fieldMapping: filter.fieldMapping || { userField: 'created_by', deptField: 'dept_id', statusField: 'status' },
         statusLimit: filter.statusLimit || { enabled: false, mode: 'IN', values: [] }
       }
@@ -1052,8 +1141,30 @@ const getFilterTypeTag = (type) => {
 }
 
 const getFilterTypeLabel = (type) => {
-  const labels = { ALL: '全部数据', PERSONAL: '仅本人', DEPT: '本部门', DEPT_TREE: '本部门及子部门', EXPRESSION: '表达式' }
+  const labels = { ALL: '全部数据', PERSONAL: '仅本人', DEPT: '本部门', DEPT_TREE: '本部门及子部门', EXPRESSION: '表达式', CUSTOM_SQL: '自定义SQL' }
   return labels[type] || type
+}
+
+const getListConfigName = (listConfigId) => {
+  if (!listConfigId) return ''
+  const config = availableListConfigs.value.find(c => c.id === listConfigId)
+  return config?.listName || config?.listKey || listConfigId
+}
+
+const handlePreviewPermissionSql = async (listConfigId) => {
+  if (!entityData.value.entityCode) return
+  try {
+    const sql = await entityListPermissionApi.previewSql(entityData.value.entityCode, listConfigId || undefined)
+    permissionSqlPreview.value = sql || '1=0'
+    permissionSqlPreviewVisible.value = true
+  } catch (error) {
+    console.error('预览权限 SQL 失败:', error)
+    ElMessage.error('预览失败')
+  }
+}
+
+const insertSqlVariable = (variable) => {
+  permissionForm.value.customSql += variable
 }
 
 const savePermission = async () => {
@@ -1079,6 +1190,7 @@ const savePermission = async () => {
 
   const filterConfig = JSON.stringify({
     type: form.filterType,
+    customSql: form.customSql,
     fieldMapping: form.fieldMapping,
     statusLimit: form.statusLimit
   })
@@ -1088,6 +1200,10 @@ const savePermission = async () => {
     ruleName: form.ruleName,
     priority: form.priority,
     enabled: form.enabled,
+    listConfigId: form.listConfigId || null,
+    ruleEffect: form.ruleEffect || 'ALLOW',
+    combineMode: form.combineMode || 'UNION',
+    stopProcessing: form.stopProcessing || 0,
     matchConfig,
     filterConfig
   }
@@ -1530,7 +1646,18 @@ onMounted(() => {
 .permission-header {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.sql-variable-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sql-variable-tags .variable-tag {
+  cursor: pointer;
 }
 
 .condition-card {

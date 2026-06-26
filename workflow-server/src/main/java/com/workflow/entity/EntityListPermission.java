@@ -43,6 +43,18 @@ public class EntityListPermission {
     @TableField("combine_mode")
     private String combineMode;
 
+    /** 适用列表配置ID，为空表示对该实体所有列表生效 */
+    @TableField("list_config_id")
+    private String listConfigId;
+
+    /** 规则效果：ALLOW(放行)/DENY(拒绝) */
+    @TableField("rule_effect")
+    private String ruleEffect;
+
+    /** 命中后是否停止评估更低优先级规则：0否/1是 */
+    @TableField("stop_processing")
+    private Integer stopProcessing;
+
     /** 创建人 */
     @TableField("created_by")
     private String createdBy;

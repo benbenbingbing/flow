@@ -43,20 +43,22 @@ public class EntityDataListConfigService {
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findListWithConfig(String entityCode, String listKey, Map<String, Object> condition) {
-        // 1. 基础查询
+        // 1. 先加载列表配置，获取 listConfigId 用于数据权限
+        EntityListConfig config = findListConfig(entityCode, listKey);
+        String listConfigId = config != null ? config.getId() : null;
+
+        // 2. 基础查询（传入 listConfigId 以应用列表级权限规则）
         List<EntityDataDTO> records;
         if (condition != null && !condition.isEmpty()) {
-            records = dynamicService.findByCondition(entityCode, condition);
+            records = dynamicService.findByCondition(entityCode, listConfigId, condition);
         } else {
-            records = dynamicService.findByEntityCode(entityCode);
+            records = dynamicService.findByEntityCode(entityCode, listConfigId);
         }
 
         if (records.isEmpty()) {
             return records;
         }
 
-        // 2. 加载列表配置
-        EntityListConfig config = findListConfig(entityCode, listKey);
         if (config == null) {
             return records;
         }

@@ -44,4 +44,37 @@ public class DataPermissionResult {
         r.sqlCondition = sql;
         return r;
     }
+
+    /**
+     * 与另一个条件取并集（OR）
+     */
+    public DataPermissionResult union(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return this;
+        }
+        if (!this.needFilter) {
+            // 当前无过滤条件，直接采用新条件
+            this.needFilter = true;
+            this.sqlCondition = sql;
+            return this;
+        }
+        this.sqlCondition = "(" + this.sqlCondition + ") OR (" + sql + ")";
+        return this;
+    }
+
+    /**
+     * 与另一个条件取交集（AND）
+     */
+    public DataPermissionResult intersect(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return this;
+        }
+        if (!this.needFilter) {
+            this.needFilter = true;
+            this.sqlCondition = sql;
+            return this;
+        }
+        this.sqlCondition = "(" + this.sqlCondition + ") AND (" + sql + ")";
+        return this;
+    }
 }

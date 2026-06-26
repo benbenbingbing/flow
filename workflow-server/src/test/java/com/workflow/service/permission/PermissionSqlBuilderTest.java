@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PermissionSqlBuilderTest {
 
-    private final PermissionSqlBuilder builder = new PermissionSqlBuilder();
+    private final PermissionSqlBuilder builder = new PermissionSqlBuilder(new PermissionVariableResolver());
 
     @Test
     void buildFilterSqlRejectsInvalidFieldName() {

@@ -3,6 +3,9 @@ package com.workflow.controller;
 import com.workflow.common.Result;
 import com.workflow.common.UserContext;
 import com.workflow.entity.EntityListPermission;
+import com.workflow.entity.SysUser;
+import com.workflow.service.SysUserService;
+import com.workflow.service.permission.DataPermissionEngine;
 import com.workflow.service.permission.EntityListPermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +22,8 @@ import java.util.List;
 public class EntityListPermissionController {
 
     private final EntityListPermissionService permissionService;
+    private final DataPermissionEngine dataPermissionEngine;
+    private final SysUserService sysUserService;
 
     /**
      * 查询某实体的所有权限规则
@@ -55,6 +60,18 @@ public class EntityListPermissionController {
     public Result<Void> delete(@PathVariable String id) {
         permissionService.removeById(id);
         return Result.success();
+    }
+
+    /**
+     * 预览当前用户在指定实体列表下的权限 SQL
+     */
+    @GetMapping("/preview-sql")
+    public Result<String> previewSql(@RequestParam String entityCode,
+                                     @RequestParam(required = false) String listConfigId) {
+        String userId = UserContext.getUserId();
+        SysUser user = userId == null ? null : sysUserService.getById(userId);
+        String sql = dataPermissionEngine.previewPermissionSql(entityCode, listConfigId, user);
+        return Result.success(sql);
     }
 
     /**

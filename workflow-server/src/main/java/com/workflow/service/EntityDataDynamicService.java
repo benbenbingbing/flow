@@ -53,8 +53,16 @@ public class EntityDataDynamicService {
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findByEntityCode(String entityCode) {
+        return findByEntityCode(entityCode, null);
+    }
+
+    /**
+     * 查询某实体列表的所有数据（带数据权限过滤）
+     */
+    @Transactional(readOnly = true)
+    public List<EntityDataDTO> findByEntityCode(String entityCode, String listConfigId) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode);
+        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
 
         List<Map<String, Object>> dataList;
         if (!permission.isHasPermission()) {
@@ -75,8 +83,16 @@ public class EntityDataDynamicService {
      */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findByEntityCodeSimple(String entityCode) {
+        return findByEntityCodeSimple(entityCode, null);
+    }
+
+    /**
+     * 查询某实体列表的所有数据（返回原始Map，用于选择器，带数据权限过滤）
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> findByEntityCodeSimple(String entityCode, String listConfigId) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode);
+        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
 
         if (!permission.isHasPermission()) {
             return new ArrayList<>();
@@ -372,8 +388,16 @@ public class EntityDataDynamicService {
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findByCondition(String entityCode, Map<String, Object> condition) {
+        return findByCondition(entityCode, null, condition);
+    }
+
+    /**
+     * 条件查询（带数据权限过滤，支持列表配置）
+     */
+    @Transactional(readOnly = true)
+    public List<EntityDataDTO> findByCondition(String entityCode, String listConfigId, Map<String, Object> condition) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode);
+        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
 
         List<Map<String, Object>> dataList;
         if (!permission.isHasPermission()) {
@@ -394,8 +418,16 @@ public class EntityDataDynamicService {
      */
     @Transactional(readOnly = true)
     public long count(String entityCode) {
+        return count(entityCode, null);
+    }
+
+    /**
+     * 统计数量（带数据权限过滤，支持列表配置）
+     */
+    @Transactional(readOnly = true)
+    public long count(String entityCode, String listConfigId) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode);
+        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
 
         if (!permission.isHasPermission()) {
             return 0;
@@ -456,13 +488,13 @@ public class EntityDataDynamicService {
     /**
      * 计算数据权限结果
      */
-    private DataPermissionResult getDataPermission(String entityCode) {
+    private DataPermissionResult getDataPermission(String entityCode, String listConfigId) {
         SysUser user = getCurrentSysUser();
         if (user == null) {
             // 未登录用户，默认仅本人（实际上看不到任何数据，因为没有用户ID匹配）
             return DataPermissionResult.withCondition("create_by = ''");
         }
-        return dataPermissionEngine.calculatePermission(entityCode, user);
+        return dataPermissionEngine.calculatePermission(entityCode, listConfigId, user);
     }
 
     private String generateId() {

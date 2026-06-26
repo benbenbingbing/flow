@@ -2,6 +2,7 @@ package com.workflow.service.permission;
 
 import com.workflow.dto.permission.FilterConfigDTO;
 import com.workflow.entity.SysUser;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -12,9 +13,12 @@ import java.util.stream.Collectors;
  * 数据权限过滤 SQL 构建器。
  */
 @Component
+@RequiredArgsConstructor
 public class PermissionSqlBuilder {
 
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
+
+    private final PermissionVariableResolver variableResolver;
 
     public String buildFilterSql(FilterConfigDTO filter, SysUser user) {
         if (filter == null) {
@@ -54,6 +58,12 @@ public class PermissionSqlBuilder {
             case "EXPRESSION":
                 sql.append(userField).append(" = '").append(escapeLiteral(user.getId())).append("'");
                 break;
+            case "CUSTOM_SQL":
+                String customSql = filter.getCustomSql();
+                if (customSql == null || customSql.isBlank()) {
+                    return "1=0";
+                }
+                return variableResolver.resolve(customSql, user);
             default:
                 sql.append(userField).append(" = '").append(escapeLiteral(user.getId())).append("'");
         }

@@ -24,5 +24,12 @@ export const entityListPermissionApi = {
   // 切换启用状态
   toggleEnabled(id) {
     return request.post(`/entity-list-permission/${id}/toggle`)
+  },
+
+  // 预览权限 SQL
+  previewSql(entityCode, listConfigId) {
+    return request.get('/entity-list-permission/preview-sql', {
+      params: { entityCode, listConfigId }
+    })
   }
 }
