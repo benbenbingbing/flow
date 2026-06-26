@@ -509,11 +509,39 @@
             <el-option label="表达式" value="EXPRESSION" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'USER'" label="用户ID">
-          <el-input v-model="cond.targetIdsText" placeholder="逗号分隔的用户ID" />
+        <el-form-item v-if="cond.scopeType === 'USER'" label="选择用户">
+          <el-select
+            v-model="cond.targetIds"
+            multiple
+            filterable
+            clearable
+            placeholder="请选择用户"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in userOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'ROLE'" label="角色ID">
-          <el-input v-model="cond.targetIdsText" placeholder="逗号分隔的角色ID" />
+        <el-form-item v-if="cond.scopeType === 'ROLE'" label="选择角色">
+          <el-select
+            v-model="cond.targetIds"
+            multiple
+            filterable
+            clearable
+            placeholder="请选择角色"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in roleOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item v-if="cond.scopeType === 'ROLE'" label="匹配方式">
           <el-radio-group v-model="cond.operator">
@@ -521,8 +549,22 @@
             <el-radio label="ALL">拥有全部角色</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'DEPT'" label="部门ID">
-          <el-input v-model="cond.targetIdsText" placeholder="逗号分隔的部门ID" />
+        <el-form-item v-if="cond.scopeType === 'DEPT'" label="选择部门">
+          <el-select
+            v-model="cond.targetIds"
+            multiple
+            filterable
+            clearable
+            placeholder="请选择部门"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in orgOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item v-if="cond.scopeType === 'DEPT'" label="包含子部门">
           <el-switch v-model="cond.includeSubDept" />
@@ -648,6 +690,9 @@ import { codeRuleApi } from '@/api/codeRule'
 import { entityListPermissionApi } from '@/api/entityListPermission'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getEntityStatusList } from '@/api/entityStatus'
+import { getUserList } from '@/api/system/user'
+import { getEnabledRoles } from '@/api/system/role'
+import { getEnabledOrgList } from '@/api/system/org'
 import { ENTITY_FIELD_TYPES, getEntityFieldTypeLabel, getEntityFieldTypeTag } from '@/shared/entity-design'
 
 const route = useRoute()
@@ -684,6 +729,24 @@ const availableStatuses = ref([])
 const availableListConfigs = ref([])
 const permissionSqlPreview = ref({ sql: '', matchedRules: [], hasPermission: true, needFilter: false })
 const permissionSqlPreviewVisible = ref(false)
+const userOptions = ref([])
+const roleOptions = ref([])
+const orgOptions = ref([])
+
+const loadSelectorOptions = async () => {
+  try {
+    const [users, roles, orgs] = await Promise.all([
+      getUserList().catch(() => []),
+      getEnabledRoles().catch(() => []),
+      getEnabledOrgList().catch(() => [])
+    ])
+    userOptions.value = (users || []).map(u => ({ label: `${u.nickname || u.username} (${u.username})`, value: u.id }))
+    roleOptions.value = (roles || []).map(r => ({ label: r.roleName || r.roleCode, value: r.id }))
+    orgOptions.value = (orgs || []).map(o => ({ label: o.orgName, value: o.id }))
+  } catch (error) {
+    console.error('加载选择数据失败:', error)
+  }
+}
 
 function createEmptyPermissionForm() {
   return {
@@ -1067,7 +1130,7 @@ const loadPermissions = async () => {
         matchLogic: match.logic || 'OR',
         matchConditions: (match.conditions || []).map(c => ({
           ...c,
-          targetIdsText: (c.targetIds || []).join(',')
+          targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)) : []
         })),
         filterType: filter.type || 'PERSONAL',
         customSql: filter.customSql || '',
@@ -1104,12 +1167,14 @@ const handleAddPermission = () => {
   permissionForm.value.entityCode = entityData.value.entityCode
   permissionEditVisible.value = true
   loadAvailableStatuses()
+  loadSelectorOptions()
 }
 
 const handleEditPermission = (row) => {
   permissionForm.value = { ...row }
   permissionEditVisible.value = true
   loadAvailableStatuses()
+  loadSelectorOptions()
 }
 
 const handleDeletePermission = async (row) => {
@@ -1138,7 +1203,6 @@ const addMatchCondition = () => {
   permissionForm.value.matchConditions.push({
     scopeType: 'ROLE',
     targetIds: [],
-    targetIdsText: '',
     operator: 'ANY',
     includeSubDept: false,
     expression: ''
@@ -1202,7 +1266,7 @@ const savePermission = async () => {
   // 处理 matchConditions 中的 targetIds
   const matchConditions = (form.matchConditions || []).map(c => ({
     scopeType: c.scopeType,
-    targetIds: c.targetIdsText ? c.targetIdsText.split(',').map(s => s.trim()).filter(Boolean) : [],
+    targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)).filter(Boolean) : [],
     operator: c.operator,
     includeSubDept: c.includeSubDept,
     expression: c.expression
