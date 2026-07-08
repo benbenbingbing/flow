@@ -90,7 +90,7 @@ public class ProcessRollbackService {
             variables.put("_rejectComment_", comment);
             variables.put("_rejectSourceTaskId_", taskId);
             variables.put("_rejectSourceNodeId_", task.getTaskDefinitionKey());
-            variables.put("approved", false);
+            variables.put("approved", "reject");
 
             // 5. 完成任务并设置驳回变量
             taskService.setVariablesLocal(taskId, variables);
@@ -175,7 +175,7 @@ public class ProcessRollbackService {
             variables.put("_resubmitTime_", new Date());
             variables.put("_resubmitComment_", comment);
             variables.put("_resubmitBy_", userId);
-            variables.put("approved", true);  // 重新提交表示同意继续流程
+            variables.put("approved", "approve");  // 重新提交表示同意继续流程
             variables.put("action", "resubmit");
             variables.put("comment", comment);
 

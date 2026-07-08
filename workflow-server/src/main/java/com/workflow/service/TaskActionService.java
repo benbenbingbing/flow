@@ -135,7 +135,27 @@ public class TaskActionService {
                 break;
 
             default:
-                throw new RuntimeException("未知的操作类型: " + action);
+                // 自定义操作类型：按普通审批完成，approved 使用原始 action 值
+                // 这样前端可以配置任意审批选项值（如 needMeeting、approve、reject 等），
+                // 网关条件通过 ${approved == 'xxx'} 即可分支。
+                Map<String, Object> customVars = new HashMap<>();
+                customVars.put("approved", normalizedAction);
+                customVars.put("action", normalizedAction);
+                customVars.put("comment", comment);
+                customVars.put("approver", userId);
+
+                List<String> customApprovers = (List<String>) runtimeService.getVariable(task.getProcessInstanceId(), "_approvers_");
+                if (customApprovers == null) {
+                    customApprovers = new ArrayList<>();
+                }
+                customApprovers.add(userId);
+                customVars.put("_approvers_", customApprovers);
+
+                taskService.complete(taskId, customVars);
+                processTaskService.completeTask(taskId, normalizedAction, comment);
+
+                log.info("任务 {} 已通过自定义操作完成: action={}, user={}", taskId, normalizedAction, userId);
+                break;
         }
 
         // 同步更新待办状态（实体状态由 EntityStatusUpdateListener 监听器自动更新）
@@ -183,7 +203,7 @@ public class TaskActionService {
         
         // 设置流程变量
         Map<String, Object> vars = new HashMap<>();
-        vars.put("approved", true);
+        vars.put("approved", "approve");
         vars.put("action", "approve");
         vars.put("comment", comment);
         vars.put("approver", userId);
@@ -213,7 +233,7 @@ public class TaskActionService {
         
         // 设置流程变量
         Map<String, Object> vars = new HashMap<>();
-        vars.put("approved", false);
+        vars.put("approved", "reject");
         vars.put("action", "reject");
         vars.put("comment", comment);
         vars.put("rejectBy", userId);
@@ -249,7 +269,7 @@ public class TaskActionService {
                 if (!otherTask.getId().equals(currentTaskId)) {
                     // 设置变量标记该任务因驳回而跳过
                     taskService.setVariable(otherTask.getId(), "_skippedDueToReject_", true);
-                    taskService.setVariable(otherTask.getId(), "approved", false);
+                    taskService.setVariable(otherTask.getId(), "approved", "reject");
                     log.debug("多实例任务 {} 因驳回而被跳过", otherTask.getId());
                 }
             }

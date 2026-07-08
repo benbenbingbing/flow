@@ -4,7 +4,11 @@
  */
 
 <template>
-  <div class="linkage-form-preview" :class="form?.layoutType">
+  <div
+    class="linkage-form-preview"
+    :class="[form?.layoutType, { 'has-tabs': tabSubForms.length > 0 && !noInternalTabs }]"
+    :style="previewStyle"
+  >
     <div class="preview-header" v-if="showHeader">
       <h3>{{ form?.formName }}</h3>
     </div>
@@ -150,10 +154,24 @@ const props = defineProps({
   noInternalTabs: {
     type: Boolean,
     default: false
+  },
+  height: {
+    type: String,
+    default: '70vh'
   }
 })
 
 const emit = defineEmits(['update:modelValue'])
+
+// 预览容器样式：支持自定义高度，默认 70vh
+// 无 tab 时整体滚动；有 tab 时只滚动 tab content，tab header 固定
+const previewStyle = computed(() => {
+  const hasTabs = tabSubForms.value.length > 0 && !props.noInternalTabs
+  return {
+    height: props.height,
+    overflowY: hasTabs ? 'hidden' : 'auto'
+  }
+})
 
 // 自定义表单组件数据更新回调
 function handleCustomFormUpdate(val) {
@@ -442,6 +460,39 @@ defineExpose({
 .form-tabs-wrapper {
   width: 100%;
   display: block;
+}
+
+/* 有 tab 时：整体 flex 布局，tab header 固定，tab body 滚动 */
+.linkage-form-preview.has-tabs {
+  display: flex;
+  flex-direction: column;
+}
+.linkage-form-preview.has-tabs .preview-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+.linkage-form-preview.has-tabs .form-tabs-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.linkage-form-preview.has-tabs :deep(.el-tabs) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.linkage-form-preview.has-tabs :deep(.el-tabs__header) {
+  flex-shrink: 0;
+}
+.linkage-form-preview.has-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .preview-field-wrapper[v-show="false"] {

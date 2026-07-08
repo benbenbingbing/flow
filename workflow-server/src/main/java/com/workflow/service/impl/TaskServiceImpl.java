@@ -70,7 +70,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                             skipReason.toString());
                     
                     // 设置审批结果
-                    flowableTaskService.setVariable(task.getId(), "approved", true);
+                    flowableTaskService.setVariable(task.getId(), "approved", "approve");
                     
                     // 自动完成任务
                     flowableTaskService.complete(task.getId());
@@ -233,7 +233,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
         switch (action) {
             case "approve":
                 // 通过 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
-                runtimeService.setVariable(processInstanceId, "approved", true);
+                runtimeService.setVariable(processInstanceId, "approved", "approve");
                 
                 // 检查是否是多实例任务（会签/或签）
                 if (isMultiInstanceTask(task)) {
@@ -255,7 +255,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 
             case "reject":
                 // 驳回 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
-                runtimeService.setVariable(processInstanceId, "approved", false);
+                runtimeService.setVariable(processInstanceId, "approved", "reject");
                 
                 // 如果是多实例任务，直接结束整个多实例
                 if (isMultiInstanceTask(task)) {
@@ -298,7 +298,19 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 break;
                 
             default:
-                throw new RuntimeException("不支持的审批操作: " + action);
+                // 自定义操作类型：按普通审批完成，approved 使用原始 action 值
+                runtimeService.setVariable(processInstanceId, "approved", action);
+                runtimeService.setVariable(processInstanceId, "action", action);
+                runtimeService.setVariable(processInstanceId, "comment", comment);
+                runtimeService.setVariable(processInstanceId, "approver", CURRENT_USER);
+
+                flowableTaskService.complete(taskId);
+
+                processTaskService.completeTask(taskId, action, comment);
+                processTaskService.syncTasksFromFlowable(processInstanceId);
+
+                log.info("任务审批完成（自定义操作）: taskId={}, action={}, user={}", taskId, action, CURRENT_USER);
+                break;
         }
     }
     
@@ -388,7 +400,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                             "系统自动完成（他人已审批）");
                     
                     // 设置变量
-                    flowableTaskService.setVariable(otherTask.getId(), "approved", true);
+                    flowableTaskService.setVariable(otherTask.getId(), "approved", "approve");
                     flowableTaskService.setVariable(otherTask.getId(), "autoCompleted", true);
                     
                     // 完成任务
@@ -804,7 +816,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
         }
         
         // 3. 设置审批结果变量
-        flowableTaskService.setVariable(taskId, "approved", true);
+        flowableTaskService.setVariable(taskId, "approved", "approve");
         flowableTaskService.setVariable(taskId, "resubmitted", true);
         
         // 4. 完成任务

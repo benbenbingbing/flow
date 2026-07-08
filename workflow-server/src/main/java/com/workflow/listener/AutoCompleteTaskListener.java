@@ -26,7 +26,7 @@ public class AutoCompleteTaskListener implements TaskListener {
         
         // 设置流程变量，标记此节点已自动跳过
         delegateTask.setVariable("skipReason_" + delegateTask.getTaskDefinitionKey(), "系统自动跳过此节点");
-        delegateTask.setVariable("approved", true);
+        delegateTask.setVariable("approved", "approve");
         
         // 注意：由于事务限制，这里不直接调用 complete
         // 而是在应用层查询任务时检测到 skipNode 标记后自动完成

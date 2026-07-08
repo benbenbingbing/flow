@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@sevoniva/llm-coding-bridge": "^0.3.0"
+  }
+}

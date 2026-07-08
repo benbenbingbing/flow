@@ -918,6 +918,7 @@
                     <el-select 
                       v-model="condition.operator" 
                       placeholder="操作符"
+                      @change="updateCondition()"
                       size="small"
                     >
                       <el-option label="等于 (==)" value="==" />
@@ -937,29 +938,12 @@
                       v-if="getFieldType(condition.property) === 'select'"
                       v-model="condition.value" 
                       placeholder="选择值"
+                      @change="updateCondition()"
                       size="small"
                       style="width: 100%"
                     >
                       <el-option 
                         v-for="opt in getFieldOptions(condition.property)" 
-                        :key="opt.value"
-                        :label="opt.label"
-                        :value="opt.value"
-                      />
-                    </el-select>
-                    <!-- 审批结果：动态获取源节点审批选项，支持手动输入 -->
-                    <el-select 
-                      v-else-if="condition.property === 'approved'"
-                      v-model="condition.value" 
-                      placeholder="选择或输入审批结果"
-                      size="small"
-                      style="width: 100%"
-                      filterable
-                      allow-create
-                      default-first-option
-                    >
-                      <el-option 
-                        v-for="opt in sourceNodeApprovalOptions"
                         :key="opt.value"
                         :label="opt.label"
                         :value="opt.value"
@@ -2611,7 +2595,7 @@ function onPropertyChange(index) {
 
 // 获取字段类型
 function getFieldType(fieldName) {
-  if (fieldName === 'approved') return 'boolean'
+  if (fieldName === 'approved') return 'select'
   const field = entityFields.value.find(f => f.fieldName === fieldName)
   if (!field) return 'string'
   // 映射字段类型
@@ -2636,10 +2620,7 @@ function getFieldType(fieldName) {
 // 获取字段选项（用于下拉框）
 function getFieldOptions(fieldName) {
   if (fieldName === 'approved') {
-    return [
-      { label: '通过', value: 'true' },
-      { label: '拒绝', value: 'false' }
-    ]
+    return sourceNodeApprovalOptions.value
   }
   const field = entityFields.value.find(f => f.fieldName === fieldName)
   if (!field || !field.optionsJson) return []
@@ -2664,6 +2645,7 @@ function buildExpressionFromConditions() {
     const fieldType = getFieldType(condition.property)
     
     // 处理值类型
+    // approved 运行时变量是审批选项的字符串值，需要加引号
     if (fieldType === 'string' || fieldType === 'select') {
       // 字符串需要加引号（如果不是变量）
       if (value && !value.startsWith('${') && !value.startsWith('#{')) {
@@ -3237,23 +3219,52 @@ async function loadStatusConfig(bo) {
  * 加载实体预定义的状态列表
  */
 /**
+ * 从指定节点向上追溯，找到最近的用户任务节点（用于网关后的连线）
+ * 如果源节点本身就是 UserTask 直接返回；如果是网关则沿唯一的 incoming 继续向上找
+ */
+function findUpstreamUserTaskBo(nodeBo, visited = new Set()) {
+  if (!nodeBo || visited.has(nodeBo.id)) return null
+  visited.add(nodeBo.id)
+
+  if (nodeBo.$type === 'bpmn:UserTask') return nodeBo
+
+  const isGateway = nodeBo.$type === 'bpmn:ExclusiveGateway' ||
+                    nodeBo.$type === 'bpmn:ParallelGateway' ||
+                    nodeBo.$type === 'bpmn:InclusiveGateway'
+  if (!isGateway) return null
+
+  const incoming = nodeBo.incoming || []
+  // 优先找直接连进来的 UserTask
+  for (const seqFlow of incoming) {
+    const source = seqFlow.sourceRef
+    if (source?.$type === 'bpmn:UserTask') return source
+  }
+  // 否则递归向上追溯
+  for (const seqFlow of incoming) {
+    const found = findUpstreamUserTaskBo(seqFlow.sourceRef, visited)
+    if (found) return found
+  }
+  return null
+}
+
+/**
  * 加载审批结果选项（用于连线条件中 approved 属性的下拉选择）
- * 聚合当前流程中所有用户任务节点配置的审批选项
+ * 只聚合当前连线上游最近用户任务节点配置的审批选项，避免把流程中其他节点的选项混进来
  */
 function loadSourceNodeApprovalOptions(bo) {
   sourceNodeApprovalOptions.value = []
-  const modeler = props.element?._modeler
-  if (!modeler) return
+  if (!bo) return
 
-  const elementRegistry = modeler.get('elementRegistry')
-  const allElements = elementRegistry.getAll()
+  const sourceBo = findUpstreamUserTaskBo(bo.sourceRef)
+  if (!sourceBo) {
+    console.log('未找到连线上游的用户任务节点，无需加载审批选项:', bo.id)
+    return
+  }
+
   const optionMap = new Map()
-
-  allElements.forEach(el => {
-    if (el.type !== 'bpmn:UserTask') return
-    const extProps = getExtensionProperties(el.businessObject)
-    const approvalConfigStr = extProps['approvalConfig']
-    if (!approvalConfigStr) return
+  const extProps = getExtensionProperties(sourceBo)
+  const approvalConfigStr = extProps['approvalConfig']
+  if (approvalConfigStr) {
     try {
       const approvalConfig = JSON.parse(approvalConfigStr)
       if (approvalConfig.options && Array.isArray(approvalConfig.options)) {
@@ -3265,16 +3276,16 @@ function loadSourceNodeApprovalOptions(bo) {
         })
       }
     } catch (e) {
-      console.warn('解析审批配置失败:', e)
+      console.warn('解析源节点审批配置失败:', e)
     }
-  })
+  }
 
   sourceNodeApprovalOptions.value = Array.from(optionMap.entries()).map(([value, label]) => ({
     label,
     value
   }))
 
-  console.log('加载审批结果选项:', bo.id, '选项:', sourceNodeApprovalOptions.value)
+  console.log('加载审批结果选项:', bo.id, '源节点:', sourceBo.id, '选项:', sourceNodeApprovalOptions.value)
 }
 
 async function loadEntityStatusList() {
@@ -3302,6 +3313,13 @@ watch(() => boundEntity.value, async (newVal) => {
     await loadEntityFields()
   }
 }, { immediate: true })
+
+// 切换到条件 tab 时重新加载审批结果选项，确保拿到最新的节点审批配置
+watch(() => activeTab.value, (tab) => {
+  if (tab === 'condition' && isSequenceFlow.value && props.element?.businessObject) {
+    loadSourceNodeApprovalOptions(toRaw(props.element).businessObject)
+  }
+})
 
 /**
  * 保存状态配置

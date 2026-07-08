@@ -73,8 +73,8 @@ public class WorkflowAutoSkipService {
             for (Task task : skipTasks) {
                 try {
                     taskService.addComment(task.getId(), processInstanceId, "系统自动跳过此节点");
-                    taskService.setVariable(task.getId(), "approved", true);
-                    taskService.complete(task.getId(), Map.of("approved", true));
+                    taskService.setVariable(task.getId(), "approved", "approve");
+                    taskService.complete(task.getId(), Map.of("approved", "approve"));
                     completedTaskIds.add(task.getId());
                     log.info("自动跳过节点: processInstanceId={}, taskId={}, taskDefKey={}, taskName={}",
                             processInstanceId, task.getId(), task.getTaskDefinitionKey(), task.getName());
