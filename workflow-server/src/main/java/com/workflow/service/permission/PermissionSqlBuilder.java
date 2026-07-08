@@ -32,7 +32,8 @@ public class PermissionSqlBuilder {
         }
 
         String deptField = safeField(mapping.getDeptField(), "dept_id");
-        String userField = safeField(mapping.getUserField(), "create_by");
+        // 与实体表 entity_data 的字段名保持一致（created_by），避免 fallback 时拼出非法字段
+        String userField = safeField(mapping.getUserField(), "created_by");
         String statusField = safeField(mapping.getStatusField(), "status");
         if (deptField == null || userField == null || statusField == null) {
             return "1=0";

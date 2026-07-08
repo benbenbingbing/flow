@@ -29,8 +29,8 @@ public class DataPermissionEngine {
     private final PermissionRuleMatcher ruleMatcher;
     private final PermissionSqlBuilder sqlBuilder;
 
-    /** 数据权限委托相关字段 */
-    private static final String DELEGATE_USER_FIELD = "create_by";
+    /** 用户字段名（须与实体表 entity_data 的字段名保持一致） */
+    private static final String USER_FIELD = "created_by";
 
     /**
      * 计算某实体的数据权限（不绑定具体列表，仅使用全局规则）。
@@ -171,7 +171,7 @@ public class DataPermissionEngine {
             // 没有配置规则，默认仅本人
             return new CalculationResult(
                     DataPermissionResult.withCondition(
-                            "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+                            USER_FIELD + " = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
                     ),
                     List.of()
             );
@@ -189,7 +189,7 @@ public class DataPermissionEngine {
             // 没有匹配规则 = 默认仅本人
             return new CalculationResult(
                     DataPermissionResult.withCondition(
-                            "create_by = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
+                            USER_FIELD + " = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
                     ),
                     List.of()
             );
@@ -289,7 +289,7 @@ public class DataPermissionEngine {
         String escapedIds = fromUserIds.stream()
                 .map(sqlBuilder::escapeLiteral)
                 .collect(Collectors.joining("','"));
-        String delegateSql = DELEGATE_USER_FIELD + " IN ('" + escapedIds + "')";
+        String delegateSql = USER_FIELD + " IN ('" + escapedIds + "')";
 
         String combinedSql = "(" + baseResult.getSqlCondition() + ") OR (" + delegateSql + ")";
         DataPermissionResult result = DataPermissionResult.withCondition(combinedSql);

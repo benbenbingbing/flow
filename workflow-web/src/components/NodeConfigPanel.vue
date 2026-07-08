@@ -1354,22 +1354,15 @@
           <el-divider>自动跳过</el-divider>
           
           <el-form-item label="是否跳过">
-            <el-switch 
-              v-model="advancedForm.skipNode" 
+            <el-switch
+              v-model="advancedForm.skipNode"
               @change="updateSkipNode"
-              :disabled="!isFirstUserTask"
               active-text="是"
               inactive-text="否"
             />
           </el-form-item>
-          
-          <el-alert v-if="!isFirstUserTask" type="info" :closable="false" show-icon>
-            <template #title>
-              只有第一个用户任务节点可以设置跳过
-            </template>
-          </el-alert>
-          
-          <el-alert v-else-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
+
+          <el-alert v-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
             <template #title>
               执行到此节点时直接流转
             </template>
@@ -1407,47 +1400,8 @@ const activeTab = ref('basic')
 // ========== 节点类型判断 ==========
 const isUserTask = computed(() => props.element?.type === 'bpmn:UserTask')
 
-// 判断当前节点是否是第一个用户任务节点
-const isFirstUserTask = computed(() => {
-  if (!isUserTask.value || !props.element?._modeler) return false
-  
-  const elementRegistry = props.element._modeler.get('elementRegistry')
-  const allElements = elementRegistry.getAll()
-  
-  // 获取所有用户任务节点，按它们在流程中的顺序排序
-  // 通过检查连接到 StartEvent 的序列流来找到第一个用户任务
-  const startEvent = allElements.find(el => el.type === 'bpmn:StartEvent')
-  if (!startEvent) return false
-  
-  // 找到当前用户任务节点
-  const currentNodeId = props.element.id
-  
-  // 使用 BFS 找到从 StartEvent 可达的第一个用户任务
-  const visited = new Set()
-  const queue = [startEvent]
-  let firstUserTask = null
-  
-  while (queue.length > 0 && !firstUserTask) {
-    const current = queue.shift()
-    if (visited.has(current.id)) continue
-    visited.add(current.id)
-    
-    // 获取当前节点的出线
-    const outgoing = current.outgoing || []
-    for (const connection of outgoing) {
-      const target = connection.target
-      if (target.type === 'bpmn:UserTask') {
-        firstUserTask = target
-        break
-      }
-      if (!visited.has(target.id)) {
-        queue.push(target)
-      }
-    }
-  }
-  
-  return firstUserTask && firstUserTask.id === currentNodeId
-})
+// 注：自动跳过不再限制"仅第一个用户任务节点"，由后端 WorkflowAutoSkipService
+// 监听 ACTIVITY_STARTED 事件按运行时实际到达的节点判断，避免 BFS 在网关分支下误判。
 const isServiceTask = computed(() => props.element?.type === 'bpmn:ServiceTask')
 const isSendTask = computed(() => props.element?.type === 'bpmn:SendTask')
 const isReceiveTask = computed(() => props.element?.type === 'bpmn:ReceiveTask')
@@ -2398,16 +2352,34 @@ function onMultiInstanceChange(enabled) {
     updateMultiInstance()
   } else {
     // 关闭多实例：清除 loopCharacteristics 和 assignee，恢复普通任务配置
-    modeling.updateProperties(toRaw(props.element), { 
+    modeling.updateProperties(toRaw(props.element), {
       loopCharacteristics: undefined,
       assignee: undefined
     })
     // 恢复原来的 candidateGroups/candidateUsers（如果配置过）
-    if (assigneeForm.value.candidateGroups) {
-      updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
+    // 若 form 内存值已被切换 assigneeType 清空，则从扩展属性 assigneeConfig 兜底恢复，
+    // 避免多实例与普通模式来回切换导致执行人配置永久丢失。
+    const bo = toRaw(props.element).businessObject
+    const extProps = getExtensionProperties(bo)
+    let savedAssigneeConfig = {}
+    if (extProps['assigneeConfig']) {
+      try { savedAssigneeConfig = JSON.parse(extProps['assigneeConfig']) } catch (e) {}
     }
-    if (assigneeForm.value.candidateUsers) {
-      updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
+    const savedAssigneeValue = savedAssigneeConfig.assigneeValue || ''
+    const savedAssigneeType = savedAssigneeConfig.assigneeType || assigneeForm.value.assigneeType
+    // group/role 类型存的是 candidateGroups；user 类型存的是 assignee
+    const candidateGroupsToRestore = assigneeForm.value.candidateGroups
+      || ((savedAssigneeType === 'group' || savedAssigneeType === 'role') ? savedAssigneeValue : '')
+    const candidateUsersToRestore = assigneeForm.value.candidateUsers
+      || (savedAssigneeType === 'expression' ? savedAssigneeValue : '')
+
+    if (candidateGroupsToRestore) {
+      assigneeForm.value.candidateGroups = candidateGroupsToRestore
+      updateProperty('candidateGroups', candidateGroupsToRestore)
+    }
+    if (candidateUsersToRestore) {
+      assigneeForm.value.candidateUsers = candidateUsersToRestore
+      updateProperty('candidateUsers', candidateUsersToRestore)
     }
     emit('save')
   }
@@ -2528,6 +2500,9 @@ function onConditionTypeChange(type) {
     if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
       modeling.updateProperties(toRaw(source), { default: undefined })
     }
+    // 同步清空条件列表与缓存表达式，避免回显时旧条件串味复活
+    conditionForm.value.expression = ''
+    conditionList.value = [{ property: '', operator: '==', value: '', logic: '&&' }]
   }
   emit('save')
 }

@@ -51,6 +51,42 @@ class PermissionRuleMatcherTest {
         assertFalse(matcher.matches(match, user));
     }
 
+    @Test
+    void matchesExpressionWhenGroovyEvaluatesTrue() {
+        SysUser user = new SysUser();
+        user.setId("u1");
+        user.setDeptId("dept-1");
+        MatchConfigDTO.MatchConditionDTO cond = new MatchConfigDTO.MatchConditionDTO();
+        cond.setScopeType("EXPRESSION");
+        cond.setExpression("user.deptId == 'dept-1'");
+        MatchConfigDTO match = match("OR", cond);
+
+        assertTrue(matcher.matches(match, user));
+    }
+
+    @Test
+    void expressionReturnsFalseWhenNotMatched() {
+        SysUser user = new SysUser();
+        user.setDeptId("dept-1");
+        MatchConfigDTO.MatchConditionDTO cond = new MatchConfigDTO.MatchConditionDTO();
+        cond.setScopeType("EXPRESSION");
+        cond.setExpression("user.deptId == 'dept-other'");
+        MatchConfigDTO match = match("OR", cond);
+
+        assertFalse(matcher.matches(match, user));
+    }
+
+    @Test
+    void expressionRejectsForbiddenKeywords() {
+        SysUser user = new SysUser();
+        MatchConfigDTO.MatchConditionDTO cond = new MatchConfigDTO.MatchConditionDTO();
+        cond.setScopeType("EXPRESSION");
+        cond.setExpression("Runtime.getRuntime().exec('ls')");
+        MatchConfigDTO match = match("OR", cond);
+
+        assertFalse(matcher.matches(match, user));
+    }
+
     private MatchConfigDTO match(String logic, MatchConfigDTO.MatchConditionDTO... conditions) {
         MatchConfigDTO match = new MatchConfigDTO();
         match.setLogic(logic);

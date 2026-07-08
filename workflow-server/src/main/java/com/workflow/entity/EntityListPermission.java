@@ -1,6 +1,7 @@
 package com.workflow.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -55,8 +56,8 @@ public class EntityListPermission {
     @TableField("stop_processing")
     private Integer stopProcessing;
 
-    /** 创建人 */
-    @TableField("created_by")
+    /** 创建人（更新时不可被覆盖，避免前端漏传导致丢失） */
+    @TableField(value = "created_by", update = FieldStrategy.NEVER)
     private String createdBy;
 
     /** 创建时间 */

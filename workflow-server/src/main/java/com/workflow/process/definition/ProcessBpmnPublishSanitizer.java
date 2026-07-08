@@ -29,6 +29,7 @@ public class ProcessBpmnPublishSanitizer {
         result = convertBareFlowableAttributes(result);
         result = convertMultiInstanceAttributes(result);
         result = processSkipNodeTasks(result);
+        result = migrateApprovedExpressions(result);
         result = ensureFlowableNamespace(result);
         result = resolveBpmnIdConflicts(result, processKey);
         result = useProcessKey(result, processKey);
@@ -280,6 +281,31 @@ public class ProcessBpmnPublishSanitizer {
         }
         matcher.appendTail(result);
         return result.toString();
+    }
+
+    /**
+     * 迁移旧的 approved 布尔条件表达式为字符串比较。
+     *
+     * <p>历史流程的网关条件写的是 {@code ${approved == true}} / {@code ${approved == false}}，
+     * 但 approved 变量已统一为字符串 "approve"/"reject"，布尔比较会导致条件永远不成立。
+     * 发布时把 {@code approved == true} 改为 {@code approved == 'approve'}，
+     * {@code approved == false} 改为 {@code approved == 'reject'}（兼容 == 与 !=）。</p>
+     */
+    private String migrateApprovedExpressions(String bpmnXml) {
+        String result = bpmnXml;
+        // approved == true  →  approved == 'approve'
+        result = result.replaceAll("approved\\s*==\\s*true\\b", "approved == 'approve'");
+        // true == approved  →  'approve' == approved
+        result = result.replaceAll("\\btrue\\s*==\\s*approved", "'approve' == approved");
+        // approved == false  →  approved == 'reject'
+        result = result.replaceAll("approved\\s*==\\s*false\\b", "approved == 'reject'");
+        // false == approved  →  'reject' == approved
+        result = result.replaceAll("\\bfalse\\s*==\\s*approved", "'reject' == approved");
+        // approved != true  →  approved != 'approve'
+        result = result.replaceAll("approved\\s*!=\\s*true\\b", "approved != 'approve'");
+        // approved != false  →  approved != 'reject'
+        result = result.replaceAll("approved\\s*!=\\s*false\\b", "approved != 'reject'");
+        return result;
     }
 
     private String resolveBpmnIdConflicts(String bpmnXml, String processKey) {
