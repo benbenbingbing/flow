@@ -3049,7 +3049,6 @@ function saveCurrentTab() {
           updateAssigneeInterface()
         }
         modeling.updateProperties(toRaw(props.element), updates)
-        emit('save')
         updateAssigneeConfig()
         if (assigneeForm.value.isMultiInstance) {
           updateMultiInstance()
@@ -3124,8 +3123,10 @@ function saveCurrentTab() {
         ElMessage.warning('当前页面无需保存')
         return
     }
-    
-    ElMessage.success('保存成功')
+
+    // 节点配置仅写入 bpmn-js 内存模型，尚未落库；落库由顶部"保存流程"统一完成。
+    // 这里只弹一次"暂存成功"，并通知父组件标记脏状态（父组件不再弹提示，避免叠加）。
+    ElMessage.success('暂存成功，请点击「保存流程」落库')
     emit('save')
   } catch (error) {
     console.error('保存失败:', error)

@@ -181,9 +181,11 @@ public class EntityDataService {
                         variables
                 );
 
-                // 兜底：自动完成配置为跳过的节点（防止 flowable:skipExpression 未生效）
+                // 兜底：自动完成配置为跳过的节点（防止 flowable:skipExpression 未生效）。
+                // 事件监听器负责中途到达的跳过节点，启动时由这里保证第一个跳过节点被处理
+                // （ACTIVITY_STARTED 事件触发时任务可能尚未落库，监听器查不到任务）。
                 workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfig.getId());
-                
+
                 // 更新流程实例ID、状态和流程开始时间
                 data.setProcessInstanceId(processInstance.getId());
                 data.setStatus("审批中");  // 发起流程后状态为审批中

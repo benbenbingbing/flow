@@ -82,7 +82,7 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
             List<Task> skipTasks = activeTasks.stream()
                     .filter(t -> skipNodeIds.contains(t.getTaskDefinitionKey()))
                     .filter(t -> !completedTaskIds.contains(t.getId()))
-                    .toList();
+                    .collect(Collectors.toList());
 
             if (skipTasks.isEmpty()) {
                 break;
@@ -175,6 +175,10 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
                 taskService.complete(task.getId(), Map.of("approved", "approve"));
                 log.info("实时自动跳过节点: processInstanceId={}, taskId={}, taskDefKey={}",
                         processInstanceId, task.getId(), activityId);
+            } catch (org.flowable.common.engine.api.FlowableException e) {
+                // 任务已被启动兜底逻辑完成/删除时会抛 "already deleted"，属于正常竞态，降级为 debug
+                log.debug("实时自动跳过跳过（任务可能已被处理）: processInstanceId={}, taskId={}, msg={}",
+                        processInstanceId, task.getId(), e.getMessage());
             } catch (Exception e) {
                 log.error("实时自动跳过节点失败: processInstanceId={}, taskId={}", processInstanceId, task.getId(), e);
             }
@@ -184,6 +188,16 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
     @Override
     public boolean isFailOnException() {
         // 任何异常都不影响流程继续（跳过失败时任务停留在该节点，等同未配置跳过）
+        return false;
+    }
+
+    @Override
+    public String getOnTransaction() {
+        return null;
+    }
+
+    @Override
+    public boolean isFireOnTransactionLifecycleEvent() {
         return false;
     }
 }

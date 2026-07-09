@@ -73,7 +73,8 @@ public class EntityWorkflowRuntimeService {
 
         ProcessInstance processInstance = runtimeService.startProcessInstanceByKey(processKey, dto.getId(), variables);
 
-        // 兜底：自动完成配置为跳过的节点（防止 flowable:skipExpression 未生效）
+        // 兜底：自动完成配置为跳过的节点（防止 flowable:skipExpression 未生效）。
+        // 事件监听器负责中途到达的跳过节点，启动时由这里保证第一个跳过节点被处理。
         workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfigId);
 
         Task currentTask = taskService.createTaskQuery()

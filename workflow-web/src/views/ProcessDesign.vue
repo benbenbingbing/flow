@@ -43,11 +43,20 @@
     <el-dialog
       v-model="xmlDialogVisible"
       title="BPMN XML"
-      width="70%"
+      class="xml-fullscreen-dialog"
       :close-on-click-modal="false"
+      :fullscreen="true"
     >
-      <div class="xml-container">
-        <pre class="xml-content">{{ xmlContent }}</pre>
+      <div class="xml-editor-wrapper">
+        <Codemirror
+          v-model="xmlContent"
+          :extensions="xmlExtensions"
+          :style="xmlEditorStyle"
+          :autofocus="false"
+          :indent-with-tab="true"
+          :tab-size="2"
+          disabled
+        />
       </div>
       <template #footer>
         <div class="dialog-footer">
@@ -90,8 +99,13 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right } from '@element-plus/icons-vue'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
+import formatXML from 'xml-formatter'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
 import VueBpmnDesigner from '@/components/VueBpmnDesigner.vue'
+import { Codemirror } from 'vue-codemirror'
+import { xml } from '@codemirror/lang-xml'
+import { oneDark } from '@codemirror/theme-one-dark'
+import { EditorView } from '@codemirror/view'
 
 /**
  * 检查并修复XML布局
@@ -136,6 +150,11 @@ const canRedo = ref(false)
 // XML 查看弹窗
 const xmlDialogVisible = ref(false)
 const xmlContent = ref('')
+const xmlExtensions = [xml(), oneDark, EditorView.lineWrapping]
+const xmlEditorStyle = { height: '100%', fontSize: '14px' }
+
+// 节点配置是否有未落库的暂存变更（写入了 bpmn-js 内存但还没点"保存流程"）
+const hasUnsavedNodeChanges = ref(false)
 
 // 默认空白流程（包含 flowable 命名空间）
 const defaultXML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -225,29 +244,18 @@ const loadProcess = async () => {
   }
 }
 
-// 格式化 XML（添加缩进和换行）
-const formatXML = (xml) => {
-  let formatted = ''
-  let indent = 0
-  // 使用字符串替换替代正则，避免转义问题
-  const lines = xml.replace(/>(\s*)</g, '>__SPLIT__<').split('__SPLIT__')
-  
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].trim()
-    if (!line) continue
-    
-    if (line.match(/^<\/\w/)) {
-      indent--
-    }
-    
-    formatted += '  '.repeat(indent) + line + '\n'
-    
-    if (line.match(/^<\w[^>]*[^\/]>.*$/)) {
-      indent++
-    }
+// 格式化 XML（使用 xml-formatter 做标准缩进和换行）
+const formatXMLContent = (xml) => {
+  try {
+    return formatXML(xml, {
+      indentation: '  ',
+      collapseContent: false,
+      lineSeparator: '\n'
+    })
+  } catch (e) {
+    console.warn('XML 格式化失败，返回原文:', e)
+    return xml
   }
-  
-  return formatted.trim()
 }
 
 // 复制 XML 到剪贴板
@@ -263,7 +271,7 @@ const handleSaveXML = async () => {
   try {
     const xml = await designerRef.value?.getXml()
     if (xml) {
-      xmlContent.value = formatXML(xml)
+      xmlContent.value = formatXMLContent(xml)
       xmlDialogVisible.value = true
     }
   } catch (error) {
@@ -297,7 +305,8 @@ const handleSave = async () => {
       ElMessage.info('请先填写流程基本信息')
       return
     }
-    
+
+    hasUnsavedNodeChanges.value = false
     ElMessage.success('保存成功')
   } catch (error) {
     console.error(error)
@@ -306,7 +315,10 @@ const handleSave = async () => {
 }
 
 const handleNodeConfigSave = () => {
-  ElMessage.success('节点配置已保存')
+  // 节点配置只写入了 bpmn-js 内存模型，未落库。
+  // 仅标记脏状态，不弹提示，避免一次保存弹出多个 toast。
+  // 真正落库由顶部"保存流程"按钮完成，落库成功后才提示。
+  hasUnsavedNodeChanges.value = true
 }
 
 onMounted(() => {
@@ -395,28 +407,122 @@ onUnmounted(() => {
   margin: 0 12px;
 }
 
-/* XML 弹窗样式 */
-.xml-container {
-  max-height: 500px;
-  overflow: auto;
-  background: #f5f5f5;
-  border-radius: 4px;
-  padding: 16px;
+/* XML 全屏弹窗样式：标题栏/底部固定，仅编辑器内容区域滚动 */
+/* 注意：fullscreen 模式下 xml-fullscreen-dialog 与 el-dialog 在同一元素，
+   必须用同元素选择器（无空格）；header/body/footer 是 el-dialog 内部元素，
+   需用 :deep() 穿透 scoped 作用域 */
+.xml-fullscreen-dialog.el-dialog {
+  margin: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
 }
 
-.xml-content {
-  margin: 0;
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #333;
-  white-space: pre-wrap;
-  word-break: break-all;
+.xml-fullscreen-dialog :deep(.el-dialog__header) {
+  flex-shrink: 0 !important;
+  padding: 16px 20px !important;
+}
+
+.xml-fullscreen-dialog :deep(.el-dialog__body) {
+  flex: 1 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.xml-fullscreen-dialog :deep(.el-dialog__footer) {
+  flex-shrink: 0 !important;
+  padding: 12px 20px !important;
+}
+
+.xml-editor-wrapper {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Codemirror 6：editor 用 flex 列布局，scroller 作为唯一滚动容器，
+   这样标题栏/底部固定，只有编辑器内容区域滚动 */
+.xml-editor-wrapper :deep(.cm-editor) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.xml-editor-wrapper :deep(.cm-scroller) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.xml-editor-wrapper :deep(.cm-editor.cm-focused) {
+  outline: none;
 }
 
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+</style>
+
+<!-- 全局兜底：确保 XML 全屏弹窗的标题栏/底部固定，仅编辑器区域滚动 -->
+<!-- fullscreen 模式下 xml-fullscreen-dialog 与 el-dialog 同元素，须用同元素选择器 -->
+<style>
+.el-dialog.xml-fullscreen-dialog {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+.xml-fullscreen-dialog .el-dialog__header {
+  flex-shrink: 0 !important;
+}
+
+.xml-fullscreen-dialog .el-dialog__body {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.xml-fullscreen-dialog .el-dialog__footer {
+  flex-shrink: 0 !important;
+}
+
+/* Codemirror 6：editor 列布局，scroller 唯一滚动容器（全局兜底，防止 :deep 失效） */
+.xml-fullscreen-dialog .xml-editor-wrapper {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.xml-fullscreen-dialog .xml-editor-wrapper .cm-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.xml-fullscreen-dialog .xml-editor-wrapper .cm-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 </style>

@@ -57,7 +57,7 @@ public class EntityListPermission {
     private Integer stopProcessing;
 
     /** 创建人（更新时不可被覆盖，避免前端漏传导致丢失） */
-    @TableField(value = "created_by", update = FieldStrategy.NEVER)
+    @TableField(value = "created_by", updateStrategy = FieldStrategy.NEVER)
     private String createdBy;
 
     /** 创建时间 */
