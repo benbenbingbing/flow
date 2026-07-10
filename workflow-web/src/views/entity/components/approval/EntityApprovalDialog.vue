@@ -1,56 +1,89 @@
 <template>
-  <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog" destroy-on-close>
-    <el-tabs v-model="activeDialogTab" type="border-card">
-      <!-- 无 tab 子表单时：基本信息 tab -->
-      <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
-        <EntityApprovalBasicInfo
-          v-model:entityData="entityData"
-          :approvalNormalForm="approvalNormalForm"
-          :effectiveApprovalConfig="effectiveApprovalConfig"
-          :isViewMode="isViewMode"
-          v-model:approveForm="approveForm"
-        />
-      </el-tab-pane>
+  <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog" top="3vh">
+    <div class="approval-dialog-body">
+      <!-- 审批意见折叠面板：固定在底部，点击向上展开 -->
+      <div v-if="!isViewMode && effectiveApprovalConfig.enabled !== false" class="approval-panel">
+        <div v-show="approvalExpanded" class="approval-panel-content">
+          <el-form :model="approveForm" label-width="80px">
+            <el-form-item label="审批操作" required>
+              <el-radio-group v-model="approveForm.action">
+                <el-radio-button
+                  v-for="option in effectiveApprovalConfig.options"
+                  :key="option.value"
+                  :label="option.value"
+                >
+                  {{ option.label }}
+                </el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item
+              v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+              :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+            >
+              <el-input
+                v-model="approveForm.comment"
+                type="textarea"
+                :rows="3"
+                :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
+              />
+            </el-form-item>
+          </el-form>
+        </div>
+        <div class="approval-panel-header" @click="approvalExpanded = !approvalExpanded">
+          <span class="approval-panel-title">审批意见</span>
+          <el-icon>
+            <ArrowUp v-if="approvalExpanded" />
+            <ArrowDown v-else />
+          </el-icon>
+        </div>
+      </div>
 
-      <!-- 有 tab 子表单时：基本信息 tab（普通字段） -->
-      <el-tab-pane v-if="approvalHasTabSubForms" label="基本信息" name="basic">
-        <EntityApprovalBasicInfo
-          v-model:entityData="entityData"
-          :approvalNormalForm="approvalNormalForm"
-          :effectiveApprovalConfig="effectiveApprovalConfig"
-          :isViewMode="isViewMode"
-          v-model:approveForm="approveForm"
-        />
-      </el-tab-pane>
+      <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
+        <!-- 无 tab 子表单时：基本信息 tab -->
+        <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
+          <EntityApprovalBasicInfo
+            v-model:entityData="entityData"
+            :approvalNormalForm="approvalNormalForm"
+          />
+        </el-tab-pane>
 
-      <!-- 子表单 tabs（有 tab 子表单时） -->
-      <el-tab-pane
-        v-for="(field, idx) in approvalTabSubForms"
-        :key="'approval-subform-' + idx"
-        :label="field.fieldName"
-        :name="'subform_' + idx"
-      >
-        <FormFieldRendererLinkage
-          :field="field"
-          v-model="entityData[getFieldKey(field)]"
-          :disabled="true"
-        />
-      </el-tab-pane>
+        <!-- 有 tab 子表单时：基本信息 tab（普通字段） -->
+        <el-tab-pane v-if="approvalHasTabSubForms" label="基本信息" name="basic">
+          <EntityApprovalBasicInfo
+            v-model:entityData="entityData"
+            :approvalNormalForm="approvalNormalForm"
+          />
+        </el-tab-pane>
 
-      <!-- 流程图（仅在有流程实例时显示）-->
-      <el-tab-pane v-if="currentTask?.processInstanceId" label="流程图" name="diagram">
-        <EntityApprovalDiagram
-          :bpmnXml="bpmnXml"
-          :progressData="progressData"
-          :processInstanceId="currentTask.processInstanceId"
-        />
-      </el-tab-pane>
+        <!-- 子表单 tabs（有 tab 子表单时） -->
+        <el-tab-pane
+          v-for="(field, idx) in approvalTabSubForms"
+          :key="'approval-subform-' + idx"
+          :label="field.fieldName"
+          :name="'subform_' + idx"
+        >
+          <FormFieldRendererLinkage
+            :field="field"
+            v-model="entityData[getFieldKey(field)]"
+            :disabled="true"
+          />
+        </el-tab-pane>
 
-      <!-- 审批历史（仅在有流程实例时显示） -->
-      <el-tab-pane v-if="currentTask?.processInstanceId" label="审批历史" name="history">
-        <EntityApprovalHistory :processHistory="processHistory" />
-      </el-tab-pane>
-    </el-tabs>
+        <!-- 流程图（仅在有流程实例时显示）-->
+        <el-tab-pane v-if="currentTask?.processInstanceId" label="流程图" name="diagram">
+          <EntityApprovalDiagram
+            :bpmnXml="bpmnXml"
+            :progressData="progressData"
+            :processInstanceId="currentTask.processInstanceId"
+          />
+        </el-tab-pane>
+
+        <!-- 审批历史（仅在有流程实例时显示） -->
+        <el-tab-pane v-if="currentTask?.processInstanceId" label="审批历史" name="history">
+          <EntityApprovalHistory :processHistory="processHistory" />
+        </el-tab-pane>
+      </el-tabs>
+    </div>
 
     <template #footer>
       <el-button @click="processDialogVisible = false">关闭</el-button>
@@ -62,6 +95,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
@@ -85,6 +119,7 @@ const activeDialogTab = ref('approval')
 const approveSubmitLoading = ref(false)
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
+const approvalExpanded = ref(false)
 
 const approveForm = reactive({
   action: 'approve',
@@ -157,6 +192,7 @@ watch(activeDialogTab, (newVal) => {
 // 打开审批弹窗
 const openApprove = async (row: any) => {
   isViewMode.value = false
+  approvalExpanded.value = false
   currentTask.value = {
     taskId: row.currentTaskId,
     processInstanceId: row.processInstanceId,
@@ -191,6 +227,7 @@ const openApprove = async (row: any) => {
 // 打开查看弹窗（只读模式）
 const openView = async (row: any) => {
   isViewMode.value = true
+  approvalExpanded.value = false
   currentTask.value = {
     processInstanceId: row.processInstanceId,
     name: row.name || '数据详情'
@@ -284,6 +321,56 @@ defineExpose({
 }
 .entity-form-dialog :deep(.el-dialog__body) {
   flex: 1;
+  overflow-y: auto;
+}
+
+.approval-dialog-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.approval-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.approval-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.approval-panel {
+  flex-shrink: 0;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  background: #fff;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.approval-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f5f7fa;
+  cursor: pointer;
+  user-select: none;
+  border-top: 1px solid #e4e7ed;
+}
+.approval-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+.approval-panel-content {
+  padding: 16px;
+  max-height: 280px;
   overflow-y: auto;
 }
 </style>
