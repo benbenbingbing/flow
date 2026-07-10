@@ -277,16 +277,18 @@ defineExpose({
 
 <style scoped lang="scss">
 .entity-form-dialog {
-  margin-top: 15px !important;
-  margin-bottom: 15px !important;
-  height: 94vh;
-  overflow-y: auto;
+  --dialog-margin: 16px;
+  margin-top: var(--dialog-margin) !important;
+  margin-bottom: var(--dialog-margin) !important;
+  height: calc(100vh - var(--dialog-margin) * 2);
+  max-height: calc(100vh - var(--dialog-margin) * 2);
   display: flex;
   flex-direction: column;
 }
 .entity-form-dialog :deep(.el-dialog__body) {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .approval-dialog-body {
