@@ -1,49 +1,15 @@
 <template>
   <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog" top="3vh">
     <div class="approval-dialog-body">
-      <!-- 审批意见折叠面板：固定在底部，点击向上展开 -->
-      <div v-if="!isViewMode && effectiveApprovalConfig.enabled !== false" class="approval-panel">
-        <div v-show="approvalExpanded" class="approval-panel-content">
-          <el-form :model="approveForm" label-width="80px">
-            <el-form-item label="审批操作" required>
-              <el-radio-group v-model="approveForm.action">
-                <el-radio-button
-                  v-for="option in effectiveApprovalConfig.options"
-                  :key="option.value"
-                  :label="option.value"
-                >
-                  {{ option.label }}
-                </el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item
-              v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
-              :label="effectiveApprovalConfig.commentLabel || '审批备注'"
-            >
-              <el-input
-                v-model="approveForm.comment"
-                type="textarea"
-                :rows="3"
-                :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
-              />
-            </el-form-item>
-          </el-form>
-        </div>
-        <div class="approval-panel-header" @click="approvalExpanded = !approvalExpanded">
-          <span class="approval-panel-title">审批意见</span>
-          <el-icon>
-            <ArrowUp v-if="approvalExpanded" />
-            <ArrowDown v-else />
-          </el-icon>
-        </div>
-      </div>
-
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
         <!-- 无 tab 子表单时：基本信息 tab -->
         <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
           <EntityApprovalBasicInfo
             v-model:entityData="entityData"
             :approvalNormalForm="approvalNormalForm"
+            :effectiveApprovalConfig="effectiveApprovalConfig"
+            :isViewMode="isViewMode"
+            v-model:approveForm="approveForm"
           />
         </el-tab-pane>
 
@@ -52,6 +18,9 @@
           <EntityApprovalBasicInfo
             v-model:entityData="entityData"
             :approvalNormalForm="approvalNormalForm"
+            :effectiveApprovalConfig="effectiveApprovalConfig"
+            :isViewMode="isViewMode"
+            v-model:approveForm="approveForm"
           />
         </el-tab-pane>
 
@@ -95,7 +64,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
@@ -119,7 +87,6 @@ const activeDialogTab = ref('approval')
 const approveSubmitLoading = ref(false)
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
-const approvalExpanded = ref(false)
 
 const approveForm = reactive({
   action: 'approve',
@@ -192,7 +159,6 @@ watch(activeDialogTab, (newVal) => {
 // 打开审批弹窗
 const openApprove = async (row: any) => {
   isViewMode.value = false
-  approvalExpanded.value = false
   currentTask.value = {
     taskId: row.currentTaskId,
     processInstanceId: row.processInstanceId,
@@ -227,7 +193,6 @@ const openApprove = async (row: any) => {
 // 打开查看弹窗（只读模式）
 const openView = async (row: any) => {
   isViewMode.value = true
-  approvalExpanded.value = false
   currentTask.value = {
     processInstanceId: row.processInstanceId,
     name: row.name || '数据详情'
@@ -342,35 +307,5 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-}
-
-.approval-panel {
-  flex-shrink: 0;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  background: #fff;
-  margin-bottom: 8px;
-  overflow: hidden;
-}
-.approval-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #f5f7fa;
-  cursor: pointer;
-  user-select: none;
-  border-top: 1px solid #e4e7ed;
-}
-.approval-panel-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-.approval-panel-content {
-  padding: 16px;
-  max-height: 280px;
-  overflow-y: auto;
 }
 </style>
