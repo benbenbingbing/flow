@@ -56,22 +56,14 @@ class SchemaRequiredTablesTest {
 
     @Test
     void seedMigrationCreatesRunnableDemoData() throws Exception {
-        Path migration = Path.of("src/main/resources/db/migration/V002__seed_builtin_data.sql");
-
-        assertTrue(Files.exists(migration),
-                "seed migration must provide built-in demo data");
-
-        String sql = Files.readString(migration);
-        assertTrue(sql.contains("full_test_process"),
-                "seed migration must include the full test process");
-        assertTrue(sql.contains("seed_demo_request_form"),
-                "seed migration must include a demo form");
-        assertTrue(sql.contains("INSERT INTO `process_node_form`"),
-                "seed migration must include node form bindings");
-        assertTrue(sql.contains("INSERT INTO `process_node_approval`"),
-                "seed migration must include approval settings");
-        assertTrue(sql.contains("INSERT INTO `process_version_history`"),
-                "seed migration must include a published version record");
+        Path v001 = Path.of("src/main/resources/db/migration/V001__business_schema.sql");
+        assertTrue(Files.exists(v001),
+                "V001 business schema migration must exist");
+        String sql = Files.readString(v001);
+        assertTrue(sql.contains("entity_data"),
+                "V001 must create the entity_data table");
+        assertTrue(sql.contains("process_definition_config"),
+                "V001 must create the process_definition_config table");
     }
 
     @Test

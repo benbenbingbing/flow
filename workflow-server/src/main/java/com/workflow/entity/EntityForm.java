@@ -58,11 +58,13 @@ public class EntityForm {
     /**
      * 创建时间
      */
+    @com.baomidou.mybatisplus.annotation.TableField("create_time")
     private LocalDateTime createTime;
     
     /**
      * 更新时间
      */
+    @com.baomidou.mybatisplus.annotation.TableField("update_time")
     private LocalDateTime updateTime;
     
     /**

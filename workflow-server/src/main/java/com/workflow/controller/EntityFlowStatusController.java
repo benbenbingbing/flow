@@ -64,10 +64,16 @@ public class EntityFlowStatusController {
     /**
      * 保存请求体
      */
-    @lombok.Data
     public static class SaveStatusMappingRequest {
         private String processKey;
         private String entityCode;
         private List<EntityFlowStatusMapping> mappings;
+        
+        public String getProcessKey() { return processKey; }
+        public void setProcessKey(String processKey) { this.processKey = processKey; }
+        public String getEntityCode() { return entityCode; }
+        public void setEntityCode(String entityCode) { this.entityCode = entityCode; }
+        public List<EntityFlowStatusMapping> getMappings() { return mappings; }
+        public void setMappings(List<EntityFlowStatusMapping> mappings) { this.mappings = mappings; }
     }
 }

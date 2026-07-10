@@ -17,7 +17,7 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
     /**
      * 查询实体的表单列表
      */
-    @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND deleted = 0 ORDER BY create_time DESC")
+    @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND deleted = 0")
     List<EntityForm> selectByEntityId(@Param("entityId") String entityId);
     
     /**

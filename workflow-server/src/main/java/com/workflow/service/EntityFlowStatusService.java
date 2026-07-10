@@ -2,8 +2,8 @@ package com.workflow.service;
 
 import com.workflow.entity.EntityFlowStatusMapping;
 import com.workflow.mapper.EntityFlowStatusMappingMapper;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,12 +12,16 @@ import java.util.List;
 /**
  * 实体流程状态服务
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class EntityFlowStatusService {
     
     private final EntityFlowStatusMappingMapper statusMappingMapper;
+    
+    private static final Logger log = LoggerFactory.getLogger(EntityFlowStatusService.class);
+    
+    public EntityFlowStatusService(EntityFlowStatusMappingMapper statusMappingMapper) {
+        this.statusMappingMapper = statusMappingMapper;
+    }
     
     /**
      * 保存流程状态映射配置

@@ -18,7 +18,7 @@ class PermissionSqlBuilderTest {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("PERSONAL");
         FilterConfigDTO.FieldMappingDTO mapping = new FilterConfigDTO.FieldMappingDTO();
-        mapping.setUserField("created_by OR 1=1");
+        mapping.setUserField("create_by OR 1=1");
         filter.setFieldMapping(mapping);
 
         String sql = builder.buildFilterSql(filter, user);
@@ -38,7 +38,7 @@ class PermissionSqlBuilderTest {
 
         String sql = builder.buildFilterSql(filter, user);
 
-        assertEquals("created_by = 'u''1' AND status IN ('PENDING','A''B')", sql);
+        assertEquals("create_by = 'u''1' AND status IN ('PENDING','A''B')", sql);
     }
 
     private SysUser user(String id, String deptId) {
