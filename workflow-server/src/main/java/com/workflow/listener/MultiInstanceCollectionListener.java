@@ -130,7 +130,6 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     public void onEvent(FlowableEvent event) {
         if (!(event instanceof FlowableActivityEvent)) return;
         FlowableActivityEvent activityEvent = (FlowableActivityEvent) event;
-        if (!"userTask".equals(activityEvent.getActivityType())) return;
 
         String activityId = activityEvent.getActivityId();
         String processInstanceId = activityEvent.getProcessInstanceId();

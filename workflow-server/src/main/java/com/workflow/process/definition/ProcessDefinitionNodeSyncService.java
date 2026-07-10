@@ -467,6 +467,40 @@ public class ProcessDefinitionNodeSyncService {
     private void parseAndSaveAssigneeConfigs(String nodeConfigId, String content) {
         try {
             int priority = 0;
+
+            // 优先读取扩展属性 assigneeConfig（多实例节点 BPMN 属性会被替换为元素变量表达式，
+            // 实际执行人配置保存在扩展属性中）
+            String assigneeConfigJson = readExtensionPropertyValue(content, "assigneeConfig");
+            if (assigneeConfigJson != null && !assigneeConfigJson.isEmpty()) {
+                try {
+                    JsonNode config = objectMapper.readTree(assigneeConfigJson);
+                    String type = config.has("assigneeType") ? config.get("assigneeType").asText() : "";
+                    String value = config.has("assigneeValue") ? config.get("assigneeValue").asText() : "";
+                    if (!value.isEmpty()) {
+                        if ("user".equals(type)) {
+                            for (String user : value.split(",")) {
+                                String v = user.trim();
+                                if (!v.isEmpty()) {
+                                    priority = saveUserAssignee(nodeConfigId, v, priority);
+                                }
+                            }
+                            return;
+                        } else if ("group".equals(type) || "role".equals(type)) {
+                            for (String group : value.split(",")) {
+                                String v = group.trim();
+                                if (!v.isEmpty()) {
+                                    priority = saveRoleAssignee(nodeConfigId, v, priority);
+                                }
+                            }
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("解析 assigneeConfig 扩展属性失败: nodeConfigId={}", nodeConfigId, e);
+                }
+            }
+
+            // 兜底：从 BPMN 属性解析（兼容旧数据/普通节点）
             Matcher assigneeMatcher = Pattern.compile("flowable:assignee=\"([^\"]+)\"").matcher(content);
             if (assigneeMatcher.find()) {
                 priority = saveAssignee(nodeConfigId, assigneeMatcher.group(1), priority);
@@ -487,18 +521,53 @@ public class ProcessDefinitionNodeSyncService {
                 for (String group : candidateGroupsMatcher.group(1).split(",")) {
                     String value = group.trim();
                     if (!value.isEmpty()) {
-                        AssigneeConfig assignee = new AssigneeConfig();
-                        assignee.setNodeConfigId(nodeConfigId);
-                        assignee.setAssigneeType(AssigneeConfig.AssigneeType.ROLE);
-                        assignee.setAssigneeValue(value);
-                        assignee.setPriority(priority++);
-                        assigneeMapper.insert(assignee);
+                        priority = saveRoleAssignee(nodeConfigId, value, priority);
                     }
                 }
             }
         } catch (Exception e) {
             log.error("解析执行人配置失败: nodeConfigId={}", nodeConfigId, e);
         }
+    }
+
+    private String readExtensionPropertyValue(String content, String propertyName) {
+        try {
+            Matcher propsMatcher = Pattern.compile(
+                    "<(?:flowable|camunda):properties[^>]*>(.*?)</(?:flowable|camunda):properties>",
+                    Pattern.DOTALL | Pattern.CASE_INSENSITIVE).matcher(content);
+            while (propsMatcher.find()) {
+                String propsContent = propsMatcher.group(1);
+                Matcher propMatcher = Pattern.compile(
+                        "<(?:flowable|camunda):property\\s+name=\"" + Pattern.quote(propertyName) + "\"\\s+value=\"([^\"]*)\"",
+                        Pattern.CASE_INSENSITIVE).matcher(propsContent);
+                if (propMatcher.find()) {
+                    return decodeXmlAttributeValue(propMatcher.group(1));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取扩展属性失败: propertyName={}", propertyName, e);
+        }
+        return null;
+    }
+
+    private int saveUserAssignee(String nodeConfigId, String value, int priority) {
+        AssigneeConfig assignee = new AssigneeConfig();
+        assignee.setNodeConfigId(nodeConfigId);
+        assignee.setAssigneeType(AssigneeConfig.AssigneeType.USER);
+        assignee.setAssigneeValue(value);
+        assignee.setPriority(priority);
+        assigneeMapper.insert(assignee);
+        return priority + 1;
+    }
+
+    private int saveRoleAssignee(String nodeConfigId, String value, int priority) {
+        AssigneeConfig assignee = new AssigneeConfig();
+        assignee.setNodeConfigId(nodeConfigId);
+        assignee.setAssigneeType(AssigneeConfig.AssigneeType.ROLE);
+        assignee.setAssigneeValue(value);
+        assignee.setPriority(priority);
+        assigneeMapper.insert(assignee);
+        return priority + 1;
     }
 
     private int saveAssignee(String nodeConfigId, String assigneeValue, int priority) {
