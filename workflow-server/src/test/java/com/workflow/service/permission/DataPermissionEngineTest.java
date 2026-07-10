@@ -37,6 +37,6 @@ class DataPermissionEngineTest {
 
         assertTrue(result.isHasPermission());
         assertTrue(result.isNeedFilter());
-        assertEquals("created_by = 'u''1'", result.getSqlCondition());
+        assertEquals("create_by = 'u''1'", result.getSqlCondition());
     }
 }
