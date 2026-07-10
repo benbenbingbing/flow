@@ -108,27 +108,16 @@ export function buildAssigneeConfig(form) {
     assigneeValue = form.candidateUsers || form.candidateGroups || ''
   }
 
-  // 基础配置：指定方式与对应的执行人值
-  const config = {
+  return {
     assigneeType: form.assigneeType,
-    assigneeValue
+    assigneeValue,
+    interfaceType: form.interfaceType,
+    interfaceName: form.interfaceName,
+    interfaceMethod: form.interfaceMethod,
+    interfaceParams: form.interfaceParams,
+    restMethod: form.restMethod,
+    resultMapping: form.resultMapping,
+    collectionSource: form.collectionSource,
+    collectionInterface: form.collectionInterface
   }
-
-  // 仅在指定方式为 interface 时保存接口配置，避免冗余
-  if (type === 'interface') {
-    config.interfaceType = form.interfaceType
-    config.interfaceName = form.interfaceName
-    config.interfaceMethod = form.interfaceMethod
-    config.interfaceParams = form.interfaceParams
-    config.restMethod = form.restMethod
-    config.resultMapping = form.resultMapping
-  }
-
-  // 仅在启用多实例且集合来源为 interface 时保存集合接口配置，避免冗余
-  if (form.isMultiInstance && form.collectionSource === 'interface') {
-    config.collectionSource = form.collectionSource
-    config.collectionInterface = form.collectionInterface
-  }
-
-  return config
 }

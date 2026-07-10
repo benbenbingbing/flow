@@ -38,7 +38,7 @@ public class FilterConfigDTO {
     @Data
     public static class FieldMappingDTO {
         private String deptField = "dept_id";
-        private String userField = "create_by";
+        private String userField = "created_by";
         private String statusField = "status";
     }
 

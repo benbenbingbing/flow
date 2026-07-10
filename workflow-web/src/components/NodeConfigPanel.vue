@@ -171,44 +171,34 @@
           <!-- 固定人员选择 -->
           <template v-if="assigneeForm.assigneeType === 'user'">
             <el-form-item label="执行人">
-              <el-select
+              <el-select-v2
                 v-model="assigneeForm.assignee"
+                :options="userOptions"
                 placeholder="选择用户"
                 filterable
                 clearable
                 style="width: 100%"
                 @change="updateAssignee"
               >
-                <el-option
-                  v-for="item in userOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                >
+                <template #default="{ item }">
                   <span>{{ item.label }}</span>
                   <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
-                </el-option>
-              </el-select>
+                </template>
+              </el-select-v2>
               <div class="form-tip">指定一个固定用户处理此任务</div>
             </el-form-item>
             
             <el-form-item label="候选人">
-              <el-select
+              <el-select-v2
                 v-model="assigneeForm.candidateUserIds"
+                :options="userOptions"
                 placeholder="选择多个候选人"
                 multiple
                 filterable
                 clearable
                 style="width: 100%"
                 @change="updateCandidateUsers"
-              >
-                <el-option
-                  v-for="item in userOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
+              />
               <div class="form-tip">任务可被其中任意一人认领</div>
             </el-form-item>
           </template>
@@ -216,8 +206,9 @@
           <!-- 用户组选择 -->
           <template v-if="assigneeForm.assigneeType === 'group'">
             <el-form-item label="用户组">
-              <el-select
+              <el-select-v2
                 v-model="assigneeForm.candidateGroupIds"
+                :options="groupOptions"
                 placeholder="选择用户组"
                 multiple
                 filterable
@@ -225,16 +216,11 @@
                 style="width: 100%"
                 @change="updateCandidateGroups"
               >
-                <el-option
-                  v-for="item in groupOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                >
+                <template #default="{ item }">
                   <span>{{ item.label }}</span>
                   <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
-                </el-option>
-              </el-select>
+                </template>
+              </el-select-v2>
               <div class="form-tip">组内所有成员都可处理任务</div>
             </el-form-item>
           </template>
@@ -242,8 +228,9 @@
           <!-- 角色选择 -->
           <template v-if="assigneeForm.assigneeType === 'role'">
             <el-form-item label="角色">
-              <el-select
+              <el-select-v2
                 v-model="assigneeForm.candidateRoleIds"
+                :options="roleOptions"
                 placeholder="选择角色"
                 multiple
                 filterable
@@ -251,16 +238,11 @@
                 style="width: 100%"
                 @change="updateCandidateRoles"
               >
-                <el-option
-                  v-for="item in roleOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                >
+                <template #default="{ item }">
                   <span>{{ item.label }}</span>
                   <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
-                </el-option>
-              </el-select>
+                </template>
+              </el-select-v2>
               <div class="form-tip">拥有该角色的用户都可处理任务</div>
             </el-form-item>
           </template>
@@ -1192,13 +1174,7 @@
           </el-form-item>
 
           <el-form-item label="表单来源">
-            <el-select
-              ref="formSourceSelectRef"
-              v-model="formConfig.formSource"
-              @change="onFormSourceChange"
-              @visible-change="(visible) => handleSelectVisibleChange('formSource', visible)"
-              style="width: 100%"
-            >
+            <el-select v-model="formConfig.formSource" @change="onFormSourceChange" style="width: 100%">
               <el-option label="实体表单" value="entity" />
               <el-option label="自定义表单" value="custom" />
               <el-option label="无表单" value="none" />
@@ -1209,7 +1185,6 @@
           <template v-if="formConfig.formSource === 'entity'">
             <el-form-item label="选择表单">
               <el-select
-                ref="entityFormSelectRef"
                 v-model="formConfig.entityFormIds"
                 placeholder="请选择一个或多个实体表单"
                 style="width: 100%"
@@ -1219,7 +1194,6 @@
                 collapse-tags-tooltip
                 :max-collapse-tags="2"
                 @change="onEntityFormChange"
-                @visible-change="(visible) => handleSelectVisibleChange('entityForm', visible)"
               >
                 <el-option
                   v-for="form in entityFormOptions"
@@ -1382,7 +1356,7 @@
           <el-form-item label="是否跳过">
             <el-switch
               v-model="advancedForm.skipNode"
-              @update:modelValue="updateSkipNode"
+              @change="updateSkipNode"
               active-text="是"
               inactive-text="否"
             />
@@ -1422,10 +1396,6 @@ const props = defineProps({
 
 const emit = defineEmits(['save', 'update-status-mapping'])
 const activeTab = ref('basic')
-
-// 表单 Tab 中多个 el-select 可能同时打开导致下拉层重叠，通过 ref 互斥关闭
-const formSourceSelectRef = ref(null)
-const entityFormSelectRef = ref(null)
 
 // ========== 节点类型判断 ==========
 const isUserTask = computed(() => props.element?.type === 'bpmn:UserTask')
@@ -1990,7 +1960,7 @@ watch(() => props.element, (newElement) => {
   if (newElement?.type === 'bpmn:SequenceFlow') loadActions()
 }, { immediate: true })
 
-// 根据用户名列表获取用户 value 列表
+// 根据用户名列表获取用户 value 列表（el-select-v2 的 v-model 绑定 value）
 function getUserIdsFromUsernames(usernames) {
   if (!usernames) return []
   const usernameList = usernames.split(',').filter(Boolean)
@@ -2000,7 +1970,7 @@ function getUserIdsFromUsernames(usernames) {
   }).filter(Boolean)
 }
 
-// 根据组 code 列表获取组 value 列表
+// 根据组 code 列表获取组 value 列表（el-select-v2 的 v-model 绑定 value）
 function getGroupIdsFromCodes(codes) {
   if (!codes) return []
   const codeList = codes.split(',').filter(c => c && !c.startsWith('ROLE_'))
@@ -2010,7 +1980,7 @@ function getGroupIdsFromCodes(codes) {
   }).filter(Boolean)
 }
 
-// 根据角色 code 列表获取角色 value 列表
+// 根据角色 code 列表获取角色 value 列表（el-select-v2 的 v-model 绑定 value）
 function getRoleIdsFromCodes(codes) {
   if (!codes) return []
   const roleCodes = codes.split(',').filter(c => c && c.startsWith('ROLE_')).map(c => c.replace('ROLE_', ''))
@@ -2758,13 +2728,9 @@ function updateSkipExpression() {
   emit('save')
 }
 
-function updateSkipNode(val) {
-  // 显式用传入值同步，避免事件时序导致 advancedForm.skipNode 未更新；
-  // saveCurrentTab 会无参数调用，此时读取当前表单值，避免 undefined 覆盖成 false
-  const value = arguments.length > 0 ? val : advancedForm.value.skipNode
-  advancedForm.value.skipNode = value
+function updateSkipNode() {
   // 使用扩展属性存储跳过节点配置
-  updateExtensionProperty('skipNode', value ? 'true' : 'false')
+  updateExtensionProperty('skipNode', advancedForm.value.skipNode ? 'true' : 'false')
   emit('save')
 }
 
@@ -2785,21 +2751,7 @@ function onAssigneeTypeChange(type) {
 }
 
 // ========== 表单配置更新方法 ==========
-function handleSelectVisibleChange(source, visible) {
-  // 当一个下拉打开时，主动 blur 另一个下拉，避免多个 el-select 下拉层重叠
-  if (!visible) return
-  if (source === 'formSource' && entityFormSelectRef.value) {
-    entityFormSelectRef.value.blur?.()
-  } else if (source === 'entityForm' && formSourceSelectRef.value) {
-    formSourceSelectRef.value.blur?.()
-  }
-}
-
 function onFormSourceChange(source) {
-  // 切换表单来源时主动关闭当前打开的下拉，避免多个 el-select 下拉层重叠
-  if (document.activeElement && document.activeElement.blur) {
-    document.activeElement.blur()
-  }
   // 切换表单来源时清空之前的配置
   if (source === 'entity') {
     formConfig.value.formKey = ''
@@ -2849,8 +2801,7 @@ function updateNodeFormBind() {
     formConfig.value.entityFormId = entityFormIds[0]
     formConfig.value.entityFormIds = entityFormIds
     if (modeling) {
-      // 用 undefined 而非 null，避免 bpmn-js 把 null 序列化成 flowable:formData="null"
-      modeling.updateProperties(rawElement, { 'flowable:formKey': undefined, 'flowable:formData': undefined })
+      modeling.updateProperties(rawElement, { 'flowable:formKey': null, 'flowable:formData': null })
     }
     // 扩展属性存储表单绑定信息
     updateExtensionProperty('entityFormId', entityFormIds[0])
@@ -2861,7 +2812,7 @@ function updateNodeFormBind() {
     // 自定义表单使用 formKey
     updateProperty('formKey', formConfig.value.formKey)
     if (modeling) {
-      modeling.updateProperties(rawElement, { 'flowable:formData': undefined })
+      modeling.updateProperties(rawElement, { 'flowable:formData': null })
     }
     updateExtensionProperty('entityFormId', null)
     updateExtensionProperty('entityFormIds', null)
@@ -2967,7 +2918,7 @@ function updateAssignee() {
 }
 
 function updateCandidateUsers() {
-  // candidateUserIds 里存的是 username
+  // candidateUserIds 里存的是 username（el-select-v2 的 value）
   const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
   assigneeForm.value.candidateUsers = selectedUsers.map(u => u.username).join(',')
   updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
@@ -2975,7 +2926,7 @@ function updateCandidateUsers() {
 }
 
 function updateCandidateGroups() {
-  // candidateGroupIds 里存的是 groupCode
+  // candidateGroupIds 里存的是 groupCode（el-select-v2 的 value）
   const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
   assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
   updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
@@ -2983,7 +2934,7 @@ function updateCandidateGroups() {
 }
 
 function updateCandidateRoles() {
-  // candidateRoleIds 里存的是 roleCode
+  // candidateRoleIds 里存的是 roleCode（el-select-v2 的 value）
   const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.candidateRoleIds?.includes(r.value))
   // 角色也存储在candidateGroups中，通过前缀区分
   const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
