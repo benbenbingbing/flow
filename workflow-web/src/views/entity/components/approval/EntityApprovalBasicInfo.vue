@@ -49,9 +49,10 @@
     </template>
   </div>
   <template v-if="!isViewMode && effectiveApprovalConfig.enabled !== false">
-    <el-divider />
-    <div class="section-title">审批意见</div>
-    <el-form :model="approveForm" label-width="80px">
+    <div class="approval-opinion-section">
+      <el-divider />
+      <div class="section-title">审批意见</div>
+      <el-form :model="approveForm" label-width="80px">
       <el-form-item label="审批操作" required>
         <el-radio-group v-model="approveForm.action">
           <el-radio-button
@@ -75,6 +76,7 @@
         />
       </el-form-item>
     </el-form>
+    </div>
   </template>
 </template>
 
@@ -104,6 +106,15 @@ const emit = defineEmits<{
   margin-bottom: 16px;
   padding-left: 8px;
   border-left: 4px solid #409eff;
+}
+
+.approval-opinion-section {
+  position: sticky;
+  bottom: 0;
+  background: #ffffff;
+  padding: 8px 0 16px;
+  border-top: 1px solid #e4e7ed;
+  z-index: 10;
 }
 
 /* 文件只读展示样式 */
