@@ -29,8 +29,8 @@ public class DataPermissionEngine {
     private final PermissionRuleMatcher ruleMatcher;
     private final PermissionSqlBuilder sqlBuilder;
 
-    /** 用户字段名（须与实体表 entity_data 的字段名保持一致） */
-    private static final String USER_FIELD = "created_by";
+    /** 用户字段名（须与动态实体数据表的字段名保持一致） */
+    private static final String USER_FIELD = "create_by";
 
     /**
      * 计算某实体的数据权限（不绑定具体列表，仅使用全局规则）。
@@ -210,15 +210,14 @@ public class DataPermissionEngine {
             detail.setRuleEffect(rule.getRuleEffect() == null ? "ALLOW" : rule.getRuleEffect());
             detail.setCombineMode(rule.getCombineMode() == null ? "UNION" : rule.getCombineMode());
 
-            // ALL 类型直接放行
+            // ALL 类型规则也参与编排（ALLOW→1=1，DENY→NOT(1=1)），与其他规则按 combineMode 合并，
+            // 并尊重 stopProcessing。这样"ALL 放行 + DENY 排除某些数据"的组合才能生效。
+            String ruleSql;
             if ("ALL".equals(filter.getType())) {
-                detail.setSql("1=1");
-                DataPermissionResult result = DataPermissionResult.allowAll();
-                result.setMatchedRuleNames(Collections.singletonList(rule.getRuleName()));
-                return new CalculationResult(result, Collections.singletonList(detail));
+                ruleSql = "1=1";
+            } else {
+                ruleSql = sqlBuilder.buildFilterSql(filter, user);
             }
-
-            String ruleSql = sqlBuilder.buildFilterSql(filter, user);
             detail.setSql(ruleSql);
             if (ruleSql == null || ruleSql.isBlank()) {
                 continue;

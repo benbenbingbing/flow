@@ -8,6 +8,7 @@
         :readonly="true"
         :show-header="false"
         :no-internal-tabs="true"
+        height="auto"
       />
     </template>
     <template v-else>
@@ -48,34 +49,6 @@
       </el-form>
     </template>
   </div>
-  <el-divider v-if="entityData" />
-  <template v-if="!isViewMode && effectiveApprovalConfig.enabled !== false">
-    <div class="section-title">审批意见</div>
-    <el-form :model="approveForm" label-width="80px">
-      <el-form-item label="审批操作" required>
-        <el-radio-group v-model="approveForm.action">
-          <el-radio-button
-            v-for="option in effectiveApprovalConfig.options"
-            :key="option.value"
-            :label="option.value"
-          >
-            {{ option.label }}
-          </el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item
-        v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
-        :label="effectiveApprovalConfig.commentLabel || '审批备注'"
-      >
-        <el-input
-          v-model="approveForm.comment"
-          type="textarea"
-          :rows="3"
-          :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
-        />
-      </el-form-item>
-    </el-form>
-  </template>
 </template>
 
 <script setup lang="ts">
@@ -85,11 +58,7 @@ import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 const props = defineProps<{
   entityData: any
   approvalNormalForm: any
-  effectiveApprovalConfig: any
-  isViewMode: boolean
 }>()
-
-const approveForm = defineModel<any>('approveForm', { required: true })
 
 const emit = defineEmits<{
   'update:entityData': [val: any]
@@ -97,15 +66,6 @@ const emit = defineEmits<{
 </script>
 
 <style scoped lang="scss">
-.section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 16px;
-  padding-left: 8px;
-  border-left: 4px solid #409eff;
-}
-
 /* 文件只读展示样式 */
 .file-display-readonly {
   width: 100%;

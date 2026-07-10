@@ -200,13 +200,22 @@ const importXML = async (xml) => {
   try {
     await modeler.value.importXML(xml)
     const canvas = modeler.value.get('canvas')
-    // 先 fit-viewport 保证所有节点在可视区域内
-    canvas.zoom('fit-viewport', 'auto')
-    // 限制最小缩放比例，避免节点缩得太小；若超出画布则通过滚动查看
-    const currentZoom = canvas.zoom()
-    if (currentZoom < 0.7) {
-      canvas.zoom(0.7)
-    }
+    // 延迟到下一帧再 zoom，确保画布容器已布局完成（容器尺寸为 0 时 zoom 会算出非有限值）
+    requestAnimationFrame(() => {
+      try {
+        // 强制重新计算容器尺寸，避免 viewbox 残留旧值导致 zoom 计算异常
+        canvas.resized()
+        // 先 fit-viewport 保证所有节点在可视区域内
+        canvas.zoom('fit-viewport', 'auto')
+        // 限制最小缩放比例，避免节点缩得太小；若超出画布则通过滚动查看
+        const currentZoom = canvas.zoom()
+        if (typeof currentZoom === 'number' && isFinite(currentZoom) && currentZoom < 0.7) {
+          canvas.zoom(0.7)
+        }
+      } catch (zoomError) {
+        console.error('画布缩放失败:', zoomError)
+      }
+    })
     if (commandStack) {
       emit('command-stack-changed', {
         canUndo: commandStack.canUndo(),

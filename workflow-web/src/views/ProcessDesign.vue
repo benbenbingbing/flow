@@ -307,6 +307,8 @@ const handleSave = async () => {
     }
 
     hasUnsavedNodeChanges.value = false
+    // 先关闭已有的"暂存成功"等提示，避免与"保存成功"叠加显示让用户困惑
+    ElMessage.closeAll()
     ElMessage.success('保存成功')
   } catch (error) {
     console.error(error)
