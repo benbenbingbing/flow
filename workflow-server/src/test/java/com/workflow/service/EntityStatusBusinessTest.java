@@ -47,10 +47,10 @@ class EntityStatusBusinessTest {
             service.saveStatusList("expense", List.of(s1, s2));
 
             verify(mapper).physicalDeleteByEntityCode("expense");
-            verify(mapper).insert(argThat(s ->
+            verify(mapper).insert(argThat((com.workflow.entity.EntityStatus s) ->
                     "expense".equals(s.getEntityCode()) && s.getId() == null &&
                     s.getSortOrder() == 0 && s.getDeleted() != null && s.getDeleted() == 0));
-            verify(mapper).insert(argThat(s ->
+            verify(mapper).insert(argThat((com.workflow.entity.EntityStatus s) ->
                     "expense".equals(s.getEntityCode()) && s.getSortOrder() == 1));
         }
 
@@ -63,7 +63,7 @@ class EntityStatusBusinessTest {
 
             service.saveStatusList("expense", List.of(status));
 
-            verify(mapper).insert(argThat(s -> s.getCreatedAt() == null && s.getUpdatedAt() == null));
+            verify(mapper).insert(argThat((com.workflow.entity.EntityStatus s) -> s.getCreatedAt() == null && s.getUpdatedAt() == null));
         }
 
         @Test

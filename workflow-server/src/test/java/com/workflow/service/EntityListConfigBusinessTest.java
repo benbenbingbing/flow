@@ -60,8 +60,8 @@ class EntityListConfigBusinessTest {
             service.saveConfig(dto);
 
             verify(configMapper).insert(any(EntityListConfig.class));
-            verify(fieldMapper).insert(argThat(f -> f.getId() == null && f.getSortOrder() == 0 && f.getDeleted() == 0));
-            verify(fieldMapper).insert(argThat(f -> f.getSortOrder() == 1));
+            verify(fieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> f.getId() == null && f.getSortOrder() == 0 && f.getDeleted() == 0));
+            verify(fieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> f.getSortOrder() == 1));
         }
 
         @Test
@@ -85,7 +85,7 @@ class EntityListConfigBusinessTest {
 
             verify(configMapper).updateById(any(EntityListConfig.class));
             verify(fieldMapper).deleteByListConfigId("c1");
-            verify(fieldMapper).insert(argThat(f -> "c1".equals(f.getListConfigId()) && "status".equals(f.getFieldCode())));
+            verify(fieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> "c1".equals(f.getListConfigId()) && "status".equals(f.getFieldCode())));
         }
 
         @Test

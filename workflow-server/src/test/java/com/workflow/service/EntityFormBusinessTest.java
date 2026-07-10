@@ -105,7 +105,7 @@ class EntityFormBusinessTest {
 
             service.saveForm(form);
 
-            verify(formMapper).updateById(argThat(f -> "f2".equals(f.getId()) && Boolean.FALSE.equals(f.getIsDefault())));
+            verify(formMapper).updateById(argThat((com.workflow.entity.EntityField f) -> "f2".equals(f.getId()) && Boolean.FALSE.equals(f.getIsDefault())));
         }
 
         @Test
@@ -146,8 +146,8 @@ class EntityFormBusinessTest {
             service.saveFormFields("form1", List.of(f1, f2));
 
             verify(formFieldMapper).deleteByFormId("form1");
-            verify(formFieldMapper).insert(argThat(f -> "form1".equals(f.getFormId()) && f.getSortOrder() == 0));
-            verify(formFieldMapper).insert(argThat(f -> "form1".equals(f.getFormId()) && f.getSortOrder() == 1));
+            verify(formFieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> "form1".equals(f.getFormId()) && f.getSortOrder() == 0));
+            verify(formFieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> "form1".equals(f.getFormId()) && f.getSortOrder() == 1));
         }
 
         @Test
@@ -202,8 +202,8 @@ class EntityFormBusinessTest {
             service.setDefaultForm("f1");
 
             assertTrue(form.getIsDefault());
-            verify(formMapper).updateById(argThat(f -> "f1".equals(f.getId()) && Boolean.TRUE.equals(f.getIsDefault())));
-            verify(formMapper).updateById(argThat(f -> "f2".equals(f.getId()) && Boolean.FALSE.equals(f.getIsDefault())));
+            verify(formMapper).updateById(argThat((com.workflow.entity.EntityField f) -> "f1".equals(f.getId()) && Boolean.TRUE.equals(f.getIsDefault())));
+            verify(formMapper).updateById(argThat((com.workflow.entity.EntityField f) -> "f2".equals(f.getId()) && Boolean.FALSE.equals(f.getIsDefault())));
         }
 
         @Test
@@ -249,7 +249,7 @@ class EntityFormBusinessTest {
             assertEquals("horizontal", result.getLayoutType());
             assertEquals(1, result.getStatus());
             verify(formMapper).insert(any(EntityForm.class));
-            verify(formFieldMapper).insert(argThat(f -> "fld1".equals(f.getFieldId()) && f.getSortOrder() == 0));
+            verify(formFieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> "fld1".equals(f.getFieldId()) && f.getSortOrder() == 0));
         }
 
         @Test

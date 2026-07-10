@@ -46,7 +46,7 @@ class EntityFlowStatusBusinessTest {
             service.saveStatusMappings("pc1", "processKey", "expense", List.of(m1, m2));
 
             verify(mapper).deleteByProcessConfigId("pc1");
-            verify(mapper).insert(argThat(m ->
+            verify(mapper).insert(argThat((com.workflow.entity.EntityFlowStatusMapping m) ->
                     "pc1".equals(m.getProcessConfigId()) && "processKey".equals(m.getProcessKey()) &&
                     "expense".equals(m.getEntityCode()) && m.getDeleted() != null && m.getDeleted() == 0));
             verify(mapper, times(2)).insert(any());

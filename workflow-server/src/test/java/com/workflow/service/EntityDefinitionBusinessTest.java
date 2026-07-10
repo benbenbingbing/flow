@@ -84,8 +84,8 @@ class EntityDefinitionBusinessTest {
             assertNotNull(result);
             verify(entityMapper).insert(any(EntityDefinition.class));
             // 验证系统字段注入（9个系统字段 + 1个自定义字段 = 10次 insert）
-            verify(fieldMapper, atLeast(9)).insert(argThat(f -> Boolean.TRUE.equals(f.getIsSystem())));
-            verify(fieldMapper).insert(argThat(f -> "amount".equals(f.getFieldCode()) && f.getId() == null));
+            verify(fieldMapper, atLeast(9)).insert(argThat((com.workflow.entity.EntityField f) -> Boolean.TRUE.equals(f.getIsSystem())));
+            verify(fieldMapper).insert(argThat((com.workflow.entity.EntityField f) -> "amount".equals(f.getFieldCode()) && f.getId() == null));
             // 验证关系同步
             verify(relationMapper).deleteByParentEntityId(anyString());
         }
@@ -257,7 +257,7 @@ class EntityDefinitionBusinessTest {
 
             service.update("e1", dto);
 
-            verify(fieldMapper).updateById(argThat(f ->
+            verify(fieldMapper).updateById(argThat((com.workflow.entity.EntityField f) ->
                     "标题".equals(f.getFieldName()) && "name".equals(f.getFieldCode()) &&
                     Boolean.TRUE.equals(f.getIsRequired()) && f.getSortOrder() == 5));
         }
@@ -309,7 +309,7 @@ class EntityDefinitionBusinessTest {
                     eq(entity), anyList(), anyString(),
                     eq(EntityPublishHistory.PublishType.CREATE),
                     anyString(), eq("user1"), eq("张三"));
-            verify(fieldMapper).updateById(argThat(f -> Boolean.TRUE.equals(f.getIsPublished())));
+            verify(fieldMapper).updateById(argThat((com.workflow.entity.EntityField f) -> Boolean.TRUE.equals(f.getIsPublished())));
         }
 
         @Test
@@ -345,8 +345,8 @@ class EntityDefinitionBusinessTest {
                     eq(EntityPublishHistory.PublishType.ALTER),
                     anyString(), eq("user1"), eq("张三"));
             // newField 被标记已发布，oldField 未被更新（已经是 published）
-            verify(fieldMapper).updateById(argThat(f -> "f2".equals(f.getId()) && Boolean.TRUE.equals(f.getIsPublished())));
-            verify(fieldMapper, never()).updateById(argThat(f -> "f1".equals(f.getId())));
+            verify(fieldMapper).updateById(argThat((com.workflow.entity.EntityField f) -> "f2".equals(f.getId()) && Boolean.TRUE.equals(f.getIsPublished())));
+            verify(fieldMapper, never()).updateById(argThat((com.workflow.entity.EntityField f) -> "f1".equals(f.getId())));
         }
 
         @Test
@@ -378,7 +378,7 @@ class EntityDefinitionBusinessTest {
 
             service.bindProcess("e1", "p1");
 
-            verify(entityMapper).updateById(argThat(e ->
+            verify(entityMapper).updateById(argThat((com.workflow.entity.EntityDefinition e) ->
                     "p1".equals(e.getProcessDefinitionId()) && Boolean.TRUE.equals(e.getEnableProcess())));
         }
 
@@ -397,7 +397,7 @@ class EntityDefinitionBusinessTest {
 
             service.bindProcess("e1", "p2");
 
-            verify(entityMapper).updateById(argThat(e -> "p2".equals(e.getProcessDefinitionId())));
+            verify(entityMapper).updateById(argThat((com.workflow.entity.EntityDefinition e) -> "p2".equals(e.getProcessDefinitionId())));
         }
 
         @Test
