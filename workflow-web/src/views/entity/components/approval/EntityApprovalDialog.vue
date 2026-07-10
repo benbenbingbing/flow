@@ -277,7 +277,8 @@ defineExpose({
 
 <style scoped lang="scss">
 .entity-form-dialog {
-  --dialog-margin: 16px;
+  --dialog-margin: 24px;
+  box-sizing: border-box;
   margin-top: var(--dialog-margin) !important;
   margin-bottom: var(--dialog-margin) !important;
   height: calc(100vh - var(--dialog-margin) * 2);
