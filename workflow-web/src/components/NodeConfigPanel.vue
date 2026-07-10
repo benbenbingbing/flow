@@ -2023,12 +2023,21 @@ watch(() => props.element, async (newElement) => {
       }
       
       // 处理候选人和候选组
-      const candidateUsers = bo.get('candidateUsers') || bo.get('flowable:candidateUsers') || ''
+      let candidateUsers = bo.get('candidateUsers') || bo.get('flowable:candidateUsers') || ''
       const rawCandidateGroups = bo.get('candidateGroups') || bo.get('flowable:candidateGroups') || ''
-      const assignee = bo.get('assignee') || bo.get('flowable:assignee') || ''
+      let assignee = bo.get('assignee') || bo.get('flowable:assignee') || ''
       // 当 BPMN 属性为空时，从扩展属性恢复（多实例模式下 candidateGroups 可能被覆盖）
       const candidateGroups = rawCandidateGroups || 
           ((assigneeConfig.assigneeType === 'group' || assigneeConfig.assigneeType === 'role') ? assigneeConfig.assigneeValue : '') || ''
+      // 多实例模式下 BPMN 的 assignee/candidateUsers 会被替换为表达式，从扩展属性恢复实际人员
+      if (assigneeConfig.assigneeType === 'user') {
+        if (!assignee && assigneeConfig.assigneeValue) {
+          assignee = assigneeConfig.assigneeValue
+        }
+        if (!candidateUsers && assigneeConfig.candidateUsers) {
+          candidateUsers = assigneeConfig.candidateUsers
+        }
+      }
       
       assigneeForm.value = { 
         // 基础执行人配置
@@ -2912,7 +2921,10 @@ function onCollectionSourceChange() {
 }
 
 function updateAssignee() {
-  updateProperty('assignee', assigneeForm.value.assignee)
+  // 多实例模式下 BPMN 的 assignee 保持为元素变量表达式，不写入具体用户
+  if (!assigneeForm.value.isMultiInstance) {
+    updateProperty('assignee', assigneeForm.value.assignee)
+  }
   // 同时保存配置类型
   updateAssigneeConfig()
 }
@@ -2921,7 +2933,10 @@ function updateCandidateUsers() {
   // candidateUserIds 里存的是 username（el-select-v2 的 value）
   const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
   assigneeForm.value.candidateUsers = selectedUsers.map(u => u.username).join(',')
-  updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
+  // 多实例模式下 BPMN 的 candidateUsers 已被清空，保持从扩展属性恢复
+  if (!assigneeForm.value.isMultiInstance) {
+    updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
+  }
   updateAssigneeConfig()
 }
 
@@ -2929,7 +2944,10 @@ function updateCandidateGroups() {
   // candidateGroupIds 里存的是 groupCode（el-select-v2 的 value）
   const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
   assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
-  updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
+  // 多实例模式下 BPMN 的 candidateGroups 已被清空，保持从扩展属性恢复
+  if (!assigneeForm.value.isMultiInstance) {
+    updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
+  }
   updateAssigneeConfig()
 }
 
@@ -2939,7 +2957,10 @@ function updateCandidateRoles() {
   // 角色也存储在candidateGroups中，通过前缀区分
   const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
   assigneeForm.value.candidateGroups = roleCodes
-  updateProperty('candidateGroups', roleCodes)
+  // 多实例模式下 BPMN 的 candidateGroups 已被清空，保持从扩展属性恢复
+  if (!assigneeForm.value.isMultiInstance) {
+    updateProperty('candidateGroups', roleCodes)
+  }
   updateAssigneeConfig()
 }
 

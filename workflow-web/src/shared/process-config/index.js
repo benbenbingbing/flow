@@ -100,8 +100,11 @@ export function getNodeTypeTag(type) {
 export function buildAssigneeConfig(form) {
   const type = form.assigneeType
   let assigneeValue = ''
+  let candidateUsers = ''
   if (type === 'user') {
     assigneeValue = form.assignee || ''
+    // 多实例模式下 BPMN 的 candidateUsers 会被清空，额外保存以便回显
+    candidateUsers = form.candidateUsers || ''
   } else if (type === 'group' || type === 'role') {
     assigneeValue = form.candidateGroups || ''
   } else if (type === 'expression') {
@@ -111,6 +114,7 @@ export function buildAssigneeConfig(form) {
   return {
     assigneeType: form.assigneeType,
     assigneeValue,
+    candidateUsers,
     interfaceType: form.interfaceType,
     interfaceName: form.interfaceName,
     interfaceMethod: form.interfaceMethod,
