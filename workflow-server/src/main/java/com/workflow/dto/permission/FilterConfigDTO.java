@@ -38,7 +38,8 @@ public class FilterConfigDTO {
     @Data
     public static class FieldMappingDTO {
         private String deptField = "dept_id";
-        private String userField = "created_by";
+        // 实体数据表使用 create_by 作为创建人字段
+        private String userField = "create_by";
         private String statusField = "status";
     }
 

@@ -32,8 +32,12 @@ public class PermissionSqlBuilder {
         }
 
         String deptField = safeField(mapping.getDeptField(), "dept_id");
-        // 与实体表 entity_data 的字段名保持一致（created_by），避免 fallback 时拼出非法字段
-        String userField = safeField(mapping.getUserField(), "created_by");
+        // 与实体表 entity_data 的字段名保持一致（create_by），避免 fallback 时拼出非法字段
+        String userField = safeField(mapping.getUserField(), "create_by");
+        // 兼容旧配置中保存的 created_by，统一映射为 create_by
+        if ("created_by".equalsIgnoreCase(userField)) {
+            userField = "create_by";
+        }
         String statusField = safeField(mapping.getStatusField(), "status");
         if (deptField == null || userField == null || statusField == null) {
             return "1=0";

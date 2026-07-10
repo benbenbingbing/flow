@@ -30,7 +30,7 @@ public class DataPermissionEngine {
     private final PermissionSqlBuilder sqlBuilder;
 
     /** 用户字段名（须与实体表 entity_data 的字段名保持一致） */
-    private static final String USER_FIELD = "created_by";
+    private static final String USER_FIELD = "create_by";
 
     /**
      * 计算某实体的数据权限（不绑定具体列表，仅使用全局规则）。
