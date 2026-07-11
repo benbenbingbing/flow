@@ -155,6 +155,11 @@ public class TaskActionService {
                 customApprovers.add(userId);
                 customVars.put("_approvers_", customApprovers);
 
+                // 将操作显示文本存为任务本地变量，便于后续按任务ID读取
+                if (actionLabel != null && !actionLabel.isBlank()) {
+                    taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
+                }
+
                 taskService.complete(taskId, customVars);
                 processTaskService.completeTask(taskId, normalizedAction, comment);
 
@@ -223,6 +228,11 @@ public class TaskActionService {
         approvers.add(userId);
         vars.put("_approvers_", approvers);
         
+        // 将操作显示文本存为任务本地变量，便于后续按任务ID读取
+        if (actionLabel != null && !actionLabel.isBlank()) {
+            taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
+        }
+
         // 完成任务
         taskService.complete(taskId, vars);
         processTaskService.completeTask(taskId, "approve", comment);
@@ -258,6 +268,11 @@ public class TaskActionService {
             terminateOtherMultiInstanceTasks(processInstanceId, taskId);
         }
         
+        // 将操作显示文本存为任务本地变量，便于后续按任务ID读取
+        if (actionLabel != null && !actionLabel.isBlank()) {
+            taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
+        }
+
         // 完成任务
         taskService.complete(taskId, vars);
         processTaskService.completeTask(taskId, "reject", comment);

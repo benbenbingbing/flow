@@ -235,9 +235,10 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 // 通过 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
                 runtimeService.setVariable(processInstanceId, "approved", "approve");
                 if (actionLabel != null && !actionLabel.isBlank()) {
-                    runtimeService.setVariable(processInstanceId, "actionLabel", actionLabel);
+                    // 任务本地变量，避免多实例下互相覆盖，后续按 taskId 读取显示文本
+                    flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
                 }
-                
+
                 // 检查是否是多实例任务（会签/或签）
                 if (isMultiInstanceTask(task)) {
                     // 多实例任务处理
@@ -260,9 +261,10 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 // 驳回 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
                 runtimeService.setVariable(processInstanceId, "approved", "reject");
                 if (actionLabel != null && !actionLabel.isBlank()) {
-                    runtimeService.setVariable(processInstanceId, "actionLabel", actionLabel);
+                    // 任务本地变量，避免多实例下互相覆盖，后续按 taskId 读取显示文本
+                    flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
                 }
-                
+
                 // 如果是多实例任务，直接结束整个多实例
                 if (isMultiInstanceTask(task)) {
                     // 设置多实例完成条件为true，强制结束
@@ -308,7 +310,8 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 runtimeService.setVariable(processInstanceId, "approved", action);
                 runtimeService.setVariable(processInstanceId, "action", action);
                 if (actionLabel != null && !actionLabel.isBlank()) {
-                    runtimeService.setVariable(processInstanceId, "actionLabel", actionLabel);
+                    // 任务本地变量，避免多实例下互相覆盖，后续按 taskId 读取显示文本
+                    flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
                 }
                 runtimeService.setVariable(processInstanceId, "comment", comment);
                 runtimeService.setVariable(processInstanceId, "approver", CURRENT_USER);
