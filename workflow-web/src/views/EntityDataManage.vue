@@ -978,6 +978,7 @@ const handleApprove = async (row) => {
     await processTaskApi.completeTask({
       taskId: row.currentTaskId,
       action: actionType,
+      actionLabel: actionText,
       comment: comment || ''
     })
     

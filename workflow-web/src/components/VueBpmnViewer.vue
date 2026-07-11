@@ -11,7 +11,18 @@
         <span class="node-name">{{ tooltip.nodeName }}</span>
       </div>
       <div class="tooltip-content">
-        <template v-if="tooltip.assigneeInfo">
+        <template v-if="tooltip.assigneeList && tooltip.assigneeList.length > 0">
+          <div class="info-row">
+            <span class="label">处理人：</span>
+          </div>
+          <div v-for="(item, idx) in tooltip.assigneeList" :key="idx" class="assignee-item">
+            <span class="assignee-status-dot" :class="item.status?.toLowerCase() || 'pending'"></span>
+            <span class="value">{{ item.assigneeName || item.assigneeId || '未分配' }}</span>
+            <span class="assignee-action" v-if="item.status === 'COMPLETED'">{{ item.actionLabel || (item.action === 'REJECTED' ? '驳回' : item.action === 'TRANSFERRED' ? '转办' : item.action === 'APPROVED' ? '通过' : item.action) }}</span>
+            <span class="assignee-time">{{ item.handleTime || '' }}</span>
+          </div>
+        </template>
+        <template v-else-if="tooltip.assigneeInfo">
           <div class="info-row">
             <span class="label">{{ tooltip.status === 'active' ? '当前处理人' : '审批人' }}：</span>
             <span class="value">{{ tooltip.assigneeInfo.assigneeName || tooltip.assigneeInfo.assigneeId || '未分配' }}</span>
@@ -58,7 +69,8 @@ const props = defineProps({
       activeNodes: [],
       terminatedNodes: [],
       executedSequenceFlows: [],
-      nodeAssigneeMap: {}
+      nodeAssigneeMap: {},
+      nodeAssigneesMap: {}
     })
   }
 })
@@ -76,7 +88,8 @@ const tooltip = ref({
   nodeId: '',
   nodeName: '',
   status: '',
-  assigneeInfo: null
+  assigneeInfo: null,
+  assigneeList: null
 })
 
 // 颜色配置
@@ -492,6 +505,7 @@ const addMouseEventListeners = () => {
         }
         
         const assigneeInfo = nodeAssigneeMap?.[elementId] || null
+        const assigneeList = props.progressData.nodeAssigneesMap?.[elementId] || null
         
         tooltip.value = {
           visible: true,
@@ -500,7 +514,8 @@ const addMouseEventListeners = () => {
           nodeId: elementId,
           nodeName: element.businessObject?.name || elementId,
           status: status,
-          assigneeInfo: assigneeInfo
+          assigneeInfo: assigneeInfo,
+          assigneeList: assigneeList
         }
       } catch (err) {
         console.error('处理悬停事件时出错:', err)
@@ -659,6 +674,49 @@ defineExpose({
   padding: 4px 8px;
   border-radius: 4px;
   margin-top: 4px;
+}
+
+.assignee-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 4px 0;
+  flex-wrap: nowrap;
+}
+
+.assignee-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.assignee-status-dot.completed {
+  background: #52c41a;
+}
+
+.assignee-status-dot.processing {
+  background: #1890ff;
+}
+
+.assignee-status-dot.pending {
+  background: #d9d9d9;
+}
+
+.assignee-action {
+  color: #52c41a;
+  font-size: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.assignee-time {
+  color: #909399;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 </style>
 

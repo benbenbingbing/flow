@@ -30,7 +30,7 @@ public interface TaskService {
     /**
      * 完成任务审批
      */
-    void completeTask(String taskId, String action, String comment, String transferTo);
+    void completeTask(String taskId, String action, String comment, String transferTo, String actionLabel);
     
     /**
      * 获取任务详情

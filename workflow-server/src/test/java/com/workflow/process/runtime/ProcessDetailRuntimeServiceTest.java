@@ -44,6 +44,7 @@ class ProcessDetailRuntimeServiceTest {
         fixture.finishedTask();
         fixture.activeTask();
         when(fixture.sysUserService.getNicknameByUsername("admin")).thenReturn("管理员");
+        when(fixture.sysUserService.getDisplayName("admin")).thenReturn("管理员");
 
         ProcessDetailVO detail = service.getProcessDetail("pi-1");
 

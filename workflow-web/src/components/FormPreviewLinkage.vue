@@ -50,7 +50,7 @@
             :label="field.fieldLabel || field.fieldName"
             :prop="getFieldKey(field)"
             :rules="getFieldRules(field)"
-            :required="linkageState.required[getFieldKey(field)]"
+            :required="isFieldRequired(field)"
           >
             <FormFieldRendererLinkage
               :field="field"
@@ -92,7 +92,7 @@
                   :label="field.fieldLabel || field.fieldName"
                   :prop="getFieldKey(field)"
                   :rules="getFieldRules(field)"
-                  :required="linkageState.required[getFieldKey(field)]"
+                  :required="isFieldRequired(field)"
                 >
                   <FormFieldRendererLinkage
                     :field="field"
@@ -321,13 +321,21 @@ function isFieldDisabled(field) {
   return false
 }
 
+// 判断字段是否必填（联动状态优先，未配置时回退到字段本身的 isRequired）
+function isFieldRequired(field) {
+  const fieldKey = getFieldKey(field)
+  if (linkageState.value.required[fieldKey] !== undefined) {
+    return linkageState.value.required[fieldKey]
+  }
+  return field.isRequired
+}
+
 // 获取字段验证规则
 function getFieldRules(field) {
-  const fieldKey = getFieldKey(field)
   const rules = []
 
-  // 检查联动必填
-  if (linkageState.value.required[fieldKey]) {
+  // 检查联动必填或字段本身必填
+  if (isFieldRequired(field)) {
     rules.push({
       required: true,
       message: `请输入${field.fieldLabel || field.fieldName}`,

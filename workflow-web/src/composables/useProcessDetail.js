@@ -13,7 +13,8 @@ export function useProcessDetail() {
     completedNodes: [],
     activeNodes: [],
     executedSequenceFlows: [],
-    nodeAssigneeMap: {}
+    nodeAssigneeMap: {},
+    nodeAssigneesMap: {}
   })
   const processHistory = ref([])
   const entityData = ref(null)
@@ -68,6 +69,7 @@ export function useProcessDetail() {
           terminatedNodes: progressRes.terminatedNodes || [],
           executedSequenceFlows: progressRes.executedSequenceFlows || [],
           nodeAssigneeMap: progressRes.nodeAssigneeMap || {},
+          nodeAssigneesMap: progressRes.nodeAssigneesMap || {},
           status: progressRes.status
         }
         entityData.value = progressRes.entityData || null
@@ -96,10 +98,12 @@ export function useProcessDetail() {
         processHistory.value = progressRes.nodeHistory.map((node) => {
           const isStartNode = node.nodeId?.toLowerCase().includes('start') || node.nodeName === '开始'
           let actionText = ''
-          if (node.action === 'APPROVED') actionText = '通过'
+          if (node.actionLabel) actionText = node.actionLabel
+          else if (node.action === 'APPROVED') actionText = '通过'
           else if (node.action === 'REJECTED') actionText = '驳回'
           else if (node.action === 'TRANSFERRED') actionText = '转办'
           else if (node.action === 'TERMINATED') actionText = '终止'
+          else if (node.action) actionText = node.action
           else if (node.status === 'COMPLETED') actionText = '完成'
           else if (node.status === 'TERMINATED') actionText = '终止'
           else actionText = '进行中'

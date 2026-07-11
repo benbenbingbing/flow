@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityData;
 import com.workflow.service.EntityDataDynamicService;
+import com.workflow.service.EntityDataExportService;
 import com.workflow.service.EntityDataListConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ public class EntityDataControllerTest {
 
     @MockBean
     private EntityDataListConfigService entityDataListConfigService;
+
+    @MockBean
+    private EntityDataExportService entityDataExportService;
 
     @Autowired
     private ObjectMapper objectMapper;

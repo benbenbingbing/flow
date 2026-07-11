@@ -64,6 +64,7 @@ import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
+import { entityDataApi } from '@/api/entity.js'
 
 const props = defineProps<{
   entityCode: string
@@ -154,15 +155,52 @@ function isFieldDisabled(field: any) {
   return false
 }
 
-// 获取字段验证规则（含联动必填）
+function isBlankValue(value: any) {
+  return value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+}
+
+async function checkFieldUnique(field: any, value: any) {
+  if (isBlankValue(value) || !field.isUnique) return true
+  try {
+    const params: Record<string, any> = {
+      [field.fieldCode]: value,
+      [field.fieldCode + '_op']: 'EQ'
+    }
+    const res = await entityDataApi.getList(props.entityCode, params)
+    const list = res.data || res || []
+    const currentId = formData.value?.id
+    const duplicates = currentId ? list.filter((item: any) => item.id !== currentId) : list
+    return duplicates.length === 0
+  } catch (e) {
+    // 唯一性预校验接口异常时不阻断提交，由后端兜底校验
+    return true
+  }
+}
+
+// 获取字段验证规则（含联动必填、程序级唯一）
 function getFieldRules(field: any) {
+  const rules: any[] = []
   const isRequired = linkageState.value.required[field.fieldCode] !== undefined
     ? linkageState.value.required[field.fieldCode]
     : field.isRequired
   if (isRequired) {
-    return [{ required: true, message: `请输入${field.fieldName}`, trigger: 'blur' }]
+    rules.push({ required: true, message: `请输入${field.fieldName}`, trigger: 'blur' })
   }
-  return []
+  if (field.isUnique) {
+    rules.push({
+      validator: (rule: any, value: any, callback: any) => {
+        checkFieldUnique(field, value).then(valid => {
+          if (valid) {
+            callback()
+          } else {
+            callback(new Error(`${field.fieldName} 的值已存在`))
+          }
+        }).catch(() => callback())
+      },
+      trigger: 'blur'
+    })
+  }
+  return rules
 }
 
 // 获取字段选项（含联动过滤）

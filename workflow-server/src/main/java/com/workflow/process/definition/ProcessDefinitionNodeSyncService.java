@@ -474,6 +474,35 @@ public class ProcessDefinitionNodeSyncService {
             if (assigneeConfigJson != null && !assigneeConfigJson.isEmpty()) {
                 try {
                     JsonNode config = objectMapper.readTree(assigneeConfigJson);
+
+                    // 处理多实例会签人员配置（新增独立字段）
+                    String miUsernames = config.has("multiInstanceUsernames") ? config.get("multiInstanceUsernames").asText() : "";
+                    String miGroupCodes = config.has("multiInstanceGroupCodes") ? config.get("multiInstanceGroupCodes").asText() : "";
+                    String miRoleCodes = config.has("multiInstanceRoleCodes") ? config.get("multiInstanceRoleCodes").asText() : "";
+                    boolean hasMultiInstanceUsers = !miUsernames.isEmpty() || !miGroupCodes.isEmpty() || !miRoleCodes.isEmpty();
+                    if (hasMultiInstanceUsers) {
+                        for (String user : miUsernames.split(",")) {
+                            String v = user.trim();
+                            if (!v.isEmpty()) {
+                                priority = saveUserAssignee(nodeConfigId, v, priority);
+                            }
+                        }
+                        for (String group : miGroupCodes.split(",")) {
+                            String v = group.trim();
+                            if (!v.isEmpty()) {
+                                priority = saveRoleAssignee(nodeConfigId, v, priority);
+                            }
+                        }
+                        for (String role : miRoleCodes.split(",")) {
+                            String v = role.trim();
+                            if (!v.isEmpty()) {
+                                priority = saveRoleAssignee(nodeConfigId, "ROLE_" + v, priority);
+                            }
+                        }
+                        return;
+                    }
+
+                    // 兜底：处理旧版/普通节点的 assigneeType + assigneeValue
                     String type = config.has("assigneeType") ? config.get("assigneeType").asText() : "";
                     String value = config.has("assigneeValue") ? config.get("assigneeValue").asText() : "";
                     if (!value.isEmpty()) {

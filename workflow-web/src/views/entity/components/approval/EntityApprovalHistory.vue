@@ -1,5 +1,5 @@
 <template>
-  <el-timeline v-if="processHistory.length > 0">
+  <el-timeline v-if="processHistory.length > 0" style="max-height: 75vh; overflow-y: auto;">
     <el-timeline-item
       v-for="(item, index) in processHistory"
       :key="index"

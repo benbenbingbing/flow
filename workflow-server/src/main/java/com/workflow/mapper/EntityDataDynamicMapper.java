@@ -121,6 +121,14 @@ public interface EntityDataDynamicMapper {
     long count(@Param("tableName") String tableName);
 
     /**
+     * 统计数量（根据条件）
+     */
+    @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "countByCondition")
+    @Options(statementType = StatementType.PREPARED)
+    long countByCondition(@Param("tableName") String tableName,
+                          @Param("condition") Map<String, Object> condition);
+
+    /**
      * 统计数量（带数据权限过滤）
      */
     @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "countWithPermission")

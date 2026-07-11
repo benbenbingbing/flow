@@ -2,6 +2,7 @@ package com.workflow.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.SysMenu;
+import com.workflow.mapper.SysMenuMapper;
 import com.workflow.service.SysMenuService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,6 +49,9 @@ class SysMenuControllerTest {
 
     @MockBean
     private SysMenuService menuService;
+
+    @MockBean
+    private SysMenuMapper menuMapper;
 
     private SysMenu testMenu;
 

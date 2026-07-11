@@ -172,6 +172,7 @@ public class EntityDataDynamicService {
         Map<String, Object> data = recordMapper.toStorageMap(dto);
         dto.setData(originalData);
         validatePublishedRequiredFields(entityCode, data);
+        validatePublishedUniqueFields(entityCode, data, data.get("id") != null ? data.get("id").toString() : null);
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
             // ========== 新增数据 ==========
@@ -322,6 +323,7 @@ public class EntityDataDynamicService {
             }
         });
         validatePublishedRequiredFields(entityCode, updateData);
+        validatePublishedUniqueFields(entityCode, updateData, id);
 
         dynamicMapper.update(tableName, updateData);
         relationRuntimeService.saveRelationData(id, relations, relationData);
@@ -531,6 +533,35 @@ public class EntityDataDynamicService {
     private boolean isRelationField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SUB_FORM
                 || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
+    }
+
+    private void validatePublishedUniqueFields(String entityCode, Map<String, Object> storageData, String excludeId) {
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+        if (snapshot.getFields() == null || snapshot.getFields().isEmpty()) {
+            return;
+        }
+        String tableName = dynamicTableService.getTableName(entityCode);
+        for (EntityField field : snapshot.getFields()) {
+            if (!Boolean.TRUE.equals(field.getIsUnique()) || isRelationField(field)) {
+                continue;
+            }
+            String columnName = recordMapper.toColumnName(field.getFieldCode());
+            Object value = storageData.get(columnName);
+            if (isBlankValue(value)) {
+                continue;
+            }
+            Map<String, Object> condition = new HashMap<>();
+            condition.put(columnName, value);
+            condition.put(columnName + "_op", "EQ");
+            if (excludeId != null && !excludeId.isEmpty()) {
+                condition.put("id", excludeId);
+                condition.put("id_op", "NE");
+            }
+            long count = dynamicMapper.countByCondition(tableName, condition);
+            if (count > 0) {
+                throw new RuntimeException("字段值已存在: " + field.getFieldName());
+            }
+        }
     }
 
     private boolean isBlankValue(Object value) {

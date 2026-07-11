@@ -59,6 +59,7 @@ class ProcessProgressRuntimeServiceTest {
         fixture.activeTask();
         fixture.noOperationLogs();
         when(fixture.sysUserService.getNicknameByUsername("admin")).thenReturn("管理员");
+        when(fixture.sysUserService.getDisplayName("admin")).thenReturn("管理员");
 
         ProcessProgressDTO progress = service.getProcessProgress("pi-1");
 
@@ -145,6 +146,7 @@ class ProcessProgressRuntimeServiceTest {
             when(variableQuery.taskId("hist-task-1")).thenReturn(variableQuery);
             when(variableQuery.executionId("exec-1")).thenReturn(variableQuery);
             when(variableQuery.variableName("action")).thenReturn(variableQuery);
+            when(variableQuery.variableName("actionLabel")).thenReturn(variableQuery);
             when(variableQuery.list()).thenReturn(List.of());
             when(variableQuery.singleResult()).thenReturn(null);
             when(taskService.getTaskComments("hist-task-1")).thenReturn(List.of());
@@ -172,6 +174,7 @@ class ProcessProgressRuntimeServiceTest {
             when(activityQuery.list()).thenReturn(List.of(start, task, flow));
 
             HistoricTaskInstance historicTask = mock(HistoricTaskInstance.class);
+            when(historicTask.getId()).thenReturn("hist-task-1");
             when(historicTask.getTaskDefinitionKey()).thenReturn("task-0");
             when(historicTask.getAssignee()).thenReturn("admin");
             when(historicTask.getEndTime()).thenReturn(new Date(3000));

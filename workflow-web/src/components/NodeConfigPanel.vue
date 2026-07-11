@@ -157,6 +157,8 @@
           </el-tooltip>
         </template>
         <el-form :model="assigneeForm" label-width="100px" size="small">
+          <!-- 多实例启用时，常规执行人配置不再使用，改为下方的会签人员配置 -->
+          <template v-if="!assigneeForm.isMultiInstance">
           <!-- 执行人选择类型 -->
           <el-form-item label="指定方式">
             <el-select v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange" style="width: 100%">
@@ -334,6 +336,7 @@
               <div class="form-tip">接口返回结果映射到的流程变量名</div>
             </el-form-item>
           </template>
+          </template>
           
           <el-divider>多实例配置（会签/或签）</el-divider>
           
@@ -356,6 +359,66 @@
                 <el-radio-button label="interface">接口动态</el-radio-button>
               </el-radio-group>
             </el-form-item>
+            
+            <!-- 会签人员配置：仅集合来源为流程变量时显示 -->
+            <template v-if="assigneeForm.collectionSource === 'variable'">
+              <el-form-item label="会签人员">
+                <el-select-v2
+                  v-model="assigneeForm.multiInstanceUserIds"
+                  :options="userOptions"
+                  placeholder="选择会签用户"
+                  multiple
+                  filterable
+                  clearable
+                  style="width: 100%"
+                  @change="updateMultiInstanceUsers"
+                >
+                  <template #default="{ item }">
+                    <span>{{ item.label }}</span>
+                    <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
+                  </template>
+                </el-select-v2>
+                <div class="form-tip">所选用户每人都会生成一个会签任务</div>
+              </el-form-item>
+              
+              <el-form-item label="会签用户组">
+                <el-select-v2
+                  v-model="assigneeForm.multiInstanceGroupIds"
+                  :options="groupOptions"
+                  placeholder="选择会签用户组"
+                  multiple
+                  filterable
+                  clearable
+                  style="width: 100%"
+                  @change="updateMultiInstanceUsers"
+                >
+                  <template #default="{ item }">
+                    <span>{{ item.label }}</span>
+                    <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
+                  </template>
+                </el-select-v2>
+                <div class="form-tip">组内所有成员都会生成会签任务</div>
+              </el-form-item>
+              
+              <el-form-item label="会签角色">
+                <el-select-v2
+                  v-model="assigneeForm.multiInstanceRoleIds"
+                  :options="roleOptions"
+                  placeholder="选择会签角色"
+                  multiple
+                  filterable
+                  clearable
+                  style="width: 100%"
+                  @change="updateMultiInstanceUsers"
+                >
+                  <template #default="{ item }">
+                    <span>{{ item.label }}</span>
+                    <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
+                  </template>
+                </el-select-v2>
+                <div class="form-tip">拥有该角色的所有成员都会生成会签任务</div>
+              </el-form-item>
+            </template>
             
             <el-form-item label="集合变量" v-if="assigneeForm.collectionSource === 'variable'">
               <el-input 
@@ -1575,6 +1638,14 @@ const assigneeForm = ref({
   collection: '',
   elementVariable: 'assignee',
   completionCondition: '',
+  // 会签人员配置（独立于执行人/候选人）
+  multiInstanceUsers: '',
+  multiInstanceUserIds: [],
+  multiInstanceUsernames: '',
+  multiInstanceGroupIds: [],
+  multiInstanceGroupCodes: '',
+  multiInstanceRoleIds: [],
+  multiInstanceRoleCodes: '',
   // 新增字段
   assigneeType: 'user', // user/group/role/expression/interface
   interfaceType: 'spring', // spring/rest
@@ -2031,10 +2102,11 @@ watch(() => props.element, async (newElement) => {
           ((assigneeConfig.assigneeType === 'group' || assigneeConfig.assigneeType === 'role') ? assigneeConfig.assigneeValue : '') || ''
       // 多实例模式下 BPMN 的 assignee/candidateUsers 会被替换为表达式，从扩展属性恢复实际人员
       if (assigneeConfig.assigneeType === 'user') {
-        if (!assignee && assigneeConfig.assigneeValue) {
+        // 当 BPMN assignee 是表达式或为空时，使用扩展属性中的实际执行人
+        if (assigneeConfig.assigneeValue && (!assignee || assignee.startsWith('${'))) {
           assignee = assigneeConfig.assigneeValue
         }
-        if (!candidateUsers && assigneeConfig.candidateUsers) {
+        if (assigneeConfig.candidateUsers && (!candidateUsers || candidateUsers.startsWith('${'))) {
           candidateUsers = assigneeConfig.candidateUsers
         }
       }
@@ -2056,6 +2128,15 @@ watch(() => props.element, async (newElement) => {
         collection: loop?.collection || multiInstanceConfig.collection || '${_wfMultiInstanceUsers_}', 
         elementVariable: loop?.elementVariable || multiInstanceConfig.elementVariable || 'assignee', 
         completionCondition: loop?.completionCondition?.body || multiInstanceConfig.completionCondition || '',
+        
+        // 会签人员配置（从扩展属性恢复）
+        multiInstanceUsers: assigneeConfig.multiInstanceUsers || '',
+        multiInstanceUserIds: assigneeConfig.multiInstanceUserIds || [],
+        multiInstanceUsernames: assigneeConfig.multiInstanceUsernames || '',
+        multiInstanceGroupIds: assigneeConfig.multiInstanceGroupIds || [],
+        multiInstanceGroupCodes: assigneeConfig.multiInstanceGroupCodes || '',
+        multiInstanceRoleIds: assigneeConfig.multiInstanceRoleIds || [],
+        multiInstanceRoleCodes: assigneeConfig.multiInstanceRoleCodes || '',
         
         // 执行人类型和接口配置（从扩展属性）
         assigneeType: assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
@@ -2961,6 +3042,25 @@ function updateCandidateRoles() {
   if (!assigneeForm.value.isMultiInstance) {
     updateProperty('candidateGroups', roleCodes)
   }
+  updateAssigneeConfig()
+}
+
+function updateMultiInstanceUsers() {
+  // multiInstanceUserIds/GroupIds/RoleIds 里存的是 el-select-v2 的 value
+  const selectedUsers = userOptions.value.filter(u => assigneeForm.value.multiInstanceUserIds?.includes(u.value))
+  const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.multiInstanceGroupIds?.includes(g.value))
+  const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.multiInstanceRoleIds?.includes(r.value))
+  
+  const userNames = selectedUsers.map(u => u.username)
+  const groupCodes = selectedGroups.map(g => g.code)
+  const roleCodes = selectedRoles.map(r => r.code)
+  
+  // 保存结构化的会签人员编码，方便后端解析
+  assigneeForm.value.multiInstanceUsers = [...userNames, ...groupCodes, ...roleCodes.map(c => 'ROLE_' + c)].join(',')
+  assigneeForm.value.multiInstanceUsernames = userNames.join(',')
+  assigneeForm.value.multiInstanceGroupCodes = groupCodes.join(',')
+  assigneeForm.value.multiInstanceRoleCodes = roleCodes.join(',')
+  
   updateAssigneeConfig()
 }
 

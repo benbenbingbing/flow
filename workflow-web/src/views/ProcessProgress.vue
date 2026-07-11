@@ -67,7 +67,7 @@
               <div v-if="tooltip.assigneeInfo.action && tooltip.assigneeInfo.action !== 'PROCESSING'" class="info-row">
                 <span class="label">处理结果：</span>
                 <el-tag size="small" :type="getActionType(tooltip.assigneeInfo.action)">
-                  {{ getActionText(tooltip.assigneeInfo.action) }}
+                  {{ getActionText(tooltip.assigneeInfo.action, tooltip.assigneeInfo.actionLabel) }}
                 </el-tag>
               </div>
               <div v-if="tooltip.assigneeInfo.comment" class="info-row">
@@ -546,7 +546,8 @@ const getActionType = (action) => {
   return types[action] || 'info'
 }
 
-const getActionText = (action) => {
+const getActionText = (action, actionLabel) => {
+  if (actionLabel) return actionLabel
   const texts = {
     'APPROVED': '同意',
     'REJECTED': '驳回',

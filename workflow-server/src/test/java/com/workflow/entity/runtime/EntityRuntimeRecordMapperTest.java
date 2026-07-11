@@ -26,7 +26,7 @@ class EntityRuntimeRecordMapperTest {
                 "data_no", "NO-1",
                 "status", "PENDING",
                 "current_task_assignee", "admin",
-                "created_at", now,
+                "create_time", now,
                 "amount_total", 12,
                 "detail_json", "{\"name\":\"明细\"}"
         );

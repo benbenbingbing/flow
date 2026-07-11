@@ -78,6 +78,12 @@ public class ProcessProgressDTO {
     private Map<String, AssigneeInfoDTO> nodeAssigneeMap;
     
     /**
+     * 节点处理人列表映射（key: 节点ID, value: 处理人信息列表）
+     * 用于多实例会签节点展示所有子任务处理人及其状态
+     */
+    private Map<String, List<AssigneeInfoDTO>> nodeAssigneesMap;
+    
+    /**
      * 实体数据
      */
     private Map<String, Object> entityData;
@@ -231,6 +237,11 @@ public class ProcessProgressDTO {
         private String action;
         
         /**
+         * 处理方式显示文本（如"同意，需要会签"）
+         */
+        private String actionLabel;
+        
+        /**
          * 审批意见/备注
          */
         private String comment;
@@ -303,8 +314,18 @@ public class ProcessProgressDTO {
         private String action;
         
         /**
+         * 处理方式显示文本（如"同意，需要会签"）
+         */
+        private String actionLabel;
+        
+        /**
          * 处理意见
          */
         private String comment;
+        
+        /**
+         * 处理状态：COMPLETED-已完成，PROCESSING-处理中，PENDING-待处理
+         */
+        private String status;
     }
 }

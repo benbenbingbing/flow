@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="75%" class="entity-form-dialog" top="3vh">
-    <el-tabs v-if="isEdit && hasProcessInfo && hasTabSubForms" v-model="activeTab" type="border-card">
+    <el-tabs v-if="isEdit && hasProcessInfo && hasTabSubForms" v-model="activeTab" type="border-card" class="form-dialog-tabs">
       <el-tab-pane label="基本信息" name="basic">
         <EntityDataFormFields
           ref="basicFormFieldsRef"
@@ -37,7 +37,7 @@
       </el-tab-pane>
     </el-tabs>
 
-    <el-tabs v-else-if="isEdit && hasProcessInfo" v-model="activeTab" type="border-card">
+    <el-tabs v-else-if="isEdit && hasProcessInfo" v-model="activeTab" type="border-card" class="form-dialog-tabs">
       <el-tab-pane label="表单" name="form">
         <EntityDataFormFields
           ref="formFieldsRef"
@@ -307,5 +307,24 @@ defineExpose({
 .entity-form-dialog :deep(.el-dialog__body) {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-dialog-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.form-dialog-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.form-dialog-tabs :deep(.el-tab-pane) {
+  height: 100%;
 }
 </style>

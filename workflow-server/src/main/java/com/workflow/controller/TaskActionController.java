@@ -40,9 +40,10 @@ public class TaskActionController {
         String action = requestBody != null ? (String) requestBody.get("action") : "approve";
         String comment = requestBody != null ? (String) requestBody.get("comment") : null;
         String transferTo = requestBody != null ? (String) requestBody.get("transferTo") : null;
+        String actionLabel = requestBody != null ? (String) requestBody.get("actionLabel") : null;
 
         try {
-            taskActionService.completeTask(taskId, userId, action, comment, transferTo);
+            taskActionService.completeTask(taskId, userId, action, comment, transferTo, actionLabel);
             return Result.success(null);
         } catch (Exception e) {
             return Result.error(500, e.getMessage());

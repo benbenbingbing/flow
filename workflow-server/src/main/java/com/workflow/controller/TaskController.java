@@ -64,8 +64,9 @@ public class TaskController {
         String action = (String) params.get("action");
         String comment = (String) params.get("comment");
         String transferTo = (String) params.get("transferTo");
+        String actionLabel = (String) params.get("actionLabel");
         
-        taskService.completeTask(taskId, action, comment, transferTo);
+        taskService.completeTask(taskId, action, comment, transferTo, actionLabel);
         return Result.success();
     }
 

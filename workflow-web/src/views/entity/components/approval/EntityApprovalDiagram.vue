@@ -1,5 +1,5 @@
 <template>
-  <div style="height: 400px;">
+  <div class="approval-diagram-wrapper">
     <VueBpmnViewer
       v-if="bpmnXml && progressData"
       :key="processInstanceId"
@@ -20,3 +20,12 @@ defineProps<{
   processInstanceId: string
 }>()
 </script>
+
+<style scoped lang="scss">
+.approval-diagram-wrapper {
+  height: 100%;
+  min-height: 0;
+  max-height: 75vh; 
+  overflow-y: auto;
+}
+</style>

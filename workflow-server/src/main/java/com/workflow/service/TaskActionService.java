@@ -48,14 +48,15 @@ public class TaskActionService {
     /**
      * 完成任务
      *
-     * @param taskId     任务ID
-     * @param userId     当前用户ID
-     * @param action     操作类型：approve/reject/transfer
-     * @param comment    审批意见
-     * @param transferTo 转办人（转办时使用）
+     * @param taskId      任务ID
+     * @param userId      当前用户ID
+     * @param action      操作类型：approve/reject/transfer
+     * @param comment     审批意见
+     * @param transferTo  转办人（转办时使用）
+     * @param actionLabel 操作显示文本（如"同意，需要会签"）
      */
     @Transactional(rollbackFor = Exception.class)
-    public void completeTask(String taskId, String userId, String action, String comment, String transferTo) {
+    public void completeTask(String taskId, String userId, String action, String comment, String transferTo, String actionLabel) {
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -86,11 +87,11 @@ public class TaskActionService {
         // 根据不同操作类型处理
         switch (normalizedAction) {
             case "approve":
-                handleApprove(task, userId, comment, isMultiInstance);
+                handleApprove(task, userId, comment, isMultiInstance, actionLabel);
                 break;
 
             case "reject":
-                handleReject(task, userId, comment, isMultiInstance);
+                handleReject(task, userId, comment, isMultiInstance, actionLabel);
                 break;
 
             case "transfer":
@@ -141,6 +142,9 @@ public class TaskActionService {
                 Map<String, Object> customVars = new HashMap<>();
                 customVars.put("approved", normalizedAction);
                 customVars.put("action", normalizedAction);
+                if (actionLabel != null && !actionLabel.isBlank()) {
+                    customVars.put("actionLabel", actionLabel);
+                }
                 customVars.put("comment", comment);
                 customVars.put("approver", userId);
 
@@ -198,13 +202,16 @@ public class TaskActionService {
     /**
      * 处理通过操作（支持单签/会签）
      */
-    private void handleApprove(Task task, String userId, String comment, boolean isMultiInstance) {
+    private void handleApprove(Task task, String userId, String comment, boolean isMultiInstance, String actionLabel) {
         String taskId = task.getId();
         
         // 设置流程变量
         Map<String, Object> vars = new HashMap<>();
         vars.put("approved", "approve");
         vars.put("action", "approve");
+        if (actionLabel != null && !actionLabel.isBlank()) {
+            vars.put("actionLabel", actionLabel);
+        }
         vars.put("comment", comment);
         vars.put("approver", userId);
         
@@ -227,7 +234,7 @@ public class TaskActionService {
      * 处理驳回操作（支持单签/会签）
      * 会签模式下：一人驳回即整体驳回
      */
-    private void handleReject(Task task, String userId, String comment, boolean isMultiInstance) {
+    private void handleReject(Task task, String userId, String comment, boolean isMultiInstance, String actionLabel) {
         String taskId = task.getId();
         String processInstanceId = task.getProcessInstanceId();
         
@@ -235,6 +242,9 @@ public class TaskActionService {
         Map<String, Object> vars = new HashMap<>();
         vars.put("approved", "reject");
         vars.put("action", "reject");
+        if (actionLabel != null && !actionLabel.isBlank()) {
+            vars.put("actionLabel", actionLabel);
+        }
         vars.put("comment", comment);
         vars.put("rejectBy", userId);
         vars.put("rejectTime", new Date());

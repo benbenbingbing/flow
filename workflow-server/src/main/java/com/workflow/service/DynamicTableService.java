@@ -140,12 +140,6 @@ public class DynamicTableService {
                     String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
                     jdbcTemplate.execute(sql);
                     executedDdls.add(sql);
-                    
-                    // 创建索引（仅对唯一字段创建唯一索引）
-                    if (Boolean.TRUE.equals(field.getIsUnique())) {
-                        createIndexForColumn(tableName, dbColumnName, true);
-                    }
-                    
                     log.info("为表 {} 添加字段: {}", tableName, dbColumnName);
                 } else if (Boolean.TRUE.equals(field.getIsPublished())) {
                     // 已发布的字段，检查是否需要修改列定义（长度、精度、必填等变更）
@@ -190,12 +184,6 @@ public class DynamicTableService {
         String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
         
         jdbcTemplate.execute(sql);
-        
-        // 如果字段需要索引，创建索引
-        if (Boolean.TRUE.equals(field.getIsUnique())) {
-            createIndexForColumn(tableName, field.getFieldCode(), true);
-        }
-        
         log.info("为表 {} 添加字段: {}", tableName, field.getFieldCode());
     }
 
@@ -305,12 +293,8 @@ public class DynamicTableService {
         String dbType = getDbType(field);
         col.append(dbType);
         
-        // 是否必填
-        if (Boolean.TRUE.equals(field.getIsRequired())) {
-            col.append(" NOT NULL");
-        } else {
-            col.append(" DEFAULT NULL");
-        }
+        // 程序级动态控制必填/唯一，数据库列统一可空、不建唯一索引
+        col.append(" DEFAULT NULL");
         
         // 默认值
         if (field.getDefaultValue() != null && !field.getDefaultValue().isEmpty()) {
@@ -400,12 +384,7 @@ public class DynamicTableService {
         jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_deleted ON " + tableName + " (`deleted`)");
         jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_created ON " + tableName + " (`create_time`)");
         
-        // 字段索引
-        for (EntityField field : fields) {
-            if (Boolean.TRUE.equals(field.getIsUnique())) {
-                createIndexForColumn(tableName, field.getFieldCode(), true);
-            }
-        }
+        // 唯一性改为程序级动态校验，不再根据 isUnique 创建数据库唯一索引
     }
 
     /**

@@ -298,6 +298,7 @@ public class ProcessProgressRuntimeService {
                             } else {
                                 // 优先从本地 process_task 表获取每个任务的实际 action（最准确）
                                 String action = null;
+                                String actionLabel = null;
                                 var localTask = processTaskMapper.selectByTaskId(h.getTaskId());
                                 if (localTask != null && localTask.getAction() != null) {
                                     action = localTask.getAction();
@@ -312,15 +313,13 @@ public class ProcessProgressRuntimeService {
                                             .singleResult();
                                     action = actionVar != null ? (String) actionVar.getValue() : null;
                                 }
-                                if ("approve".equals(action)) {
-                                    dto.setAction("APPROVED");
-                                } else if ("reject".equals(action)) {
-                                    dto.setAction("REJECTED");
-                                } else if ("transfer".equals(action)) {
-                                    dto.setAction("TRANSFERRED");
-                                } else {
-                                    dto.setAction("APPROVED");
-                                }
+                                var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
+                                        .taskId(h.getTaskId())
+                                        .variableName("actionLabel")
+                                        .singleResult();
+                                actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+                                dto.setAction(normalizeAction(action));
+                                dto.setActionLabel(actionLabel);
                             }
                         } catch (Exception e) {
                             dto.setAction("APPROVED");
@@ -391,63 +390,6 @@ public class ProcessProgressRuntimeService {
             log.warn("合并转办记录失败", e);
         }
         
-        // 合并多实例会签记录：相同 nodeId 的 userTask 合并为一条，显示所有执行人
-        java.util.Map<String, java.util.List<ProcessProgressDTO.NodeHistoryDTO>> nodeGroup = new java.util.LinkedHashMap<>();
-        for (ProcessProgressDTO.NodeHistoryDTO dto : nodeHistory) {
-            nodeGroup.computeIfAbsent(dto.getNodeId(), k -> new java.util.ArrayList<>()).add(dto);
-        }
-        java.util.List<ProcessProgressDTO.NodeHistoryDTO> mergedHistory = new java.util.ArrayList<>();
-        for (java.util.Map.Entry<String, java.util.List<ProcessProgressDTO.NodeHistoryDTO>> entry : nodeGroup.entrySet()) {
-            java.util.List<ProcessProgressDTO.NodeHistoryDTO> list = entry.getValue();
-            if (list.size() > 1 && "userTask".equals(list.get(0).getNodeType())) {
-                ProcessProgressDTO.NodeHistoryDTO merged = new ProcessProgressDTO.NodeHistoryDTO();
-                merged.setNodeId(list.get(0).getNodeId());
-                merged.setNodeName(list.get(0).getNodeName());
-                merged.setNodeType("userTask");
-                
-                java.util.Set<String> assignees = new java.util.LinkedHashSet<>();
-                java.util.Set<String> assigneeNames = new java.util.LinkedHashSet<>();
-                for (ProcessProgressDTO.NodeHistoryDTO d : list) {
-                    if (d.getAssignee() != null) assignees.add(d.getAssignee());
-                    if (d.getAssigneeName() != null) assigneeNames.add(d.getAssigneeName());
-                }
-                merged.setAssignee(String.join(",", assignees));
-                merged.setAssigneeName(String.join(",", assigneeNames));
-                
-                boolean hasActive = list.stream().anyMatch(d -> "ACTIVE".equals(d.getStatus()));
-                merged.setStatus(hasActive ? "ACTIVE" : "COMPLETED");
-                
-                boolean hasRejected = list.stream().anyMatch(d -> "REJECTED".equals(d.getAction()));
-                boolean allApproved = list.stream().allMatch(d -> "APPROVED".equals(d.getAction()));
-                if (hasRejected) merged.setAction("REJECTED");
-                else if (allApproved) merged.setAction("APPROVED");
-                
-                merged.setStartTime(list.get(0).getStartTime());
-                String latestEndTime = list.stream()
-                    .map(ProcessProgressDTO.NodeHistoryDTO::getEndTime)
-                    .filter(java.util.Objects::nonNull)
-                    .max(String::compareTo)
-                    .orElse(null);
-                merged.setEndTime(latestEndTime);
-                
-                long totalDuration = list.stream()
-                    .mapToLong(d -> d.getDuration() != null ? d.getDuration() : 0)
-                    .sum();
-                merged.setDuration(totalDuration > 0 ? totalDuration : null);
-                
-                String comments = list.stream()
-                    .map(ProcessProgressDTO.NodeHistoryDTO::getComment)
-                    .filter(java.util.Objects::nonNull)
-                    .collect(java.util.stream.Collectors.joining("; "));
-                merged.setComment(comments.isEmpty() ? null : comments);
-                
-                mergedHistory.add(merged);
-            } else {
-                mergedHistory.addAll(list);
-            }
-        }
-        nodeHistory = mergedHistory;
-        
         // 7.2 合并终止记录到审批历史中
         try {
             List<com.workflow.entity.ProcessOperationLog> terminateLogs = operationLogMapper
@@ -513,6 +455,7 @@ public class ProcessProgressRuntimeService {
      */
     private void buildNodeAssigneeMap(ProcessProgressDTO progress, String processInstanceId) {
         Map<String, ProcessProgressDTO.AssigneeInfoDTO> assigneeMap = new HashMap<>();
+        Map<String, List<ProcessProgressDTO.AssigneeInfoDTO>> assigneesMap = new HashMap<>();
         
         // 1. 查询历史任务（已完成的任务）
         List<HistoricTaskInstance> historicTasks = historyService.createHistoricTaskInstanceQuery()
@@ -522,24 +465,45 @@ public class ProcessProgressRuntimeService {
         
         for (HistoricTaskInstance task : historicTasks) {
             String nodeId = task.getTaskDefinitionKey();
-            // 如果同一个节点有多个任务，保留最新的
+            
+            ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
+            String userId = task.getAssignee();
+            String displayName = sysUserService.getDisplayName(userId);
+            info.setAssigneeId(userId);
+            info.setAssigneeName(displayName);
+            info.setHandleTime(task.getEndTime() != null ? formatDate(task.getEndTime()) : null);
+            info.setStatus("COMPLETED");
+            // 从流程变量/本地待办中读取处理方式与显示文本
+            String action = null;
+            String actionLabel = null;
+            String comment = null;
+            var localTask = processTaskMapper.selectByTaskId(task.getId());
+            if (localTask != null) {
+                action = localTask.getAction();
+                comment = localTask.getComment();
+            }
+            if (action == null) {
+                var actionVar = historyService.createHistoricVariableInstanceQuery()
+                        .taskId(task.getId()).variableName("action").singleResult();
+                action = actionVar != null ? (String) actionVar.getValue() : null;
+            }
+            var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
+                    .taskId(task.getId()).variableName("actionLabel").singleResult();
+            actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+            info.setAction(normalizeAction(action));
+            info.setActionLabel(actionLabel);
+            info.setComment(comment);
+            
+            // 单节点处理人映射：保留最新的
             if (!assigneeMap.containsKey(nodeId) || 
                 (task.getEndTime() != null && 
                  (assigneeMap.get(nodeId).getHandleTime() == null || 
                   formatDate(task.getEndTime()).compareTo(assigneeMap.get(nodeId).getHandleTime()) > 0))) {
-                
-                ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
-                String userId = task.getAssignee();
-                String displayName = sysUserService.getDisplayName(userId);
-                info.setAssigneeId(userId);
-                info.setAssigneeName(displayName);
-                info.setHandleTime(task.getEndTime() != null ? formatDate(task.getEndTime()) : null);
-                // 从流程变量中获取审批意见（如果有）
-                info.setAction("APPROVED"); // 默认同意，实际可从变量中读取
-                info.setComment(null); // 可从流程变量中读取审批意见
-                
                 assigneeMap.put(nodeId, info);
             }
+            
+            // 多实例节点处理人列表：保留所有子任务
+            assigneesMap.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(info);
         }
         
         // 2. 查询当前活动任务
@@ -593,13 +557,16 @@ public class ProcessProgressRuntimeService {
             }
             
             info.setHandleTime(task.getCreateTime() != null ? formatDate(task.getCreateTime()) : null);
+            info.setStatus("PROCESSING");
             info.setAction("PROCESSING"); // 处理中
             info.setComment("待处理");
             
             assigneeMap.put(nodeId, info);
+            assigneesMap.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(info);
         }
         
         progress.setNodeAssigneeMap(assigneeMap);
+        progress.setNodeAssigneesMap(assigneesMap);
     }
     
     /**
@@ -1035,5 +1002,20 @@ public class ProcessProgressRuntimeService {
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
         return sysUserService.getDisplayNames(idsOrNames);
+    }
+
+    /**
+     * 规范化任务 action 为显示状态码；自定义 action 保留原始值
+     */
+    private String normalizeAction(String action) {
+        if (action == null || action.isBlank()) {
+            return "APPROVED";
+        }
+        return switch (action.trim().toLowerCase()) {
+            case "approve", "approved" -> "APPROVED";
+            case "reject", "rejected" -> "REJECTED";
+            case "transfer", "transferred" -> "TRANSFERRED";
+            default -> action;
+        };
     }
 }

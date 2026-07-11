@@ -102,14 +102,20 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 userIds.add(assignee.getAssigneeValue());
             } else if (type == AssigneeType.ROLE) {
                 // candidateGroups 在后端被保存为 ROLE 类型，可能对应用户组或角色
-                SysGroup group = groupMapper.selectByGroupCode(assignee.getAssigneeValue());
+                // 角色编码可能带 ROLE_ 前缀（来自前端角色选择）
+                String value = assignee.getAssigneeValue();
+                String roleCode = value;
+                if (value != null && value.startsWith("ROLE_")) {
+                    roleCode = value.substring(5);
+                }
+                SysGroup group = groupMapper.selectByGroupCode(value);
                 if (group != null) {
                     List<String> ids = userGroupMapper.selectUserIdsByGroupId(group.getId());
                     if (ids != null) userIds.addAll(ids);
                 } else {
                     List<SysRole> roles = roleMapper.selectList(
                             new QueryWrapper<SysRole>()
-                                    .eq("role_code", assignee.getAssigneeValue())
+                                    .eq("role_code", roleCode)
                                     .eq("deleted", 0)
                     );
                     if (roles != null && !roles.isEmpty()) {

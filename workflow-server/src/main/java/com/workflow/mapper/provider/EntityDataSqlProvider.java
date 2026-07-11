@@ -222,6 +222,23 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 统计查询（根据条件）
+     */
+    public String countByCondition(Map<String, Object> params) {
+        String tableName = tableName(params);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> condition = (Map<String, Object>) params.get("condition");
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT COUNT(*) FROM ").append(tableName);
+        sql.append(" WHERE deleted = 0");
+
+        appendConditionSql(sql, condition);
+
+        return sql.toString();
+    }
+
+    /**
      * 统计查询（带数据权限过滤）
      */
     public String countWithPermission(Map<String, Object> params) {

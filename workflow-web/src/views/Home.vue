@@ -902,9 +902,13 @@ async function submitTransfer() {
 async function submitApprove() {
   submitLoading.value = true
   try {
+    const selectedOption = effectiveApprovalConfig.value.options?.find(
+      o => o.value === approveForm.action
+    )
     await completeTask({
       taskId: currentTask.value.taskId,
       action: approveForm.action,
+      actionLabel: selectedOption?.label,
       comment: approveForm.comment
     })
     ElMessage.success('审批成功')

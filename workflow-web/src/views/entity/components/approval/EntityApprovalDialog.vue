@@ -253,9 +253,13 @@ const submitApprove = async () => {
   if (!currentTask.value?.taskId) return
   approveSubmitLoading.value = true
   try {
+    const selectedOption = effectiveApprovalConfig.value.options?.find(
+      (o: any) => o.value === approveForm.action
+    )
     await completeTask({
       taskId: currentTask.value.taskId,
       action: approveForm.action,
+      actionLabel: selectedOption?.label,
       comment: approveForm.comment
     })
     ElMessage.success('审批成功')
@@ -310,5 +314,8 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+.approval-tabs :deep(.el-tab-pane) {
+  height: 100%;
 }
 </style>
