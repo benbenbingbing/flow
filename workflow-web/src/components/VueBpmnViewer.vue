@@ -435,6 +435,44 @@ const setFlowStyle = (canvas, element, isExecuted) => {
 }
 
 let flowFixTimer = null
+
+/**
+ * 计算节点旁边的固定 tooltip 位置（基于节点在页面中的包围盒）
+ */
+const computeTooltipPosition = (element) => {
+  try {
+    if (!viewer.value || !canvasRef.value) return { x: 0, y: 0 }
+    const canvas = viewer.value.get('canvas')
+    const gfx = canvas.getGraphics(element)
+    if (!gfx) return { x: 0, y: 0 }
+
+    const visual = gfx.querySelector('.djs-visual')
+    if (!visual) return { x: 0, y: 0 }
+
+    const rect = visual.getBoundingClientRect()
+    const wrapperRect = canvasRef.value.getBoundingClientRect()
+
+    // 以节点右上角为基准，留出一点间距
+    const offsetX = 12
+    const offsetY = -8
+    let x = rect.right - wrapperRect.left + offsetX
+    let y = rect.top - wrapperRect.top + offsetY
+
+    // 简单边界保护：避免超出容器右侧
+    const tooltipWidth = 260
+    if (x + tooltipWidth > wrapperRect.width) {
+      x = rect.left - wrapperRect.left - tooltipWidth - offsetX
+    }
+    if (y < 0) {
+      y = 0
+    }
+
+    return { x, y }
+  } catch (e) {
+    return { x: 0, y: 0 }
+  }
+}
+
 const fixFlowColors = () => {
   if (!viewer.value) return
   const canvas = viewer.value.get('canvas')
@@ -476,20 +514,20 @@ const addMouseEventListeners = () => {
       try {
         const element = e.element
         if (!element) return
-        
+
         const elementType = element.type
-        if (elementType === 'bpmn:Process' || 
+        if (elementType === 'bpmn:Process' ||
             elementType === 'bpmn:Collaboration' ||
             elementType === 'bpmn:SequenceFlow' ||
             !elementType.startsWith('bpmn:')) {
           return
         }
-        
+
         const elementId = element.id
         const { nodeAssigneeMap } = props.progressData
         const rawCompletedNodes = toRaw(props.progressData.completedNodes) || []
         const rawActiveNodes = toRaw(props.progressData.activeNodes) || []
-        
+
         let status = 'pending'
         const rawTerminatedNodes2 = toRaw(props.progressData?.terminatedNodes) || []
         if (rawActiveNodes.includes(elementId)) {
@@ -503,14 +541,16 @@ const addMouseEventListeners = () => {
         if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
           status = 'terminated'
         }
-        
+
         const assigneeInfo = nodeAssigneeMap?.[elementId] || null
         const assigneeList = props.progressData.nodeAssigneesMap?.[elementId] || null
-        
+
+        const position = computeTooltipPosition(element)
+
         tooltip.value = {
           visible: true,
-          x: e.originalEvent.pageX + 15,
-          y: e.originalEvent.pageY + 15,
+          x: position.x,
+          y: position.y,
           nodeId: elementId,
           nodeName: element.businessObject?.name || elementId,
           status: status,
@@ -521,14 +561,7 @@ const addMouseEventListeners = () => {
         console.error('处理悬停事件时出错:', err)
       }
     })
-    
-    eventBus.on('element.mousemove', (e) => {
-      if (tooltip.value.visible) {
-        tooltip.value.x = e.originalEvent.pageX + 15
-        tooltip.value.y = e.originalEvent.pageY + 15
-      }
-    })
-    
+
     eventBus.on('element.out', () => {
       tooltip.value.visible = false
     })
@@ -596,7 +629,7 @@ defineExpose({
 
 /* 节点悬停提示框 */
 .node-tooltip {
-  position: fixed;
+  position: absolute;
   z-index: 9999;
   background: #fff;
   border: 1px solid #e4e7ed;
@@ -605,6 +638,7 @@ defineExpose({
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 220px;
   max-width: 300px;
+  user-select: text;
 }
 
 .tooltip-header {
