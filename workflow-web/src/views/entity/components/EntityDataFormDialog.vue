@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="75%" class="entity-form-dialog" top="3vh">
-    <el-tabs v-if="isEdit && hasProcessInfo && hasTabSubForms" v-model="activeTab" type="border-card" class="form-dialog-tabs">
+    <el-tabs v-if="hasTabSubForms" v-model="activeTab" type="border-card" class="form-dialog-tabs">
       <el-tab-pane label="基本信息" name="basic">
         <EntityDataFormFields
           ref="basicFormFieldsRef"
@@ -10,14 +10,14 @@
           :entityFields="entityFields"
           :defaultForm="defaultForm"
           :isEdit="isEdit"
-          :showStartProcess="false"
+          :showStartProcess="!isEdit"
           :noInternalTabs="true"
         />
       </el-tab-pane>
       <el-tab-pane
         v-for="(field, idx) in tabSubForms"
-        :key="'subform-' + idx"
-        :label="field.fieldName"
+        :key="'subform-' + idx + '-' + (field.id || field.fieldCode || field.fieldKey || '')"
+        :label="field.fieldLabel || field.fieldName"
         :name="'subform_' + idx"
       >
         <FormFieldRendererLinkage
@@ -25,39 +25,14 @@
           v-model="formData.data[getFieldKey(field)]"
         />
       </el-tab-pane>
-      <el-tab-pane label="流程图" name="diagram">
+      <el-tab-pane v-if="hasProcessInfo" label="流程图" name="diagram">
         <EntityApprovalDiagram
           :bpmnXml="bpmnXml"
           :progressData="progressData"
           :processInstanceId="processInstanceId"
         />
       </el-tab-pane>
-      <el-tab-pane label="审批历史" name="history">
-        <EntityApprovalHistory :processHistory="processHistory" />
-      </el-tab-pane>
-    </el-tabs>
-
-    <el-tabs v-else-if="isEdit && hasProcessInfo" v-model="activeTab" type="border-card" class="form-dialog-tabs">
-      <el-tab-pane label="表单" name="form">
-        <EntityDataFormFields
-          ref="formFieldsRef"
-          v-model:formData="formData"
-          :entityCode="entityCode"
-          :entityDefinition="entityDefinition"
-          :entityFields="entityFields"
-          :defaultForm="defaultForm"
-          :isEdit="isEdit"
-          :showStartProcess="false"
-        />
-      </el-tab-pane>
-      <el-tab-pane label="流程图" name="diagram">
-        <EntityApprovalDiagram
-          :bpmnXml="bpmnXml"
-          :progressData="progressData"
-          :processInstanceId="processInstanceId"
-        />
-      </el-tab-pane>
-      <el-tab-pane label="审批历史" name="history">
+      <el-tab-pane v-if="hasProcessInfo" label="审批历史" name="history">
         <EntityApprovalHistory :processHistory="processHistory" />
       </el-tab-pane>
     </el-tabs>
@@ -71,9 +46,9 @@
       :entityFields="entityFields"
       :defaultForm="defaultForm"
       :isEdit="isEdit"
-      :showStartProcess="true"
+      :showStartProcess="!isEdit"
     />
-    
+
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
       <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
@@ -138,7 +113,10 @@ const {
 } = useProcessDetail()
 
 const formFields = computed(() => props.entityFields.filter((f: any) => !f.isSystem))
-const tabSubForms = computed(() => formFields.value.filter((f: any) => isTabSubForm(f)))
+const tabSubForms = computed(() => {
+  const fields = props.defaultForm?.fields || formFields.value
+  return fields.filter((f: any) => isTabSubForm(f))
+})
 const hasTabSubForms = computed(() => tabSubForms.value.length > 0)
 
 // 切换到流程图 tab 时重新触发 BPMN 渲染，避免隐藏 tab 中画布尺寸为 0
@@ -181,7 +159,7 @@ const openCreate = async () => {
   processInstanceId.value = ''
   currentProcessStatus.value = ''
   currentProcessName.value = ''
-  activeTab.value = 'form'
+  activeTab.value = hasTabSubForms.value ? 'basic' : 'form'
   resetForm()
   dialogTitle.value = '新增数据'
 
@@ -242,12 +220,12 @@ const openEdit = async (row: any) => {
     currentProcessName.value = ''
   }
 
-  activeTab.value = (hasProcessInfo.value && hasTabSubForms.value) ? 'basic' : 'form'
+  activeTab.value = hasTabSubForms.value ? 'basic' : 'form'
 
   dialogTitle.value = '编辑数据'
   dialogVisible.value = true
   nextTick(() => {
-    if (hasProcessInfo.value && hasTabSubForms.value) {
+    if (hasTabSubForms.value) {
       basicFormFieldsRef.value?.refreshLinkage()
     } else {
       formFieldsRef.value?.refreshLinkage()
@@ -257,7 +235,7 @@ const openEdit = async (row: any) => {
 
 // 提交
 const handleSubmit = async () => {
-  const valid = await (hasTabSubForms.value && hasProcessInfo.value && isEdit.value
+  const valid = await (hasTabSubForms.value
     ? basicFormFieldsRef.value?.validate()
     : formFieldsRef.value?.validate())
   if (!valid) return

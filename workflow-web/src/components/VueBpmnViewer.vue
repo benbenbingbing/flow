@@ -2,10 +2,13 @@
   <div class="bpmn-viewer-wrapper">
     <div ref="canvasRef" class="vue-bpmn-viewer-canvas"></div>
     
-    <!-- 节点悬停提示框 -->
-    <div v-if="tooltip.visible" 
-         class="node-tooltip" 
-         :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
+    <!-- 节点悬停/点击提示框 -->
+    <div v-if="tooltip.visible"
+         class="node-tooltip"
+         :class="{ pinned: tooltip.pinned }"
+         :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
+         @mouseenter="onTooltipEnter"
+         @mouseleave="onTooltipLeave">
       <div class="tooltip-header">
         <span class="node-status-dot" :class="tooltip.status"></span>
         <span class="node-name">{{ tooltip.nodeName }}</span>
@@ -89,7 +92,8 @@ const tooltip = ref({
   nodeName: '',
   status: '',
   assigneeInfo: null,
-  assigneeList: null
+  assigneeList: null,
+  pinned: false
 })
 
 // 颜色配置
@@ -435,6 +439,9 @@ const setFlowStyle = (canvas, element, isExecuted) => {
 }
 
 let flowFixTimer = null
+let tooltipLeaveTimer = null
+let tooltipOverNode = false
+let tooltipOverTooltip = false
 
 /**
  * 计算节点旁边的固定 tooltip 位置（基于节点在页面中的包围盒）
@@ -506,10 +513,11 @@ const startFlowFixTimer = () => {
 const addMouseEventListeners = () => {
   try {
     if (!viewer.value) return
-    
+
     const eventBus = viewer.value.get('eventBus')
     if (!eventBus) return
-    
+
+    // 鼠标悬停节点：显示 tooltip（未固定时）
     eventBus.on('element.hover', (e) => {
       try {
         const element = e.element
@@ -520,6 +528,17 @@ const addMouseEventListeners = () => {
             elementType === 'bpmn:Collaboration' ||
             elementType === 'bpmn:SequenceFlow' ||
             !elementType.startsWith('bpmn:')) {
+          return
+        }
+
+        tooltipOverNode = true
+        if (tooltipLeaveTimer) {
+          clearTimeout(tooltipLeaveTimer)
+          tooltipLeaveTimer = null
+        }
+
+        // 如果已固定且 hover 的是同一个节点，保持固定；否则更新内容
+        if (tooltip.value.pinned && tooltip.value.nodeId === element.id) {
           return
         }
 
@@ -555,19 +574,109 @@ const addMouseEventListeners = () => {
           nodeName: element.businessObject?.name || elementId,
           status: status,
           assigneeInfo: assigneeInfo,
-          assigneeList: assigneeList
+          assigneeList: assigneeList,
+          pinned: false
         }
       } catch (err) {
         console.error('处理悬停事件时出错:', err)
       }
     })
 
+    // 鼠标移出节点：未固定时延迟隐藏（给移入 tooltip 留出时间）
     eventBus.on('element.out', () => {
-      tooltip.value.visible = false
+      tooltipOverNode = false
+      if (tooltip.value.pinned || tooltipOverTooltip) return
+      tooltipLeaveTimer = setTimeout(() => {
+        if (!tooltipOverNode && !tooltipOverTooltip) {
+          tooltip.value.visible = false
+          tooltip.value.pinned = false
+        }
+      }, 200)
+    })
+
+    // 点击节点：固定/取消固定 tooltip
+    eventBus.on('element.click', (e) => {
+      try {
+        const element = e.element
+        if (!element) return
+
+        const elementType = element.type
+        if (elementType === 'bpmn:Process' ||
+            elementType === 'bpmn:Collaboration' ||
+            elementType === 'bpmn:SequenceFlow' ||
+            !elementType.startsWith('bpmn:')) {
+          // 点击空白处取消固定
+          if (tooltip.value.pinned) {
+            tooltip.value.visible = false
+            tooltip.value.pinned = false
+          }
+          return
+        }
+
+        if (tooltip.value.visible && tooltip.value.nodeId === element.id && tooltip.value.pinned) {
+          // 再次点击同一节点：取消固定
+          tooltip.value.visible = false
+          tooltip.value.pinned = false
+        } else {
+          // 点击节点：显示并固定
+          const elementId = element.id
+          const { nodeAssigneeMap } = props.progressData
+          const rawCompletedNodes = toRaw(props.progressData.completedNodes) || []
+          const rawActiveNodes = toRaw(props.progressData.activeNodes) || []
+
+          let status = 'pending'
+          const rawTerminatedNodes2 = toRaw(props.progressData?.terminatedNodes) || []
+          if (rawActiveNodes.includes(elementId)) {
+            status = 'active'
+          } else if (rawTerminatedNodes2.includes(elementId)) {
+            status = 'terminated'
+          } else if (rawCompletedNodes.includes(elementId)) {
+            status = 'completed'
+          }
+          if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
+            status = 'terminated'
+          }
+
+          const position = computeTooltipPosition(element)
+
+          tooltip.value = {
+            visible: true,
+            x: position.x,
+            y: position.y,
+            nodeId: elementId,
+            nodeName: element.businessObject?.name || elementId,
+            status: status,
+            assigneeInfo: nodeAssigneeMap?.[elementId] || null,
+            assigneeList: props.progressData.nodeAssigneesMap?.[elementId] || null,
+            pinned: true
+          }
+        }
+      } catch (err) {
+        console.error('处理点击事件时出错:', err)
+      }
     })
   } catch (error) {
     console.error('添加鼠标事件监听时出错:', error)
   }
+}
+
+const onTooltipEnter = () => {
+  tooltipOverTooltip = true
+  if (tooltipLeaveTimer) {
+    clearTimeout(tooltipLeaveTimer)
+    tooltipLeaveTimer = null
+  }
+}
+
+const onTooltipLeave = () => {
+  tooltipOverTooltip = false
+  if (tooltip.value.pinned || tooltipOverNode) return
+  tooltipLeaveTimer = setTimeout(() => {
+    if (!tooltipOverNode && !tooltipOverTooltip) {
+      tooltip.value.visible = false
+      tooltip.value.pinned = false
+    }
+  }, 200)
 }
 
 watch(() => props.xml, (newXml) => {
@@ -593,6 +702,10 @@ onUnmounted(() => {
   if (flowFixTimer) {
     clearInterval(flowFixTimer)
     flowFixTimer = null
+  }
+  if (tooltipLeaveTimer) {
+    clearTimeout(tooltipLeaveTimer)
+    tooltipLeaveTimer = null
   }
   if (viewer.value) {
     viewer.value.destroy()
@@ -639,6 +752,11 @@ defineExpose({
   min-width: 220px;
   max-width: 300px;
   user-select: text;
+}
+
+.node-tooltip.pinned {
+  border-color: #1890ff;
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.25);
 }
 
 .tooltip-header {
