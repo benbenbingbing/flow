@@ -73,10 +73,13 @@ import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
 
-const props = defineProps<{
-  entityCode: string
-  defaultForm: any
-}>()
+const props = withDefaults(defineProps<{
+  entityCode?: string
+  defaultForm?: any
+}>(), {
+  entityCode: '',
+  defaultForm: null
+})
 
 const emit = defineEmits<{
   success: []
@@ -160,9 +163,11 @@ watch(activeDialogTab, (newVal) => {
 const openApprove = async (row: any) => {
   isViewMode.value = false
   currentTask.value = {
-    taskId: row.currentTaskId,
+    taskId: row.currentTaskId || row.taskId,
     processInstanceId: row.processInstanceId,
-    name: row.currentTaskName || '任务审批'
+    name: row.currentTaskName || row.name || '任务审批',
+    startUserName: row.startUserName,
+    processName: row.processName
   }
   approveForm.action = 'approve'
   approveForm.comment = ''
@@ -190,14 +195,22 @@ const openApprove = async (row: any) => {
   processDialogVisible.value = true
 }
 
+interface OpenViewOptions {
+  defaultTab?: string
+  startUserName?: string
+}
+
 // 打开查看弹窗（只读模式）
-const openView = async (row: any) => {
+const openView = async (row: any, options: OpenViewOptions = {}) => {
+  const { defaultTab, startUserName } = options
   isViewMode.value = true
   currentTask.value = {
     processInstanceId: row.processInstanceId,
-    name: row.name || '数据详情'
+    name: row.name || row.currentTaskName || '数据详情',
+    startUserName: startUserName || row.startUserName,
+    processName: row.processName
   }
-  activeDialogTab.value = 'approval'
+  activeDialogTab.value = defaultTab || 'approval'
   if (row.processInstanceId) {
     await loadProcessDetail(row.processInstanceId, {
       startUserName: currentTask.value?.startUserName,
@@ -209,7 +222,9 @@ const openView = async (row: any) => {
           }
         }
         const hasTabs = (formConfig.value?.fields || []).some((f: any) => isTabSubForm(f))
-        activeDialogTab.value = hasTabs ? 'basic' : 'approval'
+        if (!defaultTab) {
+          activeDialogTab.value = hasTabs ? 'basic' : 'approval'
+        }
       }
     })
   } else {

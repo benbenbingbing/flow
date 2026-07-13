@@ -13,6 +13,7 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.TaskQuery;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 
+import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -132,5 +135,41 @@ class ProcessTaskServiceTest {
                 null,
                 null
         );
+    }
+
+    @Test
+    void completeTaskPersistsActionLabel() {
+        ProcessTask task = new ProcessTask();
+        task.setId(1L);
+        task.setTaskId("task-1");
+        task.setStartTime(java.time.LocalDateTime.now());
+        when(taskMapper.selectByTaskId("task-1")).thenReturn(task);
+
+        service.completeTask("task-1", "approve", "同意", "同意，需要会签");
+
+        ArgumentCaptor<ProcessTask> captor = ArgumentCaptor.forClass(ProcessTask.class);
+        verify(taskMapper).updateById(captor.capture());
+        ProcessTask updated = captor.getValue();
+        Assertions.assertEquals("同意，需要会签", updated.getActionLabel());
+        Assertions.assertEquals("approve", updated.getAction());
+        Assertions.assertEquals("同意", updated.getComment());
+        Assertions.assertEquals(ProcessTask.STATUS_DONE, updated.getStatus());
+    }
+
+    @Test
+    void completeTaskWithoutActionLabelDoesNotOverrideExistingLabel() {
+        ProcessTask task = new ProcessTask();
+        task.setId(1L);
+        task.setTaskId("task-1");
+        task.setActionLabel("已有标签");
+        task.setStartTime(java.time.LocalDateTime.now());
+        when(taskMapper.selectByTaskId("task-1")).thenReturn(task);
+
+        service.completeTask("task-1", "approve", "同意", null);
+
+        ArgumentCaptor<ProcessTask> captor = ArgumentCaptor.forClass(ProcessTask.class);
+        verify(taskMapper).updateById(captor.capture());
+        ProcessTask updated = captor.getValue();
+        Assertions.assertEquals("已有标签", updated.getActionLabel());
     }
 }

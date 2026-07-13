@@ -77,7 +77,7 @@ class TaskActionServiceTest {
         service.completeTask("task-1", "admin", "APPROVED", "同意", null, null);
 
         verify(taskService).complete(eq("task-1"), anyMap());
-        verify(processTaskService).completeTask("task-1", "approve", "同意");
+        verify(processTaskService).completeTask("task-1", "approve", "同意", null);
         verify(processTaskService).syncTasksFromFlowable("proc-1");
     }
 
@@ -88,7 +88,7 @@ class TaskActionServiceTest {
         service.completeTask("task-1", "admin", "REJECTED", "资料不全", null, null);
 
         verify(taskService).complete(eq("task-1"), anyMap());
-        verify(processTaskService).completeTask("task-1", "reject", "资料不全");
+        verify(processTaskService).completeTask("task-1", "reject", "资料不全", null);
         verify(processTaskService).syncTasksFromFlowable("proc-1");
     }
 

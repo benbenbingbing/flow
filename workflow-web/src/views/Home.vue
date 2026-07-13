@@ -175,221 +175,11 @@
       />
     </el-card>
 
-    <!-- 审批弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="`${currentTask?.name || '任务审批'}（${getProcessStatusText(currentTask?.processStatus)}）`" width="700px">
-      <!-- 用 key 强制重新渲染整个弹窗内容，避免 tabs 状态在不同任务间残留 -->
-      <div :key="dialogKey">
-        <el-tabs v-model="activeDialogTab" type="border-card">
-          <!-- 无 Tab 子表单时：保持原来的"审批"tab -->
-          <template v-if="!approvalHasTabSubForms">
-            <el-tab-pane label="审批" name="approval">
-              <!-- 实体数据表单 -->
-              <div v-if="entityData" class="entity-form-section">
-                <template v-if="formConfig && formConfig.fields && formConfig.fields.length > 0">
-                  <FormPreviewLinkage
-                    :form="formConfig"
-                    v-model="entityData"
-                    :readonly="true"
-                    :show-header="false"
-                  />
-                </template>
-                <template v-else>
-                  <el-form :model="entityData" label-width="100px" class="entity-form">
-                    <el-row :gutter="20">
-                      <el-col v-for="(value, key) in entityData" :key="key" :span="12">
-                        <el-form-item :label="key">
-                          <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
-                            <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
-                              <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
-                                <div class="file-info">
-                                  <el-icon><Document /></el-icon>
-                                  <span class="file-name">{{ url.split('/').pop() }}</span>
-                                  <el-tag size="small" type="primary">{{ groupName }}</el-tag>
-                                </div>
-                                <div class="file-actions">
-                                  <el-button type="primary" link size="small" @click="previewFile(url)">
-                                    <el-icon><View /></el-icon> 预览
-                                  </el-button>
-                                  <el-button type="success" link size="small" @click="downloadFile(url)">
-                                    <el-icon><Download /></el-icon> 下载
-                                  </el-button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <div v-else-if="Array.isArray(value)" class="file-list-readonly">
-                            <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
-                              <div class="file-info">
-                                <el-icon><Document /></el-icon>
-                                <span class="file-name">{{ url.split('/').pop() }}</span>
-                              </div>
-                              <div class="file-actions">
-                                <el-button type="primary" link size="small" @click="previewFile(url)">
-                                  <el-icon><View /></el-icon> 预览
-                                </el-button>
-                                <el-button type="success" link size="small" @click="downloadFile(url)">
-                                  <el-icon><Download /></el-icon> 下载
-                                </el-button>
-                              </div>
-                            </div>
-                          </div>
-                          <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
-                            <div class="file-info">
-                              <el-icon><Document /></el-icon>
-                              <span class="file-name">{{ value.split('/').pop() }}</span>
-                            </div>
-                            <div class="file-actions">
-                              <el-button type="primary" link size="small" @click="previewFile(value)">
-                                <el-icon><View /></el-icon> 预览
-                              </el-button>
-                              <el-button type="success" link size="small" @click="downloadFile(value)">
-                                <el-icon><Download /></el-icon> 下载
-                              </el-button>
-                            </div>
-                          </div>
-                          <el-input v-else v-model="entityData[key]" :readonly="true" />
-                        </el-form-item>
-                      </el-col>
-                    </el-row>
-                  </el-form>
-                </template>
-              </div>
-              <el-divider v-if="entityData" />
-              <template v-if="effectiveApprovalConfig.enabled !== false">
-                <div class="section-title">审批意见</div>
-                <el-form :model="approveForm" label-width="80px">
-                  <el-form-item label="审批操作" required>
-                    <el-radio-group v-model="approveForm.action">
-                      <el-radio-button
-                        v-for="option in effectiveApprovalConfig.options"
-                        :key="option.value"
-                        :label="option.value"
-                      >
-                        {{ option.label }}
-                      </el-radio-button>
-                    </el-radio-group>
-                  </el-form-item>
-                  <el-form-item
-                    v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
-                    :label="effectiveApprovalConfig.commentLabel || '审批备注'"
-                  >
-                    <el-input
-                      v-model="approveForm.comment"
-                      type="textarea"
-                      :rows="3"
-                      :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
-                    />
-                  </el-form-item>
-                </el-form>
-              </template>
-            </el-tab-pane>
-          </template>
-
-          <!-- 有 Tab 子表单时：扁平化到外层 tabs，替换审批 tab -->
-          <template v-else>
-            <!-- 基本信息：普通字段 + 审批意见 -->
-            <el-tab-pane label="基本信息" name="basic">
-              <div v-if="entityData" class="entity-form-section">
-                <FormPreviewLinkage
-                  v-if="approvalNormalForm.fields && approvalNormalForm.fields.length > 0"
-                  :form="approvalNormalForm"
-                  v-model="entityData"
-                  :readonly="true"
-                  :show-header="false"
-                  :no-internal-tabs="true"
-                />
-                <el-empty v-else description="暂无字段" />
-              </div>
-              <el-divider v-if="entityData" />
-              <template v-if="effectiveApprovalConfig.enabled !== false">
-                <div class="section-title">审批意见</div>
-                <el-form :model="approveForm" label-width="80px">
-                  <el-form-item label="审批操作" required>
-                    <el-radio-group v-model="approveForm.action">
-                      <el-radio-button
-                        v-for="option in effectiveApprovalConfig.options"
-                        :key="option.value"
-                        :label="option.value"
-                      >
-                        {{ option.label }}
-                      </el-radio-button>
-                    </el-radio-group>
-                  </el-form-item>
-                  <el-form-item
-                    v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
-                    :label="effectiveApprovalConfig.commentLabel || '审批备注'"
-                  >
-                    <el-input
-                      v-model="approveForm.comment"
-                      type="textarea"
-                      :rows="3"
-                      :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
-                    />
-                  </el-form-item>
-                </el-form>
-              </template>
-            </el-tab-pane>
-
-            <!-- 每个 Tab 子表单独立成一个 tab -->
-            <el-tab-pane
-              v-for="(field, idx) in approvalTabSubForms"
-              :key="'approval-subform-' + idx + '-' + (field.id || field.fieldCode || field.fieldKey || '')"
-              :label="field.fieldLabel || field.fieldName"
-              :name="'tab_' + idx"
-            >
-              <div v-if="entityData" class="entity-form-section">
-                <FormFieldRendererLinkage
-                  :field="field"
-                  v-model="entityData[getFieldKey(field)]"
-                  :disabled="true"
-                />
-              </div>
-              <el-empty v-else description="暂无数据" />
-            </el-tab-pane>
-          </template>
-
-          <!-- 流程图 -->
-          <el-tab-pane label="流程图" name="diagram">
-            <div style="height: 400px;">
-              <VueBpmnViewer
-                v-if="activeDialogTab === 'diagram' && bpmnXml && progressData"
-                :key="currentTask?.processInstanceId"
-                :xml="bpmnXml"
-                :progress-data="progressData"
-                style="height: 100%;"
-              />
-              <el-empty v-else description="暂无流程图" />
-            </div>
-          </el-tab-pane>
-
-          <!-- 审批历史 -->
-          <el-tab-pane label="审批历史" name="history">
-            <el-timeline v-if="processHistory.length > 0">
-              <el-timeline-item
-                v-for="(item, index) in processHistory"
-                :key="index"
-                :type="item.type"
-                :timestamp="item.time"
-              >
-                <div class="history-item">
-                  <span class="history-title">{{ item.title }}</span>
-                  <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (item.status === 'TERMINATED' ? 'danger' : 'warning')">
-                    {{ item.status === 'COMPLETED' ? '已完成' : (item.status === 'TERMINATED' ? '已终止' : '进行中') }}
-                  </el-tag>
-                </div>
-                <div class="history-desc">{{ item.description }}</div>
-              </el-timeline-item>
-            </el-timeline>
-            <el-empty v-else description="暂无审批历史" />
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">关闭</el-button>
-        <el-button v-if="activeDialogTab === 'approval' || activeDialogTab === 'basic'" type="primary" @click="submitApprove" :loading="submitLoading">确认</el-button>
-      </template>
-    </el-dialog>
+    <!-- 审批/查看弹窗 -->
+    <EntityApprovalDialog
+      ref="approvalDialogRef"
+      @success="onApprovalSuccess"
+    />
 
     <!-- 转办弹窗 -->
     <el-dialog v-model="transferDialogVisible" title="任务转办" width="400px" :close-on-click-modal="false">
@@ -412,15 +202,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, Check, Share, Timer, Document, View, Download } from '@element-plus/icons-vue'
-import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
-import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
-import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
-import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, terminateProcess, getProcessHistory } from '@/api/processTask'
+import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
+import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
+import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, terminateProcess } from '@/api/processTask'
 import { getUserList } from '@/api/system/user'
-import request from '@/utils/request'
 
 // 统计数据
 const statistics = reactive({
@@ -456,118 +243,7 @@ const total = computed(() => {
 const userOptions = ref([])
 
 // 审批弹窗
-const dialogVisible = ref(false)
-const dialogKey = ref(0)  // 用于强制重新渲染弹窗内容，修复 tabs 状态残留
-const activeDialogTab = ref('approval')
-const submitLoading = ref(false)
-const currentTask = ref(null)
-const approveForm = reactive({
-  action: 'approve',
-  comment: '',
-  transferTo: ''
-})
-const bpmnXml = ref('')
-const processHistory = ref([])
-const progressData = ref({
-  completedNodes: [],
-  activeNodes: [],
-  executedSequenceFlows: [],
-  nodeAssigneeMap: {}
-})
-const entityData = ref(null)
-const formConfig = ref(null)
-const formConfigs = ref([])
-const approvalConfig = ref(null)
-
-// 计算属性：获取当前有效的审批配置（带默认值 fallback）
-const effectiveApprovalConfig = computed(() => {
-  if (approvalConfig.value) {
-    return approvalConfig.value
-  }
-  // 默认配置
-  return {
-    enabled: true,
-    commentLabel: '审批意见',
-    options: [
-      { value: 'approve', label: '通过', type: 'primary', showComment: true },
-      { value: 'reject', label: '驳回', type: 'danger', showComment: true }
-    ]
-  }
-})
-
-// 审批弹窗中是否有 Tab 子表单
-const approvalHasTabSubForms = computed(() => {
-  const fields = formConfig.value?.fields || []
-  return fields.some(f => isTabSubForm(f))
-})
-
-// 审批弹窗中的 Tab 子表单字段
-const approvalTabSubForms = computed(() => {
-  const fields = formConfig.value?.fields || []
-  return fields.filter(f => isTabSubForm(f))
-})
-
-// 审批弹窗中普通字段组成的 form（给 FormPreviewLinkage 用，不含 tab 子表单）
-const approvalNormalForm = computed(() => {
-  const fields = (formConfig.value?.fields || []).filter(f => !isTabSubForm(f))
-  return {
-    ...formConfig.value,
-    fields
-  }
-})
-
-function normalizeRuntimeFormConfigs(progressRes) {
-  if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
-    return progressRes.formConfigs
-  }
-  return progressRes?.formConfig ? [progressRes.formConfig] : []
-}
-
-function mergeRuntimeFormConfigs(configs) {
-  if (!configs || configs.length === 0) return null
-  if (configs.length === 1) return configs[0]
-  const seen = new Set()
-  const fields = []
-  configs.forEach((config, formIndex) => {
-    ;(config.fields || []).forEach((field, fieldIndex) => {
-      const fieldKey = getFieldKey(field) || `${formIndex}_${fieldIndex}`
-      if (seen.has(fieldKey)) return
-      seen.add(fieldKey)
-      fields.push({
-        ...field,
-        id: `${config.formId || config.entityFormId || formIndex}_${field.id || fieldKey}`,
-        sortOrder: formIndex * 10000 + (field.sortOrder || fieldIndex)
-      })
-    })
-  })
-  return {
-    ...configs[0],
-    formName: configs.map(config => config.formName).filter(Boolean).join(' / ') || configs[0].formName,
-    fields
-  }
-}
-
-// 判断是否为 Tab 模式的子表单
-function isTabSubForm(field) {
-  if (!field) return false
-  const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
-  if (field.displayMode === 'tab') return true
-  if (field.componentProps) {
-    try {
-      const compProps = typeof field.componentProps === 'string'
-        ? JSON.parse(field.componentProps)
-        : field.componentProps
-      return compProps.subFormConfig?.displayMode === 'tab'
-    } catch (e) {}
-  }
-  return false
-}
-
-// 获取字段唯一键
-function getFieldKey(field) {
-  return String(field.fieldCode || field.fieldKey || field.fieldId || field.id || '')
-}
+const approvalDialogRef = ref(null)
 
 // 转办弹窗
 const transferDialogVisible = ref(false)
@@ -595,61 +271,6 @@ watch(activeTab, () => {
   else loadStartedList()
 })
 
-// 监听审批弹窗 Tab 切换，切换到流程图时通知组件调整尺寸
-watch(activeDialogTab, (newVal) => {
-  if (newVal === 'diagram' && bpmnXml.value && progressData.value) {
-    // 延迟确保 tab-pane 已显示，再通知流程图调整视口
-    nextTick(() => {
-      setTimeout(() => {
-        // 通过事件总线或直接操作 DOM 触发流程图 resize
-        window.dispatchEvent(new Event('resize'))
-      }, 100)
-    })
-  }
-})
-
-// 弹窗关闭时延迟清空数据，避免关闭动画期间内容闪烁
-watch(dialogVisible, (val) => {
-  if (!val) {
-    setTimeout(() => {
-      bpmnXml.value = ''
-      progressData.value = {
-        completedNodes: [],
-        activeNodes: [],
-        executedSequenceFlows: [],
-        nodeAssigneeMap: {}
-      }
-      entityData.value = null
-      formConfig.value = null
-      formConfigs.value = []
-      approvalConfig.value = null
-      processHistory.value = []
-    }, 300)
-  }
-})
-
-// 获取流程状态标签类型
-function getProcessStatusType(status) {
-  const typeMap = {
-    'RUNNING': 'primary',
-    'COMPLETED': 'success',
-    'SUSPENDED': 'warning',
-    'TERMINATED': 'danger'
-  }
-  return typeMap[status] || 'info'
-}
-
-// 获取流程状态显示文本
-function getProcessStatusText(status) {
-  const textMap = {
-    'RUNNING': '运行中',
-    'COMPLETED': '已完成',
-    'SUSPENDED': '已挂起',
-    'TERMINATED': '已终止'
-  }
-  return textMap[status] || status || '-'
-}
-
 // 格式化日期时间
 function formatDate(dateStr) {
   if (!dateStr) return '-'
@@ -657,21 +278,6 @@ function formatDate(dateStr) {
   if (isNaN(date.getTime())) return dateStr
   const pad = (n) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
-
-// 预览文件
-function previewFile(url) {
-  if (!url) return
-  window.open(url, '_blank')
-}
-
-// 下载文件
-function downloadFile(url) {
-  if (!url) return
-  const a = document.createElement('a')
-  a.href = url
-  a.download = url.split('/').pop() || 'file'
-  a.click()
 }
 
 // 加载统计数据
@@ -740,127 +346,20 @@ async function loadUsers() {
 }
 
 // 审批
-async function handleApprove(row) {
-  dialogKey.value++
-  currentTask.value = row
-  approveForm.action = 'approve'
-  approveForm.comment = ''
-  approveForm.transferTo = ''
-  await loadProcessDetail(row.processInstanceId)
-  // 加载完成后，根据是否有 tab 子表单设置默认页签
-  if (formConfig.value?.fields?.some(f => isTabSubForm(f))) {
-    activeDialogTab.value = 'basic'
-  } else {
-    activeDialogTab.value = 'approval'
-  }
-  dialogVisible.value = true
+function handleApprove(row) {
+  approvalDialogRef.value?.openApprove(row)
 }
 
 // 查看进度
 function viewProgress(row) {
-  dialogKey.value++
-  currentTask.value = row
-  activeDialogTab.value = 'diagram'
-  loadProcessDetail(row.processInstanceId)
-  dialogVisible.value = true
+  approvalDialogRef.value?.openView(row, { defaultTab: 'diagram', startUserName: row.startUserName })
 }
 
-// 加载流程详情
-async function loadProcessDetail(instanceId) {
-  try {
-    // 加载流程进度（包含XML、节点状态等）
-    const progressRes = await request.get(`/process-instance/${instanceId}/progress`)
-    if (progressRes) {
-      bpmnXml.value = progressRes.bpmnXml || ''
-      progressData.value = {
-        completedNodes: progressRes.completedNodes || [],
-        activeNodes: progressRes.activeNodes || [],
-        terminatedNodes: progressRes.terminatedNodes || [],
-        executedSequenceFlows: progressRes.executedSequenceFlows || [],
-        nodeAssigneeMap: progressRes.nodeAssigneeMap || {},
-        status: progressRes.status
-      }
-      // 保存实体数据和表单配置
-      entityData.value = progressRes.entityData || null
-      // 状态编码转中文名称
-      if (entityData.value && entityData.value.status) {
-        const statusMap = {
-          'DRAFT': '草稿',
-          'PENDING': '审批中',
-          'APPROVED': '已通过',
-          'REJECTED': '已驳回',
-          'COMPLETED': '已完成',
-          'WITHDRAWN': '已撤回'
-        }
-        entityData.value.status = statusMap[entityData.value.status] || entityData.value.status
-      }
-      formConfigs.value = normalizeRuntimeFormConfigs(progressRes)
-      formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)
-      approvalConfig.value = progressRes.approvalConfig || null
-      // 同步审批操作默认值为第一个选项
-      const config = progressRes.approvalConfig
-      if (config && Array.isArray(config.options) && config.options.length > 0) {
-        const firstOption = config.options[0]
-        if (firstOption && firstOption.value) {
-          approveForm.action = firstOption.value
-        }
-      }
-      // 更新当前任务的状态和流程名称
-      if (currentTask.value) {
-        currentTask.value.processStatus = progressRes.status
-        if (progressRes.processName) {
-          currentTask.value.processName = progressRes.processName
-        }
-      }
-    }
-    
-    // 加载历史 - 使用 nodeHistory 如果存在
-    if (progressRes?.nodeHistory && progressRes.nodeHistory.length > 0) {
-      processHistory.value = progressRes.nodeHistory.map(node => {
-        const isStartNode = node.nodeId?.toLowerCase().includes('start') || node.nodeName === '开始'
-        // 判断操作类型
-        let actionText = ''
-        if (node.action === 'APPROVED') actionText = '通过'
-        else if (node.action === 'REJECTED') actionText = '驳回'
-        else if (node.action === 'TRANSFERRED') actionText = '转办'
-        else if (node.action === 'TERMINATED') actionText = '终止'
-        else if (node.status === 'COMPLETED') actionText = '完成'
-        else if (node.status === 'TERMINATED') actionText = '终止'
-        else actionText = '进行中'
-
-        const commentText = node.comment ? `（${node.comment}）` : ''
-        return {
-          title: node.nodeName || node.nodeId,
-          description: isStartNode
-            ? `发起人: ${node.assignee || currentTask.value?.startUserName || 'admin'}`
-            : (node.assignee ? `执行人: ${node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
-          time: node.endTime || node.startTime,
-          type: node.action === 'TRANSFERRED' ? 'warning' : (node.status === 'TERMINATED' ? 'danger' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
-          status: node.status,
-          action: node.action
-        }
-      }).reverse()
-    } else {
-      // 回退到单独查询历史
-      const historyRes = await getProcessHistory(instanceId)
-      processHistory.value = (historyRes || []).map(h => {
-        const isStart = h.action === '发起' || h.taskName?.toLowerCase().includes('start')
-        const isTransfer = h.result === 'transfer' || (h.comment && h.comment.includes('转办'))
-        return {
-          title: h.taskName || '流程节点',
-          description: isStart
-            ? `发起人: ${h.assignee || currentTask.value?.startUserName || 'admin'}`
-            : `${h.assignee || '系统'} ${isTransfer ? '转办' : (h.action || '处理')}`,
-          time: h.endTime || h.startTime,
-          type: isStart ? 'primary' : (isTransfer ? 'warning' : (h.action === '通过' ? 'success' : 'info')),
-          status: h.endTime ? 'COMPLETED' : 'ACTIVE',
-          action: h.result
-        }
-      }).reverse()
-    }
-  } catch (e) {
-    console.error('加载流程详情失败:', e)
-  }
+// 审批成功回调
+function onApprovalSuccess() {
+  loadTodoList()
+  loadDoneList()
+  loadStatistics()
 }
 
 // 打开转办弹窗
@@ -895,32 +394,6 @@ async function submitTransfer() {
     ElMessage.error('转办失败')
   } finally {
     transferLoading.value = false
-  }
-}
-
-// 提交审批
-async function submitApprove() {
-  submitLoading.value = true
-  try {
-    const selectedOption = effectiveApprovalConfig.value.options?.find(
-      o => o.value === approveForm.action
-    )
-    await completeTask({
-      taskId: currentTask.value.taskId,
-      action: approveForm.action,
-      actionLabel: selectedOption?.label,
-      comment: approveForm.comment
-    })
-    ElMessage.success('审批成功')
-    dialogVisible.value = false
-    loadTodoList()
-    loadDoneList()
-    loadStatistics()
-  } catch (e) {
-    console.error('审批失败:', e)
-    ElMessage.error('审批失败')
-  } finally {
-    submitLoading.value = false
   }
 }
 
@@ -1049,118 +522,5 @@ function handleCurrentChange(val) {
 .pagination {
   margin-top: 20px;
   justify-content: flex-end;
-}
-
-/* 时间线 */
-.history-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.history-title {
-  font-weight: 600;
-  color: #303133;
-}
-
-.history-desc {
-  color: #909399;
-  font-size: 13px;
-}
-
-.timeline-title {
-  font-weight: bold;
-  color: #303133;
-}
-
-.timeline-desc {
-  color: #606266;
-  font-size: 14px;
-  margin-top: 5px;
-}
-
-/* 实体表单样式 */
-.entity-form-section {
-  margin: 16px 0;
-}
-
-.section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 16px;
-  padding-left: 12px;
-  border-left: 4px solid #409eff;
-}
-
-.entity-form {
-  background: #fafbfc;
-  padding: 16px;
-  border-radius: 8px;
-}
-
-.entity-form .el-form-item {
-  margin-bottom: 16px;
-}
-
-.entity-form .el-input__wrapper,
-.entity-form .el-input-number,
-.entity-form .el-select {
-  width: 100%;
-}
-
-/* 文件只读展示样式 */
-.file-display-readonly {
-  width: 100%;
-}
-
-.file-list-readonly {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.file-group-readonly {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
-}
-
-.file-item-readonly {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #fff;
-  border-radius: 4px;
-  border: 1px solid #ebeef5;
-}
-
-.file-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.file-info .el-icon {
-  color: #409eff;
-}
-
-.file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 220px;
-}
-
-.file-actions {
-  display: flex;
-  gap: 4px;
 }
 </style>

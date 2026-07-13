@@ -11,6 +11,7 @@ import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.service.DynamicTableService;
+import com.workflow.service.EntityCodeGeneratorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ public class EntityRelationRuntimeService {
     private final DynamicTableService dynamicTableService;
     private final ObjectMapper objectMapper;
     private final EntityRuntimeRecordMapper recordMapper;
+    private final EntityCodeGeneratorService codeGeneratorService;
 
     public List<EntityRelation> loadRelations(EntityDefinition definition) {
         if (definition == null || definition.getId() == null) {
@@ -141,6 +143,11 @@ public class EntityRelationRuntimeService {
             if (!StringUtils.hasText(fieldCode) || !relationData.containsKey(fieldCode)) {
                 continue;
             }
+            Object relationValue = relationData.get(fieldCode);
+            if (relationValue == null) {
+                // 前端未提供该关系字段数据时，跳过处理，避免误删已有子表数据
+                continue;
+            }
 
             String pathKey = relation.getParentEntityCode() + ":" + fieldCode;
             if (!path.add(pathKey)) {
@@ -158,7 +165,7 @@ public class EntityRelationRuntimeService {
             ensureEntityTable(childDefinition);
             String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
             List<Map<String, Object>> existingRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
-            List<Map<String, Object>> incomingRows = toRelationRows(relationData.get(fieldCode), relation.getRelationType());
+            List<Map<String, Object>> incomingRows = toRelationRows(relationValue, relation.getRelationType());
             Set<String> activeIds = new HashSet<>();
 
             List<EntityRelation> childRelations = loadRelations(childDefinition);
@@ -172,11 +179,23 @@ public class EntityRelationRuntimeService {
                 normalizeJsonValues(childData);
 
                 String childId = stringValue(childData.get("id"));
-                if (!StringUtils.hasText(childId)) {
+                boolean isNewChild = !StringUtils.hasText(childId);
+                if (isNewChild) {
                     childId = generateId();
                     childData.put("id", childId);
                     childData.put("create_by", UserContext.getUserId());
                     childData.put("create_time", LocalDateTime.now());
+                }
+
+                // 新增子行未填写编码时，自动生成编码（与主表行为保持一致，未配置规则时会自动创建默认规则）
+                if (isNewChild) {
+                    Object existingCode = childData.get("code");
+                    if (existingCode == null || existingCode.toString().trim().isEmpty()) {
+                        childData.put("code", codeGeneratorService.generateCode(childDefinition.getEntityCode()));
+                    }
+                }
+
+                if (isNewChild) {
                     dynamicMapper.insert(childTableName, childData);
                 } else {
                     dynamicMapper.update(childTableName, childData);

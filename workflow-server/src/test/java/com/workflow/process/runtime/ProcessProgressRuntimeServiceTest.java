@@ -145,6 +145,7 @@ class ProcessProgressRuntimeServiceTest {
             when(historyService.createHistoricVariableInstanceQuery()).thenReturn(variableQuery);
             when(variableQuery.taskId("hist-task-1")).thenReturn(variableQuery);
             when(variableQuery.executionId("exec-1")).thenReturn(variableQuery);
+            when(variableQuery.processInstanceId("pi-1")).thenReturn(variableQuery);
             when(variableQuery.variableName("action")).thenReturn(variableQuery);
             when(variableQuery.variableName("actionLabel")).thenReturn(variableQuery);
             when(variableQuery.list()).thenReturn(List.of());

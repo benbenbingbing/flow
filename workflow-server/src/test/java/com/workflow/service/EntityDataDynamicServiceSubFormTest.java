@@ -62,6 +62,7 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals("明细一", childData.get("itemName"));
         assertEquals(dto.getId(), childData.get("parentId"));
         assertEquals(0, childData.get("deleted"));
+        assertEquals("C001", childData.get("code"));
     }
 
     @Test
@@ -93,6 +94,7 @@ class EntityDataDynamicServiceSubFormTest {
         Map<String, Object> taxData = taxCaptor.getValue();
         assertEquals("税一", taxData.get("taxName"));
         assertEquals(childId, taxData.get("childId"));
+        assertEquals("T001", taxData.get("code"));
     }
 
     @Test
@@ -205,6 +207,8 @@ class EntityDataDynamicServiceSubFormTest {
             when(dynamicTableService.tableExists("child")).thenReturn(true);
             when(dynamicTableService.tableExists("tax")).thenReturn(true);
             when(codeGeneratorService.generateCode("parent")).thenReturn("P001");
+            when(codeGeneratorService.generateCode("child")).thenReturn("C001");
+            when(codeGeneratorService.generateCode("tax")).thenReturn("T001");
             when(entityStatusMapper.findByCategory("parent", "NEW")).thenReturn(List.of());
             when(snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot("parent"));
         }
@@ -214,7 +218,7 @@ class EntityDataDynamicServiceSubFormTest {
             EntityRuntimeRecordMapper recordMapper = new EntityRuntimeRecordMapper(objectMapper);
             EntityRelationRuntimeService relationRuntimeService = new EntityRelationRuntimeService(
                     dynamicMapper, definitionMapper, fieldMapper, relationMapper,
-                    dynamicTableService, objectMapper, recordMapper);
+                    dynamicTableService, objectMapper, recordMapper, codeGeneratorService);
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
                     dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,

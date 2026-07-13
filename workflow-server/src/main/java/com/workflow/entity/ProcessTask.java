@@ -68,7 +68,10 @@ public class ProcessTask {
     
     /** 操作: approve/reject/transfer/skip */
     private String action;
-    
+
+    /** 操作显示文本，如"同意，需要会签" */
+    private String actionLabel;
+
     /** 审批意见 */
     private String comment;
     

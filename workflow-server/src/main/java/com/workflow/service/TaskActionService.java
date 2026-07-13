@@ -161,7 +161,7 @@ public class TaskActionService {
                 }
 
                 taskService.complete(taskId, customVars);
-                processTaskService.completeTask(taskId, normalizedAction, comment);
+                processTaskService.completeTask(taskId, normalizedAction, comment, actionLabel);
 
                 log.info("任务 {} 已通过自定义操作完成: action={}, user={}", taskId, normalizedAction, userId);
                 break;
@@ -235,7 +235,7 @@ public class TaskActionService {
 
         // 完成任务
         taskService.complete(taskId, vars);
-        processTaskService.completeTask(taskId, "approve", comment);
+        processTaskService.completeTask(taskId, "approve", comment, actionLabel);
         
         log.info("任务 {} 已通过，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
     }
@@ -275,7 +275,7 @@ public class TaskActionService {
 
         // 完成任务
         taskService.complete(taskId, vars);
-        processTaskService.completeTask(taskId, "reject", comment);
+        processTaskService.completeTask(taskId, "reject", comment, actionLabel);
         
         log.info("任务 {} 已驳回，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
     }

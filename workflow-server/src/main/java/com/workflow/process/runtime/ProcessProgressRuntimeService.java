@@ -302,6 +302,7 @@ public class ProcessProgressRuntimeService {
                                 var localTask = processTaskMapper.selectByTaskId(h.getTaskId());
                                 if (localTask != null && localTask.getAction() != null) {
                                     action = localTask.getAction();
+                                    actionLabel = localTask.getActionLabel();
                                     if (localTask.getComment() != null) {
                                         dto.setComment(localTask.getComment());
                                     }
@@ -313,11 +314,21 @@ public class ProcessProgressRuntimeService {
                                             .singleResult();
                                     action = actionVar != null ? (String) actionVar.getValue() : null;
                                 }
-                                var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                                        .taskId(h.getTaskId())
-                                        .variableName("actionLabel")
-                                        .singleResult();
-                                actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+                                if (actionLabel == null) {
+                                    var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
+                                            .taskId(h.getTaskId())
+                                            .variableName("actionLabel")
+                                            .singleResult();
+                                    actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+                                }
+                                // 兼容旧数据：修复前 actionLabel 曾作为流程实例变量保存
+                                if (actionLabel == null) {
+                                    var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
+                                            .processInstanceId(processInstanceId)
+                                            .variableName("actionLabel")
+                                            .singleResult();
+                                    actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+                                }
                                 dto.setAction(normalizeAction(action));
                                 dto.setActionLabel(actionLabel);
                             }
@@ -480,6 +491,7 @@ public class ProcessProgressRuntimeService {
             var localTask = processTaskMapper.selectByTaskId(task.getId());
             if (localTask != null) {
                 action = localTask.getAction();
+                actionLabel = localTask.getActionLabel();
                 comment = localTask.getComment();
             }
             if (action == null) {
@@ -487,9 +499,17 @@ public class ProcessProgressRuntimeService {
                         .taskId(task.getId()).variableName("action").singleResult();
                 action = actionVar != null ? (String) actionVar.getValue() : null;
             }
-            var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                    .taskId(task.getId()).variableName("actionLabel").singleResult();
-            actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+            if (actionLabel == null) {
+                var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
+                        .taskId(task.getId()).variableName("actionLabel").singleResult();
+                actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+            }
+            // 兼容旧数据：修复前 actionLabel 曾作为流程实例变量保存
+            if (actionLabel == null) {
+                var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
+                        .processInstanceId(processInstanceId).variableName("actionLabel").singleResult();
+                actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
+            }
             info.setAction(normalizeAction(action));
             info.setActionLabel(actionLabel);
             info.setComment(comment);

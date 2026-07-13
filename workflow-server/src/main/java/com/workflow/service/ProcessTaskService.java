@@ -329,19 +329,19 @@ public class ProcessTaskService {
      * 当任务办理完成时调用
      */
     @Transactional(rollbackFor = Exception.class)
-    public void completeTask(String taskId, String action, String comment) {
+    public void completeTask(String taskId, String action, String comment, String actionLabel) {
         ProcessTask task = taskMapper.selectByTaskId(taskId);
         if (task == null) {
             log.warn("待办任务不存在: taskId={}", taskId);
             return;
         }
-        
+
         // 计算处理时长
         Long duration = null;
         if (task.getStartTime() != null) {
             duration = java.time.Duration.between(task.getStartTime(), LocalDateTime.now()).toMillis();
         }
-        
+
         // 更新状态
         String status = ProcessTask.STATUS_DONE;
         if ("transfer".equals(action)) {
@@ -349,18 +349,29 @@ public class ProcessTaskService {
         } else if ("skip".equals(action)) {
             status = ProcessTask.STATUS_SKIP;
         }
-        
+
         task.setStatus(status);
         task.setAction(action);
+        if (actionLabel != null && !actionLabel.isBlank()) {
+            task.setActionLabel(actionLabel);
+        }
         task.setComment(comment);
         task.setEndTime(LocalDateTime.now());
         task.setDuration(duration);
         task.setUpdateTime(LocalDateTime.now());
-        
+
         taskMapper.updateById(task);
-        
-        log.info("完成流程待办: id={}, nodeName={}, action={}, duration={}ms", 
-                task.getId(), task.getNodeName(), action, duration);
+
+        log.info("完成流程待办: id={}, nodeName={}, action={}, actionLabel={}, duration={}ms",
+                task.getId(), task.getNodeName(), action, actionLabel, duration);
+    }
+
+    /**
+     * 完成流程待办（兼容旧调用，不保存操作显示文本）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void completeTask(String taskId, String action, String comment) {
+        completeTask(taskId, action, comment, null);
     }
     
     /**

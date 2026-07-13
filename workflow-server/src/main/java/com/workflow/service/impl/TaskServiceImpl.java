@@ -249,7 +249,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 }
                 
                 // 更新本地待办状态
-                processTaskService.completeTask(taskId, action, comment);
+                processTaskService.completeTask(taskId, action, comment, actionLabel);
                 
                 // 同步创建下一节点的待办（如果不是多实例或已是最后一人）
                 processTaskService.syncTasksFromFlowable(processInstanceId);
@@ -276,7 +276,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
                 flowableTaskService.complete(taskId);
                 
                 // 更新本地待办状态
-                processTaskService.completeTask(taskId, action, comment);
+                processTaskService.completeTask(taskId, action, comment, actionLabel);
                 
                 // 驳回时结束该节点的其他待办
                 completeOtherTasksInSameNode(processInstanceId, taskDefinitionKey, taskId, action, comment);
@@ -318,7 +318,7 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
 
                 flowableTaskService.complete(taskId);
 
-                processTaskService.completeTask(taskId, action, comment);
+                processTaskService.completeTask(taskId, action, comment, actionLabel);
                 processTaskService.syncTasksFromFlowable(processInstanceId);
 
                 log.info("任务审批完成（自定义操作）: taskId={}, action={}, user={}", taskId, action, CURRENT_USER);
