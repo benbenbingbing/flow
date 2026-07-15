@@ -752,7 +752,8 @@ public class ProcessProgressRuntimeService {
                         }
                         com.workflow.entity.EntityForm entityForm = entityFormService.getById(nodeForm.getFormId());
                         if (entityForm != null) {
-                            Boolean nodeFormReadonly = nodeForm.getIsReadonly() != null && nodeForm.getIsReadonly() == 1;
+                            Boolean nodeFormReadonly =
+                                    Integer.valueOf(1).equals(nodeForm.getIsReadonly()) ? Boolean.TRUE : null;
                             formConfigs.add(buildProgressFormConfig(entityForm, nodeFormReadonly));
                             log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
                                 targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
@@ -794,6 +795,7 @@ public class ProcessProgressRuntimeService {
         formConfig.setFormName(entityForm.getFormName());
         formConfig.setFormKey(entityForm.getFormKey());
         formConfig.setLayoutType(entityForm.getLayoutType());
+        formConfig.setIsReadonly(Boolean.TRUE.equals(readonlyOverride));
 
         if (entityForm.getFields() != null) {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();

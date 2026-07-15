@@ -46,6 +46,9 @@ public class EntityFlowStatusService {
             mapping.setProcessConfigId(processConfigId);
             mapping.setProcessKey(processKey);
             mapping.setEntityCode(entityCode);
+            if (mapping.getEntityStatus() == null || mapping.getEntityStatus().isBlank()) {
+                mapping.setEntityStatus(mapping.getEntityStatusCode());
+            }
             mapping.setDeleted(0);
             statusMappingMapper.insert(mapping);
         }

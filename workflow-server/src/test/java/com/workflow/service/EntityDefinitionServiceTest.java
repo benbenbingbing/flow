@@ -5,11 +5,13 @@ import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityFieldDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
+import com.workflow.entity.EntityPublishHistory;
 import com.workflow.entity.EntityRelation;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
+import com.workflow.mapper.EntityPublishHistoryMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +45,9 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private EntityRelationMapper relationMapper;
+
+    @Mock
+    private EntityPublishHistoryMapper publishHistoryMapper;
 
     @Mock
     private ProcessDefinitionConfigMapper processMapper;
@@ -378,5 +383,22 @@ public class EntityDefinitionServiceTest {
         assertNotNull(result);
         assertEquals("proc-2", result.getProcessDefinitionId());
         assertTrue(result.getEnableProcess());
+    }
+
+    @Test
+    void testBindProcessUpdatesLatestPublishedSnapshot() {
+        EntityPublishHistory history = new EntityPublishHistory();
+        history.setId("history-1");
+        history.setEntityId("1");
+        history.setProcessDefinitionId("proc-1");
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(publishHistoryMapper.findLatestByEntityId("1")).thenReturn(history);
+
+        entityService.bindProcess("1", "proc-2");
+
+        ArgumentCaptor<EntityPublishHistory> captor = ArgumentCaptor.forClass(EntityPublishHistory.class);
+        verify(publishHistoryMapper).updateById(captor.capture());
+        assertEquals("proc-2", captor.getValue().getProcessDefinitionId());
     }
 }

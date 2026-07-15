@@ -1,0 +1,99 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "codex_flow_20260715023233_l7krp",
+  "entityCode": "codex_entity_20260715023233_l7krp",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "user": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2077219742590828546",
+        "processKey": "codex_flow_20260715023233_l7krp",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2077219742590828546",
+        "processKey": "codex_flow_20260715023233_l7krp",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2077219749540790273",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077219749565956098",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077219749578539010",
+          "nodeId": "Task_Admin_Review",
+          "nodeName": "Codex管理员审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2077219749607899137",
+              "assigneeType": "USER",
+              "assigneeValue": "admin",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2077219749905694721",
+        "entityCode": "codex_entity_20260715023233_l7krp",
+        "status": null
+      }
+    },
+    {
+      "name": "publishEntity",
+      "data": {
+        "id": "2077219749905694721",
+        "status": "PUBLISHED"
+      }
+    },
+    {
+      "name": "bindProcess",
+      "data": {
+        "entityId": "2077219749905694721",
+        "processDefinitionId": "2077219742590828546",
+        "processName": null,
+        "enableProcess": true
+      }
+    }
+  ],
+  "error": "Error: POST /entity-data failed: HTTP 200, body={\"code\":500,\"message\":\"实体编码已存在，请更换其他编码\",\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-closure.mjs:36:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-closure.mjs:114:17)"
+}

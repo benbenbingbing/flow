@@ -25,6 +25,18 @@ public class GlobalExceptionHandler {
         
         String message = e.getMessage();
         if (message != null) {
+            if (message.contains("Data too long for column")) {
+                int start = message.indexOf("column '");
+                if (start >= 0) {
+                    int fieldStart = start + 8;
+                    int fieldEnd = message.indexOf("'", fieldStart);
+                    if (fieldEnd > fieldStart) {
+                        String fieldName = message.substring(fieldStart, fieldEnd);
+                        return ApiResponse.error("字段 '" + fieldName + "' 内容过长，请缩短后重试");
+                    }
+                }
+                return ApiResponse.error("字段内容过长，请缩短后重试");
+            }
             // 处理没有默认值的字段错误
             if (message.contains("doesn't have a default value")) {
                 int start = message.indexOf("Field '");
@@ -52,15 +64,6 @@ public class GlobalExceptionHandler {
                     }
                     return ApiResponse.error("数据重复: 值 '" + duplicateValue + "' 在字段 '" + keyName + "' 中已存在");
                 }
-            }
-            if (message.contains("entity_code")) {
-                return ApiResponse.error("实体编码已存在，请更换其他编码");
-            }
-            if (message.contains("process_key")) {
-                return ApiResponse.error("流程标识已存在，请更换其他标识");
-            }
-            if (message.contains("field_code")) {
-                return ApiResponse.error("字段编码已存在，请更换其他编码");
             }
         }
         

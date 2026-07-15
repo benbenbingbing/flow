@@ -11,6 +11,7 @@ import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
+import com.workflow.mapper.EntityPublishHistoryMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class EntityDefinitionService {
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
+    private final EntityPublishHistoryMapper publishHistoryMapper;
     private final ProcessDefinitionConfigMapper processMapper;
     private final EntityDataDynamicMapper entityDataDynamicMapper;
     private final DynamicTableService dynamicTableService;
@@ -539,6 +541,13 @@ public class EntityDefinitionService {
         entity.setProcessDefinitionId(processId);
         entity.setEnableProcess(true);
         entityMapper.updateById(entity);
+
+        EntityPublishHistory latestHistory = publishHistoryMapper.findLatestByEntityId(entityId);
+        if (latestHistory != null) {
+            latestHistory.setProcessDefinitionId(processId);
+            publishHistoryMapper.updateById(latestHistory);
+        }
+
         return convertToDTO(entity);
     }
 

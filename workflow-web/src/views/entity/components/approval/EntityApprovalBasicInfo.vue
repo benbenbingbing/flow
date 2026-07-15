@@ -5,7 +5,7 @@
         :form="approvalNormalForm"
         :model-value="entityData"
         @update:model-value="(val) => emit('update:entityData', val)"
-        :readonly="true"
+        :readonly="formReadonly"
         :show-header="false"
         :no-internal-tabs="true"
       />
@@ -89,6 +89,7 @@ const props = defineProps<{
   approvalNormalForm: any
   effectiveApprovalConfig: any
   isViewMode: boolean
+  formReadonly: boolean
 }>()
 
 const approveForm = defineModel<any>('approveForm', { required: true })

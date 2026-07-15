@@ -59,9 +59,19 @@ public class EntityFlowStatusMapping {
     private String targetNodeName;
     
     /**
+     * 实体数据状态值（兼容旧表结构中的必填字段）
+     */
+    private String entityStatus;
+
+    /**
      * 实体数据状态编码（关联entity_status表）
      */
     private String entityStatusCode;
+
+    /**
+     * 状态分类
+     */
+    private String statusCategory;
     
     /**
      * 条件表达式

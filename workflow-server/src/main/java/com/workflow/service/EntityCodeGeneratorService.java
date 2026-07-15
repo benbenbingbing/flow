@@ -201,6 +201,13 @@ public class EntityCodeGeneratorService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveRule(EntityCodeRule rule) {
+        if (rule == null || rule.getEntityCode() == null || rule.getEntityCode().isBlank()) {
+            throw new RuntimeException("实体编码不能为空");
+        }
+        if (rule.getPrefix() != null && rule.getPrefix().length() > EntityCodeRule.MAX_PREFIX_LENGTH) {
+            throw new RuntimeException("编码前缀长度不能超过" + EntityCodeRule.MAX_PREFIX_LENGTH + "个字符");
+        }
+
         // 生成示例
         rule.setExample(previewCode(rule));
         

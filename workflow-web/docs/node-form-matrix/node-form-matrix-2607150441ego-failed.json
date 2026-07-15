@@ -1,0 +1,107 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "form_matrix_2607150441ego",
+  "processName": "节点表单矩阵2607150441ego",
+  "entityCode": "form_entity_2607150441ego",
+  "entityName": "节点表单实体2607150441ego",
+  "stopAt": "",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "username": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2077252315860996097",
+        "fields": [
+          {
+            "id": "2077252315886161921",
+            "code": "name"
+          },
+          {
+            "id": "2077252315902939137",
+            "code": "code"
+          },
+          {
+            "id": "2077252315919716353",
+            "code": "status"
+          },
+          {
+            "id": "2077252315932299266",
+            "code": "processInstanceId"
+          },
+          {
+            "id": "2077252315936493569",
+            "code": "processStartTime"
+          },
+          {
+            "id": "2077252315953270785",
+            "code": "processEndTime"
+          },
+          {
+            "id": "2077252315965853698",
+            "code": "submitterId"
+          },
+          {
+            "id": "2077252315978436609",
+            "code": "submitterName"
+          },
+          {
+            "id": "2077252315986825217",
+            "code": "deptId"
+          },
+          {
+            "id": "2077252315999408130",
+            "code": "amount"
+          },
+          {
+            "id": "2077252316007796738",
+            "code": "lockedNote"
+          },
+          {
+            "id": "2077252316020379649",
+            "code": "defaultMemo"
+          },
+          {
+            "id": "2077252316037156866",
+            "code": "finalNote"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createForms",
+      "data": {
+        "defaultForm": {
+          "id": "2077252316636942338",
+          "name": "默认回退表单"
+        },
+        "formA": {
+          "id": "2077252316712439810",
+          "name": "首节点混合读写表单"
+        },
+        "formC": {
+          "id": "2077252316771160065",
+          "name": "末节点专属表单"
+        }
+      }
+    },
+    {
+      "name": "createPublishBindProcess",
+      "data": {
+        "processId": "2077252316842463234",
+        "processKey": "form_matrix_2607150441ego"
+      }
+    },
+    {
+      "name": "publishedNodeFormBindings",
+      "data": []
+    }
+  ],
+  "error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok(bindings.some(binding => binding.nodeId === 'Task_Form_A' && binding.formId === formA.id))\n\n    at main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-node-forms.mjs:226:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)",
+  "conclusion": "FAIL"
+}

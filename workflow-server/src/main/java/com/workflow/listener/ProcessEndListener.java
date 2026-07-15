@@ -75,10 +75,14 @@ public class ProcessEndListener implements FlowableEventListener {
 
                 // 根据结束类型确定状态分类
                 String statusCategory = isTerminated ? "TERMINATED" : "COMPLETED";
-                String statusCode = getEntityStatusCode(entityCode, statusCategory);
+                String tableName = dynamicTableService.getTableName(entityCode);
+                Map<String, Object> entityData = dynamicMapper.selectById(tableName, entityDataId);
+                String currentStatus = entityData != null && entityData.get("status") != null
+                        ? String.valueOf(entityData.get("status"))
+                        : null;
+                String statusCode = resolveEndStatusCode(entityCode, statusCategory, currentStatus);
 
                 // 更新实体数据
-                String tableName = dynamicTableService.getTableName(entityCode);
                 Map<String, Object> updateData = new HashMap<>();
                 updateData.put("id", entityDataId);
                 updateData.put("process_end_time", LocalDateTime.now());
@@ -113,6 +117,20 @@ public class ProcessEndListener implements FlowableEventListener {
         }
         // 兜底默认值
         return "TERMINATED".equals(category) ? "TERMINATED" : "APPROVED";
+    }
+
+    private String resolveEndStatusCode(String entityCode, String category, String currentStatus) {
+        if (currentStatus != null && !currentStatus.isBlank()) {
+            EntityStatus currentStatusDefinition = entityStatusMapper.findByEntityAndCode(entityCode, currentStatus);
+            if (shouldPreserveStatus(currentStatusDefinition, category)) {
+                return currentStatus;
+            }
+        }
+        return getEntityStatusCode(entityCode, category);
+    }
+
+    static boolean shouldPreserveStatus(EntityStatus status, String endCategory) {
+        return status != null && endCategory != null && endCategory.equals(status.getStatusCategory());
     }
 
     /**

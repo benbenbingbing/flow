@@ -1,0 +1,122 @@
+[
+  {
+    "name": "01-login",
+    "route": "/login",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/01-login.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "02-home",
+    "route": "/home",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/02-home.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "03-entity",
+    "route": "/entity",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/03-entity.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "04-process",
+    "route": "/process",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/04-process.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "05-project-list",
+    "route": "/entity/list/project_nitiation",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/05-project-list.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "06-req-list",
+    "route": "/entity/list/req01",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/06-req-list.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "07-user",
+    "route": "/system/user",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/07-user.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "08-role",
+    "route": "/system/role",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/08-role.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "09-group",
+    "route": "/system/group",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/09-group.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "10-org",
+    "route": "/system/org",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/10-org.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "11-menu",
+    "route": "/system/menu",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/11-menu.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "12-dict",
+    "route": "/system/dict",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/12-dict.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "13-dev-guide",
+    "route": "/system/dev-guide",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/13-dev-guide.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "14-custom-list-guide",
+    "route": "/system/custom-list-guide",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/14-custom-list-guide.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  },
+  {
+    "name": "15-custom-form-guide",
+    "route": "/system/custom-form-guide",
+    "file": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/15-custom-form-guide.png",
+    "missing": [],
+    "messages": [],
+    "errors": []
+  }
+]

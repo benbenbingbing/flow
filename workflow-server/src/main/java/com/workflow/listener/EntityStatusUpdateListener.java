@@ -1,14 +1,15 @@
 package com.workflow.listener;
 
-import com.workflow.entity.EntityData;
 import com.workflow.entity.EntityFlowStatusMapping;
-import com.workflow.mapper.EntityDataMapper;
+import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.entity.ProcessDefinitionConfig;
+import com.workflow.service.DynamicTableService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
+import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
@@ -17,6 +18,8 @@ import org.flowable.task.service.impl.persistence.entity.TaskEntity;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 流程任务完成监听器
@@ -28,13 +31,16 @@ import java.util.List;
 public class EntityStatusUpdateListener implements FlowableEventListener {
     
     private final RuntimeService runtimeService;
-    private final EntityDataMapper entityDataMapper;
+    private final EntityDataDynamicMapper entityDataDynamicMapper;
+    private final DynamicTableService dynamicTableService;
     private final EntityFlowStatusMappingMapper statusMappingMapper;
     private final ProcessDefinitionConfigMapper processConfigMapper;
     
     @Override
     public void onEvent(FlowableEvent event) {
-        if (!(event instanceof FlowableEntityEventImpl)) {
+        if (event == null
+                || event.getType() != FlowableEngineEventType.TASK_COMPLETED
+                || !(event instanceof FlowableEntityEventImpl)) {
             return;
         }
         
@@ -105,16 +111,21 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
                 }
                 
                 // 更新实体数据状态
-                EntityData entityData = entityDataMapper.selectById(entityDataId);
+                String tableName = dynamicTableService.getTableName(entityCode);
+                Map<String, Object> entityData = entityDataDynamicMapper.selectById(tableName, entityDataId);
                 if (entityData != null) {
-                    String oldStatus = entityData.getStatus();
+                    String oldStatus = entityData.get("status") != null
+                            ? String.valueOf(entityData.get("status"))
+                            : null;
                     
                     // 获取新状态编码
                     String newStatusCode = mapping.getEntityStatusCode();
                     String newStatus = parseStatus(newStatusCode);
                     if (newStatus != null && !newStatus.equals(oldStatus)) {
-                        entityData.setStatus(newStatus);
-                        entityDataMapper.updateById(entityData);
+                        Map<String, Object> updateData = new HashMap<>();
+                        updateData.put("id", entityDataId);
+                        updateData.put("status", newStatus);
+                        entityDataDynamicMapper.update(tableName, updateData);
                         
                         log.info("实体数据状态已更新: entityDataId={}, fromStatus={}, toStatus={}, processNode={}, sourceNode={}, targetNode={}",
                                 entityDataId, oldStatus, newStatus, taskDefinitionKey, 

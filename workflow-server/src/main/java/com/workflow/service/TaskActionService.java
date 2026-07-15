@@ -44,6 +44,7 @@ public class TaskActionService {
     private final EntityDataMapper entityDataMapper;
     private final com.workflow.mapper.ProcessOperationLogMapper operationLogMapper;
     private final SysUserService sysUserService;
+    private final NodeFormSubmissionService nodeFormSubmissionService;
 
     /**
      * 完成任务
@@ -57,6 +58,12 @@ public class TaskActionService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void completeTask(String taskId, String userId, String action, String comment, String transferTo, String actionLabel) {
+        completeTask(taskId, userId, action, comment, transferTo, actionLabel, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void completeTask(String taskId, String userId, String action, String comment, String transferTo,
+                             String actionLabel, Map<String, Object> formData) {
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -78,6 +85,8 @@ public class TaskActionService {
         if (assignee == null || !assignee.equals(userId)) {
             taskService.setAssignee(taskId, userId);
         }
+
+        nodeFormSubmissionService.applyEditableData(task, formData);
 
         // 检查是否是多实例任务（会签/或签）
         boolean isMultiInstance = isMultiInstanceTask(task);
@@ -502,6 +511,10 @@ public class TaskActionService {
         // 获取任务评论
         List<org.flowable.engine.task.Comment> comments = taskService.getTaskComments(historicTask.getId());
         String commentMsg = comments.isEmpty() ? null : comments.get(0).getFullMessage();
+        ProcessTask localTask = processTaskService.getTaskByTaskId(historicTask.getId());
+        if ((commentMsg == null || commentMsg.isBlank()) && localTask != null) {
+            commentMsg = localTask.getComment();
+        }
         vo.setComment(commentMsg);
         
         // 判断是否是转办
@@ -510,6 +523,9 @@ public class TaskActionService {
         } else {
             // 从变量中获取审批结果
             String action = getTaskVariable(historicTask.getId(), "action");
+            if ((action == null || action.isBlank()) && localTask != null) {
+                action = localTask.getAction();
+            }
             vo.setResult(action != null ? action : "approve");
         }
 

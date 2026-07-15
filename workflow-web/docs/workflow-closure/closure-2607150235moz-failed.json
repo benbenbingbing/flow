@@ -1,0 +1,99 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "cf_2607150235moz",
+  "entityCode": "ce_2607150235moz",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "user": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2077220389230870529",
+        "processKey": "cf_2607150235moz",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2077220389230870529",
+        "processKey": "cf_2607150235moz",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2077220390271057922",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077220390275252226",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077220390296223746",
+          "nodeId": "Task_Admin_Review",
+          "nodeName": "Codex管理员审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2077220390313000962",
+              "assigneeType": "USER",
+              "assigneeValue": "admin",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2077220390522716162",
+        "entityCode": "ce_2607150235moz",
+        "status": null
+      }
+    },
+    {
+      "name": "publishEntity",
+      "data": {
+        "id": "2077220390522716162",
+        "status": "PUBLISHED"
+      }
+    },
+    {
+      "name": "bindProcess",
+      "data": {
+        "entityId": "2077220390522716162",
+        "processDefinitionId": "2077220389230870529",
+        "processName": null,
+        "enableProcess": true
+      }
+    }
+  ],
+  "error": "Error: POST /entity-data failed: HTTP 200, body={\"code\":500,\"message\":\"实体发布快照未绑定流程定义: ce_2607150235moz\",\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-closure.mjs:36:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-closure.mjs:114:17)"
+}

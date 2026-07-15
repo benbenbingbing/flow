@@ -1,0 +1,43 @@
+{
+  "processName": "节点表单矩阵2607150445a7t",
+  "entityCode": "form_entity_2607150445a7t",
+  "processInstanceId": "0bb3c355-8008-11f1-bd22-02c0621d59a8",
+  "checks": [
+    {
+      "name": "新增数据使用首节点表单",
+      "passed": true,
+      "visibleFields": ["amount", "lockedNote"],
+      "absentFields": ["defaultMemo", "finalNote"]
+    },
+    {
+      "name": "首节点字段级读写",
+      "passed": true,
+      "editableFields": ["amount"],
+      "readonlyFields": ["lockedNote"]
+    },
+    {
+      "name": "未配置节点回退默认表单",
+      "passed": true,
+      "editableFields": ["defaultMemo"],
+      "readonlyFields": ["lockedNote"]
+    },
+    {
+      "name": "末节点专属表单全局只读",
+      "passed": true,
+      "readonlyFields": ["finalNote", "amount"]
+    },
+    {
+      "name": "审批数据落库与只读防篡改",
+      "passed": true,
+      "persisted": {
+        "amount": 66,
+        "defaultMemo": "BROWSER_DEFAULT_UPDATED"
+      },
+      "unchanged": {
+        "lockedNote": "LOCKED_ORIGINAL",
+        "finalNote": "FINAL_ORIGINAL"
+      },
+      "processStatus": "COMPLETED"
+    }
+  ]
+}

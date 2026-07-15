@@ -215,6 +215,8 @@ public class ProcessDefinitionService {
         nodeSyncService.syncStatusMappingsFromBpmn(id, config.getProcessKey(), bpmnXml);
         
         bpmnXml = bpmnPublishSanitizer.sanitize(bpmnXml, config.getProcessKey());
+
+        nodeSyncService.syncBpmnNodeBindings(id, bpmnXml);
         
         Deployment deployment = flowableDeploymentService.deploy(config, bpmnXml, newVersion);
         

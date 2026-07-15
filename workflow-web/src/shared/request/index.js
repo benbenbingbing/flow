@@ -58,7 +58,7 @@ function rejectWithMessage(message, source) {
   return Promise.reject(error)
 }
 
-function handleApiPayload(payload) {
+function handleApiPayload(payload, config = {}) {
   if (!payload || typeof payload.code === 'undefined') {
     return payload
   }
@@ -74,12 +74,14 @@ function handleApiPayload(payload) {
     return rejectWithMessage(message, payload)
   }
 
-  ElMessage.error(message)
+  if (!config.silentError) {
+    ElMessage.error(message)
+  }
   return rejectWithMessage(message, payload)
 }
 
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: import.meta.env?.VITE_API_BASE_URL || '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json;charset=UTF-8'
@@ -118,7 +120,7 @@ request.interceptors.response.use(
       return payload
     }
 
-    return handleApiPayload(payload)
+    return handleApiPayload(payload, response.config || {})
   },
   (error) => {
     const { response } = error
@@ -130,7 +132,9 @@ request.interceptors.response.use(
     const message = response
       ? getApiErrorMessage(response.data)
       : error.message || '网络错误'
-    ElMessage.error(message)
+    if (!error.config?.silentError) {
+      ElMessage.error(message)
+    }
     return Promise.reject(error)
   }
 )

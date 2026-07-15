@@ -1,0 +1,328 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "cfg_2607150349t1y",
+  "entityCode": "cfg_entity_2607150349t1y",
+  "steps": [
+    {
+      "name": "login:admin",
+      "data": {
+        "id": "1",
+        "username": "admin",
+        "nickname": "超级管理员"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l1_2607150349t1y",
+      "data": {
+        "id": "2077239163802927105",
+        "username": "cfg_l1_2607150349t1y",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l2_2607150349t1y",
+      "data": {
+        "id": "2077239164180414465",
+        "username": "cfg_l2_2607150349t1y",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l1_2607150349t1y",
+      "data": {
+        "id": "2077239163802927105",
+        "username": "cfg_l1_2607150349t1y",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l2_2607150349t1y",
+      "data": {
+        "id": "2077239164180414465",
+        "username": "cfg_l2_2607150349t1y",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2077239165203824641",
+        "processKey": "cfg_2607150349t1y",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2077239165203824641",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2077239165409345537",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077239165413539841",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077239165417734146",
+          "nodeId": "Task_Level1_Review",
+          "nodeName": "一级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2077239165421928449",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l1_2607150349t1y",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077239165430317057",
+          "nodeId": "Task_Level2_Review",
+          "nodeName": "二级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2077239165434511361",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l2_2607150349t1y",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2077239165530980353",
+        "entityCode": "cfg_entity_2607150349t1y"
+      }
+    },
+    {
+      "name": "publishAndBindEntity",
+      "data": {
+        "entityId": "2077239165530980353",
+        "processDefinitionId": "2077239165203824641",
+        "enableProcess": true
+      }
+    },
+    {
+      "name": "savedStatusMappings",
+      "data": [
+        {
+          "id": "2077239165879107586",
+          "processConfigId": "2077239165203824641",
+          "processKey": "cfg_2607150349t1y",
+          "entityCode": "cfg_entity_2607150349t1y",
+          "sequenceFlowId": "Flow_2",
+          "sourceNodeId": "Task_Level1_Review",
+          "sourceNodeName": "一级审批",
+          "targetNodeId": "Task_Level2_Review",
+          "targetNodeName": "二级审批",
+          "entityStatus": "LEVEL1_APPROVED",
+          "entityStatusCode": "LEVEL1_APPROVED",
+          "statusCategory": "PROCESSING",
+          "conditionExpression": null,
+          "sortOrder": 0,
+          "description": "初审通过后更新状态",
+          "deleted": 0,
+          "createdAt": null,
+          "updatedAt": null
+        },
+        {
+          "id": "2077239165883301890",
+          "processConfigId": "2077239165203824641",
+          "processKey": "cfg_2607150349t1y",
+          "entityCode": "cfg_entity_2607150349t1y",
+          "sequenceFlowId": "Flow_3",
+          "sourceNodeId": "Task_Level2_Review",
+          "sourceNodeName": "二级审批",
+          "targetNodeId": "EndEvent_1",
+          "targetNodeName": "结束",
+          "entityStatus": "FINAL_SPECIAL",
+          "entityStatusCode": "FINAL_SPECIAL",
+          "statusCategory": "COMPLETED",
+          "conditionExpression": null,
+          "sortOrder": 1,
+          "description": "终审通过后更新最终状态",
+          "deleted": 0,
+          "createdAt": null,
+          "updatedAt": null
+        }
+      ]
+    },
+    {
+      "name": "startProcess",
+      "data": {
+        "id": "4e1739f277474a7a96befd5c94cb1b80",
+        "status": "IN_REVIEW",
+        "processInstanceId": "37db72c9-8000-11f1-bffa-7612d5b69a47",
+        "currentTaskName": "一级审批"
+      }
+    },
+    {
+      "name": "level1Todo",
+      "data": {
+        "taskId": "37dbe813-8000-11f1-bffa-7612d5b69a47",
+        "taskName": "一级审批",
+        "processInstanceId": "37db72c9-8000-11f1-bffa-7612d5b69a47",
+        "processDefinitionId": "cfg_2607150349t1y:1:37c4b678-8000-11f1-bffa-7612d5b69a47",
+        "processName": "Codex配置闭环2607150349t1y",
+        "startUserName": "超级管理员(admin)",
+        "createTime": "2026-07-15T03:49:45.000+00:00",
+        "endTime": null,
+        "duration": null,
+        "result": null,
+        "comment": null,
+        "priority": null,
+        "assignee": "cfg_l1_2607150349t1y",
+        "assigneeName": "Codex一级审批人(cfg_l1_2607150349t1y)",
+        "businessKey": "4e1739f277474a7a96befd5c94cb1b80",
+        "dataName": null,
+        "code": "CFG_ENTITY__B942C9AE20260715000001",
+        "name": "Codex配置数据2607150349t1y",
+        "currentTaskName": "一级审批",
+        "processStatus": null,
+        "entityCode": "cfg_entity_2607150349t1y",
+        "entityDataId": "4e1739f277474a7a96befd5c94cb1b80",
+        "formKey": null,
+        "entityFormId": null,
+        "formData": null,
+        "formReadonly": null,
+        "formFields": null,
+        "formConfig": null,
+        "entityData": null
+      }
+    },
+    {
+      "name": "entityAfterLevel1Approval",
+      "data": {
+        "status": "LEVEL1_APPROVED",
+        "currentTaskName": "二级审批",
+        "currentTaskAssignee": null
+      }
+    },
+    {
+      "name": "level2Todo",
+      "data": {
+        "taskId": "37e70bbb-8000-11f1-bffa-7612d5b69a47",
+        "taskName": "二级审批",
+        "processInstanceId": "37db72c9-8000-11f1-bffa-7612d5b69a47",
+        "processDefinitionId": "cfg_2607150349t1y:1:37c4b678-8000-11f1-bffa-7612d5b69a47",
+        "processName": "Codex配置闭环2607150349t1y",
+        "startUserName": "超级管理员(admin)",
+        "createTime": "2026-07-15T03:49:45.000+00:00",
+        "endTime": null,
+        "duration": null,
+        "result": null,
+        "comment": null,
+        "priority": null,
+        "assignee": "cfg_l2_2607150349t1y",
+        "assigneeName": "Codex二级审批人(cfg_l2_2607150349t1y)",
+        "businessKey": "4e1739f277474a7a96befd5c94cb1b80",
+        "dataName": null,
+        "code": "CFG_ENTITY__B942C9AE20260715000001",
+        "name": "Codex配置数据2607150349t1y",
+        "currentTaskName": "二级审批",
+        "processStatus": null,
+        "entityCode": "cfg_entity_2607150349t1y",
+        "entityDataId": "4e1739f277474a7a96befd5c94cb1b80",
+        "formKey": null,
+        "entityFormId": null,
+        "formData": null,
+        "formReadonly": null,
+        "formFields": null,
+        "formConfig": null,
+        "entityData": null
+      }
+    },
+    {
+      "name": "completedProgress",
+      "data": {
+        "status": "COMPLETED",
+        "completedNodes": [
+          "StartEvent_1",
+          "Flow_1",
+          "Task_Level1_Review",
+          "Flow_2",
+          "Task_Level2_Review",
+          "EndEvent_1",
+          "Flow_3"
+        ],
+        "nodeHistory": [
+          {
+            "nodeId": "StartEvent_1",
+            "nodeName": "开始",
+            "action": null,
+            "actionLabel": null,
+            "comment": null,
+            "assignee": "1"
+          },
+          {
+            "nodeId": "Task_Level1_Review",
+            "nodeName": "一级审批",
+            "action": "APPROVED",
+            "actionLabel": "初审通过",
+            "comment": "一级审批人完成真实审批",
+            "assignee": "cfg_l1_2607150349t1y"
+          },
+          {
+            "nodeId": "Task_Level2_Review",
+            "nodeName": "二级审批",
+            "action": "APPROVED",
+            "actionLabel": "终审特别通过",
+            "comment": "二级审批人完成真实审批",
+            "assignee": "cfg_l2_2607150349t1y"
+          },
+          {
+            "nodeId": "EndEvent_1",
+            "nodeName": "结束",
+            "action": null,
+            "actionLabel": null,
+            "comment": null,
+            "assignee": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "entityAfterFinalApproval",
+      "data": {
+        "status": "FINAL_SPECIAL",
+        "currentTaskId": null,
+        "currentTaskName": null,
+        "processEndTime": "2026-07-15T11:49:45"
+      }
+    }
+  ],
+  "conclusion": "PASS: BPMN执行人、实体绑定、状态字典、节点状态映射、跨用户待办和审批历史全部按配置生效"
+}

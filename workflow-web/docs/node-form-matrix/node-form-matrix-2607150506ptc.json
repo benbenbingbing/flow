@@ -1,0 +1,369 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "form_matrix_2607150506ptc",
+  "processName": "节点表单矩阵2607150506ptc",
+  "entityCode": "form_entity_2607150506ptc",
+  "entityName": "节点表单实体2607150506ptc",
+  "stopAt": "",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "username": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2077258583031967746",
+        "fields": [
+          {
+            "id": "2077258583061327874",
+            "code": "name"
+          },
+          {
+            "id": "2077258583073910785",
+            "code": "code"
+          },
+          {
+            "id": "2077258583086493698",
+            "code": "status"
+          },
+          {
+            "id": "2077258583094882306",
+            "code": "processInstanceId"
+          },
+          {
+            "id": "2077258583107465217",
+            "code": "processStartTime"
+          },
+          {
+            "id": "2077258583120048129",
+            "code": "processEndTime"
+          },
+          {
+            "id": "2077258583128436737",
+            "code": "submitterId"
+          },
+          {
+            "id": "2077258583161991169",
+            "code": "submitterName"
+          },
+          {
+            "id": "2077258583174574082",
+            "code": "deptId"
+          },
+          {
+            "id": "2077258583187156993",
+            "code": "amount"
+          },
+          {
+            "id": "2077258583199739905",
+            "code": "lockedNote"
+          },
+          {
+            "id": "2077258583208128514",
+            "code": "defaultMemo"
+          },
+          {
+            "id": "2077258583220711425",
+            "code": "finalNote"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createForms",
+      "data": {
+        "defaultForm": {
+          "id": "2077258583791136769",
+          "name": "默认回退表单"
+        },
+        "formA": {
+          "id": "2077258583875022850",
+          "name": "首节点混合读写表单"
+        },
+        "formC": {
+          "id": "2077258583937937409",
+          "name": "末节点专属表单"
+        }
+      }
+    },
+    {
+      "name": "createPublishBindProcess",
+      "data": {
+        "processId": "2077258584013434881",
+        "processKey": "form_matrix_2607150506ptc"
+      }
+    },
+    {
+      "name": "publishedNodeFormBindings",
+      "data": [
+        {
+          "nodeId": "Task_Form_A",
+          "formId": "2077258583875022850",
+          "isReadonly": 0,
+          "sortOrder": 0
+        },
+        {
+          "nodeId": "Task_Form_C_Readonly",
+          "formId": "2077258583937937409",
+          "isReadonly": 1,
+          "sortOrder": 0
+        }
+      ]
+    },
+    {
+      "name": "resolveNewDataForm",
+      "data": {
+        "id": "2077258583875022850",
+        "name": "首节点混合读写表单",
+        "fields": [
+          {
+            "code": "amount",
+            "isReadonly": 0
+          },
+          {
+            "code": "lockedNote",
+            "isReadonly": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "startProcess",
+      "data": {
+        "dataId": "3f4593630dd242158c378331aab6187f",
+        "processInstanceId": "ffd344af-800a-11f1-bd17-02c0621d59a8",
+        "currentTaskId": "ffd89bfb-800a-11f1-bd17-02c0621d59a8",
+        "currentTaskName": "首节点混合读写"
+      }
+    },
+    {
+      "name": "node1Progress",
+      "data": {
+        "activeNodes": [
+          "Task_Form_A"
+        ],
+        "formId": "2077258583875022850",
+        "formName": "首节点混合读写表单",
+        "isReadonly": false,
+        "fields": [
+          {
+            "code": "amount",
+            "isReadonly": 0
+          },
+          {
+            "code": "lockedNote",
+            "isReadonly": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "node1ViewForm",
+      "data": {
+        "id": "2077258583875022850",
+        "name": "首节点混合读写表单"
+      }
+    },
+    {
+      "name": "detailAfterNode1",
+      "data": {
+        "id": "3f4593630dd242158c378331aab6187f",
+        "entityCode": "form_entity_2607150506ptc",
+        "entityName": null,
+        "dataNo": "FORM_ENTITY_2607150506PTC-07846750312856",
+        "title": null,
+        "name": "节点表单数据2607150506ptc",
+        "code": "FORM_ENTITY_B27D615120260715000001",
+        "status": "PENDING",
+        "processInstanceId": "ffd344af-800a-11f1-bd17-02c0621d59a8",
+        "processStartTime": "2026-07-15T13:06:56",
+        "processEndTime": null,
+        "currentTaskId": "00643a44-800b-11f1-bd17-02c0621d59a8",
+        "currentTaskName": "未配置表单回退",
+        "currentTaskAssignee": null,
+        "data": {
+          "amount": 88,
+          "finalNote": "FINAL_ORIGINAL",
+          "defaultMemo": "DEFAULT_ORIGINAL",
+          "lockedNote": "LOCKED_ORIGINAL"
+        },
+        "submitterId": "1",
+        "submitterName": "admin",
+        "deptId": null,
+        "deptName": null,
+        "submitTime": null,
+        "createdAt": "2026-07-15T13:06:55",
+        "updatedAt": "2026-07-15T13:06:56",
+        "createdBy": "1",
+        "updatedBy": "1",
+        "startProcess": null,
+        "processVariables": null,
+        "extData": {}
+      }
+    },
+    {
+      "name": "node2Progress",
+      "data": {
+        "activeNodes": [
+          "Task_Default_Fallback"
+        ],
+        "formId": "2077258583791136769",
+        "formName": "默认回退表单",
+        "fields": [
+          {
+            "code": "defaultMemo",
+            "isReadonly": 0
+          },
+          {
+            "code": "lockedNote",
+            "isReadonly": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "node2ViewForm",
+      "data": {
+        "id": "2077258583791136769",
+        "name": "默认回退表单"
+      }
+    },
+    {
+      "name": "detailAfterNode2",
+      "data": {
+        "id": "3f4593630dd242158c378331aab6187f",
+        "entityCode": "form_entity_2607150506ptc",
+        "entityName": null,
+        "dataNo": "FORM_ENTITY_2607150506PTC-07846750312856",
+        "title": null,
+        "name": "节点表单数据2607150506ptc",
+        "code": "FORM_ENTITY_B27D615120260715000001",
+        "status": "PENDING",
+        "processInstanceId": "ffd344af-800a-11f1-bd17-02c0621d59a8",
+        "processStartTime": "2026-07-15T13:06:56",
+        "processEndTime": null,
+        "currentTaskId": "00d65d14-800b-11f1-bd17-02c0621d59a8",
+        "currentTaskName": "末节点专属全只读",
+        "currentTaskAssignee": null,
+        "data": {
+          "amount": 88,
+          "finalNote": "FINAL_ORIGINAL",
+          "defaultMemo": "DEFAULT_UPDATED",
+          "lockedNote": "LOCKED_ORIGINAL"
+        },
+        "submitterId": "1",
+        "submitterName": "admin",
+        "deptId": null,
+        "deptName": null,
+        "submitTime": null,
+        "createdAt": "2026-07-15T13:06:55",
+        "updatedAt": "2026-07-15T13:06:57",
+        "createdBy": "1",
+        "updatedBy": "1",
+        "startProcess": null,
+        "processVariables": null,
+        "extData": {}
+      }
+    },
+    {
+      "name": "node3Progress",
+      "data": {
+        "activeNodes": [
+          "Task_Form_C_Readonly"
+        ],
+        "formId": "2077258583937937409",
+        "formName": "末节点专属表单",
+        "isReadonly": true,
+        "fields": [
+          {
+            "code": "finalNote",
+            "isReadonly": 1
+          },
+          {
+            "code": "amount",
+            "isReadonly": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "node3ViewForm",
+      "data": {
+        "id": "2077258583937937409",
+        "name": "末节点专属表单"
+      }
+    },
+    {
+      "name": "finalDetail",
+      "data": {
+        "id": "3f4593630dd242158c378331aab6187f",
+        "entityCode": "form_entity_2607150506ptc",
+        "entityName": null,
+        "dataNo": "FORM_ENTITY_2607150506PTC-07846750312856",
+        "title": null,
+        "name": "节点表单数据2607150506ptc",
+        "code": "FORM_ENTITY_B27D615120260715000001",
+        "status": "APPROVED",
+        "processInstanceId": "ffd344af-800a-11f1-bd17-02c0621d59a8",
+        "processStartTime": "2026-07-15T13:06:56",
+        "processEndTime": "2026-07-15T13:06:58",
+        "currentTaskId": null,
+        "currentTaskName": null,
+        "currentTaskAssignee": null,
+        "data": {
+          "amount": 88,
+          "finalNote": "FINAL_ORIGINAL",
+          "defaultMemo": "DEFAULT_UPDATED",
+          "lockedNote": "LOCKED_ORIGINAL"
+        },
+        "submitterId": "1",
+        "submitterName": "admin",
+        "deptId": null,
+        "deptName": null,
+        "submitTime": null,
+        "createdAt": "2026-07-15T13:06:55",
+        "updatedAt": "2026-07-15T13:06:58",
+        "createdBy": "1",
+        "updatedBy": "1",
+        "startProcess": null,
+        "processVariables": null,
+        "extData": {}
+      }
+    },
+    {
+      "name": "completedProgress",
+      "data": {
+        "status": "COMPLETED",
+        "completedNodes": [
+          "StartEvent_1",
+          "Flow_1",
+          "Task_Form_A",
+          "Flow_2",
+          "Task_Default_Fallback",
+          "Flow_3",
+          "Task_Form_C_Readonly",
+          "Flow_4",
+          "EndEvent_1"
+        ],
+        "activeNodes": []
+      }
+    }
+  ],
+  "fixture": {
+    "entityId": "2077258583031967746",
+    "entityCode": "form_entity_2607150506ptc",
+    "processId": "2077258584013434881",
+    "processInstanceId": "ffd344af-800a-11f1-bd17-02c0621d59a8",
+    "dataId": "3f4593630dd242158c378331aab6187f",
+    "formIds": {
+      "defaultForm": "2077258583791136769",
+      "formA": "2077258583875022850",
+      "formC": "2077258583937937409"
+    }
+  },
+  "conclusion": "PASS: 首节点表单、节点专属表单、默认回退、字段级读写、节点全只读和数据落库均与配置一致"
+}

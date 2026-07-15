@@ -174,6 +174,8 @@ public class ProcessProgressDTO {
          * 布局类型
          */
         private String layoutType;
+
+        private Boolean isReadonly;
         
         /**
          * 表单字段列表

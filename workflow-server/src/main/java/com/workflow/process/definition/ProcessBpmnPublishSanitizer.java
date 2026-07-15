@@ -125,8 +125,8 @@ public class ProcessBpmnPublishSanitizer {
 
     private String useProcessKey(String bpmnXml, String processKey) {
         String result = bpmnXml.replaceAll(
-                "<bpmn:process\\s+id=\"[^\"]+\"",
-                "<bpmn:process id=\"" + processKey + "\"");
+                "<((?:[A-Za-z_][\\w.-]*:)?process)\\s+id=\"[^\"]+\"",
+                "<$1 id=\"" + processKey + "\"");
         return result.replaceAll(
                 "(<bpmndi:BPMNPlane[^>]*\\s)bpmnElement=\"[^\"]+\"",
                 "$1bpmnElement=\"" + processKey + "\"");
@@ -317,7 +317,7 @@ public class ProcessBpmnPublishSanitizer {
         }
 
         java.util.regex.Matcher processIdMatcher = java.util.regex.Pattern
-                .compile("<bpmn:process\\s+id=\"([^\"]+)\"")
+                .compile("<(?:(?:[A-Za-z_][\\w.-]*):)?process\\s+id=\"([^\"]+)\"")
                 .matcher(bpmnXml);
         String currentProcessId = processIdMatcher.find() ? processIdMatcher.group(1) : null;
         boolean hasConflict = allIds.stream().anyMatch(id -> id.equals(processKey) && !id.equals(currentProcessId));

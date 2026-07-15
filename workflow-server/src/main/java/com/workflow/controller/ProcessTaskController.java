@@ -160,6 +160,10 @@ public class ProcessTaskController {
         String comment = (String) params.get("comment");
         String transferTo = (String) params.get("transferTo");
         String actionLabel = (String) params.get("actionLabel");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> formData = params.get("formData") instanceof Map<?, ?>
+                ? (Map<String, Object>) params.get("formData")
+                : null;
 
         if (taskId == null || taskId.isEmpty()) {
             return Result.error("任务ID不能为空");
@@ -170,7 +174,8 @@ public class ProcessTaskController {
             if (currentUser == null) {
                 currentUser = "admin";
             }
-            taskActionService.completeTask(taskId, currentUser, action, comment, transferTo, actionLabel);
+            taskActionService.completeTask(
+                    taskId, currentUser, action, comment, transferTo, actionLabel, formData);
             return Result.success();
         } catch (Exception e) {
             return Result.error("审批失败: " + e.getMessage());

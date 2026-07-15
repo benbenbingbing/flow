@@ -1,0 +1,398 @@
+{
+  "runId": "20260715034315",
+  "process": {
+    "id": "2077226075389235201",
+    "processKey": "codex-flow-e2e",
+    "version": 4,
+    "configuredNodes": [
+      {
+        "id": "2077237532222881794",
+        "nodeId": "StartEvent_Config",
+        "nodeName": "提交申请",
+        "nodeType": "START",
+        "assignees": null,
+        "forms": null,
+        "configJson": null,
+        "skipNode": false
+      },
+      {
+        "id": "2077237532231270401",
+        "nodeId": "EndEvent_Config",
+        "nodeName": "审批完成",
+        "nodeType": "END",
+        "assignees": null,
+        "forms": null,
+        "configJson": null,
+        "skipNode": false
+      },
+      {
+        "id": "2077237532235464706",
+        "nodeId": "Task_ConfigReview",
+        "nodeName": "配置校验审批",
+        "nodeType": "USER_TASK",
+        "assignees": [
+          {
+            "id": "2077237532248047618",
+            "assigneeType": "USER",
+            "assigneeValue": "admin",
+            "assigneeName": null,
+            "priority": 0
+          }
+        ],
+        "forms": null,
+        "configJson": null,
+        "skipNode": false
+      },
+      {
+        "id": "2077237532256436225",
+        "nodeId": "Task_ConfigFinance",
+        "nodeName": "财务复核审批",
+        "nodeType": "USER_TASK",
+        "assignees": [
+          {
+            "id": "2077237532264824834",
+            "assigneeType": "USER",
+            "assigneeValue": "admin",
+            "assigneeName": null,
+            "priority": 0
+          }
+        ],
+        "forms": null,
+        "configJson": null,
+        "skipNode": false
+      }
+    ],
+    "statusMappings": [
+      {
+        "id": "2077237531933474817",
+        "processConfigId": "2077226075389235201",
+        "processKey": "codex-flow-e2e",
+        "entityCode": "codex_flow_e2e",
+        "sequenceFlowId": "Flow_Start_Review",
+        "sourceNodeId": "StartEvent_Config",
+        "sourceNodeName": "提交申请",
+        "targetNodeId": "Task_ConfigReview",
+        "targetNodeName": "配置校验审批",
+        "entityStatus": "IN_REVIEW",
+        "entityStatusCode": "IN_REVIEW",
+        "statusCategory": null,
+        "conditionExpression": null,
+        "sortOrder": 0,
+        "description": null,
+        "deleted": 0,
+        "createdAt": null,
+        "updatedAt": null
+      },
+      {
+        "id": "2077237531946057729",
+        "processConfigId": "2077226075389235201",
+        "processKey": "codex-flow-e2e",
+        "entityCode": "codex_flow_e2e",
+        "sequenceFlowId": "Flow_Finance_End",
+        "sourceNodeId": "Task_ConfigFinance",
+        "sourceNodeName": "财务复核审批",
+        "targetNodeId": "EndEvent_Config",
+        "targetNodeName": "审批完成",
+        "entityStatus": "APPROVED",
+        "entityStatusCode": "APPROVED",
+        "statusCategory": null,
+        "conditionExpression": null,
+        "sortOrder": 0,
+        "description": null,
+        "deleted": 0,
+        "createdAt": null,
+        "updatedAt": null
+      },
+      {
+        "id": "2077237531937669121",
+        "processConfigId": "2077226075389235201",
+        "processKey": "codex-flow-e2e",
+        "entityCode": "codex_flow_e2e",
+        "sequenceFlowId": "Flow_Review_Finance",
+        "sourceNodeId": "Task_ConfigReview",
+        "sourceNodeName": "配置校验审批",
+        "targetNodeId": "Task_ConfigFinance",
+        "targetNodeName": "财务复核审批",
+        "entityStatus": "FINANCE_REVIEW",
+        "entityStatusCode": "FINANCE_REVIEW",
+        "statusCategory": null,
+        "conditionExpression": null,
+        "sortOrder": 0,
+        "description": null,
+        "deleted": 0,
+        "createdAt": null,
+        "updatedAt": null
+      }
+    ]
+  },
+  "entity": {
+    "id": "2077226074495848449",
+    "entityCode": "codex_flow_e2e",
+    "dataId": "000e9cd62fd14ebcb928cad35ed583ff",
+    "dataName": "Codex流程闭环-20260715034315"
+  },
+  "runtime": {
+    "processInstanceId": "4fb7f5d0-7fff-11f1-aa1c-7612d5b69a47",
+    "initial": {
+      "taskName": "配置校验审批",
+      "assignee": "admin",
+      "status": "IN_REVIEW"
+    },
+    "afterFirstApproval": {
+      "taskName": "财务复核审批",
+      "assignee": "admin",
+      "status": "FINANCE_REVIEW"
+    },
+    "completed": {
+      "status": "APPROVED",
+      "processEndTime": "2026-07-15T11:43:17"
+    },
+    "history": [
+      {
+        "taskId": null,
+        "taskName": "流程发起",
+        "processInstanceId": null,
+        "processDefinitionId": null,
+        "processName": null,
+        "startUserName": null,
+        "createTime": "2026-07-15T03:43:15.604+00:00",
+        "endTime": null,
+        "duration": null,
+        "result": "start",
+        "comment": null,
+        "priority": null,
+        "assignee": "1",
+        "assigneeName": null,
+        "businessKey": null,
+        "dataName": null,
+        "code": null,
+        "name": null,
+        "currentTaskName": null,
+        "processStatus": null,
+        "entityCode": null,
+        "entityDataId": null,
+        "formKey": null,
+        "entityFormId": null,
+        "formData": null,
+        "formReadonly": null,
+        "formFields": null,
+        "formConfig": null,
+        "entityData": null
+      },
+      {
+        "taskId": "4fb8922a-7fff-11f1-aa1c-7612d5b69a47",
+        "taskName": "配置校验审批",
+        "processInstanceId": "4fb7f5d0-7fff-11f1-aa1c-7612d5b69a47",
+        "processDefinitionId": "codex-flow-e2e:4:4fac841f-7fff-11f1-aa1c-7612d5b69a47",
+        "processName": null,
+        "startUserName": null,
+        "createTime": "2026-07-15T03:43:15.608+00:00",
+        "endTime": "2026-07-15T03:43:16.135+00:00",
+        "duration": 527,
+        "result": "approve",
+        "comment": "配置校验审批通过",
+        "priority": null,
+        "assignee": "admin",
+        "assigneeName": null,
+        "businessKey": null,
+        "dataName": null,
+        "code": null,
+        "name": null,
+        "currentTaskName": null,
+        "processStatus": null,
+        "entityCode": null,
+        "entityDataId": null,
+        "formKey": null,
+        "entityFormId": null,
+        "formData": null,
+        "formReadonly": null,
+        "formFields": null,
+        "formConfig": null,
+        "entityData": null
+      },
+      {
+        "taskId": "5009e690-7fff-11f1-aa1c-7612d5b69a47",
+        "taskName": "财务复核审批",
+        "processInstanceId": "4fb7f5d0-7fff-11f1-aa1c-7612d5b69a47",
+        "processDefinitionId": "codex-flow-e2e:4:4fac841f-7fff-11f1-aa1c-7612d5b69a47",
+        "processName": null,
+        "startUserName": null,
+        "createTime": "2026-07-15T03:43:16.141+00:00",
+        "endTime": "2026-07-15T03:43:16.707+00:00",
+        "duration": 566,
+        "result": "approve",
+        "comment": "财务复核审批通过",
+        "priority": null,
+        "assignee": "admin",
+        "assigneeName": null,
+        "businessKey": null,
+        "dataName": null,
+        "code": null,
+        "name": null,
+        "currentTaskName": null,
+        "processStatus": null,
+        "entityCode": null,
+        "entityDataId": null,
+        "formKey": null,
+        "entityFormId": null,
+        "formData": null,
+        "formReadonly": null,
+        "formFields": null,
+        "formConfig": null,
+        "entityData": null
+      }
+    ],
+    "progress": {
+      "processInstanceId": "4fb7f5d0-7fff-11f1-aa1c-7612d5b69a47",
+      "processDefinitionId": "codex-flow-e2e:4:4fac841f-7fff-11f1-aa1c-7612d5b69a47",
+      "processKey": "codex-flow-e2e",
+      "processName": "Codex真实流程闭环",
+      "bpmnXml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"\n  xmlns:bpmndi=\"http://www.omg.org/spec/BPMN/20100524/DI\"\n  xmlns:dc=\"http://www.omg.org/spec/DD/20100524/DC\"\n  xmlns:di=\"http://www.omg.org/spec/DD/20100524/DI\"\n  xmlns:flowable=\"http://flowable.org/bpmn\"\n  id=\"Definitions_CodexFlowE2E\"\n  targetNamespace=\"http://bpmn.io/schema/bpmn\">\n  <bpmn:process id=\"codex-flow-e2e\" name=\"Codex真实流程闭环\" isExecutable=\"true\">\n    <bpmn:startEvent id=\"StartEvent_Config\" name=\"提交申请\">\n      <bpmn:outgoing>Flow_Start_Review</bpmn:outgoing>\n    </bpmn:startEvent>\n    <bpmn:userTask id=\"Task_ConfigReview\" name=\"配置校验审批\" flowable:assignee=\"admin\">\n      <bpmn:incoming>Flow_Start_Review</bpmn:incoming>\n      <bpmn:outgoing>Flow_Review_Finance</bpmn:outgoing>\n    </bpmn:userTask>\n    <bpmn:userTask id=\"Task_ConfigFinance\" name=\"财务复核审批\" flowable:assignee=\"admin\">\n      <bpmn:incoming>Flow_Review_Finance</bpmn:incoming>\n      <bpmn:outgoing>Flow_Finance_End</bpmn:outgoing>\n    </bpmn:userTask>\n    <bpmn:endEvent id=\"EndEvent_Config\" name=\"审批完成\">\n      <bpmn:incoming>Flow_Finance_End</bpmn:incoming>\n    </bpmn:endEvent>\n    <bpmn:sequenceFlow id=\"Flow_Start_Review\" sourceRef=\"StartEvent_Config\" targetRef=\"Task_ConfigReview\">\n      <bpmn:extensionElements>\n        <flowable:properties>\n          <flowable:property name=\"entityStatusCode\" value=\"IN_REVIEW\" />\n        </flowable:properties>\n      </bpmn:extensionElements>\n    </bpmn:sequenceFlow>\n    <bpmn:sequenceFlow id=\"Flow_Review_Finance\" sourceRef=\"Task_ConfigReview\" targetRef=\"Task_ConfigFinance\">\n      <bpmn:extensionElements>\n        <flowable:properties>\n          <flowable:property name=\"entityStatusCode\" value=\"FINANCE_REVIEW\" />\n        </flowable:properties>\n      </bpmn:extensionElements>\n    </bpmn:sequenceFlow>\n    <bpmn:sequenceFlow id=\"Flow_Finance_End\" sourceRef=\"Task_ConfigFinance\" targetRef=\"EndEvent_Config\">\n      <bpmn:extensionElements>\n        <flowable:properties>\n          <flowable:property name=\"entityStatusCode\" value=\"APPROVED\" />\n        </flowable:properties>\n      </bpmn:extensionElements>\n    </bpmn:sequenceFlow>\n  </bpmn:process>\n  <bpmndi:BPMNDiagram id=\"BPMNDiagram_CodexFlowE2E\">\n    <bpmndi:BPMNPlane id=\"BPMNPlane_CodexFlowE2E\" bpmnElement=\"codex-flow-e2e\">\n      <bpmndi:BPMNShape id=\"StartEvent_Config_di\" bpmnElement=\"StartEvent_Config\">\n        <dc:Bounds x=\"80\" y=\"122\" width=\"36\" height=\"36\" />\n      </bpmndi:BPMNShape>\n      <bpmndi:BPMNShape id=\"Task_ConfigReview_di\" bpmnElement=\"Task_ConfigReview\">\n        <dc:Bounds x=\"180\" y=\"100\" width=\"120\" height=\"80\" />\n      </bpmndi:BPMNShape>\n      <bpmndi:BPMNShape id=\"Task_ConfigFinance_di\" bpmnElement=\"Task_ConfigFinance\">\n        <dc:Bounds x=\"370\" y=\"100\" width=\"120\" height=\"80\" />\n      </bpmndi:BPMNShape>\n      <bpmndi:BPMNShape id=\"EndEvent_Config_di\" bpmnElement=\"EndEvent_Config\">\n        <dc:Bounds x=\"560\" y=\"122\" width=\"36\" height=\"36\" />\n      </bpmndi:BPMNShape>\n      <bpmndi:BPMNEdge id=\"Flow_Start_Review_di\" bpmnElement=\"Flow_Start_Review\">\n        <di:waypoint x=\"116\" y=\"140\" />\n        <di:waypoint x=\"180\" y=\"140\" />\n      </bpmndi:BPMNEdge>\n      <bpmndi:BPMNEdge id=\"Flow_Review_Finance_di\" bpmnElement=\"Flow_Review_Finance\">\n        <di:waypoint x=\"300\" y=\"140\" />\n        <di:waypoint x=\"370\" y=\"140\" />\n      </bpmndi:BPMNEdge>\n      <bpmndi:BPMNEdge id=\"Flow_Finance_End_di\" bpmnElement=\"Flow_Finance_End\">\n        <di:waypoint x=\"490\" y=\"140\" />\n        <di:waypoint x=\"560\" y=\"140\" />\n      </bpmndi:BPMNEdge>\n    </bpmndi:BPMNPlane>\n  </bpmndi:BPMNDiagram>\n</bpmn:definitions>",
+      "status": "COMPLETED",
+      "completedNodes": [
+        "StartEvent_Config",
+        "Flow_Start_Review",
+        "Task_ConfigReview",
+        "Flow_Review_Finance",
+        "Task_ConfigFinance",
+        "Flow_Finance_End",
+        "EndEvent_Config"
+      ],
+      "activeNodes": [],
+      "terminatedNodes": [],
+      "executedSequenceFlows": [
+        "Flow_Start_Review",
+        "Flow_Review_Finance",
+        "Flow_Finance_End"
+      ],
+      "nodeHistory": [
+        {
+          "nodeId": "StartEvent_Config",
+          "nodeName": "提交申请",
+          "nodeType": "startEvent",
+          "assignee": "1",
+          "assigneeName": "超级管理员(admin)",
+          "startTime": "2026-07-15 11:43:15",
+          "endTime": "2026-07-15 11:43:15",
+          "duration": 2,
+          "status": "COMPLETED",
+          "action": null,
+          "actionLabel": null,
+          "comment": null,
+          "variables": {
+            "actionLabel": "通过"
+          }
+        },
+        {
+          "nodeId": "Task_ConfigReview",
+          "nodeName": "配置校验审批",
+          "nodeType": "userTask",
+          "assignee": "admin",
+          "assigneeName": "超级管理员(admin)",
+          "startTime": "2026-07-15 11:43:15",
+          "endTime": "2026-07-15 11:43:16",
+          "duration": 531,
+          "status": "COMPLETED",
+          "action": "APPROVED",
+          "actionLabel": "通过",
+          "comment": "配置校验审批通过",
+          "variables": {
+            "actionLabel": "通过"
+          }
+        },
+        {
+          "nodeId": "Task_ConfigFinance",
+          "nodeName": "财务复核审批",
+          "nodeType": "userTask",
+          "assignee": "admin",
+          "assigneeName": "超级管理员(admin)",
+          "startTime": "2026-07-15 11:43:16",
+          "endTime": "2026-07-15 11:43:16",
+          "duration": 569,
+          "status": "COMPLETED",
+          "action": "APPROVED",
+          "actionLabel": "通过",
+          "comment": "财务复核审批通过",
+          "variables": {
+            "actionLabel": "通过"
+          }
+        },
+        {
+          "nodeId": "EndEvent_Config",
+          "nodeName": "审批完成",
+          "nodeType": "endEvent",
+          "assignee": null,
+          "assigneeName": null,
+          "startTime": "2026-07-15 11:43:16",
+          "endTime": "2026-07-15 11:43:16",
+          "duration": 1,
+          "status": "COMPLETED",
+          "action": null,
+          "actionLabel": null,
+          "comment": null,
+          "variables": {
+            "actionLabel": "通过"
+          }
+        }
+      ],
+      "tasks": null,
+      "nodeAssigneeMap": {
+        "Task_ConfigReview": {
+          "assigneeId": "admin",
+          "assigneeName": "超级管理员(admin)",
+          "handleTime": "2026-07-15 11:43:16",
+          "action": "APPROVED",
+          "actionLabel": "通过",
+          "comment": "配置校验审批通过",
+          "status": "COMPLETED"
+        },
+        "Task_ConfigFinance": {
+          "assigneeId": "admin",
+          "assigneeName": "超级管理员(admin)",
+          "handleTime": "2026-07-15 11:43:16",
+          "action": "APPROVED",
+          "actionLabel": "通过",
+          "comment": "财务复核审批通过",
+          "status": "COMPLETED"
+        }
+      },
+      "nodeAssigneesMap": {
+        "Task_ConfigReview": [
+          {
+            "assigneeId": "admin",
+            "assigneeName": "超级管理员(admin)",
+            "handleTime": "2026-07-15 11:43:16",
+            "action": "APPROVED",
+            "actionLabel": "通过",
+            "comment": "配置校验审批通过",
+            "status": "COMPLETED"
+          }
+        ],
+        "Task_ConfigFinance": [
+          {
+            "assigneeId": "admin",
+            "assigneeName": "超级管理员(admin)",
+            "handleTime": "2026-07-15 11:43:16",
+            "action": "APPROVED",
+            "actionLabel": "通过",
+            "comment": "财务复核审批通过",
+            "status": "COMPLETED"
+          }
+        ]
+      },
+      "entityData": {
+        "amount": 1288.66,
+        "code": "CODEX_FLOW_E2E20260715000004",
+        "submitterId": "1",
+        "name": "Codex流程闭环-20260715034315",
+        "remark": "验证流程配置是否真实进入运行态",
+        "dataNo": "CODEX_FLOW_E2E-93805000677587",
+        "submitterName": "admin",
+        "status": "APPROVED"
+      },
+      "formConfig": null,
+      "formConfigs": null,
+      "approvalConfig": null
+    }
+  }
+}

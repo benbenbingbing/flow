@@ -44,7 +44,7 @@ public class EntityFormResolveController {
     @GetMapping("/view-data/{entityCode}/{entityDataId}")
     public ApiResponse<EntityForm> getFormForViewData(
             @PathVariable String entityCode,
-            @PathVariable Long entityDataId) {
+            @PathVariable String entityDataId) {
         EntityForm form = entityFormResolveService.resolveFormForViewData(entityCode, entityDataId);
         return ApiResponse.success(form);
     }

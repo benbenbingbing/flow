@@ -9,6 +9,7 @@
             :approvalNormalForm="approvalNormalForm"
             :effectiveApprovalConfig="effectiveApprovalConfig"
             :isViewMode="isViewMode"
+            :formReadonly="approvalFormReadonly"
             v-model:approveForm="approveForm"
           />
         </el-tab-pane>
@@ -20,6 +21,7 @@
             :approvalNormalForm="approvalNormalForm"
             :effectiveApprovalConfig="effectiveApprovalConfig"
             :isViewMode="isViewMode"
+            :formReadonly="approvalFormReadonly"
             v-model:approveForm="approveForm"
           />
         </el-tab-pane>
@@ -34,7 +36,7 @@
           <FormFieldRendererLinkage
             :field="field"
             v-model="entityData[getFieldKey(field)]"
-            :disabled="true"
+            :disabled="isRuntimeFieldReadonly(field, approvalFormReadonly)"
           />
         </el-tab-pane>
 
@@ -67,7 +69,11 @@ import { ElMessage } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
-import { getFieldKey } from '@/shared/form-runtime'
+import {
+  getFieldKey,
+  isRuntimeFieldReadonly,
+  isRuntimeFormReadonly
+} from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
 import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityApprovalHistory from './EntityApprovalHistory.vue'
@@ -123,6 +129,10 @@ const effectiveApprovalConfig = computed(() => {
       { value: 'reject', label: '驳回', type: 'danger', showComment: true }
     ]
   }
+})
+
+const approvalFormReadonly = computed(() => {
+  return isViewMode.value || isRuntimeFormReadonly(formConfig.value)
 })
 
 // 审批弹窗中是否有 Tab 子表单
@@ -275,7 +285,8 @@ const submitApprove = async () => {
       taskId: currentTask.value.taskId,
       action: approveForm.action,
       actionLabel: selectedOption?.label,
-      comment: approveForm.comment
+      comment: approveForm.comment,
+      formData: entityData.value
     })
     ElMessage.success('审批成功')
     processDialogVisible.value = false

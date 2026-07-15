@@ -1,0 +1,185 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "cfg_2607150338pyu",
+  "entityCode": "cfg_entity_2607150338pyu",
+  "steps": [
+    {
+      "name": "login:admin",
+      "data": {
+        "id": "1",
+        "username": "admin",
+        "nickname": "超级管理员"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l1_2607150338pyu",
+      "data": {
+        "id": "2077236335902502914",
+        "username": "cfg_l1_2607150338pyu",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l2_2607150338pyu",
+      "data": {
+        "id": "2077236336317739009",
+        "username": "cfg_l2_2607150338pyu",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l1_2607150338pyu",
+      "data": {
+        "id": "2077236335902502914",
+        "username": "cfg_l1_2607150338pyu",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l2_2607150338pyu",
+      "data": {
+        "id": "2077236336317739009",
+        "username": "cfg_l2_2607150338pyu",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2077236337475366913",
+        "processKey": "cfg_2607150338pyu",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2077236337475366913",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2077236340411379714",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077236340436545537",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077236340444934146",
+          "nodeId": "Task_Level1_Review",
+          "nodeName": "一级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2077236340461711361",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l1_2607150338pyu",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2077236340474294273",
+          "nodeId": "Task_Level2_Review",
+          "nodeName": "二级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2077236340495265794",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l2_2607150338pyu",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2077236340692398082",
+        "entityCode": "cfg_entity_2607150338pyu"
+      }
+    },
+    {
+      "name": "publishAndBindEntity",
+      "data": {
+        "entityId": "2077236340692398082",
+        "processDefinitionId": "2077236337475366913",
+        "enableProcess": true
+      }
+    },
+    {
+      "name": "savedStatusMappings",
+      "data": [
+        {
+          "id": "2077236341338320897",
+          "processConfigId": "2077236337475366913",
+          "processKey": "cfg_2607150338pyu",
+          "entityCode": "cfg_entity_2607150338pyu",
+          "sequenceFlowId": "Flow_2",
+          "sourceNodeId": "Task_Level1_Review",
+          "sourceNodeName": "一级审批",
+          "targetNodeId": "Task_Level2_Review",
+          "targetNodeName": "二级审批",
+          "entityStatus": "LEVEL1_APPROVED",
+          "entityStatusCode": "LEVEL1_APPROVED",
+          "statusCategory": "PROCESSING",
+          "conditionExpression": null,
+          "sortOrder": 0,
+          "description": "初审通过后更新状态",
+          "deleted": 0,
+          "createdAt": null,
+          "updatedAt": null
+        },
+        {
+          "id": "2077236341342515201",
+          "processConfigId": "2077236337475366913",
+          "processKey": "cfg_2607150338pyu",
+          "entityCode": "cfg_entity_2607150338pyu",
+          "sequenceFlowId": "Flow_3",
+          "sourceNodeId": "Task_Level2_Review",
+          "sourceNodeName": "二级审批",
+          "targetNodeId": "EndEvent_1",
+          "targetNodeName": "结束",
+          "entityStatus": "FINAL_SPECIAL",
+          "entityStatusCode": "FINAL_SPECIAL",
+          "statusCategory": "COMPLETED",
+          "conditionExpression": null,
+          "sortOrder": 1,
+          "description": "终审通过后更新最终状态",
+          "deleted": 0,
+          "createdAt": null,
+          "updatedAt": null
+        }
+      ]
+    }
+  ],
+  "error": "Error: POST /entity-data failed: HTTP 200, body={\"code\":500,\"message\":\"系统繁忙，请稍后重试\",\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-config-closure.mjs:45:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-config-closure.mjs:254:17)"
+}

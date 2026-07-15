@@ -60,7 +60,7 @@ export function getProcessHistory(processInstanceId) {
  * @param {Object} params - 查询参数 {pageNum, pageSize, processName}
  */
 export function getMyStartedList(params) {
-  return request.get('/process-instance/my-started', { params })
+  return request.get('/process-instance/my-started', { params, silentError: true })
 }
 
 /**

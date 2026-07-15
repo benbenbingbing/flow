@@ -44,7 +44,7 @@
                 size="small"
                 border
               >
-                <el-table-column width="40" align="center">
+                <el-table-column label="排序" width="40" align="center">
                   <template #default>
                     <el-icon class="drag-handle"><Rank /></el-icon>
                   </template>

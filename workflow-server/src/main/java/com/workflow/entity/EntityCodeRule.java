@@ -3,7 +3,10 @@ package com.workflow.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Locale;
+import java.util.zip.CRC32;
 
 /**
  * 实体编码规则配置
@@ -12,6 +15,8 @@ import java.time.LocalDateTime;
 @Data
 @TableName("entity_code_rule")
 public class EntityCodeRule {
+
+    public static final int MAX_PREFIX_LENGTH = 20;
     
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
@@ -92,7 +97,7 @@ public class EntityCodeRule {
     public static EntityCodeRule getDefault(String entityCode) {
         EntityCodeRule rule = new EntityCodeRule();
         rule.setEntityCode(entityCode);
-        rule.setPrefix(entityCode.toUpperCase());
+        rule.setPrefix(defaultPrefix(entityCode));
         rule.setDateFormat("yyyyMMdd");
         rule.setSeqLength(6);
         rule.setSeqType(SeqType.DAY.name());
@@ -100,5 +105,24 @@ public class EntityCodeRule {
         rule.setSeqDate("");
         rule.setExample(rule.getPrefix() + "20240101" + "000001");
         return rule;
+    }
+
+    public static String defaultPrefix(String entityCode) {
+        if (entityCode == null || entityCode.isBlank()) {
+            return "";
+        }
+
+        String normalized = entityCode.trim()
+                .toUpperCase(Locale.ROOT)
+                .replaceAll("[^A-Z0-9_]", "_");
+        if (normalized.length() <= MAX_PREFIX_LENGTH) {
+            return normalized;
+        }
+
+        CRC32 checksum = new CRC32();
+        checksum.update(entityCode.getBytes(StandardCharsets.UTF_8));
+        String suffix = String.format(Locale.ROOT, "%08X", checksum.getValue());
+        int readableLength = MAX_PREFIX_LENGTH - suffix.length() - 1;
+        return normalized.substring(0, readableLength) + "_" + suffix;
     }
 }

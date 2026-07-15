@@ -323,10 +323,12 @@ async function loadStartedList() {
   loading.value = true
   try {
     const res = await getMyStartedList(queryParams)
-    startedList.value = res.records || []
+    startedList.value = res.records || res.list || []
     startedTotal.value = res.total || 0
   } catch (e) {
-    console.error('加载我发起的失败:', e)
+    console.warn('加载我发起的失败，已显示空列表:', e)
+    startedList.value = []
+    startedTotal.value = 0
   } finally {
     loading.value = false
   }

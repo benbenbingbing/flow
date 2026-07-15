@@ -34,7 +34,21 @@ export function isDateFieldCode(fieldCode) {
 
 export function formatDateValue(date) {
   if (!date) return '-'
-  return new Date(date).toLocaleString('zh-CN')
+  const parsedDate = new Date(date)
+  if (Number.isNaN(parsedDate.getTime())) return '-'
+  return parsedDate.toLocaleString('zh-CN')
+}
+
+function normalizeMultipleValue(value) {
+  if (Array.isArray(value)) return value
+  if (typeof value !== 'string') return value
+
+  try {
+    const parsedValue = JSON.parse(value)
+    if (Array.isArray(parsedValue)) return parsedValue
+  } catch {}
+
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
 export function formatListFieldValue(row, field, refNameMap = {}) {
@@ -80,8 +94,9 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
     const options = parseJsonOptions(field.optionsJson)
     const isMultiple = componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(fieldType)
     if (isMultiple) {
-      if (!Array.isArray(value)) return value
-      return value.map((v) => options.find((option) => option.value === v)?.label || v).join(', ') || '-'
+      const values = normalizeMultipleValue(value)
+      if (!Array.isArray(values)) return value
+      return values.map((v) => options.find((option) => option.value === v)?.label || v).join(', ') || '-'
     }
     const option = options.find((item) => item.value === value)
     return option?.label || value

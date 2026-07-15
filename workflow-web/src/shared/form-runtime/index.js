@@ -36,6 +36,14 @@ export function getFieldModelPath(fieldOrCode) {
   return isSystemField(fieldCode) ? fieldCode : `data.${fieldCode}`
 }
 
+export function isRuntimeFormReadonly(form) {
+  return form?.isReadonly === true || form?.isReadonly === 1 || form?.isReadonly === '1'
+}
+
+export function isRuntimeFieldReadonly(field, forceReadonly = false) {
+  return forceReadonly || field?.isReadonly === true || field?.isReadonly === 1 || field?.isReadonly === '1'
+}
+
 export function normalizeRuntimeFormConfigs(progressRes) {
   if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
     return progressRes.formConfigs
@@ -49,6 +57,8 @@ export function mergeRuntimeFormConfigs(configs) {
 
   const seen = new Set()
   const fields = []
+  const seenButtons = new Set()
+  const buttons = []
   configs.forEach((config, formIndex) => {
     ;(config.fields || []).forEach((field, fieldIndex) => {
       const fieldKey = getFieldKey(field) || `${formIndex}_${fieldIndex}`
@@ -60,11 +70,19 @@ export function mergeRuntimeFormConfigs(configs) {
         sortOrder: formIndex * 10000 + (field.sortOrder || fieldIndex)
       })
     })
+
+    ;(config.buttons || []).forEach((button, buttonIndex) => {
+      const buttonKey = button?.key || button?.code || button?.id || `${formIndex}_${buttonIndex}`
+      if (seenButtons.has(buttonKey)) return
+      seenButtons.add(buttonKey)
+      buttons.push(button)
+    })
   })
 
   return {
     ...configs[0],
     formName: configs.map((config) => config.formName).filter(Boolean).join(' / ') || configs[0].formName,
-    fields
+    fields,
+    buttons
   }
 }

@@ -142,8 +142,18 @@
               <div v-if="node.duration" class="duration-info">
                 耗时: {{ formatDuration(node.duration) }}
               </div>
-              <div v-if="node.variables && Object.keys(node.variables).length > 0" class="node-variables">
-                <el-tag v-for="(val, key) in node.variables" :key="key" size="small" type="info" class="var-tag">
+              <div v-if="node.action" class="action-info">
+                处理结果:
+                <el-tag size="small" :type="getActionType(node.action)">
+                  {{ getActionText(node.action, node.actionLabel) }}
+                </el-tag>
+              </div>
+              <div v-if="node.comment" class="comment-info">
+                <span class="comment-label">审批意见:</span>
+                <span>{{ node.comment }}</span>
+              </div>
+              <div v-if="Object.keys(getDisplayVariables(node)).length > 0" class="node-variables">
+                <el-tag v-for="(val, key) in getDisplayVariables(node)" :key="key" size="small" type="info" class="var-tag">
                   {{ key }}: {{ val }}
                 </el-tag>
               </div>
@@ -557,6 +567,28 @@ const getActionText = (action, actionLabel) => {
   return texts[action] || action
 }
 
+const getDisplayVariables = (node) => {
+  const variables = node?.variables || {}
+  const hiddenKeys = new Set([
+    'action',
+    'actionLabel',
+    'approved',
+    'approver',
+    'comment',
+    'initiator',
+    'skipNodeEnabled',
+    'entityCode',
+    'entityDataId',
+    'dataNo',
+    'submitterId',
+    'submitterName',
+    '_approvers_'
+  ])
+  return Object.fromEntries(
+    Object.entries(variables).filter(([key]) => !hiddenKeys.has(key))
+  )
+}
+
 // 时间线样式
 const getNodeTimelineType = (node) => {
   if (node.status === 'COMPLETED') return 'success'
@@ -878,6 +910,28 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+.action-info,
+.comment-info {
+  margin-top: 6px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.action-info :deep(.el-tag) {
+  margin-left: 6px;
+}
+
+.comment-info {
+  display: flex;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.comment-label {
+  flex: none;
+  color: #909399;
 }
 
 .var-tag {

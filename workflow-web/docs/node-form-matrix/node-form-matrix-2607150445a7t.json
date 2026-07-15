@@ -1,0 +1,178 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "form_matrix_2607150445a7t",
+  "processName": "节点表单矩阵2607150445a7t",
+  "entityCode": "form_entity_2607150445a7t",
+  "entityName": "节点表单实体2607150445a7t",
+  "stopAt": "node1",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "username": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2077253265598201857",
+        "fields": [
+          {
+            "id": "2077253265606590465",
+            "code": "name"
+          },
+          {
+            "id": "2077253265610784769",
+            "code": "code"
+          },
+          {
+            "id": "2077253265619173378",
+            "code": "status"
+          },
+          {
+            "id": "2077253265631756289",
+            "code": "processInstanceId"
+          },
+          {
+            "id": "2077253265635950594",
+            "code": "processStartTime"
+          },
+          {
+            "id": "2077253265644339201",
+            "code": "processEndTime"
+          },
+          {
+            "id": "2077253265652727809",
+            "code": "submitterId"
+          },
+          {
+            "id": "2077253265661116418",
+            "code": "submitterName"
+          },
+          {
+            "id": "2077253265665310721",
+            "code": "deptId"
+          },
+          {
+            "id": "2077253265669505025",
+            "code": "amount"
+          },
+          {
+            "id": "2077253265673699330",
+            "code": "lockedNote"
+          },
+          {
+            "id": "2077253265677893633",
+            "code": "defaultMemo"
+          },
+          {
+            "id": "2077253265682087937",
+            "code": "finalNote"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createForms",
+      "data": {
+        "defaultForm": {
+          "id": "2077253266046992385",
+          "name": "默认回退表单"
+        },
+        "formA": {
+          "id": "2077253266088935426",
+          "name": "首节点混合读写表单"
+        },
+        "formC": {
+          "id": "2077253266126684162",
+          "name": "末节点专属表单"
+        }
+      }
+    },
+    {
+      "name": "createPublishBindProcess",
+      "data": {
+        "processId": "2077253266160238593",
+        "processKey": "form_matrix_2607150445a7t"
+      }
+    },
+    {
+      "name": "publishedNodeFormBindings",
+      "data": [
+        {
+          "nodeId": "Task_Form_A",
+          "formId": "2077253266088935426",
+          "isReadonly": 0,
+          "sortOrder": 0
+        },
+        {
+          "nodeId": "Task_Form_C_Readonly",
+          "formId": "2077253266126684162",
+          "isReadonly": 1,
+          "sortOrder": 0
+        }
+      ]
+    },
+    {
+      "name": "resolveNewDataForm",
+      "data": {
+        "id": "2077253266088935426",
+        "name": "首节点混合读写表单",
+        "fields": [
+          {
+            "code": "amount",
+            "isReadonly": 0
+          },
+          {
+            "code": "lockedNote",
+            "isReadonly": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "startProcess",
+      "data": {
+        "dataId": "3d1f1b10f42442b29615e93ab38b2869",
+        "processInstanceId": "0bb3c355-8008-11f1-bd22-02c0621d59a8",
+        "currentTaskId": "0bb45fb1-8008-11f1-bd22-02c0621d59a8",
+        "currentTaskName": "首节点混合读写"
+      }
+    },
+    {
+      "name": "node1Progress",
+      "data": {
+        "activeNodes": [
+          "Task_Form_A"
+        ],
+        "formId": "2077253266088935426",
+        "formName": "首节点混合读写表单",
+        "isReadonly": false,
+        "fields": [
+          {
+            "code": "amount",
+            "isReadonly": 0
+          },
+          {
+            "code": "lockedNote",
+            "isReadonly": 1
+          }
+        ]
+      }
+    }
+  ],
+  "fixture": {
+    "entityId": "2077253265598201857",
+    "entityCode": "form_entity_2607150445a7t",
+    "processId": "2077253266160238593",
+    "processInstanceId": "0bb3c355-8008-11f1-bd22-02c0621d59a8",
+    "dataId": "3d1f1b10f42442b29615e93ab38b2869",
+    "formIds": {
+      "defaultForm": "2077253266046992385",
+      "formA": "2077253266088935426",
+      "formC": "2077253266126684162"
+    }
+  },
+  "conclusion": "FIXTURE_READY: 已停在首节点，供浏览器可视化验收"
+}

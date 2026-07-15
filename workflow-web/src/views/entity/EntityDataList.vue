@@ -109,9 +109,9 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
+import { getFormForNewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { getEntityStatusList } from '@/api/entityStatus'
-import request from '@/utils/request'
 import { getCustomListComponent, hasCustomListComponent } from '@/utils/customComponentRegistry.js'
 import { hasButtonPermission } from '@/utils/listButtonPermission'
 import { formatDateValue } from '@/shared/list-runtime'
@@ -430,14 +430,14 @@ const loadListConfig = async () => {
   }
 }
 
-// 加载默认表单
+// 加载新增数据表单
 const loadDefaultForm = async () => {
-  if (!entityDefinition.value?.id) return
+  if (!entityCode.value) return
   try {
-    const res = await request.get(`/entity-form/entity/${entityDefinition.value.id}/default`)
+    const res = await getFormForNewData(entityCode.value)
     defaultForm.value = res || null
   } catch (e) {
-    console.log('加载默认表单失败:', e)
+    console.log('加载新增数据表单失败:', e)
     defaultForm.value = null
   }
 }
@@ -468,7 +468,7 @@ const loadDataList = async () => {
       res = await entityDataApi.getList(entityCode.value, params)
     }
     
-    const allData = res || []
+    const allData = Array.isArray(res) ? res : (res?.list || res?.records || res?.rows || [])
     total.value = allData.length
     
     const start = (pageNum.value - 1) * pageSize.value
