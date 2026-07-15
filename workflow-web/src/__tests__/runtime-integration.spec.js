@@ -16,7 +16,13 @@ import {
   parseDataSourceConfig,
   parseJsonOptions
 } from '@/shared/list-runtime'
-import { hasButtonPermission } from '@/utils/listButtonPermission.js'
+import {
+  canExecuteAction,
+  getActionCapabilityReason,
+  getSelectionActionState,
+  hasButtonPermission,
+  isActionVisible
+} from '@/utils/listButtonPermission.js'
 import {
   normalizeApiResponse,
   normalizePageResult,
@@ -86,6 +92,28 @@ assert.deepEqual(mergeRuntimeFormConfigs([configA, configB]).buttons.map((button
 assert.equal(hasButtonPermission({ perm: 'entity:add' }, ['entity:add']), true)
 assert.equal(hasButtonPermission({ perm: 'entity:add' }, ['entity:view']), false)
 assert.equal(hasButtonPermission({}, []), true)
+
+const allowedActionRow = {
+  actionCapabilities: {
+    delete: { visible: true, enabled: true, reason: '' }
+  }
+}
+const hiddenActionRow = {
+  actionCapabilities: {
+    delete: { visible: false, enabled: false, reason: '仅本人草稿可以删除' }
+  }
+}
+assert.equal(isActionVisible(allowedActionRow, 'delete'), true)
+assert.equal(canExecuteAction(allowedActionRow, 'delete'), true)
+assert.equal(isActionVisible(hiddenActionRow, 'delete'), false)
+assert.equal(canExecuteAction(hiddenActionRow, 'delete'), false)
+assert.equal(getActionCapabilityReason(hiddenActionRow, 'delete'), '仅本人草稿可以删除')
+assert.deepEqual(getSelectionActionState([], 'batchDelete'), {
+  enabled: false,
+  reason: '请先选择数据'
+})
+assert.equal(getSelectionActionState([allowedActionRow], 'delete').enabled, true)
+assert.equal(getSelectionActionState([allowedActionRow, hiddenActionRow], 'delete').enabled, false)
 
 assert.deepEqual(toPageParams({ currentPage: 3, size: 20 }), { pageNum: 3, pageSize: 20 })
 assert.deepEqual(normalizePageResult({ records: [{ id: 1 }], total: 1, current: 2, size: 10 }).list, [{ id: 1 }])

@@ -2,11 +2,15 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.dto.EntityListConfigDTO;
+import com.workflow.dto.permission.EntityActionCapabilityDTO;
+import com.workflow.service.EntityDataDynamicService;
 import com.workflow.service.EntityListConfigService;
+import com.workflow.service.permission.EntityActionCapabilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体列表配置控制器
@@ -18,6 +22,8 @@ import java.util.List;
 public class EntityListConfigController {
 
     private final EntityListConfigService listConfigService;
+    private final EntityDataDynamicService entityDataDynamicService;
+    private final EntityActionCapabilityService actionCapabilityService;
 
     /**
      * 查询实体的所有列表配置
@@ -44,6 +50,27 @@ public class EntityListConfigController {
     public Result<EntityListConfigDTO> save(@RequestBody EntityListConfigDTO dto) {
         EntityListConfigDTO saved = listConfigService.saveConfig(dto);
         return Result.success(saved);
+    }
+
+    @PostMapping("/{id}/action-rule/preview")
+    public Result<EntityActionCapabilityDTO> previewActionRule(
+            @PathVariable String id,
+            @RequestBody Map<String, String> request) {
+        EntityListConfigDTO config = listConfigService.findById(id);
+        if (config == null) {
+            throw new RuntimeException("列表配置不存在");
+        }
+        String buttonKey = request.get("buttonKey");
+        String entityDataId = request.get("entityDataId");
+        var row = entityDataDynamicService.findAccessibleById(
+                config.getEntityCode(),
+                entityDataId,
+                config.getId());
+        return Result.success(actionCapabilityService.evaluateRowAction(
+                config.getEntityCode(),
+                config.getListKey(),
+                buttonKey,
+                row));
     }
 
     /**

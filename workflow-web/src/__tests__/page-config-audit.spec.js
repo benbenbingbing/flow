@@ -58,6 +58,64 @@ const entityDataList = readFileSync(path.join(root, 'src/views/entity/EntityData
 assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/, '动态实体列表应支持自定义列表组件')
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 
+const entityDataTable = readFileSync(path.join(root, 'src/views/entity/components/EntityDataTable.vue'), 'utf8')
+assert.match(
+  entityDataTable,
+  /handleSelectionChange[\s\S]*selectedRows\.value\s*=\s*selection/,
+  '表格选中数据必须同步到批量操作能力判断'
+)
+
+const flowActionPanel = readFileSync(path.join(root, 'src/components/FlowActionConfigPanel.vue'), 'utf8')
+;['triggerTiming', 'executionMode', 'failurePolicy', 'maxRetries'].forEach((field) => {
+  assert.ok(flowActionPanel.includes(field), `流程动作配置缺少字段: ${field}`)
+})
+;['TASK_COMPLETING', 'TASK_CREATED', 'TRANSITION_TAKEN', 'PROCESS_COMPLETED', 'PROCESS_WITHDRAWN'].forEach((timing) => {
+  assert.ok(flowActionPanel.includes(timing), `流程动作配置缺少常用时机模板: ${timing}`)
+})
+
+const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActionGuide.vue'), 'utf8')
+;[
+  'actionName',
+  'triggerTiming',
+  'executionMode',
+  'failurePolicy',
+  'retryConfig.maxRetries',
+  'interfaceName',
+  'paramsJson',
+  'enabled',
+  'sortOrder'
+].forEach((field) => {
+  assert.ok(flowActionGuide.includes(field), `流程动作指南缺少字段说明: ${field}`)
+})
+;[
+  'PROCESS_STARTED',
+  'PROCESS_COMPLETED',
+  'PROCESS_WITHDRAWN',
+  'PROCESS_TERMINATED',
+  'NODE_ENTERED',
+  'NODE_COMPLETED',
+  'TASK_CREATED',
+  'TASK_ASSIGNED',
+  'TASK_COMPLETING',
+  'TRANSITION_TAKEN'
+].forEach((timing) => {
+  assert.ok(flowActionGuide.includes(timing), `流程动作指南缺少时机说明: ${timing}`)
+})
+;['tocItems', 'scrollToSection', 'setupSectionObserver', 'id="scope"', 'id="scenes"'].forEach((marker) => {
+  assert.ok(flowActionGuide.includes(marker), `流程动作指南缺少目录能力: ${marker}`)
+})
+
+const processDesign = readFileSync(path.join(root, 'src/views/ProcessDesign.vue'), 'utf8')
+assert.match(processDesign, /全局动作[\s\S]*scope-type="PROCESS"/, '流程设计器应提供全局流程动作入口')
+
+const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigPanel.vue'), 'utf8')
+;['FlowConditionGroupEditor', 'conditionGroupConfig', 'conditionRoot', 'buildFlowConditionExpression'].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `流程条件配置缺少条件组能力: ${marker}`)
+})
+
+const processProgress = readFileSync(path.join(root, 'src/views/ProcessProgress.vue'), 'utf8')
+assert.match(processProgress, /动作执行记录[\s\S]*retryActionExecution/, '流程进度页应支持查看并重试动作执行记录')
+
 const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fields/index.js'), 'utf8')
 ;['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
   assert.ok(formFieldRegistry.includes(type), `表单运行时缺少字段类型线索: ${type}`)

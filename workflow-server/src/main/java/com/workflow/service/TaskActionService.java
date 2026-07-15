@@ -1,8 +1,11 @@
 package com.workflow.service;
 
+import com.workflow.common.ForbiddenException;
+import com.workflow.common.UserContext;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.ProcessTask;
 import com.workflow.mapper.EntityDataMapper;
+import com.workflow.service.permission.EntityActionCapabilityService;
 import com.workflow.vo.TaskVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +19,7 @@ import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -45,6 +49,8 @@ public class TaskActionService {
     private final com.workflow.mapper.ProcessOperationLogMapper operationLogMapper;
     private final SysUserService sysUserService;
     private final NodeFormSubmissionService nodeFormSubmissionService;
+    private final EntityDataDynamicService entityDataDynamicService;
+    private final EntityActionCapabilityService entityActionCapabilityService;
 
     /**
      * 完成任务
@@ -73,16 +79,10 @@ public class TaskActionService {
             throw new RuntimeException("任务不存在或已处理: " + taskId);
         }
 
-        // 验证任务是否分配给当前用户或用户是候选人
-        String assignee = task.getAssignee();
-        if (assignee != null && !assignee.equals(userId)) {
-            // 如果任务已分配给其他人，检查当前用户是否有权限处理
-            // 简化处理：记录警告但允许处理（实际应该检查候选组）
-            log.warn("任务 {} 分配给 {}，但由 {} 处理", taskId, assignee, userId);
-        }
+        requireTaskAccess(task);
 
-        // 设置审批人（如果未分配或分配给别人，则重新认领）
-        if (assignee == null || !assignee.equals(userId)) {
+        String assignee = task.getAssignee();
+        if (assignee == null) {
             taskService.setAssignee(taskId, userId);
         }
 
@@ -183,6 +183,56 @@ public class TaskActionService {
             // 注意：实体数据状态由 EntityStatusUpdateListener 监听器自动更新
             // 不需要在这里手动更新，避免重复更新
         }
+    }
+
+    @Transactional(readOnly = true)
+    public void requireTaskAccess(String taskId) {
+        Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
+        if (task == null) {
+            throw new RuntimeException("任务不存在或已处理: " + taskId);
+        }
+        requireTaskAccess(task);
+    }
+
+    private void requireTaskAccess(Task task) {
+        String currentUserId = UserContext.getUserId();
+        String currentUsername = UserContext.getUsername();
+        String assignee = task.getAssignee();
+        boolean assigned = matchesCurrentUser(assignee, currentUserId, currentUsername);
+        boolean candidate = isCandidate(task.getId(), currentUserId)
+                || isCandidate(task.getId(), currentUsername);
+        if (StringUtils.hasText(assignee) && !assigned) {
+            throw new ForbiddenException("当前任务已分配给其他办理人");
+        }
+        if (!StringUtils.hasText(assignee) && !candidate) {
+            throw new ForbiddenException("当前用户不是该任务的候选办理人");
+        }
+
+        String entityCode = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityCode"));
+        String entityDataId = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId"));
+        if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
+            var entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+            entityActionCapabilityService.requireRowAction(entityCode, null, "approve", entityData);
+        }
+    }
+
+    private boolean isCandidate(String taskId, String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return false;
+        }
+        return taskService.createTaskQuery()
+                .taskId(taskId)
+                .taskCandidateUser(userId)
+                .count() > 0;
+    }
+
+    private boolean matchesCurrentUser(String value, String userId, String username) {
+        return StringUtils.hasText(value)
+                && (value.equals(userId) || value.equals(username));
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private String normalizeAction(String action) {
@@ -338,6 +388,12 @@ public class TaskActionService {
         }
 
         try {
+            String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
+            String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
+            if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
+                entityDataDynamicService.markWithdrawn(entityCode, entityDataId);
+            }
+
             // 删除流程实例（撤回相当于终止流程）
             runtimeService.deleteProcessInstance(processInstanceId, "发起人撤回: " + reason);
 

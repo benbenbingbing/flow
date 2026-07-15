@@ -71,10 +71,13 @@ public class ProcessEndListener implements FlowableEventListener {
                         .processInstanceId(processInstanceId)
                         .singleResult();
                 String deleteReason = historicInstance != null ? historicInstance.getDeleteReason() : null;
+                boolean isWithdrawn = deleteReason != null && deleteReason.startsWith("发起人撤回");
                 boolean isTerminated = deleteReason != null && !deleteReason.isEmpty();
 
                 // 根据结束类型确定状态分类
-                String statusCategory = isTerminated ? "TERMINATED" : "COMPLETED";
+                String statusCategory = isWithdrawn
+                        ? "WITHDRAWN"
+                        : (isTerminated ? "TERMINATED" : "COMPLETED");
                 String tableName = dynamicTableService.getTableName(entityCode);
                 Map<String, Object> entityData = dynamicMapper.selectById(tableName, entityDataId);
                 String currentStatus = entityData != null && entityData.get("status") != null
@@ -116,6 +119,9 @@ public class ProcessEndListener implements FlowableEventListener {
             log.warn("获取实体[{}]状态失败: {}", entityCode, e.getMessage());
         }
         // 兜底默认值
+        if ("WITHDRAWN".equals(category)) {
+            return "WITHDRAWN";
+        }
         return "TERMINATED".equals(category) ? "TERMINATED" : "APPROVED";
     }
 

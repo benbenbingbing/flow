@@ -3,6 +3,7 @@ package com.workflow.config;
 import com.workflow.listener.EntityStatusUpdateListener;
 import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.listener.ProcessEndListener;
+import com.workflow.process.action.FlowActionEngineEventListener;
 import com.workflow.service.WorkflowAutoSkipService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.RuntimeService;
@@ -22,6 +23,7 @@ public class FlowableEventListenerConfig {
     private final ProcessEndListener processEndListener;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final WorkflowAutoSkipService workflowAutoSkipService;
+    private final FlowActionEngineEventListener flowActionEngineEventListener;
 
     @PostConstruct
     public void init() {
@@ -37,5 +39,8 @@ public class FlowableEventListenerConfig {
         // 注册自动跳过节点监听器：流程运行中途到达配置为跳过的用户任务节点时实时自动完成，
         // 弥补原先仅在流程启动时一次性跳过的不足（解决中途到达的跳过节点不生效问题）。
         runtimeService.addEventListener(workflowAutoSkipService);
+
+        // 统一流程动作事件监听器：流程、节点、任务、连线均从这里分发。
+        runtimeService.addEventListener(flowActionEngineEventListener);
     }
 }

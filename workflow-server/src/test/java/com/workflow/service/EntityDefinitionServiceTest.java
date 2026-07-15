@@ -14,6 +14,7 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityPublishHistoryMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.service.permission.EntityPermissionCatalogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,6 +67,9 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private EntityFieldFileItemService fileItemService;
+
+    @Mock
+    private EntityPermissionCatalogService entityPermissionCatalogService;
 
     @InjectMocks
     private EntityDefinitionService entityService;

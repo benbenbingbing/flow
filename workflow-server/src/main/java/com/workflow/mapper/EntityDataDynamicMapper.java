@@ -26,6 +26,13 @@ public interface EntityDataDynamicMapper {
     @Options(statementType = StatementType.PREPARED)
     Map<String, Object> selectById(@Param("tableName") String tableName, @Param("id") String id);
 
+    @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "selectByIdWithPermission")
+    @Options(statementType = StatementType.PREPARED)
+    Map<String, Object> selectByIdWithPermission(
+            @Param("tableName") String tableName,
+            @Param("id") String id,
+            @Param("permissionSql") String permissionSql);
+
     /**
      * 根据流程实例ID查询
      */

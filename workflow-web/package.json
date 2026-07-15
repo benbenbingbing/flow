@@ -6,7 +6,7 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
-    "test:unit": "node src/utils/__tests__/calcEngine.spec.js",
+    "test:unit": "node src/utils/__tests__/calcEngine.spec.js && node src/utils/__tests__/flowConditionGroups.spec.js",
     "test:integration": "node --loader ./scripts/test-alias-loader.mjs src/__tests__/runtime-integration.spec.js",
     "test:page-config": "node src/__tests__/page-config-audit.spec.js",
     "test": "npm run test:unit && npm run test:integration && npm run test:functional && npm run test:page-config && npm run test:ui-config",
@@ -16,7 +16,8 @@
     "test:visual:real": "node scripts/visual-acceptance-real.mjs",
     "test:workflow:real": "node scripts/e2e-real-workflow.mjs",
     "test:workflow:config-real": "node scripts/real-workflow-config-closure.mjs",
-    "test:workflow:node-forms-real": "node scripts/real-workflow-node-forms.mjs"
+    "test:workflow:node-forms-real": "node scripts/real-workflow-node-forms.mjs",
+    "test:workflow:actions-real": "node scripts/real-flow-action-timing.mjs"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

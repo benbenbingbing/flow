@@ -1,5 +1,6 @@
 package com.workflow.controller;
 
+import com.workflow.common.ForbiddenException;
 import com.workflow.common.UserContext;
 import com.workflow.common.PageResult;
 import com.workflow.common.Result;
@@ -127,6 +128,7 @@ public class ProcessTaskController {
      */
     @GetMapping("/detail/{taskId}")
     public Result<TaskDetailDTO> getTaskDetail(@PathVariable String taskId) {
+        taskActionService.requireTaskAccess(taskId);
         return Result.success(taskDetailService.getTaskDetail(taskId));
     }
 
@@ -177,6 +179,8 @@ public class ProcessTaskController {
             taskActionService.completeTask(
                     taskId, currentUser, action, comment, transferTo, actionLabel, formData);
             return Result.success();
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return Result.error("审批失败: " + e.getMessage());
         }

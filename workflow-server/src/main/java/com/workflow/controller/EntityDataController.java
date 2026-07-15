@@ -1,7 +1,9 @@
 package com.workflow.controller;
 
 import com.workflow.dto.ApiResponse;
+import com.workflow.dto.EntityBatchDeleteRequest;
 import com.workflow.dto.EntityDataDTO;
+import com.workflow.service.EntityDataActionService;
 import com.workflow.dto.EntityDataExportRequest;
 import com.workflow.service.EntityDataDynamicService;
 import com.workflow.service.EntityDataExportService;
@@ -26,6 +28,8 @@ public class EntityDataController {
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityDataListConfigService entityDataListConfigService;
     private final EntityDataExportService entityDataExportService;
+    private final EntityDataActionService entityDataActionService;
+    private final com.workflow.service.permission.EntityActionCapabilityService actionCapabilityService;
     
     /**
      * 获取某实体的所有数据（支持查询条件）
@@ -34,6 +38,9 @@ public class EntityDataController {
     public ApiResponse<List<EntityDataDTO>> listByEntity(
             @PathVariable String entityCode,
             @RequestParam(required = false) Map<String, String> params) {
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                com.workflow.service.permission.EntityPermissionAction.LIST);
         if (params != null && !params.isEmpty()) {
             Map<String, Object> condition = new java.util.HashMap<>();
             params.forEach((k, v) -> {
@@ -52,10 +59,10 @@ public class EntityDataController {
             condition.remove("orderBy");
             condition.remove("order");
             if (!condition.isEmpty()) {
-                return ApiResponse.success(entityDataDynamicService.findByCondition(entityCode, condition));
+                return ApiResponse.success(entityDataListConfigService.findListWithConfig(entityCode, null, condition));
             }
         }
-        return ApiResponse.success(entityDataDynamicService.findByEntityCode(entityCode));
+        return ApiResponse.success(entityDataListConfigService.findListWithConfig(entityCode, null, null));
     }
 
     /**
@@ -67,6 +74,9 @@ public class EntityDataController {
             @RequestParam(required = false) String listKey,
             @RequestParam(required = false) Map<String, String> params) {
         Map<String, Object> condition = new java.util.HashMap<>();
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                com.workflow.service.permission.EntityPermissionAction.LIST);
         if (params != null && !params.isEmpty()) {
             params.forEach((k, v) -> {
                 if (v != null && !v.trim().isEmpty()) {
@@ -93,8 +103,11 @@ public class EntityDataController {
      * 根据ID获取数据详情
      */
     @GetMapping("/entity/{entityCode}/detail/{id}")
-    public ApiResponse<EntityDataDTO> getById(@PathVariable String entityCode, @PathVariable String id) {
-        return ApiResponse.success(entityDataDynamicService.findById(entityCode, id));
+    public ApiResponse<EntityDataDTO> getById(
+            @PathVariable String entityCode,
+            @PathVariable String id,
+            @RequestParam(required = false) String listKey) {
+        return ApiResponse.success(entityDataActionService.getDetail(entityCode, id, listKey));
     }
     
     /**
@@ -104,6 +117,10 @@ public class EntityDataController {
     public ApiResponse<EntityDataDTO> getByProcessInstance(
             @PathVariable String entityCode, 
             @PathVariable String processInstanceId) {
+        actionCapabilityService.requireAnyStandardPermission(
+                entityCode,
+                com.workflow.service.permission.EntityPermissionAction.VIEW,
+                com.workflow.service.permission.EntityPermissionAction.APPROVE);
         return ApiResponse.success(entityDataDynamicService.findByProcessInstanceId(entityCode, processInstanceId));
     }
     
@@ -113,7 +130,7 @@ public class EntityDataController {
      */
     @PostMapping
     public ApiResponse<EntityDataDTO> save(@RequestBody EntityDataDTO dto) {
-        return ApiResponse.success(entityDataDynamicService.save(dto));
+        return ApiResponse.success(entityDataActionService.create(dto));
     }
     
     /**
@@ -123,16 +140,28 @@ public class EntityDataController {
     public ApiResponse<EntityDataDTO> update(
             @PathVariable String entityCode, 
             @PathVariable String id, 
+            @RequestParam(required = false) String listKey,
             @RequestBody Map<String, Object> formData) {
-        return ApiResponse.success(entityDataDynamicService.update(entityCode, id, formData));
+        return ApiResponse.success(entityDataActionService.update(entityCode, id, listKey, formData));
     }
     
     /**
      * 删除数据
      */
     @DeleteMapping("/entity/{entityCode}/detail/{id}")
-    public ApiResponse<Void> delete(@PathVariable String entityCode, @PathVariable String id) {
-        entityDataDynamicService.delete(entityCode, id);
+    public ApiResponse<Void> delete(
+            @PathVariable String entityCode,
+            @PathVariable String id,
+            @RequestParam(required = false) String listKey) {
+        entityDataActionService.delete(entityCode, id, listKey);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/entity/{entityCode}/batch-delete")
+    public ApiResponse<Void> batchDelete(
+            @PathVariable String entityCode,
+            @RequestBody EntityBatchDeleteRequest request) {
+        entityDataActionService.batchDelete(entityCode, request.getIds(), request.getListKey());
         return ApiResponse.success();
     }
     
@@ -143,7 +172,10 @@ public class EntityDataController {
     public ApiResponse<List<EntityDataDTO>> search(
             @PathVariable String entityCode, 
             @RequestBody Map<String, Object> condition) {
-        return ApiResponse.success(entityDataDynamicService.findByCondition(entityCode, condition));
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                com.workflow.service.permission.EntityPermissionAction.LIST);
+        return ApiResponse.success(entityDataListConfigService.findListWithConfig(entityCode, null, condition));
     }
     
     /**
@@ -151,6 +183,9 @@ public class EntityDataController {
      */
     @GetMapping("/entity/{entityCode}/count")
     public ApiResponse<Long> count(@PathVariable String entityCode) {
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                com.workflow.service.permission.EntityPermissionAction.LIST);
         return ApiResponse.success(entityDataDynamicService.count(entityCode));
     }
 

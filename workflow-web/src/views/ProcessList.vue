@@ -143,7 +143,7 @@
     <el-dialog
       v-model="versionActionsVisible"
       title="版本流程动作"
-      width="700px"
+      width="1100px"
     >
       <el-table :data="versionActions" v-loading="versionActionsLoading" stripe>
         <el-table-column prop="sortOrder" label="顺序" width="60">
@@ -152,12 +152,22 @@
           </template>
         </el-table-column>
         <el-table-column prop="actionName" label="动作名称" min-width="120" />
+        <el-table-column prop="scopeType" label="位置" width="120">
+          <template #default="{ row }">
+            {{ row.scopeType === 'PROCESS' ? '全局流程' : row.scopeType === 'NODE' ? '节点' : '连线' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="triggerTiming" label="执行时机" min-width="160" />
+        <el-table-column prop="executionMode" label="执行方式" width="130">
+          <template #default="{ row }">
+            {{ row.executionMode === 'AFTER_COMMIT' ? '提交后执行' : '事务内执行' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="interfaceName" label="接口" min-width="150">
           <template #default="{ row }">
             <code>{{ row.interfaceName }}</code>
           </template>
         </el-table-column>
-        <el-table-column prop="methodName" label="方法" width="100" />
         <el-table-column prop="enabled" label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">

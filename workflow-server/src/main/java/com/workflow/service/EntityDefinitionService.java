@@ -42,6 +42,7 @@ public class EntityDefinitionService {
     private final EntityPublishHistoryService publishHistoryService;
     private final EntityFieldFileItemService fileItemService;
     private final ObjectMapper objectMapper;
+    private final com.workflow.service.permission.EntityPermissionCatalogService entityPermissionCatalogService;
     
     /**
      * 查询所有实体定义
@@ -148,6 +149,8 @@ public class EntityDefinitionService {
             }
             syncRelations(entity, dto.getFields(), fieldMapper.findByEntityId(entity.getId()));
         }
+
+        entityPermissionCatalogService.synchronizeEntity(entity);
         
         return convertToDTO(entity);
     }
@@ -295,6 +298,7 @@ public class EntityDefinitionService {
         existing.setEnableProcess(dto.getEnableProcess());
         
         entityMapper.updateById(existing);
+        entityPermissionCatalogService.synchronizeEntity(existing);
         
         // 更新字段
         if (dto.getFields() != null) {
@@ -428,9 +432,13 @@ public class EntityDefinitionService {
      */
     @Transactional
     public void delete(String id) {
+        EntityDefinition entity = entityMapper.selectById(id);
         relationMapper.deleteByParentEntityId(id);
         fieldMapper.deleteByEntityId(id);
         entityMapper.deleteById(id);
+        if (entity != null) {
+            entityPermissionCatalogService.disableEntityPermissions(entity.getEntityCode());
+        }
     }
     
     /**

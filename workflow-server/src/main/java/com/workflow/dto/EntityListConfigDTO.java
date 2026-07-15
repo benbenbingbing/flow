@@ -1,10 +1,13 @@
 package com.workflow.dto;
 
+import com.workflow.dto.permission.EntityActionCapabilityDTO;
 import com.workflow.entity.EntityListField;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体列表配置 DTO
@@ -49,4 +52,9 @@ public class EntityListConfigDTO {
      * 列表字段配置
      */
     private List<EntityListField> fields;
+
+    /**
+     * 当前用户的工具栏运行时能力。
+     */
+    private Map<String, EntityActionCapabilityDTO> toolbarCapabilities = new LinkedHashMap<>();
 }

@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.common.UserContext;
+import com.workflow.common.ForbiddenException;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.permission.DataPermissionResult;
 import com.workflow.entity.EntityDefinition;
@@ -112,6 +113,27 @@ public class EntityDataDynamicService {
         Map<String, Object> data = dynamicMapper.selectById(tableName, id);
         if (data == null) {
             throw new RuntimeException("数据不存在: " + id);
+        }
+        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        relationRuntimeService.loadRelationData(dto);
+        return dto;
+    }
+
+    /**
+     * 按列表数据权限查询单条数据。
+     */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findAccessibleById(String entityCode, String id, String listConfigId) {
+        String tableName = dynamicTableService.getTableName(entityCode);
+        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        if (!permission.isHasPermission()) {
+            throw new ForbiddenException("数据不存在或无权访问");
+        }
+        Map<String, Object> data = permission.isNeedFilter()
+                ? dynamicMapper.selectByIdWithPermission(tableName, id, permission.getSqlCondition())
+                : dynamicMapper.selectById(tableName, id);
+        if (data == null) {
+            throw new ForbiddenException("数据不存在或不在当前数据权限范围内");
         }
         EntityDataDTO dto = recordMapper.toDto(data, entityCode);
         relationRuntimeService.loadRelationData(dto);
@@ -446,6 +468,25 @@ public class EntityDataDynamicService {
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName, String currentTaskAssignee) {
         workflowRuntimeService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
+    }
+
+    /**
+     * 标记实体流程已撤回。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void markWithdrawn(String entityCode, String entityDataId) {
+        String tableName = dynamicTableService.getTableName(entityCode);
+        List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "WITHDRAWN");
+        String statusCode = statuses == null || statuses.isEmpty()
+                ? "WITHDRAWN"
+                : statuses.get(0).getStatusCode();
+        Map<String, Object> updateData = new HashMap<>();
+        updateData.put("id", entityDataId);
+        updateData.put("status", statusCode);
+        updateData.put("process_end_time", LocalDateTime.now());
+        updateData.put("update_time", LocalDateTime.now());
+        dynamicMapper.update(tableName, updateData);
+        dynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);
     }
 
     private String getCurrentUserId(String defaultValue) {

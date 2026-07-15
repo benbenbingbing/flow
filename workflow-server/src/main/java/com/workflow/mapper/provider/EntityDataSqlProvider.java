@@ -28,6 +28,22 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 根据 ID 查询（带数据权限过滤）。
+     */
+    public String selectByIdWithPermission(Map<String, Object> params) {
+        String tableName = tableName(params);
+        String permissionSql = (String) params.get("permissionSql");
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT * FROM ").append(tableName)
+                .append(" WHERE id = #{id} AND deleted = 0");
+        if (permissionSql != null && !permissionSql.isBlank()) {
+            sql.append(" AND (").append(permissionSql).append(")");
+        }
+        sql.append(" LIMIT 1");
+        return sql.toString();
+    }
+
+    /**
      * 根据流程实例ID查询
      */
     public String selectByProcessInstanceId(Map<String, Object> params) {

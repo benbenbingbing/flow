@@ -1,6 +1,6 @@
 package com.workflow.service;
 
-import com.workflow.common.PermissionUtil;
+import com.workflow.common.ForbiddenException;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.EntityDataExportRequest;
 import com.workflow.entity.EntityDefinition;
@@ -9,6 +9,8 @@ import com.workflow.entity.EntityListField;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityListConfigMapper;
 import com.workflow.mapper.EntityListFieldMapper;
+import com.workflow.service.permission.EntityActionCapabilityService;
+import com.workflow.service.permission.EntityPermissionAction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,15 +41,19 @@ public class EntityDataExportService {
     private final EntityListConfigMapper listConfigMapper;
     private final EntityListFieldMapper fieldMapper;
     private final EntityDefinitionMapper definitionMapper;
+    private final EntityActionCapabilityService actionCapabilityService;
 
     /**
      * 导出实体数据
      */
     public void export(String entityCode, EntityDataExportRequest request, HttpServletResponse response) {
-        // 1. 权限校验（仅当按钮配置了权限码时才校验）
-        String perm = request.getPerm();
-        if (StringUtils.hasText(perm)) {
-            PermissionUtil.checkPermission(perm);
+        // 1. 服务端根据导出类型决定权限，禁止信任客户端传入的权限码
+        boolean exportSelected = "SELECTED".equalsIgnoreCase(request.getExportType());
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                exportSelected ? EntityPermissionAction.EXPORT : EntityPermissionAction.EXPORT_ALL);
+        if (!exportSelected) {
+            actionCapabilityService.requireToolbarAction(entityCode, request.getListKey(), "exportAll");
         }
 
         // 2. 加载列表配置和字段
@@ -69,6 +75,19 @@ public class EntityDataExportService {
 
         // 3. 查询数据
         List<EntityDataDTO> records = queryData(entityCode, request);
+        if (exportSelected) {
+            List<String> denied = records.stream()
+                    .filter(record -> {
+                        var capability = actionCapabilityService.evaluateRowAction(
+                                entityCode, request.getListKey(), "exportSelected", record);
+                        return !capability.isVisible() || !capability.isEnabled();
+                    })
+                    .map(record -> StringUtils.hasText(record.getDataNo()) ? record.getDataNo() : record.getId())
+                    .toList();
+            if (!denied.isEmpty()) {
+                throw new ForbiddenException("以下数据不允许导出：" + String.join("、", denied));
+            }
+        }
 
         // 4. 设置响应头
         String fileName = entityCode + "_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".csv";

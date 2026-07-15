@@ -23,7 +23,7 @@ const tagType = computed(() => {
   if (val === 'rejected' || val === 'terminated' || val === '驳回' || val === '已终止') return 'danger'
   if (val === 'pending' || val === 'running' || val === '审批中' || val === '运行中') return 'warning'
   if (val === 'draft' || val === '草稿') return 'info'
-  return ''
+  return undefined
 })
 
 const displayValue = computed(() => {

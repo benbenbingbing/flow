@@ -4,7 +4,10 @@ import com.workflow.entity.EntityData;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
+
+import com.workflow.dto.permission.EntityActionCapabilityDTO;
 
 /**
  * 实体数据DTO
@@ -50,4 +53,14 @@ public class EntityDataDTO {
      * 扩展数据（用于列表自定义字段数据补充，与 data 隔离避免冲突）
      */
     private Map<String, Object> extData;
+
+    /**
+     * 当前操作来源列表标识，不持久化。
+     */
+    private String listKey;
+
+    /**
+     * 当前用户针对本行数据的按钮能力。
+     */
+    private Map<String, EntityActionCapabilityDTO> actionCapabilities = new LinkedHashMap<>();
 }

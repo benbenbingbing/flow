@@ -1,8 +1,10 @@
 package com.workflow.service;
 
+import com.workflow.common.UserContext;
 import com.workflow.mapper.EntityDataMapper;
 import com.workflow.mapper.ProcessOperationLogMapper;
 import com.workflow.entity.ProcessTask;
+import com.workflow.service.permission.EntityActionCapabilityService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -13,6 +15,7 @@ import org.flowable.task.api.history.HistoricTaskInstanceQuery;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -59,6 +62,12 @@ class TaskActionServiceTest {
     private NodeFormSubmissionService nodeFormSubmissionService;
 
     @Mock
+    private EntityDataDynamicService entityDataDynamicService;
+
+    @Mock
+    private EntityActionCapabilityService entityActionCapabilityService;
+
+    @Mock
     private TaskQuery taskQuery;
 
     @Mock
@@ -86,8 +95,16 @@ class TaskActionServiceTest {
                 entityDataMapper,
                 operationLogMapper,
                 sysUserService,
-                nodeFormSubmissionService
+                nodeFormSubmissionService,
+                entityDataDynamicService,
+                entityActionCapabilityService
         );
+        UserContext.setCurrentUser("admin-id", "admin");
+    }
+
+    @AfterEach
+    void tearDown() {
+        UserContext.clear();
     }
 
     @Test
@@ -149,6 +166,8 @@ class TaskActionServiceTest {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
         when(taskQuery.taskId(taskId)).thenReturn(taskQuery);
         when(taskQuery.singleResult()).thenReturn(task);
+        when(taskQuery.taskCandidateUser(any())).thenReturn(taskQuery);
+        when(taskQuery.count()).thenReturn(0L);
         when(task.getId()).thenReturn(taskId);
         when(task.getAssignee()).thenReturn(assignee);
         when(task.getProcessInstanceId()).thenReturn(processInstanceId);

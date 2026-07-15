@@ -25,6 +25,9 @@ public class EntityListConfigService {
 
     private final EntityListConfigMapper configMapper;
     private final EntityListFieldMapper fieldMapper;
+    private final com.workflow.service.permission.EntityListActionConfigService actionConfigService;
+    private final com.workflow.service.permission.EntityPermissionCatalogService permissionCatalogService;
+    private final com.workflow.service.permission.EntityActionCapabilityService actionCapabilityService;
 
     /**
      * 查询实体的所有列表配置
@@ -52,6 +55,7 @@ public class EntityListConfigService {
     public EntityListConfigDTO saveConfig(EntityListConfigDTO dto) {
         EntityListConfig config = new EntityListConfig();
         BeanUtils.copyProperties(dto, config);
+        actionConfigService.normalizeForSave(config);
 
         boolean isNew = !StringUtils.hasText(config.getId());
 
@@ -75,6 +79,8 @@ public class EntityListConfigService {
             }
         }
 
+        permissionCatalogService.synchronizeCustomPermissions(config);
+
         return findById(config.getId());
     }
 
@@ -92,6 +98,11 @@ public class EntityListConfigService {
     private EntityListConfigDTO convertToDTO(EntityListConfig config) {
         EntityListConfigDTO dto = new EntityListConfigDTO();
         BeanUtils.copyProperties(config, dto);
+        if (config != null && StringUtils.hasText(config.getEntityCode())) {
+            dto.setToolbarCapabilities(actionCapabilityService.evaluateToolbarActions(
+                    config.getEntityCode(),
+                    config));
+        }
         return dto;
     }
 

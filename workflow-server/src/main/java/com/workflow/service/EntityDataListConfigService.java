@@ -9,6 +9,7 @@ import com.workflow.mapper.EntityListConfigMapper;
 import com.workflow.mapper.EntityListFieldMapper;
 import com.workflow.service.listfield.ListFieldDataProvider;
 import com.workflow.service.listfield.ListFieldDataProviderRegistry;
+import com.workflow.service.permission.EntityActionCapabilityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class EntityDataListConfigService {
     private final EntityListFieldMapper fieldMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final ListFieldDataProviderRegistry providerRegistry;
+    private final EntityActionCapabilityService actionCapabilityService;
 
     /**
      * 查询实体数据列表（带列表配置扩展）
@@ -59,55 +61,50 @@ public class EntityDataListConfigService {
             return records;
         }
 
-        if (config == null) {
-            return records;
-        }
+        if (config != null) {
+            // 3. 加载字段配置，筛选出非 ENTITY_FIELD 的字段
+            List<EntityListField> allFields = fieldMapper.findByListConfigId(config.getId());
+            List<EntityListField> customFields = allFields.stream()
+                    .filter(f -> f.getShowInList() != null && f.getShowInList())
+                    .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
+                    .collect(Collectors.toList());
 
-        // 3. 加载字段配置，筛选出非 ENTITY_FIELD 的字段
-        List<EntityListField> allFields = fieldMapper.findByListConfigId(config.getId());
-        List<EntityListField> customFields = allFields.stream()
-                .filter(f -> f.getShowInList() != null && f.getShowInList())
-                .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
-                .collect(Collectors.toList());
+            // 4. 按数据源类型分组，调用对应的数据提供者
+            Map<String, List<EntityListField>> fieldsByType = customFields.stream()
+                    .collect(Collectors.groupingBy(EntityListField::getDataSourceType));
 
-        if (customFields.isEmpty()) {
-            return records;
-        }
+            Map<String, Object> context = new HashMap<>();
+            context.put("entityCode", entityCode);
+            context.put("listKey", listKey);
+            context.put("listConfigId", config.getId());
 
-        // 4. 按数据源类型分组，调用对应的数据提供者
-        Map<String, List<EntityListField>> fieldsByType = customFields.stream()
-                .collect(Collectors.groupingBy(EntityListField::getDataSourceType));
+            for (Map.Entry<String, List<EntityListField>> entry : fieldsByType.entrySet()) {
+                String dataSourceType = entry.getKey();
+                List<EntityListField> fields = entry.getValue();
 
-        Map<String, Object> context = new HashMap<>();
-        context.put("entityCode", entityCode);
-        context.put("listKey", listKey);
-        context.put("listConfigId", config.getId());
+                ListFieldDataProvider provider = providerRegistry.getProvider(dataSourceType);
+                if (provider == null) {
+                    log.warn("未找到数据源类型的数据提供者: type={}, fields={}", dataSourceType,
+                            fields.stream().map(EntityListField::getFieldCode).collect(Collectors.toList()));
+                    continue;
+                }
 
-        for (Map.Entry<String, List<EntityListField>> entry : fieldsByType.entrySet()) {
-            String dataSourceType = entry.getKey();
-            List<EntityListField> fields = entry.getValue();
-
-            ListFieldDataProvider provider = providerRegistry.getProvider(dataSourceType);
-            if (provider == null) {
-                log.warn("未找到数据源类型的数据提供者: type={}, fields={}", dataSourceType,
-                        fields.stream().map(EntityListField::getFieldCode).collect(Collectors.toList()));
-                continue;
-            }
-
-            try {
-                provider.enrich(records, fields, context);
-            } catch (Exception e) {
-                log.error("列表字段数据补充失败: type={}, entityCode={}", dataSourceType, entityCode, e);
+                try {
+                    provider.enrich(records, fields, context);
+                } catch (Exception e) {
+                    log.error("列表字段数据补充失败: type={}, entityCode={}", dataSourceType, entityCode, e);
+                }
             }
         }
 
+        actionCapabilityService.enrichRows(entityCode, config, records);
         return records;
     }
 
     /**
      * 查找列表配置
      */
-    private EntityListConfig findListConfig(String entityCode, String listKey) {
+    public EntityListConfig findListConfig(String entityCode, String listKey) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         if (definition == null) {
             return null;
