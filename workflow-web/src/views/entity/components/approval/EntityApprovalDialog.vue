@@ -82,9 +82,11 @@ import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
 const props = withDefaults(defineProps<{
   entityCode?: string
   defaultForm?: any
+  listKey?: string
 }>(), {
   entityCode: '',
-  defaultForm: null
+  defaultForm: null,
+  listKey: ''
 })
 
 const emit = defineEmits<{
@@ -239,7 +241,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
     })
   } else {
     try {
-      const detail = await entityDataApi.getDetail(props.entityCode, row.id)
+      const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey)
       entityData.value = {
         ...(detail.data || {}),
         name: detail.name,

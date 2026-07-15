@@ -75,6 +75,7 @@ const props = defineProps<{
   entityDefinition: any
   entityFields: any[]
   defaultForm: any
+  listKey?: string
 }>()
 
 const emit = defineEmits<{
@@ -190,7 +191,7 @@ const openCreate = async () => {
 // 编辑
 const openEdit = async (row: any) => {
   isEdit.value = true
-  const detail = await entityDataApi.getDetail(props.entityCode, row.id).catch(() => row)
+  const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey).catch(() => row)
   formData.id = detail.id
   formData.name = detail.name
   formData.data = { ...(detail.data || {}) }
@@ -244,6 +245,7 @@ const handleSubmit = async () => {
   try {
     const data = {
       entityCode: props.entityCode,
+      listKey: props.listKey,
       id: formData.id,
       name: formData.data?.name || formData.name,
       data: formData.data,
@@ -251,7 +253,7 @@ const handleSubmit = async () => {
     }
 
     if (formData.id) {
-      await entityDataApi.update(props.entityCode, formData.id, data, data.startProcess)
+      await entityDataApi.update(props.entityCode, formData.id, data, data.startProcess, props.listKey)
       ElMessage.success('更新成功')
     } else {
       await entityDataApi.save(data, data.startProcess)

@@ -25,6 +25,10 @@ export const entityListConfigApi = {
     return request.post('/entity-list-config/save', data)
   },
 
+  previewActionRule(id, data) {
+    return request.post(`/entity-list-config/${id}/action-rule/preview`, data)
+  },
+
   /**
    * 删除列表配置
    */

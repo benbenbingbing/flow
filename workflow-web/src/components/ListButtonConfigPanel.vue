@@ -94,8 +94,35 @@
             placeholder="选择或输入权限码"
             style="width: 100%"
           >
-            <el-option v-for="perm in permOptions" :key="perm" :label="perm" :value="perm" />
+            <el-option-group label="标准权限">
+              <el-option
+                v-for="option in standardPermOptions"
+                :key="option.code"
+                :label="`${option.label} · ${option.code}`"
+                :value="option.code"
+              >
+                <div class="permission-option">
+                  <span>{{ option.label }}</span>
+                  <small>{{ option.code }}</small>
+                </div>
+              </el-option>
+            </el-option-group>
+            <el-option-group v-if="customPermOptions.length" label="自定义权限">
+              <el-option
+                v-for="option in customPermOptions"
+                :key="option.code"
+                :label="`${option.label || '自定义'} · ${option.code}`"
+                :value="option.code"
+              />
+            </el-option-group>
           </el-select>
+        </template>
+      </el-table-column>
+      <el-table-column label="适用条件" min-width="170">
+        <template #default="{ row }">
+          <el-button size="small" text type="primary" @click="configureRule(row)">
+            {{ ruleSummary(row) }}
+          </el-button>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="70" align="center" fixed="right">
@@ -104,13 +131,23 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <ActionRuleEditorDialog
+      ref="ruleEditorRef"
+      :entity-fields="entityFields"
+      :statuses="statuses"
+      @save="saveRule"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getPermsByEntityCode } from '@/api/system/menu'
+import { getEntityPermissionOptions } from '@/api/system/menu'
+import { getEntityStatusList } from '@/api/entityStatus'
+import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
+import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
 
 const props = defineProps({
   type: {
@@ -120,6 +157,10 @@ const props = defineProps({
   entityCode: {
     type: String,
     default: ''
+  },
+  entityFields: {
+    type: Array,
+    default: () => []
   },
   modelValue: {
     type: Array,
@@ -138,20 +179,25 @@ const sortedButtons = computed(() => {
   return [...buttons.value].sort((a, b) => (a.sort || 0) - (b.sort || 0))
 })
 
-const permOptions = ref([])
+const permissionOptions = ref([])
+const statuses = ref([])
+const ruleEditorRef = ref()
+
+const standardPermOptions = computed(() => permissionOptions.value.filter(option => option.category === 'STANDARD'))
+const customPermOptions = computed(() => permissionOptions.value.filter(option => option.category !== 'STANDARD'))
 
 const TOOLBAR_BUILTIN = {
-  create: { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
-  exportSelected: { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
-  exportAll: { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true, perm: '' },
-  batchDelete: { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true, perm: '' }
+  create: { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true },
+  exportSelected: { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true },
+  exportAll: { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true },
+  batchDelete: { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true }
 }
 
 const ROW_BUILTIN = {
-  view: { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true, perm: '' },
-  edit: { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true, perm: '' },
-  approve: { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true, perm: '' },
-  delete: { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true, perm: '' }
+  view: { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true },
+  edit: { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true },
+  approve: { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true },
+  delete: { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true }
 }
 
 const builtinPresets = computed(() => props.type === 'toolbar' ? TOOLBAR_BUILTIN : ROW_BUILTIN)
@@ -168,7 +214,7 @@ function addBuiltin(key) {
   }
   const preset = builtinPresets.value[key]
   if (!preset) return
-  buttons.value.push({ ...preset })
+  buttons.value.push(withDefaults({ ...preset }))
 }
 
 function addCustom() {
@@ -196,10 +242,21 @@ function remove(index) {
 async function loadPermOptions() {
   if (!props.entityCode) return
   try {
-    permOptions.value = await getPermsByEntityCode(props.entityCode) || []
+    const [serverOptions, extensionOptions, statusList] = await Promise.all([
+      getEntityPermissionOptions(props.entityCode),
+      resolveEntityPermissionOptions({ entityCode: props.entityCode, type: props.type }),
+      getEntityStatusList(props.entityCode)
+    ])
+    const merged = [...(serverOptions || []), ...(extensionOptions || [])]
+    permissionOptions.value = merged.filter((option, index) =>
+      option?.code && merged.findIndex(item => item?.code === option.code) === index
+    )
+    statuses.value = statusList || []
+    normalizeButtons()
   } catch (e) {
     console.error('加载权限码失败:', e)
-    permOptions.value = []
+    permissionOptions.value = []
+    statuses.value = []
   }
 }
 
@@ -210,6 +267,119 @@ onMounted(() => {
 watch(() => props.entityCode, () => {
   loadPermOptions()
 })
+
+watch(() => props.modelValue, () => {
+  normalizeButtons()
+}, { deep: true })
+
+function standardPermission(key) {
+  const actionMap = {
+    create: 'create',
+    exportSelected: 'export',
+    exportAll: 'export-all',
+    batchDelete: 'batch-delete',
+    view: 'view',
+    edit: 'update',
+    approve: 'approve',
+    delete: 'delete'
+  }
+  const action = actionMap[key]
+  return action && props.entityCode ? `entity:${props.entityCode.toLowerCase()}:${action}` : ''
+}
+
+function withDefaults(button) {
+  const normalized = { ...button }
+  if (normalized.type === 'built-in') {
+    normalized.perm = standardPermission(normalized.key)
+  }
+  if (!normalized.availabilityRule) {
+    normalized.availabilityRule = defaultRule(normalized.key)
+  }
+  return normalized
+}
+
+function normalizeButtons() {
+  for (const button of buttons.value) {
+    if (button.type === 'built-in') {
+      const permission = standardPermission(button.key)
+      if (permission && button.perm !== permission) {
+        button.perm = permission
+      }
+      if (!button.availabilityRule) {
+        const rule = defaultRule(button.key)
+        if (rule) button.availabilityRule = rule
+      }
+    }
+  }
+}
+
+function defaultRule(key) {
+  if (key === 'delete' || key === 'batchDelete') {
+    return {
+      version: 1,
+      unavailableBehavior: key === 'batchDelete' ? 'DISABLE' : 'HIDE',
+      message: key === 'batchDelete' ? '选中数据中存在不可删除的数据' : '仅本人未流转草稿或已撤回数据可以删除',
+      root: {
+        type: 'GROUP',
+        logic: 'AND',
+        children: [
+          {
+            type: 'GROUP',
+            logic: 'OR',
+            children: [
+              { type: 'RELATION', relation: 'CURRENT_USER_IS_CREATOR' },
+              { type: 'RELATION', relation: 'CURRENT_USER_IS_SUBMITTER' }
+            ]
+          },
+          {
+            type: 'GROUP',
+            logic: 'OR',
+            children: [
+              {
+                type: 'GROUP',
+                logic: 'AND',
+                children: [
+                  { type: 'PROCESS_STATE', operator: 'EQ', value: 'NOT_STARTED' },
+                  { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'NEW' }
+                ]
+              },
+              { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'WITHDRAWN' }
+            ]
+          }
+        ]
+      }
+    }
+  }
+  if (key === 'approve') {
+    return {
+      version: 1,
+      unavailableBehavior: 'HIDE',
+      message: '仅当前任务办理人可以审批',
+      root: {
+        type: 'GROUP',
+        logic: 'AND',
+        children: [
+          { type: 'RELATION', relation: 'CURRENT_USER_IS_ASSIGNEE' },
+          { type: 'PROCESS_STATE', operator: 'EQ', value: 'RUNNING' }
+        ]
+      }
+    }
+  }
+  return null
+}
+
+function configureRule(row) {
+  ruleEditorRef.value?.open(row, props.type === 'toolbar' ? 'DISABLE' : 'HIDE')
+}
+
+function saveRule({ button, rule }) {
+  button.availabilityRule = rule
+}
+
+function ruleSummary(row) {
+  if (!row.availabilityRule?.root) return '始终可操作'
+  return row.availabilityRule.message || '已配置条件'
+}
 </script>
 
 <style scoped>
@@ -217,5 +387,12 @@ watch(() => props.entityCode, () => {
   .toolbar-actions {
     margin-bottom: 12px;
   }
+}
+.permission-option {
+  display: flex;
+  flex-direction: column;
+}
+.permission-option small {
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -6,11 +6,20 @@
           v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
           :is="getListButtonComponent(btn.customHandler)"
           mode="toolbar"
-          :context="{ selectedRows, entityCode: entityCode, entityDefinition: entityDefinition, refresh }"
+          :context="{
+            selectedRows,
+            entityCode: entityCode,
+            entityDefinition: entityDefinition,
+            refresh,
+            canAction,
+            getActionReason
+          }"
         />
         <el-button
           v-else
           :type="btn.buttonType || 'default'"
+          :disabled="isToolbarDisabled(btn)"
+          :title="getToolbarReason(btn)"
           @click="onToolbarClick(btn)"
         >
           <el-icon v-if="btn.icon && iconMap[btn.icon]"><component :is="iconMap[btn.icon]" /></el-icon>
@@ -70,25 +79,34 @@
           </template>
         </el-table-column>
       </template>
-      <el-table-column label="操作" min-width="180" fixed="right">
+      <el-table-column v-if="hasVisibleRowActions" label="操作" min-width="180" fixed="right">
         <template #default="{ row }">
-          <template v-for="btn in rowActionButtons" :key="btn.key">
+          <template v-for="btn in visibleRowButtons(row)" :key="btn.key">
             <component
               v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
               :is="getListButtonComponent(btn.customHandler)"
               mode="row"
               :row="row"
-              :context="{ entityCode: entityCode, entityDefinition: entityDefinition, refresh }"
+              :context="{
+                entityCode: entityCode,
+                entityDefinition: entityDefinition,
+                refresh,
+                canAction,
+                getActionReason
+              }"
             />
             <el-button
               v-else
               :type="btn.buttonType || 'primary'"
               :link="btn.link !== false"
+              :disabled="!canAction(row, btn.key)"
+              :title="getActionReason(row, btn.key)"
               @click="onRowActionClick(btn, row)"
             >
               {{ btn.label }}
             </el-button>
           </template>
+          <span v-if="visibleRowButtons(row).length === 0">-</span>
         </template>
       </el-table-column>
     </el-table>
@@ -112,12 +130,17 @@
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
-import { useUserStore } from '@/stores/user'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
 import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
 import { getFieldModelPath } from '@/shared/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
+import {
+  canExecuteAction,
+  getActionCapabilityReason,
+  getSelectionActionState,
+  isActionVisible
+} from '@/utils/listButtonPermission'
 
 const props = defineProps<{
   dataList: any[]
@@ -127,6 +150,7 @@ const props = defineProps<{
   pageSize: number
   listFields: any[]
   toolbarButtons: any[]
+  toolbarCapabilities: Record<string, any>
   rowActionButtons: any[]
   showSelectionColumn: boolean
   useListConfig: boolean
@@ -150,10 +174,6 @@ const emit = defineEmits<{
   'size-change': [val: number]
   'page-change': [val: number]
 }>()
-
-const userStore = useUserStore()
-
-
 
 // 图标映射
 const iconMap: Record<string, any> = {
@@ -183,9 +203,10 @@ const getStatusType = (status: string) => {
     'APPROVED': 'success',
     'REJECTED': 'danger',
     'TERMINATED': 'danger',
+    'WITHDRAWN': 'info',
     'COMPLETED': 'success'
   }
-  return map[status] || ''
+  return map[status]
 }
 
 const getStatusText = (status: string) => {
@@ -197,14 +218,8 @@ const formatDate = (date: string) => {
   return formatDateValue(date)
 }
 
-const canApprove = (row: any) => {
-  if (!row.processInstanceId || row.processEndTime) return false
-  const userId = userStore.userInfo?.id
-  const username = userStore.userInfo?.username
-  return row.currentTaskAssignee === String(userId) || row.currentTaskAssignee === username
-}
-
 const handleSelectionChange = (selection: any[]) => {
+  selectedRows.value = selection
   emit('selection-change', selection)
 }
 
@@ -218,6 +233,10 @@ const BUILTIN_TOOLBAR_ACTIONS: Record<string, Function> = {
 
 // 工具栏按钮点击分发
 const onToolbarClick = (btn: any) => {
+  if (isToolbarDisabled(btn)) {
+    ElMessage.warning(getToolbarReason(btn) || '当前选择不满足操作条件')
+    return
+  }
   if (btn.type === 'built-in') {
     BUILTIN_TOOLBAR_ACTIONS[btn.key]?.(btn)
   } else if (btn.type === 'custom') {
@@ -246,11 +265,11 @@ const BUILTIN_ROW_ACTIONS: Record<string, Function> = {
 
 // 操作列按钮点击分发
 const onRowActionClick = (btn: any, row: any) => {
+  if (!canAction(row, btn.key)) {
+    ElMessage.warning(getActionReason(row, btn.key) || '当前数据不可操作')
+    return
+  }
   if (btn.type === 'built-in') {
-    if (btn.key === 'approve' && !canApprove(row)) {
-      ElMessage.warning('当前数据不可审批')
-      return
-    }
     BUILTIN_ROW_ACTIONS[btn.key]?.(row)
   } else if (btn.type === 'custom') {
     const handler = getListRowAction(btn.customHandler)
@@ -270,6 +289,39 @@ const onRowActionClick = (btn: any, row: any) => {
 
 // 当前选中行（由父组件通过 selection-change 同步）
 const selectedRows = defineModel<any[]>('selectedRows', { default: () => [] })
+
+const hasVisibleRowActions = computed(() =>
+  props.dataList.some(row => visibleRowButtons(row).length > 0)
+)
+
+const visibleRowButtons = (row: any) => {
+  return props.rowActionButtons.filter(btn => isActionVisible(row, btn.key))
+}
+
+const canAction = (row: any, buttonKey: string) => {
+  return canExecuteAction(row, buttonKey)
+}
+
+const getActionReason = (row: any, buttonKey: string) => {
+  return getActionCapabilityReason(row, buttonKey)
+}
+
+const isSelectionButton = (buttonKey: string) =>
+  buttonKey === 'batchDelete' || buttonKey === 'exportSelected'
+
+const isToolbarDisabled = (btn: any) => {
+  if (!isSelectionButton(btn.key)) {
+    return props.toolbarCapabilities?.[btn.key]?.enabled === false
+  }
+  return !getSelectionActionState(selectedRows.value, btn.key).enabled
+}
+
+const getToolbarReason = (btn: any) => {
+  if (!isSelectionButton(btn.key)) {
+    return props.toolbarCapabilities?.[btn.key]?.reason || ''
+  }
+  return getSelectionActionState(selectedRows.value, btn.key).reason
+}
 </script>
 
 <style scoped lang="scss">

@@ -144,6 +144,7 @@
               <el-option label="⏳ 审批中" value="PROCESSING" />
               <el-option label="✅ 已完成" value="COMPLETED" />
               <el-option label="❌ 终止" value="TERMINATED" />
+              <el-option label="↩️ 已撤回" value="WITHDRAWN" />
             </el-select>
           </template>
         </el-table-column>
@@ -779,7 +780,8 @@ const handleStatusConfig = async (row) => {
         { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '新建数据' },
         { statusCategory: 'PROCESSING', statusCode: 'PENDING', statusName: '审批中', description: '审批进行中' },
         { statusCategory: 'COMPLETED', statusCode: 'APPROVED', statusName: '已通过', description: '审批已通过' },
-        { statusCategory: 'TERMINATED', statusCode: 'TERMINATED', statusName: '已终止', description: '流程已终止' }
+        { statusCategory: 'TERMINATED', statusCode: 'TERMINATED', statusName: '已终止', description: '流程已终止' },
+        { statusCategory: 'WITHDRAWN', statusCode: 'WITHDRAWN', statusName: '已撤回', description: '发起人撤回流程' }
       ]
     }
     

@@ -113,10 +113,20 @@
               </el-table>
             </el-tab-pane>
             <el-tab-pane label="工具栏按钮" name="toolbar">
-              <ListButtonConfigPanel type="toolbar" v-model="toolbarButtons" :entityCode="entityCode" />
+              <ListButtonConfigPanel
+                type="toolbar"
+                v-model="toolbarButtons"
+                :entityCode="entityCode"
+                :entityFields="entityFields"
+              />
             </el-tab-pane>
             <el-tab-pane label="操作列按钮" name="rowActions">
-              <ListButtonConfigPanel type="row" v-model="rowActionButtons" :entityCode="entityCode" />
+              <ListButtonConfigPanel
+                type="row"
+                v-model="rowActionButtons"
+                :entityCode="entityCode"
+                :entityFields="entityFields"
+              />
             </el-tab-pane>
           </el-tabs>
         </el-card>

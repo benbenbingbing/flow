@@ -112,8 +112,10 @@ export const entityDataApi = {
   /**
    * 获取实体数据详情
    */
-  getDetail(entityCode, id) {
-    return request.get(`/entity-data/entity/${entityCode}/detail/${id}`)
+  getDetail(entityCode, id, listKey) {
+    return request.get(`/entity-data/entity/${entityCode}/detail/${id}`, {
+      params: listKey ? { listKey } : {}
+    })
   },
 
   /**
@@ -128,15 +130,28 @@ export const entityDataApi = {
   /**
    * 更新数据
    */
-  update(entityCode, id, data, startProcess = false) {
-    return request.put(`/entity-data/entity/${entityCode}/detail/${id}`, { ...data, startProcess })
+  update(entityCode, id, data, startProcess = false, listKey) {
+    return request.put(
+      `/entity-data/entity/${entityCode}/detail/${id}`,
+      { ...data, startProcess },
+      { params: listKey ? { listKey } : {} }
+    )
   },
 
   /**
    * 删除数据
    */
-  delete(entityCode, id) {
-    return request.delete(`/entity-data/entity/${entityCode}/detail/${id}`)
+  delete(entityCode, id, listKey) {
+    return request.delete(`/entity-data/entity/${entityCode}/detail/${id}`, {
+      params: listKey ? { listKey } : {}
+    })
+  },
+
+  batchDelete(entityCode, ids, listKey) {
+    return request.post(`/entity-data/entity/${entityCode}/batch-delete`, {
+      ids,
+      listKey
+    })
   },
 
   /**

@@ -39,7 +39,8 @@
         @edit="handleEdit"
         @delete="handleDelete"
         @approve="handleApprove"
-        :canApprove="canApprove"
+        :canAction="canAction"
+        :getActionReason="getActionReason"
         :getStatusType="getStatusType"
         :getStatusText="getStatusText"
         :formatDate="formatDate"
@@ -62,6 +63,7 @@
           :pageSize="pageSize"
           :listFields="listFields"
           :toolbarButtons="toolbarButtons"
+          :toolbarCapabilities="listConfig?.toolbarCapabilities || {}"
           :rowActionButtons="rowActionButtons"
           :showSelectionColumn="showSelectionColumn"
           :useListConfig="useListConfig"
@@ -77,8 +79,8 @@
           @delete="handleDelete"
           @approve="handleApprove"
           @batch-delete="handleBatchDelete"
-          @export-selected="(btn) => handleExport('SELECTED', btn?.perm)"
-          @export-all="(btn) => handleExport('ALL', btn?.perm)"
+          @export-selected="() => handleExport('SELECTED')"
+          @export-all="() => handleExport('ALL')"
           @size-change="handleSizeChange"
           @page-change="handlePageChange"
         />
@@ -91,6 +93,7 @@
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
       :defaultForm="defaultForm"
+      :listKey="listConfig?.listKey"
       @success="loadDataList"
     />
 
@@ -98,6 +101,7 @@
       ref="approvalDialogRef"
       :entityCode="entityCode"
       :defaultForm="defaultForm"
+      :listKey="listConfig?.listKey"
       @success="loadDataList"
     />
   </div>
@@ -113,7 +117,11 @@ import { getFormForNewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getCustomListComponent, hasCustomListComponent } from '@/utils/customComponentRegistry.js'
-import { hasButtonPermission } from '@/utils/listButtonPermission'
+import {
+  canExecuteAction,
+  getActionCapabilityReason,
+  hasButtonPermission
+} from '@/utils/listButtonPermission'
 import { formatDateValue } from '@/shared/list-runtime'
 import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
@@ -230,6 +238,10 @@ const toolbarButtons = computed(() => {
   const buttons = (config && config.length > 0 ? config : DEFAULT_TOOLBAR_BUTTONS.map((b: any) => ({ ...b })))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
+    .filter((b: any) => {
+      if (b.key === 'batchDelete' || b.key === 'exportSelected') return true
+      return listConfig.value?.toolbarCapabilities?.[b.key]?.visible !== false
+    })
     .sort((a: any, b: any) => (a.sort || 0) - (b.sort || 0))
   return buttons
 })
@@ -358,6 +370,7 @@ const getStatusType = (status: string) => {
     'APPROVED': 'success',
     'REJECTED': 'danger',
     'TERMINATED': 'danger',
+    'WITHDRAWN': 'info',
     'COMPLETED': 'success'
   }
   return map[status] || ''
@@ -512,7 +525,7 @@ const handlePageChange = (val: number) => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm('确定删除该数据吗？', '提示', { type: 'warning' })
-    await entityDataApi.delete(entityCode.value, row.id)
+    await entityDataApi.delete(entityCode.value, row.id, listConfig.value?.listKey)
     ElMessage.success('删除成功')
     loadDataList()
   } catch (error: any) {
@@ -530,9 +543,11 @@ const handleBatchDelete = async () => {
   }
   try {
     await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 条数据吗？`, '提示', { type: 'warning' })
-    for (const row of selectedRows.value) {
-      await entityDataApi.delete(entityCode.value, row.id)
-    }
+    await entityDataApi.batchDelete(
+      entityCode.value,
+      selectedRows.value.map(row => row.id),
+      listConfig.value?.listKey
+    )
     ElMessage.success('批量删除成功')
     selectedRows.value = []
     loadDataList()
@@ -544,7 +559,7 @@ const handleBatchDelete = async () => {
 }
 
 // 导出数据
-const handleExport = async (exportType: string, perm?: string) => {
+const handleExport = async (exportType: string) => {
   try {
     const condition = { ...queryForm }
     const ids = exportType === 'SELECTED' ? selectedRows.value.map(r => r.id) : []
@@ -552,8 +567,7 @@ const handleExport = async (exportType: string, perm?: string) => {
       exportType,
       ids,
       listKey: listConfig.value?.listKey,
-      condition,
-      perm
+      condition
     })
     const blob = new Blob([res], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -570,11 +584,12 @@ const handleExport = async (exportType: string, perm?: string) => {
 }
 
 // 判断是否可审批
-const canApprove = (row: any) => {
-  if (!row.processInstanceId || row.processEndTime) return false
-  const userId = userStore.userInfo?.id
-  const username = userStore.userInfo?.username
-  return row.currentTaskAssignee === String(userId) || row.currentTaskAssignee === username
+const canAction = (row: any, buttonKey: string) => {
+  return canExecuteAction(row, buttonKey)
+}
+
+const getActionReason = (row: any, buttonKey: string) => {
+  return getActionCapabilityReason(row, buttonKey)
 }
 
 // 打开新增弹窗
