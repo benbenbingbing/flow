@@ -13,39 +13,12 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
-        <template v-for="menu in menuTree" :key="menu.id">
-          <!-- 有子菜单的，渲染为 sub-menu -->
-          <el-sub-menu v-if="menu.children && menu.children.length > 0" :index="menu.path || menu.id">
-            <template #title>
-              <el-icon v-if="menu.icon"><component :is="iconMap[menu.icon]" /></el-icon>
-              <span>{{ menu.menuName }}</span>
-            </template>
-            <template v-for="child in menu.children" :key="child.id">
-              <!-- 子菜单也有 children，递归渲染 sub-menu（支持三级及以上） -->
-              <el-sub-menu v-if="child.children && child.children.length > 0" :index="child.path || child.id">
-                <template #title>
-                  <el-icon v-if="child.icon"><component :is="iconMap[child.icon]" /></el-icon>
-                  <span>{{ child.menuName }}</span>
-                </template>
-                <template v-for="grandchild in child.children" :key="grandchild.id">
-                  <el-menu-item :index="grandchild.path">
-                    <el-icon v-if="grandchild.icon"><component :is="iconMap[grandchild.icon]" /></el-icon>
-                    <span>{{ grandchild.menuName }}</span>
-                  </el-menu-item>
-                </template>
-              </el-sub-menu>
-              <el-menu-item v-else :index="child.path">
-                <el-icon v-if="child.icon"><component :is="iconMap[child.icon]" /></el-icon>
-                <span>{{ child.menuName }}</span>
-              </el-menu-item>
-            </template>
-          </el-sub-menu>
-          <!-- 无子菜单的，渲染为 menu-item -->
-          <el-menu-item v-else :index="menu.path">
-            <el-icon v-if="menu.icon"><component :is="iconMap[menu.icon]" /></el-icon>
-            <span>{{ menu.menuName }}</span>
-          </el-menu-item>
-        </template>
+        <sidebar-menu-item
+          v-for="menu in menuTree"
+          :key="menu.id"
+          :menu="menu"
+          :icon-map="iconMap"
+        />
       </el-menu>
     </el-aside>
     <el-container>
@@ -94,8 +67,9 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document, Notebook } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { logout } from '@/api/auth'
+import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
+import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -163,6 +137,8 @@ const collectDisabledPaths = (menus) => {
 // 加载菜单
 const loadMenus = async () => {
   try {
+    const permissions = await getPermissions()
+    userStore.setPermissions(permissions || [])
     const res = await getSidebarMenuTree()
     // 保存完整的原始数据，用于提取禁用路径
     const disabledPaths = collectDisabledPaths(res)
@@ -173,6 +149,10 @@ const loadMenus = async () => {
       return menus
         .filter(m => m.status !== '1')
         .filter(m => m.menuType !== 'F')
+        .filter(m => {
+          if (!m.entityCode || m.menuType !== 'C') return true
+          return userStore.permissions.includes(`entity:${String(m.entityCode).toLowerCase()}:list`)
+        })
         .filter(m => parentVisible !== '1' && m.visible !== '1')
         .map(m => {
           const item = { ...m }
