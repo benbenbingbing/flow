@@ -27,6 +27,12 @@ public final class EntityFormFieldRuntimeMapper {
         result.put("placeholder", field.getPlaceholder());
         result.put("sortOrder", field.getSortOrder());
         result.put("gridSpan", field.getGridSpan());
+        if (field.getValidationRules() != null) {
+            result.put("validationRules", parseJsonObject(field.getValidationRules(), objectMapper));
+        }
+        if (field.getExtensionConfig() != null) {
+            result.put("extensionConfig", parseJsonObject(field.getExtensionConfig(), objectMapper));
+        }
 
         if (field.getOptionsJson() != null) {
             result.put("optionsJson", field.getOptionsJson());
@@ -102,8 +108,12 @@ public final class EntityFormFieldRuntimeMapper {
     }
 
     private static Object parseComponentProps(String componentProps, ObjectMapper objectMapper) {
+        return parseJsonObject(componentProps, objectMapper);
+    }
+
+    private static Object parseJsonObject(String json, ObjectMapper objectMapper) {
         try {
-            return objectMapper.readValue(componentProps, Map.class);
+            return objectMapper.readValue(json, Map.class);
         } catch (Exception e) {
             return new HashMap<>();
         }

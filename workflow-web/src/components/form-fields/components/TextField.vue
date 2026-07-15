@@ -70,7 +70,7 @@ const maxlength = computed(() => {
 })
 
 const showWordLimit = computed(() => {
-  return !!maxlength.value
+  return !!maxlength.value && parsedComponentProps.value.showWordLimit !== false
 })
 </script>
 

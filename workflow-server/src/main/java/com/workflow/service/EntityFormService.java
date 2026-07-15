@@ -12,6 +12,7 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFormFieldMapper;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.EntityRelationMapper;
+import com.workflow.service.config.EntityFormConfigurationValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class EntityFormService {
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
+    private final EntityFormConfigurationValidator configurationValidator;
     
     /**
      * 查询所有表单列表
@@ -78,6 +80,7 @@ public class EntityFormService {
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityForm saveForm(EntityForm form) {
+        configurationValidator.validateForm(form);
         // 校验表单标识唯一性
         if (StringUtils.hasText(form.getFormKey())) {
             String excludeId = form.getId() != null ? form.getId() : "";
@@ -197,6 +200,7 @@ public class EntityFormService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveFormFields(String formId, List<EntityFormField> fields) {
+        configurationValidator.validateFields(fields);
         // 删除原有字段
         formFieldMapper.deleteByFormId(formId);
 
@@ -378,6 +382,9 @@ public class EntityFormService {
         newForm.setFormKey(sourceForm.getFormKey() + "_copy_" + System.currentTimeMillis());
         newForm.setDescription(sourceForm.getDescription());
         newForm.setLayoutType(sourceForm.getLayoutType());
+        newForm.setCustomComponent(sourceForm.getCustomComponent());
+        newForm.setInitConfig(sourceForm.getInitConfig());
+        newForm.setViewConfig(sourceForm.getViewConfig());
         newForm.setStatus(1);
         newForm.setCreateTime(LocalDateTime.now());
         newForm.setUpdateTime(LocalDateTime.now());
@@ -392,6 +399,7 @@ public class EntityFormService {
                 EntityFormField newField = new EntityFormField();
                 newField.setFormId(newForm.getId());
                 newField.setFieldId(sourceField.getFieldId());
+                newField.setFieldCode(sourceField.getFieldCode());
                 newField.setFieldName(sourceField.getFieldName());
                 newField.setFieldLabel(sourceField.getFieldLabel());
                 newField.setFieldType(sourceField.getFieldType());
@@ -402,6 +410,8 @@ public class EntityFormService {
                 newField.setDefaultValue(sourceField.getDefaultValue());
                 newField.setPlaceholder(sourceField.getPlaceholder());
                 newField.setComponentProps(sourceField.getComponentProps());
+                newField.setValidationRules(sourceField.getValidationRules());
+                newField.setExtensionConfig(sourceField.getExtensionConfig());
                 newField.setGridSpan(sourceField.getGridSpan());
                 newField.setSortOrder(i);
                 newField.setCreateTime(LocalDateTime.now());

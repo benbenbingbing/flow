@@ -18,6 +18,10 @@ export const entityListConfigApi = {
     return request.get(`/entity-list-config/${id}`)
   },
 
+  getExtensionOptions() {
+    return request.get('/entity-list-config/extension-options')
+  },
+
   /**
    * 保存/更新列表配置
    */

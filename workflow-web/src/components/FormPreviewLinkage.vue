@@ -15,6 +15,7 @@
     
     <template v-if="form?.customComponent && hasCustomFormComponent(form.customComponent)">
       <component
+        ref="customFormRef"
         :is="getCustomFormComponent(form.customComponent)"
         :form="form"
         :modelValue="formData"
@@ -22,6 +23,9 @@
         :readonly="readonly"
         :fields="processedFields"
         :linkageState="linkageState"
+        :mode="mode"
+        :config="formViewConfig.customComponentProps || {}"
+        :context="{ mode, form, readonly }"
       />
     </template>
     <el-form
@@ -131,7 +135,12 @@ import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
-import { getFieldKey } from '@/shared/form-runtime'
+import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
+import {
+  isFieldReadonlyForMode,
+  isFieldVisibleForMode,
+  safeParseConfig
+} from '@/shared/config-runtime'
 
 const props = defineProps({
   form: {
@@ -145,6 +154,10 @@ const props = defineProps({
   readonly: {
     type: Boolean,
     default: false
+  },
+  mode: {
+    type: String,
+    default: 'view'
   },
   showHeader: {
     type: Boolean,
@@ -162,6 +175,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+const formViewConfig = computed(() => safeParseConfig(props.form?.viewConfig))
 
 // 预览容器样式：支持自定义高度，默认 70vh
 // 无 tab 时整体滚动；有 tab 时只滚动 tab content，tab header 固定
@@ -180,6 +194,7 @@ function handleCustomFormUpdate(val) {
 }
 
 const formRef = ref(null)
+const customFormRef = ref(null)
 const formData = ref(props.modelValue || {})
 const linkageState = ref({
   visibility: {},
@@ -230,7 +245,9 @@ watch(formData, (val) => {
 // 处理后的字段列表（过滤掉隐藏的）
 const processedFields = computed(() => {
   const fields = props.form?.fields || []
-  return [...fields].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  return [...fields]
+    .filter(field => isFieldVisibleForMode(field, props.mode))
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 })
 
 // 普通字段（嵌入表单或普通字段）
@@ -272,6 +289,9 @@ const labelPosition = computed(() => {
 
 // 标签宽度
 const labelWidth = computed(() => {
+  if (formViewConfig.value.labelWidth) {
+    return `${formViewConfig.value.labelWidth}px`
+  }
   switch (props.form?.layoutType) {
     case 'horizontal':
       return '120px'
@@ -308,17 +328,9 @@ function getFieldStyle(field) {
 
 // 判断字段是否禁用（实体引用字段不受 isReadonly 影响，需保持可交互以选择数据）
 function isFieldDisabled(field) {
-  if (props.readonly) return true
   const fieldKey = getFieldKey(field)
   if (linkageState.value.disabled[fieldKey]) return true
-  if (field.isReadonly === 1) {
-    const refType = (field.refEntityType || '').toUpperCase()
-    if (['USER', 'DEPT', 'ROLE', 'GROUP', 'CUSTOM'].includes(refType)) {
-      return false
-    }
-    return true
-  }
-  return false
+  return isFieldReadonlyForMode(field, props.mode, props.readonly)
 }
 
 // 判断字段是否必填（联动状态优先，未配置时回退到字段本身的 isRequired）
@@ -332,18 +344,11 @@ function isFieldRequired(field) {
 
 // 获取字段验证规则
 function getFieldRules(field) {
-  const rules = []
-
-  // 检查联动必填或字段本身必填
-  if (isFieldRequired(field)) {
-    rules.push({
-      required: true,
-      message: `请输入${field.fieldLabel || field.fieldName}`,
-      trigger: 'blur'
-    })
-  }
-
-  return rules
+  return buildRuntimeFieldRules(
+    field,
+    isFieldRequired(field),
+    field.fieldLabel || field.fieldName
+  )
 }
 
 function isLinkageStateEqual(a, b) {
@@ -425,6 +430,9 @@ onMounted(() => {
 
 // 验证表单
 async function validate() {
+  if (customFormRef.value?.validate) {
+    return (await customFormRef.value.validate()) !== false
+  }
   if (!formRef.value) return true
   try {
     await formRef.value.validate()

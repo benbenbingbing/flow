@@ -20,6 +20,29 @@ public interface ListFieldDataProvider {
      */
     String getDataSourceType();
 
+    default String getDisplayName() {
+        return getDataSourceType();
+    }
+
+    default String getDescription() {
+        return "";
+    }
+
+    default boolean supportsVirtualField() {
+        return true;
+    }
+
+    default boolean supportsQuery() {
+        return false;
+    }
+
+    default List<Map<String, Object>> getConfigSchema() {
+        return List.of();
+    }
+
+    default void validateConfig(EntityListField field, Map<String, Object> config) {
+    }
+
     /**
      * 补充自定义列数据
      *

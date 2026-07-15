@@ -23,20 +23,86 @@
             <el-text type="info" size="small">拖拽排序，勾选控制显示和查询</el-text>
           </template>
 
-          <!-- 自定义列表组件配置 -->
-          <el-form :model="configInfo" inline size="small" style="margin-bottom: 12px;">
-            <el-form-item label="自定义列表组件">
-              <el-input
-                v-model="configInfo.customComponent"
-                placeholder="输入已注册的自定义列表组件名，留空使用默认渲染"
-                style="width: 360px"
-                clearable
-              />
-            </el-form-item>
-          </el-form>
-
           <el-tabs v-model="activeConfigTab" type="border-card" class="config-tabs">
+            <el-tab-pane label="列表设置" name="view">
+              <el-form label-width="120px" size="small" class="view-config-form">
+                <el-divider content-position="left">渲染模式</el-divider>
+                <el-form-item label="自定义列表组件">
+                  <el-select
+                    v-model="configInfo.customComponent"
+                    placeholder="留空使用默认动态列表"
+                    filterable
+                    allow-create
+                    clearable
+                    style="width: 420px"
+                  >
+                    <el-option
+                      v-for="option in customListOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    >
+                      <div>{{ option.label }}</div>
+                      <small class="option-description">{{ option.description }}</small>
+                    </el-option>
+                  </el-select>
+                </el-form-item>
+                <el-form-item v-if="selectedCustomListSchema.length" label="组件参数">
+                  <ConfigSchemaEditor
+                    v-model="viewConfig.customComponentProps"
+                    :schema="selectedCustomListSchema"
+                  />
+                </el-form-item>
+
+                <el-divider content-position="left">查询区域</el-divider>
+                <el-form-item label="默认显示条件">
+                  <el-input-number v-model="viewConfig.search.defaultVisibleCount" :min="1" :max="20" />
+                </el-form-item>
+                <el-form-item label="允许展开收起">
+                  <el-switch v-model="viewConfig.search.collapsible" />
+                </el-form-item>
+                <el-form-item label="标签宽度">
+                  <el-input-number v-model="viewConfig.search.labelWidth" :min="60" :max="240" />
+                  <span class="unit-text">px</span>
+                </el-form-item>
+
+                <el-divider content-position="left">表格与分页</el-divider>
+                <el-form-item label="表格样式">
+                  <el-checkbox v-model="viewConfig.table.stripe">斑马纹</el-checkbox>
+                  <el-checkbox v-model="viewConfig.table.border">边框</el-checkbox>
+                  <el-checkbox v-model="viewConfig.table.showIndex">序号列</el-checkbox>
+                </el-form-item>
+                <el-form-item label="表格尺寸">
+                  <el-radio-group v-model="viewConfig.table.size">
+                    <el-radio-button label="small">紧凑</el-radio-button>
+                    <el-radio-button label="default">默认</el-radio-button>
+                    <el-radio-button label="large">宽松</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item label="默认每页">
+                  <el-select v-model="viewConfig.pagination.pageSize" style="width: 160px">
+                    <el-option
+                      v-for="size in viewConfig.pagination.pageSizes"
+                      :key="size"
+                      :label="`${size} 条`"
+                      :value="size"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+            </el-tab-pane>
             <el-tab-pane label="字段配置" name="fields">
+              <div class="field-toolbar">
+                <el-alert
+                  title="查询字段可以不显示在列表；虚拟列必须选择支持虚拟字段的数据源。"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+                <el-button type="primary" plain @click="addVirtualField">
+                  <el-icon><Plus /></el-icon>添加虚拟列
+                </el-button>
+              </div>
               <el-table
                 :data="fieldConfigList"
                 row-key="fieldId"
@@ -54,6 +120,11 @@
                     <el-input v-model="row.fieldName" size="small" />
                   </template>
                 </el-table-column>
+                <el-table-column label="字段编码" min-width="120">
+                  <template #default="{ row }">
+                    <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
+                  </template>
+                </el-table-column>
                 <el-table-column label="加入列表" width="80" align="center">
                   <template #default="{ row }">
                     <el-checkbox v-model="row.showInList" />
@@ -61,38 +132,55 @@
                 </el-table-column>
                 <el-table-column label="查询条件" width="80" align="center">
                   <template #default="{ row }">
-                    <el-checkbox v-model="row.isQuery" :disabled="!row.showInList" />
+                    <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row)" />
                   </template>
                 </el-table-column>
                 <el-table-column label="查询方式" width="100">
                   <template #default="{ row }">
-                    <el-select v-model="row.queryType" size="small" :disabled="!row.isQuery || !row.showInList">
+                    <el-select v-model="row.queryType" size="small" :disabled="!row.isQuery">
                       <el-option label="等于" value="EQ" />
                       <el-option label="不等于" value="NE" />
                       <el-option label="包含" value="LIKE" />
+                      <el-option label="不包含" value="NOT_LIKE" />
                       <el-option label="大于" value="GT" />
+                      <el-option label="大于等于" value="GE" />
                       <el-option label="小于" value="LT" />
+                      <el-option label="小于等于" value="LE" />
                       <el-option label="范围" value="BETWEEN" />
                       <el-option label="包含于" value="IN" />
+                      <el-option label="不包含于" value="NOT_IN" />
+                      <el-option label="为空" value="EMPTY" />
+                      <el-option label="非空" value="NOT_EMPTY" />
                     </el-select>
                   </template>
                 </el-table-column>
-                <el-table-column label="数据源" width="110">
+                <el-table-column label="数据源" min-width="140">
                   <template #default="{ row }">
-                    <el-select v-model="row.dataSourceType" size="small" :disabled="!row.showInList">
-                      <el-option label="实体字段" value="ENTITY_FIELD" />
-                      <el-option label="关联查询" value="REFERENCE" />
-                      <el-option label="聚合统计" value="AGGREGATE" />
-                      <el-option label="自定义" value="CUSTOM_PROVIDER" />
+                    <el-select
+                      v-model="row.dataSourceType"
+                      size="small"
+                      :disabled="!isVirtualField(row)"
+                      @change="handleDataSourceChange(row)"
+                    >
+                      <el-option
+                        v-for="option in dataSourceOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                        :disabled="isVirtualField(row) && option.supportsVirtualField === false"
+                      />
                     </el-select>
                   </template>
                 </el-table-column>
-                <el-table-column label="渲染组件" width="120">
+                <el-table-column label="渲染组件" min-width="140">
                   <template #default="{ row }">
-                    <el-select v-model="row.renderComponent" size="small" :disabled="!row.showInList" clearable placeholder="默认">
-                      <el-option label="默认文本" value="DefaultText" />
-                      <el-option label="状态标签" value="StatusBadge" />
-                      <el-option label="日期格式" value="DateFormatter" />
+                    <el-select v-model="row.renderComponent" size="small" clearable placeholder="自动">
+                      <el-option
+                        v-for="option in cellComponentOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                      />
                     </el-select>
                   </template>
                 </el-table-column>
@@ -108,6 +196,17 @@
                       <el-option label="居中" value="center" />
                       <el-option label="右对齐" value="right" />
                     </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="配置" width="110" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="openFieldConfig(row)">高级</el-button>
+                    <el-button
+                      v-if="isVirtualField(row)"
+                      link
+                      type="danger"
+                      @click="removeVirtualField(row)"
+                    >删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -223,16 +322,23 @@
           </div>
 
           <!-- 数据表格 -->
-          <el-table :data="previewDataList" v-loading="previewLoading" stripe size="small" border>
-            <el-table-column type="index" width="50" />
+          <el-table
+            :data="previewDataList"
+            v-loading="previewLoading"
+            :stripe="viewConfig.table.stripe !== false"
+            :border="viewConfig.table.border === true"
+            :size="viewConfig.table.size || 'small'"
+          >
+            <el-table-column v-if="viewConfig.table.showIndex !== false" type="index" width="50" />
             <el-table-column
               v-for="field in previewListFields"
               :key="field.fieldCode"
               :label="field.fieldName"
               :width="field.width > 0 ? field.width : undefined"
               :align="field.align"
-              min-width="100"
-              show-overflow-tooltip
+              :fixed="safeParseConfig(field.columnConfig).fixed || undefined"
+              :min-width="field.width > 0 ? undefined : (safeParseConfig(field.columnConfig).minWidth || 100)"
+              :show-overflow-tooltip="safeParseConfig(field.columnConfig).showOverflowTooltip !== false"
             >
               <template #default="{ row }">
                 <ListCellRenderer
@@ -251,7 +357,7 @@
               v-model:current-page="previewPageNum"
               v-model:page-size="previewPageSize"
               :total="previewTotal"
-              :page-sizes="[10, 20, 50]"
+              :page-sizes="viewConfig.pagination.pageSizes"
               layout="total, sizes, prev, pager, next"
               @size-change="loadPreviewData"
               @current-change="loadPreviewData"
@@ -263,6 +369,74 @@
         </el-card>
       </div>
     </div>
+
+    <el-dialog
+      v-model="fieldConfigDialogVisible"
+      :title="`字段高级配置：${editingField?.fieldName || ''}`"
+      width="720px"
+      destroy-on-close
+    >
+      <el-tabs v-if="editingField" v-model="activeFieldConfigTab">
+        <el-tab-pane label="数据源" name="source">
+          <el-alert
+            :title="selectedDataSourceOption?.description || '实体字段无需额外配置'"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 12px"
+          />
+          <ConfigSchemaEditor
+            v-model="editingDataSourceConfig"
+            :schema="selectedDataSourceOption?.configSchema || []"
+          />
+        </el-tab-pane>
+        <el-tab-pane label="单元格" name="render">
+          <ConfigSchemaEditor
+            v-model="editingRenderConfig"
+            :schema="selectedCellDescriptor?.configSchema || []"
+          />
+        </el-tab-pane>
+        <el-tab-pane label="查询项" name="query">
+          <el-form label-width="110px" size="small">
+            <el-form-item label="查询组件">
+              <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%">
+                <el-option
+                  v-for="option in queryComponentOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="占位提示">
+              <el-input v-model="editingQueryConfig.placeholder" />
+            </el-form-item>
+            <el-form-item label="默认值">
+              <el-input v-model="editingQueryConfig.defaultValue" />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="列展示" name="column">
+          <el-form label-width="110px" size="small">
+            <el-form-item label="固定位置">
+              <el-select v-model="editingColumnConfig.fixed" clearable placeholder="不固定" style="width: 100%">
+                <el-option label="左侧" value="left" />
+                <el-option label="右侧" value="right" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="最小宽度">
+              <el-input-number v-model="editingColumnConfig.minWidth" :min="60" :max="1000" />
+            </el-form-item>
+            <el-form-item label="溢出提示">
+              <el-switch v-model="editingColumnConfig.showOverflowTooltip" />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+      </el-tabs>
+      <template #footer>
+        <el-button @click="fieldConfigDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveFieldAdvancedConfig">应用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -270,12 +444,21 @@
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, Rank, Plus } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi, entityDataApi } from '@/api/entity'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
+import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
+import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
+import { getFormFieldComponentOptions } from '@/components/form-fields'
+import {
+  applySchemaDefaults,
+  safeParseConfig,
+  stringifyConfig
+} from '@/shared/config-runtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -288,13 +471,66 @@ const entityCode = ref('')
 const entityId = ref('')
 const entityFields = ref([])
 const saving = ref(false)
+const dataSourceOptions = ref([
+  {
+    value: 'ENTITY_FIELD',
+    label: '实体字段',
+    description: '直接读取实体系统字段或自定义字段。',
+    supportsVirtualField: false,
+    supportsQuery: true,
+    configSchema: []
+  }
+])
+const cellComponentOptions = getCellComponentOptions()
+const customListOptions = getCustomListComponentOptions()
+const queryComponentOptions = getFormFieldComponentOptions()
+
+const createDefaultViewConfig = () => ({
+  search: {
+    defaultVisibleCount: 4,
+    collapsible: true,
+    labelWidth: 100
+  },
+  table: {
+    stripe: true,
+    border: false,
+    showIndex: true,
+    size: 'default'
+  },
+  pagination: {
+    pageSize: 10,
+    pageSizes: [10, 20, 50, 100]
+  },
+  customComponentProps: {}
+})
+const viewConfig = ref(createDefaultViewConfig())
 
 // 字段配置列表
 const fieldConfigList = ref([])
 let sortableInstance = null
 
 // 配置 Tab
-const activeConfigTab = ref('fields')
+const activeConfigTab = ref('view')
+
+const selectedCustomListSchema = computed(() =>
+  getCustomListDescriptor(configInfo.value.customComponent)?.configSchema || []
+)
+
+const fieldConfigDialogVisible = ref(false)
+const activeFieldConfigTab = ref('source')
+const editingField = ref(null)
+const editingDataSourceConfig = ref({})
+const editingRenderConfig = ref({})
+const editingQueryConfig = ref({})
+const editingColumnConfig = ref({})
+
+const selectedDataSourceOption = computed(() =>
+  dataSourceOptions.value.find(option => option.value === editingField.value?.dataSourceType)
+)
+
+const selectedCellDescriptor = computed(() =>
+  getCellDescriptor(editingField.value?.renderComponent || 'DefaultText')
+)
 
 // 工具栏按钮配置
 const toolbarButtons = ref([])
@@ -313,10 +549,17 @@ const previewTotal = ref(0)
 
 const previewQueryFields = computed(() => {
   return fieldConfigList.value
-    .filter(f => f.showInList && f.isQuery)
+    .filter(f => f.isQuery)
     .map(f => {
       const originField = entityFields.value.find(ef => ef.id === f.fieldId)
-      return { ...f, fieldType: originField?.fieldType || 'STRING', optionsJson: originField?.optionsJson }
+      const queryConfig = safeParseConfig(f.queryConfig)
+      return {
+        ...f,
+        componentType: queryConfig.componentType || f.componentType,
+        placeholder: queryConfig.placeholder || f.placeholder,
+        fieldType: originField?.fieldType || f.fieldType || 'STRING',
+        optionsJson: originField?.optionsJson || f.optionsJson
+      }
     })
 })
 
@@ -330,12 +573,19 @@ onMounted(() => {
 
 async function loadData() {
   try {
+    const extensionOptions = await entityListConfigApi.getExtensionOptions().catch(() => [])
+    if (Array.isArray(extensionOptions) && extensionOptions.length > 0) {
+      dataSourceOptions.value = extensionOptions
+    }
+
     // 加载列表配置
     const configRes = await entityListConfigApi.getById(configId)
     if (configRes) {
       configInfo.value = configRes
       entityId.value = configRes.entityId
       entityCode.value = configRes.entityCode
+      viewConfig.value = mergeViewConfig(safeParseConfig(configRes.viewConfig))
+      previewPageSize.value = viewConfig.value.pagination.pageSize
     }
 
     // 加载实体信息
@@ -384,13 +634,137 @@ function mergeFieldConfig(savedFields) {
       dataSourceConfig: saved?.dataSourceConfig || '',
       renderComponent: saved?.renderComponent || '',
       formatter: saved?.formatter || '',
+      columnConfig: saved?.columnConfig || '',
+      queryConfig: saved?.queryConfig || '',
+      renderConfig: saved?.renderConfig || '',
       sortOrder: saved?.sortOrder ?? index
     }
   })
 
+  savedFields
+    .filter(saved => !entityFields.value.some(entityField => String(entityField.id) === String(saved.fieldId)))
+    .forEach((saved, index) => {
+      merged.push({
+        ...saved,
+        fieldId: saved.fieldId || `virtual_${Date.now()}_${index}`,
+        fieldCode: saved.fieldCode || `virtual_${index + 1}`,
+        fieldName: saved.fieldName || '虚拟列',
+        fieldType: saved.fieldType || 'STRING',
+        showInList: saved.showInList !== false,
+        isQuery: saved.isQuery === true,
+        queryType: saved.queryType || 'EQ',
+        width: saved.width || 0,
+        align: saved.align || 'left',
+        dataSourceType: saved.dataSourceType || 'FIELD_TEMPLATE',
+        dataSourceConfig: saved.dataSourceConfig || '',
+        renderComponent: saved.renderComponent || '',
+        formatter: saved.formatter || '',
+        columnConfig: saved.columnConfig || '',
+        queryConfig: saved.queryConfig || '',
+        renderConfig: saved.renderConfig || '',
+        sortOrder: saved.sortOrder ?? entityFields.value.length + index
+      })
+    })
+
   // 按 sortOrder 排序
   merged.sort((a, b) => a.sortOrder - b.sortOrder)
   fieldConfigList.value = merged
+}
+
+function mergeViewConfig(saved) {
+  const defaults = createDefaultViewConfig()
+  return {
+    ...defaults,
+    ...saved,
+    search: { ...defaults.search, ...(saved.search || {}) },
+    table: { ...defaults.table, ...(saved.table || {}) },
+    pagination: { ...defaults.pagination, ...(saved.pagination || {}) },
+    customComponentProps: saved.customComponentProps || {}
+  }
+}
+
+function isVirtualField(field) {
+  return String(field?.fieldId || '').startsWith('virtual_')
+}
+
+function supportsQuery(field) {
+  const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
+  return option?.supportsQuery !== false
+}
+
+function addVirtualField() {
+  const timestamp = Date.now()
+  const defaultSource = dataSourceOptions.value.find(option => option.supportsVirtualField !== false)
+  fieldConfigList.value.push({
+    fieldId: `virtual_${timestamp}`,
+    fieldCode: `virtual_${timestamp}`,
+    fieldName: '虚拟列',
+    fieldType: 'STRING',
+    showInList: true,
+    isQuery: false,
+    queryType: 'EQ',
+    width: 0,
+    align: 'left',
+    dataSourceType: defaultSource?.value || 'FIELD_TEMPLATE',
+    dataSourceConfig: '',
+    renderComponent: 'DefaultText',
+    formatter: '',
+    columnConfig: '',
+    queryConfig: '',
+    renderConfig: '',
+    sortOrder: fieldConfigList.value.length
+  })
+}
+
+function removeVirtualField(field) {
+  fieldConfigList.value = fieldConfigList.value.filter(item => item !== field)
+}
+
+function handleDataSourceChange(field) {
+  const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
+  if (option?.supportsQuery === false) {
+    field.isQuery = false
+  }
+  const schema = option?.configSchema || []
+  field.dataSourceConfig = stringifyConfig(applySchemaDefaults(
+    schema,
+    safeParseConfig(field.dataSourceConfig)
+  ))
+}
+
+function openFieldConfig(field) {
+  editingField.value = field
+  editingDataSourceConfig.value = applySchemaDefaults(
+    dataSourceOptions.value.find(item => item.value === field.dataSourceType)?.configSchema || [],
+    safeParseConfig(field.dataSourceConfig)
+  )
+  editingRenderConfig.value = applySchemaDefaults(
+    getCellDescriptor(field.renderComponent || 'DefaultText')?.configSchema || [],
+    safeParseConfig(field.renderConfig)
+  )
+  editingQueryConfig.value = {
+    componentType: '',
+    placeholder: '',
+    defaultValue: '',
+    ...safeParseConfig(field.queryConfig)
+  }
+  editingColumnConfig.value = {
+    fixed: '',
+    minWidth: 100,
+    showOverflowTooltip: true,
+    ...safeParseConfig(field.columnConfig)
+  }
+  activeFieldConfigTab.value = 'source'
+  fieldConfigDialogVisible.value = true
+}
+
+function saveFieldAdvancedConfig() {
+  if (!editingField.value) return
+  editingField.value.dataSourceConfig = stringifyConfig(editingDataSourceConfig.value)
+  editingField.value.renderConfig = stringifyConfig(editingRenderConfig.value)
+  editingField.value.queryConfig = stringifyConfig(editingQueryConfig.value)
+  editingField.value.columnConfig = stringifyConfig(editingColumnConfig.value)
+  fieldConfigDialogVisible.value = false
 }
 
 const DEFAULT_TOOLBAR_BUTTONS = [
@@ -459,6 +833,9 @@ async function handleSave() {
     dataSourceConfig: f.dataSourceConfig || '',
     renderComponent: f.renderComponent || '',
     formatter: f.formatter || '',
+    columnConfig: f.columnConfig || '',
+    queryConfig: f.queryConfig || '',
+    renderConfig: f.renderConfig || '',
     sortOrder: index
   }))
 
@@ -471,6 +848,7 @@ async function handleSave() {
     description: configInfo.value.description,
     isDefault: configInfo.value.isDefault,
     customComponent: configInfo.value.customComponent,
+    viewConfig: stringifyConfig(viewConfig.value),
     toolbarConfig: JSON.stringify(toolbarButtons.value),
     rowActionConfig: JSON.stringify(rowActionButtons.value),
     fields
@@ -557,6 +935,31 @@ function goBack() {
   padding: 12px 20px;
   border-bottom: 1px solid #e4e7ed;
   background-color: #fff;
+}
+
+.view-config-form {
+  max-width: 760px;
+}
+
+.field-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.field-toolbar :deep(.el-alert) {
+  flex: 1;
+}
+
+.option-description,
+.unit-text {
+  color: #909399;
+  font-size: 12px;
+}
+
+.unit-text {
+  margin-left: 6px;
 }
 .header-left {
   display: flex;

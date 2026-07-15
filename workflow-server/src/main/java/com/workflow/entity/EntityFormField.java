@@ -1,5 +1,6 @@
 package com.workflow.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -82,6 +83,12 @@ public class EntityFormField {
      * 校验规则JSON
      */
     private String validationRules;
+
+    /**
+     * 字段模式权限及扩展配置JSON
+     */
+    @TableField("extension_config")
+    private String extensionConfig;
 
     /**
      * 组件类型：input/select/date/number等

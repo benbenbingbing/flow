@@ -8,6 +8,7 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFormFieldMapper;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.EntityRelationMapper;
+import com.workflow.service.config.EntityFormConfigurationValidator;
 import org.junit.jupiter.api.Test;
 
 import java.beans.Introspector;
@@ -30,7 +31,8 @@ class EntityFormServiceMetadataTest {
                 formFieldMapper,
                 mock(EntityDefinitionMapper.class),
                 entityFieldMapper,
-                relationMapper
+                relationMapper,
+                mock(EntityFormConfigurationValidator.class)
         );
 
         EntityFormField formField = new EntityFormField();

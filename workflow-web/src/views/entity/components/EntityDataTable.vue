@@ -27,9 +27,16 @@
         </el-button>
       </template>
     </div>
-    <el-table :data="dataList" v-loading="loading" stripe @selection-change="handleSelectionChange">
+    <el-table
+      :data="dataList"
+      v-loading="loading"
+      :stripe="tableConfig.stripe !== false"
+      :border="tableConfig.border === true"
+      :size="tableConfig.size || 'default'"
+      @selection-change="handleSelectionChange"
+    >
       <el-table-column v-if="showSelectionColumn" type="selection" width="50" />
-      <el-table-column type="index" width="50" />
+      <el-table-column v-if="tableConfig.showIndex !== false" type="index" width="50" />
       <!-- 使用列表配置时：完全动态列 -->
       <template v-if="useListConfig">
         <el-table-column v-for="field in listFields" :key="field.fieldCode"
@@ -37,14 +44,16 @@
           :label="field.fieldName"
           :width="field.width > 0 ? field.width : undefined"
           :align="field.align"
-          :min-width="field.width > 0 ? undefined : 100"
-          show-overflow-tooltip>
+          :fixed="getColumnConfig(field).fixed || undefined"
+          :min-width="field.width > 0 ? undefined : (getColumnConfig(field).minWidth || 100)"
+          :show-overflow-tooltip="getColumnConfig(field).showOverflowTooltip !== false">
           <template #default="{ row }">
             <!-- 自定义渲染组件 -->
             <ListCellRenderer
               v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
               :row="row"
               :field="field"
+              :context="{ entityCode, entityDefinition, refresh }"
             />
             <!-- 状态字段特殊渲染 -->
             <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
@@ -117,7 +126,7 @@
         :current-page="pageNum"
         :page-size="pageSize"
         :total="total"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-sizes="paginationConfig.pageSizes || [10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next"
         @size-change="(val) => emit('size-change', val)"
         @current-change="(val) => emit('page-change', val)"
@@ -135,6 +144,7 @@ import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButt
 import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
 import { getFieldModelPath } from '@/shared/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
+import { safeParseConfig } from '@/shared/config-runtime'
 import {
   canExecuteAction,
   getActionCapabilityReason,
@@ -159,7 +169,11 @@ const props = defineProps<{
   entityStatusMap: Record<string, string>
   refEntityNameMap: Record<string, string>
   refresh: () => void
+  viewConfig?: any
 }>()
+
+const tableConfig = computed(() => props.viewConfig?.table || {})
+const paginationConfig = computed(() => props.viewConfig?.pagination || {})
 
 const emit = defineEmits<{
   create: []
@@ -191,6 +205,8 @@ const iconMap: Record<string, any> = {
 const getListFieldProp = (fieldCode: string) => {
   return getFieldModelPath(fieldCode)
 }
+
+const getColumnConfig = (field: any) => safeParseConfig(field?.columnConfig)
 
 const getFieldDisplayValue = (row: any, field: any) => {
   return formatListFieldValue(row, field, props.refEntityNameMap)

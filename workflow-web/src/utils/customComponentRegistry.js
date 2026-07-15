@@ -45,6 +45,8 @@
  *   - mode: 'create' | 'edit'（数据录入场景）
  */
 
+import { normalizeExtensionDescriptor } from '@/shared/config-runtime'
+
 const listRegistry = new Map()
 const formRegistry = new Map()
 
@@ -55,8 +57,9 @@ const formRegistry = new Map()
  * @param {string} name 组件标识名
  * @param {Component} component Vue 组件
  */
-export function registerCustomListComponent(name, component) {
-  listRegistry.set(name, component)
+export function registerCustomListComponent(name, component, metadata = {}) {
+  const descriptor = normalizeExtensionDescriptor(name, component, metadata)
+  listRegistry.set(descriptor.name, descriptor)
 }
 
 /**
@@ -65,7 +68,7 @@ export function registerCustomListComponent(name, component) {
  * @returns {Component|undefined}
  */
 export function getCustomListComponent(name) {
-  return listRegistry.get(name)
+  return listRegistry.get(name)?.component
 }
 
 /**
@@ -85,6 +88,14 @@ export function getRegisteredCustomListNames() {
   return Array.from(listRegistry.keys())
 }
 
+export function getCustomListDescriptor(name) {
+  return listRegistry.get(name)
+}
+
+export function getCustomListComponentOptions() {
+  return Array.from(listRegistry.values()).map(({ component, ...descriptor }) => descriptor)
+}
+
 // ========== 自定义表单组件 ==========
 
 /**
@@ -92,8 +103,9 @@ export function getRegisteredCustomListNames() {
  * @param {string} name 组件标识名
  * @param {Component} component Vue 组件
  */
-export function registerCustomFormComponent(name, component) {
-  formRegistry.set(name, component)
+export function registerCustomFormComponent(name, component, metadata = {}) {
+  const descriptor = normalizeExtensionDescriptor(name, component, metadata)
+  formRegistry.set(descriptor.name, descriptor)
 }
 
 /**
@@ -102,7 +114,7 @@ export function registerCustomFormComponent(name, component) {
  * @returns {Component|undefined}
  */
 export function getCustomFormComponent(name) {
-  return formRegistry.get(name)
+  return formRegistry.get(name)?.component
 }
 
 /**
@@ -120,4 +132,12 @@ export function hasCustomFormComponent(name) {
  */
 export function getRegisteredCustomFormNames() {
   return Array.from(formRegistry.keys())
+}
+
+export function getCustomFormDescriptor(name) {
+  return formRegistry.get(name)
+}
+
+export function getCustomFormComponentOptions() {
+  return Array.from(formRegistry.values()).map(({ component, ...descriptor }) => descriptor)
 }

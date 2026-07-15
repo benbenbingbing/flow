@@ -49,6 +49,11 @@ public class EntityListConfigDTO {
     private String rowActionConfig;
 
     /**
+     * 列表视图配置JSON
+     */
+    private String viewConfig;
+
+    /**
      * 列表字段配置
      */
     private List<EntityListField> fields;

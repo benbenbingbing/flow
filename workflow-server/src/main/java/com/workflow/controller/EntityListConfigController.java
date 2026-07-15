@@ -2,10 +2,12 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.dto.EntityListConfigDTO;
+import com.workflow.dto.ListFieldDataSourceOptionDTO;
 import com.workflow.dto.permission.EntityActionCapabilityDTO;
 import com.workflow.service.EntityDataDynamicService;
 import com.workflow.service.EntityListConfigService;
 import com.workflow.service.permission.EntityActionCapabilityService;
+import com.workflow.service.listfield.ListFieldDataProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +26,12 @@ public class EntityListConfigController {
     private final EntityListConfigService listConfigService;
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService actionCapabilityService;
+    private final ListFieldDataProviderRegistry dataProviderRegistry;
+
+    @GetMapping("/extension-options")
+    public Result<List<ListFieldDataSourceOptionDTO>> extensionOptions() {
+        return Result.success(dataProviderRegistry.getOptions());
+    }
 
     /**
      * 查询实体的所有列表配置

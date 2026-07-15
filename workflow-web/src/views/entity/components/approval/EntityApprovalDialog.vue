@@ -10,6 +10,7 @@
             :effectiveApprovalConfig="effectiveApprovalConfig"
             :isViewMode="isViewMode"
             :formReadonly="approvalFormReadonly"
+            :mode="approvalRuntimeMode"
             v-model:approveForm="approveForm"
           />
         </el-tab-pane>
@@ -22,6 +23,7 @@
             :effectiveApprovalConfig="effectiveApprovalConfig"
             :isViewMode="isViewMode"
             :formReadonly="approvalFormReadonly"
+            :mode="approvalRuntimeMode"
             v-model:approveForm="approveForm"
           />
         </el-tab-pane>
@@ -36,7 +38,7 @@
           <FormFieldRendererLinkage
             :field="field"
             v-model="entityData[getFieldKey(field)]"
-            :disabled="isRuntimeFieldReadonly(field, approvalFormReadonly)"
+            :disabled="isRuntimeFieldReadonly(field, approvalFormReadonly, approvalRuntimeMode)"
           />
         </el-tab-pane>
 
@@ -72,6 +74,7 @@ import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import {
   getFieldKey,
   isRuntimeFieldReadonly,
+  isRuntimeFieldVisible,
   isRuntimeFormReadonly
 } from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
@@ -137,21 +140,25 @@ const approvalFormReadonly = computed(() => {
   return isViewMode.value || isRuntimeFormReadonly(formConfig.value)
 })
 
+const approvalRuntimeMode = computed(() => isViewMode.value ? 'view' : 'approve')
+
 // 审批弹窗中是否有 Tab 子表单
 const approvalHasTabSubForms = computed(() => {
   const fields = formConfig.value?.fields || []
-  return fields.some((f: any) => isTabSubForm(f))
+  return fields.some((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value) && isTabSubForm(f))
 })
 
 // 审批弹窗中的 Tab 子表单字段
 const approvalTabSubForms = computed(() => {
   const fields = formConfig.value?.fields || []
-  return fields.filter((f: any) => isTabSubForm(f))
+  return fields.filter((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value) && isTabSubForm(f))
 })
 
 // 审批弹窗中普通字段组成的 form（给 FormPreviewLinkage 用，不含 tab 子表单）
 const approvalNormalForm = computed(() => {
-  const fields = (formConfig.value?.fields || []).filter((f: any) => !isTabSubForm(f))
+  const fields = (formConfig.value?.fields || [])
+    .filter((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value))
+    .filter((f: any) => !isTabSubForm(f))
   return {
     ...formConfig.value,
     fields

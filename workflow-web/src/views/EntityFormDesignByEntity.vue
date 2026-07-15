@@ -73,12 +73,27 @@
               <el-input v-model="form.formKey" placeholder="表单标识" style="width: 150px" />
             </el-form-item>
             <el-form-item label="自定义组件">
-              <el-input
+              <el-select
                 v-model="form.customComponent"
-                placeholder="输入已注册的自定义表单组件名"
-                style="width: 260px"
+                placeholder="留空使用默认动态表单"
+                filterable
+                allow-create
                 clearable
-              />
+                style="width: 260px"
+              >
+                <el-option
+                  v-for="option in customFormOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="标签宽度">
+              <el-input-number v-model="viewConfig.labelWidth" :min="60" :max="240" />
+            </el-form-item>
+            <el-form-item v-if="selectedCustomFormSchema.length" label="组件参数">
+              <el-button @click="showFormExtensionConfig = true">配置参数</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -191,21 +206,12 @@
               <template v-if="!isSelectedSection">
                 <el-form-item label="组件类型">
                   <el-select v-model="selectedField.componentType" style="width: 100%">
-                    <el-option label="文本输入" value="input" />
-                    <el-option label="多行文本" value="textarea" />
-                    <el-option label="数字" value="number" />
-                    <el-option label="日期" value="date" />
-                    <el-option label="日期时间" value="datetime" />
-                    <el-option label="下拉选择（单选）" value="select" />
-                    <el-option label="下拉选择（多选）" value="select_multiple" />
-                    <el-option label="单选框" value="radio" />
-                    <el-option label="复选框" value="checkbox" />
-                    <el-option label="开关" value="switch" />
-                    <el-option label="文件" value="file" />
-                    <el-option label="级联选择" value="cascader" />
-                    <el-option label="实体引用（单选）" value="reference" />
-                    <el-option label="实体引用（多选）" value="multi_reference" />
-                    <el-option label="子表单" value="SUB_FORM" />
+                    <el-option
+                      v-for="option in availableFormFieldComponentOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
                   </el-select>
                 </el-form-item>
                 <el-form-item label="属性">
@@ -221,6 +227,71 @@
                 <el-form-item label="占位提示">
                   <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
                 </el-form-item>
+
+                <template v-if="selectedComponentSchema.length">
+                  <el-divider>组件参数</el-divider>
+                  <ConfigSchemaEditor
+                    v-model="selectedComponentConfig"
+                    :schema="selectedComponentSchema"
+                  />
+                </template>
+
+                <el-divider>结构化校验</el-divider>
+                <el-form-item label="最小长度">
+                  <el-input-number
+                    :model-value="selectedValidationConfig.minLength"
+                    :min="0"
+                    :max="20000"
+                    @update:model-value="updateValidationConfig('minLength', $event)"
+                  />
+                </el-form-item>
+                <el-form-item label="最大长度">
+                  <el-input-number
+                    :model-value="selectedValidationConfig.maxLength"
+                    :min="0"
+                    :max="20000"
+                    @update:model-value="updateValidationConfig('maxLength', $event)"
+                  />
+                </el-form-item>
+                <el-form-item label="最小值">
+                  <el-input-number
+                    :model-value="selectedValidationConfig.min"
+                    @update:model-value="updateValidationConfig('min', $event)"
+                  />
+                </el-form-item>
+                <el-form-item label="最大值">
+                  <el-input-number
+                    :model-value="selectedValidationConfig.max"
+                    @update:model-value="updateValidationConfig('max', $event)"
+                  />
+                </el-form-item>
+                <el-form-item label="格式">
+                  <el-select
+                    :model-value="selectedValidationConfig.format || ''"
+                    clearable
+                    style="width: 100%"
+                    @update:model-value="updateValidationConfig('format', $event)"
+                  >
+                    <el-option label="邮箱" value="EMAIL" />
+                    <el-option label="手机号" value="PHONE" />
+                    <el-option label="URL" value="URL" />
+                  </el-select>
+                </el-form-item>
+
+                <el-divider>运行模式权限</el-divider>
+                <div class="mode-access-grid">
+                  <div v-for="modeOption in modeOptions" :key="modeOption.value" class="mode-access-row">
+                    <span>{{ modeOption.label }}</span>
+                    <el-checkbox
+                      :model-value="getModeAccessValue(modeOption.value, 'visible')"
+                      @change="updateModeAccess(modeOption.value, 'visible', $event)"
+                    >显示</el-checkbox>
+                    <el-checkbox
+                      :model-value="getModeAccessValue(modeOption.value, 'editable')"
+                      @change="updateModeAccess(modeOption.value, 'editable', $event)"
+                    >可编辑</el-checkbox>
+                  </div>
+                </div>
               </template>
               <el-form-item label="栅格宽度" v-if="form.layoutType === 'grid'">
                 <el-slider v-model="selectedField.gridSpan" :min="1" :max="24" show-stops />
@@ -367,6 +438,16 @@
       :model-value="currentEventValues"
       @save="handleSaveEvent"
     />
+
+    <el-dialog v-model="showFormExtensionConfig" title="自定义表单组件参数" width="640px">
+      <ConfigSchemaEditor
+        v-model="viewConfig.customComponentProps"
+        :schema="selectedCustomFormSchema"
+      />
+      <template #footer>
+        <el-button type="primary" @click="showFormExtensionConfig = false">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -380,6 +461,16 @@ import SectionField from '@/components/form-fields/components/SectionField.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
+import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import {
+  getFormFieldComponentDescriptor,
+  getFormFieldComponentOptions
+} from '@/components/form-fields'
+import {
+  getCustomFormComponentOptions,
+  getCustomFormDescriptor
+} from '@/utils/customComponentRegistry'
+import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { entityApi } from '@/api/entity'
 import { getFormById, createForm, saveFormFields, getEntityFields, getFormFields } from '@/api/entityForm'
 
@@ -393,8 +484,21 @@ const saving = ref(false)
 const showPreview = ref(false)
 const showLinkageConfig = ref(false)
 const showEventConfig = ref(false)
+const showFormExtensionConfig = ref(false)
 const currentEventField = ref(null)
 const activeDesignTab = ref('')
+const formFieldComponentOptions = getFormFieldComponentOptions()
+const customFormOptions = getCustomFormComponentOptions()
+const modeOptions = [
+  { value: 'create', label: '新增' },
+  { value: 'edit', label: '编辑' },
+  { value: 'approve', label: '审批' },
+  { value: 'view', label: '查看' }
+]
+const viewConfig = ref({
+  labelWidth: 120,
+  customComponentProps: {}
+})
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field) {
@@ -433,8 +537,45 @@ const form = ref({
   formKey: '',
   layoutType: 'vertical',
   status: 1,
-  initConfig: null
+  initConfig: null,
+  customComponent: '',
+  viewConfig: ''
 })
+
+const selectedCustomFormSchema = computed(() =>
+  getCustomFormDescriptor(form.value.customComponent)?.configSchema || []
+)
+
+const selectedComponentDescriptor = computed(() =>
+  getFormFieldComponentDescriptor(selectedField.value?.componentType)
+)
+
+const availableFormFieldComponentOptions = computed(() => {
+  const fieldType = String(selectedField.value?.fieldType || '').toUpperCase()
+  return formFieldComponentOptions.filter(option =>
+    !option.supportedFieldTypes?.length
+    || option.supportedFieldTypes.map(type => String(type).toUpperCase()).includes(fieldType)
+  )
+})
+
+const selectedComponentSchema = computed(() =>
+  selectedComponentDescriptor.value?.configSchema || []
+)
+
+const selectedComponentConfig = computed({
+  get() {
+    return safeParseConfig(selectedField.value?.componentProps)
+  },
+  set(value) {
+    if (selectedField.value) {
+      selectedField.value.componentProps = stringifyConfig(value)
+    }
+  }
+})
+
+const selectedValidationConfig = computed(() =>
+  safeParseConfig(selectedField.value?.validationRules)
+)
 
 // 当前选中字段的事件配置值
 const currentEventValues = computed(() => {
@@ -475,6 +616,7 @@ const previewForm = computed(() => {
   const sortedFields = [...formFields.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   return {
     ...form.value,
+    viewConfig: viewConfig.value,
     fields: sortedFields
   }
 })
@@ -643,6 +785,11 @@ async function loadFormInfo() {
   try {
     const data = await getFormById(formId)
     form.value = { ...form.value, ...data }
+    viewConfig.value = {
+      labelWidth: 120,
+      customComponentProps: {},
+      ...safeParseConfig(data.viewConfig)
+    }
     if (data.entityId && !entityId) {
       form.value.entityId = data.entityId
     }
@@ -795,6 +942,8 @@ function addField(entityField) {
     isRequired: entityField.isRequired ? 1 : 0,
     isReadonly: 0,
     isHidden: 0,
+    validationRules: '',
+    extensionConfig: '',
     gridSpan: 24,
     sortOrder: formFields.value.length
   }
@@ -891,6 +1040,8 @@ function addSection() {
     isRequired: 0,
     isReadonly: 1,
     isHidden: 0,
+    validationRules: '',
+    extensionConfig: '',
     gridSpan: 24,
     sortOrder: formFields.value.length
   }
@@ -999,6 +1150,35 @@ function parseComponentProps(propsStr) {
   }
 }
 
+function updateValidationConfig(key, value) {
+  if (!selectedField.value) return
+  selectedField.value.validationRules = stringifyConfig({
+    ...selectedValidationConfig.value,
+    [key]: value
+  })
+}
+
+function getModeAccessValue(mode, key) {
+  const extension = safeParseConfig(selectedField.value?.extensionConfig)
+  const value = extension?.modes?.[mode]?.[key]
+  return value !== false
+}
+
+function updateModeAccess(mode, key, value) {
+  if (!selectedField.value) return
+  const extension = safeParseConfig(selectedField.value.extensionConfig)
+  selectedField.value.extensionConfig = stringifyConfig({
+    ...extension,
+    modes: {
+      ...(extension.modes || {}),
+      [mode]: {
+        ...(extension.modes?.[mode] || {}),
+        [key]: value
+      }
+    }
+  })
+}
+
 // 引用实体变化时加载表单列表
 function handleRefEntityChange(entityId) {
   loadFormListByEntity(entityId || entityInfo.value.id)
@@ -1028,7 +1208,10 @@ async function handleSave() {
   saving.value = true
   try {
     // 1. 创建/更新表单
-    const formData = await createForm(form.value)
+    const formData = await createForm({
+      ...form.value,
+      viewConfig: stringifyConfig(viewConfig.value)
+    })
     
     const newFormId = formData.id
     
@@ -1154,6 +1337,23 @@ onMounted(async () => {
 .field-item.disabled:hover {
   border-color: #e4e7ed;
   box-shadow: none;
+}
+
+.mode-access-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mode-access-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 1fr;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  background: #fafafa;
 }
 
 .field-info {

@@ -5,6 +5,7 @@
     :row="row"
     :field="field"
     :config="parsedConfig"
+    :context="context"
   />
 </template>
 
@@ -13,16 +14,20 @@ import { computed } from 'vue'
 import { getCellComponent, hasCellComponent } from '@/utils/listCellRegistry.js'
 import DefaultText from '@/components/list-cells/DefaultText.vue'
 import { getCellValue, parseDataSourceConfig } from '@/shared/list-runtime'
+import { safeParseConfig } from '@/shared/config-runtime'
 
 const props = defineProps({
   value: { type: [String, Number, Boolean, Object, Array], default: '' },
   row: { type: Object, default: () => ({}) },
-  field: { type: Object, default: () => ({}) }
+  field: { type: Object, default: () => ({}) },
+  context: { type: Object, default: () => ({}) }
 })
 
 // 解析数据源配置 JSON
 const parsedConfig = computed(() => {
-  return parseDataSourceConfig(props.field?.dataSourceConfig)
+  return props.field?.renderConfig
+    ? safeParseConfig(props.field.renderConfig)
+    : parseDataSourceConfig(props.field?.dataSourceConfig)
 })
 
 // 确定渲染组件

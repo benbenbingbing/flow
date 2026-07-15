@@ -40,9 +40,15 @@ export function isRuntimeFormReadonly(form) {
   return form?.isReadonly === true || form?.isReadonly === 1 || form?.isReadonly === '1'
 }
 
-export function isRuntimeFieldReadonly(field, forceReadonly = false) {
-  return forceReadonly || field?.isReadonly === true || field?.isReadonly === 1 || field?.isReadonly === '1'
+export function isRuntimeFieldReadonly(field, forceReadonly = false, mode = 'view') {
+  return isFieldReadonlyForMode(field, mode, forceReadonly)
 }
+
+export function isRuntimeFieldVisible(field, mode = 'view') {
+  return isFieldVisibleForMode(field, mode)
+}
+
+export { buildRuntimeFieldRules }
 
 export function normalizeRuntimeFormConfigs(progressRes) {
   if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
@@ -86,3 +92,8 @@ export function mergeRuntimeFormConfigs(configs) {
     buttons
   }
 }
+import {
+  buildRuntimeFieldRules,
+  isFieldReadonlyForMode,
+  isFieldVisibleForMode
+} from '@/shared/config-runtime'

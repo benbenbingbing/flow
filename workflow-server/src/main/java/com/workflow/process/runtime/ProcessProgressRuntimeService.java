@@ -796,6 +796,8 @@ public class ProcessProgressRuntimeService {
         formConfig.setFormKey(entityForm.getFormKey());
         formConfig.setLayoutType(entityForm.getLayoutType());
         formConfig.setIsReadonly(Boolean.TRUE.equals(readonlyOverride));
+        formConfig.setCustomComponent(entityForm.getCustomComponent());
+        formConfig.setViewConfig(entityForm.getViewConfig());
 
         if (entityForm.getFields() != null) {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();

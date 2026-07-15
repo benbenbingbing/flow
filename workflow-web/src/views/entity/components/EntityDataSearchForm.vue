@@ -1,7 +1,6 @@
 <template>
   <el-card class="search-card">
-    <el-form :model="form" inline>
-      <!-- 默认显示前4个查询字段 -->
+    <el-form :model="form" inline :label-width="`${searchConfig.labelWidth || 100}px`">
       <el-form-item v-for="field in visibleQueryFields" :key="field.fieldCode" :label="field.fieldName">
         <!-- BETWEEN 范围查询 -->
         <template v-if="field.queryType === 'BETWEEN' && useListConfig">
@@ -23,7 +22,12 @@
       <el-form-item>
         <el-button type="primary" @click="onSearch">查询</el-button>
         <el-button @click="onReset">重置</el-button>
-        <el-button v-if="fields.length > 4" link type="primary" @click="searchExpanded = !searchExpanded">
+        <el-button
+          v-if="searchConfig.collapsible !== false && fields.length > visibleCount"
+          link
+          type="primary"
+          @click="searchExpanded = !searchExpanded"
+        >
           <span>{{ searchExpanded ? '收起' : '展开' }}</span>
           <el-icon><ArrowUp v-if="searchExpanded" /><ArrowDown v-else /></el-icon>
         </el-button>
@@ -40,6 +44,7 @@ import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 const props = defineProps<{
   fields: any[]
   useListConfig?: boolean
+  viewConfig?: any
 }>()
 
 const form = defineModel<Record<string, any>>('form', { required: true })
@@ -51,12 +56,15 @@ const emit = defineEmits<{
 
 const searchExpanded = ref(false)
 
+const searchConfig = computed(() => props.viewConfig?.search || {})
+const visibleCount = computed(() => Math.max(1, Number(searchConfig.value.defaultVisibleCount) || 4))
+
 // 可见的查询字段（默认只显示前4个，展开后显示全部）
 const visibleQueryFields = computed(() => {
-  if (searchExpanded.value || props.fields.length <= 4) {
+  if (searchExpanded.value || searchConfig.value.collapsible === false || props.fields.length <= visibleCount.value) {
     return props.fields
   }
-  return props.fields.slice(0, 4)
+  return props.fields.slice(0, visibleCount.value)
 })
 
 const onSearch = () => {

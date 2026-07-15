@@ -14,7 +14,7 @@ const props = defineProps({
 
 const displayValue = computed(() => {
   if (props.value === null || props.value === undefined || props.value === '') {
-    return '-'
+    return props.config?.emptyText || '-'
   }
   // 如果配置了 formatter（简单数值格式化），尝试应用
   const formatter = props.field?.formatter

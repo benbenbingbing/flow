@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityListConfig;
@@ -8,6 +9,7 @@ import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityListConfigMapper;
 import com.workflow.mapper.EntityListFieldMapper;
 import com.workflow.service.listfield.ListFieldDataProvider;
+import com.workflow.service.listfield.ListFieldConditionEvaluator;
 import com.workflow.service.listfield.ListFieldDataProviderRegistry;
 import com.workflow.service.permission.EntityActionCapabilityService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ public class EntityDataListConfigService {
     private final EntityListFieldMapper fieldMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final ListFieldDataProviderRegistry providerRegistry;
+    private final ListFieldConditionEvaluator conditionEvaluator;
     private final EntityActionCapabilityService actionCapabilityService;
 
     /**
@@ -48,11 +51,18 @@ public class EntityDataListConfigService {
         // 1. 先加载列表配置，获取 listConfigId 用于数据权限
         EntityListConfig config = findListConfig(entityCode, listKey);
         String listConfigId = config != null ? config.getId() : null;
+        List<EntityListField> allFields = config == null
+                ? List.of()
+                : fieldMapper.findByListConfigId(config.getId());
+        ConditionPartition conditionPartition = partitionCondition(allFields, condition);
 
         // 2. 基础查询（传入 listConfigId 以应用列表级权限规则）
         List<EntityDataDTO> records;
-        if (condition != null && !condition.isEmpty()) {
-            records = dynamicService.findByCondition(entityCode, listConfigId, condition);
+        if (!conditionPartition.baseCondition().isEmpty()) {
+            records = dynamicService.findByCondition(
+                    entityCode,
+                    listConfigId,
+                    conditionPartition.baseCondition());
         } else {
             records = dynamicService.findByEntityCode(entityCode, listConfigId);
         }
@@ -62,10 +72,9 @@ public class EntityDataListConfigService {
         }
 
         if (config != null) {
-            // 3. 加载字段配置，筛选出非 ENTITY_FIELD 的字段
-            List<EntityListField> allFields = fieldMapper.findByListConfigId(config.getId());
+            // 3. 筛选出非 ENTITY_FIELD 的字段。查询字段即使不展示，也必须补充值后再过滤。
             List<EntityListField> customFields = allFields.stream()
-                    .filter(f -> f.getShowInList() != null && f.getShowInList())
+                    .filter(f -> Boolean.TRUE.equals(f.getShowInList()) || Boolean.TRUE.equals(f.getIsQuery()))
                     .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
                     .collect(Collectors.toList());
 
@@ -77,6 +86,8 @@ public class EntityDataListConfigService {
             context.put("entityCode", entityCode);
             context.put("listKey", listKey);
             context.put("listConfigId", config.getId());
+            context.put("userId", UserContext.getUserId());
+            context.put("userName", UserContext.getUsername());
 
             for (Map.Entry<String, List<EntityListField>> entry : fieldsByType.entrySet()) {
                 String dataSourceType = entry.getKey();
@@ -84,7 +95,14 @@ public class EntityDataListConfigService {
 
                 ListFieldDataProvider provider = providerRegistry.getProvider(dataSourceType);
                 if (provider == null) {
-                    log.warn("未找到数据源类型的数据提供者: type={}, fields={}", dataSourceType,
+                    boolean usedForFiltering = fields.stream().anyMatch(field ->
+                            hasExtensionCondition(
+                                    conditionPartition.extensionCondition(),
+                                    field.getFieldCode()));
+                    if (usedForFiltering) {
+                        throw new IllegalStateException("查询字段的数据源未注册: " + dataSourceType);
+                    }
+                    log.warn("跳过历史未注册列表字段数据源: type={}, fields={}", dataSourceType,
                             fields.stream().map(EntityListField::getFieldCode).collect(Collectors.toList()));
                     continue;
                 }
@@ -93,12 +111,71 @@ public class EntityDataListConfigService {
                     provider.enrich(records, fields, context);
                 } catch (Exception e) {
                     log.error("列表字段数据补充失败: type={}, entityCode={}", dataSourceType, entityCode, e);
+                    throw new IllegalStateException("列表扩展字段计算失败: " + dataSourceType, e);
                 }
             }
+
+            records = conditionEvaluator.filter(
+                    records,
+                    customFields,
+                    conditionPartition.extensionCondition());
         }
 
         actionCapabilityService.enrichRows(entityCode, config, records);
         return records;
+    }
+
+    private ConditionPartition partitionCondition(
+            List<EntityListField> fields,
+            Map<String, Object> condition) {
+        if (condition == null || condition.isEmpty() || fields == null || fields.isEmpty()) {
+            return new ConditionPartition(
+                    condition == null ? new LinkedHashMap<>() : new LinkedHashMap<>(condition),
+                    new LinkedHashMap<>());
+        }
+
+        Set<String> extensionCodes = fields.stream()
+                .filter(field -> Boolean.TRUE.equals(field.getIsQuery()))
+                .filter(field -> field.getDataSourceType() != null)
+                .filter(field -> !"ENTITY_FIELD".equalsIgnoreCase(field.getDataSourceType()))
+                .map(EntityListField::getFieldCode)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<String, Object> baseCondition = new LinkedHashMap<>();
+        Map<String, Object> extensionCondition = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : condition.entrySet()) {
+            String baseKey = stripConditionSuffix(entry.getKey());
+            if (extensionCodes.contains(baseKey)) {
+                extensionCondition.put(entry.getKey(), entry.getValue());
+            } else {
+                baseCondition.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return new ConditionPartition(baseCondition, extensionCondition);
+    }
+
+    private String stripConditionSuffix(String key) {
+        if (key.endsWith("_start")) {
+            return key.substring(0, key.length() - 6);
+        }
+        if (key.endsWith("_end")) {
+            return key.substring(0, key.length() - 4);
+        }
+        if (key.endsWith("_op")) {
+            return key.substring(0, key.length() - 3);
+        }
+        return key;
+    }
+
+    private boolean hasExtensionCondition(Map<String, Object> condition, String fieldCode) {
+        return condition.keySet().stream()
+                .map(this::stripConditionSuffix)
+                .anyMatch(fieldCode::equals);
+    }
+
+    private record ConditionPartition(
+            Map<String, Object> baseCondition,
+            Map<String, Object> extensionCondition) {
     }
 
     /**

@@ -176,6 +176,10 @@ public class ProcessProgressDTO {
         private String layoutType;
 
         private Boolean isReadonly;
+
+        private String customComponent;
+
+        private String viewConfig;
         
         /**
          * 表单字段列表

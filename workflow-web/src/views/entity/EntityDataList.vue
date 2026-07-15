@@ -30,6 +30,8 @@
         :total="total"
         :pageNum="pageNum"
         :pageSize="pageSize"
+        :config="viewConfig.customComponentProps"
+        :runtime="customListRuntime"
         @search="handleSearch"
         @reset="handleReset"
         @sizeChange="handleSizeChange"
@@ -51,6 +53,7 @@
           v-model:form="queryForm"
           :fields="queryFields"
           :useListConfig="useListConfig"
+          :viewConfig="viewConfig"
           @search="handleSearch"
           @reset="handleReset"
         />
@@ -72,6 +75,7 @@
           :entityStatusMap="entityStatusMap"
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
+          :viewConfig="viewConfig"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -123,6 +127,7 @@ import {
   hasButtonPermission
 } from '@/utils/listButtonPermission'
 import { formatDateValue } from '@/shared/list-runtime'
+import { safeParseConfig } from '@/shared/config-runtime'
 import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
 import EntityDataFormDialog from './components/EntityDataFormDialog.vue'
@@ -145,6 +150,25 @@ const entityFields = ref<any[]>([])
 // 列表配置（entity_list_config）
 const listConfig = ref<any>(null)
 const listConfigFields = ref<any[]>([])
+
+const DEFAULT_VIEW_CONFIG = {
+  search: { defaultVisibleCount: 4, collapsible: true, labelWidth: 100 },
+  table: { stripe: true, border: false, showIndex: true, size: 'default' },
+  pagination: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+  customComponentProps: {}
+}
+
+const viewConfig = computed(() => {
+  const saved = safeParseConfig(listConfig.value?.viewConfig)
+  return {
+    ...DEFAULT_VIEW_CONFIG,
+    ...saved,
+    search: { ...DEFAULT_VIEW_CONFIG.search, ...(saved.search || {}) },
+    table: { ...DEFAULT_VIEW_CONFIG.table, ...(saved.table || {}) },
+    pagination: { ...DEFAULT_VIEW_CONFIG.pagination, ...(saved.pagination || {}) },
+    customComponentProps: saved.customComponentProps || {}
+  }
+})
 
 // 表格选中行
 const selectedRows = ref<any[]>([])
@@ -172,13 +196,17 @@ const entityName = computed(() => entityDefinition.value?.entityName)
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
     return listConfigFields.value
-      .filter((f: any) => f.isQuery && f.showInList)
+      .filter((f: any) => f.isQuery)
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
+        const queryConfig = safeParseConfig(f.queryConfig)
         return {
           ...f,
-          fieldType: originField?.fieldType || 'STRING',
-          optionsJson: originField?.optionsJson,
+          componentType: queryConfig.componentType || originField?.componentType || f.componentType,
+          placeholder: queryConfig.placeholder || f.placeholder,
+          defaultValue: queryConfig.defaultValue,
+          fieldType: originField?.fieldType || f.fieldType || 'STRING',
+          optionsJson: originField?.optionsJson || f.optionsJson,
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId,
           queryType: f.queryType || 'LIKE'
@@ -216,6 +244,22 @@ const useListConfig = computed(() => listConfigFields.value.length > 0)
 
 // 自定义列表组件名
 const customListComponent = computed(() => listConfig.value?.customComponent || '')
+
+const customListRuntime = computed(() => ({
+  version: 2,
+  viewConfig: viewConfig.value,
+  reload: loadDataList,
+  search: handleSearch,
+  reset: handleReset,
+  create: handleCreate,
+  view: handleView,
+  edit: handleEdit,
+  delete: handleDelete,
+  approve: handleApprove,
+  exportData: handleExport,
+  canAction,
+  getActionReason
+}))
 
 function safeJsonParse(text: any) {
   if (!text) return null
@@ -409,7 +453,7 @@ const loadEntityDefinition = async () => {
     await loadEntityStatusMap()
 
     queryFields.value.forEach((field: any) => {
-      queryForm[field.fieldCode] = ''
+      queryForm[field.fieldCode] = field.defaultValue ?? ''
     })
     
     await loadDataList()
@@ -431,6 +475,10 @@ const loadListConfig = async () => {
       if (detail) {
         listConfig.value = detail
         listConfigFields.value = detail.fields || []
+        const configuredPageSize = Number(safeParseConfig(detail.viewConfig)?.pagination?.pageSize)
+        if (configuredPageSize > 0) {
+          pageSize.value = configuredPageSize
+        }
       }
     } else {
       listConfig.value = null
@@ -503,8 +551,10 @@ const handleSearch = () => {
 
 // 重置
 const handleReset = () => {
-  Object.keys(queryForm).forEach(key => {
-    queryForm[key] = ''
+  queryFields.value.forEach((field: any) => {
+    queryForm[field.fieldCode] = field.defaultValue ?? ''
+    delete queryForm[field.fieldCode + '_start']
+    delete queryForm[field.fieldCode + '_end']
   })
   handleSearch()
 }

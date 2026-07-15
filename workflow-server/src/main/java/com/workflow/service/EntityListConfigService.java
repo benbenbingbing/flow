@@ -5,6 +5,7 @@ import com.workflow.entity.EntityListConfig;
 import com.workflow.entity.EntityListField;
 import com.workflow.mapper.EntityListConfigMapper;
 import com.workflow.mapper.EntityListFieldMapper;
+import com.workflow.service.config.EntityListConfigurationValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -28,6 +29,7 @@ public class EntityListConfigService {
     private final com.workflow.service.permission.EntityListActionConfigService actionConfigService;
     private final com.workflow.service.permission.EntityPermissionCatalogService permissionCatalogService;
     private final com.workflow.service.permission.EntityActionCapabilityService actionCapabilityService;
+    private final EntityListConfigurationValidator configurationValidator;
 
     /**
      * 查询实体的所有列表配置
@@ -53,6 +55,7 @@ public class EntityListConfigService {
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityListConfigDTO saveConfig(EntityListConfigDTO dto) {
+        configurationValidator.validate(dto);
         EntityListConfig config = new EntityListConfig();
         BeanUtils.copyProperties(dto, config);
         actionConfigService.normalizeForSave(config);

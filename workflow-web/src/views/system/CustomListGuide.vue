@@ -1,313 +1,191 @@
 <template>
-  <div class="dev-guide-page">
-    <div class="page-header">
-      <h2>自定义列表组件开发指南</h2>
+  <div class="guide-page">
+    <div class="guide-header">
+      <div>
+        <h2>自定义列表组件</h2>
+        <p>当表格配置不足以表达卡片、看板、树或地图时，接管列表展示，但继续复用平台数据、权限和操作能力。</p>
+      </div>
+      <el-tag type="warning">高定制入口</el-tag>
     </div>
 
-    <div class="detail-sections">
-      <section class="doc-section">
-        <div class="section-title">自定义列表组件</div>
-        <div class="section-content">
-          <p class="section-intro">
-            当默认的列表布局（查询条件 + 数据表格）无法满足业务需求时，可以编写自定义 Vue 组件完全接管列表页面的渲染。
-          </p>
+    <div class="guide-layout">
+      <main class="guide-content">
+        <el-alert
+          title="自定义列表只接管界面，不接管安全边界。列表数据范围、行操作能力、删除和审批校验仍由后端执行。"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
 
-          <div class="subsection">
-            <div class="subsection-title">1. 创建自定义列表组件</div>
-            <el-card shadow="never" class="code-block-card">
-              <template #header>
-                <div class="code-header">
-                  <el-tag size="small" type="success">Vue</el-tag>
-                  <span class="code-title">CustomProjectList.vue</span>
-                </div>
-              </template>
-              <pre class="code-block" v-pre><code>&lt;template&gt;
-  &lt;div class="custom-project-list"&gt;
-    &lt;!-- 自定义查询面板 --&gt;
-    &lt;div class="custom-search"&gt;
-      &lt;el-input v-model="localQuery.keyword" placeholder="搜索项目名称" /&gt;
-      &lt;el-button type="primary" @click="onSearch"&gt;查询&lt;/el-button&gt;
-      &lt;el-button @click="onReset"&gt;重置&lt;/el-button&gt;
-      &lt;el-button type="success" @click="onCreate"&gt;+ 新增&lt;/el-button&gt;
-    &lt;/div&gt;
+        <section id="decision" class="guide-section">
+          <h3>1. 什么时候需要整页自定义</h3>
+          <el-table :data="decisionRows" border size="small">
+            <el-table-column prop="requirement" label="需求" min-width="220" />
+            <el-table-column prop="choice" label="建议" min-width="240" />
+          </el-table>
+        </section>
 
-    &lt;!-- 自定义卡片式列表 --&gt;
-    &lt;div class="card-list"&gt;
-      &lt;el-card v-for="row in dataList" :key="row.id" class="project-card"&gt;
-        &lt;h4&gt;{{ row.name }}&lt;/h4&gt;
-        &lt;p&gt;编号：{{ row.dataNo }}&lt;/p&gt;
-        &lt;p&gt;状态：&lt;el-tag :type="getStatusType(row.status)"&gt;{{ getStatusText(row.status) }}&lt;/el-tag&gt;&lt;/p&gt;
-        &lt;div class="card-actions"&gt;
-          &lt;el-button link type="primary" @click="onView(row)"&gt;查看&lt;/el-button&gt;
-          &lt;el-button link type="primary" @click="onEdit(row)"&gt;编辑&lt;/el-button&gt;
-          &lt;el-button v-if="canApprove(row)" link type="warning" @click="onApprove(row)"&gt;审批&lt;/el-button&gt;
-          &lt;el-button link type="danger" @click="onDelete(row)"&gt;删除&lt;/el-button&gt;
-        &lt;/div&gt;
-      &lt;/el-card&gt;
-    &lt;/div&gt;
+        <section id="register" class="guide-section">
+          <h3>2. 注册组件与可视化参数</h3>
+          <p>注册信息不仅包含 Vue 组件，还包含管理员可见名称、说明、参数 Schema 和支持能力。配置设计器据此生成选择项和参数表单。</p>
+          <CodeCard title="custom-list-extension.ts" language="TypeScript">
+            <pre v-pre><code>import { registerCustomListComponent } from '@/utils/customComponentRegistry'
+import ProjectKanban from './ProjectKanban.vue'
 
-    &lt;!-- 分页 --&gt;
-    &lt;el-pagination
-      v-model:current-page="pageNum"
-      v-model:page-size="pageSize"
-      :total="total"
-      @size-change="onSizeChange"
-      @current-change="onPageChange"
-    /&gt;
-  &lt;/div&gt;
-&lt;/template&gt;
+registerCustomListComponent('ProjectKanban', ProjectKanban, {
+  label: '项目看板',
+  description: '按阶段分组展示项目卡片',
+  configSchema: [
+    {
+      key: 'groupField',
+      label: '分组字段',
+      type: 'text',
+      required: true,
+      defaultValue: 'status'
+    },
+    {
+      key: 'showOwner',
+      label: '显示负责人',
+      type: 'boolean',
+      defaultValue: true
+    }
+  ],
+  capabilities: {
+    layout: 'kanban',
+    supportsSelection: false
+  }
+})</code></pre>
+          </CodeCard>
+        </section>
 
-&lt;script setup&gt;
-import { ref, watch } from 'vue'
-
+        <section id="contract" class="guide-section">
+          <h3>3. 运行时契约 v2</h3>
+          <el-table :data="propsRows" border size="small">
+            <el-table-column prop="name" label="Prop" width="190" />
+            <el-table-column prop="meaning" label="含义" />
+          </el-table>
+          <p class="muted">旧版独立 props 保持兼容；新组件优先使用 `runtime` 聚合对象，后续平台扩展时不需要持续增加大量 props。</p>
+          <CodeCard title="ProjectKanban.vue" language="Vue">
+            <pre v-pre><code>&lt;script setup&gt;
 const props = defineProps({
   entityCode: String,
   entityDefinition: Object,
-  entityName: String,
   listConfig: Object,
-  listConfigFields: Array,
   listFields: Array,
   queryFields: Array,
   queryForm: Object,
   dataList: Array,
-  loading: Boolean,
-  tableLoading: Boolean,
   total: Number,
   pageNum: Number,
   pageSize: Number,
-  canApprove: Function,
-  getStatusType: Function,
-  getStatusText: Function,
-  formatDate: Function
+  loading: Boolean,
+  tableLoading: Boolean,
+  config: Object,
+  runtime: Object
 })
 
-const emit = defineEmits([
-  'search', 'reset', 'sizeChange', 'pageChange',
+function edit(row) {
+  if (!props.runtime.canAction(row, 'edit')) return
+  props.runtime.edit(row)
+}
+
+function remove(row) {
+  if (!props.runtime.canAction(row, 'delete')) return
+  props.runtime.delete(row)
+}
+&lt;/script&gt;</code></pre>
+          </CodeCard>
+        </section>
+
+        <section id="runtime" class="guide-section">
+          <h3>4. runtime 方法</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="reload()">重新加载当前列表。</el-descriptions-item>
+            <el-descriptions-item label="search() / reset()">执行平台查询或重置查询条件。</el-descriptions-item>
+            <el-descriptions-item label="create() / view(row) / edit(row)">调用平台标准弹窗和详情流程。</el-descriptions-item>
+            <el-descriptions-item label="delete(row) / approve(row)">调用受后端强制权限保护的操作。</el-descriptions-item>
+            <el-descriptions-item label="exportData(type)">执行选中或全部导出。</el-descriptions-item>
+            <el-descriptions-item label="canAction(row,key)">读取后端返回的行能力。</el-descriptions-item>
+            <el-descriptions-item label="getActionReason(row,key)">取得禁用或隐藏原因。</el-descriptions-item>
+            <el-descriptions-item label="viewConfig">列表查询区、表格、分页和组件参数配置。</el-descriptions-item>
+          </el-descriptions>
+        </section>
+
+        <section id="events" class="guide-section">
+          <h3>5. 兼容事件</h3>
+          <p>平台仍支持通过 emit 触发标准动作，适合较简单的自定义组件。</p>
+          <CodeCard title="事件列表" language="Vue">
+            <pre v-pre><code>const emit = defineEmits([
+  'search', 'reset',
+  'sizeChange', 'pageChange',
   'create', 'view', 'edit', 'delete', 'approve'
 ])
 
-const localQuery = ref({ keyword: '' })
+emit('edit', row)
+emit('pageChange', 2)</code></pre>
+          </CodeCard>
+        </section>
 
-function onSearch() { emit('search') }
-function onReset() { emit('reset') }
-function onSizeChange(size) { emit('sizeChange', size) }
-function onPageChange(page) { emit('pageChange', page) }
-function onCreate() { emit('create') }
-function onView(row) { emit('view', row) }
-function onEdit(row) { emit('edit', row) }
-function onDelete(row) { emit('delete', row) }
-function onApprove(row) { emit('approve', row) }
-&lt;/script&gt;</code></pre>
-            </el-card>
-          </div>
+        <section id="security" class="guide-section">
+          <h3>6. 权限与安全</h3>
+          <ul class="check-list">
+            <li>不要根据“是否本人”“流程状态”在组件内重新实现权限规则，直接使用 `canAction`。</li>
+            <li>按钮隐藏只是体验优化，真正操作仍会在后端重新加载最新数据并校验。</li>
+            <li>不要接受配置中的任意脚本、任意组件路径或客户端提供的权限码。</li>
+            <li>自定义远程请求必须复用平台请求封装，并明确加载、错误和取消状态。</li>
+            <li>组件未注册时平台自动回退默认动态列表，避免配置错误导致页面不可用。</li>
+          </ul>
+        </section>
 
-          <div class="subsection">
-            <div class="subsection-title">2. 注册组件</div>
-            <el-card shadow="never" class="code-block-card">
-              <template #header>
-                <div class="code-header">
-                  <el-tag size="small" type="success">JavaScript</el-tag>
-                  <span class="code-title">main.js</span>
-                </div>
-              </template>
-              <pre class="code-block" v-pre><code>// 在 src/main.js 或任意初始化文件中
-import { registerCustomListComponent } from '@/utils/customComponentRegistry.js'
-import CustomProjectList from '@/components/custom/CustomProjectList.vue'
+        <section id="acceptance" class="guide-section">
+          <h3>7. 验收清单</h3>
+          <ul class="check-list">
+            <li>查询、重置、分页、加载状态和空状态完整。</li>
+            <li>查看、编辑、删除、审批与默认列表能力一致。</li>
+            <li>没有能力的操作不展示，禁用操作能看到原因。</li>
+            <li>路由切换实体或列表配置后，不保留上一实体的本地状态。</li>
+            <li>组件异常或未注册时能安全回退。</li>
+          </ul>
+        </section>
+      </main>
 
-registerCustomListComponent('CustomProjectList', CustomProjectList)</code></pre>
-            </el-card>
-          </div>
-
-          <div class="subsection">
-            <div class="subsection-title">3. Props 接口说明</div>
-            <el-card shadow="never" class="code-block-card">
-              <template #header>
-                <div class="code-header">
-                  <el-tag size="small" type="success">JavaScript</el-tag>
-                  <span class="code-title">自定义列表组件 Props</span>
-                </div>
-              </template>
-              <pre class="code-block" v-pre><code>// 自定义列表组件接收以下 props：
-
-props: {
-  entityCode: String,           // 实体编码
-  entityDefinition: Object,     // 实体定义对象（含 enableProcess 等）
-  entityName: String,           // 实体显示名称
-  listConfig: Object,           // 列表配置对象
-  listConfigFields: Array,      // 列表字段配置（原始配置）
-  listFields: Array,            // 实际显示的列表字段
-  queryFields: Array,           // 查询字段数组
-  queryForm: Object,            // 当前查询条件对象（响应式）
-  dataList: Array,              // 当前页数据列表
-  loading: Boolean,             // 页面整体加载状态
-  tableLoading: Boolean,        // 表格/数据加载状态
-  total: Number,                // 总记录数
-  pageNum: Number,              // 当前页码
-  pageSize: Number,             // 每页大小
-  canApprove: Function,         // (row) => boolean 判断是否可审批
-  getStatusType: Function,      // (status) => string 获取状态样式
-  getStatusText: Function,      // (status) => string 获取状态文本
-  formatDate: Function          // (dateStr) => string 格式化日期
-}
-
-// 通过 emit 触发以下事件回调：
-emits: [
-  'search',       // 触发查询
-  'reset',        // 触发重置
-  'sizeChange',   // 分页大小变化 (size)
-  'pageChange',   // 页码变化 (page)
-  'create',       // 新增数据
-  'view',         // 查看数据 (row)
-  'edit',         // 编辑数据 (row)
-  'delete',       // 删除数据 (row)
-  'approve'       // 审批数据 (row)
-]</code></pre>
-            </el-card>
-          </div>
-
-          <div class="subsection">
-            <div class="subsection-title">4. 配置步骤</div>
-            <el-card shadow="never" class="code-block-card">
-              <template #header>
-                <div class="code-header">
-                  <el-tag size="small">步骤</el-tag>
-                  <span class="code-title">操作流程</span>
-                </div>
-              </template>
-              <pre class="code-block" v-pre><code>1. 编写自定义列表 Vue 组件并注册到 customComponentRegistry
-
-2. 进入「实体管理」→ 选择实体 →「列表配置」→「设计」
-
-3. 在「字段配置」卡片上方的「自定义列表组件」输入框中填写组件注册名
-
-4. 保存配置后，进入实体数据列表页面即可看到自定义渲染效果
-
-5. 如果组件未注册或名称为空，自动回退到默认列表渲染</code></pre>
-            </el-card>
-          </div>
-
-          <div class="subsection">
-            <div class="subsection-title">5. 注意事项</div>
-            <div class="section-tips">
-              <ul>
-                <li>自定义列表组件<strong>完全接管</strong>列表区域的渲染，包括查询条件、数据展示、分页等</li>
-                <li>建议复用传入的 <code>queryForm</code>、<code>onSearch</code> 等回调，以保持与后端的数据交互逻辑一致</li>
-                <li>分页为前端内存分页，所有数据已一次性加载到 <code>dataList</code> 中</li>
-                <li>如果自定义组件未注册，系统会自动回退到默认的表格渲染，不影响正常使用</li>
-                <li>自定义列表组件文件建议放在 <code>src/components/custom/</code> 目录下</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
+      <aside class="guide-toc">
+        <div class="toc-title">目录</div>
+        <a v-for="item in toc" :key="item.id" :href="`#${item.id}`">{{ item.label }}</a>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ArrowRight, ArrowDown, ArrowLeft } from '@element-plus/icons-vue'
+import CodeCard from '@/components/dev-guide/CodeCard.vue'
+
+const toc = [
+  { id: 'decision', label: '选择边界' },
+  { id: 'register', label: '注册与参数' },
+  { id: 'contract', label: '运行时契约' },
+  { id: 'runtime', label: 'runtime 方法' },
+  { id: 'events', label: '兼容事件' },
+  { id: 'security', label: '权限与安全' },
+  { id: 'acceptance', label: '验收清单' }
+]
+
+const decisionRows = [
+  { requirement: '改列宽、查询项、标签、日期格式', choice: '使用默认动态列表配置' },
+  { requirement: '增加关联、聚合、派生列', choice: '列表字段数据提供者 + 单元格组件' },
+  { requirement: '卡片、看板、树形、地图布局', choice: '自定义列表组件' },
+  { requirement: '整个页面包含额外业务流程', choice: '自定义列表组件，复用 runtime 标准操作' }
+]
+
+const propsRows = [
+  { name: 'entityCode / entityDefinition', meaning: '当前实体编码与定义' },
+  { name: 'listConfig / listFields', meaning: '列表配置与实际展示字段' },
+  { name: 'queryFields / queryForm', meaning: '查询项目和响应式查询值' },
+  { name: 'dataList / total', meaning: '当前页数据与总数' },
+  { name: 'pageNum / pageSize', meaning: '当前分页状态' },
+  { name: 'config', meaning: '管理员按 configSchema 保存的组件参数' },
+  { name: 'runtime', meaning: '平台操作、权限判断、刷新和视图配置聚合对象' }
+]
 </script>
 
-<style scoped lang="scss">
-.dev-guide-page {
-  padding: 20px;
-
-  .page-header {
-    margin-bottom: 20px;
-
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 500;
-    }
-  }
-}
-
-.doc-section {
-  margin-bottom: 32px;
-
-  .section-title {
-    font-size: 17px;
-    font-weight: 600;
-    color: #303133;
-    margin-bottom: 16px;
-    padding-left: 12px;
-    border-left: 4px solid #409eff;
-  }
-}
-
-.subsection {
-  margin-bottom: 24px;
-
-  .subsection-title {
-    font-size: 15px;
-    font-weight: 500;
-    color: #303133;
-    margin-bottom: 12px;
-  }
-}
-
-.section-content {
-  .section-intro {
-    color: #606266;
-    margin-bottom: 16px;
-    line-height: 1.6;
-  }
-
-  .code-block-card {
-    margin-bottom: 16px;
-
-    :deep(.el-card__header) {
-      padding: 10px 16px;
-      background-color: #f5f7fa;
-    }
-
-    .code-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      .code-title {
-        font-weight: 500;
-        color: #303133;
-      }
-    }
-  }
-
-  .code-block {
-    margin: 0;
-    padding: 12px;
-    background-color: #f8f9fa;
-    border-radius: 4px;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    color: #333;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-x: auto;
-  }
-}
-
-.section-tips {
-  ul {
-    margin: 8px 0;
-    padding-left: 20px;
-
-    li {
-      color: #606266;
-      line-height: 1.8;
-      font-size: 13px;
-
-      code {
-        background-color: #f4f4f5;
-        padding: 1px 5px;
-        border-radius: 3px;
-        font-family: 'Consolas', 'Monaco', monospace;
-        font-size: 12px;
-        color: #d32f2f;
-      }
-    }
-  }
-}
-</style>
+<style scoped src="./dev-guide-shared.scss"></style>

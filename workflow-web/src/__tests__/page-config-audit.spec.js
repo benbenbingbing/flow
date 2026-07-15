@@ -46,6 +46,8 @@ const dynamicRuntimeFiles = [
   'src/views/entity/components/EntityDataFormDialog.vue',
   'src/components/FormFieldRenderer.vue',
   'src/components/ListCellRenderer.vue',
+  'src/components/ConfigSchemaEditor.vue',
+  'src/shared/config-runtime/index.js',
   'src/shared/form-runtime/index.js',
   'src/shared/list-runtime/index.js'
 ]
@@ -57,6 +59,19 @@ dynamicRuntimeFiles.forEach((file) => {
 const entityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
 assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/, '动态实体列表应支持自定义列表组件')
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
+;['viewConfig', 'customListRuntime', 'defaultValue'].forEach((marker) => {
+  assert.ok(entityDataList.includes(marker), `动态实体列表缺少配置能力: ${marker}`)
+})
+
+const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDesign.vue'), 'utf8')
+;['addVirtualField', 'getExtensionOptions', 'ConfigSchemaEditor', 'renderConfig', 'queryConfig', 'columnConfig'].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表设计器缺少动态配置能力: ${marker}`)
+})
+
+const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
+;['getFormFieldComponentOptions', 'selectedComponentConfig', 'validationRules', 'extensionConfig', 'modeOptions'].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
+})
 
 const entityDataTable = readFileSync(path.join(root, 'src/views/entity/components/EntityDataTable.vue'), 'utf8')
 assert.match(
@@ -120,5 +135,17 @@ const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fiel
 ;['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
   assert.ok(formFieldRegistry.includes(type), `表单运行时缺少字段类型线索: ${type}`)
 })
+
+const guideExpectations = {
+  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'configSchema'],
+  'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'configSchema'],
+  'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose']
+}
+for (const [file, markers] of Object.entries(guideExpectations)) {
+  const source = readFileSync(path.join(root, file), 'utf8')
+  markers.forEach((marker) => {
+    assert.ok(source.includes(marker), `${file} 缺少扩展说明: ${marker}`)
+  })
+}
 
 console.log('page configuration audit passed')

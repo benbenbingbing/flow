@@ -1,14 +1,27 @@
 <template>
   <div v-if="showCustomForm">
     <component
+      ref="customFormRef"
       :is="getCustomFormComponent(defaultForm.customComponent)"
+      :form="defaultForm"
       :entityCode="entityCode"
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
-      v-model="formData"
+      :fields="runtimeFormFields"
+      :linkageState="linkageState"
+      v-model="formData.data"
       :readonly="false"
       :mode="isEdit ? 'edit' : 'create'"
+      :config="formViewConfig.customComponentProps || {}"
+      :context="{ entityCode, entityDefinition, mode: isEdit ? 'edit' : 'create', record: formData }"
     />
+    <el-form label-width="100px" v-if="entityDefinition.enableProcess && showStartProcess">
+      <el-divider />
+      <el-form-item label="发起流程">
+        <el-switch v-model="formData.startProcess" />
+        <span class="form-tip">保存数据同时发起流程</span>
+      </el-form-item>
+    </el-form>
   </div>
   <template v-else-if="defaultForm && defaultForm.fields && defaultForm.fields.length > 0">
     <!-- 有表单配置时：用 FormPreviewLinkage 渲染（支持 tab 子表单、联动） -->
@@ -18,6 +31,7 @@
       v-model="formData.data"
       :show-header="false"
       :no-internal-tabs="noInternalTabs"
+      :mode="isEdit ? 'edit' : 'create'"
     />
     <el-form label-width="100px" v-if="entityDefinition.enableProcess && showStartProcess">
       <el-divider />
@@ -65,6 +79,12 @@ import { LinkageEngine } from '@/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
 import { entityDataApi } from '@/api/entity.js'
+import {
+  buildRuntimeFieldRules,
+  isRuntimeFieldReadonly,
+  isRuntimeFieldVisible
+} from '@/shared/form-runtime'
+import { safeParseConfig } from '@/shared/config-runtime'
 
 const props = defineProps<{
   entityCode: string
@@ -80,6 +100,9 @@ const formData = defineModel<any>('formData', { required: true })
 
 const formRef = ref()
 const previewRef = ref()
+const customFormRef = ref()
+const runtimeMode = computed(() => props.isEdit ? 'edit' : 'create')
+const formViewConfig = computed(() => safeParseConfig(props.defaultForm?.viewConfig))
 
 // 字段联动状态
 const linkageState = ref({
@@ -139,20 +162,14 @@ function isSectionField(field: any) {
 
 // 判断字段是否可见
 function isFieldVisible(field: any) {
-  return linkageState.value.visibility[field.fieldCode] !== false
+  return isRuntimeFieldVisible(field, runtimeMode.value)
+    && linkageState.value.visibility[field.fieldCode] !== false
 }
 
 // 判断字段是否禁用
 function isFieldDisabled(field: any) {
   if (linkageState.value.disabled[field.fieldCode] === true) return true
-  if (field.isReadonly === 1) {
-    const refType = (field.refEntityType || '').toUpperCase()
-    if (['USER', 'DEPT', 'ROLE', 'GROUP', 'CUSTOM'].includes(refType)) {
-      return false
-    }
-    return true
-  }
-  return false
+  return isRuntimeFieldReadonly(field, false, runtimeMode.value)
 }
 
 function isBlankValue(value: any) {
@@ -179,13 +196,10 @@ async function checkFieldUnique(field: any, value: any) {
 
 // 获取字段验证规则（含联动必填、程序级唯一）
 function getFieldRules(field: any) {
-  const rules: any[] = []
   const isRequired = linkageState.value.required[field.fieldCode] !== undefined
     ? linkageState.value.required[field.fieldCode]
     : field.isRequired
-  if (isRequired) {
-    rules.push({ required: true, message: `请输入${field.fieldName}`, trigger: 'blur' })
-  }
+  const rules: any[] = buildRuntimeFieldRules(field, isRequired, field.fieldName)
   if (field.isUnique) {
     rules.push({
       validator: (rule: any, value: any, callback: any) => {
@@ -256,6 +270,11 @@ const formFields = computed(() => {
   return props.entityFields.filter((f: any) => !f.isSystem)
 })
 
+const runtimeFormFields = computed(() =>
+  (props.defaultForm?.fields || formFields.value)
+    .filter((field: any) => isRuntimeFieldVisible(field, runtimeMode.value))
+)
+
 // 普通字段（不含 tab 子表单）
 const normalFields = computed(() => {
   return formFields.value.filter((f: any) => !isTabSubForm(f))
@@ -268,11 +287,15 @@ const tabSubForms = computed(() => {
 
 // 实际渲染的字段
 const renderFields = computed(() => {
-  return props.noInternalTabs ? normalFields.value : formFields.value
+  return (props.noInternalTabs ? normalFields.value : formFields.value)
+    .filter((field: any) => isRuntimeFieldVisible(field, runtimeMode.value))
 })
 
 // 暴露校验方法
 async function validate() {
+  if (showCustomForm.value && customFormRef.value?.validate) {
+    return (await customFormRef.value.validate()) !== false
+  }
   if (props.defaultForm?.fields?.length > 0 && !showCustomForm.value) {
     const valid = await previewRef.value?.validate()
     if (!valid) return false

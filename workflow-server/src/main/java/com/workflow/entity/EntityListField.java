@@ -100,6 +100,24 @@ public class EntityListField {
     private String formatter;
 
     /**
+     * 列展示配置JSON
+     */
+    @TableField("column_config")
+    private String columnConfig;
+
+    /**
+     * 查询组件配置JSON
+     */
+    @TableField("query_config")
+    private String queryConfig;
+
+    /**
+     * 单元格渲染配置JSON
+     */
+    @TableField("render_config")
+    private String renderConfig;
+
+    /**
      * 是否删除
      */
     @TableField("deleted")

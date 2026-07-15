@@ -24,6 +24,15 @@ import {
   isActionVisible
 } from '@/utils/listButtonPermission.js'
 import {
+  applySchemaDefaults,
+  buildRuntimeFieldRules,
+  getFieldModeAccess,
+  isFieldReadonlyForMode,
+  isFieldVisibleForMode,
+  safeParseConfig,
+  stringifyConfig
+} from '@/shared/config-runtime'
+import {
   normalizeApiResponse,
   normalizePageResult,
   toPageParams,
@@ -123,5 +132,33 @@ assert.equal(getApiErrorMessage({ msg: '失败' }), '失败')
 
 assert.equal(formatDateValue('not-a-date'), '-')
 assert.notEqual(formatDateValue('2026-07-14T08:00:00Z'), '-')
+
+assert.deepEqual(safeParseConfig('{"a":1}'), { a: 1 })
+assert.deepEqual(safeParseConfig('{bad json'), {})
+assert.equal(stringifyConfig({}), '')
+assert.equal(stringifyConfig({ a: 1 }), '{"a":1}')
+assert.deepEqual(
+  applySchemaDefaults([{ key: 'size', defaultValue: 'small' }], {}),
+  { size: 'small' }
+)
+
+const modeField = {
+  extensionConfig: JSON.stringify({
+    modes: {
+      create: { visible: true, editable: true },
+      view: { visible: true, editable: false }
+    }
+  })
+}
+assert.deepEqual(getFieldModeAccess(modeField, 'view'), { visible: true, editable: false })
+assert.equal(isFieldVisibleForMode(modeField, 'create'), true)
+assert.equal(isFieldReadonlyForMode(modeField, 'view'), true)
+
+const validationRules = buildRuntimeFieldRules(
+  { validationRules: JSON.stringify({ minLength: 2, maxLength: 5, format: 'EMAIL' }) },
+  true,
+  '邮箱'
+)
+assert.equal(validationRules.length, 3)
 
 console.log('runtime integration tests passed')

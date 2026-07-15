@@ -64,7 +64,7 @@ import { entityDataApi } from '@/api/entity'
 import { useUserStore } from '@/stores/user'
 import { executeFormInitializer } from '@/utils/formInitializer'
 import { useProcessDetail } from '@/composables/useProcessDetail'
-import { getFieldKey } from '@/shared/form-runtime'
+import { getFieldKey, isRuntimeFieldVisible } from '@/shared/form-runtime'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import EntityDataFormFields from './EntityDataFormFields.vue'
 import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
@@ -116,7 +116,8 @@ const {
 const formFields = computed(() => props.entityFields.filter((f: any) => !f.isSystem))
 const tabSubForms = computed(() => {
   const fields = props.defaultForm?.fields || formFields.value
-  return fields.filter((f: any) => isTabSubForm(f))
+  const mode = isEdit.value ? 'edit' : 'create'
+  return fields.filter((f: any) => isRuntimeFieldVisible(f, mode) && isTabSubForm(f))
 })
 const hasTabSubForms = computed(() => tabSubForms.value.length > 0)
 

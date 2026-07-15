@@ -84,6 +84,12 @@ public class EntityListConfig {
     private String rowActionConfig;
 
     /**
+     * 列表视图配置JSON
+     */
+    @TableField("view_config")
+    private String viewConfig;
+
+    /**
      * 更新时间
      */
         @TableField("update_time")

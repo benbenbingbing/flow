@@ -79,6 +79,12 @@ public class EntityForm {
     private String initConfig;
 
     /**
+     * 表单视图配置JSON
+     */
+    @TableField("view_config")
+    private String viewConfig;
+
+    /**
      * 删除标志
      */
     @TableLogic

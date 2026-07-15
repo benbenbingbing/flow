@@ -9,7 +9,9 @@ import {
   registerCustomFormComponent,
   getCustomFormComponent,
   hasCustomFormComponent,
-  getRegisteredCustomFormNames
+  getRegisteredCustomFormNames,
+  getCustomListDescriptor,
+  getCustomFormDescriptor
 } from '@/utils/customComponentRegistry.js'
 import {
   registerListToolbarAction,
@@ -47,15 +49,23 @@ const DemoComponent = { name: 'DemoComponent' }
 const DemoForm = { name: 'DemoForm' }
 const DemoButton = { name: 'DemoButton' }
 
-registerCustomListComponent('functionalList', DemoComponent)
+registerCustomListComponent('functionalList', DemoComponent, {
+  label: '功能列表',
+  configSchema: [{ key: 'cardSize', label: '卡片尺寸', type: 'select' }]
+})
 assert.equal(hasCustomListComponent('functionalList'), true)
 assert.equal(getCustomListComponent('functionalList'), DemoComponent)
 assert.ok(getRegisteredCustomListNames().includes('functionalList'))
+assert.equal(getCustomListDescriptor('functionalList').label, '功能列表')
 
-registerCustomFormComponent('functionalForm', DemoForm)
+registerCustomFormComponent('functionalForm', DemoForm, {
+  label: '功能表单',
+  supportedModes: ['create', 'edit', 'approve', 'view']
+})
 assert.equal(hasCustomFormComponent('functionalForm'), true)
 assert.equal(getCustomFormComponent('functionalForm'), DemoForm)
 assert.ok(getRegisteredCustomFormNames().includes('functionalForm'))
+assert.deepEqual(getCustomFormDescriptor('functionalForm').supportedModes, ['create', 'edit', 'approve', 'view'])
 
 let toolbarCalled = false
 const toolbarHandler = (context) => {
@@ -122,7 +132,7 @@ const apiExpectations = {
   'src/api/auth.js': ['login', 'getCurrentUser', 'logout', 'getPermissions'],
   'src/api/process.js': ['getList', 'getPublishedList', 'getById', 'create', 'update', 'delete', 'publish', 'getProcessProgress'],
   'src/api/entity.js': ['getList', 'getByCode', 'create', 'update', 'delete', 'publish', 'getListWithConfig', 'getDetail', 'save', 'exportData'],
-  'src/api/entityListConfig.js': ['getByEntityId', 'getById', 'save', 'delete'],
+  'src/api/entityListConfig.js': ['getByEntityId', 'getById', 'getExtensionOptions', 'save', 'delete'],
   'src/api/processTask.js': ['getTodoList', 'getDoneList', 'getStatistics', 'completeTask', 'withdrawProcess', 'terminateProcess'],
   'src/api/system/menu.ts': ['getMenuTree', 'getSidebarMenuTree', 'createMenu', 'updateMenu', 'deleteMenu', 'updateSort'],
   'src/api/system/user.ts': ['getUserList', 'createUser', 'updateUser', 'deleteUser', 'resetPassword'],

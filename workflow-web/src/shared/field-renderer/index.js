@@ -16,7 +16,9 @@ import {
   getFormFieldComponent,
   hasFormFieldComponent,
   resolveFieldComponent,
-  getRegisteredFieldTypes
+  getRegisteredFieldTypes,
+  getFormFieldComponentDescriptor,
+  getFormFieldComponentOptions
 } from '@/components/form-fields'
 
 export {
@@ -37,5 +39,7 @@ export {
   getFormFieldComponent,
   hasFormFieldComponent,
   resolveFieldComponent,
-  getRegisteredFieldTypes
+  getRegisteredFieldTypes,
+  getFormFieldComponentDescriptor,
+  getFormFieldComponentOptions
 }
