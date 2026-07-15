@@ -32,4 +32,7 @@ public interface SysRoleMenuMapper extends BaseMapper<SysRoleMenu> {
      */
     @Delete("DELETE FROM sys_role_menu WHERE role_id = #{roleId}")
     void deleteByRoleId(@Param("roleId") String roleId);
+
+    @Select("SELECT COUNT(*) > 0 FROM sys_role_menu WHERE role_id = #{roleId} AND menu_id = #{menuId}")
+    boolean existsRoleMenu(@Param("roleId") String roleId, @Param("menuId") String menuId);
 }

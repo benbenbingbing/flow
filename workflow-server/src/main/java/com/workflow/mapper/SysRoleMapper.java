@@ -33,4 +33,7 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
             "INNER JOIN sys_user_role ur ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} AND r.deleted = 0")
     List<SysRole> selectRolesByUserId(@Param("userId") String userId);
+
+    @Select("SELECT * FROM sys_role WHERE role_code IN ('super_admin', 'admin') AND deleted = 0")
+    List<SysRole> selectAdministratorRoles();
 }

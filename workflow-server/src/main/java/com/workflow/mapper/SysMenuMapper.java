@@ -57,4 +57,10 @@ public interface SysMenuMapper extends BaseMapper<SysMenu> {
             "WHERE entity_code = #{entityCode} AND menu_type = 'F' AND status = '0' AND deleted = 0 " +
             "AND perm IS NOT NULL AND perm != ''")
     Set<String> selectPermsByEntityCode(@Param("entityCode") String entityCode);
+
+    @Select("SELECT * FROM sys_menu WHERE perm = #{perm} AND deleted = 0 LIMIT 1")
+    SysMenu selectByPerm(@Param("perm") String perm);
+
+    @Select("SELECT * FROM sys_menu WHERE path = #{path} AND menu_type = #{menuType} AND deleted = 0 LIMIT 1")
+    SysMenu selectByPathAndType(@Param("path") String path, @Param("menuType") String menuType);
 }

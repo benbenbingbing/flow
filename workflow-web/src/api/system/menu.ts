@@ -64,3 +64,7 @@ export const getMenuTypeOptions = () => {
 export const getPermsByEntityCode = (entityCode: string) => {
   return request.get('/system/menu/perms', { params: { entityCode } })
 }
+
+export const getEntityPermissionOptions = (entityCode: string) => {
+  return request.get('/system/menu/entity-permission-options', { params: { entityCode } })
+}

@@ -1,9 +1,11 @@
 package com.workflow.controller;
 
 import com.workflow.common.Result;
+import com.workflow.dto.permission.EntityPermissionOptionDTO;
 import com.workflow.entity.SysMenu;
 import com.workflow.mapper.SysMenuMapper;
 import com.workflow.service.SysMenuService;
+import com.workflow.service.permission.EntityPermissionCatalogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +24,7 @@ public class SysMenuController {
     
     private final SysMenuService menuService;
     private final SysMenuMapper menuMapper;
+    private final EntityPermissionCatalogService entityPermissionCatalogService;
     
     /**
      * 查询菜单树
@@ -112,6 +115,11 @@ public class SysMenuController {
     @GetMapping("/perms")
     public Result<Set<String>> getPermsByEntityCode(@RequestParam String entityCode) {
         return Result.success(menuMapper.selectPermsByEntityCode(entityCode));
+    }
+
+    @GetMapping("/entity-permission-options")
+    public Result<List<EntityPermissionOptionDTO>> getEntityPermissionOptions(@RequestParam String entityCode) {
+        return Result.success(entityPermissionCatalogService.getOptions(entityCode));
     }
     
     /**
