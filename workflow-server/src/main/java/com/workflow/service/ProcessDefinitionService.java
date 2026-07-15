@@ -223,7 +223,7 @@ public class ProcessDefinitionService {
         
         bpmnXml = bpmnPublishSanitizer.sanitize(bpmnXml, config.getProcessKey());
 
-        // 为配置了 flow_action 的顺序流注入执行监听器
+        // 清理历史版本中平台注入的顺序流动作监听器；运行时已由统一事件监听器接管
         bpmnXml = flowActionBpmnInjector.inject(id, bpmnXml);
 
         nodeSyncService.syncBpmnNodeBindings(id, bpmnXml);

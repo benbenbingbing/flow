@@ -3,9 +3,7 @@ package com.workflow.process.action;
 import com.workflow.entity.FlowAction;
 import com.workflow.service.FlowActionService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -19,7 +17,7 @@ import java.util.List;
 public class FlowActionPublishValidator {
 
     private final FlowActionService flowActionService;
-    private final ApplicationContext applicationContext;
+    private final FlowActionConfigurationValidator configurationValidator;
 
     /**
      * 校验指定流程配置下的草稿动作。
@@ -35,25 +33,7 @@ public class FlowActionPublishValidator {
             if (!Boolean.TRUE.equals(action.getEnabled())) {
                 continue;
             }
-            validateAction(action);
-        }
-    }
-
-    private void validateAction(FlowAction action) {
-        String beanName = action.getInterfaceName();
-        if (!StringUtils.hasText(beanName)) {
-            throw new RuntimeException("流程动作 '" + action.getActionName() + "' 未配置接口名称（Bean 名称）");
-        }
-
-        Object bean;
-        try {
-            bean = applicationContext.getBean(beanName);
-        } catch (Exception e) {
-            throw new RuntimeException("流程动作 '" + action.getActionName() + "' 对应的 Bean '" + beanName + "' 不存在，请确认已实现 FlowActionHandler 并注册为 Spring Bean", e);
-        }
-
-        if (!(bean instanceof FlowActionHandler)) {
-            throw new RuntimeException("流程动作 '" + action.getActionName() + "' 对应的 Bean '" + beanName + "' 未实现 FlowActionHandler 接口");
+            configurationValidator.validate(action);
         }
     }
 }

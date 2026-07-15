@@ -5,6 +5,8 @@ import com.workflow.process.action.FlowActionHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 /**
  * 示例：发送通知流程动作。
  *
@@ -20,6 +22,16 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component("sendNotificationHandler")
 public class SendNotificationHandler implements FlowActionHandler {
+
+    @Override
+    public Set<String> supportedExecutionModes() {
+        return Set.of("IN_TRANSACTION", "AFTER_COMMIT");
+    }
+
+    @Override
+    public String recommendedExecutionMode() {
+        return "AFTER_COMMIT";
+    }
 
     @Override
     public void execute(FlowActionContext ctx) {

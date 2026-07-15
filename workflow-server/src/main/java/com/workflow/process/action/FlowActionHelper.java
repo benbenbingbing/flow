@@ -13,6 +13,7 @@ import org.flowable.task.api.Task;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * 流程动作查询辅助器。
@@ -30,11 +31,24 @@ public class FlowActionHelper {
     private final ObjectMapper objectMapper;
 
     public Map<String, Object> getVariables(String processInstanceId) {
-        return runtimeService.getVariables(processInstanceId);
+        try {
+            Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
+            if (variables != null && !variables.isEmpty()) {
+                return variables;
+            }
+        } catch (Exception ignored) {
+        }
+        Map<String, Object> variables = new LinkedHashMap<>();
+        historyService.createHistoricVariableInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .list()
+                .forEach(variable -> variables.put(variable.getVariableName(), variable.getValue()));
+        return variables;
     }
 
     public Object getVariable(String processInstanceId, String name) {
-        return runtimeService.getVariable(processInstanceId, name);
+        Map<String, Object> variables = getVariables(processInstanceId);
+        return variables.get(name);
     }
 
     public ProcessInstance getProcessInstance(String processInstanceId) {
@@ -53,7 +67,17 @@ public class FlowActionHelper {
         return taskService.createTaskQuery()
                 .processInstanceId(processInstanceId)
                 .active()
-                .singleResult();
+                .list()
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    public Task getTask(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            return null;
+        }
+        return taskService.createTaskQuery().taskId(taskId).singleResult();
     }
 
     public EntityDataDTO getEntityData(String entityCode, String entityDataId) {

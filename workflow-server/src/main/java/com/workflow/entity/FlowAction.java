@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 流程动作配置
- * 用于顺序流（SequenceFlow）上配置的接口动作
+ * 用于流程、节点和顺序流上配置的接口动作
  */
 @Data
 @TableName("flow_action")
@@ -27,6 +27,36 @@ public class FlowAction {
      * 顺序流ID（bpmn元素ID）
      */
     private String sequenceFlowId;
+
+    /**
+     * 作用域：PROCESS、NODE、SEQUENCE_FLOW
+     */
+    private String scopeType;
+
+    /**
+     * BPMN 元素 ID；流程级动作为空
+     */
+    private String elementId;
+
+    /**
+     * 业务触发时机
+     */
+    private String triggerTiming;
+
+    /**
+     * 执行方式：IN_TRANSACTION、AFTER_COMMIT
+     */
+    private String executionMode;
+
+    /**
+     * 失败策略：ROLLBACK、CONTINUE、RETRY、IGNORE
+     */
+    private String failurePolicy;
+
+    /**
+     * 重试配置 JSON
+     */
+    private String retryConfig;
     
     /**
      * 动作名称

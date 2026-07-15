@@ -13,13 +13,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 流程动作执行器。
  *
- * <p>根据版本 ID 和顺序流 ID 查询已发布的流程动作，并依次调用对应的 {@link FlowActionHandler}。</p>
+ * <p>统一组装流程动作上下文、解析参数，并调用已发布动作对应的 {@link FlowActionHandler}。
+ * 历史顺序流监听器入口继续通过兼容方法复用该执行器。</p>
  */
 @Slf4j
 @Component
@@ -51,8 +53,8 @@ public class FlowActionExecutor {
                 continue;
             }
             try {
-                FlowActionContext ctx = buildContext(action, execution);
-                invoke(action, ctx);
+                FlowActionTriggerEvent event = fromLegacyExecution(versionId, sequenceFlowId, execution);
+                executeAction(action, event, java.util.UUID.randomUUID().toString());
             } catch (Exception e) {
                 log.error("[FlowActionExecutor] 执行流程动作失败: actionId={}, actionName={}", action.getId(), action.getActionName(), e);
                 throw new RuntimeException("执行流程动作失败: " + action.getActionName(), e);
@@ -60,24 +62,47 @@ public class FlowActionExecutor {
         }
     }
 
-    private FlowActionContext buildContext(FlowAction action, DelegateExecution execution) {
+    public void executeAction(FlowAction action, FlowActionTriggerEvent event, String idempotencyKey) {
+        FlowActionContext context = buildContext(action, event, idempotencyKey);
+        invoke(action, context);
+    }
+
+    private FlowActionContext buildContext(
+            FlowAction action,
+            FlowActionTriggerEvent event,
+            String idempotencyKey) {
         FlowActionContext ctx = new FlowActionContext();
         ctx.setHelper(flowActionHelper);
         ctx.setActionId(action.getId());
         ctx.setActionName(action.getActionName());
-        ctx.setProcessInstanceId(execution.getProcessInstanceId());
-        ctx.setEntityCode((String) execution.getVariable("entityCode"));
-        ctx.setEntityDataId((String) execution.getVariable("entityDataId"));
+        ctx.setProcessInstanceId(event.getProcessInstanceId());
+        ctx.setProcessDefinitionId(event.getProcessDefinitionId());
+        ctx.setEntityCode(event.getEntityCode());
+        ctx.setEntityDataId(event.getEntityDataId());
         ctx.setSequenceFlowId(action.getSequenceFlowId());
-        ctx.setSourceNodeId(defaultString((String) execution.getVariable("_flowActionSourceNodeId_")));
-        ctx.setSourceNodeName(defaultString((String) execution.getVariable("_flowActionSourceNodeName_")));
-        ctx.setTargetNodeId(defaultString((String) execution.getVariable("_flowActionTargetNodeId_")));
-        ctx.setTargetNodeName(defaultString((String) execution.getVariable("_flowActionTargetNodeName_")));
-        ctx.setCustomParams(resolveCustomParams(action.getParamsJson(), execution));
+        ctx.setSourceNodeId(defaultString(event.getSourceNodeId()));
+        ctx.setSourceNodeName(defaultString(event.getSourceNodeName()));
+        ctx.setTargetNodeId(defaultString(event.getTargetNodeId()));
+        ctx.setTargetNodeName(defaultString(event.getTargetNodeName()));
+        ctx.setTriggerTiming(event.getTriggerTiming());
+        ctx.setScopeType(event.getScopeType());
+        ctx.setElementId(event.getElementId());
+        ctx.setElementName(event.getElementName());
+        ctx.setElementType(event.getElementType());
+        ctx.setExecutionId(event.getExecutionId());
+        ctx.setTaskId(event.getTaskId());
+        ctx.setTaskName(event.getTaskName());
+        ctx.setTaskAssignee(event.getTaskAssignee());
+        ctx.setOperatorId(event.getOperatorId());
+        ctx.setApprovalAction(event.getApprovalAction());
+        ctx.setEndReason(event.getEndReason());
+        ctx.setIdempotencyKey(idempotencyKey);
+        ctx.setVariablesSnapshot(event.getVariables());
+        ctx.setCustomParams(resolveCustomParams(action.getParamsJson(), event.getVariables()));
         return ctx;
     }
 
-    private Map<String, Object> resolveCustomParams(String paramsJson, DelegateExecution execution) {
+    private Map<String, Object> resolveCustomParams(String paramsJson, Map<String, Object> variables) {
         Map<String, Object> params = new HashMap<>();
         if (!StringUtils.hasText(paramsJson)) {
             return params;
@@ -90,9 +115,14 @@ public class FlowActionExecutor {
                     String str = (String) value;
                     if (str.startsWith("${") && str.endsWith("}")) {
                         String expr = str.substring(2, str.length() - 1);
-                        StandardEvaluationContext evalCtx = new StandardEvaluationContext();
-                        evalCtx.setVariables(execution.getVariables());
-                        value = spelParser.parseExpression(expr).getValue(evalCtx);
+                        if (variables != null && variables.containsKey(expr)) {
+                            value = variables.get(expr);
+                        } else {
+                            StandardEvaluationContext evalCtx = new StandardEvaluationContext(
+                                    variables == null ? Map.of() : variables);
+                            evalCtx.setVariables(variables == null ? Map.of() : variables);
+                            value = spelParser.parseExpression(expr).getValue(evalCtx);
+                        }
                     }
                 }
                 params.put(entry.getKey(), value);
@@ -101,6 +131,28 @@ public class FlowActionExecutor {
             log.warn("解析 paramsJson 失败: {}", paramsJson, e);
         }
         return params;
+    }
+
+    private FlowActionTriggerEvent fromLegacyExecution(
+            String versionId,
+            String sequenceFlowId,
+            DelegateExecution execution) {
+        FlowActionTriggerEvent event = new FlowActionTriggerEvent();
+        event.setVersionId(versionId);
+        event.setProcessDefinitionId(execution.getProcessDefinitionId());
+        event.setProcessInstanceId(execution.getProcessInstanceId());
+        event.setExecutionId(execution.getId());
+        event.setScopeType(FlowActionScopeType.SEQUENCE_FLOW.name());
+        event.setElementId(sequenceFlowId);
+        event.setTriggerTiming(FlowActionTriggerTiming.TRANSITION_TAKEN.name());
+        event.setEntityCode((String) execution.getVariable("entityCode"));
+        event.setEntityDataId((String) execution.getVariable("entityDataId"));
+        event.setSourceNodeId(defaultString((String) execution.getVariable("_flowActionSourceNodeId_")));
+        event.setSourceNodeName(defaultString((String) execution.getVariable("_flowActionSourceNodeName_")));
+        event.setTargetNodeId(defaultString((String) execution.getVariable("_flowActionTargetNodeId_")));
+        event.setTargetNodeName(defaultString((String) execution.getVariable("_flowActionTargetNodeName_")));
+        event.setVariables(new LinkedHashMap<>(execution.getVariables()));
+        return event;
     }
 
     private String defaultString(String value) {

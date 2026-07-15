@@ -11,7 +11,8 @@ import java.util.Map;
 /**
  * 流程动作执行上下文。
  *
- * <p>平台在顺序流被触发时自动组装此对象，并传给 {@link FlowActionHandler#execute(FlowActionContext)}。
+ * <p>平台在流程、节点、任务或顺序流事件触发时自动组装此对象，并传给
+ * {@link FlowActionHandler#execute(FlowActionContext)}。
  * 除了固化标识字段外，还可以通过内置方法便捷地获取流程变量、实体数据、当前任务等运行时信息。</p>
  */
 @Data
@@ -67,6 +68,22 @@ public class FlowActionContext {
      */
     private String targetNodeName;
 
+    private String triggerTiming;
+    private String scopeType;
+    private String elementId;
+    private String elementName;
+    private String elementType;
+    private String processDefinitionId;
+    private String executionId;
+    private String taskId;
+    private String taskName;
+    private String taskAssignee;
+    private String operatorId;
+    private String approvalAction;
+    private String endReason;
+    private String idempotencyKey;
+    private Map<String, Object> variablesSnapshot;
+
     /**
      * 前端 paramsJson 解析后的业务参数
      */
@@ -78,10 +95,16 @@ public class FlowActionContext {
     private transient FlowActionHelper helper;
 
     public Map<String, Object> getVariables() {
+        if (variablesSnapshot != null && !variablesSnapshot.isEmpty()) {
+            return variablesSnapshot;
+        }
         return helper.getVariables(processInstanceId);
     }
 
     public Object getVariable(String name) {
+        if (variablesSnapshot != null && variablesSnapshot.containsKey(name)) {
+            return variablesSnapshot.get(name);
+        }
         return helper.getVariable(processInstanceId, name);
     }
 
@@ -95,6 +118,10 @@ public class FlowActionContext {
 
     public Task getCurrentTask() {
         return helper.getCurrentTask(processInstanceId);
+    }
+
+    public Task getTriggerTask() {
+        return helper.getTask(taskId);
     }
 
     public EntityDataDTO getEntityData() {

@@ -1,19 +1,9 @@
 package com.workflow.process.action;
 
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.mapper.ProcessVersionHistoryMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flowable.bpmn.model.BpmnModel;
-import org.flowable.bpmn.model.FlowElement;
-import org.flowable.bpmn.model.FlowNode;
-import org.flowable.bpmn.model.SequenceFlow;
-import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.DelegateExecution;
-import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.delegate.ExecutionListener;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 /**
  * 顺序流执行监听器。
@@ -22,95 +12,11 @@ import org.springframework.util.StringUtils;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SequenceFlowExecutionListener implements ExecutionListener {
-
-    private final FlowActionExecutor flowActionExecutor;
-    private final ProcessVersionHistoryMapper versionHistoryMapper;
-    private final RepositoryService repositoryService;
 
     @Override
     public void notify(DelegateExecution execution) {
-        String sequenceFlowId = execution.getCurrentActivityId();
-        log.info("[SequenceFlowExecutionListener] 顺序流被触发, processInstanceId={}, sequenceFlowId={}",
-                execution.getProcessInstanceId(), sequenceFlowId);
-
-        String versionId = resolveVersionId(execution);
-        if (!StringUtils.hasText(versionId) || !StringUtils.hasText(sequenceFlowId)) {
-            log.warn("[SequenceFlowExecutionListener] 无法解析版本ID或顺序流ID, versionId={}, sequenceFlowId={}",
-                    versionId, sequenceFlowId);
-            return;
-        }
-        log.info("[SequenceFlowExecutionListener] 解析到版本ID: {}", versionId);
-
-        populateSequenceFlowInfo(execution);
-        flowActionExecutor.executeActions(versionId, sequenceFlowId, execution);
-    }
-
-    private String resolveVersionId(DelegateExecution execution) {
-        String processDefinitionId = execution.getProcessDefinitionId();
-        if (!StringUtils.hasText(processDefinitionId)) {
-            log.warn("[SequenceFlowExecutionListener] processDefinitionId 为空");
-            return null;
-        }
-
-        String deploymentId = resolveDeploymentId(processDefinitionId);
-        if (!StringUtils.hasText(deploymentId)) {
-            log.warn("[SequenceFlowExecutionListener] 无法解析 deploymentId, processDefinitionId={}", processDefinitionId);
-            return null;
-        }
-        log.info("[SequenceFlowExecutionListener] processDefinitionId={}, deploymentId={}", processDefinitionId, deploymentId);
-
-        return versionHistoryMapper.findByDeploymentId(deploymentId)
-                .map(ProcessVersionHistory::getId)
-                .orElse(null);
-    }
-
-    private String resolveDeploymentId(String processDefinitionId) {
-        try {
-            ProcessDefinition processDefinition = repositoryService.getProcessDefinition(processDefinitionId);
-            if (processDefinition != null) {
-                return processDefinition.getDeploymentId();
-            }
-        } catch (Exception e) {
-            log.warn("[SequenceFlowExecutionListener] 通过 RepositoryService 获取 ProcessDefinition 失败: {}", e.getMessage());
-        }
-
-        // Fallback：尝试从 processDefinitionId 中解析（Flowable 旧版本格式）
-        String[] parts = processDefinitionId.split(":");
-        return parts.length >= 3 ? parts[parts.length - 1] : null;
-    }
-
-    private void populateSequenceFlowInfo(DelegateExecution execution) {
-        try {
-            String processDefinitionId = execution.getProcessDefinitionId();
-            String sequenceFlowId = execution.getCurrentActivityId();
-            BpmnModel bpmnModel = repositoryService.getBpmnModel(processDefinitionId);
-            if (bpmnModel == null || bpmnModel.getMainProcess() == null) {
-                return;
-            }
-            FlowElement element = bpmnModel.getMainProcess().getFlowElement(sequenceFlowId);
-            if (!(element instanceof SequenceFlow sequenceFlow)) {
-                return;
-            }
-
-            execution.setVariableLocal("_flowActionSourceNodeId_", defaultString(sequenceFlow.getSourceRef()));
-            execution.setVariableLocal("_flowActionTargetNodeId_", defaultString(sequenceFlow.getTargetRef()));
-
-            FlowNode sourceNode = (FlowNode) bpmnModel.getMainProcess().getFlowElement(sequenceFlow.getSourceRef());
-            FlowNode targetNode = (FlowNode) bpmnModel.getMainProcess().getFlowElement(sequenceFlow.getTargetRef());
-            if (sourceNode != null) {
-                execution.setVariableLocal("_flowActionSourceNodeName_", defaultString(sourceNode.getName()));
-            }
-            if (targetNode != null) {
-                execution.setVariableLocal("_flowActionTargetNodeName_", defaultString(targetNode.getName()));
-            }
-        } catch (Exception e) {
-            log.debug("补充顺序流源/目标节点信息失败: {}", e.getMessage());
-        }
-    }
-
-    private String defaultString(String value) {
-        return value == null ? "" : value;
+        log.debug("忽略历史 BPMN 注入的 sequenceFlowExecutionListener，统一事件监听器已接管: processInstanceId={}, sequenceFlowId={}",
+                execution.getProcessInstanceId(), execution.getCurrentActivityId());
     }
 }

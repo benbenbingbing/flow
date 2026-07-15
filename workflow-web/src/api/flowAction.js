@@ -18,6 +18,18 @@ export const flowActionApi = {
     return request.get(`/flow-actions/process/${processConfigId}/flow/${sequenceFlowId}`)
   },
 
+  findDraftActionsByBinding(processConfigId, scopeType, elementId) {
+    return request.get(`/flow-actions/process/${processConfigId}/binding`, {
+      params: { scopeType, elementId }
+    })
+  },
+
+  timingOptions(scopeType, bpmnType) {
+    return request.get('/flow-actions/timing-options', {
+      params: { scopeType, bpmnType }
+    })
+  },
+
   /**
    * 查询版本下所有已发布动作
    */
@@ -65,5 +77,13 @@ export const flowActionApi = {
    */
   listHandlers() {
     return request.get('/flow-action-handlers')
+  },
+
+  findExecutions(processInstanceId) {
+    return request.get(`/flow-action-executions/process/${processInstanceId}`)
+  },
+
+  retryExecution(executionId) {
+    return request.post(`/flow-action-executions/${executionId}/retry`)
   }
 }

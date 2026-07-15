@@ -1,8 +1,5 @@
 package com.workflow.process.action;
 
-import com.workflow.entity.FlowAction;
-import com.workflow.service.FlowActionService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -12,6 +9,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.XMLConstants;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
@@ -20,26 +18,21 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
- * 流程动作 BPMN 注入器。
+ * 流程动作 BPMN 兼容清理器。
  *
- * <p>发布流程时，为配置了 flow_action 的顺序流注入执行监听器，使顺序流被触发时能执行对应动作。</p>
+ * <p>流程动作已改为全局 Flowable 事件分发。发布时只移除平台历史注入的监听器，
+ * 不修改用户自行配置的其他监听器。</p>
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProcessFlowActionBpmnInjector {
-
-    private final FlowActionService flowActionService;
 
     private static final String LISTENER_BEAN_EXPRESSION = "${sequenceFlowExecutionListener}";
 
     /**
-     * 为 BPMN XML 中配置了 flow_action 的顺序流注入执行监听器。
+     * 清理 BPMN XML 中平台历史注入的顺序流监听器。
      *
      * @param processConfigId 流程配置 ID
      * @param bpmnXml         原始 BPMN XML
@@ -50,63 +43,59 @@ public class ProcessFlowActionBpmnInjector {
             return bpmnXml;
         }
 
-        List<FlowAction> draftActions = flowActionService.findDraftActions(processConfigId);
-        if (draftActions == null || draftActions.isEmpty()) {
-            return bpmnXml;
-        }
-
-        Map<String, List<FlowAction>> actionsByFlowId = draftActions.stream()
-                .filter(a -> Boolean.TRUE.equals(a.getEnabled()))
-                .collect(Collectors.groupingBy(FlowAction::getSequenceFlowId));
-
-        if (actionsByFlowId.isEmpty()) {
-            return bpmnXml;
-        }
-
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
             Document doc = factory.newDocumentBuilder()
                     .parse(new ByteArrayInputStream(bpmnXml.getBytes(StandardCharsets.UTF_8)));
 
             NodeList sequenceFlows = doc.getElementsByTagNameNS("*", "sequenceFlow");
-            boolean injected = false;
+            boolean changed = false;
             for (int i = 0; i < sequenceFlows.getLength(); i++) {
                 Element sequenceFlow = (Element) sequenceFlows.item(i);
-                String flowId = sequenceFlow.getAttribute("id");
-                if (!actionsByFlowId.containsKey(flowId)) {
-                    continue;
-                }
-
-                injectListener(doc, sequenceFlow);
-                injected = true;
+                changed |= removeLegacyListeners(sequenceFlow);
             }
 
-            if (!injected) {
+            if (!changed) {
                 return bpmnXml;
             }
 
             return toXmlString(doc);
         } catch (Exception e) {
-            log.warn("注入流程动作监听器失败: processConfigId={}", processConfigId, e);
+            log.warn("清理历史流程动作监听器失败: processConfigId={}", processConfigId, e);
             return bpmnXml;
         }
     }
 
-    private void injectListener(Document doc, Element sequenceFlow) {
+    private boolean removeLegacyListeners(Element sequenceFlow) {
         String nsUri = sequenceFlow.getNamespaceURI();
-        String prefix = sequenceFlow.getPrefix();
-        String extLocalName = "extensionElements";
-        Element extensionElements = findChildElement(sequenceFlow, nsUri, extLocalName);
+        Element extensionElements = findChildElement(sequenceFlow, nsUri, "extensionElements");
         if (extensionElements == null) {
-            extensionElements = doc.createElementNS(nsUri, qualifiedName(prefix, extLocalName));
-            sequenceFlow.appendChild(extensionElements);
+            return false;
         }
-
-        Element listener = doc.createElementNS("http://flowable.org/bpmn", "flowable:executionListener");
-        listener.setAttribute("event", "take");
-        listener.setAttribute("delegateExpression", LISTENER_BEAN_EXPRESSION);
-        extensionElements.appendChild(listener);
+        boolean changed = false;
+        NodeList children = extensionElements.getChildNodes();
+        for (int index = children.getLength() - 1; index >= 0; index--) {
+            Node child = children.item(index);
+            if (child.getNodeType() != Node.ELEMENT_NODE) {
+                continue;
+            }
+            Element element = (Element) child;
+            if ("executionListener".equals(element.getLocalName())
+                    && LISTENER_BEAN_EXPRESSION.equals(element.getAttribute("delegateExpression"))) {
+                extensionElements.removeChild(child);
+                changed = true;
+            }
+        }
+        if (!extensionElements.hasChildNodes()) {
+            sequenceFlow.removeChild(extensionElements);
+        }
+        return changed;
     }
 
     private Element findChildElement(Element parent, String namespaceUri, String localName) {
@@ -120,10 +109,6 @@ public class ProcessFlowActionBpmnInjector {
             }
         }
         return null;
-    }
-
-    private String qualifiedName(String prefix, String localName) {
-        return StringUtils.hasText(prefix) ? prefix + ":" + localName : localName;
     }
 
     private String toXmlString(Document doc) throws Exception {

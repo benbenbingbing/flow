@@ -950,108 +950,32 @@
           
           <!-- 表达式编辑器 -->
           <template v-if="conditionForm.type === 'expression'">
-            <!-- 条件表达式列表 -->
-            <div class="condition-list">
-              <div 
-                v-for="(condition, index) in conditionList" 
-                :key="index"
-                class="condition-item"
-              >
-                <el-row :gutter="10" class="condition-row">
-                  <!-- 属性选择 -->
-                  <el-col :span="8">
-                    <el-select 
-                      v-model="condition.property" 
-                      placeholder="选择属性"
-                      @change="onPropertyChange(index)"
-                      size="small"
-                    >
-                      <el-option label="审批结果 (approved)" value="approved" />
-                      <el-option 
-                        v-for="field in entityFields" 
-                        :key="field.fieldName"
-                        :label="field.fieldLabel || field.fieldName"
-                        :value="field.fieldName"
-                      />
-                    </el-select>
-                  </el-col>
-                  
-                  <!-- 操作符选择 -->
-                  <el-col :span="6">
-                    <el-select 
-                      v-model="condition.operator" 
-                      placeholder="操作符"
-                      @change="updateCondition()"
-                      size="small"
-                    >
-                      <el-option label="等于 (==)" value="==" />
-                      <el-option label="不等于 (!=)" value="!=" />
-                      <el-option label="大于 (>)" value=">" />
-                      <el-option label="小于 (<)" value="<" />
-                      <el-option label="大于等于 (>=)" value=">=" />
-                      <el-option label="小于等于 (<=)" value="<=" />
-                      <el-option label="包含" value="contains" />
-                    </el-select>
-                  </el-col>
-                  
-                  <!-- 值输入 -->
-                  <el-col :span="8">
-                    <!-- 下拉框类型 -->
-                    <el-select 
-                      v-if="getFieldType(condition.property) === 'select'"
-                      v-model="condition.value" 
-                      placeholder="选择值"
-                      @change="updateCondition()"
-                      size="small"
-                      style="width: 100%"
-                    >
-                      <el-option 
-                        v-for="opt in getFieldOptions(condition.property)" 
-                        :key="opt.value"
-                        :label="opt.label"
-                        :value="opt.value"
-                      />
-                    </el-select>
-                    <!-- 输入框类型 -->
-                    <el-input 
-                      v-else
-                      v-model="condition.value" 
-                      placeholder="输入值"
-                      size="small"
-                    />
-                  </el-col>
-                  
-                  <!-- 删除按钮 -->
-                  <el-col :span="2">
-                    <el-button 
-                      type="danger" 
-                      link
-                      @click="removeCondition(index)"
-                      :disabled="conditionList.length <= 1"
-                    >
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </el-col>
-                </el-row>
-                
-                <!-- 逻辑关系选择 -->
-                <div v-if="index < conditionList.length - 1" class="logic-operator">
-                  <el-radio-group v-model="condition.logic" size="small">
-                    <el-radio-button label="&&">且 (AND)</el-radio-button>
-                    <el-radio-button label="||">或 (OR)</el-radio-button>
-                  </el-radio-group>
-                </div>
-              </div>
-              
-              <!-- 添加条件按钮 -->
-              <el-button 
-                type="primary" 
-                link 
-                @click="addCondition"
-                class="add-condition-btn"
-              >
-                <el-icon><Plus /></el-icon>添加条件
-              </el-button>
+            <el-alert
+              v-if="conditionParseWarning"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="condition-parse-warning"
+            >
+              <template #title>当前表达式暂时无法转换为可视化条件组</template>
+              <div>{{ conditionParseWarning }}</div>
+              <el-button type="warning" link @click="resetConditionGroups">清空并改用条件组</el-button>
+            </el-alert>
+
+            <div v-else class="condition-group-editor">
+              <el-alert
+                title="每个条件组可选择“全部满足”或“任一满足”，组内还可以继续添加子条件组。"
+                type="info"
+                :closable="false"
+                show-icon
+                class="condition-group-tip"
+              />
+              <FlowConditionGroupEditor
+                :group="conditionRoot"
+                :entity-fields="entityFields"
+                :approval-options="sourceNodeApprovalOptions"
+                @change="updateCondition"
+              />
             </div>
             
             <!-- 表达式预览 -->
@@ -1094,160 +1018,21 @@
         </div>
       </el-tab-pane>
       
-      <!-- ========== 流程动作（顺序流） ========== -->
-      <el-tab-pane v-if="isSequenceFlow" name="actions">
+      <!-- ========== 流程动作 ========== -->
+      <el-tab-pane v-if="isActionConfigurable" name="actions">
         <template #label>
-          <el-tooltip content="配置节点执行前后的自定义动作" placement="top">
+          <el-tooltip content="配置当前节点或连线在指定时机执行的自定义动作" placement="top">
             <span>流程动作</span>
           </el-tooltip>
         </template>
-        <div class="actions-section">
-          <div class="actions-header">
-            <span>接口动作列表</span>
-            <el-button type="primary" size="small" @click="showActionDialog()">
-              <el-icon><Plus /></el-icon>添加动作
-            </el-button>
-          </div>
-          
-          <el-alert type="info" :closable="false" class="action-alert">
-            <template #title>
-              <div class="alert-content">
-                <span>流程发布后动作才生效</span>
-                <el-tag v-if="hasDraftChanges" type="warning" size="small">有未发布变更</el-tag>
-              </div>
-            </template>
-          </el-alert>
-          
-          <div class="actions-list">
-            <div 
-              v-for="(action, index) in sortedActions" 
-              :key="action.id"
-              class="action-item"
-              :class="{ disabled: !action.enabled }"
-            >
-              <div class="action-sort">
-                <el-button link size="small" :disabled="index === 0" @click="moveAction(index, -1)">
-                  <el-icon><ArrowUp /></el-icon>
-                </el-button>
-                <span class="sort-number">{{ index + 1 }}</span>
-                <el-button link size="small" :disabled="index === sortedActions.length - 1" @click="moveAction(index, 1)">
-                  <el-icon><ArrowDown /></el-icon>
-                </el-button>
-              </div>
-              
-              <div class="action-content">
-                <div class="action-name">{{ action.actionName }}</div>
-                <div class="action-detail">
-                  <el-tag size="small" :type="action.enabled ? 'success' : 'info'">
-                    {{ action.enabled ? '启用' : '禁用' }}
-                  </el-tag>
-                  <span class="interface-info">{{ action.interfaceName }}</span>
-                </div>
-              </div>
-              
-              <div class="action-ops">
-                <el-button link type="primary" size="small" @click="showActionDialog(action)">
-                  编辑
-                </el-button>
-                <el-button link type="warning" size="small" @click="toggleActionEnabled(action)">
-                  {{ action.enabled ? '禁用' : '启用' }}
-                </el-button>
-                <el-button link type="danger" size="small" @click="deleteAction(action)">
-                  删除
-                </el-button>
-              </div>
-            </div>
-            
-            <el-empty v-if="sortedActions.length === 0" description="暂无流程动作" />
-          </div>
-        </div>
-        
-        <!-- 动作编辑对话框 -->
-        <el-dialog
-          v-model="actionDialogVisible"
-          :title="editingAction.id ? '编辑动作' : '添加动作'"
-          width="500px"
-          append-to-body
-        >
-          <el-form :model="editingAction" label-width="100px" size="small">
-            <el-form-item label="动作名称" required>
-              <el-input v-model="editingAction.actionName" placeholder="如：发送通知" />
-            </el-form-item>
-            
-            <el-form-item label="描述">
-              <el-input 
-                v-model="editingAction.description" 
-                type="textarea"
-                :rows="2"
-                placeholder="动作描述..."
-              />
-            </el-form-item>
-            
-            <el-form-item label="处理器" required>
-              <el-select
-                v-model="editingAction.interfaceName"
-                placeholder="选择已注册的 FlowActionHandler Bean"
-                filterable
-                clearable
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="opt in handlerOptions"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-              <div class="form-tip">处理器需实现 FlowActionHandler 接口并注册为 Spring Bean</div>
-            </el-form-item>
-
-            <el-form-item label="参数配置">
-              <div class="action-params-list">
-                <el-row
-                  v-for="(param, index) in actionParamList"
-                  :key="index"
-                  :gutter="8"
-                  align="middle"
-                  class="action-param-row"
-                >
-                  <el-col :span="7">
-                    <el-input v-model="param.name" placeholder="参数名" size="small" />
-                  </el-col>
-                  <el-col :span="6">
-                    <el-select v-model="param.type" placeholder="类型" size="small" style="width: 100%">
-                      <el-option
-                        v-for="t in actionParamTypeOptions"
-                        :key="t.value"
-                        :label="t.label"
-                        :value="t.value"
-                      />
-                    </el-select>
-                  </el-col>
-                  <el-col :span="8">
-                    <el-input v-model="param.value" placeholder="参数值" size="small" />
-                  </el-col>
-                  <el-col :span="3" class="action-param-actions">
-                    <el-button type="danger" link size="small" @click="removeActionParam(index)">
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </el-col>
-                </el-row>
-                <el-button type="primary" link size="small" @click="addActionParam">
-                  <el-icon><Plus /></el-icon> 添加参数
-                </el-button>
-              </div>
-            </el-form-item>
-            
-            <el-form-item label="是否启用">
-              <el-switch v-model="editingAction.enabled" />
-            </el-form-item>
-          </el-form>
-          
-          <template #footer>
-            <el-button @click="actionDialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="saveAction">确定</el-button>
-          </template>
-        </el-dialog>
+        <FlowActionConfigPanel
+          :process-id="processId"
+          :scope-type="isSequenceFlow ? 'SEQUENCE_FLOW' : 'NODE'"
+          :element-id="element?.id"
+          :element-name="element?.businessObject?.name || element?.id"
+          :bpmn-type="element?.type"
+          @changed="emit('action-changed')"
+        />
       </el-tab-pane>
       
       <!-- ========== 表单配置（仅用户任务/开始事件） ========== -->
@@ -1472,13 +1257,21 @@
 <script setup>
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, ArrowUp, ArrowDown, Delete, QuestionFilled, VideoPlay, InfoFilled, View, WarningFilled } from '@element-plus/icons-vue'
-import { flowActionApi } from '@/api/flowAction'
+import { Plus, Delete, QuestionFilled, VideoPlay, InfoFilled, View, WarningFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildAssigneeConfig, getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
+import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
+import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
+import {
+  buildFlowConditionExpression,
+  createFlowConditionGroup,
+  parseFlowConditionConfig,
+  parseFlowConditionExpression,
+  serializeFlowConditionConfig
+} from '@/utils/flowConditionGroups'
 
 const router = useRouter()
 
@@ -1487,7 +1280,7 @@ const props = defineProps({
   processId: { type: String, default: '' }
 })
 
-const emit = defineEmits(['save', 'update-status-mapping'])
+const emit = defineEmits(['save', 'update-status-mapping', 'action-changed'])
 const activeTab = ref('basic')
 
 // ========== 节点类型判断 ==========
@@ -1589,6 +1382,7 @@ const isSubProcess = computed(() => props.element?.type === 'bpmn:SubProcess')
 const isTask = computed(() => props.element?.type?.includes('Task') || props.element?.type?.includes('Activity'))
 const isStartEvent = computed(() => props.element?.type === 'bpmn:StartEvent')
 const isSequenceFlow = computed(() => props.element?.type === 'bpmn:SequenceFlow')
+const isActionConfigurable = computed(() => Boolean(props.element?.id) && props.element?.type !== 'bpmn:Process')
 const isGateway = computed(() => props.element?.type?.includes('Gateway'))
 
 // 字段类型标签
@@ -1720,27 +1514,11 @@ const scriptTestResult = ref(null)
 
 const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParameters: '', outputParameters: '', businessKey: '' })
 const conditionForm = ref({ type: '', expression: '' })
-const selectedConditionTemplate = ref('')
-
-// 条件表达式列表（支持多个条件）
-const conditionList = ref([
-  { property: '', operator: '==', value: '', logic: '&&' }
-])
+const conditionRoot = ref(createFlowConditionGroup())
+const conditionParseWarning = ref('')
 
 // 实体字段列表
 const entityFields = ref([])
-
-// 常用变量
-const commonVariables = ref([
-  { name: 'approved', desc: '审批结果' },
-  { name: 'amount', desc: '金额' },
-  { name: 'status', desc: '状态' },
-  { name: 'level', desc: '级别' },
-  { name: 'count', desc: '数量' },
-  { name: 'remark', desc: '备注' },
-  { name: 'days', desc: '天数' },
-  { name: 'assignee', desc: '处理人' }
-])
 
 // 连线状态配置表单
 const statusForm = ref({
@@ -1988,146 +1766,10 @@ const subProcesses = ref([
   { key: 'contract_subprocess', name: '合同子流程' }
 ])
 
-// ========== 流程动作 ==========
-const actions = ref([])
-const actionDialogVisible = ref(false)
-const editingAction = ref({ id: null, actionName: '', description: '', interfaceName: '', methodName: 'execute', paramsJson: '', enabled: true })
-const actionParamList = ref([])
-const handlerOptions = ref([])
-const hasDraftChanges = ref(false)
-const sortedActions = computed(() => [...actions.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)))
-
-const actionParamTypeOptions = [
-  { label: '静态文本', value: 'string' },
-  { label: '数字', value: 'number' },
-  { label: '布尔', value: 'boolean' },
-  { label: '流程变量', value: 'variable' },
-  { label: '表达式', value: 'expression' }
-]
-
-async function loadActions() {
-  if (!isSequenceFlow.value || !props.processId || !props.element?.id) return
-  try {
-    const res = await flowActionApi.findDraftActionsBySequenceFlow(props.processId, props.element.id)
-    actions.value = res || []
-    hasDraftChanges.value = false
-  } catch (e) { console.error('加载流程动作失败:', e) }
-}
-
-function showActionDialog(action = null) {
-  editingAction.value = action ? { ...action } : { id: null, actionName: '', description: '', interfaceName: '', methodName: 'execute', paramsJson: '', enabled: true }
-  actionParamList.value = parseParamsJson(editingAction.value.paramsJson)
-  loadHandlers()
-  actionDialogVisible.value = true
-}
-
-async function loadHandlers() {
-  try {
-    const res = await flowActionApi.listHandlers()
-    handlerOptions.value = (res || []).map(h => ({ label: `${h.beanName} (${h.className.split('.').pop()})`, value: h.beanName }))
-  } catch (e) {
-    console.error('加载流程动作处理器失败:', e)
-    handlerOptions.value = []
-  }
-}
-
-function parseParamsJson(paramsJson) {
-  if (!paramsJson) return []
-  try {
-    const obj = JSON.parse(paramsJson)
-    return Object.entries(obj).map(([name, value]) => {
-      let type = 'string'
-      if (typeof value === 'number') type = 'number'
-      else if (typeof value === 'boolean') type = 'boolean'
-      else if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
-        type = value.includes('#') || value.includes('==') || value.includes('+') ? 'expression' : 'variable'
-      }
-      return { name, value: String(value), type }
-    })
-  } catch (e) {
-    return []
-  }
-}
-
-function buildParamsJson() {
-  const obj = {}
-  for (const p of actionParamList.value) {
-    if (!p.name) continue
-    let val = p.value
-    if (p.type === 'number') {
-      const num = Number(val)
-      val = isNaN(num) ? val : num
-    } else if (p.type === 'boolean') {
-      val = val === 'true' || val === true
-    } else if (p.type === 'variable') {
-      val = val.startsWith('${') && val.endsWith('}') ? val : `\${${val}}`
-    } else if (p.type === 'expression') {
-      val = val.startsWith('${') && val.endsWith('}') ? val : `\${${val}}`
-    }
-    obj[p.name] = val
-  }
-  return JSON.stringify(obj)
-}
-
-function addActionParam() {
-  actionParamList.value.push({ name: '', value: '', type: 'string' })
-}
-
-function removeActionParam(index) {
-  actionParamList.value.splice(index, 1)
-}
-
-async function saveAction() {
-  if (!editingAction.value.actionName || !editingAction.value.interfaceName) {
-    ElMessage.warning('请填写必填项')
-    return
-  }
-  try {
-    const paramsJson = buildParamsJson()
-    const data = { ...editingAction.value, paramsJson, processConfigId: props.processId, sequenceFlowId: props.element.id, sortOrder: editingAction.value.id ? editingAction.value.sortOrder : actions.value.length }
-    await flowActionApi.saveAction(data)
-    ElMessage.success('保存成功')
-    actionDialogVisible.value = false
-    hasDraftChanges.value = true
-    await loadActions()
-  } catch (e) { ElMessage.error('保存失败') }
-}
-
-async function deleteAction(action) {
-  try {
-    await ElMessageBox.confirm('确定删除该动作吗？', '提示', { type: 'warning' })
-    await flowActionApi.deleteAction(action.id)
-    ElMessage.success('删除成功')
-    hasDraftChanges.value = true
-    await loadActions()
-  } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败') }
-}
-
-async function toggleActionEnabled(action) {
-  try {
-    await flowActionApi.toggleEnabled(action.id)
-    ElMessage.success('操作成功')
-    hasDraftChanges.value = true
-    await loadActions()
-  } catch (e) { ElMessage.error('操作失败') }
-}
-
-async function moveAction(index, direction) {
-  const newIndex = index + direction
-  if (newIndex < 0 || newIndex >= sortedActions.value.length) return
-  const list = [...sortedActions.value]
-  const temp = list[index]; list[index] = list[newIndex]; list[newIndex] = temp
-  try {
-    await flowActionApi.updateSortOrder(list.map(a => a.id))
-    await loadActions()
-  } catch (e) { ElMessage.error('排序失败') }
-}
-
 // ========== 监听和初始化 ==========
 watch(() => props.element, (newElement) => {
   // 切换节点时重置activeTab为basic
   activeTab.value = 'basic'
-  if (newElement?.type === 'bpmn:SequenceFlow') loadActions()
 }, { immediate: true })
 
 // 根据用户名列表获取用户 value 列表（el-select-v2 的 v-model 绑定 value）
@@ -2383,8 +2025,12 @@ watch(() => props.element, async (newElement) => {
       }
       hasCondition.value = !!bo.conditionExpression
       
-      // 解析表达式到条件列表
-      conditionList.value = parseExpressionToConditions(expressionBody)
+      const savedConditionRoot = parseFlowConditionConfig(extProps['conditionGroupConfig'])
+      const parsedConditionRoot = savedConditionRoot || parseFlowConditionExpression(expressionBody)
+      conditionRoot.value = parsedConditionRoot || createFlowConditionGroup()
+      conditionParseWarning.value = expressionBody && !parsedConditionRoot
+        ? '原表达式会继续保留且不会被自动覆盖。若要使用条件组，请先确认并清空原表达式。'
+        : ''
       
       // 加载连线状态配置
       loadStatusConfig(bo)
@@ -2635,25 +2281,9 @@ function updateServiceImplementation() {
   emit('save')
 }
 
-// 条件模板选择
-function onConditionTemplateChange(template) {
-  if (template) {
-    conditionForm.value.expression = template
-    updateCondition()
-  }
-}
-
-// 获取完整表达式（从条件列表生成）
 function getFullExpression() {
-  return buildExpressionFromConditions()
-}
-
-// 插入变量到表达式
-function insertVariable(varName) {
-  const currentExpr = conditionForm.value.expression || ''
-  // 在光标位置或末尾插入
-  conditionForm.value.expression = currentExpr + (currentExpr ? ' ' : '') + varName
-  updateCondition()
+  if (conditionParseWarning.value) return conditionForm.value.expression || ''
+  return buildFlowConditionExpression(conditionRoot.value, getFieldType)
 }
 
 // 获取源网关/节点对象(element)
@@ -2676,46 +2306,58 @@ function onConditionTypeChange(type) {
     if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
       modeling.updateProperties(toRaw(source), { default: undefined })
     }
+    conditionParseWarning.value = ''
+    if (!conditionRoot.value?.children?.length) {
+      conditionRoot.value = createFlowConditionGroup()
+    }
     updateCondition()
   } else if (type === 'default') {
     // 设置为默认流：清除条件表达式，设置源节点的 default
     modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+    updateExtensionProperty('conditionGroupConfig', null)
+    conditionParseWarning.value = ''
     if (source) {
       modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
     }
   } else {
     // 无条件：清除条件表达式和默认流设置
     modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+    updateExtensionProperty('conditionGroupConfig', null)
     if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
       modeling.updateProperties(toRaw(source), { default: undefined })
     }
-    // 同步清空条件列表与缓存表达式，避免回显时旧条件串味复活
     conditionForm.value.expression = ''
-    conditionList.value = [{ property: '', operator: '==', value: '', logic: '&&' }]
+    conditionRoot.value = createFlowConditionGroup()
+    conditionParseWarning.value = ''
   }
   emit('save')
 }
 
 function updateCondition() {
-  if (conditionForm.value.type !== 'expression') return
+  if (conditionForm.value.type !== 'expression' || conditionParseWarning.value) return
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
   
-  // 从条件列表生成表达式
-  const expression = buildExpressionFromConditions()
+  const expression = buildFlowConditionExpression(conditionRoot.value, getFieldType)
   conditionForm.value.expression = expression
   
   if (expression) {
     const condition = moddle.create('bpmn:FormalExpression', { body: expression })
     modeling.updateProperties(toRaw(props.element), { conditionExpression: condition })
+    updateExtensionProperty('conditionGroupConfig', serializeFlowConditionConfig(conditionRoot.value))
   } else {
-    // 表达式为空时清除条件
     modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+    updateExtensionProperty('conditionGroupConfig', null)
   }
   emit('save')
 }
 
-// ========== 新条件表达式编辑器方法 ==========
+function resetConditionGroups() {
+  conditionRoot.value = createFlowConditionGroup()
+  conditionParseWarning.value = ''
+  conditionForm.value.expression = ''
+  updateCondition()
+}
 
 // 加载实体字段
 async function loadEntityFields() {
@@ -2727,33 +2369,6 @@ async function loadEntityFields() {
     }
   } catch (e) {
     console.error('加载实体字段失败:', e)
-  }
-}
-
-// 添加条件
-function addCondition() {
-  conditionList.value.push({ property: '', operator: '==', value: '', logic: '&&' })
-}
-
-// 删除条件
-function removeCondition(index) {
-  if (conditionList.value.length <= 1) return
-  conditionList.value.splice(index, 1)
-  // 更新最后一个条件的逻辑关系（如果不是最后一个）
-  if (index < conditionList.value.length) {
-    conditionList.value[index].logic = '&&'
-  }
-  updateCondition()
-}
-
-// 属性变化时处理
-function onPropertyChange(index) {
-  const condition = conditionList.value[index]
-  condition.value = '' // 清空值
-  // 根据属性类型设置默认操作符
-  const fieldType = getFieldType(condition.property)
-  if (fieldType === 'select' || fieldType === 'boolean') {
-    condition.operator = '=='
   }
 }
 
@@ -2779,121 +2394,6 @@ function getFieldType(fieldName) {
     'dept': 'string'
   }
   return typeMap[field.fieldType] || 'string'
-}
-
-// 获取字段选项（用于下拉框）
-function getFieldOptions(fieldName) {
-  if (fieldName === 'approved') {
-    return sourceNodeApprovalOptions.value
-  }
-  const field = entityFields.value.find(f => f.fieldName === fieldName)
-  if (!field || !field.optionsJson) return []
-  try {
-    const options = JSON.parse(field.optionsJson)
-    return Array.isArray(options) ? options : []
-  } catch (e) {
-    return []
-  }
-}
-
-// 从条件列表构建表达式
-function buildExpressionFromConditions() {
-  if (conditionList.value.length === 0) return ''
-  
-  const parts = []
-  for (let i = 0; i < conditionList.value.length; i++) {
-    const condition = conditionList.value[i]
-    if (!condition.property || !condition.operator) continue
-    
-    let value = condition.value
-    const fieldType = getFieldType(condition.property)
-    
-    // 处理值类型
-    // approved 运行时变量是审批选项的字符串值，需要加引号
-    if (fieldType === 'string' || fieldType === 'select') {
-      // 字符串需要加引号（如果不是变量）
-      if (value && !value.startsWith('${') && !value.startsWith('#{')) {
-        value = `'${value}'`
-      }
-    } else if (fieldType === 'boolean') {
-      // 布尔值不需要引号
-      value = value === 'true' ? 'true' : 'false'
-    }
-    
-    // 构建单个条件
-    let part = ''
-    if (condition.operator === 'contains') {
-      part = `${condition.property}.contains(${value})`
-    } else {
-      part = `${condition.property} ${condition.operator} ${value}`
-    }
-    
-    parts.push(part)
-    
-    // 添加逻辑关系（如果不是最后一个）
-    if (i < conditionList.value.length - 1) {
-      parts.push(condition.logic || '&&')
-    }
-  }
-  
-  if (parts.length === 0) return ''
-  
-  // 自动添加 ${} 包裹
-  return '${' + parts.join(' ') + '}'
-}
-
-// 从表达式解析条件列表
-function parseExpressionToConditions(expression) {
-  if (!expression) return [{ property: '', operator: '==', value: '', logic: '&&' }]
-  
-  // 移除 ${} 包裹
-  let expr = expression.trim()
-  if (expr.startsWith('${')) expr = expr.substring(2)
-  if (expr.endsWith('}')) expr = expr.substring(0, expr.length - 1)
-  
-  // 简单解析：按 && 或 || 分割
-  const conditions = []
-  const tokens = expr.split(/(\&\&|\|\|)/)
-  
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i].trim()
-    if (token === '&&' || token === '||') {
-      // 逻辑操作符，设置到前一个条件
-      if (conditions.length > 0) {
-        conditions[conditions.length - 1].logic = token
-      }
-    } else if (token) {
-      // 解析单个条件: property operator value
-      const match = token.match(/^(\w+)\s*(==|!=|>|<|>=|<=)\s*(.+)$/) ||
-                   token.match(/^(\w+)\.contains\((.+)\)$/)
-      
-      if (match) {
-        const property = match[1]
-        let operator = match[2]
-        let value = match[3]
-        
-        // 处理 contains
-        if (token.includes('.contains(')) {
-          operator = 'contains'
-          value = match[2]
-        }
-        
-        // 移除字符串引号
-        if (value && (value.startsWith("'") || value.startsWith('"'))) {
-          value = value.slice(1, -1)
-        }
-        
-        conditions.push({
-          property,
-          operator,
-          value,
-          logic: '&&'
-        })
-      }
-    }
-  }
-  
-  return conditions.length > 0 ? conditions : [{ property: '', operator: '==', value: '', logic: '&&' }]
 }
 
 function onAsyncChange() {
@@ -3311,13 +2811,18 @@ function saveCurrentTab() {
             modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
           }
         } else if (conditionForm.value.type === 'expression') {
-          updateCondition()
+          if (conditionParseWarning.value) {
+            ElMessage.info('原条件表达式已保留；转换为条件组后才能进行可视化编辑')
+          } else {
+            updateCondition()
+          }
         } else {
           // 无条件：清除条件表达式和默认流设置
           const modeling = getModeling()
           const source = getSourceElement()
           if (modeling) {
             modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+            updateExtensionProperty('conditionGroupConfig', null)
             if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
               modeling.updateProperties(toRaw(source), { default: undefined })
             }
@@ -3695,44 +3200,21 @@ async function saveStatusConfig() {
   margin: 0;
 }
 
-/* 新条件表达式编辑器样式 */
-.condition-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.condition-group-editor {
   margin-bottom: 15px;
 }
 
-.condition-item {
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  padding: 12px;
-  border: 1px solid #e4e7ed;
-}
-
-.condition-row {
-  display: flex;
-  align-items: center;
-}
-
-.logic-operator {
-  display: flex;
-  justify-content: center;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #dcdfe6;
-}
-
-.add-condition-btn {
-  align-self: flex-start;
-  margin-top: 5px;
+.condition-group-tip,
+.condition-parse-warning {
+  margin-bottom: 12px;
 }
 
 .expression-preview {
   margin-top: 15px;
 }
 
-.expression-preview :deep(.el-input__inner) {
+.expression-preview :deep(.el-input__inner),
+.expression-preview :deep(.el-textarea__inner) {
   font-family: monospace;
   color: #409eff;
 }

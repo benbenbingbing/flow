@@ -29,6 +29,12 @@
         </el-button-group>
         
         <el-divider direction="vertical" />
+
+        <el-badge :value="globalActionCount" :hidden="globalActionCount === 0" class="global-action-badge">
+          <el-button @click="globalActionVisible = true">
+            <el-icon><Operation /></el-icon>全局动作
+          </el-button>
+        </el-badge>
         
         <el-button @click="handleSaveXML">
           <el-icon><Document /></el-icon>查看XML
@@ -67,6 +73,21 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="globalActionVisible"
+      title="全局流程动作"
+      width="760px"
+      :close-on-click-modal="false"
+    >
+      <FlowActionConfigPanel
+        :process-id="processId"
+        scope-type="PROCESS"
+        bpmn-type="bpmn:Process"
+        :element-name="processData.processName"
+        @changed="refreshActionCounts"
+      />
+    </el-dialog>
     
     <div class="design-container">
       <VueBpmnDesigner
@@ -85,6 +106,7 @@
             :element="selectedElement"
             :process-id="processId"
             @save="handleNodeConfigSave"
+            @action-changed="refreshActionCounts"
           />
         </div>
       </div>
@@ -96,7 +118,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Document, Check, Back, Right } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Check, Back, Right, Operation } from '@element-plus/icons-vue'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
 import formatXML from 'xml-formatter'
@@ -106,6 +128,8 @@ import { Codemirror } from 'vue-codemirror'
 import { xml } from '@codemirror/lang-xml'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
+import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
+import { flowActionApi } from '@/api/flowAction'
 
 /**
  * 检查并修复XML布局
@@ -142,6 +166,8 @@ const processId = route.params.id
 const designerRef = ref()
 const processData = ref({})
 const selectedElement = ref(null)
+const globalActionVisible = ref(false)
+const globalActionCount = ref(0)
 
 // 撤销/重做状态
 const canUndo = ref(false)
@@ -210,7 +236,27 @@ const onCommandStackChanged = ({ canUndo: undo, canRedo: redo }) => {
 }
 
 const onImported = () => {
-  // 导入完成后的回调（如果需要）
+  refreshActionCounts()
+}
+
+const refreshActionCounts = async () => {
+  if (!processId) return
+  try {
+    const actions = await flowActionApi.findDraftActions(processId)
+    const counts = {}
+    let processCount = 0
+    ;(actions || []).forEach(action => {
+      if (action.scopeType === 'PROCESS') {
+        processCount += 1
+      } else if (action.elementId) {
+        counts[action.elementId] = (counts[action.elementId] || 0) + 1
+      }
+    })
+    globalActionCount.value = processCount
+    designerRef.value?.setActionCounts(counts)
+  } catch (error) {
+    console.error('加载流程动作标记失败:', error)
+  }
 }
 
 const loadProcess = async () => {
@@ -352,6 +398,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 15px;
+}
+
+.global-action-badge {
+  margin-right: 4px;
 }
 
 .process-name {

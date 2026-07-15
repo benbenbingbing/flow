@@ -41,6 +41,9 @@ public class FlowActionHandlerController {
             if (entry.getValue() instanceof TypedFlowActionHandler<?> typed) {
                 info.setParamType(typed.getParamType().getName());
             }
+            info.setSupportedTriggerTimings(entry.getValue().supportedTriggerTimings());
+            info.setSupportedExecutionModes(entry.getValue().supportedExecutionModes());
+            info.setRecommendedExecutionMode(entry.getValue().recommendedExecutionMode());
             result.add(info);
         }
         return Result.success(result);
@@ -52,5 +55,8 @@ public class FlowActionHandlerController {
         private String className;
         private Boolean typed;
         private String paramType;
+        private java.util.Set<String> supportedTriggerTimings;
+        private java.util.Set<String> supportedExecutionModes;
+        private String recommendedExecutionMode;
     }
 }
