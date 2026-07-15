@@ -1183,29 +1183,59 @@
               />
             </el-form-item>
             
-            <el-form-item label="接口名称" required>
-              <el-input 
-                v-model="editingAction.interfaceName" 
-                placeholder="Spring Bean名称或类名"
-              />
-              <div class="form-tip">如：notificationService 或 com.example.Service</div>
+            <el-form-item label="处理器" required>
+              <el-select
+                v-model="editingAction.interfaceName"
+                placeholder="选择已注册的 FlowActionHandler Bean"
+                filterable
+                clearable
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="opt in handlerOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+              <div class="form-tip">处理器需实现 FlowActionHandler 接口并注册为 Spring Bean</div>
             </el-form-item>
-            
-            <el-form-item label="方法名">
-              <el-input 
-                v-model="editingAction.methodName" 
-                placeholder="execute"
-              />
-              <div class="form-tip">默认为 execute</div>
-            </el-form-item>
-            
-            <el-form-item label="参数JSON">
-              <el-input 
-                v-model="editingAction.paramsJson" 
-                type="textarea"
-                :rows="4"
-                placeholder='{"key": "value"}'
-              />
+
+            <el-form-item label="参数配置">
+              <div class="action-params-list">
+                <el-row
+                  v-for="(param, index) in actionParamList"
+                  :key="index"
+                  :gutter="8"
+                  align="middle"
+                  class="action-param-row"
+                >
+                  <el-col :span="7">
+                    <el-input v-model="param.name" placeholder="参数名" size="small" />
+                  </el-col>
+                  <el-col :span="6">
+                    <el-select v-model="param.type" placeholder="类型" size="small" style="width: 100%">
+                      <el-option
+                        v-for="t in actionParamTypeOptions"
+                        :key="t.value"
+                        :label="t.label"
+                        :value="t.value"
+                      />
+                    </el-select>
+                  </el-col>
+                  <el-col :span="8">
+                    <el-input v-model="param.value" placeholder="参数值" size="small" />
+                  </el-col>
+                  <el-col :span="3" class="action-param-actions">
+                    <el-button type="danger" link size="small" @click="removeActionParam(index)">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </el-col>
+                </el-row>
+                <el-button type="primary" link size="small" @click="addActionParam">
+                  <el-icon><Plus /></el-icon> 添加参数
+                </el-button>
+              </div>
             </el-form-item>
             
             <el-form-item label="是否启用">
@@ -1962,8 +1992,18 @@ const subProcesses = ref([
 const actions = ref([])
 const actionDialogVisible = ref(false)
 const editingAction = ref({ id: null, actionName: '', description: '', interfaceName: '', methodName: 'execute', paramsJson: '', enabled: true })
+const actionParamList = ref([])
+const handlerOptions = ref([])
 const hasDraftChanges = ref(false)
 const sortedActions = computed(() => [...actions.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)))
+
+const actionParamTypeOptions = [
+  { label: '静态文本', value: 'string' },
+  { label: '数字', value: 'number' },
+  { label: '布尔', value: 'boolean' },
+  { label: '流程变量', value: 'variable' },
+  { label: '表达式', value: 'expression' }
+]
 
 async function loadActions() {
   if (!isSequenceFlow.value || !props.processId || !props.element?.id) return
@@ -1976,7 +2016,65 @@ async function loadActions() {
 
 function showActionDialog(action = null) {
   editingAction.value = action ? { ...action } : { id: null, actionName: '', description: '', interfaceName: '', methodName: 'execute', paramsJson: '', enabled: true }
+  actionParamList.value = parseParamsJson(editingAction.value.paramsJson)
+  loadHandlers()
   actionDialogVisible.value = true
+}
+
+async function loadHandlers() {
+  try {
+    const res = await flowActionApi.listHandlers()
+    handlerOptions.value = (res || []).map(h => ({ label: `${h.beanName} (${h.className.split('.').pop()})`, value: h.beanName }))
+  } catch (e) {
+    console.error('加载流程动作处理器失败:', e)
+    handlerOptions.value = []
+  }
+}
+
+function parseParamsJson(paramsJson) {
+  if (!paramsJson) return []
+  try {
+    const obj = JSON.parse(paramsJson)
+    return Object.entries(obj).map(([name, value]) => {
+      let type = 'string'
+      if (typeof value === 'number') type = 'number'
+      else if (typeof value === 'boolean') type = 'boolean'
+      else if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
+        type = value.includes('#') || value.includes('==') || value.includes('+') ? 'expression' : 'variable'
+      }
+      return { name, value: String(value), type }
+    })
+  } catch (e) {
+    return []
+  }
+}
+
+function buildParamsJson() {
+  const obj = {}
+  for (const p of actionParamList.value) {
+    if (!p.name) continue
+    let val = p.value
+    if (p.type === 'number') {
+      const num = Number(val)
+      val = isNaN(num) ? val : num
+    } else if (p.type === 'boolean') {
+      val = val === 'true' || val === true
+    } else if (p.type === 'variable') {
+      val = val.startsWith('${') && val.endsWith('}') ? val : `\${${val}}`
+    } else if (p.type === 'expression') {
+      val = val.startsWith('${') && val.endsWith('}') ? val : `\${${val}}`
+    }
+    obj[p.name] = val
+  }
+  return JSON.stringify(obj)
+}
+
+function addActionParam() {
+  actionParamList.value.push({ name: '', value: '', type: 'string' })
+}
+
+function removeActionParam(index) {
+  actionParamList.value.splice(index, 1)
 }
 
 async function saveAction() {
@@ -1985,7 +2083,8 @@ async function saveAction() {
     return
   }
   try {
-    const data = { ...editingAction.value, processConfigId: props.processId, sequenceFlowId: props.element.id, sortOrder: editingAction.value.id ? editingAction.value.sortOrder : actions.value.length }
+    const paramsJson = buildParamsJson()
+    const data = { ...editingAction.value, paramsJson, processConfigId: props.processId, sequenceFlowId: props.element.id, sortOrder: editingAction.value.id ? editingAction.value.sortOrder : actions.value.length }
     await flowActionApi.saveAction(data)
     ElMessage.success('保存成功')
     actionDialogVisible.value = false
@@ -3513,6 +3612,9 @@ async function saveStatusConfig() {
 .action-detail { display: flex; align-items: center; gap: 8px; }
 .interface-info { font-size: 12px; color: #909399; font-family: monospace; }
 .action-ops { display: flex; gap: 5px; }
+.action-params-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.action-param-row { width: 100%; }
+.action-param-actions { display: flex; justify-content: flex-end; }
 
 /* 表单选择相关样式 */
 .form-option { display: flex; align-items: center; gap: 8px; }

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { getPermissions } from '@/api/auth'
 import Layout from '@/views/Layout.vue'
 
 /**
@@ -159,6 +160,12 @@ const routes = [
         name: 'CustomFormGuide',
         component: () => import('@/views/system/CustomFormGuide.vue'),
         meta: { title: '自定义表单组件' }
+      },
+      {
+        path: '/system/flow-action-guide',
+        name: 'FlowActionGuide',
+        component: () => import('@/views/system/FlowActionGuide.vue'),
+        meta: { title: '流程动作' }
       }
     ]
   },
@@ -175,7 +182,7 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   
   // 恢复用户信息（刷新页面后）
@@ -197,6 +204,22 @@ router.beforeEach((to, from, next) => {
     // 已登录但访问登录页，跳转到首页
     next('/')
     return
+  }
+
+  if (to.name === 'EntityDataList') {
+    const entityCode = String(to.params?.entityCode || '').toLowerCase()
+    const requiredPermission = `entity:${entityCode}:list`
+    if (!userStore.permissions.includes(requiredPermission)) {
+      try {
+        const permissions = await getPermissions()
+        userStore.setPermissions(permissions || [])
+      } catch (e) {}
+    }
+    if (!userStore.permissions.includes(requiredPermission)) {
+      ElMessage.warning('没有权限访问该实体列表')
+      next('/home')
+      return
+    }
   }
   
   // 拦截被禁用的菜单路径

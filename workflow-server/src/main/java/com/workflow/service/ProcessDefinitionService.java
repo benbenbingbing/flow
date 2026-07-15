@@ -3,6 +3,8 @@ package com.workflow.service;
 import com.workflow.dto.*;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
+import com.workflow.process.action.FlowActionPublishValidator;
+import com.workflow.process.action.ProcessFlowActionBpmnInjector;
 import com.workflow.process.definition.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
 import com.workflow.process.definition.ProcessFlowableDeploymentService;
@@ -28,6 +30,8 @@ public class ProcessDefinitionService {
     private final ProcessDefinitionNodeSyncService nodeSyncService;
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionService flowActionService;
+    private final ProcessFlowActionBpmnInjector flowActionBpmnInjector;
+    private final FlowActionPublishValidator flowActionPublishValidator;
     
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAll() {
@@ -206,6 +210,9 @@ public class ProcessDefinitionService {
         if (config.getBpmnXml() == null || config.getBpmnXml().isEmpty()) {
             throw new RuntimeException("BPMN XML is required for publishing");
         }
+
+        // 校验流程动作配置合法性
+        flowActionPublishValidator.validate(id);
         
         int newVersion = publishHistoryService.nextVersion(id);
         
@@ -215,6 +222,9 @@ public class ProcessDefinitionService {
         nodeSyncService.syncStatusMappingsFromBpmn(id, config.getProcessKey(), bpmnXml);
         
         bpmnXml = bpmnPublishSanitizer.sanitize(bpmnXml, config.getProcessKey());
+
+        // 为配置了 flow_action 的顺序流注入执行监听器
+        bpmnXml = flowActionBpmnInjector.inject(id, bpmnXml);
 
         nodeSyncService.syncBpmnNodeBindings(id, bpmnXml);
         

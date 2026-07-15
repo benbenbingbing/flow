@@ -58,5 +58,12 @@ export const flowActionApi = {
    */
   toggleEnabled(actionId) {
     return request.post(`/flow-actions/${actionId}/toggle`)
+  },
+
+  /**
+   * 获取已注册的流程动作处理器列表
+   */
+  listHandlers() {
+    return request.get('/flow-action-handlers')
   }
 }
