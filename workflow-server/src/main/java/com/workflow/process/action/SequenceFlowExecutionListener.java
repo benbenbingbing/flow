@@ -10,6 +10,7 @@ import org.flowable.bpmn.model.FlowNode;
 import org.flowable.bpmn.model.SequenceFlow;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.DelegateExecution;
+import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.delegate.ExecutionListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -31,10 +32,16 @@ public class SequenceFlowExecutionListener implements ExecutionListener {
     @Override
     public void notify(DelegateExecution execution) {
         String sequenceFlowId = execution.getCurrentActivityId();
+        log.info("[SequenceFlowExecutionListener] 顺序流被触发, processInstanceId={}, sequenceFlowId={}",
+                execution.getProcessInstanceId(), sequenceFlowId);
+
         String versionId = resolveVersionId(execution);
         if (!StringUtils.hasText(versionId) || !StringUtils.hasText(sequenceFlowId)) {
+            log.warn("[SequenceFlowExecutionListener] 无法解析版本ID或顺序流ID, versionId={}, sequenceFlowId={}",
+                    versionId, sequenceFlowId);
             return;
         }
+        log.info("[SequenceFlowExecutionListener] 解析到版本ID: {}", versionId);
 
         populateSequenceFlowInfo(execution);
         flowActionExecutor.executeActions(versionId, sequenceFlowId, execution);
@@ -43,21 +50,33 @@ public class SequenceFlowExecutionListener implements ExecutionListener {
     private String resolveVersionId(DelegateExecution execution) {
         String processDefinitionId = execution.getProcessDefinitionId();
         if (!StringUtils.hasText(processDefinitionId)) {
+            log.warn("[SequenceFlowExecutionListener] processDefinitionId 为空");
             return null;
         }
-        String deploymentId = extractDeploymentId(processDefinitionId);
+
+        String deploymentId = resolveDeploymentId(processDefinitionId);
         if (!StringUtils.hasText(deploymentId)) {
+            log.warn("[SequenceFlowExecutionListener] 无法解析 deploymentId, processDefinitionId={}", processDefinitionId);
             return null;
         }
+        log.info("[SequenceFlowExecutionListener] processDefinitionId={}, deploymentId={}", processDefinitionId, deploymentId);
+
         return versionHistoryMapper.findByDeploymentId(deploymentId)
                 .map(ProcessVersionHistory::getId)
                 .orElse(null);
     }
 
-    private String extractDeploymentId(String processDefinitionId) {
-        if (processDefinitionId == null) {
-            return null;
+    private String resolveDeploymentId(String processDefinitionId) {
+        try {
+            ProcessDefinition processDefinition = repositoryService.getProcessDefinition(processDefinitionId);
+            if (processDefinition != null) {
+                return processDefinition.getDeploymentId();
+            }
+        } catch (Exception e) {
+            log.warn("[SequenceFlowExecutionListener] 通过 RepositoryService 获取 ProcessDefinition 失败: {}", e.getMessage());
         }
+
+        // Fallback：尝试从 processDefinitionId 中解析（Flowable 旧版本格式）
         String[] parts = processDefinitionId.split(":");
         return parts.length >= 3 ? parts[parts.length - 1] : null;
     }

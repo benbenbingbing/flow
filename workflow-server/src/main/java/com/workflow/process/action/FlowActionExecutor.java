@@ -40,7 +40,12 @@ public class FlowActionExecutor {
      * @param execution      Flowable 执行上下文
      */
     public void executeActions(String versionId, String sequenceFlowId, DelegateExecution execution) {
+        log.info("[FlowActionExecutor] 开始执行顺序流动作, versionId={}, sequenceFlowId={}", versionId, sequenceFlowId);
         List<FlowAction> actions = flowActionService.findPublishedActionsBySequenceFlow(versionId, sequenceFlowId);
+        log.info("[FlowActionExecutor] 查询到 {} 个已发布动作", actions == null ? 0 : actions.size());
+        if (actions == null || actions.isEmpty()) {
+            return;
+        }
         for (FlowAction action : actions) {
             if (!Boolean.TRUE.equals(action.getEnabled())) {
                 continue;
@@ -49,7 +54,7 @@ public class FlowActionExecutor {
                 FlowActionContext ctx = buildContext(action, execution);
                 invoke(action, ctx);
             } catch (Exception e) {
-                log.error("执行流程动作失败: actionId={}, actionName={}", action.getId(), action.getActionName(), e);
+                log.error("[FlowActionExecutor] 执行流程动作失败: actionId={}, actionName={}", action.getId(), action.getActionName(), e);
                 throw new RuntimeException("执行流程动作失败: " + action.getActionName(), e);
             }
         }
