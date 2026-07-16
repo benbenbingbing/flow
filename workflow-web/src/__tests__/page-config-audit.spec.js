@@ -15,7 +15,7 @@ viewFiles.forEach((viewFile) => {
   assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/, `页面缺少 script: ${viewFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/config-migration'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -131,20 +131,57 @@ const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigP
 const processProgress = readFileSync(path.join(root, 'src/views/ProcessProgress.vue'), 'utf8')
 assert.match(processProgress, /动作执行记录[\s\S]*retryActionExecution/, '流程进度页应支持查看并重试动作执行记录')
 
+const configMigration = readFileSync(path.join(root, 'src/views/system/ConfigMigration.vue'), 'utf8')
+;[
+  '待导出',
+  '导出记录',
+  '导入管理',
+  '版本对比',
+  'exportPackage',
+  'uploadPackage',
+  'analyzeImport',
+  'publishImport',
+  'rollbackImport',
+  'saveMappings'
+].forEach((marker) => {
+  assert.ok(configMigration.includes(marker), `配置迁移页面缺少闭环能力: ${marker}`)
+})
+
+const processList = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
+const entityList = readFileSync(path.join(root, 'src/views/EntityList.vue'), 'utf8')
+;['markForExport', 'migrationTag', 'generateMigrationTag'].forEach((marker) => {
+  assert.ok(processList.includes(marker), `流程发布缺少迁移标记能力: ${marker}`)
+  assert.ok(entityList.includes(marker), `实体发布缺少迁移标记能力: ${marker}`)
+})
+
 const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fields/index.js'), 'utf8')
 ;['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
   assert.ok(formFieldRegistry.includes(type), `表单运行时缺少字段类型线索: ${type}`)
 })
 
 const guideExpectations = {
-  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'configSchema'],
-  'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'configSchema'],
-  'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose']
+  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'DemoRiskProgressCell', 'test:demo:real'],
+  'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
+  'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }
 for (const [file, markers] of Object.entries(guideExpectations)) {
   const source = readFileSync(path.join(root, file), 'utf8')
   markers.forEach((marker) => {
     assert.ok(source.includes(marker), `${file} 缺少扩展说明: ${marker}`)
+  })
+}
+
+const demoExpectations = {
+  'src/demo/index.js': ['registerDemoExtensions', 'DemoRiskProgressCell', 'DemoProjectCardList', 'DemoProjectForm'],
+  'src/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
+  'src/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
+  'src/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
+  'scripts/real-dynamic-extension-demo.mjs': ['createCustomList', 'progressWithCustomForm', 'completeDemoProcess']
+}
+for (const [file, markers] of Object.entries(demoExpectations)) {
+  const source = readFileSync(path.join(root, file), 'utf8')
+  markers.forEach((marker) => {
+    assert.ok(source.includes(marker), `${file} 缺少 Demo 验证能力: ${marker}`)
   })
 }
 

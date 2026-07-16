@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -49,6 +50,19 @@ public class EntityPublishHistoryService {
             String changesDesc,
             String userId,
             String userName) {
+        return createVersion(entity, fields, tableDdl, publishType, changesDesc, userId, userName, null);
+    }
+
+    @Transactional
+    public EntityPublishHistory createVersion(
+            EntityDefinition entity,
+            List<EntityField> fields,
+            String tableDdl,
+            EntityPublishHistory.PublishType publishType,
+            String changesDesc,
+            String userId,
+            String userName,
+            String versionDescription) {
 
         // 获取下一个版本号
         Integer latestVersion = historyMapper.getLatestVersion(entity.getId());
@@ -69,8 +83,10 @@ public class EntityPublishHistoryService {
         history.setEntityName(entity.getEntityName());
         history.setProcessDefinitionId(entity.getProcessDefinitionId());
         history.setVersion(nextVersion);
-        history.setVersionDescription(publishType == EntityPublishHistory.PublishType.CREATE 
-                ? "首次发布" : (changesDesc != null ? changesDesc : "字段变更"));
+        history.setVersionDescription(StringUtils.hasText(versionDescription)
+                ? versionDescription.trim()
+                : (publishType == EntityPublishHistory.PublishType.CREATE
+                    ? "首次发布" : (changesDesc != null ? changesDesc : "字段变更")));
         history.setFieldsSnapshot(fieldsSnapshot);
         history.setTableDdl(tableDdl);
         history.setPublishType(publishType);

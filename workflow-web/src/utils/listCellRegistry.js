@@ -6,7 +6,8 @@
  *   - value: 单元格值
  *   - row: 整行数据
  *   - field: 字段配置对象
- *   - config: 数据源配置（dataSourceConfig 解析后的对象）
+ *   - config: 渲染配置（优先 renderConfig，兼容回退 dataSourceConfig）
+ *   - context: 当前实体、列表与刷新方法等运行时上下文
  */
 
 // 内置组件

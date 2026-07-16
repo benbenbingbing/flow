@@ -45,6 +45,7 @@ public class EntityListConfigurationValidator {
         }
         validateExtensionName(dto.getCustomComponent(), "自定义列表组件");
         structuredConfigValidator.parseObject(dto.getViewConfig(), "列表视图配置");
+        dto.setViewConfig(blankToNull(dto.getViewConfig()));
         structuredConfigValidator.parseJson(dto.getToolbarConfig(), "工具栏配置");
         structuredConfigValidator.parseJson(dto.getRowActionConfig(), "操作列配置");
 
@@ -117,11 +118,18 @@ public class EntityListConfigurationValidator {
         structuredConfigValidator.parseObject(field.getColumnConfig(), "列展示配置");
         structuredConfigValidator.parseObject(field.getQueryConfig(), "查询配置");
         structuredConfigValidator.parseObject(field.getRenderConfig(), "渲染配置");
+        field.setColumnConfig(blankToNull(field.getColumnConfig()));
+        field.setQueryConfig(blankToNull(field.getQueryConfig()));
+        field.setRenderConfig(blankToNull(field.getRenderConfig()));
     }
 
     private void validateExtensionName(String name, String label) {
         if (StringUtils.hasText(name) && !EXTENSION_NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(label + "标识不合法");
         }
+    }
+
+    private String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value : null;
     }
 }

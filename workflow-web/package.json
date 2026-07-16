@@ -17,7 +17,8 @@
     "test:workflow:real": "node scripts/e2e-real-workflow.mjs",
     "test:workflow:config-real": "node scripts/real-workflow-config-closure.mjs",
     "test:workflow:node-forms-real": "node scripts/real-workflow-node-forms.mjs",
-    "test:workflow:actions-real": "node scripts/real-flow-action-timing.mjs"
+    "test:workflow:actions-real": "node scripts/real-flow-action-timing.mjs",
+    "test:demo:real": "node scripts/real-dynamic-extension-demo.mjs"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

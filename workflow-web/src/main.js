@@ -7,6 +7,9 @@ import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import App from './App.vue'
 import router from './router'
 import { useUserStore } from './stores/user'
+import { registerDemoExtensions } from './demo'
+
+registerDemoExtensions()
 
 const app = createApp(App)
 

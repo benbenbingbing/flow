@@ -2,6 +2,7 @@ package com.workflow.process.definition;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.UserContext;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.entity.ProcessVersionHistory;
@@ -45,6 +46,7 @@ public class ProcessPublishHistoryService {
         versionHistory.setBpmnXml(bpmnXml);
         versionHistory.setNodeFormsSnapshot(toNodeFormsSnapshot(config.getId()));
         versionHistory.setPublishedAt(LocalDateTime.now());
+        versionHistory.setPublishedBy(UserContext.getUsername());
         versionHistory.setDeploymentId(deploymentId);
         versionHistory.setStatus(ProcessVersionHistory.Status.ACTIVE.name());
         versionHistoryMapper.insert(versionHistory);

@@ -126,8 +126,18 @@ emit('pageChange', 2)</code></pre>
           </CodeCard>
         </section>
 
+        <section id="demo" class="guide-section">
+          <h3>6. 可运行 Demo</h3>
+          <ul class="check-list">
+            <li>`src/demo/lists/DemoProjectCardList.vue`：卡片布局、查询、分页、空状态和标准行操作的完整实现。</li>
+            <li>`src/demo/index.js`：以 `DemoProjectCardList` 注册组件，并声明列数、紧凑模式、说明和搜索提示参数。</li>
+            <li>示例直接使用 `runtime.canAction / getActionReason` 和 `listConfig.toolbarCapabilities`，不在前端重写权限规则。</li>
+            <li>执行 `npm run test:demo:real` 可创建真实实体、列表和流程；验证结果写入 `docs/dynamic-extension-demo/latest.json`。</li>
+          </ul>
+        </section>
+
         <section id="security" class="guide-section">
-          <h3>6. 权限与安全</h3>
+          <h3>7. 权限与安全</h3>
           <ul class="check-list">
             <li>不要根据“是否本人”“流程状态”在组件内重新实现权限规则，直接使用 `canAction`。</li>
             <li>按钮隐藏只是体验优化，真正操作仍会在后端重新加载最新数据并校验。</li>
@@ -138,7 +148,7 @@ emit('pageChange', 2)</code></pre>
         </section>
 
         <section id="acceptance" class="guide-section">
-          <h3>7. 验收清单</h3>
+          <h3>8. 验收清单</h3>
           <ul class="check-list">
             <li>查询、重置、分页、加载状态和空状态完整。</li>
             <li>查看、编辑、删除、审批与默认列表能力一致。</li>
@@ -166,6 +176,7 @@ const toc = [
   { id: 'contract', label: '运行时契约' },
   { id: 'runtime', label: 'runtime 方法' },
   { id: 'events', label: '兼容事件' },
+  { id: 'demo', label: '可运行 Demo' },
   { id: 'security', label: '权限与安全' },
   { id: 'acceptance', label: '验收清单' }
 ]
@@ -179,7 +190,9 @@ const decisionRows = [
 
 const propsRows = [
   { name: 'entityCode / entityDefinition', meaning: '当前实体编码与定义' },
-  { name: 'listConfig / listFields', meaning: '列表配置与实际展示字段' },
+  { name: 'entityName', meaning: '当前实体展示名称' },
+  { name: 'listConfig / listConfigFields', meaning: '列表主配置与全部列表字段配置' },
+  { name: 'listFields', meaning: '按 showInList 过滤后的实际展示字段' },
   { name: 'queryFields / queryForm', meaning: '查询项目和响应式查询值' },
   { name: 'dataList / total', meaning: '当前页数据与总数' },
   { name: 'pageNum / pageSize', meaning: '当前分页状态' },

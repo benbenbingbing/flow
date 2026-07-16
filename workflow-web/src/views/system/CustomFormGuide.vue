@@ -153,11 +153,22 @@ defineExpose({ validate })
           </ul>
         </section>
 
+        <section id="demo" class="guide-section">
+          <h3>8. 可运行 Demo</h3>
+          <ul class="check-list">
+            <li>`src/demo/forms/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
+            <li>`src/demo/index.js`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
+            <li>真实验证流程把该表单同时配置为新增默认表单和审批节点表单，审批后将风险评分从 58 回写为 35。</li>
+            <li>执行 `npm run test:demo:real`；实体、流程、表单和数据 ID 记录在 `docs/dynamic-extension-demo/latest.json`。</li>
+          </ul>
+        </section>
+
         <section id="security" class="guide-section">
-          <h3>8. 安全边界</h3>
+          <h3>9. 安全边界</h3>
           <ul class="check-list">
             <li>组件注册名和配置参数会在后端校验格式、JSON 类型、嵌套深度和模式编码。</li>
-            <li>不支持通过配置加载任意 Vue 文件、执行 JavaScript、Groovy 或自由 SQL。</li>
+            <li>组件注册和 `configSchema` 参数不支持加载任意 Vue 文件，也不执行 JavaScript、Groovy 或自由 SQL。</li>
+            <li>旧版字段事件 `componentProps.events` 仍兼容受信任开发脚本；不要向普通管理员或租户开放，新增逻辑优先使用结构化联动或已注册组件。</li>
             <li>远程选项接口必须经过平台鉴权；不要在组件参数中保存令牌和密钥。</li>
             <li>查看和审批场景要按字段模式过滤，不得渲染明确配置为隐藏的敏感字段。</li>
             <li>组件未注册时自动回退默认动态表单。</li>
@@ -165,7 +176,7 @@ defineExpose({ validate })
         </section>
 
         <section id="acceptance" class="guide-section">
-          <h3>9. 验收清单</h3>
+          <h3>10. 验收清单</h3>
           <ul class="check-list">
             <li>新增、编辑、审批、查看四种模式分别验收显隐和编辑性。</li>
             <li>节点整表单只读与字段只读叠加后仍严格只读。</li>
@@ -195,6 +206,7 @@ const toc = [
   { id: 'contract', label: '运行时契约' },
   { id: 'modes', label: '四种模式' },
   { id: 'data', label: '数据与校验' },
+  { id: 'demo', label: '可运行 Demo' },
   { id: 'security', label: '安全边界' },
   { id: 'acceptance', label: '验收清单' }
 ]

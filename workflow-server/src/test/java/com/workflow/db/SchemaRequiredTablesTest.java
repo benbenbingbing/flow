@@ -88,4 +88,42 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("001"), "baseline schema migration must be V001");
         assertTrue(versions.contains("002"), "built-in seed migration must be V002");
     }
+
+    @Test
+    void configMigrationSchemaCreatesPackageAndBaselineTables() throws Exception {
+        Path migration = Path.of("src/main/resources/db/migration/V011__add_config_migration.sql");
+        assertTrue(Files.exists(migration), "V011 config migration schema must exist");
+
+        String sql = Files.readString(migration);
+        for (String table : List.of(
+                "config_migration_asset",
+                "config_export_package",
+                "config_export_package_item",
+                "config_import_package",
+                "config_import_item",
+                "config_asset_baseline",
+                "config_environment_mapping")) {
+            assertTrue(sql.contains("CREATE TABLE `" + table + "`"),
+                    "V011 must create " + table);
+        }
+        for (String permission : List.of(
+                "config-migration:list",
+                "config-migration:export",
+                "config-migration:download",
+                "config-migration:import",
+                "config-migration:analyze",
+                "config-migration:publish",
+                "config-migration:rollback")) {
+            assertTrue(sql.contains(permission), "V011 must seed permission " + permission);
+        }
+
+        Path permissionFix = Path.of(
+                "src/main/resources/db/migration/V012__fix_config_migration_list_permission.sql");
+        assertTrue(Files.exists(permissionFix), "V012 list permission compatibility migration must exist");
+        String permissionSql = Files.readString(permissionFix);
+        assertTrue(permissionSql.contains("'config_migration_list_001'"),
+                "V012 must create an F type list permission resource");
+        assertTrue(permissionSql.contains("'config-migration:list'"),
+                "V012 must grant config-migration:list");
+    }
 }

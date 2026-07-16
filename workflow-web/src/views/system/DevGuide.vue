@@ -149,8 +149,25 @@ const props = defineProps({
           <p class="muted">`FIELD_TEMPLATE` 仅替换 `${fieldCode}` 占位符，不执行 JavaScript、Groovy 或 SQL，可用于编号+名称、人员+部门等组合列。</p>
         </section>
 
+        <section id="demo" class="guide-section">
+          <h3>7. 可运行 Demo</h3>
+          <p>仓库已经提供真实注册示例，不需要从文档片段重新拼装：</p>
+          <ul class="check-list">
+            <li>`src/demo/list-fields/DemoRiskProgressCell.vue`：读取 `value / row / field / config / context`，展示风险进度和等级。</li>
+            <li>`src/demo/index.js`：以 `DemoRiskProgressCell` 注册组件，并声明数值字段类型与四项可视化参数。</li>
+            <li>`scripts/real-dynamic-extension-demo.mjs`：创建实体、动态列、定制列表、定制表单和流程，验证配置真实生效。</li>
+            <li>执行 `npm run test:demo:real`；最近一次结果保存在 `docs/dynamic-extension-demo/latest.json`。</li>
+          </ul>
+          <el-alert
+            title="单元格展示参数请保存到 renderConfig；dataSourceConfig 只描述数据如何产生。运行时仅为历史配置兼容才回退读取 dataSourceConfig。"
+            type="warning"
+            :closable="false"
+            show-icon
+          />
+        </section>
+
         <section id="acceptance" class="guide-section">
-          <h3>7. 验收清单</h3>
+          <h3>8. 验收清单</h3>
           <ul class="check-list">
             <li>虚拟列能显示、排序位置正确，空值有明确占位。</li>
             <li>隐藏查询项仍可查询，虚拟查询不会触发未知数据库列错误。</li>
@@ -179,6 +196,7 @@ const toc = [
   { id: 'provider-context', label: '上下文与约束' },
   { id: 'cell', label: '单元格组件' },
   { id: 'built-in', label: '内置能力' },
+  { id: 'demo', label: '可运行 Demo' },
   { id: 'acceptance', label: '验收清单' }
 ]
 

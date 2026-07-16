@@ -144,6 +144,12 @@ const routes = [
         meta: { title: '字典设置' }
       },
       {
+        path: '/system/config-migration',
+        name: 'ConfigMigration',
+        component: () => import('@/views/system/ConfigMigration.vue'),
+        meta: { title: '配置迁移' }
+      },
+      {
         path: '/system/dev-guide',
         name: 'DevGuide',
         component: () => import('@/views/system/DevGuide.vue'),

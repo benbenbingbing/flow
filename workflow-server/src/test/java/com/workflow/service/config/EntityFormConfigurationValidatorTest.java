@@ -1,12 +1,14 @@
 package com.workflow.service.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EntityFormConfigurationValidatorTest {
@@ -32,6 +34,25 @@ class EntityFormConfigurationValidatorTest {
         field.setValidationRules("{}");
         field.setExtensionConfig("{\"modes\":{\"delete\":{\"visible\":true}}}");
         assertThrows(IllegalArgumentException.class, () -> validator.validateFields(List.of(field)));
+    }
+
+    @Test
+    void normalizesBlankJsonColumnsToNull() {
+        EntityFormField field = field();
+        field.setValidationRules("  ");
+        field.setExtensionConfig("");
+        EntityForm form = new EntityForm();
+        form.setEntityId("entity-1");
+        form.setFormName("演示表单");
+        form.setFormKey("demoForm");
+        form.setViewConfig("\n");
+        form.setFields(List.of(field));
+
+        validator.validateForm(form);
+
+        assertNull(form.getViewConfig());
+        assertNull(field.getValidationRules());
+        assertNull(field.getExtensionConfig());
     }
 
     private EntityFormField field() {

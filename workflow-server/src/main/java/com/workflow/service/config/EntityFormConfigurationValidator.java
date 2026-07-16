@@ -38,6 +38,7 @@ public class EntityFormConfigurationValidator {
         }
         validateExtensionName(form.getCustomComponent(), "自定义表单组件");
         structuredConfigValidator.parseObject(form.getViewConfig(), "表单视图配置");
+        form.setViewConfig(blankToNull(form.getViewConfig()));
         structuredConfigValidator.parseObject(form.getInitConfig(), "表单初始化配置");
         validateFields(form.getFields());
     }
@@ -71,6 +72,8 @@ public class EntityFormConfigurationValidator {
                 field.getExtensionConfig(),
                 "字段扩展配置");
         structuredConfigValidator.parseObject(field.getComponentProps(), "字段组件配置");
+        field.setValidationRules(blankToNull(field.getValidationRules()));
+        field.setExtensionConfig(blankToNull(field.getExtensionConfig()));
         validateValidationRules(validation);
         validateModeAccess(extension);
         if (field.getGridSpan() != null && (field.getGridSpan() < 1 || field.getGridSpan() > 24)) {
@@ -137,5 +140,9 @@ public class EntityFormConfigurationValidator {
         if (StringUtils.hasText(name) && !EXTENSION_NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(label + "标识不合法");
         }
+    }
+
+    private String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value : null;
     }
 }
