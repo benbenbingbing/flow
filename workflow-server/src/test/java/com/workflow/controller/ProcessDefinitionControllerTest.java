@@ -1,8 +1,11 @@
 package com.workflow.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.PageResult;
 import com.workflow.dto.ProcessDefinitionDTO;
+import com.workflow.dto.ProcessDefinitionQueryDTO;
 import com.workflow.dto.ProcessVersionHistoryDTO;
+import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.service.ProcessDefinitionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,16 +56,17 @@ public class ProcessDefinitionControllerTest {
 
     @Test
     void testList() throws Exception {
-        List<ProcessDefinitionDTO> processList = Arrays.asList(testProcess);
-        when(processService.findAll()).thenReturn(processList);
+        PageResult<ProcessDefinitionDTO> pageResult = new PageResult<>(
+                Arrays.asList(testProcess), 1, 1, 10);
+        when(processService.findPage(any(ProcessDefinitionQueryDTO.class))).thenReturn(pageResult);
 
         mockMvc.perform(get("/api/process"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].processKey").value("leave_process"))
-                .andExpect(jsonPath("$.data[0].processName").value("请假流程"));
+                .andExpect(jsonPath("$.data.records[0].processKey").value("leave_process"))
+                .andExpect(jsonPath("$.data.records[0].processName").value("请假流程"));
 
-        verify(processService, times(1)).findAll();
+        verify(processService, times(1)).findPage(any(ProcessDefinitionQueryDTO.class));
     }
 
     @Test
@@ -146,7 +150,7 @@ public class ProcessDefinitionControllerTest {
     @Test
     void testPublish() throws Exception {
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
-        when(processService.publish(eq("1"), any())).thenReturn(testProcess);
+        when(processService.publish(eq("1"), any(ConfigMigrationPublishRequest.class))).thenReturn(testProcess);
 
         Map<String, String> request = new HashMap<>();
         request.put("versionDescription", "初始版本");
@@ -158,7 +162,7 @@ public class ProcessDefinitionControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
-        verify(processService, times(1)).publish(eq("1"), any());
+        verify(processService, times(1)).publish(eq("1"), any(ConfigMigrationPublishRequest.class));
     }
 
     @Test

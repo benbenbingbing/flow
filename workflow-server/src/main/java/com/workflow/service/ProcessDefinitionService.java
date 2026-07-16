@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.dto.*;
+import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
 import com.workflow.process.action.FlowActionPublishValidator;
@@ -9,11 +10,18 @@ import com.workflow.process.definition.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
 import com.workflow.process.definition.ProcessFlowableDeploymentService;
 import com.workflow.process.definition.ProcessPublishHistoryService;
+import com.workflow.service.migration.ConfigMigrationAssetService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.repository.Deployment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.StringUtils;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.workflow.common.PageResult;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -32,12 +40,44 @@ public class ProcessDefinitionService {
     private final FlowActionService flowActionService;
     private final ProcessFlowActionBpmnInjector flowActionBpmnInjector;
     private final FlowActionPublishValidator flowActionPublishValidator;
+    private final ConfigMigrationAssetService configMigrationAssetService;
     
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAll() {
         return processMapper.findAllActive().stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<ProcessDefinitionDTO> findPage(ProcessDefinitionQueryDTO query) {
+        Page<ProcessDefinitionConfig> page = new Page<>(
+                query.getPageNum() != null && query.getPageNum() > 0 ? query.getPageNum() : 1,
+                query.getPageSize() != null && query.getPageSize() > 0 ? query.getPageSize() : 10
+        );
+
+        LambdaQueryWrapper<ProcessDefinitionConfig> wrapper = Wrappers.<ProcessDefinitionConfig>lambdaQuery();
+        wrapper.eq(ProcessDefinitionConfig::getDeleted, 0)
+               .orderByDesc(ProcessDefinitionConfig::getUpdatedAt);
+
+        if (StringUtils.isNotBlank(query.getStatus())) {
+            wrapper.eq(ProcessDefinitionConfig::getStatus, query.getStatus());
+        }
+        if (StringUtils.isNotBlank(query.getCategory())) {
+            wrapper.eq(ProcessDefinitionConfig::getCategory, query.getCategory());
+        }
+        if (StringUtils.isNotBlank(query.getKeyword())) {
+            String keyword = query.getKeyword().trim();
+            wrapper.and(w -> w.like(ProcessDefinitionConfig::getProcessName, keyword)
+                    .or()
+                    .like(ProcessDefinitionConfig::getProcessKey, keyword));
+        }
+
+        Page<ProcessDefinitionConfig> resultPage = processMapper.selectPage(page, wrapper);
+        List<ProcessDefinitionDTO> records = resultPage.getRecords().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+        return new PageResult<>(records, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
     
     @Transactional(readOnly = true)
@@ -202,6 +242,13 @@ public class ProcessDefinitionService {
      */
     @Transactional
     public ProcessDefinitionDTO publish(String id, String versionDescription) {
+        ConfigMigrationPublishRequest request = new ConfigMigrationPublishRequest();
+        request.setVersionDescription(versionDescription);
+        return publish(id, request);
+    }
+
+    @Transactional
+    public ProcessDefinitionDTO publish(String id, ConfigMigrationPublishRequest request) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
         if (config == null) {
             throw new RuntimeException("Process not found: " + id);
@@ -233,13 +280,17 @@ public class ProcessDefinitionService {
         // 保存修改后的XML到流程配置
         config.setBpmnXml(bpmnXml);
         
-        publishHistoryService.recordPublish(config, bpmnXml, deployment.getId(), newVersion, versionDescription);
+        ConfigMigrationPublishRequest publishRequest = request == null
+                ? new ConfigMigrationPublishRequest() : request;
+        ProcessVersionHistory history = publishHistoryService.recordPublish(
+                config, bpmnXml, deployment.getId(), newVersion, publishRequest.getVersionDescription());
         
         nodeSyncService.parseAndSaveNodeConfigs(id, bpmnXml);
         // 更新主流程配置
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
         config.setVersion(newVersion);
         processMapper.updateById(config);
+        configMigrationAssetService.recordProcess(config, history, publishRequest);
         
         // 重新查询确保获取最新值
         ProcessDefinitionConfig updatedConfig = processMapper.selectById(id);

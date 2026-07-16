@@ -1,7 +1,10 @@
 package com.workflow.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.PageResult;
 import com.workflow.dto.EntityDefinitionDTO;
+import com.workflow.dto.EntityDefinitionQueryDTO;
+import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.service.EntityDefinitionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +20,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -51,17 +55,18 @@ public class EntityDefinitionControllerTest {
     @Test
     void testList() throws Exception {
         // 准备数据
-        List<EntityDefinitionDTO> entityList = Arrays.asList(testEntity);
-        when(entityService.findAll()).thenReturn(entityList);
+        PageResult<EntityDefinitionDTO> pageResult = new PageResult<>(
+                Arrays.asList(testEntity), 1, 1, 10);
+        when(entityService.findPage(any(EntityDefinitionQueryDTO.class))).thenReturn(pageResult);
 
         // 执行请求并验证
         mockMvc.perform(get("/api/entity"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].entityCode").value("test_entity"))
-                .andExpect(jsonPath("$.data[0].entityName").value("测试实体"));
+                .andExpect(jsonPath("$.data.records[0].entityCode").value("test_entity"))
+                .andExpect(jsonPath("$.data.records[0].entityName").value("测试实体"));
 
-        verify(entityService, times(1)).findAll();
+        verify(entityService, times(1)).findPage(any(EntityDefinitionQueryDTO.class));
     }
 
     @Test
@@ -130,14 +135,22 @@ public class EntityDefinitionControllerTest {
 
     @Test
     void testPublish() throws Exception {
-        when(entityService.publish(eq("1"), nullable(String.class), nullable(String.class))).thenReturn(testEntity);
+        when(entityService.publish(
+                eq("1"),
+                nullable(String.class),
+                nullable(String.class),
+                nullable(ConfigMigrationPublishRequest.class))).thenReturn(testEntity);
 
         mockMvc.perform(post("/api/entity/1/publish"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"));
 
-        verify(entityService, times(1)).publish(eq("1"), nullable(String.class), nullable(String.class));
+        verify(entityService, times(1)).publish(
+                eq("1"),
+                nullable(String.class),
+                nullable(String.class),
+                nullable(ConfigMigrationPublishRequest.class));
     }
 
     @Test

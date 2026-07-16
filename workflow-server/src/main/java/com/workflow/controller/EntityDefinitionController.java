@@ -1,8 +1,11 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.common.UserContext;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.EntityDefinitionDTO;
+import com.workflow.dto.EntityDefinitionQueryDTO;
+import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.service.EntityDefinitionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -22,11 +25,11 @@ public class EntityDefinitionController {
     private final EntityDefinitionService entityService;
     
     /**
-     * 获取所有实体定义
+     * 获取实体定义分页列表
      */
     @GetMapping
-    public ApiResponse<List<EntityDefinitionDTO>> list() {
-        return ApiResponse.success(entityService.findAll());
+    public ApiResponse<PageResult<EntityDefinitionDTO>> list(EntityDefinitionQueryDTO query) {
+        return ApiResponse.success(entityService.findPage(query));
     }
     
     /**
@@ -74,10 +77,12 @@ public class EntityDefinitionController {
      * 发布实体定义
      */
     @PostMapping("/{id}/publish")
-    public ApiResponse<EntityDefinitionDTO> publish(@PathVariable String id) {
+    public ApiResponse<EntityDefinitionDTO> publish(
+            @PathVariable String id,
+            @RequestBody(required = false) ConfigMigrationPublishRequest request) {
         String userId = UserContext.getUserId();
         String userName = UserContext.getUsername();
-        return ApiResponse.success(entityService.publish(id, userId, userName));
+        return ApiResponse.success(entityService.publish(id, userId, userName, request));
     }
     
     /**

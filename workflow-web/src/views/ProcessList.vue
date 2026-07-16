@@ -9,6 +9,29 @@
           </el-button>
         </div>
       </template>
+
+      <!-- 查询条件 -->
+      <el-form :model="queryParams" inline class="search-form">
+        <el-form-item label="流程名称">
+          <el-input v-model="queryParams.keyword" placeholder="名称/标识" clearable @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="queryParams.status" placeholder="全部状态" clearable style="width: 120px">
+            <el-option label="草稿" value="DRAFT" />
+            <el-option label="已发布" value="PUBLISHED" />
+            <el-option label="已禁用" value="DISABLED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="分类">
+          <el-input v-model="queryParams.category" placeholder="请输入分类" clearable @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon>查询
+          </el-button>
+          <el-button @click="handleReset">重置</el-button>
+        </el-form-item>
+      </el-form>
       
       <el-table :data="processList" v-loading="loading" stripe>
         <el-table-column prop="processName" label="流程名称" min-width="150" />
@@ -57,6 +80,18 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 分页 -->
+      <el-pagination
+        v-model:current-page="queryParams.pageNum"
+        v-model:page-size="queryParams.pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
     
     <!-- 新建/编辑对话框 -->
@@ -225,6 +260,13 @@
             placeholder="请输入版本说明（可选）"
           />
         </el-form-item>
+        <el-form-item label="待导出清单">
+          <el-switch v-model="publishForm.markForExport" />
+          <span class="publish-tip">发布成功后自动出现在“系统管理 / 配置迁移”</span>
+        </el-form-item>
+        <el-form-item v-if="publishForm.markForExport" label="迁移标记">
+          <el-input v-model="publishForm.migrationTag" placeholder="如 REL-20260716-001" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="publishDialogVisible = false">取消</el-button>
@@ -241,13 +283,23 @@ import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
+import { Search } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
 import { flowActionApi } from '@/api/flowAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
+import { generateMigrationTag } from '@/utils/migrationTag'
 
 const router = useRouter()
 const loading = ref(false)
 const processList = ref([])
+const total = ref(0)
+const queryParams = ref({
+  keyword: '',
+  status: '',
+  category: '',
+  pageNum: 1,
+  pageSize: 10
+})
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const isEdit = ref(false)
@@ -269,7 +321,9 @@ const versionBpmnXml = ref('')
 const publishDialogVisible = ref(false)
 const publishing = ref(false)
 const publishForm = ref({
-  versionDescription: ''
+  versionDescription: '',
+  markForExport: true,
+  migrationTag: generateMigrationTag()
 })
 
 // 版本流程动作
@@ -296,12 +350,41 @@ const formRules = {
 const fetchData = async () => {
   loading.value = true
   try {
-    processList.value = await processApi.getList()
+    const res = await processApi.getList(queryParams.value)
+    processList.value = res.records || []
+    total.value = res.total || 0
   } catch (error) {
     console.error(error)
   } finally {
     loading.value = false
   }
+}
+
+const handleSearch = () => {
+  queryParams.value.pageNum = 1
+  fetchData()
+}
+
+const handleReset = () => {
+  queryParams.value = {
+    keyword: '',
+    status: '',
+    category: '',
+    pageNum: 1,
+    pageSize: 10
+  }
+  fetchData()
+}
+
+const handleSizeChange = (val) => {
+  queryParams.value.pageSize = val
+  queryParams.value.pageNum = 1
+  fetchData()
+}
+
+const handleCurrentChange = (val) => {
+  queryParams.value.pageNum = val
+  fetchData()
 }
 
 const getStatusType = (status) => {
@@ -382,14 +465,22 @@ const handleDelete = async (row) => {
 
 const handlePublish = (row) => {
   currentProcess.value = row
-  publishForm.value.versionDescription = ''
+  publishForm.value = {
+    versionDescription: '',
+    markForExport: true,
+    migrationTag: generateMigrationTag()
+  }
   publishDialogVisible.value = true
 }
 
 const handleConfirmPublish = async () => {
+  if (publishForm.value.markForExport && !publishForm.value.migrationTag.trim()) {
+    ElMessage.warning('加入待导出清单时必须填写迁移标记')
+    return
+  }
   publishing.value = true
   try {
-    await processApi.publish(currentProcess.value.id, publishForm.value.versionDescription)
+    await processApi.publish(currentProcess.value.id, { ...publishForm.value })
     ElMessage.success('发布成功')
     publishDialogVisible.value = false
     fetchData()
@@ -521,5 +612,20 @@ code {
   border-radius: 3px;
   font-size: 12px;
   font-family: monospace;
+}
+
+.publish-tip {
+  margin-left: 10px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.search-form {
+  margin-bottom: 18px;
+}
+
+.pagination {
+  margin-top: 18px;
+  justify-content: flex-end;
 }
 </style>

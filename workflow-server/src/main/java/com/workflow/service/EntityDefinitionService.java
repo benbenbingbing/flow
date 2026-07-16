@@ -1,8 +1,15 @@
 package com.workflow.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.StringUtils;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.PageResult;
 import com.workflow.dto.EntityDefinitionDTO;
+import com.workflow.dto.EntityDefinitionQueryDTO;
 import com.workflow.dto.EntityFieldDTO;
+import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityPublishHistory;
@@ -14,6 +21,7 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityPublishHistoryMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.service.migration.ConfigMigrationAssetService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +51,7 @@ public class EntityDefinitionService {
     private final EntityFieldFileItemService fileItemService;
     private final ObjectMapper objectMapper;
     private final com.workflow.service.permission.EntityPermissionCatalogService entityPermissionCatalogService;
+    private final ConfigMigrationAssetService configMigrationAssetService;
     
     /**
      * 查询所有实体定义
@@ -50,14 +59,48 @@ public class EntityDefinitionService {
     @Transactional(readOnly = true)
     public List<EntityDefinitionDTO> findAll() {
         List<EntityDefinition> list = entityMapper.selectList(null);
-        
+        return fillProcessNames(list);
+    }
+
+    /**
+     * 分页查询实体定义
+     */
+    @Transactional(readOnly = true)
+    public PageResult<EntityDefinitionDTO> findPage(EntityDefinitionQueryDTO query) {
+        Page<EntityDefinition> page = new Page<>(
+                query.getPageNum() != null && query.getPageNum() > 0 ? query.getPageNum() : 1,
+                query.getPageSize() != null && query.getPageSize() > 0 ? query.getPageSize() : 10
+        );
+
+        LambdaQueryWrapper<EntityDefinition> wrapper = Wrappers.<EntityDefinition>lambdaQuery()
+                .orderByDesc(EntityDefinition::getCreatedAt);
+
+        if (StringUtils.isNotBlank(query.getStatus())) {
+            wrapper.eq(EntityDefinition::getStatus, query.getStatus());
+        }
+        if (query.getEnableProcess() != null) {
+            wrapper.eq(EntityDefinition::getEnableProcess, query.getEnableProcess());
+        }
+        if (StringUtils.isNotBlank(query.getKeyword())) {
+            String keyword = query.getKeyword().trim();
+            wrapper.and(w -> w.like(EntityDefinition::getEntityName, keyword)
+                    .or()
+                    .like(EntityDefinition::getEntityCode, keyword));
+        }
+
+        Page<EntityDefinition> resultPage = entityMapper.selectPage(page, wrapper);
+        List<EntityDefinitionDTO> records = fillProcessNames(resultPage.getRecords());
+        return new PageResult<>(records, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
+    }
+
+    private List<EntityDefinitionDTO> fillProcessNames(List<EntityDefinition> list) {
         // 批量查询流程信息，避免N+1问题
         List<String> processIds = list.stream()
                 .map(EntityDefinition::getProcessDefinitionId)
                 .filter(id -> id != null && !id.isEmpty())
                 .distinct()
                 .collect(Collectors.toList());
-        
+
         Map<String, String> processNameMap = processIds.stream()
                 .map(id -> processMapper.selectById(id))
                 .filter(process -> process != null)
@@ -66,7 +109,7 @@ public class EntityDefinitionService {
                     ProcessDefinitionConfig::getProcessName,
                     (v1, v2) -> v1
                 ));
-        
+
         return list.stream()
                 .map(entity -> convertToDTO(entity, processNameMap.get(entity.getProcessDefinitionId())))
                 .collect(Collectors.toList());
@@ -447,6 +490,14 @@ public class EntityDefinitionService {
      */
     @Transactional
     public EntityDefinitionDTO publish(String id, String userId, String userName) {
+        return publish(id, userId, userName, new ConfigMigrationPublishRequest());
+    }
+
+    @Transactional
+    public EntityDefinitionDTO publish(String id,
+                                       String userId,
+                                       String userName,
+                                       ConfigMigrationPublishRequest request) {
         EntityDefinition entity = entityMapper.selectById(id);
         if (entity == null) {
             throw new RuntimeException("实体不存在: " + id);
@@ -484,11 +535,15 @@ public class EntityDefinitionService {
         
         // 记录版本历史
         String ddlString = executedDdls.isEmpty() ? null : String.join(";\n", executedDdls);
-        publishHistoryService.createVersion(
-                entity, fields, ddlString, publishType, changesDesc, userId, userName);
+        ConfigMigrationPublishRequest publishRequest = request == null
+                ? new ConfigMigrationPublishRequest() : request;
+        EntityPublishHistory history = publishHistoryService.createVersion(
+                entity, fields, ddlString, publishType, changesDesc, userId, userName,
+                publishRequest.getVersionDescription());
         
         entity.setStatus(EntityDefinition.Status.PUBLISHED);
         entityMapper.updateById(entity);
+        configMigrationAssetService.recordEntity(entity, history, publishRequest);
         return convertToDTO(entity);
     }
     

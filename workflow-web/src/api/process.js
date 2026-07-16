@@ -1,9 +1,9 @@
 import request from '@/utils/request'
 
 export const processApi = {
-  // 获取流程列表
-  getList() {
-    return request.get('/process')
+  // 获取流程分页列表
+  getList(params = {}) {
+    return request.get('/process', { params })
   },
   
   // 获取已发布的流程列表
@@ -45,9 +45,10 @@ export const processApi = {
     return request.delete(`/process/${id}`)
   },
   
-  // 发布流程（支持版本说明）
-  publish(id, versionDescription) {
-    return request.post(`/process/${id}/publish`, { versionDescription })
+  // 发布流程（支持迁移清单和批次标记）
+  publish(id, data = {}) {
+    const payload = typeof data === 'string' ? { versionDescription: data } : data
+    return request.post(`/process/${id}/publish`, payload)
   },
   
   // 禁用流程

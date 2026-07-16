@@ -1,8 +1,11 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.ProcessDefinitionDTO;
+import com.workflow.dto.ProcessDefinitionQueryDTO;
 import com.workflow.dto.ProcessVersionHistoryDTO;
+import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.service.ProcessDefinitionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -30,13 +33,14 @@ public class ProcessDefinitionController {
     private final ProcessDefinitionService processService;
 
     /**
-     * 获取所有流程定义列表
-     * 
-     * @return 流程定义列表
+     * 获取流程定义分页列表
+     *
+     * @param query 查询条件
+     * @return 分页后的流程定义列表
      */
     @GetMapping
-    public ApiResponse<List<ProcessDefinitionDTO>> list() {
-        return ApiResponse.success(processService.findAll());
+    public ApiResponse<PageResult<ProcessDefinitionDTO>> list(ProcessDefinitionQueryDTO query) {
+        return ApiResponse.success(processService.findPage(query));
     }
 
     /**
@@ -139,9 +143,10 @@ public class ProcessDefinitionController {
      * @return 发布后的流程定义
      */
     @PostMapping("/{id}/publish")
-    public ApiResponse<ProcessDefinitionDTO> publish(@PathVariable String id, @RequestBody(required = false) Map<String, String> request) {
-        String versionDescription = request != null ? request.get("versionDescription") : null;
-        return ApiResponse.success(processService.publish(id, versionDescription));
+    public ApiResponse<ProcessDefinitionDTO> publish(
+            @PathVariable String id,
+            @RequestBody(required = false) ConfigMigrationPublishRequest request) {
+        return ApiResponse.success(processService.publish(id, request));
     }
 
     /**
