@@ -129,7 +129,7 @@ import { xml } from '@codemirror/lang-xml'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
-import { flowActionApi } from '@/api/flowAction'
+import { processActionApi } from '@/api/processAction'
 
 /**
  * 检查并修复XML布局
@@ -242,7 +242,7 @@ const onImported = () => {
 const refreshActionCounts = async () => {
   if (!processId) return
   try {
-    const actions = await flowActionApi.findDraftActions(processId)
+    const actions = await processActionApi.findDraftActions(processId)
     const counts = {}
     let processCount = 0
     ;(actions || []).forEach(action => {

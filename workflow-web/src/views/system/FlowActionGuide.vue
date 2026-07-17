@@ -324,7 +324,7 @@ public class SendNotificationHandler implements FlowActionHandler {
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { flowActionApi } from '@/api/flowAction'
+import { processActionApi } from '@/api/processAction'
 
 const handlers = ref([])
 const handlersLoading = ref(false)
@@ -743,8 +743,8 @@ async function loadRuntimeMetadata() {
   handlersLoading.value = true
   try {
     const [handlerList, timingOptions] = await Promise.all([
-      flowActionApi.listHandlers(),
-      flowActionApi.timingOptions()
+      processActionApi.listHandlers(),
+      processActionApi.timingOptions()
     ])
     handlers.value = handlerList || []
     runtimeTimingOptions.value = timingOptions || []

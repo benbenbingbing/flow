@@ -35,6 +35,16 @@
       <el-tab-pane v-if="hasProcessInfo" label="审批历史" name="history">
         <EntityApprovalHistory :processHistory="processHistory" />
       </el-tab-pane>
+      <el-tab-pane
+        v-if="hasProcessInfo && userStore.isSuperAdmin"
+        label="动作执行记录"
+        name="actionExecutions"
+      >
+        <FlowActionExecutionLog
+          :process-instance-id="processInstanceId"
+          :active="activeTab === 'actionExecutions'"
+        />
+      </el-tab-pane>
     </el-tabs>
 
     <EntityDataFormFields
@@ -69,6 +79,7 @@ import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import EntityDataFormFields from './EntityDataFormFields.vue'
 import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './approval/EntityApprovalDiagram.vue'
+import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 
 const props = defineProps<{
   entityCode: string

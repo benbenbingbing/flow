@@ -79,3 +79,6 @@ uploads/
 .env
 .env.local
 .env.*.local
+
+# AI artifacts
+.codex-artifacts/

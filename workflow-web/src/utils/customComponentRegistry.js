@@ -4,7 +4,7 @@
  * 二次开发者可通过 registerCustomListComponent / registerCustomFormComponent
  * 注册自定义列表/表单组件，替代默认渲染。
  *
- * 自定义列表组件接收的 props：
+ * 自定义列表组件运行时契约 v2：
  *   - entityCode: 实体编码
  *   - entityDefinition: 实体定义对象
  *   - entityName: 实体名称
@@ -19,16 +19,10 @@
  *   - total: 总记录数
  *   - pageNum: 当前页码
  *   - pageSize: 每页大小
- *   - onSearch: 查询回调 () => void
- *   - onReset: 重置回调 () => void
- *   - onSizeChange: 分页大小变化 (size) => void
- *   - onPageChange: 页码变化 (page) => void
- *   - onCreate: 新增回调 () => void
- *   - onView: 查看回调 (row) => void
- *   - onEdit: 编辑回调 (row) => void
- *   - onDelete: 删除回调 (row) => void
- *   - onApprove: 审批回调 (row) => void
- *   - canApprove: 判断是否可审批 (row) => boolean
+ *   - config: viewConfig.customComponentProps
+ *   - runtime: reload/search/reset/create/view/edit/delete/approve/exportData、
+ *              canAction/getActionReason/viewConfig 聚合对象
+ *   - 兼容事件: search/reset/sizeChange/pageChange/create/view/edit/delete/approve
  *   - getStatusType: 获取状态样式 (status) => string
  *   - getStatusText: 获取状态文本 (status) => string
  *   - formatDate: 格式化日期 (dateStr) => string
@@ -42,7 +36,11 @@
  *   - entityCode: 实体编码（数据录入场景）
  *   - entityDefinition: 实体定义对象（数据录入场景）
  *   - entityFields: 实体字段数组（数据录入场景）
- *   - mode: 'create' | 'edit'（数据录入场景）
+ *   - mode: 'create' | 'edit' | 'approve' | 'view'
+ *   - config: viewConfig.customComponentProps
+ *   - context: 当前模式、实体、表单和记录等场景上下文
+ * 组件通过 update:modelValue 更新业务字段对象，并通过 defineExpose({ validate })
+ * 暴露异步提交校验。
  */
 
 import { normalizeExtensionDescriptor } from '@/shared/config-runtime'

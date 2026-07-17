@@ -11,7 +11,7 @@
         </el-tag>
       </div>
       <div class="header-right">
-        <el-button @click="openActionExecutions">动作执行记录</el-button>
+        <el-button v-if="userStore.isSuperAdmin" @click="actionExecutionVisible = true">动作执行记录</el-button>
         <div class="legend">
           <div class="legend-item">
             <span class="legend-color completed"></span>
@@ -30,36 +30,10 @@
     </div>
 
     <el-dialog v-model="actionExecutionVisible" title="流程动作执行记录" width="1100px">
-      <el-table :data="actionExecutions" v-loading="actionExecutionLoading" stripe>
-        <el-table-column prop="triggerTiming" label="执行时机" min-width="150" />
-        <el-table-column prop="elementId" label="元素" min-width="130">
-          <template #default="{ row }">{{ row.elementId || '全局流程' }}</template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getExecutionStatusType(row.status)" size="small">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="retryCount" label="重试" width="80">
-          <template #default="{ row }">{{ row.retryCount || 0 }}/{{ row.maxRetries || 0 }}</template>
-        </el-table-column>
-        <el-table-column prop="idempotencyKey" label="幂等键" min-width="210" show-overflow-tooltip />
-        <el-table-column prop="errorMessage" label="失败原因" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="创建时间" min-width="170" />
-        <el-table-column label="操作" width="90" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'FAILED' || row.status === 'DEAD'"
-              link
-              type="primary"
-              @click="retryActionExecution(row)"
-            >
-              重试
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-if="!actionExecutionLoading && actionExecutions.length === 0" description="暂无动作执行记录" />
+      <FlowActionExecutionLog
+        :process-instance-id="processInstanceId"
+        :active="actionExecutionVisible"
+      />
     </el-dialog>
     
     <div class="progress-container">
@@ -206,16 +180,16 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
-import { flowActionApi } from '@/api/flowAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
+import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const userStore = useUserStore()
 const processInstanceId = route.params.instanceId
 
 const viewerRef = ref()
 const actionExecutionVisible = ref(false)
-const actionExecutionLoading = ref(false)
-const actionExecutions = ref([])
 const bpmnXml = ref('')
 let currentViewer = null
 const progressData = ref({
@@ -300,29 +274,6 @@ const loadProcessProgress = async () => {
     console.error('加载流程进度失败:', error)
     ElMessage.error('加载流程进度失败: ' + (error.message || '未知错误'))
   }
-}
-
-const openActionExecutions = async () => {
-  actionExecutionVisible.value = true
-  actionExecutionLoading.value = true
-  try {
-    actionExecutions.value = await flowActionApi.findExecutions(processInstanceId) || []
-  } finally {
-    actionExecutionLoading.value = false
-  }
-}
-
-const retryActionExecution = async (row) => {
-  await flowActionApi.retryExecution(row.id)
-  ElMessage.success('已重新加入执行队列')
-  await openActionExecutions()
-}
-
-const getExecutionStatusType = (status) => {
-  if (status === 'SUCCESS') return 'success'
-  if (status === 'RUNNING') return 'primary'
-  if (status === 'PENDING') return 'warning'
-  return 'danger'
 }
 
 /**

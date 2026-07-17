@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent><groupId>com.workflow</groupId><artifactId>workflow-server-parent</artifactId><version>1.0.0</version></parent>
+    <artifactId>workflow-migration</artifactId>
+    <dependencies>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-common</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-system</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-entity</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-process</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-action</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
+        <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId></dependency>
+        <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    </dependencies>
+</project>

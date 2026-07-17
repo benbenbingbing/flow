@@ -5,10 +5,10 @@ import request from '@/utils/request'
  */
 export const entityApi = {
   /**
-   * 获取所有实体定义
+   * 获取实体定义分页列表
    */
-  getList() {
-    return request.get('/entity')
+  getList(params = {}) {
+    return request.get('/entity', { params })
   },
 
   /**
@@ -49,8 +49,8 @@ export const entityApi = {
   /**
    * 发布实体定义
    */
-  publish(id) {
-    return request.post(`/entity/${id}/publish`)
+  publish(id, data = {}) {
+    return request.post(`/entity/${id}/publish`, data)
   },
 
   /**

@@ -450,7 +450,7 @@
   </el-dialog>
 
   <!-- 规则编辑对话框 -->
-  <el-dialog v-model="permissionEditVisible" :title="permissionForm.id ? '编辑规则' : '新增规则'" width="700px" :close-on-click-modal="false">
+  <el-dialog v-model="permissionEditVisible" :title="permissionForm.id ? '编辑规则' : '新增规则'" width="980px" :close-on-click-modal="false">
     <el-form :model="permissionForm" label-width="100px" size="default">
       <el-form-item label="规则名称" required>
         <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
@@ -479,7 +479,7 @@
       </el-form-item>
       <el-form-item label="命中停止">
         <el-switch v-model="permissionForm.stopProcessing" :active-value="1" :inactive-value="0" />
-        <span class="form-tip" style="margin-left: 8px">命中后不再评估更低优先级规则</span>
+        <span class="form-tip" style="margin-left: 8px">仅停止更低优先级 ALLOW；DENY 始终评估</span>
       </el-form-item>
       <el-form-item label="是否启用">
         <el-switch v-model="permissionForm.enabled" :active-value="1" :inactive-value="0" />
@@ -505,8 +505,9 @@
             <el-option label="全部用户" value="ALL_USERS" />
             <el-option label="指定用户" value="USER" />
             <el-option label="指定角色" value="ROLE" />
+            <el-option label="指定用户组" value="GROUP" />
             <el-option label="指定部门" value="DEPT" />
-            <el-option label="表达式" value="EXPRESSION" />
+            <el-option label="指定组织" value="ORG" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="cond.scopeType === 'USER'" label="选择用户">
@@ -543,34 +544,48 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'ROLE'" label="匹配方式">
+        <el-form-item v-if="['ROLE', 'GROUP'].includes(cond.scopeType)" label="匹配方式">
           <el-radio-group v-model="cond.operator">
-            <el-radio label="ANY">拥有任一角色</el-radio>
-            <el-radio label="ALL">拥有全部角色</el-radio>
+            <el-radio label="ANY">满足任一项</el-radio>
+            <el-radio label="ALL">满足全部项</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'DEPT'" label="选择部门">
+        <el-form-item v-if="cond.scopeType === 'GROUP'" label="选择用户组">
           <el-select
             v-model="cond.targetIds"
             multiple
             filterable
             clearable
-            placeholder="请选择部门"
+            placeholder="请选择用户组"
             style="width: 100%"
           >
             <el-option
-              v-for="opt in orgOptions"
+              v-for="opt in groupOptions"
               :key="opt.value"
               :label="opt.label"
               :value="opt.value"
             />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'DEPT'" label="包含子部门">
-          <el-switch v-model="cond.includeSubDept" />
+        <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '选择部门' : '选择组织'">
+          <el-select
+            v-model="cond.targetIds"
+            multiple
+            filterable
+            clearable
+            :placeholder="cond.scopeType === 'DEPT' ? '请选择部门' : '请选择组织'"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in cond.scopeType === 'DEPT' ? deptOptions : organizationOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'EXPRESSION'" label="表达式">
-          <el-input v-model="cond.expression" placeholder="如：user.deptId == '123'" />
+        <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '包含子部门' : '包含下级组织'">
+          <el-switch v-model="cond.includeSubDept" />
         </el-form-item>
       </div>
       <el-button type="primary" size="small" text @click="addMatchCondition">
@@ -581,35 +596,39 @@
       <el-form-item label="数据范围" required>
         <el-select v-model="permissionForm.filterType" placeholder="选择数据范围" style="width: 100%">
           <el-option label="全部数据" value="ALL" />
-          <el-option label="仅本人" value="PERSONAL" />
+          <el-option label="当前用户是创建人" value="PERSONAL" />
+          <el-option label="当前用户是提交人" value="SUBMITTER" />
+          <el-option label="当前用户是当前办理人" value="CURRENT_ASSIGNEE" />
           <el-option label="本部门" value="DEPT" />
           <el-option label="本部门及子部门" value="DEPT_TREE" />
-          <el-option label="表达式" value="EXPRESSION" />
-          <el-option label="自定义SQL" value="CUSTOM_SQL" />
+          <el-option label="结构化条件组" value="RULE" />
         </el-select>
       </el-form-item>
 
-      <template v-if="permissionForm.filterType === 'CUSTOM_SQL'">
-        <el-form-item label="自定义SQL">
-          <el-input
-            v-model="permissionForm.customSql"
-            type="textarea"
-            :rows="5"
-            placeholder="例如：created_by = ${user.id} AND dept_id = ${user.deptId}"
+      <el-form-item v-if="permissionForm.filterType === 'RULE'" label="条件规则">
+        <div style="width: 100%">
+          <el-alert
+            type="info"
+            :closable="false"
+            title="条件组由后端编译为安全 SQL；不支持自由脚本或自定义 SQL。"
+            style="margin-bottom: 10px"
           />
-        </el-form-item>
-        <el-form-item label="可用变量">
-          <div class="sql-variable-tags">
-            <el-tag v-for="v in ['${user.id}', '${user.username}', '${user.deptId}', '${user.roleIds}']" :key="v" size="small" class="variable-tag" @click="insertSqlVariable(v)">{{ v }}</el-tag>
-          </div>
-        </el-form-item>
-      </template>
+          <ActionRuleGroupEditor
+            v-if="permissionForm.filterRoot"
+            :node="permissionForm.filterRoot"
+            :fields="permissionRuleFieldOptions"
+            :statuses="availableStatuses"
+          />
+          <el-button v-else type="primary" text @click="createPermissionFilterRoot">添加条件组</el-button>
+          <el-button v-if="permissionForm.filterRoot" type="danger" text @click="permissionForm.filterRoot = null">清空条件</el-button>
+        </div>
+      </el-form-item>
 
-      <el-form-item v-if="permissionForm.filterType !== 'ALL' && permissionForm.filterType !== 'CUSTOM_SQL'" label="字段映射">
+      <el-form-item v-if="['PERSONAL', 'DEPT', 'DEPT_TREE'].includes(permissionForm.filterType)" label="字段映射">
         <el-row :gutter="12">
           <el-col :span="8">
             <el-input v-model="permissionForm.fieldMapping.userField" placeholder="用户字段" />
-            <div class="form-tip">默认 created_by</div>
+            <div class="form-tip">默认 create_by</div>
           </el-col>
           <el-col :span="8">
             <el-input v-model="permissionForm.fieldMapping.deptField" placeholder="部门字段" />
@@ -698,6 +717,8 @@ import { getEntityStatusList } from '@/api/entityStatus'
 import { getUserList } from '@/api/system/user'
 import { getEnabledRoles } from '@/api/system/role'
 import { getEnabledOrgList } from '@/api/system/org'
+import { getEnabledGroups } from '@/api/system/group'
+import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import { ENTITY_FIELD_TYPES, getEntityFieldTypeLabel, getEntityFieldTypeTag } from '@/shared/entity-design'
 
 const route = useRoute()
@@ -737,18 +758,52 @@ const permissionSqlPreviewVisible = ref(false)
 const permissionSqlPreviewTitle = ref('权限 SQL 预览')
 const userOptions = ref([])
 const roleOptions = ref([])
-const orgOptions = ref([])
+const groupOptions = ref([])
+const deptOptions = ref([])
+const organizationOptions = ref([])
+
+const permissionSystemFields = [
+  { label: '数据名称', value: 'name' },
+  { label: '数据编码', value: 'code' },
+  { label: '业务单号', value: 'dataNo' },
+  { label: '状态', value: 'status' },
+  { label: '创建人', value: 'createdBy' },
+  { label: '提交人', value: 'submitterId' },
+  { label: '所属部门', value: 'deptId' },
+  { label: '流程实例', value: 'processInstanceId' },
+  { label: '当前办理人', value: 'currentTaskAssignee' },
+  { label: '创建时间', value: 'createdAt' },
+  { label: '更新时间', value: 'updatedAt' }
+]
+
+const permissionRuleFieldOptions = computed(() => [
+  ...permissionSystemFields,
+  ...(fields.value || [])
+    .filter(field => field.fieldCode && !['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType))
+    .filter(field => !permissionSystemFields.some(item => item.value === field.fieldCode))
+    .map(field => ({
+      label: `${field.fieldName} (${field.fieldCode})`,
+      value: field.fieldCode
+    }))
+])
 
 const loadSelectorOptions = async () => {
   try {
-    const [users, roles, orgs] = await Promise.all([
+    const [users, roles, groups, orgs] = await Promise.all([
       getUserList().catch(() => []),
       getEnabledRoles().catch(() => []),
+      getEnabledGroups().catch(() => []),
       getEnabledOrgList().catch(() => [])
     ])
     userOptions.value = (users || []).map(u => ({ label: `${u.nickname || u.username} (${u.username})`, value: u.id }))
     roleOptions.value = (roles || []).map(r => ({ label: r.roleName || r.roleCode, value: r.id }))
-    orgOptions.value = (orgs || []).map(o => ({ label: o.orgName, value: o.id }))
+    groupOptions.value = (groups || []).map(group => ({ label: group.groupName || group.groupCode, value: group.id }))
+    deptOptions.value = (orgs || [])
+      .filter(org => String(org.type || '').toLowerCase() === 'dept')
+      .map(org => ({ label: org.orgName, value: org.id }))
+    organizationOptions.value = (orgs || [])
+      .filter(org => String(org.type || '').toLowerCase() === 'org')
+      .map(org => ({ label: org.orgName, value: org.id }))
   } catch (error) {
     console.error('加载选择数据失败:', error)
   }
@@ -766,10 +821,17 @@ function createEmptyPermissionForm() {
     combineMode: 'UNION',
     stopProcessing: 0,
     matchLogic: 'OR',
-    matchConditions: [],
+    matchConditions: [{
+      scopeType: 'ALL_USERS',
+      targetIds: [],
+      operator: 'ANY',
+      includeSubDept: false
+    }],
+    matchRoot: null,
     filterType: 'PERSONAL',
-    customSql: '',
-    fieldMapping: { userField: 'created_by', deptField: 'dept_id', statusField: 'status' },
+    filterRoot: null,
+    legacyUnsafeConfig: false,
+    fieldMapping: { userField: 'create_by', deptField: 'dept_id', statusField: 'status' },
     statusLimit: { enabled: false, mode: 'IN', values: [] }
   }
 }
@@ -1126,7 +1188,9 @@ const loadPermissions = async () => {
     availableListConfigs.value = listConfigData || []
     permissionList.value = (permissionData || []).map(item => {
       const match = parseJson(item.matchConfig, { logic: 'OR', conditions: [] })
-      const filter = parseJson(item.filterConfig, { type: 'PERSONAL', fieldMapping: {}, statusLimit: {}, customSql: '' })
+      const filter = parseJson(item.filterConfig, { type: 'PERSONAL', fieldMapping: {}, statusLimit: {}, root: null })
+      const legacyUnsafeConfig = (match.conditions || []).some(condition => condition.scopeType === 'EXPRESSION')
+        || ['EXPRESSION', 'CUSTOM_SQL'].includes(filter.type)
       return {
         ...item,
         listConfigId: item.listConfigId || '',
@@ -1138,9 +1202,11 @@ const loadPermissions = async () => {
           ...c,
           targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)) : []
         })),
-        filterType: filter.type || 'PERSONAL',
-        customSql: filter.customSql || '',
-        fieldMapping: filter.fieldMapping || { userField: 'created_by', deptField: 'dept_id', statusField: 'status' },
+        matchRoot: match.root || null,
+        filterType: ['EXPRESSION', 'CUSTOM_SQL'].includes(filter.type) ? 'PERSONAL' : (filter.type || 'PERSONAL'),
+        filterRoot: filter.root || null,
+        legacyUnsafeConfig,
+        fieldMapping: filter.fieldMapping || { userField: 'create_by', deptField: 'dept_id', statusField: 'status' },
         statusLimit: filter.statusLimit || { enabled: false, mode: 'IN', values: [] }
       }
     })
@@ -1177,7 +1243,10 @@ const handleAddPermission = () => {
 }
 
 const handleEditPermission = (row) => {
-  permissionForm.value = { ...row }
+  permissionForm.value = cloneValue(row)
+  if (permissionForm.value.legacyUnsafeConfig) {
+    ElMessage.warning('该规则包含已废弃的表达式或自定义 SQL，保存前请改为结构化条件')
+  }
   permissionEditVisible.value = true
   loadAvailableStatuses()
   loadSelectorOptions()
@@ -1210,8 +1279,7 @@ const addMatchCondition = () => {
     scopeType: 'ROLE',
     targetIds: [],
     operator: 'ANY',
-    includeSubDept: false,
-    expression: ''
+    includeSubDept: false
   })
 }
 
@@ -1223,7 +1291,15 @@ const formatMatchSummary = (row) => {
   const conditions = row.matchConditions || []
   if (!conditions.length) return '-'
   const parts = conditions.map(c => {
-    const map = { ALL_USERS: '全部用户', USER: '指定用户', ROLE: '指定角色', DEPT: '指定部门', EXPRESSION: '表达式' }
+    const map = {
+      ALL_USERS: '全部用户',
+      USER: '指定用户',
+      ROLE: '指定角色',
+      GROUP: '指定用户组',
+      DEPT: '指定部门',
+      ORG: '指定组织',
+      EXPRESSION: '已废弃表达式'
+    }
     return map[c.scopeType] || c.scopeType
   })
   const logic = row.matchLogic === 'AND' ? ' 且 ' : ' 或 '
@@ -1231,12 +1307,30 @@ const formatMatchSummary = (row) => {
 }
 
 const getFilterTypeTag = (type) => {
-  const tags = { ALL: 'success', PERSONAL: '', DEPT: 'warning', DEPT_TREE: 'warning', EXPRESSION: 'info' }
+  const tags = {
+    ALL: 'success',
+    PERSONAL: '',
+    SUBMITTER: '',
+    CURRENT_ASSIGNEE: 'primary',
+    DEPT: 'warning',
+    DEPT_TREE: 'warning',
+    RULE: 'info'
+  }
   return tags[type] || ''
 }
 
 const getFilterTypeLabel = (type) => {
-  const labels = { ALL: '全部数据', PERSONAL: '仅本人', DEPT: '本部门', DEPT_TREE: '本部门及子部门', EXPRESSION: '表达式', CUSTOM_SQL: '自定义SQL' }
+  const labels = {
+    ALL: '全部数据',
+    PERSONAL: '创建人是当前用户',
+    SUBMITTER: '提交人是当前用户',
+    CURRENT_ASSIGNEE: '当前办理人',
+    DEPT: '本部门',
+    DEPT_TREE: '本部门及子部门',
+    RULE: '结构化条件组',
+    EXPRESSION: '已废弃表达式',
+    CUSTOM_SQL: '已废弃自定义 SQL'
+  }
   return labels[type] || type
 }
 
@@ -1272,8 +1366,15 @@ const handlePreviewRuleSql = async (row) => {
   }
 }
 
-const insertSqlVariable = (variable) => {
-  permissionForm.value.customSql += variable
+const createPermissionFilterRoot = () => {
+  permissionForm.value.filterRoot = {
+    type: 'GROUP',
+    logic: 'AND',
+    children: [{
+      type: 'RELATION',
+      relation: 'CURRENT_USER_IS_CREATOR'
+    }]
+  }
 }
 
 const savePermission = async () => {
@@ -1283,23 +1384,41 @@ const savePermission = async () => {
     return
   }
 
+  if (!form.matchConditions?.length && !form.matchRoot) {
+    ElMessage.warning('请至少配置一个适用用户条件')
+    return
+  }
+  const invalidMatch = (form.matchConditions || []).find(condition =>
+    condition.scopeType !== 'ALL_USERS' && (!condition.targetIds || condition.targetIds.length === 0)
+  )
+  if (invalidMatch) {
+    ElMessage.warning('指定用户、角色、用户组、部门或组织时必须选择目标')
+    return
+  }
+  if (form.filterType === 'RULE' && (!form.filterRoot?.children?.length)) {
+    ElMessage.warning('结构化条件组不能为空')
+    return
+  }
+
   // 处理 matchConditions 中的 targetIds
   const matchConditions = (form.matchConditions || []).map(c => ({
     scopeType: c.scopeType,
     targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)).filter(Boolean) : [],
     operator: c.operator,
-    includeSubDept: c.includeSubDept,
-    expression: c.expression
+    includeSubDept: c.includeSubDept
   }))
 
   const matchConfig = JSON.stringify({
+    version: 1,
     logic: form.matchLogic,
-    conditions: matchConditions
+    conditions: matchConditions,
+    root: form.matchRoot || null
   })
 
   const filterConfig = JSON.stringify({
+    version: 1,
     type: form.filterType,
-    customSql: form.customSql,
+    root: form.filterType === 'RULE' ? form.filterRoot : null,
     fieldMapping: form.fieldMapping,
     statusLimit: form.statusLimit
   })
@@ -1331,6 +1450,8 @@ const savePermission = async () => {
     ElMessage.error('保存失败')
   }
 }
+
+const cloneValue = (value) => JSON.parse(JSON.stringify(value))
 
 // 添加附件项
 const addFileItem = () => {

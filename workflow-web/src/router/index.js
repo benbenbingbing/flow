@@ -99,6 +99,23 @@ const routes = [
         component: () => import('@/views/EntityFormDesignByEntity.vue'),
         meta: { title: '表单设计' }
       },
+      // 用户手册
+      {
+        path: '/manual',
+        redirect: '/manual/entity'
+      },
+      {
+        path: '/manual/entity',
+        name: 'EntityManual',
+        component: () => import('@/views/manual/EntityManual.vue'),
+        meta: { title: '实体配置手册' }
+      },
+      {
+        path: '/manual/process',
+        name: 'ProcessManual',
+        component: () => import('@/views/manual/ProcessManual.vue'),
+        meta: { title: '流程管理手册' }
+      },
       // 流程进度查看
       {
         path: '/process/progress/:instanceId',
@@ -142,6 +159,12 @@ const routes = [
         name: 'DictManagement',
         component: () => import('@/views/system/Dict.vue'),
         meta: { title: '字典设置' }
+      },
+      {
+        path: '/system/config-migration',
+        name: 'ConfigMigration',
+        component: () => import('@/views/system/ConfigMigration.vue'),
+        meta: { title: '配置迁移' }
       },
       {
         path: '/system/dev-guide',

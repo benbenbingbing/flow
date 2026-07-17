@@ -55,6 +55,17 @@
         <el-tab-pane v-if="currentTask?.processInstanceId" label="审批历史" name="history">
           <EntityApprovalHistory :processHistory="processHistory" />
         </el-tab-pane>
+
+        <el-tab-pane
+          v-if="currentTask?.processInstanceId && userStore.isSuperAdmin"
+          label="动作执行记录"
+          name="actionExecutions"
+        >
+          <FlowActionExecutionLog
+            :process-instance-id="currentTask.processInstanceId"
+            :active="activeDialogTab === 'actionExecutions'"
+          />
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -78,9 +89,11 @@ import {
   isRuntimeFormReadonly
 } from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
+import { useUserStore } from '@/stores/user'
 import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
+import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -95,6 +108,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   success: []
 }>()
+const userStore = useUserStore()
 
 const processDialogVisible = ref(false)
 const activeDialogTab = ref('approval')

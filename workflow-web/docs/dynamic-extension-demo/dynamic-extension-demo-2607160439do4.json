@@ -1,0 +1,190 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "demo_extension_flow_2607160439do4",
+  "processName": "Demo扩展验证流程2607160439do4",
+  "entityCode": "demo_extension_entity_2607160439do4",
+  "entityName": "Demo扩展验证实体2607160439do4",
+  "extensions": {
+    "listCell": "DemoRiskProgressCell",
+    "customList": "DemoProjectCardList",
+    "customForm": "DemoProjectForm"
+  },
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "id": "1",
+        "username": "admin"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2077614036974833666",
+        "entityCode": "demo_extension_entity_2607160439do4",
+        "fields": [
+          {
+            "id": "2077614036983222274",
+            "code": "name",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614036987416577",
+            "code": "code",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614036991610881",
+            "code": "status",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614036995805185",
+            "code": "processInstanceId",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614036995805186",
+            "code": "processStartTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2077614036999999489",
+            "code": "processEndTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2077614037008388097",
+            "code": "submitterId",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614037025165313",
+            "code": "submitterName",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614037029359618",
+            "code": "deptId",
+            "type": "REFERENCE"
+          },
+          {
+            "id": "2077614037033553922",
+            "code": "projectName",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614037037748226",
+            "code": "ownerName",
+            "type": "STRING"
+          },
+          {
+            "id": "2077614037046136834",
+            "code": "budget",
+            "type": "DECIMAL"
+          },
+          {
+            "id": "2077614037050331137",
+            "code": "riskScore",
+            "type": "INTEGER"
+          },
+          {
+            "id": "2077614037054525441",
+            "code": "description",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createCustomForm",
+      "data": {
+        "id": "2077614037662699522",
+        "customComponent": "DemoProjectForm",
+        "viewConfig": "{\"labelWidth\":110,\"customComponentProps\":{\"subtitle\":\"真实实体与流程验证表单\",\"accentColor\":\"#7c3aed\",\"showRiskHint\":true}}"
+      }
+    },
+    {
+      "name": "createPublishBindProcess",
+      "data": {
+        "processId": "2077614037721419778",
+        "status": "PUBLISHED",
+        "processKey": "demo_extension_flow_2607160439do4"
+      }
+    },
+    {
+      "name": "createCustomList",
+      "data": {
+        "id": "3738df94cfc0d07970eba7b36200f7ea",
+        "customComponent": "DemoProjectCardList",
+        "riskRenderer": "DemoRiskProgressCell"
+      }
+    },
+    {
+      "name": "resolveNewDataForm",
+      "data": {
+        "id": "2077614037662699522",
+        "customComponent": "DemoProjectForm"
+      }
+    },
+    {
+      "name": "createDataAndStartProcess",
+      "data": {
+        "id": "1d6df9ab10894611b868609b6beb90ca",
+        "processInstanceId": "506eaf2e-80d0-11f1-bebf-9af17633b3d1",
+        "currentTaskName": "Demo项目审批"
+      }
+    },
+    {
+      "name": "queryCustomListData",
+      "data": {
+        "count": 1,
+        "row": {
+          "id": "1d6df9ab10894611b868609b6beb90ca",
+          "projectName": "Demo动态扩展项目2607160439do4",
+          "riskScore": 58
+        }
+      }
+    },
+    {
+      "name": "progressWithCustomForm",
+      "data": {
+        "status": "RUNNING",
+        "activeNodes": [
+          "Task_Demo_Review"
+        ],
+        "formId": "2077614037662699522",
+        "customComponent": "DemoProjectForm",
+        "fields": [
+          "projectName",
+          "code",
+          "ownerName",
+          "budget",
+          "riskScore",
+          "description"
+        ]
+      }
+    },
+    {
+      "name": "completeDemoProcess",
+      "data": {
+        "status": "APPROVED",
+        "riskScore": 35,
+        "processStatus": "COMPLETED"
+      }
+    }
+  ],
+  "fixture": {
+    "entityId": "2077614036974833666",
+    "entityCode": "demo_extension_entity_2607160439do4",
+    "processId": "2077614037721419778",
+    "processKey": "demo_extension_flow_2607160439do4",
+    "formId": "2077614037662699522",
+    "listConfigId": "3738df94cfc0d07970eba7b36200f7ea",
+    "dataId": "1d6df9ab10894611b868609b6beb90ca",
+    "processInstanceId": "506eaf2e-80d0-11f1-bebf-9af17633b3d1",
+    "listRoute": "/entity/list/demo_extension_entity_2607160439do4"
+  },
+  "conclusion": "PASS: 三个 src/demo 扩展已由真实流程、实体、表单、列表和业务数据验证",
+  "result": "PASS"
+}

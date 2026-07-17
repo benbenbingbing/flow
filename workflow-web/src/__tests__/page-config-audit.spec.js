@@ -15,7 +15,7 @@ viewFiles.forEach((viewFile) => {
   assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/, `页面缺少 script: ${viewFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/config-migration'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -73,6 +73,22 @@ const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByE
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })
 
+const entityDesigner = readFileSync(path.join(root, 'src/views/EntityDesign.vue'), 'utf8')
+;[
+  'ActionRuleGroupEditor',
+  'filterRoot',
+  'permissionRuleFieldOptions',
+  'getEnabledGroups',
+  'CURRENT_ASSIGNEE',
+  'value="GROUP"',
+  'value="ORG"',
+  'value="RULE"'
+].forEach((marker) => {
+  assert.ok(entityDesigner.includes(marker), `实体数据权限配置缺少结构化能力: ${marker}`)
+})
+assert.equal(entityDesigner.includes('value="EXPRESSION"'), false, '数据权限配置不得继续暴露自由表达式')
+assert.equal(entityDesigner.includes('value="CUSTOM_SQL"'), false, '数据权限配置不得继续暴露自定义 SQL')
+
 const entityDataTable = readFileSync(path.join(root, 'src/views/entity/components/EntityDataTable.vue'), 'utf8')
 assert.match(
   entityDataTable,
@@ -87,6 +103,15 @@ const flowActionPanel = readFileSync(path.join(root, 'src/components/FlowActionC
 ;['TASK_COMPLETING', 'TASK_CREATED', 'TRANSITION_TAKEN', 'PROCESS_COMPLETED', 'PROCESS_WITHDRAWN'].forEach((timing) => {
   assert.ok(flowActionPanel.includes(timing), `流程动作配置缺少常用时机模板: ${timing}`)
 })
+
+const processActionApi = readFileSync(path.join(root, 'src/api/processAction.js'), 'utf8')
+;['/process-actions', '/process-action-handlers', '/process-action-executions'].forEach((endpoint) => {
+  assert.ok(processActionApi.includes(endpoint), `流程动作客户端缺少规范接口: ${endpoint}`)
+})
+;['/flow-actions', '/flow-action-handlers', '/flow-action-executions'].forEach((endpoint) => {
+  assert.equal(processActionApi.includes(endpoint), false, `流程动作客户端不应继续使用旧接口: ${endpoint}`)
+})
+assert.equal(existsSync(path.join(root, 'src/api/flowAction.js')), false, '旧 flowAction API 文件应移除')
 
 const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActionGuide.vue'), 'utf8')
 ;[
@@ -129,7 +154,34 @@ const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigP
 })
 
 const processProgress = readFileSync(path.join(root, 'src/views/ProcessProgress.vue'), 'utf8')
-assert.match(processProgress, /动作执行记录[\s\S]*retryActionExecution/, '流程进度页应支持查看并重试动作执行记录')
+assert.match(processProgress, /userStore\.isSuperAdmin[\s\S]*FlowActionExecutionLog/, '流程进度页应仅为超级管理员展示动作执行记录')
+const flowActionExecutionLog = readFileSync(path.join(root, 'src/components/FlowActionExecutionLog.vue'), 'utf8')
+;['解析后参数', '执行结果', '触发上下文', '执行过程', 'retryExecution'].forEach((marker) => {
+  assert.ok(flowActionExecutionLog.includes(marker), `流程动作执行日志缺少详情或重试能力: ${marker}`)
+})
+
+const configMigration = readFileSync(path.join(root, 'src/views/system/ConfigMigration.vue'), 'utf8')
+;[
+  '待导出',
+  '导出记录',
+  '导入管理',
+  '版本对比',
+  'exportPackage',
+  'uploadPackage',
+  'analyzeImport',
+  'publishImport',
+  'rollbackImport',
+  'saveMappings'
+].forEach((marker) => {
+  assert.ok(configMigration.includes(marker), `配置迁移页面缺少闭环能力: ${marker}`)
+})
+
+const processList = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
+const entityList = readFileSync(path.join(root, 'src/views/EntityList.vue'), 'utf8')
+;['markForExport', 'migrationTag', 'generateMigrationTag'].forEach((marker) => {
+  assert.ok(processList.includes(marker), `流程发布缺少迁移标记能力: ${marker}`)
+  assert.ok(entityList.includes(marker), `实体发布缺少迁移标记能力: ${marker}`)
+})
 
 const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fields/index.js'), 'utf8')
 ;['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
@@ -137,9 +189,9 @@ const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fiel
 })
 
 const guideExpectations = {
-  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'configSchema'],
-  'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'configSchema'],
-  'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose']
+  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'DemoRiskProgressCell', 'test:demo:real'],
+  'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
+  'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }
 for (const [file, markers] of Object.entries(guideExpectations)) {
   const source = readFileSync(path.join(root, file), 'utf8')
@@ -147,5 +199,28 @@ for (const [file, markers] of Object.entries(guideExpectations)) {
     assert.ok(source.includes(marker), `${file} 缺少扩展说明: ${marker}`)
   })
 }
+
+const demoExpectations = {
+  'src/demo/index.js': ['registerDemoExtensions', 'DemoRiskProgressCell', 'DemoProjectCardList', 'DemoProjectForm'],
+  'src/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
+  'src/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
+  'src/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
+  'scripts/real-dynamic-extension-demo.mjs': ['createCustomList', 'progressWithCustomForm', 'completeDemoProcess']
+}
+for (const [file, markers] of Object.entries(demoExpectations)) {
+  const source = readFileSync(path.join(root, file), 'utf8')
+  markers.forEach((marker) => {
+    assert.ok(source.includes(marker), `${file} 缺少 Demo 验证能力: ${marker}`)
+  })
+}
+
+const pagedEntityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
+;[
+  'params.pageNum = pageNum.value',
+  'params.pageSize = pageSize.value',
+  'total.value = Number(res?.total'
+].forEach((marker) => {
+  assert.ok(pagedEntityDataList.includes(marker), `实体数据列表缺少服务端分页能力: ${marker}`)
+})
 
 console.log('page configuration audit passed')

@@ -10,6 +10,32 @@
         </div>
       </template>
 
+      <!-- 查询条件 -->
+      <el-form :model="queryParams" inline class="search-form">
+        <el-form-item label="实体名称">
+          <el-input v-model="queryParams.keyword" placeholder="名称/编码" clearable @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="queryParams.status" placeholder="全部状态" clearable style="width: 120px">
+            <el-option label="草稿" value="DRAFT" />
+            <el-option label="已发布" value="PUBLISHED" />
+            <el-option label="已禁用" value="DISABLED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用流程">
+          <el-select v-model="queryParams.enableProcess" placeholder="全部" clearable style="width: 120px">
+            <el-option label="是" :value="true" />
+            <el-option label="否" :value="false" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon>查询
+          </el-button>
+          <el-button @click="handleReset">重置</el-button>
+        </el-form-item>
+      </el-form>
+
       <el-table :data="entityList" v-loading="loading" stripe>
         <el-table-column prop="entityName" label="实体名称" min-width="150" />
         <el-table-column prop="entityCode" label="实体编码" min-width="120" />
@@ -75,6 +101,18 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 分页 -->
+      <el-pagination
+        v-model:current-page="queryParams.pageNum"
+        v-model:page-size="queryParams.pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
 
     <!-- 新建/编辑对话框 -->
@@ -427,6 +465,25 @@
               <pre v-for="(ddl, index) in publishDiffData.pendingDdls" :key="index">{{ ddl }}</pre>
             </div>
           </div>
+
+          <el-divider>发布与迁移</el-divider>
+          <el-form :model="publishMigrationForm" label-width="110px">
+            <el-form-item label="发布说明">
+              <el-input
+                v-model="publishMigrationForm.versionDescription"
+                type="textarea"
+                :rows="2"
+                placeholder="说明本次实体、表单或列表配置变更"
+              />
+            </el-form-item>
+            <el-form-item label="待导出清单">
+              <el-switch v-model="publishMigrationForm.markForExport" />
+              <span class="publish-migration-tip">发布后生成不可变迁移快照</span>
+            </el-form-item>
+            <el-form-item v-if="publishMigrationForm.markForExport" label="迁移标记">
+              <el-input v-model="publishMigrationForm.migrationTag" placeholder="如 REL-20260716-001" />
+            </el-form-item>
+          </el-form>
         </div>
       </div>
       <template #footer>
@@ -443,17 +500,26 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Rank, View, ArrowRight, ArrowDown, SetUp, Link, Clock, Delete } from '@element-plus/icons-vue'
+import { Plus, Rank, View, ArrowRight, ArrowDown, SetUp, Link, Clock, Delete, Search } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
 import { entityVersionDiffApi } from '@/api/entityVersionDiff'
 import { processApi } from '@/api/process'
 import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
+import { generateMigrationTag } from '@/utils/migrationTag'
 import Sortable from 'sortablejs'
 
 const router = useRouter()
 const loading = ref(false)
 const entityList = ref([])
+const total = ref(0)
+const queryParams = ref({
+  keyword: '',
+  status: '',
+  enableProcess: null,
+  pageNum: 1,
+  pageSize: 10
+})
 const processList = ref([])
 const dialogVisible = ref(false)
 const bindDialogVisible = ref(false)
@@ -482,12 +548,45 @@ const formRules = {
 const fetchData = async () => {
   loading.value = true
   try {
-    entityList.value = await entityApi.getList()
+    const params = { ...queryParams.value }
+    if (params.enableProcess === '') {
+      params.enableProcess = null
+    }
+    const res = await entityApi.getList(params)
+    entityList.value = res.records || []
+    total.value = res.total || 0
   } catch (error) {
     console.error(error)
   } finally {
     loading.value = false
   }
+}
+
+const handleSearch = () => {
+  queryParams.value.pageNum = 1
+  fetchData()
+}
+
+const handleReset = () => {
+  queryParams.value = {
+    keyword: '',
+    status: '',
+    enableProcess: null,
+    pageNum: 1,
+    pageSize: 10
+  }
+  fetchData()
+}
+
+const handleSizeChange = (val) => {
+  queryParams.value.pageSize = val
+  queryParams.value.pageNum = 1
+  fetchData()
+}
+
+const handleCurrentChange = (val) => {
+  queryParams.value.pageNum = val
+  fetchData()
 }
 
 const fetchProcessList = async (currentProcessId = null) => {
@@ -619,6 +718,11 @@ const publishDiffDialogVisible = ref(false)
 const publishDiffLoading = ref(false)
 const publishDiffData = ref(null)
 const publishTargetEntity = ref(null)
+const publishMigrationForm = ref({
+  versionDescription: '',
+  markForExport: true,
+  migrationTag: generateMigrationTag()
+})
 
 // 格式化日期
 const formatDate = (dateStr) => {
@@ -675,6 +779,11 @@ const formatDbType = (field) => {
 // 发布实体（先显示差异预览）
 const handlePublish = async (row) => {
   publishTargetEntity.value = row
+  publishMigrationForm.value = {
+    versionDescription: '',
+    markForExport: true,
+    migrationTag: generateMigrationTag()
+  }
   publishDiffDialogVisible.value = true
   publishDiffLoading.value = true
   
@@ -692,6 +801,11 @@ const handlePublish = async (row) => {
 // 重新发布实体（已发布的实体修改字段后再次发布）
 const handleRepublish = async (row) => {
   publishTargetEntity.value = row
+  publishMigrationForm.value = {
+    versionDescription: '',
+    markForExport: true,
+    migrationTag: generateMigrationTag()
+  }
   publishDiffDialogVisible.value = true
   publishDiffLoading.value = true
   
@@ -709,10 +823,14 @@ const handleRepublish = async (row) => {
 // 确认发布
 const confirmPublish = async () => {
   if (!publishTargetEntity.value) return
+  if (publishMigrationForm.value.markForExport && !publishMigrationForm.value.migrationTag.trim()) {
+    ElMessage.warning('加入待导出清单时必须填写迁移标记')
+    return
+  }
   
   publishDiffLoading.value = true
   try {
-    await entityApi.publish(publishTargetEntity.value.id)
+    await entityApi.publish(publishTargetEntity.value.id, { ...publishMigrationForm.value })
     ElMessage.success(publishDiffData.value?.isFirstPublish ? '发布成功' : '重新发布成功，表结构已更新')
     publishDiffDialogVisible.value = false
     fetchData()
@@ -1091,5 +1209,14 @@ onMounted(() => {
 
 .ddl-preview pre:not(:last-child) {
   margin-bottom: 8px;
+}
+
+.search-form {
+  margin-bottom: 18px;
+}
+
+.pagination {
+  margin-top: 18px;
+  justify-content: flex-end;
 }
 </style>
