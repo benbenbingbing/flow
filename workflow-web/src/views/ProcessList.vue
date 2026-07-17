@@ -285,7 +285,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import { Search } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
-import { flowActionApi } from '@/api/flowAction'
+import { processActionApi } from '@/api/processAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import { generateMigrationTag } from '@/utils/migrationTag'
 
@@ -538,7 +538,7 @@ const handleViewVersionActions = async (row) => {
   versionActionsLoading.value = true
   
   try {
-    const res = await flowActionApi.findPublishedActions(row.id)
+    const res = await processActionApi.findPublishedActions(row.id)
     versionActions.value = res || []
   } catch (error) {
     console.error(error)

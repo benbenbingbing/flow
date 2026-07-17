@@ -5,9 +5,14 @@
         <div class="section-title">{{ sectionTitle }}</div>
         <div class="section-subtitle">{{ sectionSubtitle }}</div>
       </div>
-      <el-button type="primary" size="small" @click="showActionDialog()">
-        <el-icon><Plus /></el-icon>添加动作
-      </el-button>
+      <div class="header-actions">
+        <el-button v-if="userStore.isSuperAdmin" size="small" @click="handlerConfigRef?.open()">
+          <el-icon><Setting /></el-icon>处理器目录
+        </el-button>
+        <el-button type="primary" size="small" @click="showActionDialog()">
+          <el-icon><Plus /></el-icon>添加动作
+        </el-button>
+      </div>
     </div>
 
     <el-alert type="info" :closable="false" class="action-alert">
@@ -48,7 +53,7 @@
             <el-tag size="small" :type="action.executionMode === 'AFTER_COMMIT' ? 'warning' : 'success'">
               {{ executionModeLabel(action.executionMode) }}
             </el-tag>
-            <span>{{ action.interfaceName }}</span>
+            <span>{{ handlerLabel(action) }}</span>
           </div>
         </div>
 
@@ -164,8 +169,8 @@
 
         <el-form-item label="处理器" required>
           <el-select
-            v-model="editingAction.interfaceName"
-            placeholder="选择已注册的 FlowActionHandler Bean"
+            v-model="editingAction.actionDefinitionId"
+            placeholder="选择当前实体可见的流程动作"
             filterable
             clearable
             style="width: 100%"
@@ -173,12 +178,19 @@
           >
             <el-option
               v-for="handler in handlers"
-              :key="handler.beanName"
-              :label="`${handler.beanName} (${handler.className.split('.').pop()})`"
-              :value="handler.beanName"
-            />
+              :key="handler.definitionId"
+              :label="handler.displayName"
+              :value="handler.definitionId"
+            >
+              <div class="handler-option">
+                <span>{{ handler.displayName }}</span>
+                <small>{{ handler.beanName }} · {{ handler.visibilityScope === 'GLOBAL' ? '全局' : '当前实体' }}</small>
+              </div>
+            </el-option>
           </el-select>
-          <div class="form-tip">处理器必须实现 FlowActionHandler，提交后动作应使用幂等键</div>
+          <div class="form-tip">
+            {{ currentHandler?.description || '处理器必须实现 FlowActionHandler，提交后动作应使用幂等键' }}
+          </div>
         </el-form-item>
 
         <el-form-item label="描述">
@@ -228,14 +240,18 @@
         <el-button type="primary" :loading="saving" @click="saveAction">确定</el-button>
       </template>
     </el-dialog>
+
+    <FlowActionHandlerConfigDialog ref="handlerConfigRef" @changed="loadAll" />
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, ArrowUp, Delete, Plus } from '@element-plus/icons-vue'
-import { flowActionApi } from '@/api/flowAction'
+import { ArrowDown, ArrowUp, Delete, Plus, Setting } from '@element-plus/icons-vue'
+import { processActionApi } from '@/api/processAction'
+import { useUserStore } from '@/stores/user'
+import FlowActionHandlerConfigDialog from '@/components/FlowActionHandlerConfigDialog.vue'
 
 const props = defineProps({
   processId: { type: String, required: true },
@@ -246,6 +262,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['changed'])
+const userStore = useUserStore()
 
 const actions = ref([])
 const timingOptions = ref([])
@@ -258,6 +275,7 @@ const selectedTemplate = ref('')
 const editingAction = ref({})
 const actionParamList = ref([])
 const retryForm = ref({ maxRetries: 5 })
+const handlerConfigRef = ref()
 
 const actionParamTypeOptions = [
   { label: '静态文本', value: 'string' },
@@ -288,7 +306,10 @@ const sectionSubtitle = computed(() => {
 
 const sortedActions = computed(() => [...actions.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)))
 const currentTimingOption = computed(() => timingOptions.value.find(item => item.value === editingAction.value.triggerTiming))
-const currentHandler = computed(() => handlers.value.find(item => item.beanName === editingAction.value.interfaceName))
+const currentHandler = computed(() => handlers.value.find(item =>
+  item.definitionId === editingAction.value.actionDefinitionId
+  || item.beanName === editingAction.value.interfaceName
+))
 const availableTemplates = computed(() => templates.filter(template => {
   if (template.scopeType !== props.scopeType) return false
   if (template.bpmnType && !props.bpmnType.includes(template.bpmnType)) return false
@@ -325,9 +346,9 @@ async function loadAll() {
   loading.value = true
   try {
     const [actionList, optionList, handlerList] = await Promise.all([
-      flowActionApi.findDraftActionsByBinding(props.processId, props.scopeType, props.elementId || undefined),
-      flowActionApi.timingOptions(props.scopeType, props.bpmnType),
-      flowActionApi.listHandlers()
+      processActionApi.findDraftActionsByBinding(props.processId, props.scopeType, props.elementId || undefined),
+      processActionApi.timingOptions(props.scopeType, props.bpmnType),
+      processActionApi.listHandlers(props.processId)
     ])
     actions.value = actionList || []
     timingOptions.value = optionList || []
@@ -346,6 +367,7 @@ function createEmptyAction() {
     id: null,
     actionName: '',
     description: '',
+    actionDefinitionId: '',
     interfaceName: '',
     methodName: 'execute',
     enabled: true,
@@ -357,6 +379,11 @@ function createEmptyAction() {
 
 function showActionDialog(action = null) {
   editingAction.value = action ? { ...action } : createEmptyAction()
+  if (!editingAction.value.actionDefinitionId && editingAction.value.interfaceName) {
+    editingAction.value.actionDefinitionId = handlers.value.find(
+      item => item.beanName === editingAction.value.interfaceName
+    )?.definitionId || ''
+  }
   actionParamList.value = parseParamsJson(editingAction.value.paramsJson)
   retryForm.value = parseRetryConfig(editingAction.value.retryConfig)
   selectedTemplate.value = ''
@@ -386,7 +413,9 @@ function onExecutionModeChange(value) {
   editingAction.value.failurePolicy = value === 'AFTER_COMMIT' ? 'RETRY' : 'ROLLBACK'
 }
 
-function onHandlerChange() {
+function onHandlerChange(definitionId) {
+  const selected = handlers.value.find(item => item.definitionId === definitionId)
+  editingAction.value.interfaceName = selected?.beanName || ''
   const recommended = currentHandler.value?.recommendedExecutionMode
   if (recommended && handlerSupportsMode(recommended)) {
     editingAction.value.executionMode = recommended
@@ -402,13 +431,13 @@ function handlerSupportsMode(mode) {
 }
 
 async function saveAction() {
-  if (!editingAction.value.actionName || !editingAction.value.interfaceName || !editingAction.value.triggerTiming) {
+  if (!editingAction.value.actionName || !editingAction.value.actionDefinitionId || !editingAction.value.interfaceName || !editingAction.value.triggerTiming) {
     ElMessage.warning('请填写动作名称、执行时机和处理器')
     return
   }
   saving.value = true
   try {
-    await flowActionApi.saveAction({
+    await processActionApi.saveAction({
       ...editingAction.value,
       processConfigId: props.processId,
       scopeType: props.scopeType,
@@ -436,7 +465,7 @@ async function saveAction() {
 async function deleteAction(action) {
   try {
     await ElMessageBox.confirm('确定删除该流程动作吗？', '提示', { type: 'warning' })
-    await flowActionApi.deleteAction(action.id)
+    await processActionApi.deleteAction(action.id)
     hasDraftChanges.value = true
     await loadAll()
     emit('changed', actions.value)
@@ -447,7 +476,7 @@ async function deleteAction(action) {
 }
 
 async function toggleActionEnabled(action) {
-  await flowActionApi.toggleEnabled(action.id)
+  await processActionApi.toggleEnabled(action.id)
   hasDraftChanges.value = true
   await loadAll()
   emit('changed', actions.value)
@@ -458,7 +487,7 @@ async function moveAction(index, direction) {
   if (targetIndex < 0 || targetIndex >= sortedActions.value.length) return
   const list = [...sortedActions.value]
   ;[list[index], list[targetIndex]] = [list[targetIndex], list[index]]
-  await flowActionApi.updateSortOrder(list.map(item => item.id))
+  await processActionApi.updateSortOrder(list.map(item => item.id))
   hasDraftChanges.value = true
   await loadAll()
   emit('changed', actions.value)
@@ -514,6 +543,13 @@ function timingLabel(value) {
 function executionModeLabel(value) {
   return value === 'AFTER_COMMIT' ? '提交后执行' : '事务内执行'
 }
+
+function handlerLabel(action) {
+  const handler = handlers.value.find(item =>
+    item.definitionId === action.actionDefinitionId || item.beanName === action.interfaceName
+  )
+  return handler?.displayName || action.interfaceName
+}
 </script>
 
 <style scoped>
@@ -533,6 +569,11 @@ function executionModeLabel(value) {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .section-title {
@@ -566,6 +607,15 @@ function executionModeLabel(value) {
 
 .action-item.disabled {
   opacity: 0.6;
+}
+
+.handler-option {
+  display: flex;
+  flex-direction: column;
+}
+
+.handler-option small {
+  color: var(--el-text-color-secondary);
 }
 
 .action-sort {

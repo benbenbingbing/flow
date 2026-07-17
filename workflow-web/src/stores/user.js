@@ -16,6 +16,10 @@ export const useUserStore = defineStore('user', () => {
   const nickname = computed(() => userInfo.value?.nickname || userInfo.value?.username || '')
   const avatar = computed(() => userInfo.value?.avatar || '')
   const roles = computed(() => userInfo.value?.roles || [])
+  const isSuperAdmin = computed(() => roles.value.some(role => {
+    const code = typeof role === 'string' ? role : role?.roleCode
+    return code === 'super_admin'
+  }))
 
   // Actions
   /**
@@ -92,6 +96,7 @@ export const useUserStore = defineStore('user', () => {
     nickname,
     avatar,
     roles,
+    isSuperAdmin,
     setToken,
     setUserInfo,
     setPermissions,

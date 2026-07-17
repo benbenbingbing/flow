@@ -2,14 +2,11 @@
 
 ## 版本规则
 
-业务迁移文件位于 `workflow-server/src/main/resources/db/migration`。
+业务迁移文件位于
+`workflow-server/workflow-app/src/main/resources/db/migration`。
 
-当前迁移已重置为连续版本：
-
-- `V001__business_schema.sql`：业务表结构基线
-- `V002__seed_builtin_data.sql`：内置数据
-
-后续新增迁移按 `V003__xxx.sql` 递增，不再使用 `V1.1`、`V10_1` 这类混合编号。
+迁移版本保持三位数字递增。数据库命名隔离由
+`V017__isolate_database_table_names.sql` 完成。
 
 ## 初始化职责
 
@@ -18,6 +15,42 @@
 - 内置数据：由 Flyway 写入，可重复构建干净环境。
 
 JDBC 连接必须包含 `nullCatalogMeansCurrent=true`，避免 Flowable 在同一 MySQL 实例中误扫其它库的引擎表。
+
+## 表命名边界
+
+| 职责 | 前缀 | 示例 |
+| --- | --- | --- |
+| 实体配置和元数据 | `entity_*` | `entity_definition` |
+| 自动生成实体业务表 | `biz_*` | `biz_expense_application` |
+| 跨实体运行记录 | `runtime_*` | `runtime_entity_record` |
+| 平台流程表 | `process_*` | `process_action` |
+| 系统和身份 | `sys_*` | `sys_user` |
+| 配置迁移 | `config_*` | `config_migration_asset` |
+| Flowable 引擎 | `ACT_*` | `ACT_RU_TASK` |
+
+- 新实体物理表名写入 `entity_definition.table_name`。
+- 运行时统一通过 `EntityPhysicalTableResolver` 获取表名。
+- 自动生成表不允许使用系统配置表前缀。
+- Flowable `ACT_*` 表不重命名。
+
+## V017 最终表名
+
+| 原基线表 | 最终表 |
+| --- | --- |
+| `entity_data` | `runtime_entity_record` |
+| `node_config` | `process_node_config` |
+| `assignee_config` | `process_node_assignee` |
+| `form_config` | `process_form_config` |
+| `form_field_config` | `process_form_field_config` |
+| `flow_action` | `process_action` |
+| `flow_action_definition` | `process_action_definition` |
+| `flow_action_execution` | `process_action_execution` |
+| `entity_flow_status_mapping` | `process_entity_status_mapping` |
+
+历史动态表由启动迁移任务从 `entity_data_{code}` 原子重命名为
+`biz_{code}`，迁移结果记录在 `entity_table_migration_log`。
+
+项目尚未正式上线，因此代码、前端和 API 只使用新命名，不提供旧表名或旧接口兼容层。
 
 ## 内置数据
 
@@ -48,5 +81,5 @@ mysql -uroot -e "DROP DATABASE IF EXISTS workflow_bootstrap_clean; CREATE DATABA
 cd workflow-server
 SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3306/workflow_bootstrap_clean?serverTimezone=Asia/Shanghai&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true' \
 SERVER_PORT=18081 \
-mvn clean spring-boot:run
+mvn -pl workflow-app -am spring-boot:run
 ```

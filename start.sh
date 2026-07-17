@@ -67,7 +67,7 @@ echo "✅ 前端编译完成"
 
 echo ""
 echo "========== 4. 启动后端 =========="
-nohup java -jar workflow-server/target/workflow-server-1.0.0.jar > workflow-server/server.log 2>&1 &
+nohup java -jar workflow-server/workflow-app/target/workflow-server-1.0.0.jar > workflow-server/server.log 2>&1 &
 echo $! > workflow-server/server.pid
 echo "🚀 后端已启动 (PID: $(cat workflow-server/server.pid))"
 

@@ -73,6 +73,22 @@ const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByE
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })
 
+const entityDesigner = readFileSync(path.join(root, 'src/views/EntityDesign.vue'), 'utf8')
+;[
+  'ActionRuleGroupEditor',
+  'filterRoot',
+  'permissionRuleFieldOptions',
+  'getEnabledGroups',
+  'CURRENT_ASSIGNEE',
+  'value="GROUP"',
+  'value="ORG"',
+  'value="RULE"'
+].forEach((marker) => {
+  assert.ok(entityDesigner.includes(marker), `实体数据权限配置缺少结构化能力: ${marker}`)
+})
+assert.equal(entityDesigner.includes('value="EXPRESSION"'), false, '数据权限配置不得继续暴露自由表达式')
+assert.equal(entityDesigner.includes('value="CUSTOM_SQL"'), false, '数据权限配置不得继续暴露自定义 SQL')
+
 const entityDataTable = readFileSync(path.join(root, 'src/views/entity/components/EntityDataTable.vue'), 'utf8')
 assert.match(
   entityDataTable,
@@ -87,6 +103,15 @@ const flowActionPanel = readFileSync(path.join(root, 'src/components/FlowActionC
 ;['TASK_COMPLETING', 'TASK_CREATED', 'TRANSITION_TAKEN', 'PROCESS_COMPLETED', 'PROCESS_WITHDRAWN'].forEach((timing) => {
   assert.ok(flowActionPanel.includes(timing), `流程动作配置缺少常用时机模板: ${timing}`)
 })
+
+const processActionApi = readFileSync(path.join(root, 'src/api/processAction.js'), 'utf8')
+;['/process-actions', '/process-action-handlers', '/process-action-executions'].forEach((endpoint) => {
+  assert.ok(processActionApi.includes(endpoint), `流程动作客户端缺少规范接口: ${endpoint}`)
+})
+;['/flow-actions', '/flow-action-handlers', '/flow-action-executions'].forEach((endpoint) => {
+  assert.equal(processActionApi.includes(endpoint), false, `流程动作客户端不应继续使用旧接口: ${endpoint}`)
+})
+assert.equal(existsSync(path.join(root, 'src/api/flowAction.js')), false, '旧 flowAction API 文件应移除')
 
 const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActionGuide.vue'), 'utf8')
 ;[
@@ -129,7 +154,11 @@ const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigP
 })
 
 const processProgress = readFileSync(path.join(root, 'src/views/ProcessProgress.vue'), 'utf8')
-assert.match(processProgress, /动作执行记录[\s\S]*retryActionExecution/, '流程进度页应支持查看并重试动作执行记录')
+assert.match(processProgress, /userStore\.isSuperAdmin[\s\S]*FlowActionExecutionLog/, '流程进度页应仅为超级管理员展示动作执行记录')
+const flowActionExecutionLog = readFileSync(path.join(root, 'src/components/FlowActionExecutionLog.vue'), 'utf8')
+;['解析后参数', '执行结果', '触发上下文', '执行过程', 'retryExecution'].forEach((marker) => {
+  assert.ok(flowActionExecutionLog.includes(marker), `流程动作执行日志缺少详情或重试能力: ${marker}`)
+})
 
 const configMigration = readFileSync(path.join(root, 'src/views/system/ConfigMigration.vue'), 'utf8')
 ;[
@@ -184,5 +213,14 @@ for (const [file, markers] of Object.entries(demoExpectations)) {
     assert.ok(source.includes(marker), `${file} 缺少 Demo 验证能力: ${marker}`)
   })
 }
+
+const pagedEntityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
+;[
+  'params.pageNum = pageNum.value',
+  'params.pageSize = pageSize.value',
+  'total.value = Number(res?.total'
+].forEach((marker) => {
+  assert.ok(pagedEntityDataList.includes(marker), `实体数据列表缺少服务端分页能力: ${marker}`)
+})
 
 console.log('page configuration audit passed')

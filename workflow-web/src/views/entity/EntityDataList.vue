@@ -521,6 +521,8 @@ const loadDataList = async () => {
         params[code + '_op'] = field.queryType
       }
     })
+    params.pageNum = pageNum.value
+    params.pageSize = pageSize.value
     
     let res
     if (listConfig.value?.id) {
@@ -529,12 +531,17 @@ const loadDataList = async () => {
       res = await entityDataApi.getList(entityCode.value, params)
     }
     
-    const allData = Array.isArray(res) ? res : (res?.list || res?.records || res?.rows || [])
-    total.value = allData.length
-    
-    const start = (pageNum.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    dataList.value = allData.slice(start, end)
+    if (Array.isArray(res)) {
+      total.value = res.length
+      const start = (pageNum.value - 1) * pageSize.value
+      dataList.value = res.slice(start, start + pageSize.value)
+    } else {
+      const pageRecords = res?.list || res?.records || res?.rows || []
+      dataList.value = pageRecords
+      total.value = Number(res?.total ?? pageRecords.length)
+      pageNum.value = Number(res?.pageNum ?? res?.current ?? pageNum.value)
+      pageSize.value = Number(res?.pageSize ?? res?.size ?? pageSize.value)
+    }
     await loadRefEntityNames()
   } catch (error) {
     console.error('加载数据列表失败:', error)
