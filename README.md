@@ -160,6 +160,8 @@ npm run build
 - Flowable 引擎表由 Flowable 管理。
 - `entity_*`：实体配置和元数据。
 - `biz_*`：实体发布后自动生成的独立业务表。
+- 历史 `entity_data_*` 在启动时迁移为 `biz_*`；孤立旧表保留数据后
+  按后缀迁移，禁止覆盖已存在的目标表。
 - `runtime_*`：跨实体运行记录，例如 `runtime_entity_record`。
 - `process_*`：平台自有流程配置、运行记录和流程动作。
 - `sys_*`：用户、角色、组织、菜单和字典。
