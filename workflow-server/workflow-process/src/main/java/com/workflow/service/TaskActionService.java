@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.workflow.common.BusinessConflictException;
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.UserContext;
 import com.workflow.entity.EntityData;
@@ -51,6 +52,7 @@ public class TaskActionService {
     private final NodeFormSubmissionService nodeFormSubmissionService;
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService entityActionCapabilityService;
+    private final EntityRecordTeamService entityRecordTeamService;
 
     /**
      * 完成任务
@@ -70,6 +72,17 @@ public class TaskActionService {
     @Transactional(rollbackFor = Exception.class)
     public void completeTask(String taskId, String userId, String action, String comment, String transferTo,
                              String actionLabel, Map<String, Object> formData) {
+        completeTaskInternal(taskId, userId, action, comment, transferTo, actionLabel, formData, true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void completeDeferredTask(String taskId, String userId, String action, String comment, String transferTo,
+                                     String actionLabel, Map<String, Object> formData) {
+        completeTaskInternal(taskId, userId, action, comment, transferTo, actionLabel, formData, false);
+    }
+
+    private void completeTaskInternal(String taskId, String userId, String action, String comment, String transferTo,
+                                      String actionLabel, Map<String, Object> formData, boolean checkAccess) {
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -79,10 +92,23 @@ public class TaskActionService {
             throw new RuntimeException("任务不存在或已处理: " + taskId);
         }
 
-        requireTaskAccess(task);
+        if (checkAccess) {
+            requireTaskIdentityAccess(task);
+        }
 
         String assignee = task.getAssignee();
-        if (assignee == null) {
+        String processInstanceId = task.getProcessInstanceId();
+        String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
+        String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
+        if (checkAccess) {
+            String currentIdentity = currentTaskIdentity();
+            if (!StringUtils.hasText(assignee)) {
+                claimTaskForCurrentUser(task, currentIdentity);
+            } else {
+                processTaskService.synchronizeClaimedTask(taskId, processInstanceId, assignee);
+            }
+            requireEntityApprovalAccess(task);
+        } else if (!StringUtils.hasText(assignee)) {
             taskService.setAssignee(taskId, userId);
         }
 
@@ -136,6 +162,8 @@ public class TaskActionService {
                     log.setOperationComment(comment);
                     log.setOldValue(assignee);
                     log.setNewValue(transferTo);
+                    log.setOldValueFormat("PLAIN_TEXT");
+                    log.setNewValueFormat("PLAIN_TEXT");
                     operationLogMapper.insert(log);
                 } catch (Exception e) {
                     log.warn("记录转办日志失败", e);
@@ -177,11 +205,19 @@ public class TaskActionService {
         }
 
         // 同步更新待办状态（实体状态由 EntityStatusUpdateListener 监听器自动更新）
-        String processInstanceId = task.getProcessInstanceId();
         if (processInstanceId != null) {
             processTaskService.syncTasksFromFlowable(processInstanceId);
             // 注意：实体数据状态由 EntityStatusUpdateListener 监听器自动更新
             // 不需要在这里手动更新，避免重复更新
+        }
+        if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
+            entityRecordTeamService.record(
+                    entityCode,
+                    entityDataId,
+                    normalizedAction.toUpperCase(Locale.ROOT),
+                    StringUtils.hasText(actionLabel) ? actionLabel : comment,
+                    processInstanceId,
+                    taskId);
         }
     }
 
@@ -191,10 +227,20 @@ public class TaskActionService {
         if (task == null) {
             throw new RuntimeException("任务不存在或已处理: " + taskId);
         }
-        requireTaskAccess(task);
+        requireTaskIdentityAccess(task);
     }
 
-    private void requireTaskAccess(Task task) {
+    @Transactional(rollbackFor = Exception.class)
+    public void claimTask(String taskId) {
+        Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
+        if (task == null) {
+            throw new RuntimeException("任务不存在或已处理: " + taskId);
+        }
+        requireTaskIdentityAccess(task);
+        claimTaskForCurrentUser(task, currentTaskIdentity());
+    }
+
+    private void requireTaskIdentityAccess(Task task) {
         String currentUserId = UserContext.getUserId();
         String currentUsername = UserContext.getUsername();
         String assignee = task.getAssignee();
@@ -207,13 +253,96 @@ public class TaskActionService {
         if (!StringUtils.hasText(assignee) && !candidate) {
             throw new ForbiddenException("当前用户不是该任务的候选办理人");
         }
+    }
 
+    private void requireEntityApprovalAccess(Task task) {
         String entityCode = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityCode"));
         String entityDataId = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId"));
         if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
             var entityData = entityDataDynamicService.findById(entityCode, entityDataId);
             entityActionCapabilityService.requireRowAction(entityCode, null, "approve", entityData);
         }
+    }
+
+    private void claimTaskForCurrentUser(Task task, String currentIdentity) {
+        String assignee = task.getAssignee();
+        if (StringUtils.hasText(assignee)) {
+            if (!matchesCurrentUser(assignee, UserContext.getUserId(), UserContext.getUsername())) {
+                throw new BusinessConflictException("TASK_ALREADY_CLAIMED", "任务已被其他办理人认领");
+            }
+            processTaskService.synchronizeClaimedTask(
+                    task.getId(),
+                    task.getProcessInstanceId(),
+                    assignee);
+            return;
+        }
+
+        try {
+            taskService.claim(task.getId(), currentIdentity);
+        } catch (RuntimeException exception) {
+            Task latest = taskService.createTaskQuery().taskId(task.getId()).singleResult();
+            if (latest != null && matchesCurrentUser(
+                    latest.getAssignee(),
+                    UserContext.getUserId(),
+                    UserContext.getUsername())) {
+                processTaskService.synchronizeClaimedTask(
+                        latest.getId(),
+                        latest.getProcessInstanceId(),
+                        latest.getAssignee());
+                return;
+            }
+            if (latest != null && StringUtils.hasText(latest.getAssignee())) {
+                throw new BusinessConflictException("TASK_ALREADY_CLAIMED", "任务已被其他办理人认领");
+            }
+            throw exception;
+        }
+
+        processTaskService.synchronizeClaimedTask(
+                task.getId(),
+                task.getProcessInstanceId(),
+                currentIdentity);
+        recordTaskClaim(task, currentIdentity);
+    }
+
+    private void recordTaskClaim(Task task, String currentIdentity) {
+        com.workflow.entity.ProcessOperationLog operationLog =
+                new com.workflow.entity.ProcessOperationLog();
+        operationLog.setProcessInstanceId(task.getProcessInstanceId());
+        operationLog.setTaskId(task.getId());
+        operationLog.setOperationType("CLAIM");
+        operationLog.setOperatorId(UserContext.getUserId());
+        operationLog.setOperatorName(sysUserService.getDisplayName(currentIdentity));
+        operationLog.setOperationTime(LocalDateTime.now());
+        operationLog.setOperationComment("认领任务");
+        operationLog.setNewValue(currentIdentity);
+        operationLog.setNewValueFormat("PLAIN_TEXT");
+        operationLogMapper.insert(operationLog);
+
+        String entityCode = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityCode"));
+        String entityDataId = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId"));
+        if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
+            entityRecordTeamService.record(
+                    entityCode,
+                    entityDataId,
+                    "CLAIM",
+                    "认领任务",
+                    task.getProcessInstanceId(),
+                    task.getId());
+        }
+        log.info("任务已认领: taskId={}, processInstanceId={}, assignee={}",
+                task.getId(), task.getProcessInstanceId(), currentIdentity);
+    }
+
+    private String currentTaskIdentity() {
+        String username = UserContext.getUsername();
+        if (StringUtils.hasText(username)) {
+            return username;
+        }
+        String userId = UserContext.getUserId();
+        if (StringUtils.hasText(userId)) {
+            return userId;
+        }
+        throw new ForbiddenException("用户未登录");
     }
 
     private boolean isCandidate(String taskId, String userId) {
@@ -253,10 +382,9 @@ public class TaskActionService {
      */
     private boolean isMultiInstanceTask(Task task) {
         try {
-            // 从流程变量中检查是否是多实例任务
-            Map<String, Object> vars = runtimeService.getVariables(task.getProcessInstanceId());
-            // 检查是否有 nrOfInstances 变量（Flowable 多实例任务的标志）
-            return vars.containsKey("nrOfInstances") || vars.containsKey("nrOfCompletedInstances");
+            Object instances = taskService.getVariable(task.getId(), "nrOfInstances");
+            Object completed = taskService.getVariable(task.getId(), "nrOfCompletedInstances");
+            return instances != null || completed != null;
         } catch (Exception e) {
             log.debug("检查多实例任务失败: {}", e.getMessage());
             return false;
@@ -392,6 +520,13 @@ public class TaskActionService {
             String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
                 entityDataDynamicService.markWithdrawn(entityCode, entityDataId);
+                entityRecordTeamService.record(
+                        entityCode,
+                        entityDataId,
+                        "WITHDRAW",
+                        reason,
+                        processInstanceId,
+                        null);
             }
 
             // 删除流程实例（撤回相当于终止流程）

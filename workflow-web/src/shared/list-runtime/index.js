@@ -74,6 +74,10 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
     const groupKey = `${entityType}:${refEntityId}`
 
     if (fieldType === 'MULTI_REFERENCE') {
+      const resolvedOptions = row?.extData?.[`${fieldCode}Options`]
+      if (Array.isArray(resolvedOptions) && resolvedOptions.length) {
+        return resolvedOptions.map((option) => option.label || option.value).join(', ')
+      }
       let ids = value
       if (typeof ids === 'string') {
         try {
@@ -91,7 +95,10 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
 
   // 选项类字段
   if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(fieldType)) {
-    const options = parseJsonOptions(field.optionsJson)
+    const resolvedOptions = row?.extData?.[`${fieldCode}Options`]
+    const options = Array.isArray(resolvedOptions) && resolvedOptions.length
+      ? resolvedOptions
+      : parseJsonOptions(field.optionsJson)
     const isMultiple = componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(fieldType)
     if (isMultiple) {
       const values = normalizeMultipleValue(value)

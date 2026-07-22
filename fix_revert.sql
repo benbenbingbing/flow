@@ -31,13 +31,10 @@ ALTER TABLE `process_definition_config` CHANGE COLUMN `updated_at` `update_time`
 ALTER TABLE `process_draft` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `process_node_form` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `process_task_instance` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
-ALTER TABLE `report_definition` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
-ALTER TABLE `service_definition` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `sys_dict` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `sys_dict_item` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `sys_menu` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `sys_organization` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `sys_role` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `sys_user` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
-ALTER TABLE `view_definition` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
 ALTER TABLE `workbench_config` CHANGE COLUMN `updated_at` `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';

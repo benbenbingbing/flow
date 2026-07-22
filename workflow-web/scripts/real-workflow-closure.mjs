@@ -105,10 +105,18 @@ async function main() {
   record('publishEntity', { id: entityPublished.id, status: entityPublished.status })
   assert.equal(entityPublished.status, 'PUBLISHED')
 
-  const boundEntity = await api('POST', `/entity/${entity.id}/bind-process/${process.id}`)
-  record('bindProcess', { entityId: boundEntity.id, processDefinitionId: boundEntity.processDefinitionId, processName: boundEntity.processName, enableProcess: boundEntity.enableProcess })
+  const boundEntity = await api('PUT', `/entity/${entity.id}/workflow-binding`, {
+    processDefinitionId: process.id
+  })
+  record('bindProcess', {
+    entityId: boundEntity.id,
+    processDefinitionId: boundEntity.processDefinitionId,
+    processName: boundEntity.processName,
+    lifecycleMode: boundEntity.lifecycleMode,
+    workflowBindingStatus: boundEntity.workflowBindingStatus
+  })
   assert.equal(boundEntity.processDefinitionId, process.id)
-  assert.equal(boundEntity.enableProcess, true)
+  assert.equal(boundEntity.lifecycleMode, 'WORKFLOW')
 
   const dataName = `Codex闭环数据${suffix}`
   const saved = await api('POST', '/entity-data', {

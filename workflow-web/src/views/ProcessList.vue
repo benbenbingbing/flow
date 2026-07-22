@@ -123,7 +123,7 @@
           <el-input 
             v-model="formData.description" 
             type="textarea" 
-            rows="3"
+            :rows="3"
             placeholder="请输入描述"
           />
         </el-form-item>
@@ -256,7 +256,7 @@
           <el-input 
             v-model="publishForm.versionDescription" 
             type="textarea" 
-            rows="3"
+            :rows="3"
             placeholder="请输入版本说明（可选）"
           />
         </el-form-item>

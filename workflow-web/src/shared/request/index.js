@@ -3,6 +3,35 @@ import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
 export const API_SUCCESS_CODES = new Set([0, 200, '0', '200'])
+export const BUSINESS_TRACE_HEADER = 'X-Business-Trace-Key'
+
+export function createBusinessTraceKey() {
+  if (globalThis.crypto?.randomUUID) {
+    return `ui_${globalThis.crypto.randomUUID()}`
+  }
+  return `ui_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+}
+
+export function ensureBusinessTraceHeader(config = {}) {
+  const method = String(config.method || 'get').toLowerCase()
+  if (!['post', 'put', 'patch', 'delete'].includes(method)) {
+    return config
+  }
+  config.headers ||= {}
+  const existing = typeof config.headers.get === 'function'
+    ? config.headers.get(BUSINESS_TRACE_HEADER)
+    : config.headers[BUSINESS_TRACE_HEADER]
+      || config.headers[BUSINESS_TRACE_HEADER.toLowerCase()]
+  if (!existing) {
+    const traceKey = createBusinessTraceKey()
+    if (typeof config.headers.set === 'function') {
+      config.headers.set(BUSINESS_TRACE_HEADER, traceKey)
+    } else {
+      config.headers[BUSINESS_TRACE_HEADER] = traceKey
+    }
+  }
+  return config
+}
 
 export function toPageParams(page = {}) {
   const pageNum = page.pageNum ?? page.currentPage ?? page.page ?? 1
@@ -55,6 +84,7 @@ function redirectToLogin(message) {
 function rejectWithMessage(message, source) {
   const error = new Error(message || '请求失败')
   error.source = source
+  error.errorCode = source?.errorCode
   return Promise.reject(error)
 }
 
@@ -90,6 +120,7 @@ const request = axios.create({
 
 request.interceptors.request.use(
   (config) => {
+    ensureBusinessTraceHeader(config)
     const userStore = useUserStore()
     const token = userStore.token
     if (token) {
@@ -132,6 +163,10 @@ request.interceptors.response.use(
     const message = response
       ? getApiErrorMessage(response.data)
       : error.message || '网络错误'
+    error.message = message
+    error.errorCode = response?.data?.errorCode
+    error.currentData = response?.data?.data
+    error.status = response?.status
     if (!error.config?.silentError) {
       ElMessage.error(message)
     }

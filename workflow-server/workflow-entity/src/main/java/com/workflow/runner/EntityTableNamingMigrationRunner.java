@@ -37,10 +37,13 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
             return;
         }
         List<Map<String, Object>> entities = jdbcTemplate.queryForList(
-                "SELECT id, entity_code, table_name, status "
+                "SELECT id, entity_code, table_name, status, storage_mode "
                         + "FROM entity_definition WHERE deleted = 0");
         Set<String> activeLegacyTables = new HashSet<>();
         for (Map<String, Object> entity : entities) {
+            if ("SYSTEM".equalsIgnoreCase(text(entity.get("storage_mode")))) {
+                continue;
+            }
             activeLegacyTables.add(naming.legacyName(text(entity.get("entity_code"))));
             migrate(entity);
         }

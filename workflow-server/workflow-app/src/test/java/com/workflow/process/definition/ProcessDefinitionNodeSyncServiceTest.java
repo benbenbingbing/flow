@@ -16,11 +16,13 @@ import com.workflow.service.EntityFlowStatusService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -100,6 +102,45 @@ class ProcessDefinitionNodeSyncServiceTest {
         assertEquals("approving", mapping.getEntityStatusCode());
     }
 
+    @Test
+    void parseAndSaveNodeConfigsPersistsEverySupportedNodeType() {
+        NodeConfigMapper nodeMapper = mock(NodeConfigMapper.class);
+        List<NodeConfig> insertedNodes = new ArrayList<>();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            NodeConfig node = invocation.getArgument(0);
+            node.setId("node-" + insertedNodes.size());
+            insertedNodes.add(node);
+            return 1;
+        }).when(nodeMapper).insert(org.mockito.ArgumentMatchers.any(NodeConfig.class));
+        when(nodeMapper.findByProcessConfigId("process-1")).thenAnswer(invocation -> insertedNodes);
+        ProcessDefinitionNodeSyncService service = service(nodeMapper, null, null, null, null, null, null, null);
+
+        service.parseAndSaveNodeConfigs("process-1", bpmnWithEverySupportedNodeType());
+
+        ArgumentCaptor<NodeConfig> captor = ArgumentCaptor.forClass(NodeConfig.class);
+        verify(nodeMapper, times(15)).insert(captor.capture());
+        List<NodeConfig.NodeType> nodeTypes = captor.getAllValues().stream()
+                .map(NodeConfig::getNodeType)
+                .toList();
+        assertEquals(List.of(
+                NodeConfig.NodeType.START,
+                NodeConfig.NodeType.END,
+                NodeConfig.NodeType.USER_TASK,
+                NodeConfig.NodeType.SERVICE_TASK,
+                NodeConfig.NodeType.SCRIPT_TASK,
+                NodeConfig.NodeType.SEND_TASK,
+                NodeConfig.NodeType.RECEIVE_TASK,
+                NodeConfig.NodeType.MANUAL_TASK,
+                NodeConfig.NodeType.BUSINESS_RULE_TASK,
+                NodeConfig.NodeType.EXCLUSIVE_GATEWAY,
+                NodeConfig.NodeType.PARALLEL_GATEWAY,
+                NodeConfig.NodeType.INCLUSIVE_GATEWAY,
+                NodeConfig.NodeType.EVENT_BASED_GATEWAY,
+                NodeConfig.NodeType.CALL_ACTIVITY,
+                NodeConfig.NodeType.SUB_PROCESS
+        ), nodeTypes);
+    }
+
     private static ProcessDefinitionNodeSyncService service(NodeConfigMapper nodeMapper,
                                                            AssigneeConfigMapper assigneeMapper,
                                                            FormConfigMapper formMapper,
@@ -110,7 +151,8 @@ class ProcessDefinitionNodeSyncServiceTest {
                                                            ProcessNodeApprovalMapper nodeApprovalMapper) {
         return new ProcessDefinitionNodeSyncService(nodeMapper, assigneeMapper, formMapper,
                 objectMapper == null ? new ObjectMapper() : objectMapper,
-                entityFlowStatusService, entityDefinitionMapper, nodeFormMapper, nodeApprovalMapper, null);
+                entityFlowStatusService, entityDefinitionMapper, nodeFormMapper, nodeApprovalMapper,
+                null, null);
     }
 
     private static String bpmnWithEntityFormIds() {
@@ -140,6 +182,28 @@ class ProcessDefinitionNodeSyncServiceTest {
                 + "<flowable:property name=\"entityStatusCode\" value=\"approving\" />"
                 + "</bpmn:extensionElements>"
                 + "</bpmn:sequenceFlow>"
+                + "</bpmn:process>"
+                + "</bpmn:definitions>";
+    }
+
+    private static String bpmnWithEverySupportedNodeType() {
+        return "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">"
+                + "<bpmn:process id=\"all_nodes\">"
+                + "<bpmn:startEvent id=\"start\" />"
+                + "<bpmn:endEvent id=\"end\" />"
+                + "<bpmn:userTask id=\"user\" />"
+                + "<bpmn:serviceTask id=\"service\" />"
+                + "<bpmn:scriptTask id=\"script\" />"
+                + "<bpmn:sendTask id=\"send\" />"
+                + "<bpmn:receiveTask id=\"receive\" />"
+                + "<bpmn:manualTask id=\"manual\" />"
+                + "<bpmn:businessRuleTask id=\"rule\" />"
+                + "<bpmn:exclusiveGateway id=\"exclusive\" />"
+                + "<bpmn:parallelGateway id=\"parallel\" />"
+                + "<bpmn:inclusiveGateway id=\"inclusive\" />"
+                + "<bpmn:eventBasedGateway id=\"event\" />"
+                + "<bpmn:callActivity id=\"call\" />"
+                + "<bpmn:subProcess id=\"sub\" />"
                 + "</bpmn:process>"
                 + "</bpmn:definitions>";
     }

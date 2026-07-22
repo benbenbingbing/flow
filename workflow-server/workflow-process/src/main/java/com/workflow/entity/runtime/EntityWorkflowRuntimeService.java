@@ -1,6 +1,7 @@
 package com.workflow.entity.runtime;
 
 import com.workflow.dto.EntityDataDTO;
+import com.workflow.common.BusinessConflictException;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.ProcessDefinitionConfig;
@@ -47,21 +48,30 @@ public class EntityWorkflowRuntimeService implements EntityWorkflowRuntimePort {
     private final WorkflowAutoSkipService workflowAutoSkipService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityPublishedSnapshotService snapshotService;
+    private final com.workflow.service.EntityRecordTeamService entityRecordTeamService;
 
     @Override
     public void startProcess(EntityDataDTO dto, EntityDefinition definition) {
         EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(dto.getEntityCode());
         String processConfigId = snapshot.getProcessDefinitionId();
         if (!StringUtils.hasText(processConfigId)) {
-            throw new RuntimeException("实体发布快照未绑定流程定义: " + dto.getEntityCode());
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_READY",
+                    "实体发布快照未绑定流程定义: " + dto.getEntityCode());
         }
 
         ProcessDefinitionConfig processConfig = processDefinitionConfigMapper.selectById(processConfigId);
         if (processConfig == null) {
-            throw new RuntimeException("流程定义不存在: " + processConfigId);
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_READY",
+                    "流程定义不存在: " + processConfigId);
         }
-        if (processConfig.getStatus() == ProcessDefinitionConfig.ProcessStatus.DISABLED) {
-            throw new RuntimeException("流程已禁用，无法发起: " + processConfig.getProcessName());
+        if (processConfig.getStatus() != ProcessDefinitionConfig.ProcessStatus.PUBLISHED) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_READY",
+                    processConfig.getStatus() == ProcessDefinitionConfig.ProcessStatus.DISABLED
+                            ? "流程已禁用，无法发起: " + processConfig.getProcessName()
+                            : "流程尚未发布，无法发起: " + processConfig.getProcessName());
         }
 
         String processKey = processConfig.getProcessKey();
@@ -85,6 +95,13 @@ public class EntityWorkflowRuntimeService implements EntityWorkflowRuntimePort {
 
         updateProcessFields(dto, processInstance, currentTask);
         processTaskService.syncTasksFromFlowable(processInstance.getId());
+        entityRecordTeamService.record(
+                dto.getEntityCode(),
+                dto.getId(),
+                "START_PROCESS",
+                "发起流程",
+                processInstance.getId(),
+                currentTask == null ? null : currentTask.getId());
 
         log.info("实体数据 {} 发起流程 {}，流程实例ID: {}", dto.getId(), processKey, processInstance.getId());
     }

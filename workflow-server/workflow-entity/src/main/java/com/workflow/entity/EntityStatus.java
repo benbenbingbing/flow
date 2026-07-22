@@ -33,7 +33,7 @@ public class EntityStatus {
     private String statusName;
     
     /**
-     * 状态分类：NEW-新建、PROCESSING-审批中、COMPLETED-已完成、TERMINATED-终止、WITHDRAWN-已撤回
+     * 状态分类：NEW-初始、PROCESSING-处理中、COMPLETED-已完成、TERMINATED-已终止、WITHDRAWN-已撤回
      */
     private String statusCategory;
     

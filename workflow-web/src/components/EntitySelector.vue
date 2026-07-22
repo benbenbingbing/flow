@@ -39,10 +39,21 @@
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      width="800px"
+      :width="useUnifiedList ? '85%' : '800px'"
       :close-on-click-modal="false"
     >
-      <div class="selector-body">
+      <AsyncEntityDataList
+        v-if="useUnifiedList"
+        :entity-code="runtimeEntityCode"
+        :list-key="listKey"
+        scene="FORM_PICKER"
+        :context="context"
+        :selection-mode="multiple ? 'MULTIPLE' : 'SINGLE'"
+        @confirm="handleRuntimeConfirm"
+        @cancel="dialogVisible = false"
+      />
+
+      <div v-else class="selector-body">
         <!-- 实体类型标签（系统实体时显示） -->
         <div v-if="isSystemEntity" class="entity-type-bar">
           <el-tag :type="getEntityTypeTag(entityType)" size="large">
@@ -116,7 +127,7 @@
         </div>
       </div>
 
-      <template #footer>
+      <template v-if="!useUnifiedList" #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button v-if="multiple" type="primary" @click="confirmSelection">
@@ -129,7 +140,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, defineAsyncComponent } from 'vue'
 import { ArrowDown, Close, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -154,6 +165,18 @@ const props = defineProps({
     type: String,
     default: null
   },
+  listKey: {
+    type: String,
+    default: ''
+  },
+  runtimeEntityCode: {
+    type: String,
+    default: ''
+  },
+  context: {
+    type: Object,
+    default: () => ({})
+  },
   // 是否多选
   multiple: {
     type: Boolean,
@@ -177,9 +200,13 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
+const AsyncEntityDataList = defineAsyncComponent(() => import('@/views/entity/EntityDataList.vue'))
 
 // 计算属性
 const isSystemEntity = computed(() => props.entityType !== 'CUSTOM')
+const useUnifiedList = computed(() =>
+  props.entityType === 'CUSTOM' && !!props.runtimeEntityCode && !!props.listKey
+)
 const dialogTitle = computed(() => {
   const typeMap = {
     'CUSTOM': '选择数据',
@@ -288,6 +315,9 @@ async function loadSelectedData() {
 async function openSelector() {
   if (props.disabled) return
   dialogVisible.value = true
+  if (useUnifiedList.value) {
+    return
+  }
   pageNum.value = 1
   searchKeyword.value = ''
   selectedRows.value = []
@@ -310,6 +340,21 @@ async function openSelector() {
       })
     }, 100)
   }
+}
+
+function handleRuntimeConfirm(rows) {
+  const selected = Array.isArray(rows) ? rows : []
+  if (props.multiple) {
+    selectedList.value = selected
+    emit('update:modelValue', selected.map(row => row.id))
+    emit('change', selected)
+  } else {
+    const row = selected[0] || null
+    selectedData.value = row
+    emit('update:modelValue', row?.id || null)
+    emit('change', row)
+  }
+  dialogVisible.value = false
 }
 
 // 加载数据

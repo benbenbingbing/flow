@@ -261,28 +261,25 @@ public class ProcessDefinitionService {
         int newVersion = publishHistoryService.nextVersion(id);
         
         // 将 processKey 写入 XML 的 process id 属性，确保 Flowable 使用正确的 key
-        String bpmnXml = config.getBpmnXml();
+        String designBpmnXml = config.getBpmnXml();
         
-        nodeSyncService.syncStatusMappingsFromBpmn(id, config.getProcessKey(), bpmnXml);
+        nodeSyncService.syncStatusMappingsFromBpmn(id, config.getProcessKey(), designBpmnXml);
         
-        bpmnXml = bpmnPublishSanitizer.sanitize(bpmnXml, config.getProcessKey());
+        String runtimeBpmnXml = bpmnPublishSanitizer.sanitize(designBpmnXml, config.getProcessKey());
 
         // 清理历史版本中平台注入的顺序流动作监听器；运行时已由统一事件监听器接管
-        bpmnXml = flowActionDesignPort.prepareBpmnForPublish(id, bpmnXml);
+        runtimeBpmnXml = flowActionDesignPort.prepareBpmnForPublish(id, runtimeBpmnXml);
 
-        nodeSyncService.syncBpmnNodeBindings(id, bpmnXml);
+        nodeSyncService.syncBpmnNodeBindings(id, designBpmnXml);
         
-        Deployment deployment = flowableDeploymentService.deploy(config, bpmnXml, newVersion);
-        
-        // 保存修改后的XML到流程配置
-        config.setBpmnXml(bpmnXml);
+        Deployment deployment = flowableDeploymentService.deploy(config, runtimeBpmnXml, newVersion);
         
         ConfigMigrationPublishRequest publishRequest = request == null
                 ? new ConfigMigrationPublishRequest() : request;
         ProcessVersionHistory history = publishHistoryService.recordPublish(
-                config, bpmnXml, deployment.getId(), newVersion, publishRequest.getVersionDescription());
+                config, runtimeBpmnXml, deployment.getId(), newVersion, publishRequest.getVersionDescription());
         
-        nodeSyncService.parseAndSaveNodeConfigs(id, bpmnXml);
+        nodeSyncService.parseAndSaveNodeConfigs(id, designBpmnXml);
         // 更新主流程配置
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
         config.setVersion(newVersion);

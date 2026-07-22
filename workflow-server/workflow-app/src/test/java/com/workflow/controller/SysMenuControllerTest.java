@@ -1,6 +1,7 @@
 package com.workflow.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.PageResult;
 import com.workflow.entity.SysMenu;
 import com.workflow.mapper.SysMenuMapper;
 import com.workflow.service.SysMenuService;
@@ -97,6 +98,52 @@ class SysMenuControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].menuName").value("测试菜单"));
+    }
+
+    @Test
+    @DisplayName("测试分页查询子菜单接口")
+    void testChildren() throws Exception {
+        SysMenu childMenu = new SysMenu();
+        childMenu.setId("child-id");
+        childMenu.setMenuName("子菜单");
+        childMenu.setParentId("parent-id");
+        childMenu.setHasChildren(false);
+
+        PageResult<SysMenu> pageResult = new PageResult<>(
+                Collections.singletonList(childMenu), 1, 1, 10
+        );
+        when(menuService.getChildrenPage("parent-id", 1, 10)).thenReturn(pageResult);
+
+        mockMvc.perform(get("/api/system/menu/children")
+                        .param("parentId", "parent-id")
+                        .param("pageNum", "1")
+                        .param("pageSize", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.records").isArray())
+                .andExpect(jsonPath("$.data.records[0].menuName").value("子菜单"))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.pageNum").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(10));
+    }
+
+    @Test
+    @DisplayName("测试查询指定节点的完整子树接口")
+    void testSubtree() throws Exception {
+        SysMenu childMenu = new SysMenu();
+        childMenu.setId("child-id");
+        childMenu.setMenuName("子菜单");
+        childMenu.setParentId("parent-id");
+
+        when(menuService.getSubtree("parent-id"))
+                .thenReturn(Collections.singletonList(childMenu));
+
+        mockMvc.perform(get("/api/system/menu/subtree")
+                        .param("parentId", "parent-id"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data[0].menuName").value("子菜单"));
     }
 
     @Test

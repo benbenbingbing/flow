@@ -5,6 +5,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Iterator;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * 发布前 BPMN 归一化。
  */
@@ -35,9 +40,274 @@ public class ProcessBpmnPublishSanitizer {
         result = useProcessKey(result, processKey);
         result = removeInvalidMultiInstanceConfig(result);
         result = fixMultiInstanceAssignee(result);
+        result = fixConfiguredServiceTasks(result);
+        result = fixConfiguredSendTasks(result);
+        result = fixConfiguredBusinessRuleTasks(result);
+        result = fixConfiguredCallActivities(result);
         result = fixScriptTasks(result);
 
         return result;
+    }
+
+    private String fixConfiguredServiceTasks(String bpmnXml) {
+        return rewriteConfiguredElements(bpmnXml, "serviceTask", "restConfig", (element, config) -> {
+            String startTag = removeAttributes(
+                    element.startTag(),
+                    "class", "expression", "delegateExpression", "type");
+            startTag = setQualifiedAttribute(startTag, "delegateExpression", "${restServiceTaskDelegate}");
+            String resultVariable = readPropertyValue(element.content(), "serviceResultVariable");
+            if (resultVariable != null && !resultVariable.isBlank()) {
+                startTag = setQualifiedAttribute(startTag, "resultVariableName", resultVariable);
+            }
+            return element.withStartTag(startTag);
+        });
+    }
+
+    private String fixConfiguredSendTasks(String bpmnXml) {
+        return rewriteConfiguredElements(bpmnXml, "sendTask", "sendConfig", (element, config) -> {
+            if (!config.path("channels").isArray() || config.path("channels").isEmpty()) {
+                throw new IllegalArgumentException("发送任务至少需要配置一个发送渠道: " + element.id());
+            }
+            if (config.path("to").asText("").isBlank()) {
+                throw new IllegalArgumentException("发送任务必须配置接收人: " + element.id());
+            }
+            String startTag = element.startTag()
+                    .replaceFirst("(?i)<(bpmn:)?sendTask\\b", "<$1serviceTask");
+            startTag = removeAttributes(startTag, "type", "class", "expression", "delegateExpression");
+            startTag = setQualifiedAttribute(startTag, "delegateExpression", "${configuredSendTaskDelegate}");
+            return element.withTagName("serviceTask").withStartTag(startTag);
+        });
+    }
+
+    private String fixConfiguredBusinessRuleTasks(String bpmnXml) {
+        return rewriteConfiguredElements(bpmnXml, "businessRuleTask", "ruleConfig", (element, config) -> {
+            String decisionRef = config.path("decisionRef").asText("");
+            if (decisionRef.isBlank()) {
+                throw new IllegalArgumentException("业务规则任务必须配置决策表Key: " + element.id());
+            }
+            String startTag = element.startTag()
+                    .replaceFirst("(?i)<(bpmn:)?businessRuleTask\\b", "<$1serviceTask");
+            startTag = removeAttributes(startTag, "type", "class", "expression", "delegateExpression");
+            startTag = setQualifiedAttribute(startTag, "delegateExpression", "${configuredDmnTaskDelegate}");
+            return element.withTagName("serviceTask").withStartTag(startTag);
+        });
+    }
+
+    private String fixConfiguredCallActivities(String bpmnXml) {
+        return rewriteConfiguredElements(bpmnXml, "callActivity", "callConfig", (element, config) -> {
+            String calledElement = config.path("calledElement").asText("");
+            if (calledElement.isBlank()) {
+                throw new IllegalArgumentException("调用活动必须配置子流程Key: " + element.id());
+            }
+            String startTag = setAttribute(element.startTag(), "calledElement", calledElement);
+            String callActivityType = config.path("callActivityType").asText("bpmn");
+            startTag = "cmmn".equalsIgnoreCase(callActivityType)
+                    ? setQualifiedAttribute(startTag, "calledElementType", "cmmn")
+                    : removeAttributes(startTag, "calledElementType");
+            String businessKey = config.path("businessKey").asText("");
+            startTag = businessKey.isBlank()
+                    ? removeAttributes(startTag, "businessKey")
+                    : setQualifiedAttribute(startTag, "businessKey", businessKey);
+
+            String content = removeGeneratedCallMappings(element.content());
+            String mappings = callMappings(config.path("inputParameters").asText(""), "in")
+                    + callMappings(config.path("outputParameters").asText(""), "out");
+            if (!mappings.isEmpty()) {
+                content = appendToExtensionElements(content, mappings);
+            }
+            return element.withStartTag(startTag).withContent(content);
+        });
+    }
+
+    private String rewriteConfiguredElements(
+            String bpmnXml,
+            String tagName,
+            String propertyName,
+            ConfiguredElementRewriter rewriter) {
+        Pattern pattern = Pattern.compile(
+                "(?i)<(bpmn:)?" + tagName + "\\b([^>]*)>([\\s\\S]*?)</\\1" + tagName + ">",
+                Pattern.DOTALL);
+        Matcher matcher = pattern.matcher(bpmnXml);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String prefix = matcher.group(1) == null ? "" : matcher.group(1);
+            String startTag = "<" + prefix + tagName + matcher.group(2) + ">";
+            String content = matcher.group(3);
+            String configJson = readPropertyValue(content, propertyName);
+            if (configJson == null || configJson.isBlank()) {
+                matcher.appendReplacement(result, Matcher.quoteReplacement(matcher.group(0)));
+                continue;
+            }
+            try {
+                com.fasterxml.jackson.databind.JsonNode config = objectMapper.readTree(configJson);
+                ConfiguredElement configuredElement = new ConfiguredElement(
+                        prefix,
+                        tagName,
+                        startTag,
+                        content,
+                        attributeValue(startTag, "id"));
+                ConfiguredElement rewritten = rewriter.rewrite(configuredElement, config);
+                matcher.appendReplacement(result, Matcher.quoteReplacement(rewritten.xml()));
+            } catch (IllegalArgumentException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new IllegalArgumentException(
+                        "节点配置解析失败: " + attributeValue(startTag, "id") + ", " + exception.getMessage(),
+                        exception);
+            }
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    private String readPropertyValue(String content, String propertyName) {
+        Pattern nameFirst = Pattern.compile(
+                "(?i)<flowable:property\\b[^>]*name=\"" + Pattern.quote(propertyName)
+                        + "\"[^>]*value=\"([^\"]*)\"");
+        Matcher matcher = nameFirst.matcher(content);
+        if (matcher.find()) {
+            return decodeXml(matcher.group(1));
+        }
+        Pattern valueFirst = Pattern.compile(
+                "(?i)<flowable:property\\b[^>]*value=\"([^\"]*)\"[^>]*name=\""
+                        + Pattern.quote(propertyName) + "\"");
+        matcher = valueFirst.matcher(content);
+        return matcher.find() ? decodeXml(matcher.group(1)) : null;
+    }
+
+    private String removeAttributes(String startTag, String... names) {
+        String result = startTag;
+        for (String name : names) {
+            result = result.replaceAll(
+                    "(?i)\\s+(?:flowable:)?" + Pattern.quote(name) + "=\"[^\"]*\"",
+                    "");
+        }
+        return result;
+    }
+
+    private String setQualifiedAttribute(String startTag, String name, String value) {
+        return setAttributeInternal(startTag, "flowable:" + name, value);
+    }
+
+    private String setAttribute(String startTag, String name, String value) {
+        return setAttributeInternal(startTag, name, value);
+    }
+
+    private String setAttributeInternal(String startTag, String qualifiedName, String value) {
+        String result = startTag.replaceAll(
+                "(?i)\\s+" + Pattern.quote(qualifiedName) + "=\"[^\"]*\"",
+                "");
+        int closingBracket = result.lastIndexOf('>');
+        if (closingBracket < 0) {
+            return result;
+        }
+        return result.substring(0, closingBracket)
+                + " "
+                + qualifiedName
+                + "=\""
+                + escapeXml(value)
+                + "\">";
+    }
+
+    private String attributeValue(String startTag, String name) {
+        Matcher matcher = Pattern.compile(
+                "(?i)\\b" + Pattern.quote(name) + "=\"([^\"]*)\"")
+                .matcher(startTag);
+        return matcher.find() ? decodeXml(matcher.group(1)) : "";
+    }
+
+    private String callMappings(String json, String direction) {
+        if (json == null || json.isBlank()) {
+            return "";
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode mappings = objectMapper.readTree(json);
+            if (!mappings.isObject()) {
+                throw new IllegalArgumentException("调用活动参数必须是 JSON 对象");
+            }
+            StringBuilder xml = new StringBuilder();
+            Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> fields = mappings.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> field = fields.next();
+                String source = field.getValue().asText("");
+                if (source.isBlank()) {
+                    continue;
+                }
+                String sourceAttribute = source.contains("${")
+                        ? "sourceExpression"
+                        : "source";
+                xml.append("<flowable:")
+                        .append(direction)
+                        .append(' ')
+                        .append(sourceAttribute)
+                        .append("=\"")
+                        .append(escapeXml(source))
+                        .append("\" target=\"")
+                        .append(escapeXml(field.getKey()))
+                        .append("\" />");
+            }
+            return xml.toString();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("调用活动参数映射 JSON 无效: " + exception.getMessage(), exception);
+        }
+    }
+
+    private String removeGeneratedCallMappings(String content) {
+        return content.replaceAll(
+                "(?i)<flowable:(?:in|out)\\b[^>]*/>",
+                "");
+    }
+
+    private String appendToExtensionElements(String content, String extensionXml) {
+        if (content.matches("(?is).*?</bpmn:extensionElements>.*")) {
+            return content.replaceFirst(
+                    "(?i)</bpmn:extensionElements>",
+                    Matcher.quoteReplacement(extensionXml + "</bpmn:extensionElements>"));
+        }
+        if (content.matches("(?is).*?</extensionElements>.*")) {
+            return content.replaceFirst(
+                    "(?i)</extensionElements>",
+                    Matcher.quoteReplacement(extensionXml + "</extensionElements>"));
+        }
+        return "<bpmn:extensionElements>" + extensionXml + "</bpmn:extensionElements>" + content;
+    }
+
+    private String escapeXml(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("\"", "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+    }
+
+    @FunctionalInterface
+    private interface ConfiguredElementRewriter {
+        ConfiguredElement rewrite(
+                ConfiguredElement element,
+                com.fasterxml.jackson.databind.JsonNode config);
+    }
+
+    private record ConfiguredElement(
+            String prefix,
+            String tagName,
+            String startTag,
+            String content,
+            String id) {
+        private ConfiguredElement withTagName(String value) {
+            return new ConfiguredElement(prefix, value, startTag, content, id);
+        }
+
+        private ConfiguredElement withStartTag(String value) {
+            return new ConfiguredElement(prefix, tagName, value, content, id);
+        }
+
+        private ConfiguredElement withContent(String value) {
+            return new ConfiguredElement(prefix, tagName, startTag, value, id);
+        }
+
+        private String xml() {
+            return startTag + content + "</" + prefix + tagName + ">";
+        }
     }
 
     private String removeDuplicateCamundaAssignments(String bpmnXml) {

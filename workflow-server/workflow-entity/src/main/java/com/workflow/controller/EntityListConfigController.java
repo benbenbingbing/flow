@@ -2,12 +2,18 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.dto.EntityListConfigDTO;
+import com.workflow.dto.EntityListFieldSaveRequest;
+import com.workflow.dto.EntityListItemReorderRequest;
+import com.workflow.dto.EntityListMetadataPatchRequest;
 import com.workflow.dto.ListFieldDataSourceOptionDTO;
 import com.workflow.dto.permission.EntityActionCapabilityDTO;
 import com.workflow.service.EntityDataDynamicService;
 import com.workflow.service.EntityListConfigService;
+import com.workflow.service.UiConfigDraftMetadataService;
+import com.workflow.service.UiConfigurationAccessService;
 import com.workflow.service.permission.EntityActionCapabilityService;
 import com.workflow.service.listfield.ListFieldDataProviderRegistry;
+import com.workflow.entity.EntityListField;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,9 +30,11 @@ import java.util.Map;
 public class EntityListConfigController {
 
     private final EntityListConfigService listConfigService;
+    private final UiConfigDraftMetadataService metadataService;
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService actionCapabilityService;
     private final ListFieldDataProviderRegistry dataProviderRegistry;
+    private final UiConfigurationAccessService accessService;
 
     @GetMapping("/extension-options")
     public Result<List<ListFieldDataSourceOptionDTO>> extensionOptions() {
@@ -55,15 +63,75 @@ public class EntityListConfigController {
      * 保存/更新列表配置
      */
     @PostMapping("/save")
-    public Result<EntityListConfigDTO> save(@RequestBody EntityListConfigDTO dto) {
-        EntityListConfigDTO saved = listConfigService.saveConfig(dto);
+    public Result<EntityListConfigDTO> saveRequest(
+            @RequestBody EntityListConfigDTO dto) {
+        accessService.requireNewListAccess(dto);
+        EntityListConfigDTO saved = listConfigService.saveConfig(
+                dto,
+                dto.getExpectedRevision());
         return Result.success(saved);
+    }
+
+    /**
+     * 保留给既有直接调用测试的兼容入口；HTTP API 使用 saveRequest。
+     */
+    @Deprecated
+    public Result<EntityListConfigDTO> save(EntityListConfigDTO dto) {
+        accessService.requireNewListAccess(dto);
+        return Result.success(listConfigService.saveConfig(dto));
+    }
+
+    @PatchMapping("/{id}")
+    public Result<EntityListConfigDTO> patchMetadata(
+            @PathVariable String id,
+            @RequestBody EntityListMetadataPatchRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(metadataService.patchList(id, request));
+    }
+
+    @PostMapping("/{id}/fields")
+    public Result<EntityListField> createField(
+            @PathVariable String id,
+            @RequestBody EntityListFieldSaveRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(listConfigService.createField(id, request));
+    }
+
+    @PatchMapping("/{id}/fields/{fieldId}")
+    public Result<EntityListField> patchField(
+            @PathVariable String id,
+            @PathVariable String fieldId,
+            @RequestBody EntityListFieldSaveRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(
+                listConfigService.patchField(id, fieldId, request));
+    }
+
+    @PutMapping("/{id}/fields/{fieldId}/order")
+    public Result<EntityListField> reorderField(
+            @PathVariable String id,
+            @PathVariable String fieldId,
+            @RequestBody EntityListItemReorderRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(
+                listConfigService.reorderField(id, fieldId, request));
+    }
+
+    @DeleteMapping("/{id}/fields/{fieldId}")
+    public Result<Void> deleteField(
+            @PathVariable String id,
+            @PathVariable String fieldId,
+            @RequestParam Integer expectedRevision) {
+        accessService.requireListAccess(id);
+        listConfigService.deleteField(id, fieldId, expectedRevision);
+        return Result.success();
     }
 
     @PostMapping("/{id}/action-rule/preview")
     public Result<EntityActionCapabilityDTO> previewActionRule(
             @PathVariable String id,
             @RequestBody Map<String, String> request) {
+        accessService.requireListAccess(id);
         EntityListConfigDTO config = listConfigService.findById(id);
         if (config == null) {
             throw new RuntimeException("列表配置不存在");
@@ -73,7 +141,7 @@ public class EntityListConfigController {
         var row = entityDataDynamicService.findAccessibleById(
                 config.getEntityCode(),
                 entityDataId,
-                config.getId());
+                config.getListKey());
         return Result.success(actionCapabilityService.evaluateRowAction(
                 config.getEntityCode(),
                 config.getListKey(),
@@ -86,6 +154,7 @@ public class EntityListConfigController {
      */
     @DeleteMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable String id) {
+        accessService.requireListAccess(id);
         listConfigService.deleteConfig(id);
         return Result.success();
     }

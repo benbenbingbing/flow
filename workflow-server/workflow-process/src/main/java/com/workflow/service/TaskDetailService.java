@@ -5,12 +5,11 @@ import com.workflow.dto.TaskDetailDTO;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
-import com.workflow.entity.NodeConfig;
 import com.workflow.entity.ProcessTask;
 import com.workflow.mapper.EntityDataMapper;
-import com.workflow.mapper.NodeConfigMapper;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessTaskMapper;
+import com.workflow.process.publish.ProcessPublishedSnapshotService;
+import com.workflow.service.entity.EntityFormRuntimeService;
 import com.workflow.service.form.EntityFormFieldRuntimeMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,18 +18,11 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.stereotype.Service;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Collectors;
 
 /**
@@ -42,15 +34,14 @@ import java.util.stream.Collectors;
 public class TaskDetailService {
     
     private final ProcessTaskMapper processTaskMapper;
-    private final NodeConfigMapper nodeConfigMapper;
     private final EntityDataMapper entityDataMapper;
     private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
     private final com.workflow.mapper.EntityFormMapper entityFormMapper;
-    private final com.workflow.mapper.EntityFormFieldMapper entityFormFieldMapper;
     private final com.workflow.mapper.EntityFieldMapper entityFieldMapper;
     private final RuntimeService runtimeService;
     private final HistoryService historyService;
-    private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
+    private final ProcessPublishedSnapshotService processPublishedSnapshotService;
+    private final EntityFormRuntimeService entityFormRuntimeService;
     private final ObjectMapper objectMapper;
     
     /**
@@ -121,145 +112,112 @@ public class TaskDetailService {
             }
         }
         
-        TaskDetailDTO.FormConfigDTO formConfig = new TaskDetailDTO.FormConfigDTO();
-        String entityFormId = null;
-        
-        // 从 BPMN XML 中解析节点的表单配置
-        try {
-            String processKey = processTask.getProcessKey();
-            log.debug("解析 BPMN 表单配置: processKey={}, nodeId={}", processKey, nodeId);
-            if (processKey != null) {
-                com.workflow.entity.ProcessDefinitionConfig processConfig = 
-                    processDefinitionConfigMapper.findByProcessKey(processKey).orElse(null);
-                if (processConfig != null && processConfig.getBpmnXml() != null) {
-                    entityFormId = parseEntityFormIdFromBpmn(processConfig.getBpmnXml(), nodeId);
-                    if (entityFormId != null) {
-                        formConfig.setEntityFormId(entityFormId);
-                        log.debug("从 BPMN 解析到 entityFormId: {}", entityFormId);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("从 BPMN 解析表单配置失败: {}", e.getMessage());
-        }
-        
-        // 设置表单默认值
+        List<TaskDetailDTO.FormConfigDTO> formConfigs = new ArrayList<>();
         String formKey = processTask.getFormKey();
-        formConfig.setFormKey(formKey);
-        formConfig.setFormName(processTask.getNodeName() + "表单");
-        formConfig.setLayoutType("vertical"); // 默认布局
-        if (formConfig.getIsReadonly() == null) {
-            formConfig.setIsReadonly(true); // 审批时表单默认只读
-        }
-        
-        // 查询表单字段配置 - 优先使用 entityFormId
-        if (entityFormId != null) {
+
+        if (processTask.getProcessDefinitionId() != null
+                && nodeId != null) {
             try {
-                EntityForm form = getFormById(entityFormId);
-                if (form != null) {
-                    formConfig.setEntityFormId(form.getId());
-                    formConfig.setFormName(form.getFormName());
-                    formConfig.setLayoutType(form.getLayoutType());
-                    
-                    // 转换字段配置
-                    if (form.getFields() != null && !form.getFields().isEmpty()) {
-                        final Map<String, String> fieldCodeMap = entityFieldCodeMap;
-                        List<Map<String, Object>> fields = form.getFields().stream()
-                                .map(f -> convertFieldToMap(f, fieldCodeMap))
-                                .collect(Collectors.toList());
-                        formConfig.setFields(fields);
-                        log.info("表单字段配置: entityFormId={}, fieldCodes={}", 
-                                entityFormId, fields.stream().map(f -> (String)f.get("fieldCode")).collect(Collectors.toList()));
-                    } else {
-                        log.warn("表单字段为空: entityFormId={}", entityFormId);
+                List<com.workflow.entity.ProcessNodeForm> nodeForms =
+                        processPublishedSnapshotService
+                                .getNodeFormsByProcessDefinitionId(
+                                        processTask.getProcessDefinitionId(),
+                                        nodeId);
+                for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
+                    EntityForm form = entityFormRuntimeService.getByBinding(nodeForm);
+                    if (form != null) {
+                        formConfigs.add(buildFormConfig(
+                                form,
+                                nodeForm,
+                                entityFieldCodeMap,
+                                formKey));
                     }
                 }
-            } catch (Exception e) {
-                log.warn("获取表单字段配置失败: entityFormId={}, error={}", entityFormId, e.getMessage());
+            } catch (Exception exception) {
+                log.warn(
+                        "读取流程节点表单发布快照失败: processDefinitionId={}, nodeId={}, error={}",
+                        processTask.getProcessDefinitionId(),
+                        nodeId,
+                        exception.getMessage());
             }
         }
-        
-        // 节点未配置表单，尝试使用实体的默认表单或第一个可用表单
-        if (formConfig.getEntityFormId() == null && entityCode != null) {
+
+        if (formConfigs.isEmpty() && entityCode != null) {
             try {
-                com.workflow.entity.EntityDefinition entityDef = 
-                    entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
+                com.workflow.entity.EntityDefinition entityDef =
+                        entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
                 if (entityDef != null) {
-                    EntityForm form = null;
-                    
-                    // 1. 先尝试获取默认表单
-                    form = entityFormMapper.selectDefaultByEntityId(entityDef.getId());
-                    
-                    // 2. 如果没有默认表单，获取第一个可用表单
+                    EntityForm form =
+                            entityFormRuntimeService.getDefaultForm(entityDef.getId());
                     if (form == null) {
-                        List<EntityForm> forms = entityFormMapper.selectByEntityId(entityDef.getId());
-                        if (forms != null && !forms.isEmpty()) {
-                            form = forms.stream()
-                                    .filter(f -> f.getDeleted() == null || f.getDeleted() == 0)
-                                    .findFirst()
-                                    .orElse(null);
-                        }
+                        List<EntityForm> forms =
+                                entityFormMapper.selectByEntityId(entityDef.getId());
+                        EntityForm first = forms == null
+                                ? null
+                                : forms.stream()
+                                        .filter(item -> item.getDeleted() == null
+                                                || item.getDeleted() == 0)
+                                        .findFirst()
+                                        .orElse(null);
+                        form = first == null
+                                ? null
+                                : entityFormRuntimeService.getById(first.getId());
                     }
-                    
                     if (form != null) {
-                        // 填充字段
-                        List<com.workflow.entity.EntityFormField> fields = 
-                            entityFormFieldMapper.selectByFormId(form.getId());
-                        form.setFields(fields);
-                        
-                        formConfig.setEntityFormId(form.getId());
-                        formConfig.setFormName(form.getFormName());
-                        formConfig.setLayoutType(form.getLayoutType());
-                        
-                        // 转换字段配置
-                        if (form.getFields() != null && !form.getFields().isEmpty()) {
-                            final Map<String, String> fieldCodeMap = entityFieldCodeMap;
-                            List<Map<String, Object>> fieldList = form.getFields().stream()
-                                    .map(f -> convertFieldToMap(f, fieldCodeMap))
-                                    .collect(Collectors.toList());
-                            formConfig.setFields(fieldList);
-                            log.info("使用实体表单: entityCode={}, formId={}, fieldCount={}, isDefault={}", 
-                                    entityCode, form.getId(), fieldList.size(), 
-                                    form.getIsDefault() != null && form.getIsDefault());
-                        }
-                    } else {
-                        log.warn("实体没有可用表单: entityCode={}", entityCode);
+                        formConfigs.add(buildFormConfig(
+                                form,
+                                null,
+                                entityFieldCodeMap,
+                                formKey));
                     }
                 }
-            } catch (Exception e) {
-                log.warn("获取实体表单失败: entityCode={}, error={}", entityCode, e.getMessage());
+            } catch (Exception exception) {
+                log.warn(
+                        "获取实体默认发布表单失败: entityCode={}, error={}",
+                        entityCode,
+                        exception.getMessage());
             }
         }
-        
-        // 备用：使用 formKey 查询（如果上面的逻辑都未找到表单）
-        if (formConfig.getEntityFormId() == null && formKey != null && entityCode != null) {
-            // 备用：使用 formKey 查询
+
+        if (formConfigs.isEmpty()
+                && formKey != null
+                && entityCode != null) {
             try {
-                com.workflow.entity.EntityDefinition entityDef = entityDefinitionMapper
-                        .findByEntityCode(entityCode).orElse(null);
-                if (entityDef != null) {
-                    EntityForm form = getFormByEntityIdAndFormKey(entityDef.getId(), formKey);
-                    if (form != null) {
-                        formConfig.setEntityFormId(form.getId());
-                        formConfig.setFormName(form.getFormName());
-                        formConfig.setLayoutType(form.getLayoutType());
-                        
-                        // 转换字段配置
-                        if (form.getFields() != null && !form.getFields().isEmpty()) {
-                            final Map<String, String> fieldCodeMap = entityFieldCodeMap;
-                            List<Map<String, Object>> fields = form.getFields().stream()
-                                    .map(f -> convertFieldToMap(f, fieldCodeMap))
-                                    .collect(Collectors.toList());
-                            formConfig.setFields(fields);
-                        }
-                    }
+                com.workflow.entity.EntityDefinition entityDef =
+                        entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
+                EntityForm identity = entityDef == null
+                        ? null
+                        : entityFormMapper.selectByEntityIdAndFormKey(
+                                entityDef.getId(),
+                                formKey);
+                EntityForm form = identity == null
+                        ? null
+                        : entityFormRuntimeService.getById(identity.getId());
+                if (form != null) {
+                    formConfigs.add(buildFormConfig(
+                            form,
+                            null,
+                            entityFieldCodeMap,
+                            formKey));
                 }
-            } catch (Exception e) {
-                log.warn("获取表单字段配置失败: formKey={}, error={}", formKey, e.getMessage());
+            } catch (Exception exception) {
+                log.warn(
+                        "按 formKey 获取发布表单失败: formKey={}, error={}",
+                        formKey,
+                        exception.getMessage());
             }
         }
-        
-        dto.setFormConfig(formConfig);
+
+        if (formConfigs.isEmpty()) {
+            TaskDetailDTO.FormConfigDTO empty = new TaskDetailDTO.FormConfigDTO();
+            empty.setFormKey(formKey);
+            empty.setFormName(processTask.getNodeName() + "表单");
+            empty.setLayoutType("vertical");
+            empty.setIsReadonly(true);
+            formConfigs.add(empty);
+        }
+        dto.setFormConfigs(formConfigs);
+        dto.setFormConfig(formConfigs.get(0));
         
         // 4. 获取实体数据
         String entityDataId = processTask.getEntityDataId();
@@ -332,30 +290,39 @@ public class TaskDetailService {
         return dto;
     }
     
-    /**
-     * 根据表单ID查询表单
-     */
-    private EntityForm getFormById(String formId) {
-        EntityForm form = entityFormMapper.selectById(formId);
-        if (form != null) {
-            // 填充字段
-            List<com.workflow.entity.EntityFormField> fields = entityFormFieldMapper.selectByFormId(form.getId());
-            form.setFields(fields);
+    private TaskDetailDTO.FormConfigDTO buildFormConfig(
+            EntityForm form,
+            com.workflow.entity.ProcessNodeForm nodeForm,
+            Map<String, String> entityFieldCodeMap,
+            String fallbackFormKey) {
+        TaskDetailDTO.FormConfigDTO formConfig =
+                new TaskDetailDTO.FormConfigDTO();
+        formConfig.setEntityFormId(form.getId());
+        formConfig.setFormKey(form.getFormKey() == null
+                ? fallbackFormKey
+                : form.getFormKey());
+        formConfig.setFormName(form.getFormName());
+        formConfig.setLayoutType(form.getLayoutType());
+        formConfig.setIsReadonly(nodeForm == null
+                || Integer.valueOf(1).equals(nodeForm.getIsReadonly()));
+        if (nodeForm != null) {
+            formConfig.setFormReleaseId(nodeForm.getFormReleaseId());
+            formConfig.setFormReleaseVersion(nodeForm.getFormReleaseVersion());
         }
-        return form;
-    }
-    
-    /**
-     * 根据实体ID和表单Key查询表单
-     */
-    private EntityForm getFormByEntityIdAndFormKey(String entityId, String formKey) {
-        EntityForm form = entityFormMapper.selectByEntityIdAndFormKey(entityId, formKey);
-        if (form != null) {
-            // 填充字段
-            List<com.workflow.entity.EntityFormField> fields = entityFormFieldMapper.selectByFormId(form.getId());
-            form.setFields(fields);
+        if (form.getFields() != null) {
+            formConfig.setFields(form.getFields().stream()
+                    .map(field -> convertFieldToMap(
+                            field,
+                            entityFieldCodeMap))
+                    .collect(Collectors.toList()));
         }
-        return form;
+        if (form.getNodes() != null) {
+            formConfig.setNodes(objectMapper.convertValue(
+                    form.getNodes(),
+                    new com.fasterxml.jackson.core.type.TypeReference<
+                            List<Map<String, Object>>>() {}));
+        }
+        return formConfig;
     }
     
     /**
@@ -436,44 +403,4 @@ public class TaskDetailService {
         return EntityFormFieldRuntimeMapper.toMap(f, null, objectMapper);
     }
     
-    /**
-     * 从 BPMN XML 中解析指定节点的 entityFormId
-     */
-    private String parseEntityFormIdFromBpmn(String bpmnXml, String nodeId) {
-        try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(new ByteArrayInputStream(bpmnXml.getBytes("UTF-8")));
-            
-            // 查找指定 id 的 userTask 元素
-            NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
-            for (int i = 0; i < userTasks.getLength(); i++) {
-                Element userTask = (Element) userTasks.item(i);
-                if (nodeId.equals(userTask.getAttribute("id"))) {
-                    // 查找 extensionElements -> properties -> property
-                    NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
-                    for (int j = 0; j < extElements.getLength(); j++) {
-                        Element extElement = (Element) extElements.item(j);
-                        NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
-                        for (int k = 0; k < properties.getLength(); k++) {
-                            Element props = (Element) properties.item(k);
-                            NodeList propList = props.getElementsByTagNameNS("*", "property");
-                            for (int m = 0; m < propList.getLength(); m++) {
-                                Element prop = (Element) propList.item(m);
-                                String name = prop.getAttribute("name");
-                                String value = prop.getAttribute("value");
-                                if ("entityFormId".equals(name) && value != null && !value.isEmpty()) {
-                                    return value;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("解析 BPMN XML 失败: {}", e.getMessage());
-        }
-        return null;
-    }
 }

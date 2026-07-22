@@ -1,10 +1,12 @@
 package com.workflow.service;
 
 import com.workflow.common.ForbiddenException;
+import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.service.permission.EntityActionCapabilityService;
 import com.workflow.service.permission.EntityListActionConfigService;
+import com.workflow.service.permission.EntityListScopeAuditService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,9 @@ public class EntityDataActionService {
     private final EntityDataDynamicService dynamicService;
     private final EntityListActionConfigService actionConfigService;
     private final EntityActionCapabilityService capabilityService;
+    private final EntityListScopeAuditService scopeAuditService;
+    private final PublishedFormSubmissionService formSubmissionService;
+    private final FormSubmissionTraceService formSubmissionTraceService;
 
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(String entityCode, String id, String listKey) {
@@ -41,7 +46,7 @@ public class EntityDataActionService {
         return dynamicService.findAccessibleByProcessInstanceId(
                 entityCode,
                 processInstanceId,
-                config == null ? null : config.getId());
+                config == null ? null : config.getListKey());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -50,6 +55,21 @@ public class EntityDataActionService {
             throw new IllegalArgumentException("实体编码不能为空");
         }
         capabilityService.requireToolbarAction(dto.getEntityCode(), dto.getListKey(), "create");
+        FormSubmissionExecutionContext executionContext =
+                formSubmissionTraceService.current(
+                        "ENTITY_CREATE",
+                        null,
+                        Map.of(
+                                "entityCode",
+                                dto.getEntityCode(),
+                                "mode",
+                                "create"));
+        dto.setData(formSubmissionService.applyDefaultForm(
+                dto.getEntityCode(),
+                null,
+                "create",
+                dto.getData(),
+                executionContext));
         return dynamicService.save(dto);
     }
 
@@ -61,7 +81,28 @@ public class EntityDataActionService {
             Map<String, Object> formData) {
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
         capabilityService.requireRowAction(entityCode, listKey, "edit", row);
-        return dynamicService.update(entityCode, id, formData);
+        FormSubmissionExecutionContext executionContext =
+                formSubmissionTraceService.current(
+                        "ENTITY_UPDATE",
+                        null,
+                        Map.of(
+                                "entityCode",
+                                entityCode,
+                                "recordId",
+                                id,
+                                "mode",
+                                "edit"));
+        Map<String, Object> safeData =
+                formSubmissionService.applyDefaultForm(
+                        entityCode,
+                        id,
+                        "edit",
+                        formData,
+                        executionContext);
+        return dynamicService.update(
+                entityCode,
+                id,
+                Map.of("data", safeData));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -97,9 +138,22 @@ public class EntityDataActionService {
 
     private EntityDataDTO findAccessible(String entityCode, String id, String listKey) {
         EntityListConfig config = actionConfigService.resolveListConfig(entityCode, listKey);
-        return dynamicService.findAccessibleById(
-                entityCode,
-                id,
-                config == null ? null : config.getId());
+        try {
+            return dynamicService.findAccessibleById(
+                    entityCode,
+                    id,
+                    config == null ? null : config.getListKey());
+        } catch (ForbiddenException exception) {
+            scopeAuditService.record(
+                    entityCode,
+                    config == null ? listKey : config.getListKey(),
+                    UserContext.getUserId(),
+                    "DENY",
+                    "DENIED",
+                    java.util.Map.of(
+                            "dataId", id,
+                            "reason", exception.getMessage()));
+            throw exception;
+        }
     }
 }

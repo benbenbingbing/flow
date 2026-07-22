@@ -182,7 +182,7 @@ const rules = {
 // 加载实体列表
 async function loadEntities() {
   try {
-    entityList.value = await entityApi.getList()
+    entityList.value = await entityApi.getAll()
   } catch (e) {
     console.error('加载实体列表失败:', e)
   }

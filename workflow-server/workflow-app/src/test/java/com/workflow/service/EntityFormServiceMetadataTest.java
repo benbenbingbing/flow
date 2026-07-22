@@ -1,5 +1,7 @@
 package com.workflow.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityFormField;
 import com.workflow.entity.EntityRelation;
@@ -7,6 +9,7 @@ import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFormFieldMapper;
 import com.workflow.mapper.EntityFormMapper;
+import com.workflow.mapper.EntityFormNodeMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.service.config.EntityFormConfigurationValidator;
 import org.junit.jupiter.api.Test;
@@ -29,10 +32,13 @@ class EntityFormServiceMetadataTest {
         EntityFormService service = new EntityFormService(
                 mock(EntityFormMapper.class),
                 formFieldMapper,
+                mock(EntityFormNodeMapper.class),
                 mock(EntityDefinitionMapper.class),
                 entityFieldMapper,
                 relationMapper,
-                mock(EntityFormConfigurationValidator.class)
+                mock(EntityFormConfigurationValidator.class),
+                mock(EntityDefinitionAccessPolicy.class),
+                new JsonDocumentCodec(new ObjectMapper())
         );
 
         EntityFormField formField = new EntityFormField();

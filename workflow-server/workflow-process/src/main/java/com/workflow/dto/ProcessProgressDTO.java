@@ -159,6 +159,16 @@ public class ProcessProgressDTO {
          * 表单ID
          */
         private String formId;
+
+        /**
+         * 流程发布时固定的表单发布版本ID。
+         */
+        private String formReleaseId;
+
+        /**
+         * 流程发布时固定的表单发布版本号。
+         */
+        private Integer formReleaseVersion;
         
         /**
          * 表单名称
@@ -185,6 +195,11 @@ public class ProcessProgressDTO {
          * 表单字段列表
          */
         private List<Map<String, Object>> fields;
+
+        /**
+         * 递归表单节点列表
+         */
+        private List<Map<String, Object>> nodes;
     }
     
     /**

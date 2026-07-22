@@ -79,6 +79,11 @@
                 </span>
               </template>
             </el-tab-pane>
+            <el-tab-pane name="cc">
+              <template #label>
+                <span><el-icon><Bell /></el-icon>抄送我的</span>
+              </template>
+            </el-tab-pane>
           </el-tabs>
         </div>
       </template>
@@ -101,10 +106,34 @@
             <el-tag v-else type="info" size="small">普通</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="handleApprove(row)">审批</el-button>
-            <el-button type="warning" size="small" @click="openTransferDialog(row)">转办</el-button>
+            <el-button
+              v-if="row.claimRequired"
+              type="primary"
+              size="small"
+              :loading="claimingTaskId === row.taskId"
+              @click="handleClaim(row)"
+            >
+              认领
+            </el-button>
+            <template v-else>
+              <el-button type="primary" size="small" @click="handleApprove(row)">审批</el-button>
+              <template v-if="row.nodeType !== 'ADD_SIGN'">
+                <el-button v-if="row.taskOperations?.transfer !== false" type="warning" size="small" @click="openTransferDialog(row)">转办</el-button>
+                <el-button v-if="row.taskOperations?.addSign !== false" type="success" size="small" @click="openAddSignDialog(row)">加签</el-button>
+                <el-button
+                  v-else-if="row.taskOperations?.activeAddSign?.id"
+                  type="danger"
+                  plain
+                  size="small"
+                  @click="handleCancelAddSign(row)"
+                >
+                  撤销加签
+                </el-button>
+                <el-button v-if="row.taskOperations?.manualCc !== false" type="info" size="small" @click="openCcDialog(row)">知会</el-button>
+              </template>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -162,6 +191,29 @@
         </el-table-column>
       </el-table>
 
+      <el-table v-else :data="ccList" v-loading="loading" stripe>
+        <el-table-column prop="processName" label="流程名称" min-width="150" />
+        <el-table-column prop="nodeName" label="知会节点" min-width="130" />
+        <el-table-column prop="operatorName" label="知会人" width="140" />
+        <el-table-column prop="comment" label="知会说明" min-width="180" show-overflow-tooltip />
+        <el-table-column label="知会时间" width="170">
+          <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.readStatus === 'READ' ? 'info' : 'danger'" size="small">
+              {{ row.readStatus === 'READ' ? '已读' : '未读' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150">
+          <template #default="{ row }">
+            <el-button v-if="row.readStatus !== 'READ'" link type="primary" @click="readCc(row)">标记已读</el-button>
+            <el-button link type="info" @click="viewCc(row)">查看流程</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="queryParams.pageNum"
@@ -198,6 +250,57 @@
         <el-button type="primary" @click="submitTransfer" :loading="transferLoading">确认</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="addSignDialogVisible" title="任务加签" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="加签人员" required>
+          <el-select v-model="addSignForm.userIds" multiple filterable style="width:100%" placeholder="请选择加签人员" @change="loadAddSignPreview">
+            <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="加签方式" required>
+          <el-radio-group v-model="addSignForm.type" @change="loadAddSignPreview">
+            <el-radio-button label="BEFORE">前加签</el-radio-button>
+            <el-radio-button label="PARALLEL">并行加签</el-radio-button>
+            <el-radio-button label="AFTER">后加签</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="处理方式">
+          <el-alert :title="addSignPreview.structure || addSignTypeSummary" type="info" :closable="false" />
+        </el-form-item>
+        <el-alert
+          v-if="addSignPreview.duplicates?.length || addSignPreview.disabled?.length || addSignPreview.invalid?.length"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="`重复 ${addSignPreview.duplicates?.length || 0} 人，停用 ${addSignPreview.disabled?.length || 0} 人，无效 ${addSignPreview.invalid?.length || 0} 人`"
+        />
+        <el-form-item label="说明">
+          <el-input v-model="addSignForm.comment" type="textarea" :rows="3" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addSignDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="operationLoading" @click="submitAddSign">确认加签</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="ccDialogVisible" title="人工知会" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="知会人员" required>
+          <el-select v-model="ccForm.userIds" multiple filterable style="width:100%" placeholder="请选择知会人员">
+            <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="知会说明">
+          <el-input v-model="ccForm.comment" type="textarea" :rows="3" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="ccDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="operationLoading" @click="submitCc">确认知会</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -206,7 +309,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
 import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
-import { getTodoList, getDoneList, getStatistics, completeTask, getMyStartedList, terminateProcess } from '@/api/processTask'
+import { getTodoList, getDoneList, getStatistics, completeTask, claimTask, getMyStartedList, terminateProcess, getTaskOperations, addSignTask, previewAddSign, cancelAddSign, ccTask, getMyCcList, markCcRead } from '@/api/processTask'
 import { getUserList } from '@/api/system/user'
 
 // 统计数据
@@ -229,14 +332,17 @@ const queryParams = reactive({
 const todoList = ref([])
 const doneList = ref([])
 const startedList = ref([])
+const ccList = ref([])
 const todoTotal = ref(0)
 const doneTotal = ref(0)
 const startedTotal = ref(0)
+const ccTotal = ref(0)
 
 const total = computed(() => {
   if (activeTab.value === 'todo') return todoTotal.value
   if (activeTab.value === 'done') return doneTotal.value
-  return startedTotal.value
+  if (activeTab.value === 'started') return startedTotal.value
+  return ccTotal.value
 })
 
 // 用户选项
@@ -244,6 +350,7 @@ const userOptions = ref([])
 
 // 审批弹窗
 const approvalDialogRef = ref(null)
+const claimingTaskId = ref('')
 
 // 转办弹窗
 const transferDialogVisible = ref(false)
@@ -253,6 +360,17 @@ const transferForm = reactive({
   transferTo: '',
   comment: ''
 })
+const addSignDialogVisible = ref(false)
+const ccDialogVisible = ref(false)
+const operationLoading = ref(false)
+const addSignForm = reactive({ taskId: '', type: 'BEFORE', userIds: [], comment: '' })
+const addSignPreview = reactive({ structure: '', duplicates: [], disabled: [], invalid: [] })
+const addSignTypeSummary = computed(() => ({
+  BEFORE: '加签人员先处理；全部通过后原办理人继续审批',
+  PARALLEL: '原办理人与加签人员可并行提交；全部完成后流程继续',
+  AFTER: '原办理人先提交；随后激活加签任务；全部完成后流程继续'
+}[addSignForm.type]))
+const ccForm = reactive({ taskId: '', userIds: [], comment: '' })
 
 // 初始化
 onMounted(() => {
@@ -260,6 +378,7 @@ onMounted(() => {
   loadTodoList()
   loadDoneList()
   loadStartedList()
+  loadCcList()
   loadUsers()
 })
 
@@ -268,7 +387,8 @@ watch(activeTab, () => {
   queryParams.pageNum = 1
   if (activeTab.value === 'todo') loadTodoList()
   else if (activeTab.value === 'done') loadDoneList()
-  else loadStartedList()
+  else if (activeTab.value === 'started') loadStartedList()
+  else loadCcList()
 })
 
 // 格式化日期时间
@@ -297,11 +417,25 @@ async function loadTodoList() {
     const res = await getTodoList(queryParams)
     todoList.value = res.records || []
     todoTotal.value = res.total || 0
+    await loadTaskOperations(todoList.value)
   } catch (e) {
     console.error('加载待办失败:', e)
   } finally {
     loading.value = false
   }
+}
+
+async function loadTaskOperations(tasks) {
+  await Promise.all(tasks
+    .filter(row => row.nodeType !== 'ADD_SIGN' && row.taskId)
+    .map(async row => {
+      try {
+        row.taskOperations = await getTaskOperations(row.taskId)
+      } catch (error) {
+        console.warn('加载任务操作能力失败:', row.taskId, error)
+        row.taskOperations = {}
+      }
+    }))
 }
 
 // 加载已办
@@ -334,6 +468,19 @@ async function loadStartedList() {
   }
 }
 
+async function loadCcList() {
+  loading.value = true
+  try {
+    const res = await getMyCcList(queryParams)
+    ccList.value = Array.isArray(res) ? res : (res.records || [])
+    ccTotal.value = Array.isArray(res) ? res.length : (res.total || 0)
+  } catch (e) {
+    console.error('加载抄送列表失败:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
 // 加载用户列表
 async function loadUsers() {
   try {
@@ -350,6 +497,20 @@ async function loadUsers() {
 // 审批
 function handleApprove(row) {
   approvalDialogRef.value?.openApprove(row)
+}
+
+async function handleClaim(row) {
+  if (!row.taskId || claimingTaskId.value) return
+  claimingTaskId.value = row.taskId
+  try {
+    await claimTask(row.taskId)
+    ElMessage.success('任务认领成功')
+    await Promise.all([loadTodoList(), loadStatistics()])
+  } catch (error) {
+    console.error('认领任务失败:', error)
+  } finally {
+    claimingTaskId.value = ''
+  }
 }
 
 // 查看进度
@@ -370,6 +531,80 @@ function openTransferDialog(row) {
   transferForm.transferTo = ''
   transferForm.comment = ''
   transferDialogVisible.value = true
+}
+
+function openAddSignDialog(row) {
+  Object.assign(addSignForm, { taskId: row.taskId, type: 'BEFORE', userIds: [], comment: '' })
+  Object.assign(addSignPreview, { structure: '', duplicates: [], disabled: [], invalid: [] })
+  addSignDialogVisible.value = true
+}
+
+async function loadAddSignPreview() {
+  if (!addSignForm.taskId || !addSignForm.userIds.length) return
+  const result = await previewAddSign(addSignForm.taskId, addSignForm.userIds, addSignForm.type)
+  Object.assign(addSignPreview, result || {})
+}
+
+function openCcDialog(row) {
+  Object.assign(ccForm, { taskId: row.taskId, userIds: [], comment: '' })
+  ccDialogVisible.value = true
+}
+
+async function submitAddSign() {
+  if (!addSignForm.userIds.length) return ElMessage.warning('请选择加签人员')
+  operationLoading.value = true
+  try {
+    await addSignTask(addSignForm.taskId, {
+      type: addSignForm.type,
+      userIds: addSignForm.userIds,
+      comment: addSignForm.comment,
+      completionPolicy: 'ALL'
+    })
+    ElMessage.success('加签成功')
+    addSignDialogVisible.value = false
+    loadTodoList()
+  } finally {
+    operationLoading.value = false
+  }
+}
+
+async function handleCancelAddSign(row) {
+  const addSignId = row.taskOperations?.activeAddSign?.id
+  if (!addSignId) return
+  try {
+    await ElMessageBox.confirm('撤销后，尚未处理的加签待办会全部取消。确定继续吗？', '撤销加签', { type: 'warning' })
+    operationLoading.value = true
+    await cancelAddSign(addSignId)
+    ElMessage.success('加签已撤销')
+    await loadTodoList()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('撤销加签失败:', error)
+    }
+  } finally {
+    operationLoading.value = false
+  }
+}
+
+async function submitCc() {
+  if (!ccForm.userIds.length) return ElMessage.warning('请选择知会人员')
+  operationLoading.value = true
+  try {
+    await ccTask(ccForm.taskId, { userIds: ccForm.userIds, comment: ccForm.comment })
+    ElMessage.success('知会成功')
+    ccDialogVisible.value = false
+  } finally {
+    operationLoading.value = false
+  }
+}
+
+async function readCc(row) {
+  await markCcRead(row.id)
+  row.readStatus = 'READ'
+}
+
+function viewCc(row) {
+  approvalDialogRef.value?.openView(row, { defaultTab: 'diagram' })
 }
 
 // 提交转办
@@ -426,14 +661,16 @@ function handleSizeChange(val) {
   queryParams.pageSize = val
   if (activeTab.value === 'todo') loadTodoList()
   else if (activeTab.value === 'done') loadDoneList()
-  else loadStartedList()
+  else if (activeTab.value === 'started') loadStartedList()
+  else loadCcList()
 }
 
 function handleCurrentChange(val) {
   queryParams.pageNum = val
   if (activeTab.value === 'todo') loadTodoList()
   else if (activeTab.value === 'done') loadDoneList()
-  else loadStartedList()
+  else if (activeTab.value === 'started') loadStartedList()
+  else loadCcList()
 }
 </script>
 

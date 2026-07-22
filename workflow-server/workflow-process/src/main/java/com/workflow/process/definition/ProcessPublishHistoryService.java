@@ -7,8 +7,10 @@ import com.workflow.contracts.action.FlowActionDesignPort;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.entity.ProcessVersionHistory;
+import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.ProcessNodeFormMapper;
 import com.workflow.mapper.ProcessVersionHistoryMapper;
+import com.workflow.service.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,7 +27,8 @@ public class ProcessPublishHistoryService {
     private final ProcessVersionHistoryMapper versionHistoryMapper;
     private final FlowActionDesignPort flowActionDesignPort;
     private final ProcessNodeFormMapper nodeFormMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final UiConfigReleaseService uiConfigReleaseService;
+    private final ObjectMapper objectMapper;
 
     public int nextVersion(String processConfigId) {
         Integer maxVersion = versionHistoryMapper.findMaxVersionByProcessConfigId(processConfigId);
@@ -67,10 +70,23 @@ public class ProcessPublishHistoryService {
     }
 
     private NodeFormSnapshot toSnapshot(ProcessNodeForm nodeForm) {
+        UiConfigRelease release =
+                uiConfigReleaseService.active(
+                        UiConfigReleaseService.FORM,
+                        nodeForm.getFormId());
+        if (release == null) {
+            throw new IllegalStateException(
+                    "流程节点引用的表单尚未发布: nodeId="
+                            + nodeForm.getNodeId()
+                            + ", formId="
+                            + nodeForm.getFormId());
+        }
         return new NodeFormSnapshot(
                 nodeForm.getNodeId(),
                 nodeForm.getNodeName(),
                 nodeForm.getFormId(),
+                release.getId(),
+                release.getVersion(),
                 nodeForm.getIsReadonly(),
                 nodeForm.getSortOrder());
     }
@@ -78,6 +94,8 @@ public class ProcessPublishHistoryService {
     private record NodeFormSnapshot(String nodeId,
                                     String nodeName,
                                     String formId,
+                                    String formReleaseId,
+                                    Integer formReleaseVersion,
                                     Integer isReadonly,
                                     Integer sortOrder) {
     }

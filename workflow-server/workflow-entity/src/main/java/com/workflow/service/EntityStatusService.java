@@ -18,6 +18,7 @@ import java.util.List;
 public class EntityStatusService {
     
     private final EntityStatusMapper entityStatusMapper;
+    private final EntityDefinitionAccessPolicy entityAccessPolicy;
     
     /**
      * 查询实体的状态列表
@@ -31,6 +32,7 @@ public class EntityStatusService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveStatus(EntityStatus status) {
+        entityAccessPolicy.requireDynamicByCode(status.getEntityCode());
         if (status.getId() == null || status.getId().isEmpty()) {
             entityStatusMapper.insert(status);
         } else {
@@ -43,6 +45,7 @@ public class EntityStatusService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveStatusList(String entityCode, List<EntityStatus> statuses) {
+        entityAccessPolicy.requireDynamicByCode(entityCode);
         // 先物理删除旧的状态（避免主键冲突；全局逻辑删除配置会使 BaseMapper.delete 变成软删，这里必须物理删除）
         entityStatusMapper.physicalDeleteByEntityCode(entityCode);
 

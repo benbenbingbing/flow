@@ -1,7 +1,8 @@
 <template>
   <div v-if="entityData" class="entity-form-section">
-    <template v-if="approvalNormalForm && approvalNormalForm.fields && approvalNormalForm.fields.length > 0">
+    <template v-if="hasConfiguredForm">
       <FormPreviewLinkage
+        ref="formPreviewRef"
         :form="approvalNormalForm"
         :model-value="entityData"
         @update:model-value="(val) => emit('update:entityData', val)"
@@ -9,6 +10,11 @@
         :mode="mode"
         :show-header="false"
         :no-internal-tabs="true"
+        :entity-code="entityCode"
+        :entity-definition="entityDefinition"
+        :entity-fields="entityFields"
+        :context="context"
+        :data-source-runtime="dataSourceRuntime"
       />
     </template>
     <template v-else>
@@ -59,7 +65,7 @@
           <el-radio-button
             v-for="option in effectiveApprovalConfig.options"
             :key="option.value"
-            :label="option.value"
+            :value="option.value"
           >
             {{ option.label }}
           </el-radio-button>
@@ -82,6 +88,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 
@@ -92,6 +99,11 @@ const props = defineProps<{
   isViewMode: boolean
   formReadonly: boolean
   mode: string
+  entityCode?: string
+  entityDefinition?: any
+  entityFields?: any[]
+  context?: Record<string, any>
+  dataSourceRuntime?: any
 }>()
 
 const approveForm = defineModel<any>('approveForm', { required: true })
@@ -99,6 +111,22 @@ const approveForm = defineModel<any>('approveForm', { required: true })
 const emit = defineEmits<{
   'update:entityData': [val: any]
 }>()
+
+const formPreviewRef = ref<any>()
+const hasConfiguredForm = computed(() =>
+  Boolean(props.approvalNormalForm) && (
+    (props.approvalNormalForm?.fields?.length || 0) > 0
+    || (props.approvalNormalForm?.nodes?.length || 0) > 0
+    || Boolean(props.approvalNormalForm?.customComponent)
+  )
+)
+
+async function validate() {
+  if (!hasConfiguredForm.value) return true
+  return (await formPreviewRef.value?.validate?.()) !== false
+}
+
+defineExpose({ validate })
 </script>
 
 <style scoped lang="scss">

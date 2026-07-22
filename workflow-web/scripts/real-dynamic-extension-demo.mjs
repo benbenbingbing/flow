@@ -221,7 +221,9 @@ async function main() {
   const publishedProcess = await api('POST', `/process/${process.id}/publish`, {
     versionDescription: 'Demo扩展真实验证'
   })
-  await api('POST', `/entity/${entity.id}/bind-process/${process.id}`)
+  await api('PUT', `/entity/${entity.id}/workflow-binding`, {
+    processDefinitionId: process.id
+  })
   record('createPublishBindProcess', {
     processId: process.id,
     status: publishedProcess.status,

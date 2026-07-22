@@ -14,8 +14,8 @@ import com.workflow.entity.ProcessNodeForm;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.service.EntityDataDynamicService;
-import com.workflow.service.EntityFormService;
 import com.workflow.service.SysUserService;
+import com.workflow.service.entity.EntityFormRuntimeService;
 import com.workflow.dto.ProcessProgressDTO;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
@@ -97,7 +97,8 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(1, progress.getFormConfigs().size());
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
-        verify(fixture.snapshotService).getNodeForms("expense_flow", "task-1");
+        verify(fixture.snapshotService)
+                .getNodeFormsByProcessDefinitionId("pd-1", "task-1");
     }
 
     private static class Fixture {
@@ -108,7 +109,8 @@ class ProcessProgressRuntimeServiceTest {
         final ProcessDefinitionConfigMapper processConfigMapper = mock(ProcessDefinitionConfigMapper.class);
         final SysUserService sysUserService = mock(SysUserService.class);
         final EntityDataDynamicService entityDataDynamicService = mock(EntityDataDynamicService.class);
-        final EntityFormService entityFormService = mock(EntityFormService.class);
+        final EntityFormRuntimeService entityFormRuntimeService =
+                mock(EntityFormRuntimeService.class);
         final EntityDefinitionMapper entityDefinitionMapper = mock(EntityDefinitionMapper.class);
         final ProcessTaskMapper processTaskMapper = mock(ProcessTaskMapper.class);
         final SysGroupMapper sysGroupMapper = mock(SysGroupMapper.class);
@@ -241,24 +243,29 @@ class ProcessProgressRuntimeServiceTest {
             ProcessNodeForm nodeForm = new ProcessNodeForm();
             nodeForm.setNodeId("task-1");
             nodeForm.setFormId("form-1");
+            nodeForm.setFormReleaseId("release-2");
+            nodeForm.setFormReleaseVersion(2);
             nodeForm.setIsReadonly(1);
             nodeForm.setSortOrder(0);
-            when(snapshotService.getNodeForms("expense_flow", "task-1")).thenReturn(List.of(nodeForm));
+            when(snapshotService.getNodeFormsByProcessDefinitionId(
+                    "pd-1",
+                    "task-1")).thenReturn(List.of(nodeForm));
 
             EntityForm form = new EntityForm();
             form.setId("form-1");
             form.setFormName("审批表单");
             form.setFormKey("approval-form");
             form.setLayoutType("vertical");
-            when(entityFormService.getById("form-1")).thenReturn(form);
+            when(entityFormRuntimeService.getByBinding(nodeForm))
+                    .thenReturn(form);
         }
 
         ProcessProgressRuntimeService service() {
             return new ProcessProgressRuntimeService(
                     runtimeService, historyService, repositoryService, taskService,
-                    processConfigMapper, sysUserService, entityDataDynamicService, entityFormService,
+                    processConfigMapper, sysUserService, entityDataDynamicService, entityFormRuntimeService,
                     entityDefinitionMapper, processTaskMapper, sysGroupMapper, sysUserGroupMapper,
-                    sysUserMapper, operationLogMapper, nodeApprovalMapper, snapshotService);
+                    sysUserMapper, operationLogMapper, nodeApprovalMapper, null, snapshotService);
         }
     }
 }

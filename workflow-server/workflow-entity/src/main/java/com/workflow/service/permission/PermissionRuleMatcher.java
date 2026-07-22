@@ -9,12 +9,18 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * 数据权限用户匹配器。
  */
 @Component
 public class PermissionRuleMatcher {
+
+    private static final int MAX_DEPTH = 6;
+    private static final int MAX_NODES = 100;
+    private static final Set<String> BUILTIN_TYPES =
+            Set.of("ALL_USERS", "USER", "ROLE", "GROUP", "DEPT", "ORG");
 
     private final SysOrganizationMapper orgMapper;
     private final SysUserGroupMapper userGroupMapper;
@@ -41,6 +47,74 @@ public class PermissionRuleMatcher {
             return false;
         }
         return matchesConditions(match.getLogic(), conditions, user);
+    }
+
+    public void validate(MatchConfigDTO match) {
+        if (match == null) {
+            throw new IllegalArgumentException("适用用户配置不能为空");
+        }
+        int[] count = {0};
+        if (match.getRoot() != null) {
+            validateNode(match.getRoot(), 1, count);
+            return;
+        }
+        if (match.getConditions() == null || match.getConditions().isEmpty()) {
+            throw new IllegalArgumentException("至少配置一个适用用户条件");
+        }
+        String logic = normalized(match.getLogic(), "OR");
+        if (!Set.of("AND", "OR").contains(logic)) {
+            throw new IllegalArgumentException("适用用户逻辑只能是 AND 或 OR");
+        }
+        match.getConditions().forEach(this::validateCondition);
+    }
+
+    private void validateNode(
+            MatchConfigDTO.MatchNodeDTO node,
+            int depth,
+            int[] count) {
+        if (node == null) {
+            throw new IllegalArgumentException("适用用户条件节点不能为空");
+        }
+        if (depth > MAX_DEPTH || ++count[0] > MAX_NODES) {
+            throw new IllegalArgumentException("适用用户条件过于复杂");
+        }
+        if ("GROUP".equalsIgnoreCase(node.getType())) {
+            if (!Set.of("AND", "OR").contains(normalized(node.getLogic(), ""))) {
+                throw new IllegalArgumentException("适用用户条件组只能使用 AND 或 OR");
+            }
+            if (node.getChildren() == null || node.getChildren().isEmpty()) {
+                throw new IllegalArgumentException("适用用户条件组不能为空");
+            }
+            for (MatchConfigDTO.MatchNodeDTO child : node.getChildren()) {
+                validateNode(child, depth + 1, count);
+            }
+            return;
+        }
+        validateCondition(node.getCondition());
+    }
+
+    private void validateCondition(MatchConfigDTO.MatchConditionDTO condition) {
+        if (condition == null || condition.getScopeType() == null
+                || condition.getScopeType().isBlank()) {
+            throw new IllegalArgumentException("适用用户条件缺少范围类型");
+        }
+        String type = normalized(condition.getScopeType(), "");
+        if (!BUILTIN_TYPES.contains(type)) {
+            matchProviders.stream()
+                    .filter(provider -> provider.getScopeType().equalsIgnoreCase(type))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "不支持的适用用户范围: " + condition.getScopeType()))
+                    .validate(condition);
+            return;
+        }
+        if (!"ALL_USERS".equals(type)
+                && (condition.getTargetIds() == null || condition.getTargetIds().isEmpty())) {
+            throw new IllegalArgumentException("适用用户范围未选择目标");
+        }
+        if (!Set.of("ANY", "ALL").contains(normalized(condition.getOperator(), "ANY"))) {
+            throw new IllegalArgumentException("适用用户匹配方式只能是 ANY 或 ALL");
+        }
     }
 
     private boolean matchesNode(MatchConfigDTO.MatchNodeDTO node, SysUser user) {
@@ -136,5 +210,11 @@ public class PermissionRuleMatcher {
                 .findFirst()
                 .map(provider -> provider.matches(condition, user))
                 .orElse(false);
+    }
+
+    private String normalized(String value, String fallback) {
+        return value == null || value.isBlank()
+                ? fallback
+                : value.trim().toUpperCase(Locale.ROOT);
     }
 }

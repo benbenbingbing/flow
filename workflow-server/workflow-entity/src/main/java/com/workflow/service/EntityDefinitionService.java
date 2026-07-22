@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.BusinessConflictException;
 import com.workflow.common.PageResult;
 import com.workflow.contracts.migration.MigrationAssetRecorder;
+import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
 import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityDefinitionQueryDTO;
@@ -46,11 +48,14 @@ public class EntityDefinitionService {
     private final ProcessCatalogPort processCatalogPort;
     private final EntityDataDynamicMapper entityDataDynamicMapper;
     private final DynamicTableService dynamicTableService;
+    private final EntityRecordTeamService entityRecordTeamService;
     private final EntityPhysicalTableNaming physicalTableNaming;
     private final EntityPublishHistoryService publishHistoryService;
     private final EntityFieldFileItemService fileItemService;
+    private final EntityFieldOptionService fieldOptionService;
     private final ObjectMapper objectMapper;
     private final com.workflow.service.permission.EntityPermissionCatalogService entityPermissionCatalogService;
+    private final com.workflow.service.permission.EntityListScopeService entityListScopeService;
     private final MigrationAssetRecorder migrationAssetRecorder;
     
     /**
@@ -78,8 +83,11 @@ public class EntityDefinitionService {
         if (StringUtils.isNotBlank(query.getStatus())) {
             wrapper.eq(EntityDefinition::getStatus, query.getStatus());
         }
-        if (query.getEnableProcess() != null) {
-            wrapper.eq(EntityDefinition::getEnableProcess, query.getEnableProcess());
+        if (query.getLifecycleMode() != null) {
+            wrapper.eq(EntityDefinition::getLifecycleMode, query.getLifecycleMode());
+        }
+        if (query.getStorageMode() != null) {
+            wrapper.eq(EntityDefinition::getStorageMode, query.getStorageMode());
         }
         if (StringUtils.isNotBlank(query.getKeyword())) {
             String keyword = query.getKeyword().trim();
@@ -102,13 +110,17 @@ public class EntityDefinitionService {
                 .collect(Collectors.toList());
 
         Map<String, String> processNameMap = processCatalogPort.findNamesByIds(processIds);
+        Map<String, ProcessCatalogItem> processItems = processCatalogPort.findItemsByIds(processIds);
 
         return list.stream()
                 .map(entity -> convertToDTO(
                         entity,
                         entity.getProcessDefinitionId() == null
                                 ? null
-                                : processNameMap.get(entity.getProcessDefinitionId())))
+                                : processNameMap.get(entity.getProcessDefinitionId()),
+                        entity.getProcessDefinitionId() == null
+                                ? null
+                                : processItems.get(entity.getProcessDefinitionId())))
                 .collect(Collectors.toList());
     }
     
@@ -125,8 +137,11 @@ public class EntityDefinitionService {
         List<EntityField> fields = fieldMapper.findByEntityId(id);
         entity.setFields(fields);
         // 查询流程名称
-        String processName = getProcessName(entity.getProcessDefinitionId());
-        return convertToDTO(entity, processName);
+        ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
+        String processName = process == null
+                ? getProcessName(entity.getProcessDefinitionId())
+                : process.processName();
+        return convertToDTO(entity, processName, process);
     }
     
     /**
@@ -140,8 +155,11 @@ public class EntityDefinitionService {
         List<EntityField> fields = fieldMapper.findByEntityId(entity.getId());
         entity.setFields(fields);
         // 查询流程名称
-        String processName = getProcessName(entity.getProcessDefinitionId());
-        return convertToDTO(entity, processName);
+        ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
+        String processName = process == null
+                ? getProcessName(entity.getProcessDefinitionId())
+                : process.processName();
+        return convertToDTO(entity, processName, process);
     }
     
     /**
@@ -160,6 +178,13 @@ public class EntityDefinitionService {
         }
         return processCatalogPort.findNamesByIds(List.of(processId)).get(processId);
     }
+
+    private ProcessCatalogItem getProcessItem(String processId) {
+        if (!StringUtils.isNotBlank(processId)) {
+            return null;
+        }
+        return processCatalogPort.findItemsByIds(List.of(processId)).get(processId);
+    }
     
     /**
      * 保存实体定义
@@ -173,6 +198,18 @@ public class EntityDefinitionService {
         validateFieldCodeUnique(dto.getFields());
         
         EntityDefinition entity = convertToEntity(dto);
+        entity.setLifecycleMode(dto.getLifecycleMode() == null
+                ? EntityDefinition.LifecycleMode.STANDALONE
+                : dto.getLifecycleMode());
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        entity.setTeamVisibilityEnabled(Boolean.TRUE.equals(dto.getTeamVisibilityEnabled()));
+        entity.setTeamVisibilityLevel(dto.getTeamVisibilityLevel() == null
+                ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
+                : dto.getTeamVisibilityLevel());
+        entity.setStatus(dto.getStatus() == null ? EntityDefinition.Status.DRAFT : dto.getStatus());
+        if (entity.getLifecycleMode() == EntityDefinition.LifecycleMode.STANDALONE) {
+            entity.setProcessDefinitionId(null);
+        }
         entity.setPhysicalTableName(physicalTableNaming.generate(entity.getEntityCode()));
         entityMapper.insert(entity);
         
@@ -191,6 +228,7 @@ public class EntityDefinitionService {
         }
 
         entityPermissionCatalogService.synchronizeEntity(entity);
+        entityListScopeService.ensureDefaultAndRelease(entity.getEntityCode());
         
         return convertToDTO(entity);
     }
@@ -253,6 +291,17 @@ public class EntityDefinitionService {
         deptIdField.setRefEntityType(EntityField.RefEntityType.DEPT);
         fieldMapper.insert(deptIdField);
 
+        fieldMapper.insert(createSystemField(entityId, "dataNo", "业务单号",
+                EntityField.FieldType.STRING, "varchar(100)", 100, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "submitTime", "提交时间",
+                EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "currentTaskId", "当前任务ID",
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "currentTaskName", "当前任务名称",
+                EntityField.FieldType.STRING, "varchar(200)", 200, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "currentTaskAssignee", "当前任务办理人",
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
+
         log.info("已为实体 [{}] 添加系统标准字段", entityId);
     }
     
@@ -274,6 +323,57 @@ public class EntityDefinitionService {
         field.setEditable(editable); // 是否可编辑
         field.setSortOrder(sortOrder);
         return field;
+    }
+
+    private void ensureWorkflowSystemFields(String entityId) {
+        int sortOrder = fieldMapper.findByEntityId(entityId).stream()
+                .map(EntityField::getSortOrder)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0);
+        sortOrder = ensureSystemField(entityId, "processInstanceId", "流程实例ID",
+                EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
+        sortOrder = ensureSystemField(entityId, "processStartTime", "流程开始时间",
+                EntityField.FieldType.DATETIME, "datetime", null, sortOrder);
+        sortOrder = ensureSystemField(entityId, "processEndTime", "流程结束时间",
+                EntityField.FieldType.DATETIME, "datetime", null, sortOrder);
+        sortOrder = ensureSystemField(entityId, "submitterId", "提交人ID",
+                EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
+        sortOrder = ensureSystemField(entityId, "submitterName", "提交人",
+                EntityField.FieldType.STRING, "varchar(100)", 100, sortOrder);
+        sortOrder = ensureSystemField(entityId, "dataNo", "业务单号",
+                EntityField.FieldType.STRING, "varchar(100)", 100, sortOrder);
+        sortOrder = ensureSystemField(entityId, "submitTime", "提交时间",
+                EntityField.FieldType.DATETIME, "datetime", null, sortOrder);
+        sortOrder = ensureSystemField(entityId, "currentTaskId", "当前任务ID",
+                EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
+        sortOrder = ensureSystemField(entityId, "currentTaskName", "当前任务名称",
+                EntityField.FieldType.STRING, "varchar(200)", 200, sortOrder);
+        ensureSystemField(entityId, "currentTaskAssignee", "当前任务办理人",
+                EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
+    }
+
+    private int ensureSystemField(
+            String entityId,
+            String fieldCode,
+            String fieldName,
+            EntityField.FieldType fieldType,
+            String dbType,
+            Integer length,
+            int sortOrder) {
+        if (fieldMapper.findByEntityIdAndFieldCode(entityId, fieldCode) != null) {
+            return sortOrder;
+        }
+        fieldMapper.insert(createSystemField(
+                entityId,
+                fieldCode,
+                fieldName,
+                fieldType,
+                dbType,
+                length,
+                false,
+                sortOrder + 1));
+        return sortOrder + 1;
     }
     
     /**
@@ -327,17 +427,46 @@ public class EntityDefinitionService {
         if (existing == null) {
             throw new RuntimeException("实体不存在: " + id);
         }
+        if (storageMode(existing) == EntityDefinition.StorageMode.SYSTEM) {
+            validateSystemEntityUpdate(existing, dto);
+            existing.setEntityName(dto.getEntityName());
+            existing.setDescription(dto.getDescription());
+            entityMapper.updateById(existing);
+            return convertToDTO(existing);
+        }
         
         // 检查实体是否已发布
         boolean isPublished = existing.getStatus() == EntityDefinition.Status.PUBLISHED;
         String entityCode = existing.getEntityCode();
+        EntityDefinition.LifecycleMode currentMode = lifecycleMode(existing);
+        EntityDefinition.LifecycleMode requestedMode = dto.getLifecycleMode() == null
+                ? currentMode
+                : dto.getLifecycleMode();
+        if (currentMode == EntityDefinition.LifecycleMode.WORKFLOW
+                && requestedMode == EntityDefinition.LifecycleMode.STANDALONE) {
+            throw new BusinessConflictException(
+                    "ENTITY_LIFECYCLE_DOWNGRADE_FORBIDDEN",
+                    "流程实体不允许降级为独立业务实体");
+        }
         
         existing.setEntityName(dto.getEntityName());
         existing.setDescription(dto.getDescription());
-        existing.setProcessDefinitionId(dto.getProcessDefinitionId());
-        existing.setEnableProcess(dto.getEnableProcess());
+        existing.setLifecycleMode(requestedMode);
+        existing.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        existing.setTeamVisibilityEnabled(Boolean.TRUE.equals(dto.getTeamVisibilityEnabled()));
+        existing.setTeamVisibilityLevel(dto.getTeamVisibilityLevel() == null
+                ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
+                : dto.getTeamVisibilityLevel());
+        if (dto.getProcessDefinitionId() != null
+                && !java.util.Objects.equals(dto.getProcessDefinitionId(), existing.getProcessDefinitionId())) {
+            throw new IllegalArgumentException("请通过流程绑定接口修改实体绑定流程");
+        }
         
         entityMapper.updateById(existing);
+        if (currentMode == EntityDefinition.LifecycleMode.STANDALONE
+                && requestedMode == EntityDefinition.LifecycleMode.WORKFLOW) {
+            ensureWorkflowSystemFields(existing.getId());
+        }
         entityPermissionCatalogService.synchronizeEntity(existing);
         
         // 更新字段
@@ -367,6 +496,7 @@ public class EntityDefinitionService {
                 for (EntityField field : existingFields) {
                     if (!Boolean.TRUE.equals(field.getIsSystem()) && 
                         !newFieldCodes.contains(field.getFieldCode())) {
+                        fieldOptionService.delete(field.getId());
                         fieldMapper.deleteById(field.getId());
                     }
                 }
@@ -384,6 +514,8 @@ public class EntityDefinitionService {
                         existingField.setIsRequired(fieldDTO.getIsRequired());
                         existingField.setDefaultValue(fieldDTO.getDefaultValue());
                         existingField.setOptionsJson(fieldDTO.getOptionsJson());
+                        existingField.setDictType(fieldDTO.getDictType());
+                        existingField.setValueStorage(resolveValueStorage(fieldDTO));
                         existingField.setSortOrder(fieldDTO.getSortOrder());
                     } else {
                         // 非系统字段，更新字段定义（仅更新元数据，不修改数据库列）
@@ -394,6 +526,8 @@ public class EntityDefinitionService {
                         existingField.setIsUnique(fieldDTO.getIsUnique());
                         existingField.setDefaultValue(fieldDTO.getDefaultValue());
                         existingField.setOptionsJson(fieldDTO.getOptionsJson());
+                        existingField.setDictType(fieldDTO.getDictType());
+                        existingField.setValueStorage(resolveValueStorage(fieldDTO));
                         existingField.setSortOrder(fieldDTO.getSortOrder());
                         existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
                         existingField.setFileTypes(fieldDTO.getFileTypes());
@@ -412,6 +546,7 @@ public class EntityDefinitionService {
                         existingField.setRefFieldCode(firstText(fieldDTO.getChildRefFieldCode(), fieldDTO.getRefFieldCode()));
                     }
                     fieldMapper.updateById(existingField);
+                    synchronizeFieldOptions(existingField, fieldDTO);
                     // 级联保存附件项配置
                     fileItemService.saveFileItems(existingField.getId(), fieldDTO.getFileItems());
                 } else {
@@ -427,6 +562,7 @@ public class EntityDefinitionService {
                     field.setEditable(true);
                     field.setIsPublished(false); // 新字段标记为未发布
                     fieldMapper.insert(field);
+                    synchronizeFieldOptions(field, fieldDTO);
                     // 级联保存附件项配置
                     fileItemService.saveFileItems(field.getId(), fieldDTO.getFileItems());
                     
@@ -473,6 +609,11 @@ public class EntityDefinitionService {
     @Transactional
     public void delete(String id) {
         EntityDefinition entity = entityMapper.selectById(id);
+        if (entity != null && storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体由系统目录自动维护，不能删除");
+        }
         relationMapper.deleteByParentEntityId(id);
         fieldMapper.deleteByEntityId(id);
         entityMapper.deleteById(id);
@@ -499,6 +640,11 @@ public class EntityDefinitionService {
         if (entity == null) {
             throw new RuntimeException("实体不存在: " + id);
         }
+        if (storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体不执行动态建表和发布");
+        }
         
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
@@ -512,6 +658,7 @@ public class EntityDefinitionService {
         
         // 同步表结构（创建表或添加字段）
         List<String> executedDdls = dynamicTableService.syncEntityTableStructure(entity);
+        entityRecordTeamService.ensureTeamTable(entity);
         
         // 标记已同步的字段为已发布状态
         int publishedFieldCount = 0;
@@ -540,6 +687,9 @@ public class EntityDefinitionService {
         
         entity.setStatus(EntityDefinition.Status.PUBLISHED);
         entityMapper.updateById(entity);
+        entityListScopeService.publish(
+                entity.getEntityCode(),
+                publishRequest.getVersionDescription());
         migrationAssetRecorder.recordEntity(entity.getId(), history.getId(), publishRequest);
         return convertToDTO(entity);
     }
@@ -578,36 +728,100 @@ public class EntityDefinitionService {
      * @return 更新后的实体DTO
      */
     @Transactional
-    public EntityDefinitionDTO bindProcess(String entityId, String processId) {
+    public EntityDefinitionDTO bindWorkflow(String entityId, String processId) {
         EntityDefinition entity = entityMapper.selectById(entityId);
         if (entity == null) {
             throw new RuntimeException("实体不存在: " + entityId);
         }
-        
-        // 如果要切换流程（原流程不为空且新流程不同），检查是否有流程数据
+        assertDynamicEntity(entity);
+        if (!StringUtils.isNotBlank(processId)) {
+            throw new IllegalArgumentException("流程定义ID不能为空");
+        }
+        ProcessCatalogItem process = getProcessItem(processId);
+        if (process == null) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_PROCESS_MISSING",
+                    "绑定流程不存在: " + processId);
+        }
+        EntityDefinition boundEntity = entityMapper.findByProcessDefinitionId(processId).orElse(null);
+        if (boundEntity != null && !entityId.equals(boundEntity.getId())) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_ALREADY_BOUND",
+                    "该流程已绑定实体: " + boundEntity.getEntityName());
+        }
+
         String oldProcessId = entity.getProcessDefinitionId();
         if (oldProcessId != null && !oldProcessId.equals(processId)) {
-            // 检查是否有流程数据（使用新表结构）
-            String tableName = dynamicTableService.getTableName(entity.getEntityCode());
-            int processDataCount = 0;
-            if (dynamicTableService.tableExists(entity.getEntityCode())) {
-                processDataCount = (int) entityDataDynamicMapper.count(tableName);
-            }
+            long processDataCount = countProcessInstances(entity);
             if (processDataCount > 0) {
-                throw new RuntimeException("该实体已有 " + processDataCount + " 条流程数据，无法切换绑定的流程。请先处理完现有流程数据后再切换。");
+                throw new BusinessConflictException(
+                        "ENTITY_WORKFLOW_BINDING_IN_USE",
+                        "该实体已有 " + processDataCount + " 条流程实例数据，无法切换绑定流程");
             }
         }
         
         entity.setProcessDefinitionId(processId);
-        entity.setEnableProcess(true);
+        entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
         entityMapper.updateById(entity);
+        ensureWorkflowSystemFields(entity.getId());
+        entityPermissionCatalogService.synchronizeEntity(entity);
 
-        EntityPublishHistory latestHistory = publishHistoryMapper.findLatestByEntityId(entityId);
-        if (latestHistory != null) {
-            latestHistory.setProcessDefinitionId(processId);
-            publishHistoryMapper.updateById(latestHistory);
+        updateLatestPublishedBinding(entityId, processId);
+
+        return convertToDTO(entity, process.processName(), process);
+    }
+
+    @Transactional
+    public EntityDefinitionDTO unbindWorkflow(String entityId) {
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        if (entity == null) {
+            throw new RuntimeException("实体不存在: " + entityId);
         }
+        assertDynamicEntity(entity);
+        if (lifecycleMode(entity) != EntityDefinition.LifecycleMode.WORKFLOW) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_SUPPORTED",
+                    "独立业务实体没有流程绑定");
+        }
+        long processDataCount = countProcessInstances(entity);
+        if (processDataCount > 0) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_BINDING_IN_USE",
+                    "该实体已有 " + processDataCount + " 条流程实例数据，不能解除流程绑定");
+        }
+        entity.setProcessDefinitionId(null);
+        entityMapper.updateById(entity);
+        updateLatestPublishedBinding(entityId, null);
+        return convertToDTO(entity);
+    }
 
+    @Transactional
+    public EntityDefinitionDTO updateLifecycleMode(
+            String entityId,
+            EntityDefinition.LifecycleMode requestedMode) {
+        if (requestedMode == null) {
+            throw new IllegalArgumentException("实体类型不能为空");
+        }
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        if (entity == null) {
+            throw new RuntimeException("实体不存在: " + entityId);
+        }
+        assertDynamicEntity(entity);
+        EntityDefinition.LifecycleMode currentMode = lifecycleMode(entity);
+        if (currentMode == EntityDefinition.LifecycleMode.WORKFLOW
+                && requestedMode == EntityDefinition.LifecycleMode.STANDALONE) {
+            throw new BusinessConflictException(
+                    "ENTITY_LIFECYCLE_DOWNGRADE_FORBIDDEN",
+                    "流程实体不允许降级为独立业务实体");
+        }
+        if (currentMode == requestedMode) {
+            return convertToDTO(entity);
+        }
+        entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        entityMapper.updateById(entity);
+        ensureWorkflowSystemFields(entity.getId());
+        entityPermissionCatalogService.synchronizeEntity(entity);
         return convertToDTO(entity);
     }
 
@@ -622,8 +836,11 @@ public class EntityDefinitionService {
         List<EntityField> fields = fieldMapper.findByEntityId(entity.getId());
         entity.setFields(fields);
         // 查询流程名称
-        String processName = getProcessName(entity.getProcessDefinitionId());
-        return convertToDTO(entity, processName);
+        ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
+        String processName = process == null
+                ? getProcessName(entity.getProcessDefinitionId())
+                : process.processName();
+        return convertToDTO(entity, processName, process);
     }
 
     private void syncRelations(EntityDefinition parent, List<EntityFieldDTO> fieldDtos, List<EntityField> savedFields) {
@@ -735,18 +952,36 @@ public class EntityDefinitionService {
 
     // 转换方法
     private EntityDefinitionDTO convertToDTO(EntityDefinition entity) {
-        return convertToDTO(entity, null);
+        ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
+        String processName = process == null
+                ? getProcessName(entity.getProcessDefinitionId())
+                : process.processName();
+        return convertToDTO(entity, processName, process);
     }
     
     private EntityDefinitionDTO convertToDTO(EntityDefinition entity, String processName) {
+        return convertToDTO(entity, processName, getProcessItem(entity.getProcessDefinitionId()));
+    }
+
+    private EntityDefinitionDTO convertToDTO(
+            EntityDefinition entity,
+            String processName,
+            ProcessCatalogItem process) {
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
         dto.setId(entity.getId());
         dto.setEntityCode(entity.getEntityCode());
         dto.setEntityName(entity.getEntityName());
         dto.setDescription(entity.getDescription());
         dto.setProcessDefinitionId(entity.getProcessDefinitionId());
+        dto.setProcessKey(process == null ? null : process.processKey());
         dto.setProcessName(processName);
-        dto.setEnableProcess(entity.getEnableProcess());
+        dto.setLifecycleMode(lifecycleMode(entity));
+        dto.setStorageMode(storageMode(entity));
+        dto.setTeamVisibilityEnabled(Boolean.TRUE.equals(entity.getTeamVisibilityEnabled()));
+        dto.setTeamVisibilityLevel(entity.getTeamVisibilityLevel() == null
+                ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
+                : entity.getTeamVisibilityLevel());
+        dto.setWorkflowBindingStatus(resolveBindingStatus(entity, process));
         dto.setStatus(entity.getStatus());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
@@ -776,6 +1011,18 @@ public class EntityDefinitionService {
         dto.setIsUnique(field.getIsUnique());
         dto.setDefaultValue(field.getDefaultValue());
         dto.setOptionsJson(field.getOptionsJson());
+        List<Map<String, Object>> structuredOptions =
+                fieldOptionService.findOptions(field.getId());
+        if (structuredOptions.isEmpty() && StringUtils.isNotBlank(field.getOptionsJson())) {
+            try {
+                structuredOptions = fieldOptionService.parseDocument(field.getOptionsJson());
+            } catch (RuntimeException exception) {
+                log.warn("实体字段选项解析失败: fieldId={}", field.getId(), exception);
+            }
+        }
+        dto.setOptions(structuredOptions);
+        dto.setDictType(field.getDictType());
+        dto.setValueStorage(field.getValueStorage());
         dto.setValidateRules(field.getValidateRules());
         dto.setSortOrder(field.getSortOrder());
         dto.setIsSystem(field.getIsSystem());
@@ -800,6 +1047,21 @@ public class EntityDefinitionService {
         }
         return dto;
     }
+
+    private void synchronizeFieldOptions(EntityField field, EntityFieldDTO dto) {
+        List<Map<String, Object>> options = dto.getOptions();
+        if (options == null && StringUtils.isNotBlank(dto.getOptionsJson())) {
+            options = fieldOptionService.parseDocument(dto.getOptionsJson());
+        }
+        if (options == null) {
+            return;
+        }
+        fieldOptionService.replace(field.getId(), options);
+        field.setOptionsJson(options.isEmpty()
+                ? null
+                : objectMapper.valueToTree(options).toString());
+        fieldMapper.updateById(field);
+    }
     
     private EntityDefinition convertToEntity(EntityDefinitionDTO dto) {
         EntityDefinition entity = new EntityDefinition();
@@ -808,7 +1070,12 @@ public class EntityDefinitionService {
         entity.setEntityName(dto.getEntityName());
         entity.setDescription(dto.getDescription());
         entity.setProcessDefinitionId(dto.getProcessDefinitionId());
-        entity.setEnableProcess(dto.getEnableProcess());
+        entity.setLifecycleMode(dto.getLifecycleMode());
+        entity.setStorageMode(dto.getStorageMode());
+        entity.setTeamVisibilityEnabled(Boolean.TRUE.equals(dto.getTeamVisibilityEnabled()));
+        entity.setTeamVisibilityLevel(dto.getTeamVisibilityLevel() == null
+                ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
+                : dto.getTeamVisibilityLevel());
         entity.setStatus(dto.getStatus());
         entity.setCreatedBy(dto.getCreatedBy());
         return entity;
@@ -833,6 +1100,8 @@ public class EntityDefinitionService {
         field.setIsUnique(dto.getIsUnique());
         field.setDefaultValue(dto.getDefaultValue());
         field.setOptionsJson(dto.getOptionsJson());
+        field.setDictType(dto.getDictType());
+        field.setValueStorage(resolveValueStorage(dto));
         field.setValidateRules(dto.getValidateRules());
         field.setSortOrder(dto.getSortOrder());
         field.setFileTypes(dto.getFileTypes());
@@ -848,5 +1117,97 @@ public class EntityDefinitionService {
         field.setDisplayMode(dto.getDisplayMode());
         field.setRefFieldCode(firstText(dto.getChildRefFieldCode(), dto.getRefFieldCode()));
         return field;
+    }
+
+    private String resolveValueStorage(EntityFieldDTO field) {
+        if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE
+                || ((field.getFieldType() == EntityField.FieldType.MULTI_SELECT
+                || field.getFieldType() == EntityField.FieldType.CHECKBOX)
+                && StringUtils.isNotBlank(field.getDictType()))) {
+            return "MULTI_TABLE";
+        }
+        return StringUtils.isNotBlank(field.getValueStorage())
+                ? field.getValueStorage()
+                : "SCALAR";
+    }
+
+    private EntityDefinition.LifecycleMode lifecycleMode(EntityDefinition entity) {
+        if (entity.getLifecycleMode() != null) {
+            return entity.getLifecycleMode();
+        }
+        return StringUtils.isNotBlank(entity.getProcessDefinitionId())
+                ? EntityDefinition.LifecycleMode.WORKFLOW
+                : EntityDefinition.LifecycleMode.STANDALONE;
+    }
+
+    private EntityDefinition.StorageMode storageMode(EntityDefinition entity) {
+        return entity.getStorageMode() == null
+                ? EntityDefinition.StorageMode.DYNAMIC
+                : entity.getStorageMode();
+    }
+
+    private EntityDefinitionDTO.WorkflowBindingStatus resolveBindingStatus(
+            EntityDefinition entity,
+            ProcessCatalogItem process) {
+        if (lifecycleMode(entity) != EntityDefinition.LifecycleMode.WORKFLOW) {
+            return EntityDefinitionDTO.WorkflowBindingStatus.NOT_APPLICABLE;
+        }
+        if (!StringUtils.isNotBlank(entity.getProcessDefinitionId())) {
+            return EntityDefinitionDTO.WorkflowBindingStatus.UNBOUND;
+        }
+        if (process == null || !StringUtils.isNotBlank(process.status())) {
+            return EntityDefinitionDTO.WorkflowBindingStatus.MISSING;
+        }
+        return switch (process.status().toUpperCase()) {
+            case "DRAFT" -> EntityDefinitionDTO.WorkflowBindingStatus.DRAFT;
+            case "PUBLISHED" -> EntityDefinitionDTO.WorkflowBindingStatus.ACTIVE;
+            case "DISABLED" -> EntityDefinitionDTO.WorkflowBindingStatus.DISABLED;
+            default -> EntityDefinitionDTO.WorkflowBindingStatus.MISSING;
+        };
+    }
+
+    private void validateSystemEntityUpdate(EntityDefinition existing, EntityDefinitionDTO dto) {
+        if (dto.getStorageMode() != null
+                && dto.getStorageMode() != EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体的存储模式不能修改");
+        }
+        if (dto.getLifecycleMode() != null
+                && dto.getLifecycleMode() != EntityDefinition.LifecycleMode.STANDALONE) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体不能启用流程");
+        }
+        if (dto.getProcessDefinitionId() != null || dto.getFields() != null) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体只允许修改显示名称和描述，字段结构由数据库自动同步");
+        }
+    }
+
+    private void assertDynamicEntity(EntityDefinition entity) {
+        if (storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体不能绑定流程");
+        }
+    }
+
+    private long countProcessInstances(EntityDefinition entity) {
+        if (!dynamicTableService.tableExists(entity.getEntityCode())) {
+            return 0L;
+        }
+        return entityDataDynamicMapper.countProcessInstances(
+                dynamicTableService.getTableName(entity.getEntityCode()));
+    }
+
+    private void updateLatestPublishedBinding(String entityId, String processId) {
+        EntityPublishHistory latestHistory = publishHistoryMapper.findLatestByEntityId(entityId);
+        if (latestHistory == null) {
+            return;
+        }
+        latestHistory.setProcessDefinitionId(processId);
+        publishHistoryMapper.updateById(latestHistory);
     }
 }

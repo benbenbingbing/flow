@@ -1,4 +1,12 @@
 <template>
+  <el-alert
+    v-if="showStartProcess && entityDefinition.lifecycleMode === 'WORKFLOW' && !canStartProcess"
+    :title="workflowReadinessMessage"
+    type="warning"
+    :closable="false"
+    show-icon
+    class="workflow-readiness-alert"
+  />
   <div v-if="showCustomForm">
     <component
       ref="customFormRef"
@@ -14,8 +22,9 @@
       :mode="isEdit ? 'edit' : 'create'"
       :config="formViewConfig.customComponentProps || {}"
       :context="{ entityCode, entityDefinition, mode: isEdit ? 'edit' : 'create', record: formData }"
+      :data-source-runtime="dataSourceRuntime"
     />
-    <el-form label-width="100px" v-if="entityDefinition.enableProcess && showStartProcess">
+    <el-form label-width="100px" v-if="canStartProcess && showStartProcess">
       <el-divider />
       <el-form-item label="发起流程">
         <el-switch v-model="formData.startProcess" />
@@ -23,7 +32,7 @@
       </el-form-item>
     </el-form>
   </div>
-  <template v-else-if="defaultForm && defaultForm.fields && defaultForm.fields.length > 0">
+  <template v-else-if="hasConfiguredForm">
     <!-- 有表单配置时：用 FormPreviewLinkage 渲染（支持 tab 子表单、联动） -->
     <FormPreviewLinkage
       ref="previewRef"
@@ -32,8 +41,13 @@
       :show-header="false"
       :no-internal-tabs="noInternalTabs"
       :mode="isEdit ? 'edit' : 'create'"
+      :entity-code="entityCode"
+      :entity-definition="entityDefinition"
+      :entity-fields="entityFields"
+      :context="{ entityCode, entityDefinition, mode: isEdit ? 'edit' : 'create', record: formData }"
+      :data-source-runtime="dataSourceRuntime"
     />
-    <el-form label-width="100px" v-if="entityDefinition.enableProcess && showStartProcess">
+    <el-form label-width="100px" v-if="canStartProcess && showStartProcess">
       <el-divider />
       <el-form-item label="发起流程">
         <el-switch v-model="formData.startProcess" />
@@ -62,8 +76,8 @@
       </el-form-item>
     </template>
 
-    <el-divider v-if="entityDefinition.enableProcess && showStartProcess" />
-    <el-form-item v-if="entityDefinition.enableProcess && showStartProcess" label="发起流程">
+    <el-divider v-if="canStartProcess && showStartProcess" />
+    <el-form-item v-if="canStartProcess && showStartProcess" label="发起流程">
       <el-switch v-model="formData.startProcess" />
       <span class="form-tip">保存数据同时发起流程</span>
     </el-form-item>
@@ -79,12 +93,15 @@ import { LinkageEngine } from '@/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
 import { entityDataApi } from '@/api/entity.js'
+import { getItemTreeByDictCode } from '@/api/system/dict'
 import {
   buildRuntimeFieldRules,
+  createFormDataSourceRuntime,
   isRuntimeFieldReadonly,
   isRuntimeFieldVisible
 } from '@/shared/form-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
+import { isWorkflowReady } from '@/shared/entity-design'
 
 const props = defineProps<{
   entityCode: string
@@ -101,8 +118,21 @@ const formData = defineModel<any>('formData', { required: true })
 const formRef = ref()
 const previewRef = ref()
 const customFormRef = ref()
+const dictOptionMap = ref<Record<string, any[]>>({})
+const dataSourceOptionMap = ref<Record<string, any[]>>({})
 const runtimeMode = computed(() => props.isEdit ? 'edit' : 'create')
 const formViewConfig = computed(() => safeParseConfig(props.defaultForm?.viewConfig))
+const canStartProcess = computed(() => isWorkflowReady(props.entityDefinition))
+const workflowReadinessMessage = computed(() => {
+  const messages: Record<string, string> = {
+    UNBOUND: '流程实体尚未绑定流程，当前只能保存业务数据。',
+    DRAFT: '绑定流程尚未发布，当前只能保存业务数据。',
+    DISABLED: '绑定流程已禁用，当前不能发起流程。',
+    MISSING: '绑定流程不存在，请重新配置流程绑定。'
+  }
+  return messages[props.entityDefinition?.workflowBindingStatus]
+    || '绑定流程尚未就绪，当前只能保存业务数据。'
+})
 
 // 字段联动状态
 const linkageState = ref({
@@ -222,6 +252,12 @@ function getFieldOptions(field: any) {
   if (linkageState.value.options[field.fieldCode]) {
     return linkageState.value.options[field.fieldCode]
   }
+  if (dataSourceOptionMap.value[field.fieldCode]) {
+    return dataSourceOptionMap.value[field.fieldCode]
+  }
+  if (field.dictType && dictOptionMap.value[field.dictType]) {
+    return dictOptionMap.value[field.dictType]
+  }
   if (field.optionsJson) {
     return parseJsonOptions(field.optionsJson)
   }
@@ -236,6 +272,87 @@ function getFieldOptions(field: any) {
   return []
 }
 
+async function executeFieldDataSource(field: any, usage: string) {
+  const [result] = await dataSourceRuntime.executeOwnerUsage(field, usage, {
+    input: {
+      fieldCode: field.fieldCode,
+      value: formData.value?.data?.[field.fieldCode]
+    }
+  })
+  return result ?? null
+}
+
+const dataSourceRuntime = createFormDataSourceRuntime({
+  entityCode: props.entityCode,
+  getRecord: () => formData.value?.data || {},
+  getRecordId: () => formData.value?.id,
+  getListKey: () => formData.value?.listKey,
+  getMode: () => runtimeMode.value,
+  getForm: () => props.defaultForm,
+  getEntityDefinition: () => props.entityDefinition
+})
+
+async function loadRuntimeDataSources(fields: any[]) {
+  await dataSourceRuntime.initialize({
+    form: props.defaultForm,
+    fields,
+    nodes: props.defaultForm?.nodes || []
+  })
+  const optionEntries = await Promise.all(
+    (fields || []).map(async field => {
+      try {
+        const options = await executeFieldDataSource(field, 'FIELD_OPTIONS')
+        return [field.fieldCode, Array.isArray(options) ? options : []]
+      } catch {
+        return [field.fieldCode, []]
+      }
+    })
+  )
+  dataSourceOptionMap.value = Object.fromEntries(
+    optionEntries.filter(([, options]) => options.length > 0)
+  )
+
+  for (const field of fields || []) {
+    if (!dataSourceOptionMap.value[field.fieldCode]) continue
+  }
+}
+
+function flattenDictItems(items: any[]): any[] {
+  return (items || []).flatMap((item: any) => [
+    {
+      value: item.itemCode,
+      label: item.itemLabel,
+      disabled: item.status !== '0'
+    },
+    ...flattenDictItems(item.children || [])
+  ])
+}
+
+watch(
+  () => props.entityFields.map((field: any) => field.dictType).filter(Boolean),
+  async (dictCodes: string[]) => {
+    const uniqueCodes = [...new Set(dictCodes)]
+    const entries = await Promise.all(uniqueCodes.map(async dictCode => {
+      try {
+        const items = await getItemTreeByDictCode(dictCode)
+        return [dictCode, flattenDictItems(items || [])]
+      } catch {
+        return [dictCode, []]
+      }
+    }))
+    dictOptionMap.value = Object.fromEntries(entries)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.defaultForm?.fields,
+  (fields: any[]) => {
+    loadRuntimeDataSources(fields || [])
+  },
+  { immediate: true }
+)
+
 // 监听表单数据变化，触发联动（只在无表单配置时处理，有表单配置时由 FormPreviewLinkage 自己管理）
 watch(() => formData.value.data, () => {
   if (!props.defaultForm?.fields?.length) {
@@ -247,6 +364,13 @@ watch(() => formData.value.data, () => {
 const showCustomForm = computed(() => {
   return props.defaultForm?.customComponent && hasCustomFormComponent(props.defaultForm.customComponent)
 })
+
+const hasConfiguredForm = computed(() =>
+  Boolean(props.defaultForm) && (
+    (props.defaultForm?.fields?.length || 0) > 0
+    || (props.defaultForm?.nodes?.length || 0) > 0
+  )
+)
 
 // 判断是否为 Tab 模式的子表单
 function isTabSubForm(field: any) {
@@ -273,6 +397,15 @@ const formFields = computed(() => {
 const runtimeFormFields = computed(() =>
   (props.defaultForm?.fields || formFields.value)
     .filter((field: any) => isRuntimeFieldVisible(field, runtimeMode.value))
+    .map((field: any) => {
+      const entityField = props.entityFields.find((item: any) =>
+        item.fieldCode === field.fieldCode || item.id === field.fieldId)
+      const dictType = field.dictType || entityField?.dictType
+      const options = dictType ? dictOptionMap.value[dictType] : null
+      return options
+        ? { ...field, dictType, optionsJson: JSON.stringify(options) }
+        : field
+    })
 )
 
 // 普通字段（不含 tab 子表单）
@@ -294,9 +427,9 @@ const renderFields = computed(() => {
 // 暴露校验方法
 async function validate() {
   if (showCustomForm.value && customFormRef.value?.validate) {
-    return (await customFormRef.value.validate()) !== false
-  }
-  if (props.defaultForm?.fields?.length > 0 && !showCustomForm.value) {
+    const valid = await customFormRef.value.validate()
+    if (valid === false) return false
+  } else if (hasConfiguredForm.value && !showCustomForm.value) {
     const valid = await previewRef.value?.validate()
     if (!valid) return false
   } else if (formRef.value) {
@@ -306,6 +439,11 @@ async function validate() {
       return false
     }
   }
+  await dataSourceRuntime.prevalidateBeforeSubmit({
+    form: props.defaultForm,
+    fields: props.defaultForm?.fields || [],
+    nodes: props.defaultForm?.nodes || []
+  })
   return true
 }
 

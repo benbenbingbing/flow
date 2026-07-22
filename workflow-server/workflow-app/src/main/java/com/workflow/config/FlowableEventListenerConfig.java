@@ -3,6 +3,7 @@ package com.workflow.config;
 import com.workflow.listener.EntityStatusUpdateListener;
 import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.listener.ProcessEndListener;
+import com.workflow.listener.ProcessCcEventListener;
 import com.workflow.process.action.FlowActionEngineEventListener;
 import com.workflow.service.WorkflowAutoSkipService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class FlowableEventListenerConfig {
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final WorkflowAutoSkipService workflowAutoSkipService;
     private final FlowActionEngineEventListener flowActionEngineEventListener;
+    private final ProcessCcEventListener processCcEventListener;
 
     @PostConstruct
     public void init() {
@@ -42,5 +44,8 @@ public class FlowableEventListenerConfig {
 
         // 统一流程动作事件监听器：流程、节点、任务、连线均从这里分发。
         runtimeService.addEventListener(flowActionEngineEventListener);
+
+        // 自动知会：流程/任务时机统一解析 ccConfig 并写入知会收件箱与Outbox。
+        runtimeService.addEventListener(processCcEventListener);
     }
 }

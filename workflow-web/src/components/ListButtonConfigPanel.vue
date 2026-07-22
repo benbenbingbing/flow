@@ -42,21 +42,27 @@
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column label="内置类型 / 执行器" width="160">
+      <el-table-column label="内置类型 / 执行器" width="180">
         <template #default="{ row }">
           <el-select v-if="row.type === 'built-in'" v-model="row.key" size="small" style="width: 150px">
             <el-option v-for="opt in builtinOptions" :key="opt.key" :label="opt.label" :value="opt.key" />
           </el-select>
+          <template v-else-if="row.customMode === 'open-list'">
+            <el-button size="small" type="primary" text @click="configureOpenList(row)">
+              {{ openListSummary(row) }}
+            </el-button>
+          </template>
           <template v-else>
             <el-input v-model="row.customHandler" size="small" placeholder="执行器/组件名" style="width: 150px" />
           </template>
         </template>
       </el-table-column>
-      <el-table-column label="自定义模式" width="110" v-if="type === 'toolbar'">
+      <el-table-column label="自定义模式" width="120">
         <template #default="{ row }">
-          <el-select v-if="row.type === 'custom'" v-model="row.customMode" size="small" style="width: 100px">
+          <el-select v-if="row.type === 'custom'" v-model="row.customMode" size="small" style="width: 110px">
             <el-option label="函数" value="handler" />
             <el-option label="组件" value="component" />
+            <el-option label="打开列表" value="open-list" />
           </el-select>
           <span v-else>-</span>
         </template>
@@ -125,9 +131,45 @@
           </el-button>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="70" align="center" fixed="right">
-        <template #default="{ $index }">
-          <el-button link type="danger" size="small" @click="remove($index)">删除</el-button>
+      <el-table-column label="模板" min-width="200">
+        <template #default="{ row }">
+          <el-select
+            v-model="row.templateId"
+            clearable
+            filterable
+            placeholder="复制后独立"
+            size="small"
+            style="width: 100%"
+            @change="handleTemplateChange(row, $event)"
+          >
+            <el-option
+              v-for="template in templates"
+              :key="template.id"
+              :label="`${template.templateName} (v${template.currentVersion})`"
+              :value="template.id"
+            />
+          </el-select>
+          <el-button
+            v-if="row.templateId"
+            link
+            type="primary"
+            size="small"
+            @click="$emit('upgrade-template', row)"
+          >
+            升级 v{{ row.templateVersion || 1 }}
+          </el-button>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="110" align="center" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            link
+            type="success"
+            size="small"
+            :loading="row._saving"
+            @click="$emit('save', row)"
+          >保存</el-button>
+          <el-button link type="danger" size="small" @click="$emit('remove', row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -138,6 +180,68 @@
       :statuses="statuses"
       @save="saveRule"
     />
+
+    <el-dialog v-model="openListDialogVisible" title="打开实体列表" width="620px">
+      <el-form label-width="110px">
+        <el-form-item label="目标实体" required>
+          <el-select
+            v-model="openListForm.targetEntityCode"
+            filterable
+            placeholder="选择实体"
+            style="width: 100%"
+            @change="loadTargetLists"
+          >
+            <el-option
+              v-for="entity in entityOptions"
+              :key="entity.entityCode"
+              :label="`${entity.entityName} (${entity.entityCode})`"
+              :value="entity.entityCode"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="目标列表" required>
+          <el-select v-model="openListForm.targetListKey" placeholder="选择 listKey" style="width: 100%">
+            <el-option
+              v-for="list in targetListOptions"
+              :key="list.listKey"
+              :label="`${list.listName || list.listKey} (${list.listKey})`"
+              :value="list.listKey"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="打开方式">
+          <el-radio-group v-model="openListForm.presentation">
+            <el-radio-button value="DIALOG">弹窗</el-radio-button>
+            <el-radio-button value="DRAWER">抽屉</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="选择方式">
+          <el-radio-group v-model="openListForm.selectionMode">
+            <el-radio-button value="NONE">仅查看</el-radio-button>
+            <el-radio-button value="SINGLE">单选</el-radio-button>
+            <el-radio-button value="MULTIPLE">多选</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="标题">
+          <el-input v-model="openListForm.openListTitle" placeholder="留空使用“选择数据”" />
+        </el-form-item>
+        <el-form-item label="上下文关系">
+          <el-input v-model="openListForm.relationKey" placeholder="可选：服务端注册的 relationKey" />
+        </el-form-item>
+        <el-form-item label="选择回调">
+          <el-input v-model="openListForm.selectionHandler" placeholder="可选：已注册的前端选择结果处理器" />
+        </el-form-item>
+        <el-alert
+          type="info"
+          :closable="false"
+          title="行按钮会自动传递来源实体、来源数据 ID 和 relationKey；后端重新加载来源数据生成可信上下文。"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="openListDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveOpenListConfig">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -146,8 +250,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
+import { entityApi } from '@/api/entity'
+import { entityListConfigApi } from '@/api/entityListConfig'
+import { uiComponentTemplateApi } from '@/api/uiConfig'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
+import { safeParseConfig } from '@/shared/config-runtime'
 
 const props = defineProps({
   type: {
@@ -162,13 +270,22 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  templates: {
+    type: Array,
+    default: () => []
+  },
   modelValue: {
     type: Array,
     default: () => []
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits([
+  'update:modelValue',
+  'save',
+  'remove',
+  'upgrade-template'
+])
 
 const buttons = computed({
   get: () => props.modelValue || [],
@@ -182,6 +299,11 @@ const sortedButtons = computed(() => {
 const permissionOptions = ref([])
 const statuses = ref([])
 const ruleEditorRef = ref()
+const openListDialogVisible = ref(false)
+const openListTargetButton = ref(null)
+const entityOptions = ref([])
+const targetListOptions = ref([])
+const openListForm = ref(createOpenListForm())
 
 const standardPermOptions = computed(() => permissionOptions.value.filter(option => option.category === 'STANDARD'))
 const customPermOptions = computed(() => permissionOptions.value.filter(option => option.category !== 'STANDARD'))
@@ -233,10 +355,90 @@ function addCustom() {
   })
 }
 
-function remove(index) {
-  const sortedIndex = sortedButtons.value.indexOf(buttons.value[index])
-  const actualIndex = buttons.value.indexOf(sortedButtons.value[sortedIndex])
-  buttons.value.splice(actualIndex, 1)
+async function handleTemplateChange(row, templateId) {
+  if (!templateId) {
+    row.templateVersion = null
+    row.localOverridesDocument = null
+    return
+  }
+  const template = props.templates.find(item => item.id === templateId)
+  if (!template) return
+  try {
+    const versions = await uiComponentTemplateApi.versions(templateId)
+    const latest = versions.find(item => item.version === template.currentVersion)
+      || versions[0]
+    if (!latest) return
+    const snapshot = safeParseConfig(latest.snapshotDocument)
+    Object.assign(row, snapshot.button || snapshot)
+    row.templateId = templateId
+    row.templateVersion = latest.version
+    row.localOverridesDocument = {}
+    ElMessage.success(`已锁定按钮模板 v${latest.version}`)
+  } catch (error) {
+    ElMessage.error(error?.message || '加载按钮模板失败')
+  }
+}
+
+function createOpenListForm(button = {}) {
+  return {
+    targetEntityCode: button.targetEntityCode || '',
+    targetListKey: button.targetListKey || '',
+    presentation: button.presentation || 'DIALOG',
+    selectionMode: button.selectionMode || 'NONE',
+    openListTitle: button.openListTitle || '',
+    relationKey: button.relationKey || '',
+    selectionHandler: button.selectionHandler || ''
+  }
+}
+
+async function configureOpenList(row) {
+  openListTargetButton.value = row
+  openListForm.value = createOpenListForm(row)
+  if (entityOptions.value.length === 0) {
+    entityOptions.value = await entityApi.getAll()
+  }
+  await loadTargetLists(openListForm.value.targetEntityCode, false)
+  openListDialogVisible.value = true
+}
+
+async function loadTargetLists(entityCode, reset = true) {
+  if (reset) {
+    openListForm.value.targetListKey = ''
+  }
+  const entity = entityOptions.value.find(item => item.entityCode === entityCode)
+  if (!entity?.id) {
+    targetListOptions.value = []
+    return
+  }
+  try {
+    const response = await entityListConfigApi.getByEntityId(entity.id)
+    targetListOptions.value = Array.isArray(response)
+      ? response
+      : response?.records || response?.list || response?.data || []
+    if (!openListForm.value.targetListKey) {
+      openListForm.value.targetListKey =
+        targetListOptions.value.find(item => item.isDefault)?.listKey
+        || targetListOptions.value[0]?.listKey
+        || ''
+    }
+  } catch (error) {
+    console.error('加载目标列表失败:', error)
+    targetListOptions.value = []
+  }
+}
+
+function saveOpenListConfig() {
+  if (!openListForm.value.targetEntityCode || !openListForm.value.targetListKey) {
+    ElMessage.warning('请选择目标实体和目标列表')
+    return
+  }
+  Object.assign(openListTargetButton.value, openListForm.value)
+  openListDialogVisible.value = false
+}
+
+function openListSummary(row) {
+  if (!row.targetEntityCode || !row.targetListKey) return '配置列表'
+  return `${row.targetEntityCode}/${row.targetListKey}`
 }
 
 async function loadPermOptions() {

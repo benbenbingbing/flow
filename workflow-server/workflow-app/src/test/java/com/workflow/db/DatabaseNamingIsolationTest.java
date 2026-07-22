@@ -109,6 +109,53 @@ class DatabaseNamingIsolationTest {
         assertFalse(api.contains("/flow-action-executions"));
     }
 
+    @Test
+    void entityListRuntimeShouldUseOnlyNewScopeTablesAndApis() throws Exception {
+        Path webRoot = Path.of("../../workflow-web/src");
+        String runtimeApi = Files.readString(webRoot.resolve("api/entityListRuntime.js"));
+        String scopeApi = Files.readString(webRoot.resolve("api/entityListScope.js"));
+        assertTrue(runtimeApi.contains("/entity-lists/"));
+        assertTrue(scopeApi.contains("/entity-list-scopes"));
+        assertFalse(scopeApi.contains("/entity-list-permission"));
+
+        String migration = Files.readString(Path.of(
+                "src/main/resources/db/migration/V018__unify_entity_list_runtime_and_scope.sql"));
+        assertTrue(migration.contains("entity_list_scope_policy"));
+        assertTrue(migration.contains("entity_list_scope_binding"));
+        assertTrue(migration.contains("DROP TABLE IF EXISTS entity_list_permission"));
+    }
+
+    @Test
+    void dynamicEntityTablesShouldUsePortableUnicodeCollation() throws Exception {
+        String migration = Files.readString(Path.of(
+                "src/main/resources/db/migration/V026__normalize_dynamic_entity_collation.sql"));
+        assertTrue(migration.contains("table_name LIKE 'biz\\\\_%'"));
+        assertTrue(migration.contains(
+                "CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"));
+        assertTrue(migration.contains("remaining_mixed_biz_collation"));
+
+        String dynamicTableService = Files.readString(Path.of(
+                "../workflow-entity/src/main/java/com/workflow/service/DynamicTableService.java"));
+        String teamService = Files.readString(Path.of(
+                "../workflow-entity/src/main/java/com/workflow/service/EntityRecordTeamService.java"));
+        assertTrue(dynamicTableService.contains("COLLATE=utf8mb4_unicode_ci"));
+        assertTrue(teamService.contains("COLLATE=utf8mb4_unicode_ci"));
+    }
+
+    @Test
+    void frontendShouldUseLifecycleAndCanonicalWorkflowBindingApi() throws Exception {
+        Path webRoot = Path.of("../../workflow-web/src");
+        String entityApi = Files.readString(webRoot.resolve("api/entity.js"));
+        assertTrue(entityApi.contains("/workflow-binding"));
+        assertTrue(entityApi.contains("/lifecycle-mode"));
+        assertFalse(entityApi.contains("/bind-process/"));
+
+        String entityList = Files.readString(webRoot.resolve("views/EntityList.vue"));
+        assertTrue(entityList.contains("lifecycleMode"));
+        assertTrue(entityList.contains("storageMode"));
+        assertFalse(entityList.contains("enableProcess"));
+    }
+
     private void assertRequestMapping(Class<?> controllerType, String expected) {
         RequestMapping mapping = controllerType.getAnnotation(RequestMapping.class);
         assertArrayEquals(new String[]{expected}, mapping.value());

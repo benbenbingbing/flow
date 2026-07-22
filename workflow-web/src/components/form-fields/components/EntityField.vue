@@ -6,6 +6,9 @@
       :entity-code="entityCode"
       :ref-entity-id="refEntityId"
       :api-url="apiUrl"
+      :list-key="listKey"
+      :runtime-entity-code="runtimeEntityCode"
+      :context="pickerContext"
       :multiple="isMultiple"
       :placeholder="placeholder"
       :disabled="isDisabled"
@@ -70,6 +73,22 @@ const entityCode = computed(() => {
   // refEntityId 是实体定义ID，不是实体编码，不能作为 entityCode 传递
   // 让 EntitySelector 通过 refEntityId 让后端查询真正的 entityCode
   return ''
+})
+
+const runtimeEntityCode = computed(() => {
+  return parsedComponentProps.value.refConfig?.entityCode
+    || props.field?.refEntityCode
+    || ''
+})
+
+const listKey = computed(() => {
+  return parsedComponentProps.value.refConfig?.listKey
+    || props.field?.refListKey
+    || ''
+})
+
+const pickerContext = computed(() => {
+  return parsedComponentProps.value.refConfig?.context || {}
 })
 
 const refEntityId = computed(() => {

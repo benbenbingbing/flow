@@ -1,6 +1,9 @@
 package com.workflow.config;
 
+import com.workflow.common.BusinessConflictException;
+import com.workflow.common.BusinessForbiddenException;
 import com.workflow.common.ForbiddenException;
+import com.workflow.common.RevisionConflictException;
 import com.workflow.dto.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -20,9 +23,33 @@ import java.sql.SQLException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(BusinessConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessConflictException(BusinessConflictException e) {
+        log.warn("业务状态冲突: errorCode={}, message={}", e.getErrorCode(), e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(409, e.getErrorCode(), e.getMessage()));
+    }
+
+    @ExceptionHandler(RevisionConflictException.class)
+    public ResponseEntity<ApiResponse<Object>> handleRevisionConflictException(
+            RevisionConflictException e) {
+        log.warn("配置修订冲突: {}", e.getMessage());
+        ApiResponse<Object> response =
+                ApiResponse.error(409, "CONFIG_REVISION_CONFLICT", e.getMessage());
+        response.setData(e.getCurrentData());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ApiResponse<Void>> handleForbiddenException(ForbiddenException e) {
         log.warn("访问拒绝: {}", e.getMessage());
+        if (e instanceof BusinessForbiddenException businessException) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error(
+                            403,
+                            businessException.getErrorCode(),
+                            businessException.getMessage()));
+        }
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(403, e.getMessage()));
     }

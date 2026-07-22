@@ -82,6 +82,11 @@ public class EntityPublishHistoryService {
         history.setEntityCode(entity.getEntityCode());
         history.setEntityName(entity.getEntityName());
         history.setProcessDefinitionId(entity.getProcessDefinitionId());
+        history.setLifecycleMode(entity.getLifecycleMode());
+        history.setTeamVisibilityEnabled(Boolean.TRUE.equals(entity.getTeamVisibilityEnabled()));
+        history.setTeamVisibilityLevel(entity.getTeamVisibilityLevel() == null
+                ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
+                : entity.getTeamVisibilityLevel());
         history.setVersion(nextVersion);
         history.setVersionDescription(StringUtils.hasText(versionDescription)
                 ? versionDescription.trim()
@@ -154,6 +159,9 @@ public class EntityPublishHistoryService {
         dto.setEntityCode(history.getEntityCode());
         dto.setEntityName(history.getEntityName());
         dto.setProcessDefinitionId(history.getProcessDefinitionId());
+        dto.setLifecycleMode(history.getLifecycleMode());
+        dto.setTeamVisibilityEnabled(Boolean.TRUE.equals(history.getTeamVisibilityEnabled()));
+        dto.setTeamVisibilityLevel(history.getTeamVisibilityLevel());
         dto.setVersion(history.getVersion());
         dto.setVersionDescription(history.getVersionDescription());
         dto.setFieldsSnapshot(history.getFieldsSnapshot());

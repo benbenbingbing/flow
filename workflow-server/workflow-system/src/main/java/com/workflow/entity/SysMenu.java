@@ -93,6 +93,18 @@ public class SysMenu {
      */
     @TableField("entity_code")
     private String entityCode;
+
+    /**
+     * 动态资源类型，ENTITY_LIST 表示通用实体列表。
+     */
+    @TableField("resource_type")
+    private String resourceType;
+
+    /**
+     * 动态实体列表编码。
+     */
+    @TableField("list_key")
+    private String listKey;
     
     /**
      * 是否删除：0-未删除 1-已删除
@@ -121,24 +133,30 @@ public class SysMenu {
      */
     @TableField(exist = false)
     private String parentName;
-    
+
+    /**
+     * 是否有子菜单（非数据库字段）
+     */
+    @TableField(exist = false)
+    private Boolean hasChildren;
+
     // Getter 和 Setter 方法
     public String getId() {
         return id;
     }
-    
+
     public void setId(String id) {
         this.id = id;
     }
-    
+
     public String getParentId() {
         return parentId;
     }
-    
+
     public void setParentId(String parentId) {
         this.parentId = parentId;
     }
-    
+
     public String getMenuName() {
         return menuName;
     }
@@ -282,7 +300,15 @@ public class SysMenu {
     public void setParentName(String parentName) {
         this.parentName = parentName;
     }
-    
+
+    public Boolean getHasChildren() {
+        return hasChildren;
+    }
+
+    public void setHasChildren(Boolean hasChildren) {
+        this.hasChildren = hasChildren;
+    }
+
     public enum MenuType {
         /** 目录 */
         M,

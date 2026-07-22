@@ -7,7 +7,9 @@ import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.dto.FlowActionDefinitionRequest;
 import com.workflow.dto.FlowActionHandlerOptionDTO;
 import com.workflow.entity.FlowActionDefinition;
+import com.workflow.entity.FlowActionDefinitionEntity;
 import com.workflow.mapper.FlowActionDefinitionMapper;
+import com.workflow.mapper.FlowActionDefinitionEntityMapper;
 import com.workflow.process.action.FlowActionHandler;
 import com.workflow.process.action.FlowActionVisibilityScope;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import java.util.Set;
 public class FlowActionDefinitionService {
 
     private final FlowActionDefinitionMapper definitionMapper;
+    private final FlowActionDefinitionEntityMapper definitionEntityMapper;
     private final ApplicationContext applicationContext;
     private final ObjectMapper objectMapper;
     private final EntityCodeCatalogPort entityCodeCatalogPort;
@@ -86,6 +89,7 @@ public class FlowActionDefinitionService {
         } else {
             definitionMapper.updateById(definition);
         }
+        replaceVisibleEntities(definition.getId(), entityCodes);
         return toOption(definition, beanName, handler, true);
     }
 
@@ -168,7 +172,9 @@ public class FlowActionDefinitionService {
         option.setVisibilityScope(definition == null
                 ? FlowActionVisibilityScope.ENTITY.name()
                 : definition.getVisibilityScope());
-        option.setEntityCodes(definition == null ? List.of() : readEntityCodes(definition.getEntityCodesJson()));
+        option.setEntityCodes(definition == null
+                ? List.of()
+                : readEntityCodes(definition));
         option.setEnabled(definition != null && Boolean.TRUE.equals(definition.getEnabled()));
         option.setConfigured(configured);
         option.setAvailable(handler != null);
@@ -234,7 +240,12 @@ public class FlowActionDefinitionService {
         }
     }
 
-    private List<String> readEntityCodes(String value) {
+    private List<String> readEntityCodes(FlowActionDefinition definition) {
+        List<String> relational = definitionEntityMapper.findEntityCodes(definition.getId());
+        if (!relational.isEmpty()) {
+            return relational;
+        }
+        String value = definition.getEntityCodesJson();
         if (!StringUtils.hasText(value)) {
             return List.of();
         }
@@ -242,6 +253,17 @@ public class FlowActionDefinitionService {
             return objectMapper.readValue(value, new TypeReference<>() {});
         } catch (Exception e) {
             return List.of();
+        }
+    }
+
+    private void replaceVisibleEntities(String definitionId, List<String> entityCodes) {
+        definitionEntityMapper.deleteByDefinitionId(definitionId);
+        for (String entityCode : entityCodes) {
+            FlowActionDefinitionEntity relation = new FlowActionDefinitionEntity();
+            relation.setActionDefinitionId(definitionId);
+            relation.setEntityCode(entityCode);
+            relation.setCreatedAt(LocalDateTime.now());
+            definitionEntityMapper.insert(relation);
         }
     }
 

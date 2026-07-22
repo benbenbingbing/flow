@@ -22,6 +22,12 @@ public class DataPermissionResult {
     /** 匹配到的规则名称列表（用于日志/调试） */
     private List<String> matchedRuleNames;
 
+    private Integer releaseVersion;
+
+    private String dataScopeMode;
+
+    private String explanation;
+
     public static DataPermissionResult allowAll() {
         DataPermissionResult r = new DataPermissionResult();
         r.hasPermission = true;

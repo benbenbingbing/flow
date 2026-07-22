@@ -9,6 +9,8 @@ import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityFieldDTO;
 import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.dto.ProcessDefinitionDTO;
+import com.workflow.dto.UiDataSourceSaveRequest;
+import com.workflow.dto.UiExtensionDefinitionSaveRequest;
 import com.workflow.dto.migration.ConfigImportPublishRequest;
 import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.AssigneeConfig;
@@ -18,9 +20,11 @@ import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityFlowStatusMapping;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
+import com.workflow.entity.EntityFormNode;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.entity.EntityListField;
-import com.workflow.entity.EntityListPermission;
+import com.workflow.entity.EntityListScopeBinding;
+import com.workflow.entity.EntityListScopePolicy;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.FlowAction;
 import com.workflow.entity.ProcessDefinitionConfig;
@@ -31,6 +35,7 @@ import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysRole;
 import com.workflow.entity.SysRoleMenu;
 import com.workflow.entity.SysUser;
+import com.workflow.entity.UiDataSourceDefinition;
 import com.workflow.entity.migration.ConfigAssetBaseline;
 import com.workflow.entity.migration.ConfigEnvironmentMapping;
 import com.workflow.entity.migration.ConfigImportItem;
@@ -41,7 +46,8 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.EntityListConfigMapper;
-import com.workflow.mapper.EntityListPermissionMapper;
+import com.workflow.mapper.EntityListScopeBindingMapper;
+import com.workflow.mapper.EntityListScopePolicyMapper;
 import com.workflow.mapper.FlowActionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessNodeApprovalMapper;
@@ -50,6 +56,7 @@ import com.workflow.mapper.SysOrganizationMapper;
 import com.workflow.mapper.SysRoleMapper;
 import com.workflow.mapper.SysRoleMenuMapper;
 import com.workflow.mapper.SysUserMapper;
+import com.workflow.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.mapper.migration.ConfigAssetBaselineMapper;
 import com.workflow.mapper.migration.ConfigEnvironmentMappingMapper;
 import com.workflow.mapper.migration.ConfigImportItemMapper;
@@ -58,12 +65,17 @@ import com.workflow.mapper.migration.ConfigMigrationAssetMapper;
 import com.workflow.service.EntityCodeGeneratorService;
 import com.workflow.service.EntityDefinitionService;
 import com.workflow.service.EntityFormService;
+import com.workflow.service.EntityFormNodeService;
 import com.workflow.service.EntityListConfigService;
 import com.workflow.service.EntityStatusService;
 import com.workflow.service.FlowActionService;
+import com.workflow.service.UiDataSourceService;
+import com.workflow.service.UiConfigReleaseService;
+import com.workflow.service.UiExtensionDefinitionService;
 import com.workflow.service.ProcessDefinitionService;
 import com.workflow.service.ProcessNodeFormService;
 import com.workflow.service.permission.EntityPermissionCatalogService;
+import com.workflow.service.permission.EntityListScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,7 +107,8 @@ public class ConfigMigrationImportApplyService {
     private final EntityFieldMapper fieldMapper;
     private final EntityFormMapper formMapper;
     private final EntityListConfigMapper listConfigMapper;
-    private final EntityListPermissionMapper listPermissionMapper;
+    private final EntityListScopePolicyMapper listScopePolicyMapper;
+    private final EntityListScopeBindingMapper listScopeBindingMapper;
     private final EntityFlowStatusMappingMapper statusMappingMapper;
     private final ProcessDefinitionConfigMapper processMapper;
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
@@ -109,11 +122,17 @@ public class ConfigMigrationImportApplyService {
     private final EntityStatusService entityStatusService;
     private final EntityCodeGeneratorService codeGeneratorService;
     private final EntityFormService entityFormService;
+    private final EntityFormNodeService entityFormNodeService;
     private final EntityListConfigService entityListConfigService;
     private final EntityPermissionCatalogService permissionCatalogService;
+    private final EntityListScopeService listScopeService;
     private final ProcessDefinitionService processService;
     private final ProcessNodeFormService processNodeFormService;
     private final FlowActionService flowActionService;
+    private final UiExtensionDefinitionService extensionDefinitionService;
+    private final UiDataSourceService dataSourceService;
+    private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
+    private final UiConfigReleaseService uiConfigReleaseService;
     private final ConfigMigrationAssetService assetService;
     private final ObjectMapper objectMapper;
 
@@ -240,13 +259,18 @@ public class ConfigMigrationImportApplyService {
         Map<String, Object> snapshot = readMap(item.getSnapshotJson());
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
         String entityCode = text(definition.get("entityCode"), item.getBusinessKey());
+        if (EntityDefinition.StorageMode.SYSTEM.name().equalsIgnoreCase(
+                text(definition.get("storageMode"), EntityDefinition.StorageMode.DYNAMIC.name()))) {
+            throw new IllegalStateException("迁移包不能创建或覆盖平台系统实体: " + entityCode);
+        }
         EntityDefinition entity = entityMapper.findByEntityCode(entityCode).orElse(null);
         if (entity == null) {
             EntityDefinitionDTO dto = new EntityDefinitionDTO();
             dto.setEntityCode(entityCode);
             dto.setEntityName(text(definition.get("entityName"), item.getAssetName()));
             dto.setDescription(text(definition.get("description"), null));
-            dto.setEnableProcess(booleanValue(definition.get("enableProcess")));
+            dto.setLifecycleMode(lifecycleMode(definition));
+            dto.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
             dto.setFields(new ArrayList<>());
             entityService.save(dto);
             entity = entityMapper.findByEntityCode(entityCode)
@@ -254,7 +278,11 @@ public class ConfigMigrationImportApplyService {
         } else {
             entity.setEntityName(text(definition.get("entityName"), entity.getEntityName()));
             entity.setDescription(text(definition.get("description"), entity.getDescription()));
-            entity.setEnableProcess(booleanValue(definition.get("enableProcess")));
+            if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+                throw new IllegalStateException("配置迁移不能覆盖平台系统实体: " + entityCode);
+            }
+            entity.setLifecycleMode(lifecycleMode(definition));
+            entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
             entityMapper.updateById(entity);
             permissionCatalogService.synchronizeEntity(entity);
         }
@@ -272,7 +300,8 @@ public class ConfigMigrationImportApplyService {
             dto.setEntityCode(entity.getEntityCode());
             dto.setEntityName(text(context.definition().get("entityName"), entity.getEntityName()));
             dto.setDescription(text(context.definition().get("description"), entity.getDescription()));
-            dto.setEnableProcess(booleanValue(context.definition().get("enableProcess")));
+            dto.setLifecycleMode(lifecycleMode(context.definition()));
+            dto.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
             dto.setProcessDefinitionId(entity.getProcessDefinitionId());
             dto.setFields(fields);
             entityService.update(entity.getId(), dto);
@@ -289,14 +318,36 @@ public class ConfigMigrationImportApplyService {
             codeRule.setEntityCode(entity.getEntityCode());
             codeGeneratorService.saveRule(codeRule);
         }
+        if (snapshot.containsKey("extensions")) {
+            applyExtensions(mapList(snapshot.get("extensions")));
+        }
+        if (snapshot.containsKey("dataSources")) {
+            Map<String, String> dataSourceIds =
+                    applyDataSources(
+                            entity,
+                            mapList(snapshot.get("dataSources")));
+            snapshot.put(
+                    "forms",
+                    rewriteDataSourceReferences(
+                            snapshot.get("forms"),
+                            dataSourceIds));
+            snapshot.put(
+                    "lists",
+                    rewriteDataSourceReferences(
+                            snapshot.get("lists"),
+                            dataSourceIds));
+        }
         if (snapshot.containsKey("forms")) {
             applyForms(entity, mapList(snapshot.get("forms")));
         }
         if (snapshot.containsKey("lists")) {
             applyLists(entity, mapList(snapshot.get("lists")));
         }
-        if (snapshot.containsKey("dataPermissions")) {
-            applyDataPermissions(entity, mapList(snapshot.get("dataPermissions")));
+        if (snapshot.containsKey("scopePolicies") || snapshot.containsKey("scopeBindings")) {
+            applyDataScopes(
+                    entity,
+                    mapList(snapshot.get("scopePolicies")),
+                    mapList(snapshot.get("scopeBindings")));
         }
         if (snapshot.containsKey("menus")) {
             applyMenus(entity, mapList(snapshot.get("menus")));
@@ -354,6 +405,7 @@ public class ConfigMigrationImportApplyService {
 
     private void applyForms(EntityDefinition entity, List<Map<String, Object>> values) {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
+        List<String> formIds = new ArrayList<>();
         for (Map<String, Object> value : values) {
             EntityForm form = convert(value, EntityForm.class);
             EntityForm existing = formMapper.selectByEntityIdAndFormKey(entity.getId(), form.getFormKey());
@@ -371,12 +423,297 @@ public class ConfigMigrationImportApplyService {
                 formFields.add(formField);
             }
             form.setFields(formFields);
-            entityFormService.saveForm(form);
+            EntityForm saved = entityFormService.saveForm(form);
+            List<EntityFormNode> nodes = new ArrayList<>();
+            Map<String, String> idsByNodeKey =
+                    resolveNodeIds(
+                            entityFormNodeService.findByFormId(
+                                    saved.getId()),
+                            mapList(value.get("nodes")),
+                            () -> java.util.UUID.randomUUID()
+                                    .toString()
+                                    .replace("-", ""));
+            for (Map<String, Object> nodeValue : mapList(value.get("nodes"))) {
+                String nodeKey = text(nodeValue.get("nodeKey"), null);
+                if (!StringUtils.hasText(nodeKey)) {
+                    throw new IllegalStateException("迁移表单节点缺少 nodeKey");
+                }
+            }
+            for (Map<String, Object> nodeValue : mapList(value.get("nodes"))) {
+                EntityFormNode node =
+                        convert(nodeValue, EntityFormNode.class);
+                node.setId(idsByNodeKey.get(node.getNodeKey()));
+                node.setFormId(saved.getId());
+                node.setParentId(idsByNodeKey.get(
+                        text(nodeValue.get("parentNodeKey"), null)));
+                node.setRevision(1);
+                node.setCreatedAt(LocalDateTime.now());
+                node.setUpdatedAt(LocalDateTime.now());
+                node.setDeleted(0);
+                nodes.add(node);
+            }
+            if (value.containsKey("nodes")) {
+                entityFormNodeService.replaceByDiff(
+                        saved.getId(), nodes);
+            }
+            formIds.add(saved.getId());
+        }
+        publishImportedConfigurations(
+                UiConfigReleaseService.FORM,
+                formIds,
+                "配置迁移导入表单初始发布");
+    }
+
+    static Map<String, String> resolveNodeIds(
+            List<EntityFormNode> existing,
+            List<Map<String, Object>> incoming,
+            java.util.function.Supplier<String> idSupplier) {
+        Map<String, String> existingIdsByNodeKey =
+                (existing == null
+                        ? List.<EntityFormNode>of()
+                        : existing).stream()
+                        .filter(node -> StringUtils.hasText(
+                                node.getNodeKey()))
+                        .collect(java.util.stream.Collectors.toMap(
+                                EntityFormNode::getNodeKey,
+                                EntityFormNode::getId,
+                                (left, right) -> left,
+                                LinkedHashMap::new));
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map<String, Object> value :
+                incoming == null
+                        ? List.<Map<String, Object>>of()
+                        : incoming) {
+            String nodeKey = value.get("nodeKey") == null
+                    ? null
+                    : String.valueOf(value.get("nodeKey"));
+            if (!StringUtils.hasText(nodeKey)) {
+                throw new IllegalStateException(
+                        "迁移表单节点缺少 nodeKey");
+            }
+            if (result.containsKey(nodeKey)) {
+                throw new IllegalStateException(
+                        "迁移表单节点编码重复: " + nodeKey);
+            }
+            String existingId =
+                    existingIdsByNodeKey.get(nodeKey);
+            result.put(
+                    nodeKey,
+                    existingId == null
+                            ? idSupplier.get()
+                            : existingId);
+        }
+        return result;
+    }
+
+    private Map<String, String> applyDataSources(
+            EntityDefinition entity,
+            List<Map<String, Object>> values) {
+        Map<String, String> idsByCode = new LinkedHashMap<>();
+        for (Map<String, Object> value : values) {
+            String sourceCode = text(value.get("sourceCode"), null);
+            if (!StringUtils.hasText(sourceCode)) {
+                throw new IllegalStateException(
+                        "迁移数据源缺少 sourceCode");
+            }
+            UiDataSourceDefinition existing =
+                    dataSourceDefinitionMapper.selectOne(
+                            new LambdaQueryWrapper<UiDataSourceDefinition>()
+                                    .eq(
+                                            UiDataSourceDefinition::getSourceCode,
+                                            sourceCode)
+                                    .eq(
+                                            UiDataSourceDefinition::getDeleted,
+                                            0)
+                                    .last("LIMIT 1"));
+            UiDataSourceSaveRequest request =
+                    new UiDataSourceSaveRequest();
+            request.setId(existing == null ? null : existing.getId());
+            request.setExpectedRevision(
+                    existing == null ? null : existing.getRevision());
+            request.setSourceCode(sourceCode);
+            request.setSourceName(
+                    text(value.get("sourceName"), sourceCode));
+            request.setSourceType(
+                    text(value.get("sourceType"), null));
+            request.setProviderCode(
+                    mappedKey(
+                            "DATA_PROVIDER",
+                            text(value.get("providerCode"), null)));
+            request.setScopeType(
+                    text(value.get("scopeType"), "GLOBAL"));
+            request.setScopeId(resolveDataSourceScopeId(
+                    entity,
+                    request.getScopeType(),
+                    text(value.get("scopeRef"), null)));
+            request.setConfig(documentMap(
+                    value.get("configDocument")));
+            request.setInputSchema(documentMap(
+                    value.get("inputSchemaDocument")));
+            request.setOutputSchema(documentMap(
+                    value.get("outputSchemaDocument")));
+            request.setExecutionPolicy(documentMap(
+                    value.get("executionPolicyDocument")));
+            request.setEnabled(
+                    booleanObject(value.get("enabled")));
+            UiDataSourceDefinition saved =
+                    dataSourceService.save(request);
+            idsByCode.put(sourceCode, saved.getId());
+        }
+        return idsByCode;
+    }
+
+    private String resolveDataSourceScopeId(
+            EntityDefinition entity,
+            String scopeType,
+            String scopeRef) {
+        if ("GLOBAL".equalsIgnoreCase(scopeType)) {
+            return null;
+        }
+        if ("ENTITY".equalsIgnoreCase(scopeType)) {
+            return entity.getId();
+        }
+        if ("FORM".equalsIgnoreCase(scopeType)
+                && StringUtils.hasText(scopeRef)) {
+            String[] parts = scopeRef.split("/", 2);
+            String formKey = parts.length == 2
+                    ? parts[1] : parts[0];
+            EntityForm form = formMapper.selectByEntityIdAndFormKey(
+                    entity.getId(), formKey);
+            if (form == null) {
+                throw new IllegalStateException(
+                        "数据源作用域表单不存在: " + scopeRef);
+            }
+            return form.getId();
+        }
+        throw new IllegalStateException(
+                "迁移暂不支持的数据源作用域: " + scopeType);
+    }
+
+    private Object rewriteDataSourceReferences(
+            Object value,
+            Map<String, String> idsByCode) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> rewritten =
+                    (Map<String, Object>) value;
+            Map<String, Object> entries =
+                    new LinkedHashMap<>();
+            map.forEach((key, child) ->
+                    entries.put(String.valueOf(key), child));
+            rewritten.clear();
+            for (Map.Entry<String, Object> entry :
+                    entries.entrySet()) {
+                if (isDataSourceCodeKey(entry.getKey())
+                        && entry.getValue() instanceof String code
+                        && idsByCode.containsKey(code)) {
+                    rewritten.put(
+                            dataSourceIdKey(entry.getKey()),
+                            idsByCode.get(code));
+                } else {
+                    rewritten.put(
+                            entry.getKey(),
+                            rewriteDataSourceReferences(
+                                    entry.getValue(), idsByCode));
+                }
+            }
+            return rewritten;
+        }
+        if (value instanceof Collection<?> collection) {
+            return collection.stream()
+                    .map(child -> rewriteDataSourceReferences(
+                            child, idsByCode))
+                    .toList();
+        }
+        if (value instanceof String text
+                && (text.trim().startsWith("{")
+                || text.trim().startsWith("["))) {
+            Object parsed = parseJsonDocument(text);
+            if (parsed != null) {
+                return writeJson(rewriteDataSourceReferences(
+                        parsed, idsByCode));
+            }
+        }
+        return value;
+    }
+
+    static boolean isDataSourceCodeKey(String name) {
+        return Set.of(
+                "sourceCode",
+                "dataSourceCode",
+                "queryDataSourceCode").contains(name);
+    }
+
+    static String dataSourceIdKey(String codeKey) {
+        return switch (codeKey) {
+            case "dataSourceCode" -> "dataSourceId";
+            case "queryDataSourceCode" -> "queryDataSourceId";
+            default -> "sourceId";
+        };
+    }
+
+    private Object parseJsonDocument(String value) {
+        try {
+            return objectMapper.readValue(value, Object.class);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "迁移数据源引用序列化失败", e);
+        }
+    }
+
+    private void applyExtensions(List<Map<String, Object>> values) {
+        for (Map<String, Object> value : values) {
+            String extensionType =
+                    text(value.get("extensionType"), null);
+            String extensionKey =
+                    text(value.get("extensionKey"), null);
+            Integer version = integerObject(value.get("version"));
+            var existing = extensionDefinitionService.list(
+                            extensionType,
+                            extensionKey,
+                            null)
+                    .stream()
+                    .filter(item -> Objects.equals(
+                            item.getVersion(), version))
+                    .findFirst()
+                    .orElse(null);
+            UiExtensionDefinitionSaveRequest request =
+                    new UiExtensionDefinitionSaveRequest();
+            request.setId(existing == null ? null : existing.getId());
+            request.setExpectedRevision(
+                    existing == null ? null : existing.getRevision());
+            request.setExtensionType(extensionType);
+            request.setExtensionKey(extensionKey);
+            request.setDisplayName(
+                    text(value.get("displayName"), extensionKey));
+            request.setVersion(version);
+            request.setSnapshotVersion(integerObject(
+                    value.get("snapshotVersion")));
+            request.setSupportedModes(stringList(
+                    value.get("supportedModesDocument")));
+            request.setSupportedNodeTypes(stringList(
+                    value.get("supportedNodeTypesDocument")));
+            request.setSupportedBindings(stringList(
+                    value.get("supportedBindingsDocument")));
+            request.setConfigSchema(documentMap(
+                    value.get("configSchemaDocument")));
+            request.setCapabilities(documentMap(
+                    value.get("capabilitiesDocument")));
+            request.setStatus(text(value.get("status"), "ACTIVE"));
+            extensionDefinitionService.save(request);
         }
     }
 
     private void applyLists(EntityDefinition entity, List<Map<String, Object>> values) {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
+        List<String> listIds = new ArrayList<>();
         for (Map<String, Object> value : values) {
             EntityListConfigDTO dto = convert(value, EntityListConfigDTO.class);
             EntityListConfig existing = listConfigMapper.findByEntityIdAndListKey(entity.getId(), dto.getListKey());
@@ -392,25 +729,90 @@ public class ConfigMigrationImportApplyService {
                 listFields.add(listField);
             }
             dto.setFields(listFields);
-            entityListConfigService.saveConfig(dto);
+            EntityListConfigDTO saved =
+                    entityListConfigService.saveConfig(dto);
+            listIds.add(saved.getId());
+        }
+        publishImportedConfigurations(
+                UiConfigReleaseService.LIST,
+                listIds,
+                "配置迁移导入列表初始发布");
+    }
+
+    private void publishImportedConfigurations(
+            String configType,
+            List<String> configIds,
+            String releaseNote) {
+        List<String> pending = new ArrayList<>(configIds);
+        Map<String, RuntimeException> failures = new LinkedHashMap<>();
+        while (!pending.isEmpty()) {
+            int published = 0;
+            for (String configId : new ArrayList<>(pending)) {
+                try {
+                    if (uiConfigReleaseService.active(
+                            configType, configId) == null
+                            || uiConfigReleaseService.diff(
+                                    configType, configId).isChanged()) {
+                        uiConfigReleaseService.publish(
+                                configType,
+                                configId,
+                                releaseNote);
+                    }
+                    pending.remove(configId);
+                    failures.remove(configId);
+                    published++;
+                } catch (RuntimeException exception) {
+                    failures.put(configId, exception);
+                }
+            }
+            if (published == 0) {
+                String details = pending.stream()
+                        .map(configId -> configId + ": "
+                                + failures.get(configId).getMessage())
+                        .collect(java.util.stream.Collectors.joining("; "));
+                throw new IllegalStateException(
+                        "导入配置生成初始发布版本失败: " + details,
+                        failures.get(pending.get(0)));
+            }
         }
     }
 
-    private void applyDataPermissions(EntityDefinition entity, List<Map<String, Object>> values) {
-        listPermissionMapper.delete(new LambdaQueryWrapper<EntityListPermission>()
-                .eq(EntityListPermission::getEntityCode, entity.getEntityCode()));
-        Map<String, String> listIds = listConfigMapper.findByEntityId(entity.getId()).stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        EntityListConfig::getListKey, EntityListConfig::getId, (left, right) -> left));
-        for (Map<String, Object> value : values) {
-            EntityListPermission permission = convert(value, EntityListPermission.class);
-            permission.setId(null);
-            permission.setEntityCode(entity.getEntityCode());
-            permission.setListConfigId(listIds.get(text(value.get("listKey"), null)));
-            permission.setCreatedBy(UserContext.getUsername());
-            permission.setDeleted(0);
-            listPermissionMapper.insert(permission);
+    private void applyDataScopes(
+            EntityDefinition entity,
+            List<Map<String, Object>> policyValues,
+            List<Map<String, Object>> bindingValues) {
+        listScopeBindingMapper.delete(new LambdaQueryWrapper<EntityListScopeBinding>()
+                .eq(EntityListScopeBinding::getEntityCode, entity.getEntityCode()));
+        listScopePolicyMapper.delete(new LambdaQueryWrapper<EntityListScopePolicy>()
+                .eq(EntityListScopePolicy::getEntityCode, entity.getEntityCode()));
+
+        Map<String, String> policyIds = new LinkedHashMap<>();
+        for (Map<String, Object> value : policyValues) {
+            EntityListScopePolicy policy = convert(value, EntityListScopePolicy.class);
+            policy.setId(null);
+            policy.setEntityCode(entity.getEntityCode());
+            policy.setStatus("DRAFT");
+            policy.setReviewRequired(0);
+            policy.setCreatedBy(UserContext.getUserId());
+            policy.setDeleted(0);
+            listScopePolicyMapper.insert(policy);
+            policyIds.put(policy.getPolicyKey(), policy.getId());
         }
+        for (Map<String, Object> value : bindingValues) {
+            String policyKey = text(value.get("policyKey"), null);
+            String policyId = policyIds.get(policyKey);
+            if (!StringUtils.hasText(policyId)) {
+                throw new IllegalStateException("数据范围绑定引用的方案不存在: " + policyKey);
+            }
+            EntityListScopeBinding binding = convert(value, EntityListScopeBinding.class);
+            binding.setId(null);
+            binding.setEntityCode(entity.getEntityCode());
+            binding.setPolicyId(policyId);
+            binding.setCreatedBy(UserContext.getUserId());
+            binding.setDeleted(0);
+            listScopeBindingMapper.insert(binding);
+        }
+        listScopeService.publish(entity.getEntityCode(), "配置迁移导入发布");
     }
 
     private void applyMenus(EntityDefinition entity, List<Map<String, Object>> values) {
@@ -497,7 +899,8 @@ public class ConfigMigrationImportApplyService {
                         .orElseThrow(() -> new IllegalStateException("绑定流程不存在: " + targetKey));
             }
             context.entity().setProcessDefinitionId(process.getId());
-            context.entity().setEnableProcess(true);
+            context.entity().setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+            context.entity().setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
             entityMapper.updateById(context.entity());
         }
     }
@@ -797,6 +1200,68 @@ public class ConfigMigrationImportApplyService {
             return fallback;
         }
         return String.valueOf(value);
+    }
+
+    private Integer integerObject(Object value) {
+        if (value == null || !StringUtils.hasText(String.valueOf(value))) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException(
+                    "迁移配置整数格式错误: " + value,
+                    exception);
+        }
+    }
+
+    private List<String> stringList(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        Object decoded = decodeDocument(value);
+        if (!(decoded instanceof Collection<?> collection)) {
+            throw new IllegalStateException("迁移扩展兼容范围必须为数组");
+        }
+        return collection.stream()
+                .map(String::valueOf)
+                .toList();
+    }
+
+    private Map<String, Object> documentMap(Object value) {
+        if (value == null) {
+            return Map.of();
+        }
+        Object decoded = decodeDocument(value);
+        if (!(decoded instanceof Map<?, ?>)) {
+            throw new IllegalStateException("迁移扩展配置必须为对象");
+        }
+        return mapValue(decoded);
+    }
+
+    private Object decodeDocument(Object value) {
+        if (!(value instanceof String document)) {
+            return value;
+        }
+        if (!StringUtils.hasText(document)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(document, Object.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "迁移扩展 JSON 文档格式错误",
+                    exception);
+        }
+    }
+
+    private EntityDefinition.LifecycleMode lifecycleMode(Map<String, Object> definition) {
+        String value = text(definition.get("lifecycleMode"), EntityDefinition.LifecycleMode.STANDALONE.name());
+        try {
+            return EntityDefinition.LifecycleMode.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("不支持的实体生命周期模式: " + value);
+        }
     }
 
     private boolean booleanValue(Object value) {

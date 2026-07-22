@@ -151,7 +151,8 @@ const loadMenus = async () => {
         .filter(m => m.menuType !== 'F')
         .filter(m => {
           if (!m.entityCode || m.menuType !== 'C') return true
-          return userStore.permissions.includes(`entity:${String(m.entityCode).toLowerCase()}:list`)
+          const required = m.perm || `entity:${String(m.entityCode).toLowerCase()}:list`
+          return userStore.permissions.includes(required)
         })
         .filter(m => parentVisible !== '1' && m.visible !== '1')
         .map(m => {

@@ -19,9 +19,14 @@ public class EntityDefinitionQueryDTO {
     private String status;
 
     /**
-     * 是否启用流程
+     * 生命周期模式：STANDALONE、WORKFLOW
      */
-    private Boolean enableProcess;
+    private com.workflow.entity.EntityDefinition.LifecycleMode lifecycleMode;
+
+    /**
+     * 存储模式：DYNAMIC、SYSTEM
+     */
+    private com.workflow.entity.EntityDefinition.StorageMode storageMode;
 
     /**
      * 页码，默认 1

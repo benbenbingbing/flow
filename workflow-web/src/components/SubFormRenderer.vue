@@ -29,7 +29,13 @@
           </el-empty>
         </div>
         <div v-else class="relation-row one-to-one-form">
-          <div class="form-row-body" :class="formLayoutClass">
+          <slot
+            v-if="$slots.row"
+            name="row"
+            :row="rowData[0]"
+            :index="0"
+          />
+          <div v-else class="form-row-body" :class="formLayoutClass">
             <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
                 {{ field.fieldName }}
@@ -73,7 +79,13 @@
               <el-icon><Delete /></el-icon>删除
             </el-button>
           </div>
-          <div class="form-row-body" :class="formLayoutClass">
+          <slot
+            v-if="$slots.row"
+            name="row"
+            :row="row"
+            :index="index"
+          />
+          <div v-else class="form-row-body" :class="formLayoutClass">
             <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
                 {{ field.fieldName }}

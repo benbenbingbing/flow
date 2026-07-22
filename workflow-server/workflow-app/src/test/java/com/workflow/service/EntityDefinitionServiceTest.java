@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.migration.MigrationAssetRecorder;
+import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
 import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityFieldDTO;
@@ -15,6 +16,7 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityPublishHistoryMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.service.permission.EntityPermissionCatalogService;
+import com.workflow.service.permission.EntityListScopeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -77,6 +79,15 @@ public class EntityDefinitionServiceTest {
     @Mock
     private EntityPermissionCatalogService entityPermissionCatalogService;
 
+    @Mock
+    private EntityListScopeService entityListScopeService;
+
+    @Mock
+    private EntityRecordTeamService entityRecordTeamService;
+
+    @Mock
+    private EntityFieldOptionService fieldOptionService;
+
     @InjectMocks
     private EntityDefinitionService entityService;
 
@@ -91,6 +102,8 @@ public class EntityDefinitionServiceTest {
         testEntity.setEntityName("测试实体");
         testEntity.setDescription("测试描述");
         testEntity.setProcessDefinitionId("proc-1");
+        testEntity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        testEntity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
         testEntity.setStatus(EntityDefinition.Status.DRAFT);
 
         testField = new EntityField();
@@ -107,8 +120,24 @@ public class EntityDefinitionServiceTest {
                             ? java.util.Map.of("proc-1", "测试流程")
                             : java.util.Map.of();
                 });
+        lenient().when(processCatalogPort.findItemsByIds(anyCollection()))
+                .thenAnswer(invocation -> {
+                    java.util.Collection<String> ids = invocation.getArgument(0);
+                    java.util.Map<String, ProcessCatalogItem> result = new java.util.LinkedHashMap<>();
+                    if (ids.contains("proc-1")) {
+                        result.put("proc-1", new ProcessCatalogItem(
+                                "proc-1", "test_process", "测试流程", "PUBLISHED"));
+                    }
+                    if (ids.contains("proc-2")) {
+                        result.put("proc-2", new ProcessCatalogItem(
+                                "proc-2", "next_process", "新流程", "DRAFT"));
+                    }
+                    return result;
+                });
         lenient().when(physicalTableNaming.generate(anyString()))
                 .thenAnswer(invocation -> "biz_" + invocation.getArgument(0));
+        lenient().when(fieldOptionService.findOptions(anyString()))
+                .thenReturn(List.of());
 
         EntityPublishHistory history = new EntityPublishHistory();
         history.setId("history-1");
@@ -360,45 +389,45 @@ public class EntityDefinitionServiceTest {
     }
 
     @Test
-    void testBindProcess() {
+    void testBindWorkflow() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
-        when(dynamicTableService.getTableName("test_entity")).thenReturn("wf_test_entity");
         when(dynamicTableService.tableExists("test_entity")).thenReturn(false);
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
-        EntityDefinitionDTO result = entityService.bindProcess("1", "proc-2");
+        EntityDefinitionDTO result = entityService.bindWorkflow("1", "proc-2");
 
         assertNotNull(result);
-        assertTrue(result.getEnableProcess());
+        assertEquals(EntityDefinition.LifecycleMode.WORKFLOW, result.getLifecycleMode());
+        assertEquals(EntityDefinitionDTO.WorkflowBindingStatus.DRAFT, result.getWorkflowBindingStatus());
         assertEquals("proc-2", result.getProcessDefinitionId());
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
     }
 
     @Test
-    void testBindProcessEntityNotFound() {
+    void testBindWorkflowEntityNotFound() {
         when(entityMapper.selectById("999")).thenReturn(null);
 
         Exception exception = assertThrows(RuntimeException.class, () -> {
-            entityService.bindProcess("999", "proc-1");
+            entityService.bindWorkflow("999", "proc-1");
         });
 
         assertEquals("实体不存在: 999", exception.getMessage());
     }
 
     @Test
-    void testBindProcessSetsProcessId() {
+    void testBindWorkflowSetsProcessId() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
-        EntityDefinitionDTO result = entityService.bindProcess("1", "proc-2");
+        EntityDefinitionDTO result = entityService.bindWorkflow("1", "proc-2");
 
         assertNotNull(result);
         assertEquals("proc-2", result.getProcessDefinitionId());
-        assertTrue(result.getEnableProcess());
+        assertEquals(EntityDefinition.LifecycleMode.WORKFLOW, result.getLifecycleMode());
     }
 
     @Test
-    void testBindProcessUpdatesLatestPublishedSnapshot() {
+    void testBindWorkflowUpdatesLatestPublishedSnapshot() {
         EntityPublishHistory history = new EntityPublishHistory();
         history.setId("history-1");
         history.setEntityId("1");
@@ -407,10 +436,37 @@ public class EntityDefinitionServiceTest {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
         when(publishHistoryMapper.findLatestByEntityId("1")).thenReturn(history);
 
-        entityService.bindProcess("1", "proc-2");
+        entityService.bindWorkflow("1", "proc-2");
 
         ArgumentCaptor<EntityPublishHistory> captor = ArgumentCaptor.forClass(EntityPublishHistory.class);
         verify(publishHistoryMapper).updateById(captor.capture());
         assertEquals("proc-2", captor.getValue().getProcessDefinitionId());
+    }
+
+    @Test
+    void standaloneIsDefaultForNewEntity() {
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityCode("reference_data");
+        dto.setEntityName("基础资料");
+        when(entityMapper.insert(any(EntityDefinition.class))).thenReturn(1);
+
+        EntityDefinitionDTO result = entityService.save(dto);
+
+        assertEquals(EntityDefinition.LifecycleMode.STANDALONE, result.getLifecycleMode());
+        assertEquals(EntityDefinition.StorageMode.DYNAMIC, result.getStorageMode());
+        assertEquals(EntityDefinitionDTO.WorkflowBindingStatus.NOT_APPLICABLE, result.getWorkflowBindingStatus());
+    }
+
+    @Test
+    void workflowEntityCannotDowngrade() {
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+
+        var exception = assertThrows(
+                com.workflow.common.BusinessConflictException.class,
+                () -> entityService.updateLifecycleMode(
+                        "1",
+                        EntityDefinition.LifecycleMode.STANDALONE));
+
+        assertEquals("ENTITY_LIFECYCLE_DOWNGRADE_FORBIDDEN", exception.getErrorCode());
     }
 }

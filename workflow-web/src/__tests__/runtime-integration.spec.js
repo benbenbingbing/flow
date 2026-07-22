@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 
 import {
+  createFormDataSourceRuntime,
+  getClientBeforeSubmitBindings,
   getFieldKey,
   getFieldModelPath,
+  isClientPrevalidationBinding,
   isSystemField,
   isRuntimeFieldReadonly,
   isRuntimeFormReadonly,
@@ -37,6 +40,8 @@ import {
   normalizePageResult,
   toPageParams,
   API_SUCCESS_CODES,
+  BUSINESS_TRACE_HEADER,
+  ensureBusinessTraceHeader,
   getApiErrorMessage
 } from '@/shared/request'
 
@@ -129,6 +134,177 @@ assert.deepEqual(normalizePageResult({ records: [{ id: 1 }], total: 1, current: 
 assert.deepEqual(normalizeApiResponse({ code: 0, data: { rows: [{ id: 2 }], count: 1 } }).list, [{ id: 2 }])
 assert.equal(API_SUCCESS_CODES.has('200'), true)
 assert.equal(getApiErrorMessage({ msg: '失败' }), '失败')
+const mutationRequest = ensureBusinessTraceHeader({ method: 'post', headers: {} })
+assert.match(mutationRequest.headers[BUSINESS_TRACE_HEADER], /^ui_/)
+const existingTraceRequest = ensureBusinessTraceHeader({
+  method: 'put',
+  headers: { [BUSINESS_TRACE_HEADER]: 'ui_existing' }
+})
+assert.equal(existingTraceRequest.headers[BUSINESS_TRACE_HEADER], 'ui_existing')
+assert.equal(
+  ensureBusinessTraceHeader({ method: 'get', headers: {} }).headers[BUSINESS_TRACE_HEADER],
+  undefined
+)
+
+const normalBeforeSubmitBinding = { sourceId: 'normal-source' }
+const incompleteClientBinding = {
+  sourceId: 'incomplete-source',
+  clientPrevalidate: true
+}
+const safeClientBinding = {
+  sourceId: 'safe-source',
+  clientPrevalidate: true,
+  sideEffectFree: true
+}
+assert.equal(isClientPrevalidationBinding(normalBeforeSubmitBinding), false)
+assert.equal(isClientPrevalidationBinding(incompleteClientBinding), false)
+assert.equal(isClientPrevalidationBinding(safeClientBinding), true)
+assert.deepEqual(
+  getClientBeforeSubmitBindings({
+    dataSourceBindings: {
+      BEFORE_SUBMIT: [
+        'legacy-source',
+        normalBeforeSubmitBinding,
+        incompleteClientBinding,
+        safeClientBinding
+      ]
+    }
+  }),
+  [{
+    ...safeClientBinding,
+    usage: 'BEFORE_SUBMIT'
+  }]
+)
+const browserExecutions = []
+const browserRecord = { amount: 88 }
+const browserRuntime = createFormDataSourceRuntime({
+  entityCode: 'expense',
+  getRecord: () => browserRecord,
+  getMode: () => 'create',
+  executeDataSource: async (sourceId, request) => {
+    browserExecutions.push({ sourceId, request })
+    return { data: { browserMutated: true } }
+  }
+})
+await browserRuntime.prevalidateBeforeSubmit({
+  form: {
+    dataSourceBindings: {
+      BEFORE_SUBMIT: normalBeforeSubmitBinding
+    }
+  },
+  fields: [{
+    dataSourceBindings: {
+      BEFORE_SUBMIT: safeClientBinding
+    }
+  }]
+})
+assert.equal(browserExecutions.length, 1)
+assert.equal(browserExecutions[0].sourceId, 'safe-source')
+assert.equal(browserExecutions[0].request.context.clientPrevalidate, true)
+assert.deepEqual(browserRecord, { amount: 88 })
+await assert.rejects(
+  browserRuntime.execute(normalBeforeSubmitBinding, {
+    usage: 'BEFORE_SUBMIT'
+  }),
+  /浏览器禁止执行普通 BEFORE_SUBMIT/
+)
+assert.equal(browserExecutions.length, 1)
+
+const initializationExecutions = []
+const initializedRecord = {}
+const initializationForm = {
+  id: 'form-1',
+  dataSourceBindingsDocument: JSON.stringify({
+    FORM_INIT: {
+      sourceId: 'form-init-source'
+    },
+    AFTER_LOAD: {
+      sourceId: 'form-after-load-source'
+    }
+  })
+}
+const initializationRuntime = createFormDataSourceRuntime({
+  entityCode: 'expense',
+  getForm: () => initializationForm,
+  getRecord: () => initializedRecord,
+  getMode: () => 'create',
+  executeDataSource: async (sourceId) => {
+    initializationExecutions.push(sourceId)
+    return sourceId === 'form-init-source'
+      ? { data: { initialized: true } }
+      : { data: { afterLoaded: true } }
+  }
+})
+await initializationRuntime.initialize({
+  form: initializationForm
+})
+assert.deepEqual(
+  initializationExecutions,
+  ['form-init-source', 'form-after-load-source']
+)
+assert.deepEqual(
+  initializedRecord,
+  {
+    initialized: true,
+    afterLoaded: true
+  }
+)
+
+const nestedInitializationExecutions = []
+const parentRecord = { parentOnly: true }
+const nestedForm = {
+  id: 'child-form-1',
+  entityId: 'child-entity-1',
+  dataSourceBindings: {
+    FORM_INIT: {
+      sourceId: 'child-form-init-source'
+    },
+    AFTER_LOAD: {
+      sourceId: 'child-form-after-load-source'
+    }
+  }
+}
+const nestedRuntime = createFormDataSourceRuntime({
+  entityCode: 'parent-entity',
+  getForm: () => ({ id: 'parent-form-1', entityId: 'parent-entity-1' }),
+  getRecord: () => parentRecord,
+  getMode: () => 'edit',
+  executeDataSource: async (sourceId, request) => {
+    nestedInitializationExecutions.push({ sourceId, request })
+    return sourceId === 'child-form-init-source'
+      ? { data: { initializedForChild: request.input.data.rowKey } }
+      : { data: { afterLoadedForChild: request.input.data.rowKey } }
+  }
+})
+const childRowOne = { rowKey: 'one' }
+const childRowTwo = { rowKey: 'two' }
+await nestedRuntime.initialize({
+  form: nestedForm,
+  record: childRowOne,
+  recordId: 'parent-1:lines:0',
+  initializationKey: 'nested:child-form-1:parent-1:lines:0'
+})
+await nestedRuntime.initialize({
+  form: nestedForm,
+  record: childRowTwo,
+  recordId: 'parent-1:lines:1',
+  initializationKey: 'nested:child-form-1:parent-1:lines:1'
+})
+assert.deepEqual(childRowOne, {
+  rowKey: 'one',
+  initializedForChild: 'one',
+  afterLoadedForChild: 'one'
+})
+assert.deepEqual(childRowTwo, {
+  rowKey: 'two',
+  initializedForChild: 'two',
+  afterLoadedForChild: 'two'
+})
+assert.deepEqual(parentRecord, { parentOnly: true })
+assert.equal(nestedInitializationExecutions.length, 4)
+assert.equal(nestedInitializationExecutions[0].request.context.formId, 'child-form-1')
+assert.equal(nestedInitializationExecutions[0].request.context.entityId, 'child-entity-1')
+assert.equal(nestedInitializationExecutions[0].request.input.recordId, 'parent-1:lines:0')
 
 assert.equal(formatDateValue('not-a-date'), '-')
 assert.notEqual(formatDateValue('2026-07-14T08:00:00Z'), '-')

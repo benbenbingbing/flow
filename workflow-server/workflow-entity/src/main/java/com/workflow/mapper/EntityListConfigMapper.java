@@ -25,4 +25,19 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
      */
     @Select("SELECT * FROM entity_list_config WHERE entity_id = #{entityId} AND list_key = #{listKey} AND deleted = 0 LIMIT 1")
     EntityListConfig findByEntityIdAndListKey(@Param("entityId") String entityId, @Param("listKey") String listKey);
+
+    @Select("SELECT * FROM entity_list_config "
+            + "WHERE entity_code = #{entityCode} AND list_key = #{listKey} "
+            + "AND deleted = 0 LIMIT 1")
+    EntityListConfig findByEntityCodeAndListKey(
+            @Param("entityCode") String entityCode,
+            @Param("listKey") String listKey);
+
+    @Select("SELECT * FROM entity_list_config "
+            + "WHERE entity_code = #{entityCode} AND deleted = 0 "
+            + "ORDER BY is_default DESC, create_time ASC")
+    List<EntityListConfig> findByEntityCode(@Param("entityCode") String entityCode);
+
+    @Select("SELECT * FROM entity_list_config WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    EntityListConfig selectByIdForUpdate(@Param("id") String id);
 }

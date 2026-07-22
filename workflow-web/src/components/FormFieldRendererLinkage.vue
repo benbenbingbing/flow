@@ -12,6 +12,8 @@
       @update:modelValue="$emit('update:modelValue', $event)"
       :disabled="disabled"
       :options="options"
+      :context="context"
+      :data-source-runtime="dataSourceRuntime"
       @change="$emit('change', $event)"
       @blur="$emit('blur', $event)"
       @focus="$emit('focus', $event)"
@@ -38,6 +40,14 @@ const props = defineProps({
   },
   options: {
     type: Array,
+    default: null
+  },
+  context: {
+    type: Object,
+    default: () => ({})
+  },
+  dataSourceRuntime: {
+    type: Object,
     default: null
   }
 })

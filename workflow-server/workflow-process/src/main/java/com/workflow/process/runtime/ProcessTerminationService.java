@@ -16,6 +16,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -38,7 +39,9 @@ public class ProcessTerminationService {
     private final ProcessOperationLogMapper operationLogMapper;
     private final ProcessTaskService processTaskService;
     private final SysUserService sysUserService;
+    private final com.workflow.service.EntityRecordTeamService entityRecordTeamService;
 
+    @Transactional(rollbackFor = Exception.class)
     public Result<Void> terminateProcess(String processInstanceId, String userId, String reason) {
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
@@ -78,6 +81,15 @@ public class ProcessTerminationService {
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
             writeTerminateLog(processInstanceId, userId, deleteReason);
             updateEntityStatus(entityCode, entityDataId);
+            if (entityCode != null && entityDataId != null) {
+                entityRecordTeamService.record(
+                        entityCode,
+                        entityDataId,
+                        "TERMINATE",
+                        deleteReason,
+                        processInstanceId,
+                        null);
+            }
             log.info("流程终止成功: processInstanceId={}, userId={}, reason={}", processInstanceId, userId, deleteReason);
             return Result.success(null);
         } catch (Exception e) {

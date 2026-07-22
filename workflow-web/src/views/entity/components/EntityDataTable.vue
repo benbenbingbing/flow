@@ -132,14 +132,29 @@
         @current-change="(val) => emit('page-change', val)"
       />
     </div>
+
+    <EntityListLauncher
+      v-if="openListState.targetEntityCode && openListState.targetListKey"
+      ref="entityListLauncherRef"
+      :entity-code="openListState.targetEntityCode"
+      :list-key="openListState.targetListKey"
+      :presentation="openListState.presentation"
+      :selection-mode="openListState.selectionMode"
+      :context="openListState.context"
+      :title="openListState.title"
+      @confirm="handleOpenListConfirm"
+    >
+      <template #default></template>
+    </EntityListLauncher>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import EntityListLauncher from '@/components/EntityListLauncher.vue'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
 import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
 import { getFieldModelPath } from '@/shared/form-runtime'
@@ -256,6 +271,10 @@ const onToolbarClick = (btn: any) => {
   if (btn.type === 'built-in') {
     BUILTIN_TOOLBAR_ACTIONS[btn.key]?.(btn)
   } else if (btn.type === 'custom') {
+    if (btn.customMode === 'open-list') {
+      openConfiguredList(btn)
+      return
+    }
     const handler = getListToolbarAction(btn.customHandler)
     if (handler) {
       handler({
@@ -288,6 +307,10 @@ const onRowActionClick = (btn: any, row: any) => {
   if (btn.type === 'built-in') {
     BUILTIN_ROW_ACTIONS[btn.key]?.(row)
   } else if (btn.type === 'custom') {
+    if (btn.customMode === 'open-list') {
+      openConfiguredList(btn, row)
+      return
+    }
     const handler = getListRowAction(btn.customHandler)
     if (handler) {
       handler({
@@ -305,6 +328,59 @@ const onRowActionClick = (btn: any, row: any) => {
 
 // 当前选中行（由父组件通过 selection-change 同步）
 const selectedRows = defineModel<any[]>('selectedRows', { default: () => [] })
+const entityListLauncherRef = ref<InstanceType<typeof EntityListLauncher>>()
+const pendingOpenListAction = ref<{ button: any, row?: any } | null>(null)
+const openListState = reactive({
+  targetEntityCode: '',
+  targetListKey: '',
+  presentation: 'DIALOG' as 'DIALOG' | 'DRAWER',
+  selectionMode: 'NONE' as 'NONE' | 'SINGLE' | 'MULTIPLE',
+  title: '选择数据',
+  context: {} as Record<string, any>
+})
+
+async function openConfiguredList(button: any, row?: any) {
+  if (!button.targetEntityCode || !button.targetListKey) {
+    ElMessage.warning('按钮未配置目标实体和列表')
+    return
+  }
+  pendingOpenListAction.value = { button, row }
+  openListState.targetEntityCode = button.targetEntityCode
+  openListState.targetListKey = button.targetListKey
+  openListState.presentation = button.presentation === 'DRAWER' ? 'DRAWER' : 'DIALOG'
+  openListState.selectionMode = ['SINGLE', 'MULTIPLE'].includes(button.selectionMode)
+    ? button.selectionMode
+    : 'NONE'
+  openListState.title = button.openListTitle || button.label || '选择数据'
+  openListState.context = {
+    sourceEntityCode: props.entityCode,
+    sourceRecordId: row?.id || null,
+    relationKey: button.relationKey || null
+  }
+  await nextTick()
+  entityListLauncherRef.value?.open()
+}
+
+function handleOpenListConfirm(rows: any[]) {
+  const pending = pendingOpenListAction.value
+  if (!pending?.button?.selectionHandler) return
+  const handler = pending.row
+    ? getListRowAction(pending.button.selectionHandler)
+    : getListToolbarAction(pending.button.selectionHandler)
+  if (!handler) {
+    ElMessage.warning(`未找到选择结果处理器：${pending.button.selectionHandler}`)
+    return
+  }
+  handler({
+    rows,
+    row: pending.row,
+    selectedRows: rows,
+    entityCode: props.entityCode,
+    entityDefinition: props.entityDefinition,
+    refresh: props.refresh,
+    config: pending.button
+  })
+}
 
 const hasVisibleRowActions = computed(() =>
   props.dataList.some(row => visibleRowButtons(row).length > 0)

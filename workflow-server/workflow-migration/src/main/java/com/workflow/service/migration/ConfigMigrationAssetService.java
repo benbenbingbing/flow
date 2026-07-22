@@ -12,6 +12,7 @@ import com.workflow.entity.EntityCodeRule;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityForm;
+import com.workflow.entity.EntityFormNode;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.entity.EntityPublishHistory;
 import com.workflow.entity.FlowAction;
@@ -21,6 +22,9 @@ import com.workflow.entity.ProcessNodeForm;
 import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysUser;
+import com.workflow.entity.UiConfigRelease;
+import com.workflow.entity.UiDataSourceDefinition;
+import com.workflow.entity.UiExtensionDefinition;
 import com.workflow.entity.migration.ConfigMigrationAsset;
 import com.workflow.mapper.AssigneeConfigMapper;
 import com.workflow.mapper.EntityCodeRuleMapper;
@@ -30,9 +34,11 @@ import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.mapper.EntityFormFieldMapper;
 import com.workflow.mapper.EntityFormMapper;
+import com.workflow.mapper.EntityFormNodeMapper;
 import com.workflow.mapper.EntityListConfigMapper;
 import com.workflow.mapper.EntityListFieldMapper;
-import com.workflow.mapper.EntityListPermissionMapper;
+import com.workflow.mapper.EntityListScopeBindingMapper;
+import com.workflow.mapper.EntityListScopePolicyMapper;
 import com.workflow.mapper.EntityPublishHistoryMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.EntityStatusMapper;
@@ -45,6 +51,9 @@ import com.workflow.mapper.ProcessVersionHistoryMapper;
 import com.workflow.mapper.SysMenuMapper;
 import com.workflow.mapper.SysOrganizationMapper;
 import com.workflow.mapper.SysUserMapper;
+import com.workflow.mapper.UiConfigReleaseMapper;
+import com.workflow.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.mapper.UiExtensionDefinitionMapper;
 import com.workflow.mapper.migration.ConfigMigrationAssetMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -80,7 +89,7 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
     private static final int SNAPSHOT_SCHEMA_VERSION = 1;
     private static final DateTimeFormatter TAG_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final Set<String> TECHNICAL_KEYS = Set.of(
-            "id", "entityId", "formId", "fieldId", "listConfigId", "processConfigId",
+            "id", "entityId", "formId", "fieldId", "listConfigId", "policyId", "processConfigId",
             "nodeConfigId", "versionId", "historyId", "deploymentId", "sourceHistoryId",
             "processDefinitionId", "refEntityId", "parentEntityId", "parentFieldId",
             "childEntityId", "createdAt", "updatedAt", "createTime", "updateTime",
@@ -97,9 +106,11 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
     private final EntityCodeRuleMapper codeRuleMapper;
     private final EntityFormMapper formMapper;
     private final EntityFormFieldMapper formFieldMapper;
+    private final EntityFormNodeMapper formNodeMapper;
     private final EntityListConfigMapper listConfigMapper;
     private final EntityListFieldMapper listFieldMapper;
-    private final EntityListPermissionMapper listPermissionMapper;
+    private final EntityListScopePolicyMapper listScopePolicyMapper;
+    private final EntityListScopeBindingMapper listScopeBindingMapper;
     private final SysMenuMapper menuMapper;
     private final ProcessDefinitionConfigMapper processMapper;
     private final NodeConfigMapper nodeConfigMapper;
@@ -112,7 +123,11 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
     private final ProcessVersionHistoryMapper processHistoryMapper;
     private final SysUserMapper userMapper;
     private final SysOrganizationMapper organizationMapper;
+    private final UiConfigReleaseMapper configReleaseMapper;
+    private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
+    private final UiExtensionDefinitionMapper extensionDefinitionMapper;
     private final ObjectMapper objectMapper;
+    private final ConfigMigrationAssetDependencyService assetDependencyService;
 
     @Transactional(readOnly = true)
     public List<ConfigMigrationAsset> query(ConfigMigrationAssetQuery query) {
@@ -165,6 +180,9 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
     public ConfigMigrationAsset recordEntity(EntityDefinition entity,
                                              EntityPublishHistory history,
                                              ConfigMigrationPublishRequest request) {
+        if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            throw new IllegalArgumentException("平台系统实体不属于可迁移动态配置: " + entity.getEntityCode());
+        }
         Map<String, Object> snapshot = buildEntitySnapshot(entity);
         return saveAsset(
                 ENTITY,
@@ -280,7 +298,12 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         definition.put("entityCode", entity.getEntityCode());
         definition.put("entityName", entity.getEntityName());
         definition.put("description", entity.getDescription());
-        definition.put("enableProcess", entity.getEnableProcess());
+        definition.put("lifecycleMode", entity.getLifecycleMode() == null
+                ? EntityDefinition.LifecycleMode.STANDALONE.name()
+                : entity.getLifecycleMode().name());
+        definition.put("storageMode", entity.getStorageMode() == null
+                ? EntityDefinition.StorageMode.DYNAMIC.name()
+                : entity.getStorageMode().name());
         ProcessDefinitionConfig process = StringUtils.hasText(entity.getProcessDefinitionId())
                 ? processMapper.selectById(entity.getProcessDefinitionId()) : null;
         definition.put("processKey", process == null ? null : process.getProcessKey());
@@ -308,19 +331,86 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         snapshot.put("codeRule", codeRule == null ? null : portableMap(codeRule));
 
         List<Map<String, Object>> forms = new ArrayList<>();
+        Set<String> extensionReferences = new LinkedHashSet<>();
+        Set<String> dataSourceIds = new LinkedHashSet<>();
         for (EntityForm form : formMapper.selectByEntityId(entity.getId())) {
-            Map<String, Object> formSnapshot = portableMap(form);
+            UiConfigRelease activeRelease =
+                    configReleaseMapper.findActive("FORM", form.getId());
+            Map<String, Object> releaseSnapshot = activeRelease == null
+                    ? Map.of()
+                    : mapValue(parseJson(
+                            activeRelease.getSnapshotDocument(), Map.of()));
+            Map<String, Object> formSnapshot =
+                    sanitizeMap(selectReleasedSection(
+                            releaseSnapshot,
+                            "form",
+                            portableMap(form)));
+            String customComponent = text(
+                    formSnapshot.get("customComponent"));
+            Integer customComponentVersion = integer(
+                    formSnapshot.get("customComponentVersion"));
+            if (StringUtils.hasText(customComponent)
+                    && customComponentVersion != null) {
+                extensionReferences.add(extensionReference(
+                        "FORM",
+                        customComponent,
+                        customComponentVersion));
+            }
             List<Map<String, Object>> formFields = new ArrayList<>();
-            formFieldMapper.selectByFormId(form.getId()).forEach(formField -> {
-                Map<String, Object> formFieldSnapshot = portableMap(formField);
-                formFieldSnapshot.put("fieldCode",
-                        firstNonBlank(formField.getFieldCode(), fieldCodesById.get(formField.getFieldId())));
-                formFields.add(formFieldSnapshot);
-            });
+            List<Map<String, Object>> releasedFields =
+                    castList(releaseSnapshot.get("legacyFields"));
+            if (releaseSnapshot.containsKey("legacyFields")) {
+                releasedFields.forEach(value ->
+                        formFields.add(sanitizeMap(value)));
+            } else {
+                formFieldMapper.selectByFormId(form.getId()).forEach(formField -> {
+                    Map<String, Object> formFieldSnapshot =
+                            portableMap(formField);
+                    formFieldSnapshot.put("fieldCode",
+                            firstNonBlank(
+                                    formField.getFieldCode(),
+                                    fieldCodesById.get(
+                                            formField.getFieldId())));
+                    formFields.add(formFieldSnapshot);
+                });
+            }
             formSnapshot.put("fields", formFields);
+            List<Map<String, Object>> releasedNodes =
+                    castList(releaseSnapshot.get("nodes"));
+            List<EntityFormNode> nodes =
+                    releaseSnapshot.containsKey("nodes")
+                    ? releasedNodes.stream()
+                            .map(value -> objectMapper.convertValue(
+                                    value, EntityFormNode.class))
+                            .toList()
+                    : formNodeMapper.findByFormId(form.getId());
+            Map<String, String> nodeKeysById = new LinkedHashMap<>();
+            nodes.forEach(node ->
+                    nodeKeysById.put(node.getId(), node.getNodeKey()));
+            List<Map<String, Object>> nodeSnapshots = new ArrayList<>();
+            for (EntityFormNode node : nodes) {
+                Map<String, Object> nodeSnapshot = portableMap(node);
+                nodeSnapshot.put(
+                        "parentNodeKey",
+                        nodeKeysById.get(node.getParentId()));
+                if (StringUtils.hasText(node.getComponentName())
+                        && node.getComponentVersion() != null) {
+                    extensionReferences.add(extensionReference(
+                            "NODE",
+                            node.getComponentName(),
+                            node.getComponentVersion()));
+                }
+                collectDataSourceIds(nodeSnapshot, dataSourceIds);
+                nodeSnapshots.add(nodeSnapshot);
+            }
+            formSnapshot.put("nodes", nodeSnapshots);
+            collectDataSourceIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
         snapshot.put("forms", forms);
+        snapshot.put(
+                "extensions",
+                extensionSnapshots(extensionReferences));
 
         List<EntityListConfig> listConfigs = listConfigMapper.findByEntityId(entity.getId());
         Map<String, String> listKeysById = new LinkedHashMap<>();
@@ -329,19 +419,47 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
             listKeysById.put(listConfig.getId(), listConfig.getListKey());
             Map<String, Object> listSnapshot = portableMap(listConfig);
             listSnapshot.put("fields", portableList(listFieldMapper.findByListConfigId(listConfig.getId())));
+            collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
-        snapshot.put("lists", lists);
+        Map<String, String> dataSourceCodesById =
+                dataSourceCodesById(dataSourceIds);
+        snapshot.put(
+                "forms",
+                forms.stream()
+                        .map(value -> mapValue(rewriteDataSourceReferences(
+                                value, dataSourceCodesById)))
+                        .toList());
+        snapshot.put(
+                "lists",
+                lists.stream()
+                        .map(value -> mapValue(rewriteDataSourceReferences(
+                                value, dataSourceCodesById)))
+                        .toList());
+        snapshot.put(
+                "dataSources",
+                dataSourceSnapshots(
+                        dataSourceIds,
+                        entity.getId(),
+                        entity.getEntityCode()));
 
-        List<Map<String, Object>> permissions = new ArrayList<>();
-        listPermissionMapper.selectList(new LambdaQueryWrapper<com.workflow.entity.EntityListPermission>()
-                        .eq(com.workflow.entity.EntityListPermission::getEntityCode, entity.getEntityCode()))
-                .forEach(permission -> {
-                    Map<String, Object> value = portableMap(permission);
-                    value.put("listKey", listKeysById.get(permission.getListConfigId()));
-                    permissions.add(value);
+        Map<String, String> policyKeysById = new LinkedHashMap<>();
+        List<Map<String, Object>> policies = new ArrayList<>();
+        listScopePolicyMapper.findByEntityCode(entity.getEntityCode())
+                .forEach(policy -> {
+                    policyKeysById.put(policy.getId(), policy.getPolicyKey());
+                    policies.add(portableMap(policy));
                 });
-        snapshot.put("dataPermissions", permissions);
+        snapshot.put("scopePolicies", policies);
+
+        List<Map<String, Object>> bindings = new ArrayList<>();
+        listScopeBindingMapper.findByEntityCode(entity.getEntityCode())
+                .forEach(binding -> {
+                    Map<String, Object> value = portableMap(binding);
+                    value.put("policyKey", policyKeysById.get(binding.getPolicyId()));
+                    bindings.add(value);
+                });
+        snapshot.put("scopeBindings", bindings);
 
         List<Map<String, Object>> menus = new ArrayList<>();
         menuMapper.selectList(new LambdaQueryWrapper<com.workflow.entity.SysMenu>()
@@ -371,6 +489,207 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         collectExtensionDependencies(snapshot, dependencies);
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
+    }
+
+    private List<Map<String, Object>> extensionSnapshots(
+            Set<String> references) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String reference : references) {
+            String[] parts = reference.split("\\|", 3);
+            UiExtensionDefinition definition =
+                    extensionDefinitionMapper.selectOne(
+                            new LambdaQueryWrapper<UiExtensionDefinition>()
+                                    .eq(
+                                            UiExtensionDefinition::getExtensionType,
+                                            parts[0])
+                                    .eq(
+                                            UiExtensionDefinition::getExtensionKey,
+                                            parts[1])
+                                    .eq(
+                                            UiExtensionDefinition::getVersion,
+                                            Integer.parseInt(parts[2]))
+                                    .eq(
+                                            UiExtensionDefinition::getDeleted,
+                                            0));
+            if (definition == null) {
+                throw new IllegalStateException(
+                        "表单引用的扩展清单不存在: "
+                                + parts[1] + "@" + parts[2]);
+            }
+            result.add(portableMap(definition));
+        }
+        return result;
+    }
+
+    private String extensionReference(
+            String type,
+            String key,
+            Integer version) {
+        return type + "|" + key + "|" + version;
+    }
+
+    private Map<String, String> dataSourceCodesById(Set<String> ids) {
+        Map<String, String> result = new LinkedHashMap<>();
+        for (String id : ids) {
+            UiDataSourceDefinition definition =
+                    dataSourceDefinitionMapper.selectById(id);
+            if (definition == null || !StringUtils.hasText(
+                    definition.getSourceCode())) {
+                throw new IllegalStateException(
+                        "表单引用的数据源不存在: " + id);
+            }
+            result.put(id, definition.getSourceCode());
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> dataSourceSnapshots(
+            Set<String> ids,
+            String entityId,
+            String entityCode) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String id : ids) {
+            UiDataSourceDefinition definition =
+                    dataSourceDefinitionMapper.selectById(id);
+            Map<String, Object> value = portableMap(definition);
+            String scopeType = definition.getScopeType();
+            if ("ENTITY".equalsIgnoreCase(scopeType)
+                    && entityId.equals(definition.getScopeId())) {
+                value.put("scopeRef", entityCode);
+            } else if ("FORM".equalsIgnoreCase(scopeType)) {
+                EntityForm scopeForm =
+                        formMapper.selectById(definition.getScopeId());
+                if (scopeForm != null) {
+                    value.put(
+                            "scopeRef",
+                            entityCode + "/" + scopeForm.getFormKey());
+                }
+            }
+            value.remove("scopeId");
+            result.add(value);
+        }
+        return result;
+    }
+
+    private void collectDataSourceIds(
+            Object value,
+            Set<String> result) {
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> {
+                if (isDataSourceIdKey(String.valueOf(key))
+                        && child instanceof String text
+                        && StringUtils.hasText(text)) {
+                    result.add(text);
+                }
+                collectDataSourceIds(child, result);
+            });
+        } else if (value instanceof Collection<?> collection) {
+            collection.forEach(child ->
+                    collectDataSourceIds(child, result));
+        } else if (value instanceof String text
+                && (text.trim().startsWith("{")
+                || text.trim().startsWith("["))) {
+            Object parsed = parseJson(text, null);
+            if (parsed != null) {
+                collectDataSourceIds(parsed, result);
+            }
+        }
+    }
+
+    private Object rewriteDataSourceReferences(
+            Object value,
+            Map<String, String> codesById) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> rewritten = new LinkedHashMap<>();
+            map.forEach((key, child) -> {
+                String name = String.valueOf(key);
+                if (isDataSourceIdKey(name)
+                        && child instanceof String text
+                        && codesById.containsKey(text)) {
+                    rewritten.put(
+                            dataSourceCodeKey(name),
+                            codesById.get(text));
+                } else {
+                    rewritten.put(
+                            name,
+                            rewriteDataSourceReferences(
+                                    child, codesById));
+                }
+            });
+            return rewritten;
+        }
+        if (value instanceof Collection<?> collection) {
+            return collection.stream()
+                    .map(child -> rewriteDataSourceReferences(
+                            child, codesById))
+                    .toList();
+        }
+        if (value instanceof String text
+                && (text.trim().startsWith("{")
+                || text.trim().startsWith("["))) {
+            Object parsed = parseJson(text, null);
+            if (parsed != null) {
+                return writeJson(rewriteDataSourceReferences(
+                        parsed, codesById));
+            }
+        }
+        return value;
+    }
+
+    static boolean isDataSourceIdKey(String name) {
+        return Set.of(
+                "sourceId",
+                "dataSourceId",
+                "queryDataSourceId").contains(name);
+    }
+
+    static String dataSourceCodeKey(String idKey) {
+        return switch (idKey) {
+            case "dataSourceId" -> "dataSourceCode";
+            case "queryDataSourceId" -> "queryDataSourceCode";
+            default -> "sourceCode";
+        };
+    }
+
+    private Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, child) ->
+                result.put(String.valueOf(key), child));
+        return result;
+    }
+
+    static Map<String, Object> selectReleasedSection(
+            Map<String, Object> releaseSnapshot,
+            String section,
+            Map<String, Object> fallback) {
+        if (releaseSnapshot != null
+                && releaseSnapshot.containsKey(section)) {
+            Object value = releaseSnapshot.get(section);
+            if (value instanceof Map<?, ?> map) {
+                Map<String, Object> result =
+                        new LinkedHashMap<>();
+                map.forEach((key, child) ->
+                        result.put(String.valueOf(key), child));
+                return result;
+            }
+            return new LinkedHashMap<>();
+        }
+        return fallback;
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Integer integer(Object value) {
+        if (value == null
+                || !StringUtils.hasText(String.valueOf(value))) {
+            return null;
+        }
+        return Integer.parseInt(String.valueOf(value));
     }
 
     private Map<String, Object> buildProcessSnapshot(ProcessDefinitionConfig config, ProcessVersionHistory history) {
@@ -506,6 +825,7 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         asset.setUpdatedAt(LocalDateTime.now());
         asset.setDeleted(0);
         assetMapper.insert(asset);
+        assetDependencyService.replace(asset.getId(), dependencies);
         return asset;
     }
 

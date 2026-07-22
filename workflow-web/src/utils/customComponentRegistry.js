@@ -48,6 +48,41 @@ import { normalizeExtensionDescriptor } from '@/shared/config-runtime'
 const listRegistry = new Map()
 const formRegistry = new Map()
 
+function normalizeVersion(version) {
+  const normalized = Number(version)
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : 1
+}
+
+function parseRequestedVersion(version) {
+  const normalized = Number(version)
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : undefined
+}
+
+function registerVersionedComponent(registry, descriptor) {
+  descriptor.version = normalizeVersion(descriptor.version)
+  const versions = registry.get(descriptor.name) || new Map()
+  versions.set(descriptor.version, descriptor)
+  registry.set(descriptor.name, versions)
+}
+
+function getVersionedDescriptor(registry, name, version) {
+  const versions = registry.get(name)
+  if (!versions) return undefined
+  if (version !== undefined && version !== null && version !== '') {
+    const requestedVersion = parseRequestedVersion(version)
+    return requestedVersion === undefined ? undefined : versions.get(requestedVersion)
+  }
+  return Array.from(versions.values())
+    .sort((left, right) => right.version - left.version)[0]
+}
+
+function getVersionedOptions(registry) {
+  return Array.from(registry.values())
+    .map(versions => Array.from(versions.values())
+      .sort((left, right) => right.version - left.version)[0])
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
 // ========== 自定义列表组件 ==========
 
 /**
@@ -57,7 +92,7 @@ const formRegistry = new Map()
  */
 export function registerCustomListComponent(name, component, metadata = {}) {
   const descriptor = normalizeExtensionDescriptor(name, component, metadata)
-  listRegistry.set(descriptor.name, descriptor)
+  registerVersionedComponent(listRegistry, descriptor)
 }
 
 /**
@@ -65,8 +100,8 @@ export function registerCustomListComponent(name, component, metadata = {}) {
  * @param {string} name 组件标识名
  * @returns {Component|undefined}
  */
-export function getCustomListComponent(name) {
-  return listRegistry.get(name)?.component
+export function getCustomListComponent(name, version) {
+  return getCustomListDescriptor(name, version)?.component
 }
 
 /**
@@ -74,8 +109,8 @@ export function getCustomListComponent(name) {
  * @param {string} name 组件标识名
  * @returns {boolean}
  */
-export function hasCustomListComponent(name) {
-  return listRegistry.has(name)
+export function hasCustomListComponent(name, version) {
+  return Boolean(getCustomListDescriptor(name, version))
 }
 
 /**
@@ -86,12 +121,13 @@ export function getRegisteredCustomListNames() {
   return Array.from(listRegistry.keys())
 }
 
-export function getCustomListDescriptor(name) {
-  return listRegistry.get(name)
+export function getCustomListDescriptor(name, version) {
+  return getVersionedDescriptor(listRegistry, name, version)
 }
 
 export function getCustomListComponentOptions() {
-  return Array.from(listRegistry.values()).map(({ component, ...descriptor }) => descriptor)
+  return getVersionedOptions(listRegistry)
+    .map(({ component, ...descriptor }) => descriptor)
 }
 
 // ========== 自定义表单组件 ==========
@@ -103,7 +139,7 @@ export function getCustomListComponentOptions() {
  */
 export function registerCustomFormComponent(name, component, metadata = {}) {
   const descriptor = normalizeExtensionDescriptor(name, component, metadata)
-  formRegistry.set(descriptor.name, descriptor)
+  registerVersionedComponent(formRegistry, descriptor)
 }
 
 /**
@@ -111,8 +147,8 @@ export function registerCustomFormComponent(name, component, metadata = {}) {
  * @param {string} name 组件标识名
  * @returns {Component|undefined}
  */
-export function getCustomFormComponent(name) {
-  return formRegistry.get(name)?.component
+export function getCustomFormComponent(name, version) {
+  return getCustomFormDescriptor(name, version)?.component
 }
 
 /**
@@ -120,8 +156,8 @@ export function getCustomFormComponent(name) {
  * @param {string} name 组件标识名
  * @returns {boolean}
  */
-export function hasCustomFormComponent(name) {
-  return formRegistry.has(name)
+export function hasCustomFormComponent(name, version) {
+  return Boolean(getCustomFormDescriptor(name, version))
 }
 
 /**
@@ -132,10 +168,11 @@ export function getRegisteredCustomFormNames() {
   return Array.from(formRegistry.keys())
 }
 
-export function getCustomFormDescriptor(name) {
-  return formRegistry.get(name)
+export function getCustomFormDescriptor(name, version) {
+  return getVersionedDescriptor(formRegistry, name, version)
 }
 
 export function getCustomFormComponentOptions() {
-  return Array.from(formRegistry.values()).map(({ component, ...descriptor }) => descriptor)
+  return getVersionedOptions(formRegistry)
+    .map(({ component, ...descriptor }) => descriptor)
 }

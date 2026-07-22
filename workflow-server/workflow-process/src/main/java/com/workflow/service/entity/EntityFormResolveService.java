@@ -6,8 +6,7 @@ import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessNodeFormMapper;
-import com.workflow.service.EntityFormService;
+import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
@@ -37,8 +36,8 @@ public class EntityFormResolveService {
 
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
-    private final ProcessNodeFormMapper processNodeFormMapper;
-    private final EntityFormService entityFormService;
+    private final ProcessPublishedSnapshotService processPublishedSnapshotService;
+    private final EntityFormRuntimeService entityFormRuntimeService;
     private final RuntimeService runtimeService;
     private final TaskService taskService;
 
@@ -50,25 +49,28 @@ public class EntityFormResolveService {
         }
 
         if (entityDefinition.getProcessDefinitionId() == null
-                || !Boolean.TRUE.equals(entityDefinition.getEnableProcess())) {
-            return entityFormService.getDefaultForm(entityDefinition.getId());
+                || entityDefinition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
+            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
         }
 
         ProcessDefinitionConfig processConfig =
                 processDefinitionConfigMapper.selectById(entityDefinition.getProcessDefinitionId());
         if (processConfig == null) {
-            return entityFormService.getDefaultForm(entityDefinition.getId());
+            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
         }
 
         String firstUserTaskId = resolveFirstUserTaskId(processConfig.getBpmnXml());
-        EntityForm nodeForm = getNodeBoundEntityForm(processConfig.getId(), firstUserTaskId);
+        EntityForm nodeForm = getNodeBoundEntityForm(
+                processConfig.getProcessKey(),
+                null,
+                firstUserTaskId);
         if (nodeForm != null) {
             log.debug("新增数据使用首节点表单: processConfigId={}, nodeId={}, formId={}",
                     processConfig.getId(), firstUserTaskId, nodeForm.getId());
             return nodeForm;
         }
 
-        return entityFormService.getDefaultForm(entityDefinition.getId());
+        return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
     }
 
     public EntityForm resolveFormForViewData(String entityCode, String entityDataId) {
@@ -77,12 +79,15 @@ public class EntityFormResolveService {
             log.debug("未找到实体定义[{}]", entityCode);
             return null;
         }
+        if (entityDefinition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
+            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+        }
 
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceBusinessKey(entityDataId)
                 .singleResult();
         if (processInstance == null) {
-            return entityFormService.getDefaultForm(entityDefinition.getId());
+            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
         }
 
         Task currentTask = taskService.createTaskQuery()
@@ -90,18 +95,17 @@ public class EntityFormResolveService {
                 .active()
                 .singleResult();
         if (currentTask == null) {
-            return entityFormService.getDefaultForm(entityDefinition.getId());
-        }
-
-        ProcessDefinitionConfig processConfig =
-                processDefinitionConfigMapper.selectById(entityDefinition.getProcessDefinitionId());
-        if (processConfig == null) {
-            return entityFormService.getDefaultForm(entityDefinition.getId());
+            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
         }
 
         EntityForm nodeForm =
-                getNodeBoundEntityForm(processConfig.getId(), currentTask.getTaskDefinitionKey());
-        return nodeForm != null ? nodeForm : entityFormService.getDefaultForm(entityDefinition.getId());
+                getNodeBoundEntityForm(
+                        null,
+                        processInstance.getProcessDefinitionId(),
+                        currentTask.getTaskDefinitionKey());
+        return nodeForm != null
+                ? nodeForm
+                : entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
     }
 
     String resolveFirstUserTaskId(String bpmnXml) {
@@ -171,16 +175,31 @@ public class EntityFormResolveService {
         return ids;
     }
 
-    private EntityForm getNodeBoundEntityForm(String processConfigId, String nodeId) {
-        if (processConfigId == null || nodeId == null || nodeId.isBlank()) {
+    private EntityForm getNodeBoundEntityForm(
+            String processKey,
+            String processDefinitionId,
+            String nodeId) {
+        if (nodeId == null || nodeId.isBlank()) {
             return null;
         }
-        List<ProcessNodeForm> nodeForms =
-                processNodeFormMapper.selectListByNodeId(processConfigId, nodeId);
+        List<ProcessNodeForm> nodeForms;
+        if (processDefinitionId != null && !processDefinitionId.isBlank()) {
+            nodeForms =
+                    processPublishedSnapshotService
+                            .getNodeFormsByProcessDefinitionId(
+                                    processDefinitionId,
+                                    nodeId);
+        } else if (processKey != null && !processKey.isBlank()) {
+            nodeForms =
+                    processPublishedSnapshotService.getNodeForms(
+                            processKey,
+                            nodeId);
+        } else {
+            return null;
+        }
         if (nodeForms == null || nodeForms.isEmpty()) {
             return null;
         }
-        String formId = nodeForms.get(0).getFormId();
-        return formId == null ? null : entityFormService.getById(formId);
+        return entityFormRuntimeService.getByBinding(nodeForms.get(0));
     }
 }

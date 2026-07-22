@@ -93,10 +93,13 @@ public class TaskDetailDTO {
     public static class FormConfigDTO {
         private String formKey;
         private String entityFormId;
+        private String formReleaseId;
+        private Integer formReleaseVersion;
         private String formName;
         private String layoutType;
         private Boolean isReadonly;
         private List<Map<String, Object>> fields;
+        private List<Map<String, Object>> nodes;
         
         public String getFormKey() {
             return formKey;
@@ -112,6 +115,22 @@ public class TaskDetailDTO {
         
         public void setEntityFormId(String entityFormId) {
             this.entityFormId = entityFormId;
+        }
+
+        public String getFormReleaseId() {
+            return formReleaseId;
+        }
+
+        public void setFormReleaseId(String formReleaseId) {
+            this.formReleaseId = formReleaseId;
+        }
+
+        public Integer getFormReleaseVersion() {
+            return formReleaseVersion;
+        }
+
+        public void setFormReleaseVersion(Integer formReleaseVersion) {
+            this.formReleaseVersion = formReleaseVersion;
         }
         
         public String getFormName() {
@@ -144,6 +163,14 @@ public class TaskDetailDTO {
         
         public void setFields(List<Map<String, Object>> fields) {
             this.fields = fields;
+        }
+
+        public List<Map<String, Object>> getNodes() {
+            return nodes;
+        }
+
+        public void setNodes(List<Map<String, Object>> nodes) {
+            this.nodes = nodes;
         }
     }
     

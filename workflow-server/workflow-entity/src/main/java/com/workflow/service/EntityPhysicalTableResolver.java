@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.workflow.common.BusinessConflictException;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.mapper.EntityDefinitionMapper;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,11 @@ public class EntityPhysicalTableResolver {
     public String resolve(EntityDefinition definition) {
         if (definition == null || !StringUtils.hasText(definition.getEntityCode())) {
             throw new IllegalArgumentException("实体定义或实体编码不能为空");
+        }
+        if (definition.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_RUNTIME_NOT_SUPPORTED",
+                    "平台系统实体不能通过通用动态实体接口访问: " + definition.getEntityCode());
         }
         assertNotBlocked(definition.getEntityCode());
         if (StringUtils.hasText(definition.getPhysicalTableName())) {

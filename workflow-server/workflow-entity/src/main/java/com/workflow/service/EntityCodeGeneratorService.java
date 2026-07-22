@@ -22,6 +22,7 @@ import java.util.Optional;
 public class EntityCodeGeneratorService {
     
     private final EntityCodeRuleMapper codeRuleMapper;
+    private final EntityDefinitionAccessPolicy entityAccessPolicy;
     
     /**
      * 生成数据编码
@@ -207,6 +208,7 @@ public class EntityCodeGeneratorService {
         if (rule.getPrefix() != null && rule.getPrefix().length() > EntityCodeRule.MAX_PREFIX_LENGTH) {
             throw new RuntimeException("编码前缀长度不能超过" + EntityCodeRule.MAX_PREFIX_LENGTH + "个字符");
         }
+        entityAccessPolicy.requireDynamicByCode(rule.getEntityCode());
 
         // 生成示例
         rule.setExample(previewCode(rule));

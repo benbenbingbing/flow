@@ -1,6 +1,8 @@
 package com.workflow.service;
 
 import com.workflow.common.UserContext;
+import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.common.BusinessConflictException;
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.PageResult;
 import com.workflow.dto.EntityDataDTO;
@@ -13,6 +15,7 @@ import com.workflow.entity.SysUser;
 import com.workflow.entity.publish.EntityPublishedSnapshot;
 import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.entity.runtime.EntityRelationRuntimeService;
+import com.workflow.entity.runtime.EntityMultiValueRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.entity.runtime.EntityWorkflowRuntimePort;
 import com.workflow.mapper.EntityDataDynamicMapper;
@@ -45,10 +48,12 @@ public class EntityDataDynamicService {
     private final EntityCodeGeneratorService codeGeneratorService;
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityRelationRuntimeService relationRuntimeService;
+    private final EntityMultiValueRuntimeService multiValueRuntimeService;
     private final EntityWorkflowRuntimePort workflowRuntimeService;
     private final DataPermissionEngine dataPermissionEngine;
     private final SysUserService sysUserService;
     private final EntityPublishedSnapshotService snapshotService;
+    private final EntityRecordTeamService entityRecordTeamService;
 
     /**
      * 查询某实体的所有数据（带数据权限过滤）
@@ -62,9 +67,9 @@ public class EntityDataDynamicService {
      * 查询某实体列表的所有数据（带数据权限过滤）
      */
     @Transactional(readOnly = true)
-    public List<EntityDataDTO> findByEntityCode(String entityCode, String listConfigId) {
+    public List<EntityDataDTO> findByEntityCode(String entityCode, String listKey) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
 
         List<Map<String, Object>> dataList;
         if (!permission.isHasPermission()) {
@@ -75,9 +80,11 @@ public class EntityDataDynamicService {
             dataList = dynamicMapper.selectListWithPermission(tableName, permission.getSqlCondition());
         }
 
-        return dataList.stream()
+        List<EntityDataDTO> records = dataList.stream()
                 .map(data -> recordMapper.toDto(data, entityCode))
                 .collect(Collectors.toList());
+        enrichMultiValues(entityCode, records);
+        return records;
     }
 
     /**
@@ -92,9 +99,9 @@ public class EntityDataDynamicService {
      * 查询某实体列表的所有数据（返回原始Map，用于选择器，带数据权限过滤）
      */
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> findByEntityCodeSimple(String entityCode, String listConfigId) {
+    public List<Map<String, Object>> findByEntityCodeSimple(String entityCode, String listKey) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
 
         if (!permission.isHasPermission()) {
             return new ArrayList<>();
@@ -108,15 +115,78 @@ public class EntityDataDynamicService {
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPage(
             String entityCode,
-            String listConfigId,
+            String listKey,
             Map<String, Object> condition,
             long requestedPageNum,
             long requestedPageSize) {
+        return findPageWithPermission(
+                entityCode,
+                condition,
+                requestedPageNum,
+                requestedPageSize,
+                getDataPermission(entityCode, listKey));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<EntityDataDTO> findPageForUser(
+            String entityCode,
+            String listKey,
+            Map<String, Object> condition,
+            long requestedPageNum,
+            long requestedPageSize,
+            SysUser user) {
+        return findPageWithPermission(
+                entityCode,
+                condition,
+                requestedPageNum,
+                requestedPageSize,
+                dataPermissionEngine.calculatePermission(entityCode, listKey, user));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<EntityDataDTO> findPageWithDataScopePlan(
+            String entityCode,
+            Map<String, Object> condition,
+            long requestedPageNum,
+            long requestedPageSize,
+            DataScopePlan plan) {
+        if (plan == null || plan.sqlFragment() == null
+                || plan.sqlFragment().isBlank()) {
+            throw new IllegalArgumentException("数据权限计划不能为空");
+        }
+        DataPermissionResult permission = plan.allowed()
+                ? ("1=1".equals(plan.sqlFragment())
+                        ? DataPermissionResult.allowAll()
+                        : DataPermissionResult.withCondition(
+                                plan.sqlFragment()))
+                : DataPermissionResult.denyAll();
+        permission.setMatchedRuleNames(plan.matchedPolicies());
+        permission.setReleaseVersion(plan.releaseVersion());
+        permission.setExplanation(plan.explanation());
+        return findPageWithPermission(
+                entityCode,
+                condition,
+                requestedPageNum,
+                requestedPageSize,
+                permission);
+    }
+
+    private PageResult<EntityDataDTO> findPageWithPermission(
+            String entityCode,
+            Map<String, Object> condition,
+            long requestedPageNum,
+            long requestedPageSize,
+            DataPermissionResult permission) {
         long pageNum = Math.max(1, requestedPageNum);
         long pageSize = Math.max(1, Math.min(200, requestedPageSize));
         long offset = (pageNum - 1) * pageSize;
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
+                .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
+        EntityMultiValueRuntimeService.PreparedConditions prepared =
+                multiValueRuntimeService.prepareConditions(definition, condition);
+        condition = prepared.condition();
+        permission.intersect(prepared.sqlCondition());
         if (!permission.isHasPermission()) {
             return new PageResult<>(List.of(), 0, pageNum, pageSize);
         }
@@ -164,6 +234,7 @@ public class EntityDataDynamicService {
         List<EntityDataDTO> records = rows.stream()
                 .map(data -> recordMapper.toDto(data, entityCode))
                 .toList();
+        enrichMultiValues(entityCode, records);
         return new PageResult<>(records, total, pageNum, pageSize);
     }
 
@@ -178,6 +249,7 @@ public class EntityDataDynamicService {
             throw new RuntimeException("数据不存在: " + id);
         }
         EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        enrichMultiValues(entityCode, List.of(dto));
         relationRuntimeService.loadRelationData(dto);
         return dto;
     }
@@ -186,9 +258,9 @@ public class EntityDataDynamicService {
      * 按列表数据权限查询单条数据。
      */
     @Transactional(readOnly = true)
-    public EntityDataDTO findAccessibleById(String entityCode, String id, String listConfigId) {
+    public EntityDataDTO findAccessibleById(String entityCode, String id, String listKey) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
         if (!permission.isHasPermission()) {
             throw new ForbiddenException("数据不存在或无权访问");
         }
@@ -199,6 +271,7 @@ public class EntityDataDynamicService {
             throw new ForbiddenException("数据不存在或不在当前数据权限范围内");
         }
         EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        enrichMultiValues(entityCode, List.of(dto));
         relationRuntimeService.loadRelationData(dto);
         return dto;
     }
@@ -214,6 +287,7 @@ public class EntityDataDynamicService {
             throw new RuntimeException("数据不存在: " + processInstanceId);
         }
         EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        enrichMultiValues(entityCode, List.of(dto));
         relationRuntimeService.loadRelationData(dto);
         return dto;
     }
@@ -225,7 +299,7 @@ public class EntityDataDynamicService {
     public EntityDataDTO findAccessibleByProcessInstanceId(
             String entityCode,
             String processInstanceId,
-            String listConfigId) {
+            String listKey) {
         String tableName = dynamicTableService.getTableName(entityCode);
         Map<String, Object> data = dynamicMapper.selectByProcessInstanceId(tableName, processInstanceId);
         if (data == null || data.get("id") == null) {
@@ -234,7 +308,7 @@ public class EntityDataDynamicService {
         return findAccessibleById(
                 entityCode,
                 String.valueOf(data.get("id")),
-                listConfigId);
+                listKey);
     }
 
     /**
@@ -251,11 +325,22 @@ public class EntityDataDynamicService {
         Map<String, Object> originalData = dto.getData();
         Map<String, Object> parentData = relationRuntimeService.withoutRelationData(originalData, relations);
         Map<String, Object> relationData = relationRuntimeService.extractRelationData(originalData, relations);
+        Map<String, List<String>> multiValueData =
+                multiValueRuntimeService.extractConfiguredValues(definition, parentData);
+        multiValueRuntimeService.validateScalarDictValues(definition, parentData);
 
         // 验证实体是否启用流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
-                !Boolean.TRUE.equals(definition.getEnableProcess())) {
-            throw new RuntimeException("该实体未启用流程，无法发起流程");
+                definition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_SUPPORTED",
+                    "独立业务实体不支持发起流程");
+        }
+        if (Boolean.TRUE.equals(dto.getStartProcess())
+                && !org.springframework.util.StringUtils.hasText(definition.getProcessDefinitionId())) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_READY",
+                    "流程实体尚未绑定流程，不能发起");
         }
 
         // 获取表名
@@ -314,7 +399,7 @@ public class EntityDataDynamicService {
             dto.setCode(code);
 
             // 如果有流程，生成业务单号
-            if (Boolean.TRUE.equals(definition.getEnableProcess())) {
+            if (definition.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW) {
                 String dataNo = generateDataNo(entityCode);
                 data.put("data_no", dataNo);
                 dto.setDataNo(dataNo);
@@ -329,6 +414,8 @@ public class EntityDataDynamicService {
 
             dynamicMapper.insert(tableName, data);
             dto.setId(id);
+            entityRecordTeamService.record(
+                    entityCode, id, "CREATE", "创建数据", null, null);
         } else {
             // ========== 更新数据 ==========
             // 更新时不能修改提交人
@@ -340,9 +427,13 @@ public class EntityDataDynamicService {
             data.remove("submitter_name");
             
             dynamicMapper.update(tableName, data);
+            entityRecordTeamService.record(
+                    entityCode, dto.getId(), "EDIT", "编辑数据",
+                    dto.getProcessInstanceId(), dto.getCurrentTaskId());
         }
 
         relationRuntimeService.saveRelationData(dto.getId(), relations, relationData);
+        multiValueRuntimeService.save(definition, dto.getId(), multiValueData);
 
         // 如果需要发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
@@ -364,6 +455,11 @@ public class EntityDataDynamicService {
         List<EntityRelation> relations = relationRuntimeService.loadRelations(definition);
         Map<String, Object> parentFormData = relationRuntimeService.withoutRelationDataFromRequest(formData, relations);
         Map<String, Object> relationData = relationRuntimeService.extractRelationDataFromRequest(formData, relations);
+        Map<String, Object> multiValueSource = requestCustomData(parentFormData);
+        Map<String, List<String>> multiValueData =
+                multiValueRuntimeService.extractConfiguredValues(definition, multiValueSource);
+        multiValueRuntimeService.validateScalarDictValues(definition, multiValueSource);
+        removeMultiValuesFromRequest(parentFormData, multiValueData.keySet());
 
         // 查询原数据
         Map<String, Object> existingData = dynamicMapper.selectById(tableName, id);
@@ -430,9 +526,15 @@ public class EntityDataDynamicService {
         validatePublishedUniqueFields(entityCode, updateData, id);
 
         dynamicMapper.update(tableName, updateData);
+        entityRecordTeamService.record(
+                entityCode, id, "EDIT", "编辑数据",
+                asText(existingData.get("process_instance_id")),
+                asText(existingData.get("current_task_id")));
         relationRuntimeService.saveRelationData(id, relations, relationData);
+        multiValueRuntimeService.save(definition, id, multiValueData);
 
         EntityDataDTO dto = recordMapper.toDto(updateData, entityCode);
+        enrichMultiValues(entityCode, List.of(dto));
         if (dto.getData() != null) {
             dto.getData().putAll(relationData);
         }
@@ -440,13 +542,20 @@ public class EntityDataDynamicService {
         // 编辑时发起流程：如果请求要求发起流程且数据尚未绑定流程实例
         Object startProcessObj = formData.get("startProcess");
         boolean startProcess = Boolean.TRUE.equals(startProcessObj) || "true".equalsIgnoreCase(String.valueOf(startProcessObj));
-        if (startProcess && definition.getProcessDefinitionId() != null) {
+        if (startProcess) {
+            if (definition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
+                throw new BusinessConflictException(
+                        "ENTITY_WORKFLOW_NOT_SUPPORTED",
+                        "独立业务实体不支持发起流程");
+            }
+            if (!StringUtils.hasText(definition.getProcessDefinitionId())) {
+                throw new BusinessConflictException(
+                        "ENTITY_WORKFLOW_NOT_READY",
+                        "流程实体尚未绑定流程，不能发起");
+            }
             Object existingProcessInstanceIdObj = existingData.get("process_instance_id");
             String existingProcessInstanceId = existingProcessInstanceIdObj != null ? existingProcessInstanceIdObj.toString() : null;
             if (existingProcessInstanceId == null || existingProcessInstanceId.isEmpty()) {
-                if (!Boolean.TRUE.equals(definition.getEnableProcess())) {
-                    throw new RuntimeException("该实体未启用流程，无法发起流程");
-                }
                 dto.setStartProcess(true);
                 dto.setEntityCode(entityCode);
                 Object submitterIdObj = existingData.get("submitter_id");
@@ -458,6 +567,7 @@ public class EntityDataDynamicService {
                 // 重新加载最新数据返回
                 Map<String, Object> refreshedData = dynamicMapper.selectById(tableName, id);
                 dto = recordMapper.toDto(refreshedData, entityCode);
+                enrichMultiValues(entityCode, List.of(dto));
                 if (dto.getData() != null) {
                     dto.getData().putAll(relationData);
                 }
@@ -474,8 +584,11 @@ public class EntityDataDynamicService {
     public void delete(String entityCode, String id) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         relationRuntimeService.cascadeDeleteRelations(definition, id, false);
+        multiValueRuntimeService.delete(entityCode, id);
         String tableName = dynamicTableService.getTableName(entityCode);
         dynamicMapper.deleteById(tableName, id);
+        entityRecordTeamService.record(
+                entityCode, id, "DELETE", "删除数据", null, null);
     }
 
     /**
@@ -485,6 +598,7 @@ public class EntityDataDynamicService {
     public void physicalDelete(String entityCode, String id) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         relationRuntimeService.cascadeDeleteRelations(definition, id, true);
+        multiValueRuntimeService.delete(entityCode, id);
         String tableName = dynamicTableService.getTableName(entityCode);
         dynamicMapper.physicalDeleteById(tableName, id);
     }
@@ -501,9 +615,15 @@ public class EntityDataDynamicService {
      * 条件查询（带数据权限过滤，支持列表配置）
      */
     @Transactional(readOnly = true)
-    public List<EntityDataDTO> findByCondition(String entityCode, String listConfigId, Map<String, Object> condition) {
+    public List<EntityDataDTO> findByCondition(String entityCode, String listKey, Map<String, Object> condition) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
+                .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
+        EntityMultiValueRuntimeService.PreparedConditions prepared =
+                multiValueRuntimeService.prepareConditions(definition, condition);
+        condition = prepared.condition();
+        permission.intersect(prepared.sqlCondition());
 
         List<Map<String, Object>> dataList;
         if (!permission.isHasPermission()) {
@@ -514,9 +634,11 @@ public class EntityDataDynamicService {
             dataList = dynamicMapper.selectByConditionWithPermission(tableName, condition, permission.getSqlCondition());
         }
 
-        return dataList.stream()
+        List<EntityDataDTO> records = dataList.stream()
                 .map(data -> recordMapper.toDto(data, entityCode))
                 .collect(Collectors.toList());
+        enrichMultiValues(entityCode, records);
+        return records;
     }
 
     /**
@@ -531,9 +653,9 @@ public class EntityDataDynamicService {
      * 统计数量（带数据权限过滤，支持列表配置）
      */
     @Transactional(readOnly = true)
-    public long count(String entityCode, String listConfigId) {
+    public long count(String entityCode, String listKey) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission = getDataPermission(entityCode, listConfigId);
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
 
         if (!permission.isHasPermission()) {
             return 0;
@@ -599,6 +721,43 @@ public class EntityDataDynamicService {
         return user != null ? user.getDeptId() : null;
     }
 
+    private void enrichMultiValues(String entityCode, Collection<EntityDataDTO> records) {
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
+        if (definition == null || definition.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        multiValueRuntimeService.enrich(definition, records);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> requestCustomData(Map<String, Object> request) {
+        if (request == null) {
+            return new HashMap<>();
+        }
+        Object nested = request.get("data");
+        if (nested instanceof Map<?, ?> nestedMap) {
+            return new HashMap<>((Map<String, Object>) nestedMap);
+        }
+        return new HashMap<>(request);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void removeMultiValuesFromRequest(Map<String, Object> request, Set<String> fieldCodes) {
+        if (request == null || fieldCodes == null || fieldCodes.isEmpty()) {
+            return;
+        }
+        for (String fieldCode : fieldCodes) {
+            request.remove(fieldCode);
+        }
+        Object nested = request.get("data");
+        if (nested instanceof Map<?, ?> nestedMap) {
+            Map<String, Object> customData = (Map<String, Object>) nestedMap;
+            for (String fieldCode : fieldCodes) {
+                customData.remove(fieldCode);
+            }
+        }
+    }
+
     /**
      * 获取当前登录用户完整信息（用于数据权限计算）
      */
@@ -613,13 +772,13 @@ public class EntityDataDynamicService {
     /**
      * 计算数据权限结果
      */
-    private DataPermissionResult getDataPermission(String entityCode, String listConfigId) {
+    private DataPermissionResult getDataPermission(String entityCode, String listKey) {
         SysUser user = getCurrentSysUser();
         if (user == null) {
             // 未登录用户，默认仅本人（实际上看不到任何数据，因为没有用户ID匹配）
             return DataPermissionResult.withCondition("create_by = ''");
         }
-        return dataPermissionEngine.calculatePermission(entityCode, listConfigId, user);
+        return dataPermissionEngine.calculatePermission(entityCode, listKey, user);
     }
 
     private String generateId() {
@@ -689,6 +848,10 @@ public class EntityDataDynamicService {
 
     private boolean isBlankValue(Object value) {
         return value == null || (value instanceof String str && str.isBlank());
+    }
+
+    private String asText(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     /**

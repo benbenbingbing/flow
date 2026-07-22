@@ -87,6 +87,15 @@ public class EntityField {
      */
     @TableField("options_json")
     private String optionsJson;
+
+    /**
+     * 绑定的系统代码表编码。
+     */
+    @TableField("dict_type")
+    private String dictType;
+
+    @TableField("value_storage")
+    private String valueStorage;
     
     /**
      * 验证规则（JSON格式）

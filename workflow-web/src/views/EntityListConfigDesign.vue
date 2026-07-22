@@ -8,10 +8,15 @@
         </el-button>
         <span>列表配置设计：{{ configInfo.listName }}</span>
         <el-tag size="small" type="info">{{ entityName }}</el-tag>
+        <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
+          {{ diffInfo.changed ? '草稿有未发布修改' : '已发布' }}
+        </el-tag>
       </div>
-      <el-button type="primary" @click="handleSave" :loading="saving">
-        <el-icon><Check /></el-icon>保存配置
-      </el-button>
+      <div class="header-actions">
+        <el-button @click="showReleaseHistory">版本</el-button>
+        <el-button type="success" plain @click="handlePublish">发布</el-button>
+        <el-tag type="info" effect="plain">当前项独立保存</el-tag>
+      </div>
     </div>
 
     <div class="design-container">
@@ -25,6 +30,17 @@
 
           <el-tabs v-model="activeConfigTab" type="border-card" class="config-tabs">
             <el-tab-pane label="列表设置" name="view">
+              <div class="field-toolbar">
+                <el-alert
+                  title="列表设置可独立保存；列、按钮和场景的修改不会被一并覆盖。"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+                <el-button type="success" plain @click="saveListMetadata">
+                  保存列表设置
+                </el-button>
+              </div>
               <el-form label-width="120px" size="small" class="view-config-form">
                 <el-divider content-position="left">渲染模式</el-divider>
                 <el-form-item label="自定义列表组件">
@@ -54,6 +70,101 @@
                   />
                 </el-form-item>
 
+                <el-divider content-position="left">访问与数据范围</el-divider>
+                <el-form-item label="数据范围模式">
+                  <el-select v-model="configInfo.dataScopeMode" style="width: 420px">
+                    <el-option label="继承实体默认范围" value="INHERIT" />
+                    <el-option label="在实体范围内缩小" value="NARROW" />
+                    <el-option label="使用列表独立范围（高风险）" value="OVERRIDE" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="访问权限码">
+                  <el-input
+                    v-model="configInfo.accessPermissionCode"
+                    placeholder="留空继承 entity:{code}:list"
+                    style="width: 420px"
+                  />
+                </el-form-item>
+                <el-form-item label="允许场景">
+                  <div class="scene-options">
+                    <el-checkbox
+                      v-for="scene in sceneOptions"
+                      :key="scene.value"
+                      :model-value="isSceneEnabled(scene.value)"
+                      :disabled="sceneSavingCodes.has(scene.value)"
+                      @change="toggleScene(scene.value, $event)"
+                    >
+                      {{ scene.label }}
+                    </el-checkbox>
+                  </div>
+                  <el-text type="info" size="small">勾选后仅保存当前场景，发布后运行时生效。</el-text>
+                </el-form-item>
+                <el-form-item label="选择模式">
+                  <el-radio-group v-model="configInfo.selectionMode">
+                    <el-radio-button value="NONE">不选择</el-radio-button>
+                    <el-radio-button value="SINGLE">单选</el-radio-button>
+                    <el-radio-button value="MULTIPLE">多选</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回值字段">
+                  <el-select v-model="configInfo.selectionValueField" filterable style="width: 420px">
+                    <el-option label="主键 ID" value="id" />
+                    <el-option
+                      v-for="field in entityFields"
+                      :key="field.fieldCode"
+                      :label="`${field.fieldName} (${field.fieldCode})`"
+                      :value="field.fieldCode"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
+                  <el-input
+                    v-model="configInfo.selectionReturnMappingsText"
+                    type="textarea"
+                    :rows="3"
+                    placeholder='例如 [{"sourceField":"name","targetField":"customerName"}]'
+                  />
+                </el-form-item>
+                <el-form-item label="固定条件 JSON">
+                  <el-input
+                    v-model="configInfo.fixedFilterConfig"
+                    type="textarea"
+                    :rows="3"
+                    placeholder='例如 {"status":"RUNNING","status_op":"EQ"}'
+                  />
+                </el-form-item>
+                <el-form-item label="上下文绑定 JSON">
+                  <el-input
+                    v-model="configInfo.contextBindingConfig"
+                    type="textarea"
+                    :rows="3"
+                    placeholder='只保存 relationKey 等服务端可信上下文配置'
+                  />
+                </el-form-item>
+                <el-form-item label="安全查询提供者">
+                  <el-input
+                    v-model="configInfo.queryProviderCode"
+                    placeholder="留空使用平台动态表查询"
+                    style="width: 420px"
+                  />
+                </el-form-item>
+                <el-form-item label="统一查询数据源">
+                  <el-select
+                    v-model="configInfo.queryDataSourceId"
+                    clearable
+                    filterable
+                    placeholder="可选：LIST_QUERY 数据源"
+                    style="width: 420px"
+                  >
+                    <el-option
+                      v-for="source in listQuerySources"
+                      :key="source.id"
+                      :label="`${source.sourceName} (${source.sourceType})`"
+                      :value="source.id"
+                    />
+                  </el-select>
+                </el-form-item>
+
                 <el-divider content-position="left">查询区域</el-divider>
                 <el-form-item label="默认显示条件">
                   <el-input-number v-model="viewConfig.search.defaultVisibleCount" :min="1" :max="20" />
@@ -74,9 +185,9 @@
                 </el-form-item>
                 <el-form-item label="表格尺寸">
                   <el-radio-group v-model="viewConfig.table.size">
-                    <el-radio-button label="small">紧凑</el-radio-button>
-                    <el-radio-button label="default">默认</el-radio-button>
-                    <el-radio-button label="large">宽松</el-radio-button>
+                    <el-radio-button value="small">紧凑</el-radio-button>
+                    <el-radio-button value="default">默认</el-radio-button>
+                    <el-radio-button value="large">宽松</el-radio-button>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item label="默认每页">
@@ -202,6 +313,12 @@
                   <template #default="{ row }">
                     <el-button link type="primary" @click="openFieldConfig(row)">高级</el-button>
                     <el-button
+                      link
+                      type="success"
+                      :loading="row._saving"
+                      @click="saveCurrentField(row)"
+                    >保存</el-button>
+                    <el-button
                       v-if="isVirtualField(row)"
                       link
                       type="danger"
@@ -217,6 +334,10 @@
                 v-model="toolbarButtons"
                 :entityCode="entityCode"
                 :entityFields="entityFields"
+                :templates="buttonTemplates"
+                @save="saveListAction($event, 'TOOLBAR')"
+                @upgrade-template="upgradeButtonTemplate($event, 'TOOLBAR')"
+                @remove="removeListAction($event, 'TOOLBAR')"
               />
             </el-tab-pane>
             <el-tab-pane label="操作列按钮" name="rowActions">
@@ -225,6 +346,10 @@
                 v-model="rowActionButtons"
                 :entityCode="entityCode"
                 :entityFields="entityFields"
+                :templates="buttonTemplates"
+                @save="saveListAction($event, 'ROW')"
+                @upgrade-template="upgradeButtonTemplate($event, 'ROW')"
+                @remove="removeListAction($event, 'ROW')"
               />
             </el-tab-pane>
           </el-tabs>
@@ -388,6 +513,46 @@
             v-model="editingDataSourceConfig"
             :schema="selectedDataSourceOption?.configSchema || []"
           />
+          <el-divider>统一数据源目录</el-divider>
+          <el-select
+            v-model="editingField.dataSourceId"
+            clearable
+            filterable
+            placeholder="可选：LIST_COLUMN 数据源"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="source in listColumnSources"
+              :key="source.id"
+              :label="`${source.sourceName} (${source.sourceType})`"
+              :value="source.id"
+            />
+          </el-select>
+          <el-divider>列模板</el-divider>
+          <el-select
+            v-model="editingField.templateId"
+            clearable
+            filterable
+            placeholder="复制后独立"
+            style="width: 100%"
+            @change="handleListTemplateChange"
+          >
+            <el-option
+              v-for="template in listTemplates"
+              :key="template.id"
+              :label="`${template.templateName} (v${template.currentVersion})`"
+              :value="template.id"
+            />
+          </el-select>
+          <el-button
+            v-if="editingField.templateId"
+            link
+            type="primary"
+            style="margin-top: 8px"
+            @click="upgradeListTemplate"
+          >
+            检查模板升级（当前 v{{ editingField.templateVersion || 1 }}）
+          </el-button>
         </el-tab-pane>
         <el-tab-pane label="单元格" name="render">
           <ConfigSchemaEditor
@@ -434,8 +599,28 @@
       </el-tabs>
       <template #footer>
         <el-button @click="fieldConfigDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveFieldAdvancedConfig">应用</el-button>
+        <el-button type="primary" @click="saveFieldAdvancedConfig">保存当前列</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="releaseDialogVisible" title="列表发布版本" width="760px">
+      <el-table :data="releases" size="small">
+        <el-table-column prop="version" label="版本" width="80" />
+        <el-table-column prop="contentHash" label="内容哈希" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="publishedBy" label="发布人" width="120" />
+        <el-table-column prop="publishedAt" label="发布时间" width="180" />
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              :disabled="row.status === 'ACTIVE'"
+              @click="activateRelease(row)"
+            >激活</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-dialog>
   </div>
 </template>
@@ -443,11 +628,12 @@
 <script setup>
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check, Rank, Plus } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Rank, Plus } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
-import { entityApi, entityDataApi } from '@/api/entity'
+import { entityApi } from '@/api/entity'
+import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
@@ -459,6 +645,8 @@ import {
   safeParseConfig,
   stringifyConfig
 } from '@/shared/config-runtime'
+import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
+import { uiDataSourceApi, uiComponentTemplateApi } from '@/api/uiConfig'
 
 const route = useRoute()
 const router = useRouter()
@@ -470,7 +658,13 @@ const entityName = ref('')
 const entityCode = ref('')
 const entityId = ref('')
 const entityFields = ref([])
-const saving = ref(false)
+const entityDefinition = ref({})
+const releaseDialogVisible = ref(false)
+const releases = ref([])
+const diffInfo = ref({ changed: true, changedSections: [] })
+const unifiedDataSources = ref([])
+const listTemplates = ref([])
+const buttonTemplates = ref([])
 const dataSourceOptions = ref([
   {
     value: 'ENTITY_FIELD',
@@ -532,11 +726,31 @@ const selectedCellDescriptor = computed(() =>
   getCellDescriptor(editingField.value?.renderComponent || 'DefaultText')
 )
 
+const listColumnSources = computed(() =>
+  unifiedDataSources.value.filter(source => source.enabled !== false)
+)
+
+const listQuerySources = computed(() =>
+  unifiedDataSources.value.filter(source => source.enabled !== false)
+)
+
 // 工具栏按钮配置
 const toolbarButtons = ref([])
 
 // 操作列按钮配置
 const rowActionButtons = ref([])
+const sceneItems = ref([])
+const sceneSavingCodes = ref(new Set())
+const sceneSortCache = new Map()
+const sceneOptions = [
+  { value: 'MENU', label: '菜单' },
+  { value: 'PAGE', label: '页面' },
+  { value: 'DIALOG', label: '弹窗' },
+  { value: 'DRAWER', label: '抽屉' },
+  { value: 'EMBEDDED', label: '页面嵌入' },
+  { value: 'FORM_PICKER', label: '表单选择器' },
+  { value: 'SUB_TABLE', label: '子表选择' }
+]
 
 // 预览相关
 const previewQueryForm = ref({})
@@ -573,27 +787,72 @@ onMounted(() => {
 
 async function loadData() {
   try {
-    const extensionOptions = await entityListConfigApi.getExtensionOptions().catch(() => [])
+    const [extensionOptions, sourceCatalog, templates, buttons] = await Promise.all([
+      entityListConfigApi.getExtensionOptions().catch(() => []),
+      uiDataSourceApi.list().catch(() => []),
+      uiComponentTemplateApi.list({ templateType: 'LIST_COLUMN_GROUP' }).catch(() => []),
+      uiComponentTemplateApi.list({ templateType: 'BUTTON_GROUP' }).catch(() => [])
+    ])
+    unifiedDataSources.value = Array.isArray(sourceCatalog) ? sourceCatalog : []
+    listTemplates.value = Array.isArray(templates) ? templates : []
+    buttonTemplates.value = Array.isArray(buttons) ? buttons : []
     if (Array.isArray(extensionOptions) && extensionOptions.length > 0) {
       dataSourceOptions.value = extensionOptions
     }
 
     // 加载列表配置
-    const configRes = await entityListConfigApi.getById(configId)
+    const [configRes, scenes] = await Promise.all([
+      entityListConfigApi.getById(configId),
+      entityListConfigApi.getScenes(configId).catch(() => [])
+    ])
+    sceneItems.value = Array.isArray(scenes) ? scenes : []
+    sceneItems.value.forEach(scene => {
+      sceneSortCache.set(scene.sceneCode, scene.sortOrder)
+    })
     if (configRes) {
       configInfo.value = configRes
+      configInfo.value.dataScopeMode = configRes.dataScopeMode || 'INHERIT'
+      configInfo.value.fixedFilterConfig = JSON.stringify(
+        configRes.fixedFilterConfig || {},
+        null,
+        2
+      )
+      configInfo.value.contextBindingConfig = JSON.stringify(
+        configRes.contextBindingConfig || {},
+        null,
+        2
+      )
+      configInfo.value.allowedSceneValues = sceneItems.value.length > 0
+        ? sceneItems.value.map(scene => scene.sceneCode)
+        : safeJsonParse(configRes.allowedScenes)
+          || ['MENU', 'PAGE', 'DIALOG', 'DRAWER', 'EMBEDDED', 'FORM_PICKER', 'SUB_TABLE']
+      const selectionConfig = safeJsonParse(configRes.selectionConfig) || {}
+      configInfo.value.selectionMode = selectionConfig.selectionMode || 'NONE'
+      configInfo.value.selectionValueField = selectionConfig.valueField || 'id'
+      configInfo.value.selectionReturnMappingsText = JSON.stringify(
+        selectionConfig.returnMappings || [],
+        null,
+        2
+      )
       entityId.value = configRes.entityId
       entityCode.value = configRes.entityCode
       viewConfig.value = mergeViewConfig(safeParseConfig(configRes.viewConfig))
       previewPageSize.value = viewConfig.value.pagination.pageSize
+      await loadDiff()
     }
 
     // 加载实体信息
     const entityRes = await entityApi.getById(entityId.value)
     if (entityRes) {
+      if (entityRes.storageMode === 'SYSTEM') {
+        ElMessage.warning('平台系统实体不支持动态列表设计')
+        router.replace('/entity')
+        return
+      }
+      entityDefinition.value = entityRes
       entityName.value = entityRes.entityName
       entityCode.value = entityRes.entityCode
-      entityFields.value = entityRes.fields || []
+      entityFields.value = filterEntityFieldsByLifecycle(entityRes, entityRes.fields || [])
     }
 
     // 合并字段配置
@@ -620,6 +879,9 @@ function mergeFieldConfig(savedFields) {
   const merged = entityFields.value.map((ef, index) => {
     const saved = savedFields.find(sf => sf.fieldId === ef.id)
     return {
+      id: saved?.id,
+      revision: saved?.revision || 0,
+      orderKey: saved?.orderKey || (index + 1) * 1000000,
       fieldId: ef.id,
       fieldCode: ef.fieldCode,
       fieldName: saved?.fieldName || ef.fieldName,
@@ -632,6 +894,10 @@ function mergeFieldConfig(savedFields) {
       align: saved?.align || 'left',
       dataSourceType: saved?.dataSourceType || 'ENTITY_FIELD',
       dataSourceConfig: saved?.dataSourceConfig || '',
+      dataSourceId: saved?.dataSourceId || '',
+      templateId: saved?.templateId,
+      templateVersion: saved?.templateVersion,
+      localOverridesDocument: saved?.localOverridesDocument || '',
       renderComponent: saved?.renderComponent || '',
       formatter: saved?.formatter || '',
       columnConfig: saved?.columnConfig || '',
@@ -646,6 +912,9 @@ function mergeFieldConfig(savedFields) {
     .forEach((saved, index) => {
       merged.push({
         ...saved,
+        id: saved.id,
+        revision: saved.revision || 0,
+        orderKey: saved.orderKey || (entityFields.value.length + index + 1) * 1000000,
         fieldId: saved.fieldId || `virtual_${Date.now()}_${index}`,
         fieldCode: saved.fieldCode || `virtual_${index + 1}`,
         fieldName: saved.fieldName || '虚拟列',
@@ -712,12 +981,29 @@ function addVirtualField() {
     columnConfig: '',
     queryConfig: '',
     renderConfig: '',
-    sortOrder: fieldConfigList.value.length
+    sortOrder: fieldConfigList.value.length,
+    orderKey: (fieldConfigList.value.length + 1) * 1000000,
+    revision: 0,
+    dataSourceId: ''
   })
 }
 
-function removeVirtualField(field) {
+async function removeVirtualField(field) {
+  if (field.id && field.revision > 0) {
+    try {
+      await entityListConfigApi.deleteField(
+        configId,
+        field.id,
+        field.revision
+      )
+    } catch (error) {
+      handleRevisionConflict(error, field)
+      return
+    }
+  }
   fieldConfigList.value = fieldConfigList.value.filter(item => item !== field)
+  await refreshConfigRevision()
+  await loadDiff()
 }
 
 function handleDataSourceChange(field) {
@@ -758,12 +1044,69 @@ function openFieldConfig(field) {
   fieldConfigDialogVisible.value = true
 }
 
-function saveFieldAdvancedConfig() {
+async function handleListTemplateChange(templateId) {
+  if (!editingField.value || !templateId) {
+    if (editingField.value) {
+      editingField.value.templateVersion = null
+      editingField.value.localOverridesDocument = ''
+    }
+    return
+  }
+  const template = listTemplates.value.find(item => item.id === templateId)
+  const versions = await uiComponentTemplateApi.versions(templateId)
+  const latest = versions.find(item => item.version === template?.currentVersion)
+    || versions[0]
+  if (!latest) return
+  const snapshot = safeParseConfig(latest.snapshotDocument)
+  Object.assign(editingField.value, snapshot.field || snapshot)
+  editingField.value.templateVersion = latest.version
+  editingField.value.localOverridesDocument = stringifyConfig({})
+  ElMessage.success(`已锁定列模板 v${latest.version}`)
+}
+
+async function upgradeListTemplate() {
+  const field = editingField.value
+  if (!field?.templateId) return
+  const template = listTemplates.value.find(item => item.id === field.templateId)
+  if (!template || template.currentVersion === field.templateVersion) {
+    ElMessage.info('当前已是最新模板版本')
+    return
+  }
+  const result = await uiComponentTemplateApi.upgrade(field.templateId, {
+    fromVersion: field.templateVersion,
+    toVersion: template.currentVersion,
+    currentSnapshot: normalizeFieldForSave(field),
+    localOverrides: safeParseConfig(field.localOverridesDocument)
+  })
+  if (result.requiresConfirmation) {
+    try {
+      await ElMessageBox.confirm(
+        `以下列配置同时被模板和本地修改：${result.conflicts.join('、')}。继续后保留本地列配置。`,
+        '确认列模板升级',
+        {
+          type: 'warning',
+          confirmButtonText: '保留本地配置并升级',
+          cancelButtonText: '取消'
+        }
+      )
+    } catch {
+      return
+    }
+  }
+  Object.assign(field, result.mergedSnapshot?.field || result.mergedSnapshot || {})
+  field.templateId = template.id
+  field.templateVersion = template.currentVersion
+  await saveCurrentField(field)
+  ElMessage.success(`已保存列模板升级 v${template.currentVersion}`)
+}
+
+async function saveFieldAdvancedConfig() {
   if (!editingField.value) return
   editingField.value.dataSourceConfig = stringifyConfig(editingDataSourceConfig.value)
   editingField.value.renderConfig = stringifyConfig(editingRenderConfig.value)
   editingField.value.queryConfig = stringifyConfig(editingQueryConfig.value)
   editingField.value.columnConfig = stringifyConfig(editingColumnConfig.value)
+  await saveCurrentField(editingField.value)
   fieldConfigDialogVisible.value = false
 }
 
@@ -783,6 +1126,7 @@ const DEFAULT_ROW_ACTION_BUTTONS = [
 
 function safeJsonParse(text) {
   if (!text) return null
+  if (typeof text === 'object') return text
   try {
     return JSON.parse(text)
   } catch (e) {
@@ -798,6 +1142,176 @@ function parseButtonConfig(configRes) {
   rowActionButtons.value = rowActions && rowActions.length > 0 ? rowActions : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b }))
 }
 
+function isSceneEnabled(sceneCode) {
+  return sceneItems.value.some(scene => scene.sceneCode === sceneCode)
+}
+
+async function toggleScene(sceneCode, enabled) {
+  sceneSavingCodes.value = new Set([...sceneSavingCodes.value, sceneCode])
+  try {
+    const current = sceneItems.value.find(scene => scene.sceneCode === sceneCode)
+    if (enabled && !current) {
+      await entityListConfigApi.createScene(configId, {
+        sceneCode,
+        sortOrder: sceneSortCache.get(sceneCode)
+          ?? sceneOptions.findIndex(scene => scene.value === sceneCode)
+      })
+    } else if (!enabled && current) {
+      sceneSortCache.set(sceneCode, current.sortOrder)
+      await entityListConfigApi.deleteScene(configId, current.id, current.revision)
+    }
+    sceneItems.value = await entityListConfigApi.getScenes(configId)
+    sceneItems.value.forEach(item => {
+      sceneSortCache.set(item.sceneCode, item.sortOrder)
+    })
+    configInfo.value.allowedSceneValues = sceneItems.value.map(scene => scene.sceneCode)
+    await refreshConfigRevision()
+    await loadDiff()
+    ElMessage.success(`场景“${sceneOptions.find(scene => scene.value === sceneCode)?.label || sceneCode}”已保存，尚未发布`)
+  } catch (error) {
+    handleRevisionConflict(error)
+    sceneItems.value = await entityListConfigApi.getScenes(configId).catch(() => sceneItems.value)
+  } finally {
+    const next = new Set(sceneSavingCodes.value)
+    next.delete(sceneCode)
+    sceneSavingCodes.value = next
+  }
+}
+
+function normalizeActionForSave(button, position) {
+  const actionParams = {}
+  for (const key of [
+    'targetEntityCode',
+    'targetListKey',
+    'presentation',
+    'selectionMode',
+    'openListTitle',
+    'relationKey',
+    'selectionHandler'
+  ]) {
+    if (button[key] !== undefined && button[key] !== '') {
+      actionParams[key] = button[key]
+    }
+  }
+  return {
+    expectedRevision: button.id ? button.revision : null,
+    position,
+    buttonKey: button.key,
+    buttonType: button.type,
+    buttonLabel: button.label,
+    icon: button.icon || '',
+    styleType: button.buttonType || 'default',
+    linkMode: button.link === true,
+    customMode: button.customMode || '',
+    handlerCode: button.customHandler || '',
+    permissionCode: button.perm || '',
+    enabled: button.enabled !== false,
+    unavailableBehavior: button.availabilityRule?.unavailableBehavior || '',
+    sortOrder: Number(button.sort || 0),
+    orderKey: (Number(button.sort || 0) + 1) * 1000000,
+    actionParams,
+    availabilityRule: button.availabilityRule || {},
+    templateId: button.templateId || null,
+    templateVersion: button.templateVersion || null,
+    localOverridesDocument: button.localOverridesDocument
+      || button.localOverrides
+      || null,
+    clearFields: button.templateId
+      ? []
+      : ['templateId', 'templateVersion', 'localOverridesDocument']
+  }
+}
+
+async function upgradeButtonTemplate(button, position) {
+  if (!button?.templateId) return
+  const template = buttonTemplates.value.find(item => item.id === button.templateId)
+  if (!template || template.currentVersion === button.templateVersion) {
+    ElMessage.info('当前已是最新按钮模板版本')
+    return
+  }
+  const currentSnapshot = {
+    ...button
+  }
+  delete currentSnapshot.id
+  delete currentSnapshot.revision
+  delete currentSnapshot.orderKey
+  delete currentSnapshot._saving
+  const result = await uiComponentTemplateApi.upgrade(button.templateId, {
+    fromVersion: button.templateVersion,
+    toVersion: template.currentVersion,
+    currentSnapshot,
+    localOverrides: safeJsonParse(
+      button.localOverridesDocument || button.localOverrides
+    ) || {}
+  })
+  if (result.requiresConfirmation) {
+    try {
+      await ElMessageBox.confirm(
+        `以下按钮配置同时被模板和本地修改：${result.conflicts.join('、')}。继续后保留本地按钮配置。`,
+        '确认按钮模板升级',
+        {
+          type: 'warning',
+          confirmButtonText: '保留本地配置并升级',
+          cancelButtonText: '取消'
+        }
+      )
+    } catch {
+      return
+    }
+  }
+  Object.assign(button, result.mergedSnapshot?.button || result.mergedSnapshot || {})
+  button.templateId = template.id
+  button.templateVersion = template.currentVersion
+  await saveListAction(button, position)
+  ElMessage.success(`已保存按钮模板升级 v${template.currentVersion}`)
+}
+
+async function refreshListActions() {
+  const latest = await entityListConfigApi.getById(configId)
+  if (!latest) return
+  configInfo.value.revision = latest.revision
+  configInfo.value.activeReleaseId = latest.activeReleaseId
+  configInfo.value.publishedVersion = latest.publishedVersion
+  parseButtonConfig(latest)
+}
+
+async function saveListAction(button, position) {
+  button._saving = true
+  try {
+    const payload = normalizeActionForSave(button, position)
+    if (button.id && button.revision > 0) {
+      await entityListConfigApi.patchAction(configId, button.id, payload)
+    } else {
+      await entityListConfigApi.createAction(configId, payload)
+    }
+    await refreshListActions()
+    await loadDiff()
+    ElMessage.success('当前按钮已保存，尚未发布')
+  } catch (error) {
+    handleRevisionConflict(error)
+    await refreshListActions().catch(() => {})
+  } finally {
+    button._saving = false
+  }
+}
+
+async function removeListAction(button, position) {
+  try {
+    if (button.id && button.revision > 0) {
+      await entityListConfigApi.deleteAction(configId, button.id, button.revision)
+      await refreshListActions()
+    } else {
+      const target = position === 'TOOLBAR' ? toolbarButtons : rowActionButtons
+      target.value = target.value.filter(item => item !== button)
+    }
+    await loadDiff()
+    ElMessage.success('当前按钮已删除，尚未发布')
+  } catch (error) {
+    handleRevisionConflict(error)
+    await refreshListActions().catch(() => {})
+  }
+}
+
 function initSortable() {
   const tableEl = document.querySelector('.field-config-table .el-table__body-wrapper tbody')
   if (!tableEl) return
@@ -809,61 +1323,205 @@ function initSortable() {
   sortableInstance = new Sortable(tableEl, {
     handle: '.drag-handle',
     animation: 150,
-    onEnd: (evt) => {
+    onEnd: async (evt) => {
       const { oldIndex, newIndex } = evt
       if (oldIndex === newIndex) return
 
       const item = fieldConfigList.value.splice(oldIndex, 1)[0]
       fieldConfigList.value.splice(newIndex, 0, item)
+      if (item.id && item.revision > 0) {
+        try {
+          const saved = await entityListConfigApi.reorderField(
+            configId,
+            item.id,
+            {
+              expectedRevision: item.revision,
+              previousId: fieldConfigList.value[newIndex - 1]?.id || null,
+              nextId: fieldConfigList.value[newIndex + 1]?.id || null
+            }
+          )
+          Object.assign(item, saved)
+          await refreshConfigRevision()
+          await loadDiff()
+        } catch (error) {
+          handleRevisionConflict(error, item)
+          await loadData()
+        }
+      }
     }
   })
 }
 
-async function handleSave() {
-  const fields = fieldConfigList.value.map((f, index) => ({
-    fieldId: f.fieldId,
-    fieldCode: f.fieldCode,
-    fieldName: f.fieldName,
-    showInList: f.showInList,
-    isQuery: f.isQuery,
-    queryType: f.queryType,
-    width: f.width,
-    align: f.align,
-    dataSourceType: f.dataSourceType || 'ENTITY_FIELD',
-    dataSourceConfig: f.dataSourceConfig || '',
-    renderComponent: f.renderComponent || '',
-    formatter: f.formatter || '',
-    columnConfig: f.columnConfig || '',
-    queryConfig: f.queryConfig || '',
-    renderConfig: f.renderConfig || '',
-    sortOrder: index
-  }))
-
-  const dto = {
-    id: configInfo.value.id,
-    entityId: configInfo.value.entityId,
-    entityCode: configInfo.value.entityCode,
-    listKey: configInfo.value.listKey,
-    listName: configInfo.value.listName,
-    description: configInfo.value.description,
-    isDefault: configInfo.value.isDefault,
-    customComponent: configInfo.value.customComponent,
-    viewConfig: stringifyConfig(viewConfig.value),
-    toolbarConfig: JSON.stringify(toolbarButtons.value),
-    rowActionConfig: JSON.stringify(rowActionButtons.value),
-    fields
+function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(field)) {
+  return {
+    id: field.id,
+    fieldId: field.fieldId,
+    fieldCode: field.fieldCode,
+    fieldName: field.fieldName,
+    showInList: field.showInList,
+    isQuery: field.isQuery,
+    queryType: field.queryType,
+    width: field.width,
+    align: field.align,
+    dataSourceType: field.dataSourceType || 'ENTITY_FIELD',
+    dataSourceConfig: field.dataSourceConfig || '',
+    dataSourceId: field.dataSourceId || null,
+    renderComponent: field.renderComponent || '',
+    formatter: field.formatter || '',
+    columnConfig: field.columnConfig || '',
+    queryConfig: field.queryConfig || '',
+    renderConfig: field.renderConfig || '',
+    sortOrder: Math.max(0, index),
+    orderKey: field.orderKey || (Math.max(0, index) + 1) * 1000000,
+    templateId: field.templateId || null,
+    templateVersion: field.templateVersion || null,
+    localOverridesDocument: field.localOverridesDocument || null
   }
+}
 
-  saving.value = true
+function handleRevisionConflict(error, target) {
+  if (error?.status === 409 || error?.errorCode === 'CONFIG_REVISION_CONFLICT') {
+    ElMessage.warning('配置已被其他人修改，已切换为服务器当前版本')
+    if (target && error.currentData) {
+      Object.assign(target, error.currentData)
+    }
+    return true
+  }
+  ElMessage.error(error?.message || '保存失败')
+  return false
+}
+
+async function saveCurrentField(field) {
+  if (!field) return
+  field._saving = true
   try {
-    await entityListConfigApi.save(dto)
-    ElMessage.success('保存成功')
-  } catch (e) {
-    console.error('保存失败:', e)
-    ElMessage.error('保存失败')
+    const payload = normalizeFieldForSave(field)
+    const saved = field.id && field.revision > 0
+      ? await entityListConfigApi.patchField(
+          configId,
+          field.id,
+          field.revision,
+          payload
+        )
+      : await entityListConfigApi.createField(configId, payload)
+    Object.assign(field, saved)
+    await refreshConfigRevision()
+    await loadDiff()
+    ElMessage.success('当前列已保存，尚未发布')
+  } catch (error) {
+    handleRevisionConflict(error, field)
   } finally {
-    saving.value = false
+    field._saving = false
   }
+}
+
+async function refreshConfigRevision() {
+  const latest = await entityListConfigApi.getById(configId)
+  if (latest) {
+    configInfo.value.revision = latest.revision
+    configInfo.value.activeReleaseId = latest.activeReleaseId
+    configInfo.value.publishedVersion = latest.publishedVersion
+  }
+}
+
+async function saveListMetadata() {
+  try {
+    const saved = await entityListConfigApi.patchMetadata(configId, {
+      expectedRevision: configInfo.value.revision,
+      listName: configInfo.value.listName,
+      description: configInfo.value.description,
+      isDefault: configInfo.value.isDefault,
+      customComponent: configInfo.value.customComponent,
+      dataScopeMode: configInfo.value.dataScopeMode || 'INHERIT',
+      accessPermissionCode: configInfo.value.accessPermissionCode || '',
+      selectionConfig: {
+        selectionMode: configInfo.value.selectionMode || 'NONE',
+        valueField: configInfo.value.selectionValueField || 'id',
+        returnMappings: safeJsonParse(
+          configInfo.value.selectionReturnMappingsText
+        ) || []
+      },
+      fixedFilterConfig: safeJsonParse(configInfo.value.fixedFilterConfig) || {},
+      contextBindingConfig: safeJsonParse(configInfo.value.contextBindingConfig) || {},
+      viewConfig: viewConfig.value,
+      queryProviderCode: configInfo.value.queryProviderCode || '',
+      queryDataSourceId: configInfo.value.queryDataSourceId || null
+    })
+    configInfo.value.revision = saved.revision
+    await loadDiff()
+    ElMessage.success('列表设置已保存，尚未发布')
+  } catch (error) {
+    handleRevisionConflict(error, configInfo.value)
+  }
+}
+
+async function loadDiff() {
+  try {
+    diffInfo.value = await entityListConfigApi.getDiff(configId)
+  } catch {
+    diffInfo.value = { changed: true, changedSections: [] }
+  }
+}
+
+async function handlePublish() {
+  try {
+    const diff = await entityListConfigApi.getDiff(configId)
+    if (!diff.changed) {
+      ElMessage.info('当前草稿与已发布版本一致')
+      return
+    }
+    await ElMessageBox.confirm(
+      `将发布 ${describePublishChanges(diff)}，运行时会原子切换。`,
+      '发布列表',
+      { type: 'warning' }
+    )
+    await entityListConfigApi.publish(configId, '列表设计器发布')
+    await loadDiff()
+    await loadPreviewData()
+    ElMessage.success('列表发布成功')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error?.message || '发布失败')
+    }
+  }
+}
+
+function describePublishChanges(diff) {
+  const labels = (diff.changedItems || [])
+    .slice(0, 8)
+    .map(item => `${changeTypeLabel(item.changeType)}${item.label || item.id}`)
+  if (labels.length) {
+    const remaining = Math.max(0, (diff.changedItems?.length || 0) - labels.length)
+    return `${labels.join('、')}${remaining ? `等 ${remaining + labels.length} 项` : ''}`
+  }
+  return diff.changedSections?.join('、') || '当前列表草稿'
+}
+
+function changeTypeLabel(changeType) {
+  return {
+    ADDED: '新增：',
+    UPDATED: '修改：',
+    MOVED: '移动：',
+    REMOVED: '删除：'
+  }[changeType] || '修改：'
+}
+
+async function showReleaseHistory() {
+  releases.value = await entityListConfigApi.getReleases(configId)
+  releaseDialogVisible.value = true
+}
+
+async function activateRelease(release) {
+  await ElMessageBox.confirm(
+    `确认激活历史版本 v${release.version}？`,
+    '回滚发布版本',
+    { type: 'warning' }
+  )
+  await entityListConfigApi.activateRelease(configId, release.id)
+  await showReleaseHistory()
+  await loadDiff()
+  await loadPreviewData()
+  ElMessage.success('历史版本已激活')
 }
 
 async function loadPreviewData() {
@@ -879,14 +1537,19 @@ async function loadPreviewData() {
         params[code + '_op'] = field.queryType
       }
     })
-    // 调用带列表配置扩展的接口
-    const res = await entityDataApi.getListWithConfig(entityCode.value, configInfo.value?.listKey, params)
-    previewAllData.value = res || []
-    previewTotal.value = previewAllData.value.length
-    // 前端内存分页
-    const start = (previewPageNum.value - 1) * previewPageSize.value
-    const end = start + previewPageSize.value
-    previewDataList.value = previewAllData.value.slice(start, end)
+    const res = await entityListRuntimeApi.query(
+      entityCode.value,
+      configInfo.value?.listKey,
+      {
+        pageNum: previewPageNum.value,
+        pageSize: previewPageSize.value,
+        scene: 'PAGE',
+        filters: params
+      }
+    )
+    previewDataList.value = res?.records || res?.list || []
+    previewAllData.value = previewDataList.value
+    previewTotal.value = Number(res?.total || previewDataList.value.length)
   } catch (e) {
     console.error('加载预览数据失败:', e)
     previewAllData.value = []
@@ -952,10 +1615,29 @@ function goBack() {
   flex: 1;
 }
 
+.config-tabs :deep(.el-tabs__nav-scroll) {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.config-tabs :deep(.el-tabs__nav) {
+  min-width: max-content;
+}
+
+.config-tabs :deep(.el-tabs__item) {
+  white-space: nowrap;
+}
+
 .option-description,
 .unit-text {
   color: #909399;
   font-size: 12px;
+}
+.scene-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  width: 100%;
 }
 
 .unit-text {
@@ -967,6 +1649,11 @@ function goBack() {
   gap: 12px;
   font-size: 16px;
   font-weight: 500;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .design-container {
   display: flex;
@@ -1002,5 +1689,44 @@ function goBack() {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 960px) {
+  .page-header,
+  .header-left,
+  .header-actions,
+  .field-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .design-container {
+    display: block;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .config-panel,
+  .preview-panel {
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .preview-panel {
+    margin-top: 12px;
+  }
+
+  .field-toolbar {
+    align-items: stretch;
+  }
+
+  .view-config-form :deep(.el-form-item__content) {
+    min-width: 0;
+  }
+
+  .view-config-form :deep(.el-select),
+  .view-config-form :deep(.el-input) {
+    max-width: 100%;
+  }
 }
 </style>

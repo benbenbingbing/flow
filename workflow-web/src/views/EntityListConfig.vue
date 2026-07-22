@@ -48,7 +48,7 @@
           <el-input v-model="formData.listKey" placeholder="如：default、myList" :disabled="isEdit" />
         </el-form-item>
         <el-form-item label="说明">
-          <el-input v-model="formData.description" type="textarea" rows="3" placeholder="请输入说明" />
+          <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入说明" />
         </el-form-item>
         <el-form-item label="默认列表">
           <el-switch v-model="formData.isDefault" />

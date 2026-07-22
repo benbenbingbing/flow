@@ -71,6 +71,8 @@ public class EntityForm {
      * 自定义表单组件注册名
      */
     private String customComponent;
+    private Integer customComponentVersion;
+    private Integer customComponentSnapshotVersion;
 
     /**
      * 表单初始化配置（JSON）
@@ -79,10 +81,31 @@ public class EntityForm {
     private String initConfig;
 
     /**
+     * 表单级统一数据源绑定（JSON）
+     */
+    @TableField("data_source_bindings_document")
+    private String dataSourceBindingsDocument;
+
+    /**
      * 表单视图配置JSON
      */
     @TableField("view_config")
     private String viewConfig;
+
+    /**
+     * 草稿元数据修订号
+     */
+    private Integer revision;
+
+    /**
+     * 当前激活发布快照ID
+     */
+    private String activeReleaseId;
+
+    /**
+     * 当前草稿内容哈希
+     */
+    private String draftHash;
 
     /**
      * 删除标志
@@ -95,6 +118,12 @@ public class EntityForm {
      */
     @TableField(exist = false)
     private List<EntityFormField> fields;
+
+    /**
+     * 递归表单节点（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<EntityFormNode> nodes;
     
     /**
      * 实体信息（非数据库字段）

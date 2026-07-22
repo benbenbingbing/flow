@@ -1,7 +1,8 @@
 package com.workflow.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.workflow.common.RevisionConflictException;
+import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityForm;
@@ -11,16 +12,23 @@ import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityFieldMapper;
 import com.workflow.mapper.EntityFormFieldMapper;
 import com.workflow.mapper.EntityFormMapper;
+import com.workflow.mapper.EntityFormNodeMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.service.config.EntityFormConfigurationValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * 实体表单服务
@@ -29,13 +37,21 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class EntityFormService {
+
+    private enum SaveMode {
+        USER_CAS,
+        SYSTEM_IMPORT
+    }
     
     private final EntityFormMapper formMapper;
     private final EntityFormFieldMapper formFieldMapper;
+    private final EntityFormNodeMapper formNodeMapper;
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
     private final EntityFormConfigurationValidator configurationValidator;
+    private final EntityDefinitionAccessPolicy entityAccessPolicy;
+    private final JsonDocumentCodec jsonDocumentCodec;
     
     /**
      * 查询所有表单列表
@@ -71,59 +87,110 @@ public class EntityFormService {
                 }
             }
             form.setFields(fields);
+            form.setNodes(formNodeMapper.findByFormId(id));
         }
         return form;
     }
 
     /**
-     * 保存表单
+     * 兼容既有迁移模块的系统导入入口。
+     *
+     * 普通 HTTP 更新必须调用带 expectedRevision 的重载。
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityForm saveForm(EntityForm form) {
-        configurationValidator.validateForm(form);
-        // 校验表单标识唯一性
-        if (StringUtils.hasText(form.getFormKey())) {
-            String excludeId = form.getId() != null ? form.getId() : "";
-            if (formMapper.existsFormKey(form.getEntityId(), form.getFormKey(), excludeId)) {
-                throw new RuntimeException("表单标识已存在：" + form.getFormKey());
-            }
+        return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
+    }
+
+    /**
+     * 普通整包表单保存，已有配置必须携带 expectedRevision。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityForm saveForm(EntityForm form, Integer expectedRevision) {
+        return saveFormInternal(form, expectedRevision, SaveMode.USER_CAS);
+    }
+
+    /**
+     * 显式系统导入入口；系统导入会锁定当前草稿后按当前版本覆盖。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityForm saveFormForImport(EntityForm form) {
+        return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
+    }
+
+    private EntityForm saveFormInternal(
+            EntityForm source,
+            Integer expectedRevision,
+            SaveMode saveMode) {
+        if (source == null) {
+            throw new IllegalArgumentException("表单配置不能为空");
         }
-        
-        // 设置默认值
-        if (!StringUtils.hasText(form.getLayoutType())) {
-            form.setLayoutType("vertical");
-        }
-        if (form.getStatus() == null) {
-            form.setStatus(1);
-        }
-        if (form.getIsDefault() == null) {
-            form.setIsDefault(false);
-        }
-        
-        form.setUpdateTime(LocalDateTime.now());
-        
-        if (!StringUtils.hasText(form.getId())) {
-            // 新增
-            form.setCreateTime(LocalDateTime.now());
-            formMapper.insert(form);
-            log.info("新增实体表单：{}", form.getFormName());
+        EntityForm current = null;
+        EntityForm desired = new EntityForm();
+        boolean isNew = !StringUtils.hasText(source.getId());
+        if (isNew) {
+            desired.setId(saveMode == SaveMode.SYSTEM_IMPORT
+                    ? source.getId()
+                    : null);
+            desired.setEntityId(source.getEntityId());
+            desired.setFormKey(source.getFormKey());
+            desired.setRevision(1);
+            desired.setCreateTime(LocalDateTime.now());
         } else {
-            // 更新
-            formMapper.updateById(form);
-            log.info("更新实体表单：{}", form.getFormName());
+            current = formMapper.selectByIdForUpdate(source.getId());
+            if (current == null) {
+                throw new IllegalArgumentException("表单不存在");
+            }
+            if (saveMode == SaveMode.USER_CAS) {
+                requireExpectedRevision(
+                        expectedRevision,
+                        current,
+                        "表单已被其他人修改");
+            }
+            BeanUtils.copyProperties(current, desired);
         }
-        
-        // 如果设置为默认表单，将同一实体下的其他表单设为非默认
-        if (Boolean.TRUE.equals(form.getIsDefault())) {
-            clearOtherDefaultForm(form.getEntityId(), form.getId());
+
+        applyMutableFormProperties(source, desired, isNew, saveMode);
+        desired.setFields(source.getFields());
+        desired.setNodes(null);
+        applyFormDefaults(desired);
+        entityAccessPolicy.requireDynamicById(desired.getEntityId());
+        configurationValidator.validateForm(desired);
+        validateFormKey(desired);
+
+        LocalDateTime now = LocalDateTime.now();
+        desired.setUpdateTime(now);
+        if (isNew) {
+            formMapper.insert(desired);
+            log.info("新增实体表单：{}", desired.getFormName());
+        } else {
+            int currentRevision = revisionOf(current);
+            desired.setRevision(currentRevision + 1);
+            desired.setDraftHash(null);
+            UpdateWrapper<EntityForm> wrapper = formRevisionCondition(
+                    desired.getId(), current);
+            setMutableFormColumns(wrapper, desired);
+            wrapper.set("revision", desired.getRevision())
+                    .set("draft_hash", null)
+                    .set("update_time", now);
+            if (formMapper.update(null, wrapper) != 1) {
+                throw formConflict(
+                        desired.getId(),
+                        "表单已被其他人修改，请刷新后重试");
+            }
+            log.info("更新实体表单：{}", desired.getFormName());
         }
-        
-        // 保存字段
-        if (form.getFields() != null) {
-            saveFormFields(form.getId(), form.getFields());
+
+        if (Boolean.TRUE.equals(desired.getIsDefault())) {
+            clearOtherDefaultForm(desired.getEntityId(), desired.getId());
         }
-        
-        return form;
+        if (source.getFields() != null) {
+            synchronizeFormFieldsByDiff(
+                    desired.getId(),
+                    source.getFields(),
+                    saveMode);
+        }
+        return getById(desired.getId());
     }
     
     /**
@@ -133,8 +200,15 @@ public class EntityFormService {
         List<EntityForm> forms = formMapper.selectByEntityId(entityId);
         for (EntityForm form : forms) {
             if (!form.getId().equals(currentFormId) && Boolean.TRUE.equals(form.getIsDefault())) {
-                form.setIsDefault(false);
-                formMapper.updateById(form);
+                UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
+                wrapper.eq("id", form.getId())
+                        .eq("deleted", 0)
+                        .eq("is_default", true)
+                        .set("is_default", false)
+                        .setSql("revision = revision + 1")
+                        .set("draft_hash", null)
+                        .set("update_time", LocalDateTime.now());
+                formMapper.update(null, wrapper);
                 log.info("取消表单默认状态：{}", form.getFormName());
             }
         }
@@ -156,6 +230,7 @@ public class EntityFormService {
                 }
             }
             form.setFields(fields);
+            form.setNodes(formNodeMapper.findByFormId(form.getId()));
         }
         return form;
     }
@@ -182,48 +257,367 @@ public class EntityFormService {
      * 仅更新表单初始化配置
      */
     @Transactional(rollbackFor = Exception.class)
-    public void updateInitConfig(String id, String initConfig) {
+    public void updateInitConfig(String id, Map<String, Object> initConfig) {
         EntityForm form = formMapper.selectById(id);
         if (form == null) {
             throw new RuntimeException("表单不存在");
         }
+        String document = initConfig == null || initConfig.isEmpty()
+                ? null
+                : jsonDocumentCodec.write(
+                        jsonDocumentCodec.ensureSchemaVersion(initConfig, 1),
+                        "表单初始化配置");
         UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", id)
-               .set("init_config", initConfig)
+               .set("init_config", document)
                .set("update_time", LocalDateTime.now());
         formMapper.update(null, wrapper);
         log.info("更新表单初始化配置：{}", form.getFormName());
     }
     
     /**
-     * 保存表单字段
+     * 普通字段整包保存，父表单 revision 作为聚合 CAS。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveFormFields(String formId, List<EntityFormField> fields) {
+    public void saveFormFields(
+            String formId,
+            List<EntityFormField> fields,
+            Integer expectedRevision) {
+        EntityForm current = lockForm(formId);
+        requireExpectedRevision(
+                expectedRevision,
+                current,
+                "表单已被其他人修改");
         configurationValidator.validateFields(fields);
-        // 删除原有字段
-        formFieldMapper.deleteByFormId(formId);
+        touchFormWithRevision(current);
+        synchronizeFormFieldsByDiff(formId, fields, SaveMode.USER_CAS);
+    }
 
-        // 保存新字段
-        if (fields != null && !fields.isEmpty()) {
-            for (int i = 0; i < fields.size(); i++) {
-                EntityFormField field = fields.get(i);
-                field.setFormId(formId);
-                field.setSortOrder(i);
-                field.setCreateTime(LocalDateTime.now());
-                field.setUpdateTime(LocalDateTime.now());
+    /**
+     * 禁止旧调用在没有 expectedRevision 时覆盖整包字段。
+     */
+    @Deprecated
+    public void saveFormFields(String formId, List<EntityFormField> fields) {
+        throw new IllegalArgumentException("expectedRevision 不能为空");
+    }
 
-                // 如果 fieldCode 为空，尝试从关联的实体字段补充
-                if (!StringUtils.hasText(field.getFieldCode()) && field.getFieldId() != null) {
-                    com.workflow.entity.EntityField entityField = fieldMapper.findByIdString(field.getFieldId());
-                    if (entityField != null && StringUtils.hasText(entityField.getFieldCode())) {
-                        field.setFieldCode(entityField.getFieldCode());
+    @Transactional(rollbackFor = Exception.class)
+    public void saveFormFieldsForImport(
+            String formId,
+            List<EntityFormField> fields) {
+        EntityForm current = lockForm(formId);
+        configurationValidator.validateFields(fields);
+        touchFormWithRevision(current);
+        synchronizeFormFieldsByDiff(formId, fields, SaveMode.SYSTEM_IMPORT);
+    }
+
+    private void synchronizeFormFieldsByDiff(
+            String formId,
+            List<EntityFormField> fields,
+            SaveMode saveMode) {
+        List<EntityFormField> existing = formFieldMapper.selectByFormId(formId);
+        Map<String, EntityFormField> existingById = new HashMap<>();
+        Map<String, EntityFormField> existingByCode = new HashMap<>();
+        existing.forEach(field -> {
+            existingById.put(field.getId(), field);
+            if (StringUtils.hasText(field.getFieldCode())) {
+                existingByCode.put(field.getFieldCode(), field);
+            }
+        });
+        Set<String> retainedIds = new HashSet<>();
+
+        for (int i = 0; i < (fields == null ? 0 : fields.size()); i++) {
+            EntityFormField source = fields.get(i);
+            if (!StringUtils.hasText(source.getFieldCode())
+                    && source.getFieldId() != null) {
+                com.workflow.entity.EntityField entityField =
+                        fieldMapper.findByIdString(source.getFieldId());
+                if (entityField != null && StringUtils.hasText(entityField.getFieldCode())) {
+                    source.setFieldCode(entityField.getFieldCode());
+                }
+            }
+            EntityFormField current = StringUtils.hasText(source.getId())
+                    ? existingById.get(source.getId())
+                    : null;
+            if (current == null
+                    && (!StringUtils.hasText(source.getId())
+                    || saveMode == SaveMode.SYSTEM_IMPORT)) {
+                current = existingByCode.get(source.getFieldCode());
+            }
+            if (current == null
+                    && saveMode == SaveMode.USER_CAS
+                    && StringUtils.hasText(source.getId())
+                    && existingByCode.containsKey(source.getFieldCode())) {
+                throw formConflict(
+                        formId,
+                        "表单字段标识已变化，请刷新后重试");
+            }
+            if (current == null) {
+                EntityFormField created = new EntityFormField();
+                copyMutableFormFieldProperties(source, created);
+                created.setId(source.getId());
+                created.setFormId(formId);
+                created.setSortOrder(i);
+                created.setCreateTime(LocalDateTime.now());
+                created.setUpdateTime(LocalDateTime.now());
+                EntityFormField sameId = StringUtils.hasText(created.getId())
+                        ? formFieldMapper.selectById(created.getId())
+                        : null;
+                if (sameId != null) {
+                    throw formConflict(
+                            formId,
+                            "表单字段 ID 已被其他配置占用，请刷新后重试");
+                }
+                formFieldMapper.insert(created);
+                source.setId(created.getId());
+                retainedIds.add(created.getId());
+            } else {
+                retainedIds.add(current.getId());
+                EntityFormField updated = new EntityFormField();
+                copyMutableFormFieldProperties(source, updated);
+                updated.setId(current.getId());
+                updated.setFormId(formId);
+                updated.setSortOrder(i);
+                updated.setCreateTime(current.getCreateTime());
+                updated.setUpdateTime(LocalDateTime.now());
+                if (!sameFormField(updated, current)) {
+                    UpdateWrapper<EntityFormField> wrapper =
+                            formFieldSnapshotCondition(formId, current);
+                    setMutableFormFieldColumns(wrapper, updated);
+                    wrapper.set("sort_order", updated.getSortOrder())
+                            .set("update_time", updated.getUpdateTime());
+                    if (formFieldMapper.update(null, wrapper) != 1) {
+                        throw formConflict(
+                                formId,
+                                "表单字段已被其他人修改，请刷新后重试");
                     }
                 }
-
-                formFieldMapper.insert(field);
+                source.setId(current.getId());
             }
         }
+        for (EntityFormField current : existing) {
+            if (!retainedIds.contains(current.getId())) {
+                UpdateWrapper<EntityFormField> wrapper =
+                        formFieldSnapshotCondition(formId, current);
+                if (formFieldMapper.delete(wrapper) != 1) {
+                    throw formConflict(
+                            formId,
+                            "表单字段已被其他人修改，请刷新后重试");
+                }
+            }
+        }
+    }
+
+    private void applyMutableFormProperties(
+            EntityForm source,
+            EntityForm target,
+            boolean isNew,
+            SaveMode saveMode) {
+        target.setFormName(source.getFormName());
+        target.setDescription(source.getDescription());
+        target.setLayoutType(source.getLayoutType());
+        target.setIsDefault(source.getIsDefault());
+        target.setStatus(source.getStatus());
+        target.setCustomComponent(source.getCustomComponent());
+        target.setCustomComponentVersion(source.getCustomComponentVersion());
+        target.setCustomComponentSnapshotVersion(
+                source.getCustomComponentSnapshotVersion());
+        target.setInitConfig(source.getInitConfig());
+        if (isNew
+                || saveMode == SaveMode.SYSTEM_IMPORT
+                || source.getDataSourceBindingsDocument() != null) {
+            target.setDataSourceBindingsDocument(
+                    source.getDataSourceBindingsDocument());
+        }
+        target.setViewConfig(source.getViewConfig());
+    }
+
+    private void applyFormDefaults(EntityForm form) {
+        if (!StringUtils.hasText(form.getLayoutType())) {
+            form.setLayoutType("vertical");
+        }
+        if (form.getStatus() == null) {
+            form.setStatus(1);
+        }
+        if (form.getIsDefault() == null) {
+            form.setIsDefault(false);
+        }
+    }
+
+    private void validateFormKey(EntityForm form) {
+        if (!StringUtils.hasText(form.getFormKey())) {
+            return;
+        }
+        String excludeId = StringUtils.hasText(form.getId())
+                ? form.getId()
+                : "";
+        if (formMapper.existsFormKey(
+                form.getEntityId(),
+                form.getFormKey(),
+                excludeId)) {
+            throw new IllegalArgumentException(
+                    "表单标识已存在：" + form.getFormKey());
+        }
+    }
+
+    private void setMutableFormColumns(
+            UpdateWrapper<EntityForm> wrapper,
+            EntityForm form) {
+        wrapper.set("form_name", form.getFormName())
+                .set("description", form.getDescription())
+                .set("layout_type", form.getLayoutType())
+                .set("is_default", form.getIsDefault())
+                .set("status", form.getStatus())
+                .set("custom_component", form.getCustomComponent())
+                .set("custom_component_version",
+                        form.getCustomComponentVersion())
+                .set("custom_component_snapshot_version",
+                        form.getCustomComponentSnapshotVersion())
+                .set("init_config", form.getInitConfig())
+                .set("data_source_bindings_document",
+                        form.getDataSourceBindingsDocument())
+                .set("view_config", form.getViewConfig());
+    }
+
+    private UpdateWrapper<EntityForm> formRevisionCondition(
+            String formId,
+            EntityForm current) {
+        UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", formId).eq("deleted", 0);
+        if (current.getRevision() == null) {
+            wrapper.isNull("revision");
+        } else {
+            wrapper.eq("revision", current.getRevision());
+        }
+        return wrapper;
+    }
+
+    private EntityForm lockForm(String formId) {
+        EntityForm current = formMapper.selectByIdForUpdate(formId);
+        if (current == null) {
+            throw new IllegalArgumentException("表单不存在");
+        }
+        return current;
+    }
+
+    private void touchFormWithRevision(EntityForm current) {
+        UpdateWrapper<EntityForm> wrapper =
+                formRevisionCondition(current.getId(), current);
+        wrapper.set("revision", revisionOf(current) + 1)
+                .set("draft_hash", null)
+                .set("update_time", LocalDateTime.now());
+        if (formMapper.update(null, wrapper) != 1) {
+            throw formConflict(
+                    current.getId(),
+                    "表单已被其他人修改，请刷新后重试");
+        }
+    }
+
+    private void requireExpectedRevision(
+            Integer expectedRevision,
+            EntityForm current,
+            String message) {
+        if (expectedRevision == null) {
+            throw new IllegalArgumentException("expectedRevision 不能为空");
+        }
+        if (!expectedRevision.equals(revisionOf(current))) {
+            throw new RevisionConflictException(
+                    message,
+                    getById(current.getId()));
+        }
+    }
+
+    private int revisionOf(EntityForm form) {
+        return form.getRevision() == null ? 0 : form.getRevision();
+    }
+
+    private RevisionConflictException formConflict(
+            String formId,
+            String message) {
+        return new RevisionConflictException(message, getById(formId));
+    }
+
+    private void copyMutableFormFieldProperties(
+            EntityFormField source,
+            EntityFormField target) {
+        target.setFieldId(source.getFieldId());
+        target.setFieldCode(source.getFieldCode());
+        target.setFieldName(source.getFieldName());
+        target.setFieldLabel(source.getFieldLabel());
+        target.setFieldType(source.getFieldType());
+        target.setComponentType(source.getComponentType());
+        target.setIsRequired(source.getIsRequired());
+        target.setIsReadonly(source.getIsReadonly());
+        target.setIsHidden(source.getIsHidden());
+        target.setDefaultValue(source.getDefaultValue());
+        target.setPlaceholder(source.getPlaceholder());
+        target.setValidationRules(source.getValidationRules());
+        target.setExtensionConfig(source.getExtensionConfig());
+        target.setComponentProps(source.getComponentProps());
+        target.setGridSpan(source.getGridSpan());
+    }
+
+    private UpdateWrapper<EntityFormField> formFieldSnapshotCondition(
+            String formId,
+            EntityFormField current) {
+        UpdateWrapper<EntityFormField> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", current.getId())
+                .eq("form_id", formId);
+        if (current.getUpdateTime() == null) {
+            wrapper.isNull("update_time");
+        } else {
+            wrapper.eq("update_time", current.getUpdateTime());
+        }
+        return wrapper;
+    }
+
+    private void setMutableFormFieldColumns(
+            UpdateWrapper<EntityFormField> wrapper,
+            EntityFormField field) {
+        wrapper.set("field_id", field.getFieldId())
+                .set("field_code", field.getFieldCode())
+                .set("field_name", field.getFieldName())
+                .set("field_label", field.getFieldLabel())
+                .set("field_type", field.getFieldType())
+                .set("component_type", field.getComponentType())
+                .set("is_required", field.getIsRequired())
+                .set("is_readonly", field.getIsReadonly())
+                .set("is_hidden", field.getIsHidden())
+                .set("default_value", field.getDefaultValue())
+                .set("placeholder", field.getPlaceholder())
+                .set("validation_rules", field.getValidationRules())
+                .set("extension_config", field.getExtensionConfig())
+                .set("component_props", field.getComponentProps())
+                .set("grid_span", field.getGridSpan());
+    }
+
+    private boolean sameFormField(
+            EntityFormField left,
+            EntityFormField right) {
+        return Objects.equals(left.getFieldId(), right.getFieldId())
+                && Objects.equals(left.getFieldCode(), right.getFieldCode())
+                && Objects.equals(left.getFieldName(), right.getFieldName())
+                && Objects.equals(left.getFieldLabel(), right.getFieldLabel())
+                && Objects.equals(left.getFieldType(), right.getFieldType())
+                && Objects.equals(
+                        left.getComponentType(),
+                        right.getComponentType())
+                && Objects.equals(left.getIsRequired(), right.getIsRequired())
+                && Objects.equals(left.getIsReadonly(), right.getIsReadonly())
+                && Objects.equals(left.getIsHidden(), right.getIsHidden())
+                && Objects.equals(left.getDefaultValue(), right.getDefaultValue())
+                && Objects.equals(left.getPlaceholder(), right.getPlaceholder())
+                && Objects.equals(
+                        left.getValidationRules(),
+                        right.getValidationRules())
+                && Objects.equals(
+                        left.getExtensionConfig(),
+                        right.getExtensionConfig())
+                && Objects.equals(
+                        left.getComponentProps(),
+                        right.getComponentProps())
+                && Objects.equals(left.getGridSpan(), right.getGridSpan())
+                && Objects.equals(left.getSortOrder(), right.getSortOrder());
     }
     
     /**
@@ -256,6 +650,7 @@ public class EntityFormService {
                 }
             }
             form.setFields(fields);
+            form.setNodes(formNodeMapper.findByFormId(form.getId()));
         }
         return form;
     }
@@ -383,9 +778,14 @@ public class EntityFormService {
         newForm.setDescription(sourceForm.getDescription());
         newForm.setLayoutType(sourceForm.getLayoutType());
         newForm.setCustomComponent(sourceForm.getCustomComponent());
+        newForm.setCustomComponentVersion(
+                sourceForm.getCustomComponentVersion());
+        newForm.setCustomComponentSnapshotVersion(
+                sourceForm.getCustomComponentSnapshotVersion());
         newForm.setInitConfig(sourceForm.getInitConfig());
         newForm.setViewConfig(sourceForm.getViewConfig());
         newForm.setStatus(1);
+        newForm.setRevision(1);
         newForm.setCreateTime(LocalDateTime.now());
         newForm.setUpdateTime(LocalDateTime.now());
         
@@ -420,12 +820,34 @@ public class EntityFormService {
                 formFieldMapper.insert(newField);
             }
         }
+
+        List<com.workflow.entity.EntityFormNode> sourceNodes =
+                formNodeMapper.findByFormId(sourceFormId);
+        Map<String, String> copiedIds = new HashMap<>();
+        for (com.workflow.entity.EntityFormNode sourceNode : sourceNodes) {
+            copiedIds.put(sourceNode.getId(),
+                    java.util.UUID.randomUUID().toString().replace("-", ""));
+        }
+        for (com.workflow.entity.EntityFormNode sourceNode : sourceNodes) {
+            com.workflow.entity.EntityFormNode newNode =
+                    new com.workflow.entity.EntityFormNode();
+            BeanUtils.copyProperties(sourceNode, newNode);
+            newNode.setId(copiedIds.get(sourceNode.getId()));
+            newNode.setFormId(newForm.getId());
+            newNode.setParentId(copiedIds.get(sourceNode.getParentId()));
+            newNode.setRevision(1);
+            newNode.setCreatedAt(LocalDateTime.now());
+            newNode.setUpdatedAt(LocalDateTime.now());
+            newNode.setDeleted(0);
+            formNodeMapper.insert(newNode);
+        }
         
         log.info("复制表单：{} -> {}", sourceForm.getFormName(), newForm.getFormName());
         
         // 填充详情返回
         fillFormDetails(newForm);
         newForm.setFields(getFormFields(newForm.getId()));
+        newForm.setNodes(formNodeMapper.findByFormId(newForm.getId()));
         
         return newForm;
     }

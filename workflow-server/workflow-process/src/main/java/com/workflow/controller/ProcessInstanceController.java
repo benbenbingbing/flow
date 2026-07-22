@@ -5,6 +5,7 @@ import com.workflow.common.Result;
 import com.workflow.common.UserContext;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.ProcessProgressDTO;
+import com.workflow.dto.ReceiveTaskTriggerRequest;
 import com.workflow.service.ProcessInstanceService;
 import com.workflow.vo.MyStartedProcessVO;
 import com.workflow.vo.ProcessDetailVO;
@@ -104,5 +105,15 @@ public class ProcessInstanceController {
     public Result<String> getProcessXml(@PathVariable String processInstanceId) {
         String xml = processInstanceService.getBpmnXmlByProcessInstanceId(processInstanceId);
         return Result.success(xml);
+    }
+
+    @PostMapping("/{processInstanceId}/receive")
+    public ApiResponse<Map<String, String>> triggerReceiveTask(
+            @PathVariable String processInstanceId,
+            @RequestBody ReceiveTaskTriggerRequest request) {
+        String executionId = processInstanceService.triggerReceiveTask(processInstanceId, request);
+        return ApiResponse.success(Map.of(
+                "processInstanceId", processInstanceId,
+                "executionId", executionId));
     }
 }

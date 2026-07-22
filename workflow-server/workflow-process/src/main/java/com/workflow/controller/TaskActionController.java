@@ -2,7 +2,9 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.common.UserContext;
+import com.workflow.common.ForbiddenException;
 import com.workflow.service.TaskActionService;
+import com.workflow.service.TaskAddSignService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +22,7 @@ import java.util.Map;
 public class TaskActionController {
 
     private final TaskActionService taskActionService;
+    private final TaskAddSignService taskAddSignService;
 
     /**
      * 完成任务
@@ -34,7 +37,7 @@ public class TaskActionController {
             @RequestBody Map<String, Object> requestBody) {
         String userId = UserContext.getUsername();
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
 
         String action = requestBody != null ? (String) requestBody.get("action") : "approve";
@@ -43,7 +46,14 @@ public class TaskActionController {
         String actionLabel = requestBody != null ? (String) requestBody.get("actionLabel") : null;
 
         try {
-            taskActionService.completeTask(taskId, userId, action, comment, transferTo, actionLabel);
+            if (taskAddSignService.isAddSignTask(taskId)) {
+                taskAddSignService.completeAddSignTask(taskId, action, comment);
+            } else {
+                if (!taskAddSignService.handleSourceCompletion(
+                        taskId, userId, action, comment, actionLabel, null)) {
+                    taskActionService.completeTask(taskId, userId, action, comment, transferTo, actionLabel);
+                }
+            }
             return Result.success(null);
         } catch (Exception e) {
             return Result.error(500, e.getMessage());
@@ -64,7 +74,7 @@ public class TaskActionController {
             @RequestBody(required = false) Map<String, String> requestBody) {
         String userId = UserContext.getUsername();
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
 
         String reason = requestBody != null ? requestBody.get("reason") : null;
@@ -103,7 +113,7 @@ public class TaskActionController {
     public Result<Map<String, Object>> getTaskStatistics() {
         String userId = UserContext.getUsername();
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
 
         try {

@@ -38,20 +38,40 @@ public class EntityListConfigDTO {
      */
     private String customComponent;
 
-    /**
-     * 工具栏按钮配置JSON
-     */
-    private String toolbarConfig;
+    private List<Map<String, Object>> toolbarConfig;
+
+    private List<Map<String, Object>> rowActionConfig;
+
+    private Map<String, Object> viewConfig;
+
+    private String dataScopeMode;
+
+    private String accessPermissionCode;
+
+    private List<String> allowedScenes;
+
+    private Map<String, Object> selectionConfig;
+
+    private Map<String, Object> fixedFilterConfig;
+
+    private Map<String, Object> contextBindingConfig;
+
+    private String queryProviderCode;
+
+    private Integer publishedVersion;
+
+    private Integer revision;
 
     /**
-     * 操作列按钮配置JSON
+     * 整包更新时客户端读取到的草稿修订号。
      */
-    private String rowActionConfig;
+    private Integer expectedRevision;
 
-    /**
-     * 列表视图配置JSON
-     */
-    private String viewConfig;
+    private String activeReleaseId;
+
+    private String draftHash;
+
+    private String queryDataSourceId;
 
     /**
      * 列表字段配置

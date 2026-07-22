@@ -1,7 +1,6 @@
 <template>
   <div class="menu-management">
     <div class="page-header">
-      <h2>菜单管理</h2>
       <el-button type="primary" @click="handleAddTopLevel">
         <el-icon><Plus /></el-icon>
         新增顶级菜单
@@ -21,9 +20,10 @@
         <template #default="{ row, $index }">
           <div class="menu-name-cell" :style="{ paddingLeft: getPaddingLeft(row, $index) + 'px' }" :key="'cell-' + row.id + '-' + expandedKeys.includes(row.id)">
             <!-- 展开/收起图标 -->
-            <span 
-              v-if="row.children && row.children.length > 0" 
+            <span
+              v-if="row.hasChildren || (row.children && row.children.length > 0)"
               class="expand-icon"
+              :class="{ 'is-loading': row.loading }"
               @click.stop="toggleExpand(row)"
             >
               <el-icon>
@@ -107,6 +107,19 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 顶层分页 -->
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="topPageNum"
+        v-model:page-size="topPageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="topTotal"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
     
     <!-- 菜单编辑对话框 -->
     <el-dialog
@@ -249,6 +262,7 @@
                 placeholder="选择关联实体（可选）"
                 clearable
                 style="width: 100%"
+                @change="handleEntityChange"
               >
                 <el-option
                   v-for="entity in entityList"
@@ -261,6 +275,24 @@
             </el-form-item>
           </el-col>
           <el-col :span="12" v-if="formData.entityCode">
+            <el-form-item label="关联列表">
+              <el-select
+                v-model="formData.listKey"
+                placeholder="请选择已配置列表"
+                style="width: 100%"
+                @change="autoSetEntityPath"
+              >
+                <el-option
+                  v-for="list in entityListConfigs"
+                  :key="list.listKey"
+                  :label="`${list.listName} (${list.listKey})`"
+                  :value="list.listKey"
+                />
+              </el-select>
+              <div class="form-tip">同一实体可由不同菜单展示不同列表和数据范围</div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12" v-if="formData.entityCode && formData.listKey">
             <el-form-item label="自动设置">
               <el-button type="primary" link @click="autoSetEntityPath">
                 自动设置路由和组件
@@ -285,12 +317,18 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import IconPicker from '@/components/IconPicker.vue'
-import { getMenuTree, createMenu, updateMenu, deleteMenu, updateStatus, updateVisible } from '@/api/system/menu'
+import { getMenuTree, getMenuChildren, getMenuSubtree, createMenu, updateMenu, deleteMenu, updateStatus, updateVisible } from '@/api/system/menu'
 import { entityApi } from '@/api/entity'
+import { entityListConfigApi } from '@/api/entityListConfig'
 
 const loading = ref(false)
 const menuTree = ref<any[]>([])
 const expandedKeys = ref<string[]>([])
+
+// 顶层分页
+const topPageNum = ref(1)
+const topPageSize = ref(10)
+const topTotal = ref(0)
 
 // 扁平化菜单树（根据展开状态显示/隐藏子菜单）
 const flattenMenuTree = computed(() => {
@@ -316,20 +354,27 @@ const formRef = ref()
 const submitLoading = ref(false)
 const isTopLevelMenu = ref(false)
 
-// 菜单树选项（用于上级菜单选择）
-const menuTreeOptions = computed(() => {
-  const addTopOption = [{ id: '0', menuName: '顶级菜单', children: [] }]
-  return [...addTopOption, ...menuTree.value]
-})
+// 菜单树选项（用于上级菜单选择），打开对话框时懒加载整棵树
+const menuTreeOptions = ref<any[]>([])
+
+const fetchMenuTreeOptions = async () => {
+  try {
+    const tree = await getMenuTree() || []
+    menuTreeOptions.value = [{ id: '0', menuName: '顶级菜单', children: [] }, ...tree]
+  } catch (error) {
+    console.error('获取菜单树选项失败:', error)
+    menuTreeOptions.value = [{ id: '0', menuName: '顶级菜单', children: [] }]
+  }
+}
 
 // 实体列表
 const entityList = ref<any[]>([])
+const entityListConfigs = ref<any[]>([])
 
 // 加载实体列表
 const fetchEntityList = async () => {
   try {
-    const res = await entityApi.getList()
-    entityList.value = res || []
+    entityList.value = await entityApi.getAll()
   } catch (error) {
     console.error('获取实体列表失败:', error)
   }
@@ -337,12 +382,31 @@ const fetchEntityList = async () => {
 
 // 自动设置实体路由
 const autoSetEntityPath = () => {
-  if (!formData.entityCode) return
+  if (!formData.entityCode || !formData.listKey) return
   const entity = entityList.value.find(e => e.entityCode === formData.entityCode)
   if (entity) {
-    formData.path = `/entity/list/${formData.entityCode}`
-    formData.component = 'entity/EntityDataList'
+    const list = entityListConfigs.value.find(item => item.listKey === formData.listKey)
+    formData.resourceType = 'ENTITY_LIST'
+    formData.path = `/entity-list/${formData.entityCode}/${formData.listKey}`
+    formData.component = 'entity/EntityListRuntime'
+    formData.perm = list?.accessPermissionCode
+      || `entity:${String(formData.entityCode).toLowerCase()}:list`
     ElMessage.success(`已自动设置路由：${formData.path}`)
+  }
+}
+
+const handleEntityChange = async () => {
+  formData.listKey = ''
+  entityListConfigs.value = []
+  if (!formData.entityCode) return
+  const entity = entityList.value.find(item => item.entityCode === formData.entityCode)
+  if (!entity) return
+  entityListConfigs.value = await entityListConfigApi.getByEntityId(entity.id).catch(() => [])
+  const defaultList = entityListConfigs.value.find(item => item.isDefault)
+    || entityListConfigs.value[0]
+  if (defaultList) {
+    formData.listKey = defaultList.listKey
+    autoSetEntityPath()
   }
 }
 
@@ -361,7 +425,9 @@ const formData = reactive({
   visible: '0',
   isFrame: '0',
   isCache: '0',
-  entityCode: ''
+  entityCode: '',
+  resourceType: '',
+  listKey: ''
 })
 
 const formRules = {
@@ -371,15 +437,40 @@ const formRules = {
   sort: [{ required: true, message: '请输入排序', trigger: 'blur' }]
 }
 
-// 获取菜单树
-const fetchMenuTree = async () => {
+// 加载顶层菜单（分页）
+const fetchTopMenus = async (pageNum = 1) => {
   loading.value = true
   try {
-    menuTree.value = await getMenuTree() || []
-    // 默认展开所有
-    expandedKeys.value = getAllMenuIds(menuTree.value)
+    const res = await getMenuChildren('0', pageNum, topPageSize.value)
+    const records = res.records || []
+    records.forEach((menu: any) => { menu.depth = 0 })
+    menuTree.value = records
+    topPageNum.value = res.pageNum || pageNum
+    topTotal.value = res.total || 0
+    expandedKeys.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// 加载指定节点的完整子树（展开时一次性加载所有后代）
+const loadSubtree = async (row: any) => {
+  if (row.loading) return
+  row.loading = true
+  try {
+    const children = await getMenuSubtree(row.id) || []
+    const setDepth = (menus: any[], depth: number) => {
+      menus.forEach(menu => {
+        menu.depth = depth
+        if (menu.children?.length) {
+          setDepth(menu.children, depth + 1)
+        }
+      })
+    }
+    setDepth(children, (row.depth || 0) + 1)
+    row.children = children
+  } finally {
+    row.loading = false
   }
 }
 
@@ -406,21 +497,7 @@ const getIconComponent = (iconName: string) => {
 
 // 计算左侧缩进（根据层级）
 const getPaddingLeft = (row: any, index: number) => {
-  // 计算层级：在原始 menuTree 中找到该菜单的层级
-  const getLevel = (menus: any[], targetId: string, currentLevel: number = 0): number => {
-    for (const menu of menus) {
-      if (menu.id === targetId) {
-        return currentLevel
-      }
-      if (menu.children?.length) {
-        const level = getLevel(menu.children, targetId, currentLevel + 1)
-        if (level >= 0) return level
-      }
-    }
-    return -1
-  }
-  const level = getLevel(menuTree.value, row.id)
-  return level > 0 ? level * 20 : 0
+  return (row.depth || 0) * 20
 }
 
 // 根据ID查找菜单
@@ -441,12 +518,18 @@ const isExpanded = (row: any) => {
 }
 
 // 切换展开/收起
-const toggleExpand = (row: any) => {
+const toggleExpand = async (row: any) => {
   const index = expandedKeys.value.indexOf(row.id)
   if (index > -1) {
     // 收起时同时收起所有子级
     removeChildrenKeys(row)
   } else {
+    // 展开时若尚未加载子菜单，先异步加载完整子树
+    // 注意：row 是 flattenMenuTree 的浅拷贝，必须找到原始节点写入 children
+    const originalRow = findMenuById(menuTree.value, row.id)
+    if (originalRow && originalRow.hasChildren && (!originalRow.children || originalRow.children.length === 0)) {
+      await loadSubtree(originalRow)
+    }
     expandedKeys.value.push(row.id)
   }
 }
@@ -458,11 +541,21 @@ const removeChildrenKeys = (row: any) => {
     expandedKeys.value.splice(index, 1)
   }
   if (row.children?.length) {
-    row.children.forEach((child: any) => removeChildrenKeys(child))
+    row.children.forEach((child: any) => {
+      removeChildrenKeys(child)
+    })
   }
 }
 
+// 顶层分页事件
+const handleSizeChange = (size: number) => {
+  topPageSize.value = size
+  fetchTopMenus(1)
+}
 
+const handleCurrentChange = (page: number) => {
+  fetchTopMenus(page)
+}
 
 // 重置表单
 const resetForm = () => {
@@ -481,32 +574,45 @@ const resetForm = () => {
     visible: '0',
     isFrame: '0',
     isCache: '0',
-    entityCode: ''
+    entityCode: '',
+    resourceType: '',
+    listKey: ''
   })
 }
 
 // 新增顶级菜单
-const handleAddTopLevel = () => {
+const handleAddTopLevel = async () => {
   resetForm()
   isTopLevelMenu.value = false
   dialogTitle.value = '新增顶级菜单'
+  await fetchMenuTreeOptions()
   dialogVisible.value = true
 }
 
 // 新增子菜单
-const handleAddChild = (row: any) => {
+const handleAddChild = async (row: any) => {
   resetForm()
   isTopLevelMenu.value = true
   formData.parentId = row.id
   dialogTitle.value = `新增子菜单 - ${row.menuName}`
+  await fetchMenuTreeOptions()
   dialogVisible.value = true
 }
 
 // 编辑菜单
-const handleEdit = (row: any) => {
+const handleEdit = async (row: any) => {
   Object.assign(formData, { ...row })
+  if (formData.entityCode) {
+    const entity = entityList.value.find(item => item.entityCode === formData.entityCode)
+    if (entity) {
+      entityListConfigApi.getByEntityId(entity.id)
+        .then(data => { entityListConfigs.value = data || [] })
+        .catch(() => { entityListConfigs.value = [] })
+    }
+  }
   isTopLevelMenu.value = row.parentId === '0' || !row.parentId
   dialogTitle.value = '编辑菜单'
+  await fetchMenuTreeOptions()
   dialogVisible.value = true
 }
 
@@ -524,7 +630,7 @@ const handleSubmit = async () => {
     }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
-    fetchMenuTree()
+    fetchTopMenus(topPageNum.value)
   } finally {
     submitLoading.value = false
   }
@@ -538,7 +644,7 @@ const handleDelete = async (row: any) => {
     })
     await deleteMenu(row.id)
     ElMessage.success('删除成功')
-    fetchMenuTree()
+    fetchTopMenus(topPageNum.value)
   } catch {
     // 取消删除
   }
@@ -579,20 +685,8 @@ const handleSortChange = async (row: any) => {
   // 可以批量更新排序，或者防抖处理
 }
 
-// 获取所有菜单ID
-const getAllMenuIds = (menus: any[]): string[] => {
-  const ids: string[] = []
-  menus.forEach(menu => {
-    ids.push(menu.id)
-    if (menu.children?.length) {
-      ids.push(...getAllMenuIds(menu.children))
-    }
-  })
-  return ids
-}
-
 onMounted(() => {
-  fetchMenuTree()
+  fetchTopMenus(1)
   fetchEntityList()
 })
 </script>
@@ -603,15 +697,15 @@ onMounted(() => {
   
   .page-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     margin-bottom: 20px;
-    
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 500;
-    }
+  }
+
+  .pagination-wrapper {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
   }
   
   .menu-name-cell {
@@ -632,6 +726,11 @@ onMounted(() => {
       &:hover {
         color: #409eff;
       }
+
+      &.is-loading {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
     }
     
     .expand-placeholder {
@@ -643,6 +742,10 @@ onMounted(() => {
       font-size: 16px;
       color: #409eff;
       margin-left: 4px;
+    }
+
+    &.load-more-cell {
+      color: #409eff;
     }
   }
 }

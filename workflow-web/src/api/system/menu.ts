@@ -5,6 +5,16 @@ export const getMenuTree = () => {
   return request.get('/system/menu/tree')
 }
 
+// 分页获取指定父菜单下的子菜单
+export const getMenuChildren = (parentId: string, pageNum = 1, pageSize = 10) => {
+  return request.get('/system/menu/children', { params: { parentId, pageNum, pageSize } })
+}
+
+// 获取指定节点为根的完整子树（不分页）
+export const getMenuSubtree = (parentId: string) => {
+  return request.get('/system/menu/subtree', { params: { parentId } })
+}
+
 // 获取运行态侧栏菜单树
 export const getSidebarMenuTree = () => {
   return request.get('/system/menu/sidebar-tree')

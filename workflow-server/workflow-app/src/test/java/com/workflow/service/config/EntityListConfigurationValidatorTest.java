@@ -1,6 +1,7 @@
 package com.workflow.service.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityListField;
@@ -9,7 +10,9 @@ import com.workflow.service.listfield.ListFieldDataProviderRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -25,6 +28,7 @@ class EntityListConfigurationValidatorTest {
 
         EntityListConfigurationValidator validator = new EntityListConfigurationValidator(
                 new StructuredConfigValidator(new ObjectMapper()),
+                new JsonDocumentCodec(new ObjectMapper()),
                 new ListFieldDataProviderRegistry(List.of(), new ObjectMapper()),
                 entityFieldMapper);
         EntityListField field = new EntityListField();
@@ -38,12 +42,12 @@ class EntityListConfigurationValidatorTest {
         dto.setEntityId("entity-1");
         dto.setEntityCode("demo_project");
         dto.setListKey("default");
-        dto.setViewConfig("\t");
+        dto.setViewConfig(Map.of());
         dto.setFields(List.of(field));
 
         validator.validate(dto);
 
-        assertNull(dto.getViewConfig());
+        assertEquals(Map.of(), dto.getViewConfig());
         assertNull(field.getColumnConfig());
         assertNull(field.getQueryConfig());
         assertNull(field.getRenderConfig());

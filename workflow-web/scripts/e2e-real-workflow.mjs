@@ -202,7 +202,10 @@ if (!process) {
   })
 }
 
-entity = await request(`/entity/${entity.id}/bind-process/${process.id}`, { method: 'POST' })
+entity = await request(`/entity/${entity.id}/workflow-binding`, {
+  method: 'PUT',
+  body: JSON.stringify({ processDefinitionId: process.id })
+})
 process = await request(`/process/${process.id}/publish`, {
   method: 'POST',
   body: JSON.stringify({ versionDescription: `真实流程闭环 ${runId}` })

@@ -1,420 +1,446 @@
 package com.workflow.service.permission;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.common.PermissionUtil;
 import com.workflow.dto.permission.*;
-import com.workflow.entity.EntityListPermission;
-import com.workflow.entity.EntityListPermissionDelegate;
+import com.workflow.entity.EntityListScopeDelegation;
 import com.workflow.entity.SysUser;
-import com.workflow.mapper.EntityListPermissionDelegateMapper;
-import com.workflow.mapper.EntityListPermissionMapper;
+import com.workflow.mapper.EntityListScopeDelegationMapper;
+import com.workflow.service.SysUserService;
+import com.workflow.service.EntityRecordTeamService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
- * 数据权限规则引擎
- * 支持多规则编排、列表级规则和结构化数据过滤。
+ * 基于发布快照的数据范围引擎。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DataPermissionEngine {
 
-    private final EntityListPermissionMapper permissionMapper;
-    private final EntityListPermissionDelegateMapper delegateMapper;
+    private final EntityListScopeService scopeService;
+    private final EntityListScopeDelegationMapper delegationMapper;
     private final ObjectMapper objectMapper;
     private final PermissionRuleMatcher ruleMatcher;
     private final PermissionSqlBuilder sqlBuilder;
+    private final SysUserService sysUserService;
+    private final EntityListScopeAuditService auditService;
+    private final EntityRecordTeamService entityRecordTeamService;
 
-    /** 用户字段名（须与实体表 entity_data 的字段名保持一致） */
-    private static final String USER_FIELD = "create_by";
-
-    /**
-     * 计算某实体的数据权限（不绑定具体列表，仅使用全局规则）。
-     */
     public DataPermissionResult calculatePermission(String entityCode, SysUser user) {
         return calculatePermission(entityCode, null, user);
     }
 
-    /**
-     * 计算某实体列表的数据权限。
-     *
-     * @param entityCode   实体编码
-     * @param listConfigId 列表配置ID（null 表示不绑定具体列表，只使用全局规则）
-     * @param user         当前用户
-     * @return 权限结果
-     */
-    public DataPermissionResult calculatePermission(String entityCode, String listConfigId, SysUser user) {
-        CalculationResult calc = doCalculatePermission(entityCode, listConfigId, user);
-        return applyDelegation(calc, entityCode, user);
-    }
-
-    /**
-     * 预览某实体列表生成的权限 SQL（不应用委托）。
-     *
-     * @param entityCode   实体编码
-     * @param listConfigId 列表配置ID
-     * @param user         当前用户
-     * @return 预览结果（含最终 SQL 与命中规则明细）
-     */
-    public PermissionPreviewDTO previewPermissionDetail(String entityCode, String listConfigId, SysUser user) {
-        CalculationResult calc = doCalculatePermission(entityCode, listConfigId, user);
-        DataPermissionResult result = calc.getResult();
-
-        PermissionPreviewDTO dto = new PermissionPreviewDTO();
-        dto.setHasPermission(result.isHasPermission());
-        dto.setNeedFilter(result.isNeedFilter());
-        if (!result.isHasPermission()) {
-            dto.setSql("1=0");
-        } else if (!result.isNeedFilter()) {
-            dto.setSql("1=1");
-        } else {
-            dto.setSql(result.getSqlCondition());
-        }
-        dto.setMatchedRules(calc.getMatchedRuleDetails());
-        return dto;
-    }
-
-    /**
-     * 预览某实体列表生成的权限 SQL（不应用委托）。
-     *
-     * @param entityCode   实体编码
-     * @param listConfigId 列表配置ID
-     * @param user         当前用户
-     * @return 生成的 SQL 条件
-     */
-    public String previewPermissionSql(String entityCode, String listConfigId, SysUser user) {
-        return previewPermissionDetail(entityCode, listConfigId, user).getSql();
-    }
-
-    /**
-     * 预览单条规则生成的权限 SQL（不考虑其它规则与优先级编排）。
-     *
-     * @param rule 权限规则
-     * @param user 当前用户
-     * @return 预览结果
-     */
-    public PermissionPreviewDTO previewRuleSql(EntityListPermission rule, SysUser user) {
-        PermissionPreviewDTO dto = new PermissionPreviewDTO();
-        if (user == null) {
-            dto.setHasPermission(false);
-            dto.setNeedFilter(false);
-            dto.setSql("1=0");
-            return dto;
-        }
-
-        FilterConfigDTO filter = parseFilterConfig(rule.getFilterConfig());
-        PermissionPreviewDTO.MatchedRuleDTO detail = new PermissionPreviewDTO.MatchedRuleDTO();
-        detail.setRuleName(rule.getRuleName());
-        detail.setRuleEffect(rule.getRuleEffect() == null ? "ALLOW" : rule.getRuleEffect());
-        detail.setCombineMode(rule.getCombineMode() == null ? "UNION" : rule.getCombineMode());
-
-        if (filter == null || "ALL".equals(filter.getType())) {
-            detail.setSql("1=1");
-            dto.setSql("1=1");
-            dto.setNeedFilter(false);
-        } else {
-            String ruleSql = sqlBuilder.buildFilterSql(rule.getEntityCode(), filter, user);
-            boolean isDeny = "DENY".equalsIgnoreCase(rule.getRuleEffect());
-
-            // 预览模式下，如果当前用户缺少部门ID，给出模板 SQL 与提示
-            if ("1=0".equals(ruleSql) && ("DEPT".equals(filter.getType()) || "DEPT_TREE".equals(filter.getType()))
-                    && user.getDeptId() == null) {
-                String deptField = getDeptField(filter);
-                String placeholder = "<当前用户部门ID>";
-                String previewSql;
-                if ("DEPT".equals(filter.getType())) {
-                    previewSql = deptField + " = '" + placeholder + "'";
-                } else {
-                    previewSql = deptField + " IN (" +
-                            "SELECT id FROM sys_organization " +
-                            "WHERE id = '" + placeholder + "' " +
-                            "OR path LIKE '%/" + placeholder + "/%')";
-                }
-                detail.setSql(previewSql);
-                dto.setSql(isDeny ? "NOT (" + previewSql + ")" : previewSql);
-                dto.setRemark("当前用户未设置部门ID，以下为模板 SQL，实际执行时会替换为登录用户的部门ID。");
-                dto.setNeedFilter(true);
-            } else {
-                detail.setSql(ruleSql);
-                dto.setSql(isDeny ? "NOT (" + ruleSql + ")" : ruleSql);
-                dto.setNeedFilter(true);
-            }
-        }
-
-        dto.setHasPermission(true);
-        dto.setMatchedRules(Collections.singletonList(detail));
-        return dto;
-    }
-
-    /**
-     * 核心权限计算（不含委托）。
-     */
-    private CalculationResult doCalculatePermission(String entityCode, String listConfigId, SysUser user) {
-        if (user == null) {
-            return new CalculationResult(DataPermissionResult.denyAll(), List.of());
-        }
-
-        // 1. 查询该实体所有启用的规则
-        List<EntityListPermission> rules = permissionMapper.findEnabledByEntityCode(entityCode);
-
-        // 2. 按列表过滤：全局规则（list_config_id 为空）或匹配当前列表的规则
-        List<EntityListPermission> scopedRules = rules.stream()
-                .filter(rule -> rule.getListConfigId() == null || rule.getListConfigId().isBlank()
-                        || rule.getListConfigId().equals(listConfigId))
-                .collect(Collectors.toList());
-
-        if (scopedRules.isEmpty()) {
-            // 没有配置规则，默认仅本人
-            return new CalculationResult(
-                    DataPermissionResult.withCondition(
-                            USER_FIELD + " = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
-                    ),
-                    List.of()
-            );
-        }
-
-        // 3. 过滤出匹配当前用户的规则，并按优先级降序排列
-        List<EntityListPermission> sortedRules = scopedRules.stream()
-                .sorted((a, b) -> Integer.compare(
-                        b.getPriority() == null ? 0 : b.getPriority(),
-                        a.getPriority() == null ? 0 : a.getPriority()))
-                .toList();
-        List<EntityListPermission> matchedRules = new ArrayList<>();
-        for (EntityListPermission rule : sortedRules) {
-            MatchConfigDTO match = parseMatchConfig(rule.getMatchConfig());
-            if (match == null) {
-                if ("DENY".equalsIgnoreCase(rule.getRuleEffect())) {
-                    log.error("DENY 数据权限规则匹配配置损坏，按拒绝全部处理: ruleId={}, ruleName={}",
-                            rule.getId(), rule.getRuleName());
-                    PermissionPreviewDTO.MatchedRuleDTO detail =
-                            matchedRuleDetail(rule, "1=1");
-                    DataPermissionResult denied = DataPermissionResult.denyAll();
-                    denied.setMatchedRuleNames(List.of(rule.getRuleName()));
-                    return new CalculationResult(
-                            denied,
-                            List.of(detail),
-                            "1=1");
-                }
-                log.error("ALLOW 数据权限规则匹配配置损坏，按不授权处理: ruleId={}, ruleName={}",
-                        rule.getId(), rule.getRuleName());
-                continue;
-            }
-            if (ruleMatcher.matches(match, user)) {
-                matchedRules.add(rule);
-            }
-        }
-
-        if (matchedRules.isEmpty()) {
-            // 没有匹配规则 = 默认仅本人
-            return new CalculationResult(
-                    DataPermissionResult.withCondition(
-                            USER_FIELD + " = '" + sqlBuilder.escapeLiteral(user.getId()) + "'"
-                    ),
-                    List.of()
-            );
-        }
-
-        // 4. 允许范围单独编排，拒绝范围统一在最后扣除
-        String allowSql = null;
-        String denySql = null;
-        boolean stopAllowProcessing = false;
-        List<PermissionPreviewDTO.MatchedRuleDTO> matchedDetails = new ArrayList<>();
-
-        for (EntityListPermission rule : matchedRules) {
-            boolean isDeny = "DENY".equalsIgnoreCase(rule.getRuleEffect());
-            FilterConfigDTO filter = parseFilterConfig(rule.getFilterConfig());
-            String ruleSql;
-            try {
-                if (filter == null) {
-                    throw new IllegalArgumentException("过滤配置 JSON 损坏");
-                }
-                sqlBuilder.validateFilter(entityCode, filter);
-                ruleSql = sqlBuilder.buildFilterSql(entityCode, filter, user);
-            } catch (RuntimeException exception) {
-                ruleSql = isDeny ? "1=1" : "1=0";
-                log.error("{} 数据权限规则过滤配置无效，按 {} 处理: ruleId={}, ruleName={}",
-                        isDeny ? "DENY" : "ALLOW",
-                        isDeny ? "拒绝全部" : "不授权",
-                        rule.getId(),
-                        rule.getRuleName());
-            }
-            PermissionPreviewDTO.MatchedRuleDTO detail =
-                    matchedRuleDetail(rule, ruleSql);
-            if (ruleSql == null || ruleSql.isBlank()) {
-                continue;
-            }
-
-            if (isDeny) {
-                denySql = combine(denySql, ruleSql, "UNION");
-            } else if (!stopAllowProcessing) {
-                allowSql = combine(allowSql, ruleSql, rule.getCombineMode());
-                if (rule.getStopProcessing() != null && rule.getStopProcessing() == 1) {
-                    stopAllowProcessing = true;
-                }
-            } else {
-                continue;
-            }
-
-            matchedDetails.add(detail);
-        }
-
-        if (allowSql == null) {
-            allowSql = defaultUserSql(user);
-        }
-
-        DataPermissionResult result;
-        if ("1=0".equals(allowSql) || "1=1".equals(denySql)) {
-            result = DataPermissionResult.denyAll();
-        } else if ("1=1".equals(allowSql) && denySql == null) {
-            result = DataPermissionResult.allowAll();
-        } else {
-            String finalSql = denySql == null
-                    ? allowSql
-                    : "(" + allowSql + ") AND NOT (" + denySql + ")";
-            result = DataPermissionResult.withCondition(finalSql);
-        }
-        result.setMatchedRuleNames(matchedDetails.stream()
-                .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
-                .collect(Collectors.toList()));
-        return new CalculationResult(result, matchedDetails, denySql);
-    }
-
-    /**
-     * 应用数据权限委托。
-     */
-    private DataPermissionResult applyDelegation(
-            CalculationResult calculation,
+    public DataPermissionResult calculatePermission(
             String entityCode,
+            String listKey,
             SysUser user) {
-        DataPermissionResult baseResult = calculation.getResult();
-        if (user == null || !baseResult.isHasPermission()) {
-            return baseResult;
+        CalculationResult calculation = calculate(entityCode, listKey, user);
+        return calculation.result();
+    }
+
+    public PermissionPreviewDTO previewPermissionDetail(
+            String entityCode,
+            String listKey,
+            SysUser user) {
+        CalculationResult calculation = calculate(entityCode, listKey, user);
+        DataPermissionResult result = calculation.result();
+        PermissionPreviewDTO preview = new PermissionPreviewDTO();
+        preview.setHasPermission(result.isHasPermission());
+        preview.setNeedFilter(result.isNeedFilter());
+        preview.setSql(result.isHasPermission()
+                ? (result.isNeedFilter() ? result.getSqlCondition() : "1=1")
+                : "1=0");
+        preview.setMatchedRules(calculation.matchedRules());
+        preview.setRemark(result.getExplanation());
+        preview.setDataScopeMode(result.getDataScopeMode());
+        preview.setReleaseVersion(result.getReleaseVersion());
+        return preview;
+    }
+
+    private CalculationResult calculate(
+            String entityCode,
+            String listKey,
+            SysUser user) {
+        if (user == null || !StringUtils.hasText(user.getId())) {
+            return denied("当前用户不存在", null, List.of());
         }
 
-        if (!baseResult.isNeedFilter()) {
-            return baseResult;
+        String bypassPermission = "entity:"
+                + EntityPermissionAction.normalizeEntityCode(entityCode)
+                + ":scope:bypass";
+        if (hasBypass(user.getId(), bypassPermission)) {
+            auditService.record(
+                    entityCode,
+                    listKey,
+                    user.getId(),
+                    "BYPASS",
+                    "SUCCESS",
+                    Map.of("permission", bypassPermission));
+            DataPermissionResult result = DataPermissionResult.allowAll();
+            result.setDataScopeMode("BYPASS");
+            result.setExplanation("通过显式数据范围绕过权限访问全部数据");
+            return new CalculationResult(result, List.of());
         }
 
-        List<EntityListPermissionDelegate> delegates = delegateMapper.findActiveByToUserId(user.getId(), entityCode);
-        if (delegates == null || delegates.isEmpty()) {
-            return baseResult;
+        EntityListScopeSnapshotDTO snapshot;
+        try {
+            snapshot = scopeService.getActiveSnapshot(entityCode);
+        } catch (RuntimeException exception) {
+            log.error("读取数据范围发布快照失败: entityCode={}", entityCode, exception);
+            return denied("数据范围发布快照损坏", null, List.of());
+        }
+        if (snapshot == null) {
+            return denied("实体没有已发布的数据范围", null, List.of());
         }
 
-        List<String> fromUserIds = delegates.stream()
-                .map(EntityListPermissionDelegate::getFromUserId)
-                .filter(id -> id != null && !id.isEmpty())
-                .distinct()
-                .collect(Collectors.toList());
-
-        if (fromUserIds.isEmpty()) {
-            return baseResult;
+        Map<String, EntityListScopePolicyDTO> policyMap = new LinkedHashMap<>();
+        for (EntityListScopePolicyDTO policy : snapshot.getPolicies()) {
+            if (policy != null && Integer.valueOf(1).equals(policy.getEnabled())) {
+                policyMap.put(policy.getId(), policy);
+            }
         }
 
-        String escapedIds = fromUserIds.stream()
+        String mode = StringUtils.hasText(listKey)
+                ? normalized(snapshot.getListModes().get(listKey), "INHERIT")
+                : "INHERIT";
+        List<PermissionPreviewDTO.MatchedRuleDTO> matched = new ArrayList<>();
+        List<String> entityAllows = new ArrayList<>();
+        List<String> listAllows = new ArrayList<>();
+        List<String> denies = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (EntityListScopeBindingDTO binding : snapshot.getBindings()) {
+            if (binding == null || !Integer.valueOf(1).equals(binding.getEnabled())
+                    || !isEffective(binding, now)
+                    || (StringUtils.hasText(binding.getListKey())
+                    && !binding.getListKey().equals(listKey))) {
+                continue;
+            }
+            EntityListScopePolicyDTO policy = policyMap.get(binding.getPolicyId());
+            if (policy == null) {
+                if ("DENY".equalsIgnoreCase(binding.getRuleEffect())) {
+                    return denied(
+                            "拒绝规则引用的方案不存在",
+                            snapshot.getVersion(),
+                            matched);
+                }
+                continue;
+            }
+            try {
+                if (!ruleMatcher.matches(binding.getMatchConfig(), user)) {
+                    continue;
+                }
+                sqlBuilder.validateFilter(entityCode, policy.getFilterConfig());
+                String sql = sqlBuilder.buildFilterSql(
+                        entityCode,
+                        policy.getFilterConfig(),
+                        user);
+                PermissionPreviewDTO.MatchedRuleDTO detail =
+                        detail(policy, binding, sql);
+                matched.add(detail);
+                if ("DENY".equalsIgnoreCase(binding.getRuleEffect())) {
+                    denies.add(sql);
+                } else if (!StringUtils.hasText(binding.getListKey())) {
+                    entityAllows.add(sql);
+                } else if (binding.getListKey().equals(listKey)) {
+                    listAllows.add(sql);
+                }
+            } catch (RuntimeException exception) {
+                if ("DENY".equalsIgnoreCase(binding.getRuleEffect())) {
+                    log.error("DENY 数据范围方案无效，按拒绝全部处理: policyKey={}",
+                            policy.getPolicyKey(), exception);
+                    return denied(
+                            "拒绝方案配置损坏: " + policy.getPolicyName(),
+                            snapshot.getVersion(),
+                            matched);
+                }
+                log.error("ALLOW 数据范围方案无效，按不授权处理: policyKey={}",
+                        policy.getPolicyKey(), exception);
+            }
+        }
+
+        EntityRecordTeamService.TeamPermission teamPermission =
+                entityRecordTeamService.teamPermission(entityCode, user.getId());
+        if (teamPermission.enabled()
+                && teamPermission.level()
+                == com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ADDITIVE) {
+            entityAllows.add(teamPermission.sqlCondition());
+        }
+
+        String entityAllow = or(entityAllows);
+        String listAllow = or(listAllows);
+        String allow = switch (mode) {
+            case "NARROW" -> and(entityAllow, listAllow);
+            case "OVERRIDE" -> listAllow;
+            default -> entityAllow;
+        };
+
+        String delegatedAllow = buildDelegatedAllow(
+                entityCode, snapshot, policyMap, user);
+        allow = orNonNull(allow, delegatedAllow);
+        if (teamPermission.enabled()
+                && teamPermission.level()
+                == com.workflow.entity.EntityDefinition.TeamVisibilityLevel.OVERRIDE_SCOPE) {
+            allow = orNonNull(allow, teamPermission.sqlCondition());
+        }
+        if (!StringUtils.hasText(allow)) {
+            if (teamPermission.enabled()
+                    && teamPermission.level()
+                    == com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ABSOLUTE) {
+                allow = "1=0";
+            } else {
+                return denied(
+                        "没有匹配到任何允许数据范围",
+                        snapshot.getVersion(),
+                        matched,
+                        mode);
+            }
+        }
+
+        String deny = or(denies);
+        String finalSql = StringUtils.hasText(deny)
+                ? "(" + allow + ") AND NOT (" + deny + ")"
+                : allow;
+        if (teamPermission.enabled()
+                && teamPermission.level()
+                == com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ABSOLUTE) {
+            finalSql = orNonNull(finalSql, teamPermission.sqlCondition());
+        }
+        boolean absoluteTeamAccess = teamPermission.enabled()
+                && teamPermission.level()
+                == com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ABSOLUTE;
+        if (!absoluteTeamAccess && ("1=0".equals(allow) || "1=1".equals(deny))) {
+            return denied(
+                    "数据被拒绝方案全部排除",
+                    snapshot.getVersion(),
+                    matched,
+                    mode);
+        }
+
+        DataPermissionResult result = "1=1".equals(finalSql)
+                ? DataPermissionResult.allowAll()
+                : DataPermissionResult.withCondition(finalSql);
+        result.setMatchedRuleNames(matched.stream()
+                .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
+                .toList());
+        result.setReleaseVersion(snapshot.getVersion());
+        result.setDataScopeMode(mode);
+        result.setExplanation(explanation(mode, entityAllows, listAllows, denies));
+        return new CalculationResult(result, matched);
+    }
+
+    private String buildDelegatedAllow(
+            String entityCode,
+            EntityListScopeSnapshotDTO snapshot,
+            Map<String, EntityListScopePolicyDTO> policyMap,
+            SysUser recipient) {
+        List<EntityListScopeDelegation> delegations =
+                delegationMapper.findActiveByToUserId(recipient.getId(), entityCode);
+        if (delegations == null || delegations.isEmpty()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (EntityListScopeDelegation delegation : delegations) {
+            SysUser delegator = sysUserService.getById(delegation.getFromUserId());
+            if (delegator == null) {
+                continue;
+            }
+            try {
+                String scope = normalized(delegation.getDelegateScope(), "PERSONAL");
+                String sql = switch (scope) {
+                    case "CREATED" -> userRelation("create_by", delegator);
+                    case "SUBMITTED" -> userRelation("submitter_id", delegator);
+                    case "CURRENT_TASK" -> userRelation("current_task_assignee", delegator);
+                    case "POLICY" -> compileDelegatedPolicy(
+                            entityCode, policyMap.get(delegation.getPolicyId()), delegator);
+                    case "CONDITION" -> compileDelegatedCondition(
+                            entityCode, delegation.getDelegateConfig(), delegator);
+                    default -> "(" + userRelation("create_by", delegator)
+                            + ") OR (" + userRelation("submitter_id", delegator) + ")";
+                };
+                if (StringUtils.hasText(sql)) {
+                    parts.add(sql);
+                }
+            } catch (RuntimeException exception) {
+                log.error("数据范围委托配置无效，已忽略: delegationId={}",
+                        delegation.getId(), exception);
+            }
+        }
+        return or(parts);
+    }
+
+    private String compileDelegatedPolicy(
+            String entityCode,
+            EntityListScopePolicyDTO policy,
+            SysUser delegator) {
+        if (policy == null || !Integer.valueOf(1).equals(policy.getEnabled())) {
+            return null;
+        }
+        sqlBuilder.validateFilter(entityCode, policy.getFilterConfig());
+        return sqlBuilder.buildFilterSql(entityCode, policy.getFilterConfig(), delegator);
+    }
+
+    private String compileDelegatedCondition(
+            String entityCode,
+            String config,
+            SysUser delegator) {
+        if (!StringUtils.hasText(config)) {
+            return null;
+        }
+        try {
+            FilterConfigDTO filter = objectMapper.readValue(config, FilterConfigDTO.class);
+            sqlBuilder.validateFilter(entityCode, filter);
+            return sqlBuilder.buildFilterSql(entityCode, filter, delegator);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("委托条件配置损坏", exception);
+        }
+    }
+
+    private String userRelation(String column, SysUser user) {
+        LinkedHashSet<String> values = new LinkedHashSet<>();
+        if (StringUtils.hasText(user.getId())) {
+            values.add(user.getId());
+        }
+        if (StringUtils.hasText(user.getUsername())) {
+            values.add(user.getUsername());
+        }
+        if (values.isEmpty()) {
+            return "1=0";
+        }
+        return column + " IN ('" + values.stream()
                 .map(sqlBuilder::escapeLiteral)
-                .collect(Collectors.joining("','"));
-        String delegateSql = USER_FIELD + " IN ('" + escapedIds + "')";
-        if (calculation.getDenySql() != null) {
-            delegateSql = "(" + delegateSql + ") AND NOT ("
-                    + calculation.getDenySql() + ")";
-        }
-
-        String combinedSql = "(" + baseResult.getSqlCondition() + ") OR (" + delegateSql + ")";
-        DataPermissionResult result = DataPermissionResult.withCondition(combinedSql);
-        result.setMatchedRuleNames(baseResult.getMatchedRuleNames());
-        return result;
+                .collect(java.util.stream.Collectors.joining("','")) + "')";
     }
 
-    private MatchConfigDTO parseMatchConfig(String json) {
-        try {
-            return objectMapper.readValue(json, MatchConfigDTO.class);
-        } catch (Exception e) {
-            log.error("解析数据权限 match_config 失败: {}", e.getMessage());
-            return null;
-        }
+    private boolean isEffective(
+            EntityListScopeBindingDTO binding,
+            LocalDateTime now) {
+        return (binding.getEffectiveStartTime() == null
+                || !binding.getEffectiveStartTime().isAfter(now))
+                && (binding.getEffectiveEndTime() == null
+                || !binding.getEffectiveEndTime().isBefore(now));
     }
 
-    private FilterConfigDTO parseFilterConfig(String json) {
-        try {
-            return objectMapper.readValue(json, FilterConfigDTO.class);
-        } catch (Exception e) {
-            log.error("解析数据权限 filter_config 失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String getDeptField(FilterConfigDTO filter) {
-        if (filter != null && filter.getFieldMapping() != null
-                && filter.getFieldMapping().getDeptField() != null
-                && !filter.getFieldMapping().getDeptField().isBlank()) {
-            return filter.getFieldMapping().getDeptField();
-        }
-        return "dept_id";
-    }
-
-    private String defaultUserSql(SysUser user) {
-        return USER_FIELD + " = '" + sqlBuilder.escapeLiteral(user.getId()) + "'";
-    }
-
-    private PermissionPreviewDTO.MatchedRuleDTO matchedRuleDetail(
-            EntityListPermission rule,
+    private PermissionPreviewDTO.MatchedRuleDTO detail(
+            EntityListScopePolicyDTO policy,
+            EntityListScopeBindingDTO binding,
             String sql) {
         PermissionPreviewDTO.MatchedRuleDTO detail =
                 new PermissionPreviewDTO.MatchedRuleDTO();
-        detail.setRuleName(rule.getRuleName());
-        detail.setRuleEffect(
-                rule.getRuleEffect() == null ? "ALLOW" : rule.getRuleEffect());
-        detail.setCombineMode(
-                rule.getCombineMode() == null ? "UNION" : rule.getCombineMode());
+        detail.setRuleName(policy.getPolicyName());
+        detail.setRuleEffect(normalized(binding.getRuleEffect(), "ALLOW"));
+        detail.setListKey(binding.getListKey());
         detail.setSql(sql);
         return detail;
     }
 
-    private String combine(String current, String next, String combineMode) {
-        if (current == null || current.isBlank()) {
-            return next;
-        }
-        if ("INTERSECT".equalsIgnoreCase(combineMode)) {
-            return "(" + current + ") AND (" + next + ")";
-        }
-        return "(" + current + ") OR (" + next + ")";
+    private CalculationResult denied(
+            String reason,
+            Integer releaseVersion,
+            List<PermissionPreviewDTO.MatchedRuleDTO> matched) {
+        return denied(reason, releaseVersion, matched, "INHERIT");
     }
 
-    /**
-     * 内部计算结果包装类。
-     */
-    private static class CalculationResult {
-        private final DataPermissionResult result;
-        private final List<PermissionPreviewDTO.MatchedRuleDTO> matchedRuleDetails;
-        private final String denySql;
+    private CalculationResult denied(
+            String reason,
+            Integer releaseVersion,
+            List<PermissionPreviewDTO.MatchedRuleDTO> matched,
+            String mode) {
+        DataPermissionResult result = DataPermissionResult.denyAll();
+        result.setReleaseVersion(releaseVersion);
+        result.setDataScopeMode(mode);
+        result.setExplanation(reason);
+        result.setMatchedRuleNames(matched.stream()
+                .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
+                .toList());
+        return new CalculationResult(result, matched);
+    }
 
-        CalculationResult(DataPermissionResult result, List<PermissionPreviewDTO.MatchedRuleDTO> matchedRuleDetails) {
-            this(result, matchedRuleDetails, null);
-        }
+    private String explanation(
+            String mode,
+            List<String> entityAllows,
+            List<String> listAllows,
+            List<String> denies) {
+        return switch (mode) {
+            case "NARROW" -> "实体默认范围与列表范围取交集"
+                    + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
+            case "OVERRIDE" -> "使用列表独立范围"
+                    + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
+            default -> "继承实体默认范围"
+                    + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
+        };
+    }
 
-        CalculationResult(
-                DataPermissionResult result,
-                List<PermissionPreviewDTO.MatchedRuleDTO> matchedRuleDetails,
-                String denySql) {
-            this.result = result;
-            this.matchedRuleDetails = matchedRuleDetails;
-            this.denySql = denySql;
+    private String or(List<String> parts) {
+        List<String> valid = parts == null ? List.of() : parts.stream()
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (valid.isEmpty()) {
+            return null;
         }
+        if (valid.stream().anyMatch("1=1"::equals)) {
+            return "1=1";
+        }
+        return valid.size() == 1
+                ? valid.get(0)
+                : valid.stream().map(value -> "(" + value + ")")
+                .collect(java.util.stream.Collectors.joining(" OR "));
+    }
 
-        DataPermissionResult getResult() {
-            return result;
+    private String and(String left, String right) {
+        if (!StringUtils.hasText(left) || !StringUtils.hasText(right)) {
+            return null;
         }
+        if ("1=0".equals(left) || "1=0".equals(right)) {
+            return "1=0";
+        }
+        if ("1=1".equals(left)) {
+            return right;
+        }
+        if ("1=1".equals(right)) {
+            return left;
+        }
+        return "(" + left + ") AND (" + right + ")";
+    }
 
-        List<PermissionPreviewDTO.MatchedRuleDTO> getMatchedRuleDetails() {
-            return matchedRuleDetails;
+    private String orNonNull(String left, String right) {
+        if (!StringUtils.hasText(left)) {
+            return right;
         }
+        if (!StringUtils.hasText(right)) {
+            return left;
+        }
+        if ("1=1".equals(left) || "1=1".equals(right)) {
+            return "1=1";
+        }
+        return "(" + left + ") OR (" + right + ")";
+    }
 
-        String getDenySql() {
-            return denySql;
+    private String normalized(String value, String fallback) {
+        return StringUtils.hasText(value)
+                ? value.trim().toUpperCase(Locale.ROOT)
+                : fallback;
+    }
+
+    private boolean hasBypass(String userId, String permission) {
+        try {
+            return PermissionUtil.getUserPermissions(userId).contains(permission);
+        } catch (RuntimeException exception) {
+            log.debug("权限上下文尚未初始化，按无绕过权限处理");
+            return false;
         }
+    }
+
+    private record CalculationResult(
+            DataPermissionResult result,
+            List<PermissionPreviewDTO.MatchedRuleDTO> matchedRules) {
     }
 }

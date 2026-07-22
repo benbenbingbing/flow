@@ -20,6 +20,8 @@ public class TaskVO {
      * 任务名称
      */
     private String taskName;
+
+    private String nodeType;
     
     /**
      * 流程实例ID
@@ -80,6 +82,16 @@ public class TaskVO {
      * 任务处理人姓名
      */
     private String assigneeName;
+
+    /**
+     * 任务处理人类型：user/group/role。
+     */
+    private String assigneeType;
+
+    /**
+     * 当前待办是否需要候选用户先认领。
+     */
+    private Boolean claimRequired;
 
     
     /**

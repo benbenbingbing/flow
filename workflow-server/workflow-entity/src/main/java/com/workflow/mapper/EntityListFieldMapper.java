@@ -18,7 +18,8 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
     /**
      * 根据列表配置ID查询字段列表
      */
-    @Select("SELECT * FROM entity_list_field WHERE list_config_id = #{listConfigId} AND deleted = 0 ORDER BY sort_order ASC")
+    @Select("SELECT * FROM entity_list_field WHERE list_config_id = #{listConfigId} "
+            + "AND deleted = 0 ORDER BY order_key ASC, sort_order ASC")
     List<EntityListField> findByListConfigId(@Param("listConfigId") String listConfigId);
 
     /**

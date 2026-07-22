@@ -38,19 +38,19 @@ const entityFieldTypes = [
 export default {
   eyebrow: 'USER MANUAL · ENTITY',
   title: '实体配置用户手册',
-  subtitle: '覆盖实体创建、字段与关系、附件和引用、编码、状态、数据权限、表单、初始化、联动事件、列表、动态字段、按钮权限以及发布版本的完整配置闭环。',
+  subtitle: '覆盖实体创建、字段与关系、数据权限、递归表单节点、列表单项配置、统一数据源、草稿发布、模板升级和迁移兼容的完整配置闭环。',
   version: '当前 UI 配置基线',
-  updatedAt: '2026-07-16',
+  updatedAt: '2026-07-22',
   intro: [
     {
       title: '推荐顺序',
       type: 'success',
-      text: '先建实体与字段，再配置状态、表单、列表和权限；需要流程时先完成流程设计，再回到实体绑定流程；最后统一发布并检查版本快照。'
+      text: '先选择独立业务实体或流程实体，再设计字段、状态、表单、列表和权限。流程实体可以先发布结构，绑定流程发布后才开放发起入口；最后检查版本快照。'
     },
     {
       title: '保存不等于发布',
       type: 'warning',
-      text: '实体设计、表单设计和列表设计中的“保存”只更新配置。首次发布会创建物理表，重新发布会同步新增字段并记录版本；发布前必须查看差异和 DDL 预览。'
+      text: '表单节点、列表列、按钮和场景的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。发布前必须查看 diff：除章节摘要外，还会按稳定 ID 列出新增、修改、移动和删除项目；确认数据源、权限、嵌套关系和迁移兼容校验全部通过。'
     }
   ],
   sections: [
@@ -79,14 +79,14 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '配置依赖',
-              text: '流程节点要选择实体表单，必须先由实体绑定流程并至少存在一个启用表单。列表按钮的状态条件依赖实体状态配置；数据权限中的“适用列表”依赖列表配置已保存。'
+              text: '独立业务实体不需要流程即可发布和使用，可作为引用、子表或统一列表选择器的数据来源。流程节点表单依赖流程实体与绑定流程；数据权限中的“适用列表”依赖列表配置已保存。'
             }
           ]
         },
         {
           id: 'entity-overview-system-fields',
           title: '系统标准字段',
-          lead: '新建实体后平台自动创建标准字段，这些字段用于运行时、流程关联和权限判断。',
+          lead: '动态实体创建后平台自动生成标准字段。独立实体默认隐藏流程字段；升级为流程实体时会幂等补齐并开放相关配置。',
           blocks: [
             {
               type: 'table',
@@ -116,6 +116,29 @@ export default {
       summary: '覆盖查询、分页、新建、绑定、版本和删除等列表入口。',
       topics: [
         {
+          id: 'entity-lifecycle-storage',
+          title: '生命周期与存储类型',
+          lead: '“是否走流程”和“物理表由谁维护”是两个独立维度，不能混为一个开关。',
+          blocks: [
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: '独立业务实体 STANDALONE', meaning: '不绑定流程，直接使用表单、列表、数据范围、编码、导出和实体引用。适合基础资料、项目档案、产品、客户、业务明细等。', notes: '默认仅本人数据；可升级为流程实体，升级后不能降级。' },
+                { option: '流程实体 WORKFLOW', meaning: '作为一个流程的主业务数据载体，支持节点表单、状态映射、审批和流程动作。', notes: '实体可先发布；绑定流程未发布、已禁用或丢失时只能保存业务数据，不能发起。' },
+                { option: '动态业务表 DYNAMIC', meaning: '由实体设计器维护，物理表采用 biz_*，可以配置字段、表单、列表、权限和迁移。', notes: '新建实体固定为该模式。' },
+                { option: '平台系统表 SYSTEM', meaning: '系统自动扫描 sys_user、sys_organization、sys_role、sys_dict 等 sys_* 表并登记字段结构。', notes: '只用于统一目录和结构查看；不能用动态实体接口修改数据或结构，也不进入配置迁移包。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '系统实体安全边界',
+              text: '平台系统实体继续由用户、组织、角色、菜单和字典模块管理。即使手工调用实体表单、列表、状态、编码、数据范围或数据接口，后端也会返回冲突错误，防止绕过系统权限。'
+            }
+          ]
+        },
+        {
           id: 'entity-list-search',
           title: '查询与列表字段',
           lead: '实体管理页用于定位配置对象，并展示流程绑定与发布状态。',
@@ -126,14 +149,15 @@ export default {
               rows: [
                 { field: '实体名称', meaning: '按实体名称或编码模糊搜索。', defaultLimit: '默认空；按回车或“查询”执行。', effect: '返回匹配实体并将页码重置为 1。', publish: '无发布影响。' },
                 { field: '状态', meaning: '筛选草稿、已发布、已禁用。', defaultLimit: '默认全部。', effect: '只显示对应配置状态。', publish: '已发布不代表表单、列表后续修改已形成新快照。' },
-                { field: '启用流程', meaning: '筛选是否已开启流程能力。', defaultLimit: '是 / 否 / 全部。', effect: '帮助区分纯数据实体与流程实体。', publish: '绑定流程会自动启用流程。' },
+                { field: '实体类型', meaning: '筛选 STANDALONE 独立业务实体或 WORKFLOW 流程实体。', defaultLimit: '默认全部。', effect: '决定是否支持流程绑定和发起。', publish: '类型只允许从独立实体升级为流程实体。' },
+                { field: '存储类型', meaning: '筛选 DYNAMIC 动态业务表或 SYSTEM 平台系统表。', defaultLimit: '默认全部。', effect: '区分可配置业务实体和只读系统目录。', publish: '系统实体不执行动态发布。' },
                 { field: '分页', meaning: '控制当前页与每页数量。', defaultLimit: '默认 10；可选 10/20/50/100。', effect: '服务端分页加载。', publish: '无发布影响。' }
               ]
             },
             {
               type: 'bullets',
               items: [
-                '列表展示实体名称、实体编码、描述、是否启用流程、绑定流程、状态。',
+                '列表展示实体名称、编码、描述、生命周期类型、存储类型、绑定流程和发布状态。',
                 '“重置”恢复全部筛选并回到第 1 页。',
                 '“设计、发布/重新发布、列表、表单”为高频入口；状态配置、绑定流程、版本历史和删除位于更多菜单。'
               ]
@@ -151,7 +175,8 @@ export default {
               rows: [
                 { field: '实体名称', meaning: '用户看到的业务名称。', defaultLimit: '必填；无固定格式。', effect: '显示在菜单、列表、表单和设计器。', publish: '名称可改，但版本说明中应记录业务改名。' },
                 { field: '实体编码', meaning: '实体的唯一技术标识。', defaultLimit: '必填；必须以字母开头，只能包含字母、数字、下划线；创建后 UI 禁止修改，后端按不区分大小写校验唯一。', effect: '参与表名、API、权限码 entity:{code}:action 和迁移业务键。', publish: '上线后不得通过数据库直接改名，否则流程、菜单权限和列表配置会失联。' },
-                { field: '描述', meaning: '说明实体用途和边界。', defaultLimit: '可选，多行文本。', effect: '帮助管理员识别配置。', publish: '建议写明数据负责人和适用流程。' }
+                { field: '描述', meaning: '说明实体用途和边界。', defaultLimit: '可选，多行文本。', effect: '帮助管理员识别配置。', publish: '建议写明数据负责人和适用流程。' },
+                { field: '实体类型', meaning: '选择独立业务实体或流程实体。', defaultLimit: '默认 STANDALONE。', effect: '独立实体没有流程入口；流程实体可继续绑定流程。', publish: '流程实体不能降级。' }
               ]
             },
             {
@@ -175,7 +200,9 @@ export default {
                 { option: '列表', meaning: '维护一个实体的多个列表方案与默认列表。', notes: '列表标识一旦被菜单或页面引用，不要随意修改。' },
                 { option: '表单', meaning: '维护一个实体的多个表单、默认表单和初始化配置。', notes: '流程节点选择的表单被删除或禁用会影响运行。' },
                 { option: '状态配置', meaning: '维护状态分类、编码、名称、说明和排序。', notes: '状态编码被流程连线、按钮条件、权限状态限制引用后应保持稳定。' },
-                { option: '绑定流程', meaning: '从未绑定流程及当前流程中选择一个流程，绑定后启用流程。', notes: '实体已有流程数据时，后端禁止切换到其他流程。' },
+                { option: '升级为流程实体', meaning: '将独立业务实体永久升级为流程实体；已有记录保持未发起。', notes: '升级不可撤销，但可以在没有流程实例时解除或更换流程绑定。' },
+                { option: '绑定 / 更换流程', meaning: '为流程实体选择唯一主流程。', notes: '只有存在 process_instance_id 的真实流程记录才阻止切换；流程发布后状态为 ACTIVE 才能发起。' },
+                { option: '解除流程绑定', meaning: '清除当前流程，但实体继续保持 WORKFLOW。', notes: '存在流程实例时拒绝；解除后只能保存数据，不能发起。' },
                 { option: '版本历史', meaning: '查看版本、发布说明、字段快照、DDL 与相邻版本差异。', notes: '版本是审计依据，不应通过数据库直接改写。' },
                 { option: '删除', meaning: '删除实体配置。', notes: '先确认无数据、无流程实例、无菜单和无迁移依赖。' }
               ]
@@ -315,7 +342,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '单选与多选',
-              text: 'REFERENCE 只保存一个目标，MULTI_REFERENCE 保存多个目标。表单设计中引用类型和关联实体对来源于实体字段的字段会被锁定；可额外填写“数据接口”定制候选数据范围，留空使用默认查询。'
+              text: 'REFERENCE 只保存一个目标，MULTI_REFERENCE 保存多个目标。CUSTOM 引用可继续选择目标 listKey：配置后使用统一列表运行时，列、查询、排序、数据范围和选择能力均来自该列表；留空时使用旧选择器。“数据接口”只用于仍需兼容的定制查询。'
             }
           ]
         }
@@ -352,7 +379,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '状态分类', meaning: '归一化流程阶段。', defaultLimit: 'NEW、PROCESSING、COMPLETED、TERMINATED、WITHDRAWN。', effect: '供按钮条件、权限过滤、流程状态和标签展示使用。', publish: '分类变化会改变所有基于分类的规则。' },
+                { field: '状态分类', meaning: '归一化业务处理阶段。', defaultLimit: 'NEW 初始、PROCESSING 处理中、COMPLETED 已完成、TERMINATED 已终止、WITHDRAWN 已撤回。独立实体默认只初始化 NEW/DRAFT。', effect: '供按钮条件、权限过滤、流程状态和标签展示使用。', publish: '分类变化会改变所有基于分类的规则。' },
                 { field: '状态编码', meaning: '业务状态稳定标识。', defaultLimit: '必填；示例 PENDING。', effect: '实际存入实体 status 字段，并被流程连线引用。', publish: '被引用后不要改；需要新语义时新增编码。' },
                 { field: '状态名称', meaning: '用户显示文本。', defaultLimit: '必填。', effect: '列表、审批和条件配置显示。', publish: '可改显示名，建议记录版本说明。' },
                 { field: '说明', meaning: '解释进入该状态的条件。', defaultLimit: '可选。', effect: '帮助设计人员选状态。', publish: '建议写清允许的按钮和后续动作。' },
@@ -368,18 +395,19 @@ export default {
           ]
         },
         {
-          id: 'entity-bind-process',
-          title: '绑定流程',
-          lead: '绑定后实体成为流程业务数据载体，节点表单、状态映射和审批入口都依赖这条关系。',
+          id: 'entity-upgrade-bind-process',
+          title: '升级与流程绑定',
+          lead: '独立业务实体无需流程即可运行；需要审批时先升级为流程实体，再维护流程绑定。',
           blocks: [
             {
               type: 'bullets',
               items: [
+                'STANDALONE → WORKFLOW 为单向升级，已有业务记录不会自动生成流程实例。',
                 '选择范围包含所有未被其他实体绑定的流程，以及当前已绑定流程。',
-                '确认绑定后 processDefinitionId 更新并自动将“启用流程”设为是。',
-                '若实体已经存在流程数据，后端会阻止切换到另一个流程，避免历史实例与新定义错配。',
+                '绑定状态分为未绑定、流程草稿、可用、已禁用和流程丢失；只有可用状态显示发起开关。',
+                '切换或解除绑定只检查存在 process_instance_id 的记录，普通未流转业务数据不阻止操作。',
                 '流程设计器中的节点表单来源依赖绑定实体；未绑定时只能选择自定义表单或无表单。',
-                '建议先发布实体、完成表单，再绑定并发布流程；若顺序相反，流程节点可能找不到表单。'
+                '推荐先发布实体和表单，再绑定并发布流程；实体允许先发布，流程未发布期间只能保存业务数据。'
               ]
             }
           ]
@@ -389,8 +417,8 @@ export default {
     {
       id: 'entity-data-permission',
       index: '06',
-      title: '数据权限',
-      summary: '决定“谁能看到哪些数据”，支持列表范围、用户/角色/组/组织、允许与拒绝、嵌套条件组和扩展 Provider。',
+      title: '列表数据范围',
+      summary: '使用范围方案、适用对象绑定和列表模式决定“谁在什么列表能看到哪些数据”，运行时由发布快照统一执行。',
       topics: [
         {
           id: 'entity-permission-default',
@@ -399,18 +427,18 @@ export default {
             {
               type: 'callout',
               tone: 'warning',
-              title: '无规则默认仅本人',
-              text: '当前实体没有配置任何命中规则时，列表默认仅允许查看本人创建的数据。SQL 预览中若无命中规则，也会显示默认“仅本人”条件。'
+              title: '没有允许方案时拒绝全部',
+              text: '新实体会自动生成“本人创建或提交”默认方案；如果发布快照不存在、方案损坏或当前用户没有命中任何 ALLOW 绑定，后端返回空结果并拒绝详情与操作接口。'
             },
             {
               type: 'steps',
               items: [
-                { title: '按优先级评估', text: '数字越大越先执行；命中停止只终止更低优先级 ALLOW，所有匹配的 DENY 始终评估。' },
-                { title: '判断适用人群', text: '根据全部用户、用户、角色、用户组、部门或组织，以及 OR/AND 逻辑决定规则是否命中。' },
-                { title: '生成数据范围', text: '简单范围直接选择创建人、提交人、当前办理人、部门或部门树；复杂范围使用嵌套结构化条件组。' },
-                { title: '合并允许与拒绝', text: 'ALLOW 规则按 UNION/INTERSECT 形成允许范围，所有 DENY 范围最后统一扣除，避免拒绝规则反向扩大权限。' },
+                { title: '配置范围方案', text: '方案只描述哪些数据可见，可使用本人、提交人、当前办理人、部门、状态或嵌套结构化条件组。' },
+                { title: '绑定适用对象', text: '绑定根据全部用户、用户、角色、用户组、部门或组织，以及 OR/AND 逻辑决定谁获得方案。' },
+                { title: '选择列表模式', text: 'INHERIT 继承实体默认范围，NARROW 与列表范围取交集，OVERRIDE 使用列表独立范围。' },
+                { title: '固定组合语义', text: '实体 ALLOW 取并集，列表 ALLOW 取并集，所有当前列表 DENY 最后统一扣除；不再配置优先级、顺序合并和命中停止。' },
                 { title: '异常时默认拒绝', text: '损坏或非法的 ALLOW 不会扩大权限；损坏或非法的 DENY 按拒绝全部处理，避免配置异常造成越权。' },
-                { title: '附加状态限制', text: '可只允许或排除指定实体状态。' }
+                { title: '发布后生效', text: '保存只修改草稿；实体发布或单独发布数据范围后生成不可变快照，运行时只读取激活版本。' }
               ]
             }
           ]
@@ -423,13 +451,11 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '规则名称', meaning: '描述适用人群和数据范围。', defaultLimit: '必填。', effect: '用于列表和 SQL 预览识别。', publish: '建议包含角色/部门、范围和例外。' },
-                { field: '适用列表', meaning: '只对某个列表配置生效。', defaultLimit: '默认全部列表；可选择一个已保存列表。', effect: '同一实体可按页面场景采用不同数据范围。', publish: '删除列表前先清理对应规则。' },
-                { field: '优先级', meaning: '规则评估顺序。', defaultLimit: '0–9999，默认 0；越大越高。', effect: '影响命中停止和组合顺序。', publish: '修改优先级要重新预览最终 SQL。' },
-                { field: '规则效果', meaning: 'ALLOW 放行，DENY 排除。', defaultLimit: '默认 ALLOW。', effect: '决定规则结果加入允许集还是拒绝集。', publish: 'DENY 适合明确例外，不要用复杂拒绝规则替代清晰允许规则。' },
-                { field: '合并方式', meaning: 'UNION 并集或 INTERSECT 交集。', defaultLimit: '默认 UNION。', effect: '控制多条范围 SQL 使用 OR 还是 AND。', publish: 'INTERSECT 可能导致空结果，必须以目标角色测试。' },
-                { field: '命中停止', meaning: '命中后停止更低优先级的 ALLOW 规则。', defaultLimit: '默认关闭；不影响任何 DENY。', effect: '实现允许范围的高优先级覆盖，同时避免跳过拒绝规则。', publish: '所有匹配 DENY 始终在允许范围和委托范围之后统一扣除。' },
-                { field: '是否启用', meaning: '规则开关。', defaultLimit: '默认启用。', effect: '关闭后不参与评估。', publish: '切换立即影响运行，无需实体发布；变更前应告知业务。' }
+                { field: '方案编码', meaning: '实体内稳定技术标识。', defaultLimit: '字母开头，可含字母、数字、下划线和短横线。', effect: '用于发布快照、导入导出和绑定引用。', publish: '被引用后不要修改。' },
+                { field: '方案名称', meaning: '描述数据范围。', defaultLimit: '必填。', effect: '用于配置列表、模拟结果和审计日志。', publish: '建议使用“本部门进行中数据”等可读名称。' },
+                { field: '适用列表', meaning: '绑定为空时属于实体默认范围，选择 listKey 时只属于指定列表。', defaultLimit: '默认实体范围。', effect: '同一实体可以为不同菜单、弹窗和选择器设置不同范围。', publish: '删除列表前必须清理绑定。' },
+                { field: '规则效果', meaning: 'ALLOW 增加可见范围，DENY 从最终结果排除。', defaultLimit: '默认 ALLOW。', effect: 'DENY 永远在允许范围和委托范围之后扣除。', publish: 'DENY 适合保密、冻结等明确例外。' },
+                { field: '是否启用', meaning: '控制草稿中的方案或绑定是否参与下一次发布。', defaultLimit: '默认启用。', effect: '不影响当前激活快照。', publish: '必须重新发布才会改变运行时。' }
               ]
             }
           ]
@@ -462,10 +488,10 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '全部数据 ALL', meaning: '不追加用户或部门范围。', notes: '只应授予明确需要全量查看的人群。' },
-                { option: '当前用户是创建人 PERSONAL', meaning: '按创建人字段匹配当前用户；默认数据范围。', notes: '默认用户字段 create_by，可通过字段映射调整。' },
+                { option: '当前用户是创建人 PERSONAL', meaning: '使用平台标准创建人字段匹配当前用户。', notes: '字段由系统元数据自动解析，不允许管理员手写物理列名。' },
                 { option: '当前用户是提交人 SUBMITTER', meaning: '按 submitter_id 匹配当前用户。', notes: '适合流程发起人与数据创建人不同的业务。' },
                 { option: '当前用户是当前办理人 CURRENT_ASSIGNEE', meaning: '按 current_task_assignee 匹配用户 ID 或用户名。', notes: '流程任务完成后当前办理人会变化或清空。' },
-                { option: '本部门 DEPT', meaning: '按部门字段匹配当前用户部门。', notes: '默认部门字段 dept_id；确认实体实际列映射。' },
+                { option: '本部门 DEPT', meaning: '使用平台标准所属部门字段匹配当前用户部门。', notes: '字段由系统元数据自动解析。' },
                 { option: '本部门及子部门 DEPT_TREE', meaning: '匹配当前部门和所有下级部门。', notes: '大组织树需要关注查询性能。' },
                 { option: '结构化条件组 RULE', meaning: '使用 AND/OR 嵌套组配置用户关系、流程状态、状态编码/分类、当前用户属性和实体字段条件。', notes: '后端只编译白名单字段与操作符，不开放脚本或自由 SQL。' }
               ]
@@ -485,12 +511,9 @@ export default {
             },
             {
               type: 'table',
-              title: '字段映射与状态限制',
+              title: '状态限制',
               columns: fieldColumns,
               rows: [
-                { field: '用户字段', meaning: '记录所属用户列。', defaultLimit: '默认 create_by。', effect: 'PERSONAL 范围使用。', publish: '字段必须真实存在。' },
-                { field: '部门字段', meaning: '记录所属部门列。', defaultLimit: '默认 dept_id。', effect: 'DEPT / DEPT_TREE 使用。', publish: '字段值必须与组织 ID 一致。' },
-                { field: '状态字段', meaning: '状态限制使用的列。', defaultLimit: '默认 status。', effect: '附加状态 IN / NOT IN 条件。', publish: '自定义状态列需保证同步维护。' },
                 { field: '状态限制', meaning: '开启后按状态过滤。', defaultLimit: '默认关闭；模式默认 IN；状态可多选。', effect: 'IN 只允许所选状态，NOT_IN 排除所选状态。', publish: '删除状态编码前先清理规则。' }
               ]
             }
@@ -503,10 +526,9 @@ export default {
             {
               type: 'bullets',
               items: [
-                '“预览 SQL”查看当前用户最终命中的规则、每条规则 SQL 和最终合并 SQL；不包含外层 deleted=0。',
-                '“预览规则 SQL”只查看单条规则独立生效时的片段，适合排查字段映射和状态条件。',
-                '至少使用普通用户、部门负责人、管理员三类账号验证；不要只用 super_admin。',
-                '验证列表特定规则时，从对应列表入口进入，确认 listConfigId 生效。',
+                '“模拟”选择真实用户和 listKey，查看可见数量、样例记录、命中方案、列表模式、排除原因和最终技术 SQL。',
+                '至少使用普通用户、部门负责人、审批人和数据管理员验证；super_admin 默认拥有显式 scope:bypass 权限，不能替代普通角色测试。',
+                '验证列表特定规则时确认 listKey 和 INHERIT/NARROW/OVERRIDE 模式符合预期。',
                 '标准实体字段查询会先在数据库中应用数据权限和查询条件，再执行 COUNT 与 LIMIT；分页总数不会包含无权访问的数据。',
                 '使用计算型扩展字段作为查询条件时，系统会回退到授权数据内计算后分页；数据量较大时应由自定义 Provider 提供可下推查询能力。',
                 '结构化字段、部门树和状态分类规则上线前仍需检查索引和执行计划，避免权限过滤成为全表扫描。'
@@ -520,7 +542,7 @@ export default {
       id: 'entity-form-management',
       index: '07',
       title: '表单管理',
-      summary: '维护多个表单、默认表单、状态、复制、预览和初始化配置。',
+      summary: '维护多个表单、稳定节点 ID、草稿、预览、发布版本、复制和初始化配置。',
       topics: [
         {
           id: 'entity-form-list',
@@ -534,21 +556,45 @@ export default {
                 { field: '表单标识', meaning: '稳定技术标识。', defaultLimit: '必填；以字母开头，可含字母、数字、下划线；后端还允许短横线，最大 100 字符。', effect: '用于扩展和配置迁移。', publish: '被外部组件引用后保持稳定。' },
                 { field: '布局类型', meaning: '垂直、水平或网格。', defaultLimit: '默认 vertical。', effect: '决定标签位置和字段排列。', publish: '改布局后检查移动端和长标签。' },
                 { field: '状态', meaning: '启用或禁用。', defaultLimit: '默认启用 1。', effect: '禁用表单不应作为新运行节点选择。', publish: '流程已绑定表单时不要直接禁用。' },
-                { field: '描述', meaning: '说明使用场景。', defaultLimit: '可选。', effect: '便于区分新增、审批、查看等表单。', publish: '建议注明适用节点和角色。' }
+                { field: '描述', meaning: '说明使用场景。', defaultLimit: '可选。', effect: '便于区分新增、审批、查看等表单。', publish: '建议注明适用节点和角色。' },
+                { field: 'revision', meaning: '表单顶层草稿的乐观锁版本。', defaultLimit: '由系统维护；修改名称、布局、默认状态时必须携带 expectedRevision。', effect: '避免两个管理员互相覆盖。', publish: '409 冲突时先对比服务器当前值，再决定重试或放弃本地修改。' }
               ]
             },
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '设计', meaning: '进入所见即所得表单设计器。', notes: '保存字段后再预览真实运行模式。' },
-                { option: '编辑', meaning: '修改名称、标识、布局、状态、描述。', notes: '表单标识变更可能影响扩展。' },
+                { option: '设计', meaning: '进入递归节点表单设计器。', notes: '右侧属性面板只保存当前节点；拖拽排序独立保存。' },
+                { option: '编辑', meaning: '修改名称、布局、状态、描述。', notes: '顶层 PATCH 同样携带 expectedRevision，不覆盖节点草稿。' },
                 { option: '设为默认', meaning: '作为实体默认表单；流程节点无显式表单时会尝试使用。', notes: '一个实体应保持一个明确默认表单。' },
-                { option: '复制', meaning: '复制现有表单作为新方案。', notes: '复制后检查表单标识、事件脚本和初始化接口。' },
-                { option: '预览', meaning: '加载表单和字段并使用联动运行时预览。', notes: '预览不替代权限和真实接口验证。' },
-                { option: '初始化', meaning: '配置打开新增表单时的初始数据来源。', notes: '详见表单初始化章节。' },
+                { option: '复制', meaning: '复制现有表单作为独立草稿。', notes: '复制后节点获得新的稳定 ID，与来源模板或表单不再联动。' },
+                { option: '预览', meaning: '直接读取当前草稿树和草稿数据源绑定。', notes: '预览不会改变线上激活版本，也不能替代权限和真实接口验证。' },
+                { option: '发布', meaning: '校验全树后生成不可变快照并原子激活。', notes: '运行时只在发布成功后切换到新版本。' },
+                { option: '版本', meaning: '查看 diff、releases，并通过 activate 激活历史版本。', notes: '历史版本不可修改；回滚实质是重新激活已存在快照。' },
                 { option: '删除', meaning: '删除表单。', notes: '先检查流程节点、子表单和默认表单引用。' }
               ]
+            }
+          ]
+        },
+        {
+          id: 'entity-form-single-save',
+          title: '只修改一个节点与冲突处理',
+          blocks: [
+            {
+              type: 'steps',
+              items: [
+                { title: '选择节点', text: 'Store 以稳定 nodeId 管理节点；切换选择不会重建其他节点对象。' },
+                { title: '保存当前项', text: '新增使用 POST，修改使用 PATCH，删除使用 DELETE；请求只提交白名单字段和 expectedRevision。' },
+                { title: '独立排序', text: '拖拽使用稀疏 orderKey，通常只更新被移动节点及必要的相邻排序信息。' },
+                { title: '处理 409', text: '服务器把当前节点放在响应 data，界面以 data.revision 作为 serverRevision、以 data 作为 currentData；保留本地值并展示差异，禁止静默覆盖。' },
+                { title: '等待发布', text: '保存成功只增加草稿 revision，并显示“有未发布修改”；线上仍使用当前激活 release。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '整包接口仅用于兼容',
+              text: '导入或旧客户端仍可提交整包配置，但后端按稳定 ID 计算差异并执行 upsert，不再全删全插。单项修改验收时应确认其他节点的 ID、revision、更新时间和内容完全不变。'
             }
           ]
         },
@@ -580,7 +626,7 @@ export default {
       id: 'entity-form-designer',
       index: '08',
       title: '表单设计器',
-      summary: '覆盖字段添加、布局、组件、校验、运行模式、子表单和实体引用。',
+      summary: '使用稳定节点 ID 的递归树覆盖容器、字段、子表、动作槽、校验、运行模式和实体引用。',
       topics: [
         {
           id: 'entity-form-designer-layout',
@@ -591,13 +637,34 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '搜索字段', meaning: '按实体字段名称或编码过滤左侧字段。', defaultLimit: '默认空。', effect: '快速定位字段；已添加字段显示“已添加”。', publish: '无发布影响。' },
-                { field: '垂直布局', meaning: '标签在字段上方，字段单列排列。', defaultLimit: '新表单默认。', effect: '适合移动端和长标签。', publish: '检查页面长度和节分组。' },
-                { field: '水平布局', meaning: '标签在左，字段通常双列展示。', defaultLimit: '可选。', effect: '适合桌面端紧凑录入。', publish: '窄屏下注意拥挤。' },
-                { field: '网格布局', meaning: '按 24 栅格控制字段宽度。', defaultLimit: '字段 gridSpan 1–24，默认 24。', effect: '可构建多列复杂表单。', publish: '所有断点都要验证，单表单最多 300 个项目。' },
-                { field: '添加节', meaning: '插入分组标题，不绑定实体字段。', defaultLimit: '默认标题“新节”，只读，占满 24 栅格。', effect: '对长表单分组。', publish: '节编码必须保持合法且不能重复。' },
-                { field: '自定义组件', meaning: '使用已注册的自定义表单组件替代默认动态表单。', defaultLimit: '默认空；支持筛选、手工输入和清空；标识需以字母开头，可含字母数字点下划线短横线，最大 100。', effect: '运行时整体表单由扩展组件渲染。', publish: '组件必须已在目标环境注册，并兼容运行时 props 与 validate 契约。' },
+                { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树。', defaultLimit: '最大嵌套深度 8 层。', effect: '区块、栅格、Tab、折叠面板和子表可以任意组合。', publish: '发布校验会拒绝循环引用、孤儿节点和超过 8 层的结构。' },
+                { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
+                { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
+                { field: '自定义组件', meaning: '使用已注册的自定义表单组件替代默认动态表单。', defaultLimit: '组件名必须同时存在前端注册和服务端扩展清单。', effect: '运行时整体表单由扩展组件渲染，并锁定实现版本与配置快照版本。', publish: '扩展未登记、已禁用、版本或快照协议不匹配时禁止发布。' },
+                { field: '扩展清单', meaning: '登记 FORM/NODE/FIELD/LIST 扩展的注册名、实现版本、快照版本、兼容范围和 Schema。', defaultLimit: '同类型、注册名和版本唯一；修改必须携带 revision。', effect: '设计器按目标环境真实 manifest 锁定版本。', publish: '清单不会传输可执行代码，目标环境仍须先部署对应扩展。' },
                 { field: '标签宽度', meaning: '动态表单标签宽度。', defaultLimit: '60–240，默认 120。', effect: '影响水平和网格布局对齐。', publish: '长标签需要实际预览。' },
                 { field: '组件参数', meaning: '按自定义组件 configSchema 生成结构化参数。', defaultLimit: '仅组件声明 schema 时显示。', effect: '作为 viewConfig.customComponentProps 传入组件。', publish: '目标环境组件版本必须支持相同参数。' }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'entity-form-node-types',
+          title: '递归节点类型与嵌套限制',
+          blocks: [
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: 'SECTION', meaning: '业务区块和标题容器，可包含布局与内容节点。', notes: '适合按业务主题分组，不绑定数据。' },
+                { option: 'GRID', meaning: '栅格容器，控制子节点列宽与响应式排列。', notes: '不要为单个字段创建无意义多层 GRID。' },
+                { option: 'TAB_SET / TAB', meaning: 'TAB_SET 只包含 TAB，TAB 承载具体内容。', notes: '发布时校验父子类型；移动端避免过多页签。' },
+                { option: 'COLLAPSE', meaning: '可折叠内容容器。', notes: '关键必填项不应默认折叠且无错误定位。' },
+                { option: 'TEXT', meaning: '说明、提示或无数据展示节点。', notes: '内容必须经过安全渲染，不执行脚本。' },
+                { option: 'FIELD', meaning: '绑定实体字段、计算字段或上下文字段。', notes: '字段编码变化不改变 nodeId。' },
+                { option: 'SUB_FORM', meaning: '引用子实体、关系和指定已发布表单版本。', notes: '校验跨表单循环引用，整体嵌套仍不得超过 8 层。' },
+                { option: 'REPEATER', meaning: '一对多明细或重复项目容器。', notes: '通过 SUBFORM_ROWS 数据源加载，需配置分页或数量上限。' },
+                { option: 'ACTION_SLOT', meaning: '在表单树内声明受控动作插槽。', notes: '动作权限和后端校验仍由平台执行。' }
               ]
             }
           ]
@@ -672,7 +739,7 @@ export default {
                 { field: '布局', meaning: 'form 分行或 table 表格。', defaultLimit: '默认 form。', effect: '一对多明细可使用表格。', publish: '字段较多或含附件时优先分行。' },
                 { field: '子表表单', meaning: '指定子实体表单。', defaultLimit: '留空使用默认表单；不能选择当前正在编辑表单。', effect: '决定子记录字段与布局。', publish: '被选表单必须启用且在目标环境存在。' },
                 { field: '引用类型 / 关联实体', meaning: '来源于实体字段，已有 fieldId 时禁改。', defaultLimit: 'CUSTOM、USER、DEPT、ROLE、GROUP。', effect: '决定候选数据源。', publish: '需要改来源时返回实体设计。' },
-                { field: '数据接口', meaning: '定制引用候选查询 URL。', defaultLimit: '可选；空时使用默认查询。', effect: '限制或扩展引用可选数据。', publish: '接口必须鉴权、分页并在目标环境可访问。' }
+                { field: '候选数据源', meaning: '引用受控数据源目录中的实体查询、Provider 或 Connector。', defaultLimit: '不允许直接填写任意 URL。', effect: '统一执行输入映射、分页、缓存、超时、失败策略和数据权限。', publish: '数据源必须启用、Schema 合法且目标环境存在。' }
               ]
             }
           ]
@@ -683,7 +750,7 @@ export default {
       id: 'entity-form-init-linkage',
       index: '09',
       title: '表单初始化、联动与事件',
-      summary: '定义打开表单时的数据来源，以及字段间动态行为和脚本事件。',
+      summary: '通过统一数据源、结构化映射和联动规则定义初始化、选项、默认值、计算、子表加载和提交前后处理。',
       topics: [
         {
           id: 'entity-form-init',
@@ -693,18 +760,52 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '无', meaning: '不额外加载初始化数据。', notes: '使用实体默认值、表单默认值和路由已有数据。' },
-                { option: 'API', meaning: '请求地址；GET/POST；响应路径；Query 参数 JSON；请求体 JSON；字段映射 JSON。', notes: '默认 GET；响应路径留空取根。支持示例模板 {{routeQuery.projectId}}，接口必须鉴权并返回稳定结构。' },
-                { option: '实体', meaning: '选择目标实体、取第几条、过滤参数 JSON、字段映射 JSON。', notes: 'index 0–100，默认 0；应保证过滤结果排序稳定，否则“第几条”不确定。' },
-                { option: '静态', meaning: '填写一个 JSON 对象作为固定初始值。', notes: '适合状态、类型等固定默认值；必须是合法 JSON。' },
-                { option: '自定义', meaning: '填写已注册初始化器名称和参数 JSON。', notes: '目标环境必须部署同名初始化器。' }
+                { option: '实体查询 ENTITY_QUERY', meaning: '按受控实体、字段、排序和结构化过滤加载数据。', notes: '始终注入统一 DataScopePlan，不能通过配置关闭数据权限。' },
+                { option: '字典 DICTIONARY', meaning: '读取平台字典项。', notes: '字典编码与选项 value 必须稳定。' },
+                { option: '静态选项 STATIC_OPTIONS', meaning: '保存固定 label/value 或固定对象。', notes: '适合少量稳定选项，不适合敏感或频繁变化数据。' },
+                { option: '注册 Provider REGISTERED_PROVIDER', meaning: '调用部署时注册的受控数据提供者。', notes: 'Provider 必须声明配置 Schema、输入输出结构和支持的绑定位置。' },
+                { option: '连接器 INTEGRATION_CONNECTOR', meaning: '引用平台管理的外部连接器和凭据。', notes: '配置中只保存 connectorCode，不保存 URL、令牌或密钥。' },
+                { option: '运行上下文 RUNTIME_CONTEXT', meaning: '读取当前用户、实体、记录、路由和流程上下文中的白名单值。', notes: '客户端上下文不能作为授权事实，敏感关系由后端重新解析。' },
+                { option: '结构化计算 STRUCTURED_COMPUTE', meaning: '使用白名单运算符、字段路径和常量进行安全计算。', notes: '不执行 JavaScript、Groovy、SpEL、自由 SQL 或动态类加载。' }
               ]
             },
             {
               type: 'callout',
               tone: 'warning',
-              title: 'JSON 输入',
-              text: '当前界面对 JSON 使用安全解析，解析失败可能退化为空对象。保存前应在外部校验 JSON，并用真实路由参数、权限和异常响应测试。初始化只应填充用户有权看到的数据。'
+              title: '统一安全边界',
+              text: '禁止配置任意 SQL、脚本和外网 URL。外部调用必须引用受控 Connector 与平台凭据；预览、发布和运行时都执行相同 Schema 校验、超时、缓存、失败策略和数据权限计划。'
+            }
+          ]
+        },
+        {
+          id: 'entity-data-source-bindings',
+          title: '数据源绑定位置与执行策略',
+          blocks: [
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: 'FORM_INIT', meaning: '表单打开时补充初始业务对象。', notes: '只填充映射目标，不得覆盖无权访问或只读字段。' },
+                { option: 'FIELD_OPTIONS', meaning: '加载下拉、单选、复选、级联候选项。', notes: '输出统一映射为 label/value/disabled/children。' },
+                { option: 'FIELD_DEFAULT', meaning: '字段尚无值时计算默认值。', notes: '编辑和审批场景不得无条件覆盖已有值。' },
+                { option: 'FIELD_COMPUTE', meaning: '根据表单值和上下文计算字段。', notes: '提交时后端应按同一规则复核关键结果。' },
+                { option: 'SUBFORM_ROWS', meaning: '加载 SUB_FORM 或 REPEATER 行。', notes: '配置分页、最大行数和失败降级。' },
+                { option: 'LIST_QUERY / LIST_COLUMN', meaning: '提供整表查询或单列扩展值。', notes: '兼容 EntityListDataProvider 与 ListFieldDataProvider 适配器。' },
+                { option: 'AFTER_LOAD', meaning: '数据加载完成后的受控补充与转换。', notes: '不能把未授权字段重新拼回响应。' },
+                { option: 'BEFORE_SUBMIT', meaning: '提交前执行结构化映射或 Provider 校验。', notes: '失败策略不得静默放行关键校验。' }
+              ]
+            },
+            {
+              type: 'table',
+              title: '通用执行配置',
+              columns: fieldColumns,
+              rows: [
+                { field: '输入映射', meaning: '把表单值、查询参数和运行上下文映射为数据源输入。', defaultLimit: '只允许白名单路径、常量和结构化表达式。', effect: '统一 Provider 与 Connector 入参。', publish: '引用不存在路径或敏感上下文时发布失败。' },
+                { field: '输出映射', meaning: '把返回结构映射到字段、选项、列表列或子表行。', defaultLimit: '按目标绑定 Schema 校验。', effect: '隔离外部结构变化。', publish: '必填目标缺失时按失败策略处理。' },
+                { field: '分页 / 超时 / 缓存', meaning: '控制请求规模与生产稳定性。', defaultLimit: '超时和最大页大小必须有平台上限。', effect: '避免慢源拖垮表单和列表。', publish: '涉及用户权限的缓存键必须包含权限版本和用户上下文。' },
+                { field: '失败策略', meaning: 'FAIL、EMPTY 或 NULL。需要默认值时使用 FIELD_DEFAULT 数据源或输入映射显式配置。', defaultLimit: '提交前关键校验默认 FAIL。', effect: '决定错误提示以及是否返回空集合或空值。', publish: '不得用 EMPTY/NULL 掩盖权限、Schema 或 Provider 未部署问题。' },
+                { field: '执行接口', meaning: '线上表单调用 /api/ui-data-sources/{id}/execute；设计态管理员使用 /preview。', defaultLimit: '普通用户不能访问数据源配置与调试预览。', effect: '运行能力与管理能力分离。', publish: '自定义组件不得直接调用 /preview。' }
+              ]
             }
           ]
         },
@@ -736,7 +837,7 @@ export default {
                 { field: '计算字段', meaning: '按公式自动计算当前字段。', defaultLimit: '默认关闭；精度默认 2，范围 0–10；可编辑默认关闭。', effect: '自动写入计算结果；可编辑关闭时用户不能覆盖。', publish: '公式字段应与实体类型、精度和后端计算保持一致。' },
                 { field: '禁用条件', meaning: '表达式为真时禁用当前字段。', defaultLimit: '默认关闭；示例 ${status} == \'locked\'。', effect: '字段可见但不可编辑。', publish: '不能把安全控制只放前端，后端仍需校验。' },
                 { field: '必填条件', meaning: '表达式为真时动态必填。', defaultLimit: '默认关闭。', effect: '提交时要求填写。', publish: '条件字段隐藏或为空时要验证逻辑。' },
-                { field: '保存 / 重置', meaning: '保存将规则展开到字段并写入 componentProps；重置清空当前面板配置。', defaultLimit: '重置不代表已持久化，仍需保存表单。', effect: '表单预览即时读取联动规则。', publish: '配置弹窗保存后还必须点击页面顶部“保存”。' }
+                { field: '保存 / 重置', meaning: '保存只 PATCH 当前节点的结构化规则；重置只清空当前节点草稿。', defaultLimit: '请求携带 expectedRevision。', effect: '表单预览即时读取该节点新草稿，其他节点不变。', publish: '409 时先合并服务器当前节点；保存后仍需发布才影响线上。' }
               ]
             }
           ]
@@ -770,7 +871,7 @@ export default {
       id: 'entity-list-config',
       index: '10',
       title: '列表配置',
-      summary: '维护列表方案、查询区域、表格、分页、字段、动态列和预览。',
+      summary: '维护列表方案、稳定列/按钮/场景 ID、单项草稿、统一数据源、预览和发布版本。',
       topics: [
         {
           id: 'entity-list-config-manage',
@@ -783,14 +884,32 @@ export default {
                 { field: '列表名称', meaning: '业务显示名。', defaultLimit: '必填。', effect: '菜单或页面选择时显示。', publish: '可改名，不影响 listKey 引用。' },
                 { field: '列表标识', meaning: '稳定技术标识。', defaultLimit: '创建后禁改；后端要求字母开头，可含字母、数字、下划线、短横线，最大 100。', effect: 'URL、菜单和运行时选择列表配置。', publish: '上线后不要改。' },
                 { field: '说明', meaning: '描述适用角色和数据范围。', defaultLimit: '可选。', effect: '帮助管理员区分列表。', publish: '建议注明配套权限规则。' },
-                { field: '默认列表', meaning: '实体的默认展示方案。', defaultLimit: '开关；一个实体应有一个默认方案。', effect: '未指定 listKey 时优先使用。', publish: '切换默认会影响通用入口。' }
+                { field: '默认列表', meaning: '实体设计和创建菜单时默认选中的列表方案。', defaultLimit: '开关；一个实体应有一个默认方案。', effect: '创建菜单时自动带出，但运行时仍使用明确 listKey。', publish: '切换默认不会改变已有菜单保存的 listKey。' }
               ]
             },
             {
               type: 'bullets',
               items: [
                 '“设计”进入列表设计器；“编辑”只改方案基本信息；“删除”前检查菜单、权限规则和页面引用。',
-                '列表配置保存后会影响运行时列表，无需重新发布实体才能看到 UI 变化；迁移到其他环境仍应通过配置发布包。'
+                '列、按钮和场景分别按记录新增、PATCH、删除；保存一个项目不会重写其他配置。',
+                '列表配置保存后仍是草稿；预览读取草稿，生产运行时读取当前激活 release。'
+              ]
+            }
+          ]
+        },
+        {
+          id: 'entity-list-single-save',
+          title: '列表单项保存与并发',
+          blocks: [
+            {
+              type: 'table',
+              columns: fieldColumns,
+              rows: [
+                { field: '稳定 ID', meaning: '每个列、按钮和场景都有独立 ID。', defaultLimit: '迁移时保留已有 ID，缺失时生成并固定。', effect: '局部 PATCH、diff 和模板覆盖不会依赖数组位置。', publish: '上线后不要通过导入随意重建 ID。' },
+                { field: 'expectedRevision', meaning: '客户端读取配置时保存的 revision。', defaultLimit: '所有 PATCH 和删除请求必填。', effect: '相同项目并发修改返回 409；不同项目可并行保存。', publish: '冲突响应的 data 是服务器当前项目，data.revision 即 serverRevision；界面必须展示差异。' },
+                { field: '页面保存入口', meaning: '列使用行内“保存”，按钮使用当前行“保存”，场景勾选后即时保存当前场景。', defaultLimit: '页头不提供整包保存；列表设置仍有独立保存按钮。', effect: '只提交当前项目，不覆盖其他管理员正在编辑的列、按钮或场景。', publish: '所有单项保存仍只进入草稿，必须点击“发布”后线上生效。' },
+                { field: 'orderKey', meaning: '稀疏排序键。', defaultLimit: '拖拽通常只修改被移动项目。', effect: '避免每次排序更新整张列表。', publish: '排序键耗尽时由后端受控重平衡，并记录审计。' },
+                { field: '未发布提示', meaning: '草稿与激活快照内容哈希不同。', defaultLimit: '页面常驻显示。', effect: '提醒管理员线上尚未生效。', publish: '发布成功后提示清除；发布失败保持原激活版本。' }
               ]
             }
           ]
@@ -804,6 +923,13 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '自定义列表组件', meaning: '使用注册组件替代默认动态列表。', defaultLimit: '默认空；可筛选、手工输入、清空；标识格式与扩展名规则一致。', effect: '整体列表由组件渲染。', publish: '目标环境必须注册同名组件并兼容运行时契约。' },
+                { field: '数据范围模式', meaning: 'INHERIT 继承、NARROW 缩小、OVERRIDE 独立。', defaultLimit: '默认 INHERIT；OVERRIDE 仅超级管理员可保存。', effect: '决定实体默认 ALLOW 与列表 ALLOW 的组合方式。', publish: 'NARROW 必须至少存在一个列表 ALLOW 绑定。' },
+                { field: '访问权限码', meaning: '控制用户能否打开该 listKey。', defaultLimit: '留空继承 entity:{code}:list。', effect: '菜单、直接 URL 和运行时 schema/query 都会校验。', publish: '列表专属权限应同步授予角色。' },
+                { field: '允许场景', meaning: 'MENU、PAGE、DIALOG、DRAWER、EMBEDDED、FORM_PICKER、SUB_TABLE。', defaultLimit: '默认全部。', effect: '阻止列表在未授权展示场景复用。', publish: '弹窗和选择器使用前必须勾选对应场景。' },
+                { field: '选择模式', meaning: 'NONE、SINGLE 或 MULTIPLE，并配置返回值字段。', defaultLimit: '默认 NONE，返回 id。', effect: '决定弹窗、抽屉和表单选择器的选择行为。', publish: '返回字段被表单映射引用后保持稳定。' },
+                { field: '固定条件', meaning: '平台服务端附加的不可被客户端覆盖的结构化查询条件。', defaultLimit: '界面按对象编辑并由后端校验，数据库以可移植大文本保存。', effect: '只能缩小显示结果，不能替代数据范围授权。', publish: '字段必须存在且适合数据库查询。' },
+                { field: '上下文绑定', meaning: '以结构化对象声明 relationKey 等来源记录关系。', defaultLimit: '后端校验对象结构，前端不再进行二次 JSON 编解码。', effect: '后端通过 EntityListContextResolver 重新加载来源记录并生成可信条件。', publish: '不能把前端直接传入的客户、部门或项目 ID 当作权限依据。' },
+                { field: 'LIST_QUERY 数据源', meaning: '从统一目录选择实体查询、注册 Provider 或受控 Connector。', defaultLimit: '默认使用实体查询。', effect: '整表查询统一接收不可绕过的 DataScopePlan。', publish: '任意 SQL、脚本、URL 或缺失 Provider 均阻止发布。' },
                 { field: '组件参数', meaning: '按组件 configSchema 编辑。', defaultLimit: '组件声明 schema 时显示。', effect: '传入 viewConfig.customComponentProps。', publish: '迁移时确保组件版本一致。' },
                 { field: '默认显示条件', meaning: '查询区初始展开的条件数量。', defaultLimit: '1–20，默认 4。', effect: '多余条件可折叠。', publish: '高频条件排在前面。' },
                 { field: '允许展开收起', meaning: '查询区是否可折叠。', defaultLimit: '默认开启。', effect: '节省页面空间。', publish: '关闭时所有查询项常驻。' },
@@ -838,15 +964,18 @@ export default {
         {
           id: 'entity-list-dynamic-fields',
           title: '动态字段与虚拟列',
-          lead: '动态列通过数据源提供器补充当前行数据，虚拟列不对应实体物理字段。',
+      lead: '动态列通过统一数据源目录补充当前行数据，虚拟列不对应实体物理字段；既有 Provider 通过适配器继续可用。',
           blocks: [
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: 'ENTITY_FIELD', meaning: '直接读取系统字段或自定义实体字段；支持查询，不支持虚拟列。', notes: '实体字段自动使用该数据源，数据源配置为空。' },
-                { option: 'FIELD_TEMPLATE', meaning: '使用 ${fieldCode} 占位符安全组合当前行字段，不执行脚本。支持虚拟列和查询。', notes: '组合模板必填，默认 ${dataNo} - ${name}；空值替代默认“-”。可读取 data、extData 及 id/dataNo/name/title/status/submitterName。' },
-                { option: '自定义数据源', meaning: '由后端 ListFieldDataProvider 注册，可声明是否支持虚拟列、查询和 configSchema。', notes: '目标环境必须注册同一编码；未注册会导致保存校验或运行加载失败。' }
+                { option: 'ENTITY_QUERY / ENTITY_FIELD', meaning: '读取授权实体记录或当前行实体字段。', notes: '查询条件先经过字段白名单和 DataScopePlan。' },
+                { option: 'DICTIONARY / STATIC_OPTIONS', meaning: '字典映射或固定选项展示。', notes: '适合状态文案、枚举和少量稳定标签。' },
+                { option: 'REGISTERED_PROVIDER', meaning: '适配 EntityListDataProvider、ListFieldDataProvider 或统一 UiDataSourceProvider。', notes: '必须声明 Schema、批量能力、超时和支持的 LIST_QUERY/LIST_COLUMN 位置。' },
+                { option: 'INTEGRATION_CONNECTOR', meaning: '通过已注册 Connector 访问外部系统。', notes: '凭据由平台管理，配置不得包含自由 URL 和密钥。' },
+                { option: 'RUNTIME_CONTEXT', meaning: '读取当前用户、场景和可信来源记录上下文。', notes: '不能用客户端传值扩大数据范围。' },
+                { option: 'STRUCTURED_COMPUTE / FIELD_TEMPLATE', meaning: '白名单计算和字段占位符组合。', notes: '不执行 JavaScript、Groovy、SpEL 或 SQL。' }
               ]
             },
             {
@@ -880,11 +1009,11 @@ export default {
             {
               type: 'bullets',
               items: [
-                '预览按当前未保存配置生成查询区、表格列、动态单元格和分页，便于即时检查。',
+                '预览直接读取当前草稿及草稿数据源绑定，便于检查未发布修改。',
                 'BETWEEN 对 DATE 使用起止日期，其他类型使用两个输入框；SELECT 读取实体选项；其他类型使用输入框。',
                 '预览接口会加载带列表配置扩展的数据，页面再进行内存分页；真实运行页面可能使用不同分页策略。',
                 '预览无数据时先确认实体已发布、有数据、数据权限允许、动态数据源未报错。',
-                '预览通过后仍需点击“保存配置”。'
+                '预览通过后仍需逐项保存并执行发布；未发布草稿不会影响线上列表。'
               ]
             }
           ]
@@ -910,12 +1039,29 @@ export default {
                 { field: '按钮名称', meaning: '用户看到的文字。', defaultLimit: '可编辑。', effect: '改变按钮文案。', publish: '内置功能改名不会改变 key。' },
                 { field: '类型', meaning: 'built-in 内置或 custom 自定义。', defaultLimit: '按添加方式决定。', effect: '内置走平台逻辑，自定义走执行器或组件。', publish: '不要把内置按钮改成自定义却保留旧 key。' },
                 { field: '内置类型 / 执行器', meaning: '内置选择固定 key；自定义填写处理器或组件名。', defaultLimit: '自定义必填执行器/组件名。', effect: '决定点击行为。', publish: '目标环境必须注册对应扩展。' },
-                { field: '自定义模式', meaning: '工具栏自定义按钮选择 handler 函数或 component 组件。', defaultLimit: '默认 handler；行按钮不显示该列。', effect: '决定运行时扩展方式。', publish: '组件模式需兼容列表上下文。' },
+                { field: '自定义模式', meaning: '自定义按钮可选 handler 函数、component 组件或 open-list 打开列表。', defaultLimit: '默认 handler；工具栏和行按钮均可配置。', effect: 'open-list 直接复用目标 entityCode + listKey。', publish: '组件和回调必须在目标环境注册。' },
                 { field: '图标', meaning: 'Element Plus 图标名。', defaultLimit: '可空。', effect: '按钮显示图标。', publish: '图标名错误时通常只缺图标。' },
                 { field: '样式', meaning: 'default、primary、success、warning、danger、info。', defaultLimit: '自定义默认 default。', effect: '改变颜色语义。', publish: '危险操作应使用 danger 并确认。' },
                 { field: 'Link', meaning: '行按钮是否使用链接样式。', defaultLimit: '行自定义默认开启。', effect: '减少操作列视觉重量。', publish: '无权限影响。' },
                 { field: '权限码', meaning: '功能级授权标识。', defaultLimit: '可从标准/自定义权限选择，也可手工输入；内置按钮会自动归一为标准权限。', effect: '用户无权限时按钮不可用或不显示。', publish: '角色必须被授予相应 F 类型权限资源。' },
                 { field: '适用条件', meaning: '记录级或选择集级条件。', defaultLimit: '默认始终可操作，部分内置按钮有预设规则。', effect: '条件不满足时隐藏或禁用并说明。', publish: '与权限码、数据权限三者同时生效。' }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'entity-button-open-list',
+          title: '打开实体列表动作',
+          blocks: [
+            {
+              type: 'table',
+              columns: fieldColumns,
+              rows: [
+                { field: '目标实体 / 目标列表', meaning: '指定要打开的 entityCode 和 listKey。', defaultLimit: '两项必填。', effect: '使用目标列表的字段、数据范围、权限和发布版本。', publish: '目标列表必须允许 DIALOG 或 DRAWER 场景。' },
+                { field: '打开方式', meaning: '弹窗 DIALOG 或抽屉 DRAWER。', defaultLimit: '默认 DIALOG。', effect: '只改变容器，不改变查询和安全规则。', publish: '移动端优先评估抽屉宽度。' },
+                { field: '选择方式', meaning: 'NONE 仅查看、SINGLE 单选、MULTIPLE 多选。', defaultLimit: '默认 NONE。', effect: '选择型场景自动隐藏新增、编辑、审批、删除等业务动作，只保留勾选和确认。', publish: '返回数据由选择回调处理。' },
+                { field: '上下文关系', meaning: '传递已注册 relationKey。', defaultLimit: '可选。', effect: '行按钮同时传递来源实体和来源记录 ID，后端重新读取来源记录生成可信条件。', publish: '不得把客户端传值直接当作授权条件。' },
+                { field: '选择回调', meaning: '处理选择结果的前端注册名。', defaultLimit: '可选。', effect: '分别复用工具栏或行操作注册中心。', publish: '目标环境缺少回调时只提示，不执行未知代码。' }
               ]
             }
           ]
@@ -1003,8 +1149,64 @@ export default {
       id: 'entity-publish',
       index: '12',
       title: '发布、版本与迁移',
-      summary: '把草稿配置转为物理表和不可变版本，并可加入配置迁移待导出清单。',
+      summary: '把实体结构和表单/列表草稿转为不可变发布记录，支持差异、激活回滚、模板升级与幂等迁移。',
       topics: [
+        {
+          id: 'entity-config-release-lifecycle',
+          title: '表单与列表发布生命周期',
+          blocks: [
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: '/draft', meaning: '读取当前可编辑草稿、节点树或列表项目及 revision。', notes: '设计器使用；生产运行时不得读取。' },
+                { option: '/diff', meaning: '比较草稿与当前激活 release，按稳定 ID 展示新增、修改、移动和删除。', notes: '同时展示数据源、模板版本、权限和嵌套校验结果。' },
+                { option: '/publish', meaning: '校验通过后生成不可变快照、内容哈希、发布人和发布时间，并原子激活。', notes: '失败时原激活版本继续服务，不出现半发布状态。' },
+                { option: '/releases', meaning: '查看历史发布版本和快照摘要。', notes: '发布记录不可修改或覆盖。' },
+                { option: '/activate', meaning: '激活指定历史 release。', notes: '激活前重新执行兼容和依赖校验；回滚不修改历史快照。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '运行时回退',
+              text: '新运行时优先读取当前激活发布快照；升级期间如果旧配置尚未生成 release，可临时回退旧表单/列表配置并记录告警。生成初始 release 后应关闭长期回退，避免草稿意外被当成线上配置。'
+            }
+          ]
+        },
+        {
+          id: 'entity-template-upgrade',
+          title: '组件模板版本锁定与升级',
+          blocks: [
+            {
+              type: 'bullets',
+              items: [
+                '模板可覆盖字段组、表单区块、子表、列表列组和按钮组；每个模板版本都是不可变快照。',
+                '实例保存 templateId + templateVersion + localOverrides，不会自动跟随模板新版本变化。',
+                '升级前展示当前模板、目标模板和实例本地覆盖三方差异；只有管理员显式确认后才写入草稿。',
+                '三方合并优先保留本地覆盖，冲突必须逐项处理；升级完成仍需预览和发布。',
+                '不需要后续升级的场景使用“复制后独立”，复制项不再保留模板关系。'
+              ]
+            }
+          ]
+        },
+        {
+          id: 'entity-config-migration-compatibility',
+          title: '配置迁移幂等与兼容',
+          blocks: [
+            {
+              type: 'checklist',
+              items: [
+                '旧表单字段转换为一级 FIELD 节点，历史 componentProps 中可识别的子表、引用、事件和选项迁移到显式属性。',
+                '无法识别的历史属性保存在 legacyProps，并在迁移报告中列出，不得静默丢弃。',
+                '列表列、按钮和场景保留已有稳定 ID；缺失 ID 时只生成一次，重复执行迁移结果一致。',
+                '为已有表单和列表生成初始 release，快照内容哈希与旧运行时输出核对一致。',
+                '迁移输出节点数、未知属性、生成 ID 数、release 版本和快照哈希；失败可安全重跑。',
+                '迁移前后使用同一真实数据对比截图、结构、查询结果和提交载荷。'
+              ]
+            }
+          ]
+        },
         {
           id: 'entity-publish-preview',
           title: '发布差异预览',
@@ -1065,11 +1267,13 @@ export default {
                 '关系子实体和外键存在，级联删除策略经过业务确认。',
                 '附件大小、数量与全局网关、应用、存储限制一致。',
                 '默认表单、默认列表已设置，表单四种模式和移动端已验证。',
-                '初始化接口、引用接口、事件脚本和自定义组件在目标环境可用。',
-                '数据权限 SQL 由普通角色验证，无规则默认仅本人符合预期。',
+                '表单树没有循环引用且不超过 8 层；只修改一个节点或列表项不会改变其他项目。',
+                '统一数据源 Schema、输入输出映射、分页、超时、缓存、失败策略和目标环境 Provider/Connector 均已验证。',
+                '数据权限由普通角色验证，所有 LIST_QUERY、LIST_COLUMN 和表单实体查询均执行 DataScopePlan。',
                 '按钮权限已授予角色，适用条件与后端操作校验一致。',
                 '流程绑定、节点表单和实体状态连线配置完整。',
-                '发布差异、DDL、版本说明、迁移标记和配置包依赖均已复核。'
+                '草稿预览、diff、发布、releases、activate 回滚和发布失败保持旧版本均已验证。',
+                '迁移重复执行结果幂等，legacyProps、初始 release、内容哈希和临时旧配置回退均已复核。'
               ]
             }
           ]

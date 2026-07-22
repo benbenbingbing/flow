@@ -42,7 +42,8 @@ public class DynamicTableService {
             ColumnInfo col = new ColumnInfo();
             col.setName(rs.getString("COLUMN_NAME"));
             col.setType(rs.getString("DATA_TYPE"));
-            col.setLength(rs.getInt("CHARACTER_MAXIMUM_LENGTH"));
+            long length = rs.getLong("CHARACTER_MAXIMUM_LENGTH");
+            col.setLength(rs.wasNull() ? null : length);
             col.setNullable("YES".equals(rs.getString("IS_NULLABLE")));
             col.setDefaultValue(rs.getString("COLUMN_DEFAULT"));
             return col;
@@ -77,6 +78,7 @@ public class DynamicTableService {
         String tableName = tableResolver.resolve(entityDefinition);
 
         if (tableExists(entityCode)) {
+            ensureMultiValueTable(tableName);
             log.info("表 {} 已存在，跳过创建", tableName);
             return null;
         }
@@ -89,6 +91,7 @@ public class DynamicTableService {
         
         log.info("创建实体数据表: {}", tableName);
         jdbcTemplate.execute(createTableSql);
+        ensureMultiValueTable(tableName);
         
         // 创建索引
         createIndexes(tableName, fields);
@@ -115,10 +118,12 @@ public class DynamicTableService {
             // 表不存在，创建新表（包含所有非子表单字段）
             String ddl = buildCreateTableSql(tableName, fields, entityDefinition.getEntityName());
             jdbcTemplate.execute(ddl);
+            ensureMultiValueTable(tableName);
             createIndexes(tableName, fields);
             executedDdls.add(ddl);
             log.info("创建实体数据表: {}", tableName);
         } else {
+            ensureMultiValueTable(tableName);
             // 表已存在，同步未发布的字段到数据库表
             List<ColumnInfo> existingColumns = getTableColumns(entityCode);
             java.util.Set<String> existingColumnNames = existingColumns.stream()
@@ -127,7 +132,9 @@ public class DynamicTableService {
             
             for (EntityField field : fields) {
                 // 跳过系统字段和子表单字段
-                if (Boolean.TRUE.equals(field.getIsSystem()) || isSubFormField(field)) {
+                if (Boolean.TRUE.equals(field.getIsSystem())
+                        || isSubFormField(field)
+                        || isMultiValueField(field)) {
                     continue;
                 }
                 
@@ -168,6 +175,7 @@ public class DynamicTableService {
         String tableName = getTableName(entityCode);
         String sql = "DROP TABLE IF EXISTS " + tableName;
         jdbcTemplate.execute(sql);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + deriveMultiValueTableName(tableName));
         log.info("实体数据表 {} 已删除", tableName);
     }
 
@@ -177,7 +185,7 @@ public class DynamicTableService {
     @Transactional(rollbackFor = Exception.class)
     public void addColumn(String entityCode, EntityField field) {
         String tableName = getTableName(entityCode);
-        if (!tableExists(entityCode)) {
+        if (!tableExists(entityCode) || isMultiValueField(field)) {
             return;
         }
 
@@ -194,7 +202,7 @@ public class DynamicTableService {
     @Transactional(rollbackFor = Exception.class)
     public void modifyColumn(String entityCode, EntityField field) {
         String tableName = getTableName(entityCode);
-        if (!tableExists(entityCode)) {
+        if (!tableExists(entityCode) || isMultiValueField(field)) {
             return;
         }
 
@@ -261,7 +269,7 @@ public class DynamicTableService {
         
         for (EntityField field : fields) {
             // 跳过子表单字段（子表单有独立表）
-            if (isSubFormField(field)) {
+            if (isSubFormField(field) || isMultiValueField(field)) {
                 continue;
             }
             // 跳过系统字段（已在基础字段中定义）
@@ -275,7 +283,9 @@ public class DynamicTableService {
         // 主键
         sql.append("  PRIMARY KEY (`id`)\n");
         String comment = entityName != null && !entityName.isEmpty() ? entityName : tableName;
-        sql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='").append(comment).append("';");
+        sql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='")
+                .append(comment)
+                .append("';");
         
         return sql.toString();
     }
@@ -360,8 +370,7 @@ public class DynamicTableService {
             case IMAGE:
                 return "TEXT";
             case MULTI_REFERENCE:
-                // 多选实体，使用JSON数组存储多个实体ID
-                return "JSON";
+                return "LONGTEXT";
             default:
                 return "VARCHAR(255)";
         }
@@ -373,6 +382,55 @@ public class DynamicTableService {
     private boolean isSubFormField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SUB_FORM 
                 || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
+    }
+
+    private boolean isMultiValueField(EntityField field) {
+        if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE) {
+            return field.getRefEntityId() != null && !field.getRefEntityId().isBlank();
+        }
+        return (field.getFieldType() == EntityField.FieldType.MULTI_SELECT
+                || field.getFieldType() == EntityField.FieldType.CHECKBOX)
+                && field.getDictType() != null
+                && !field.getDictType().isBlank();
+    }
+
+    public String getMultiValueTableName(String entityCode) {
+        return deriveMultiValueTableName(getTableName(entityCode));
+    }
+
+    public void ensureEntityMultiValueTable(String entityCode) {
+        ensureMultiValueTable(getTableName(entityCode));
+    }
+
+    private String deriveMultiValueTableName(String tableName) {
+        String multiTableName = tableName + "_multi";
+        if (multiTableName.length() > 64) {
+            throw new IllegalArgumentException("实体多值表名超过数据库限制: " + multiTableName);
+        }
+        return multiTableName;
+    }
+
+    private void ensureMultiValueTable(String tableName) {
+        String multiTableName = deriveMultiValueTableName(tableName);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS %s (
+                  `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
+                  `record_id` VARCHAR(64) NOT NULL COMMENT '主记录ID',
+                  `field_code` VARCHAR(100) NOT NULL COMMENT '字段编码',
+                  `target_entity_id` VARCHAR(64) NOT NULL COMMENT '目标实体ID',
+                  `target_record_id` VARCHAR(64) NOT NULL COMMENT '目标记录ID',
+                  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '选择顺序',
+                  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+                  `create_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人',
+                  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uk_record_field_target` (`record_id`,`field_code`,`target_entity_id`,`target_record_id`,`deleted`),
+                  KEY `idx_record_field` (`record_id`,`field_code`,`deleted`),
+                  KEY `idx_field_target` (`field_code`,`target_entity_id`,`target_record_id`,`deleted`),
+                  KEY `idx_target` (`target_entity_id`,`target_record_id`,`deleted`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体多值引用表'
+                """.formatted(multiTableName));
     }
 
     /**
@@ -422,6 +480,9 @@ public class DynamicTableService {
         List<String> ddls = new ArrayList<>();
         
         for (EntityField field : fields) {
+            if (isSubFormField(field) || isMultiValueField(field)) {
+                continue;
+            }
             String columnDef = buildColumnDefinition(field);
             String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
             ddls.add(sql);
@@ -437,7 +498,7 @@ public class DynamicTableService {
     public static class ColumnInfo {
         private String name;
         private String type;
-        private Integer length;
+        private Long length;
         private boolean nullable;
         private String defaultValue;
     }

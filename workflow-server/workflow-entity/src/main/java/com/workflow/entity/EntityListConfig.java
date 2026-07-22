@@ -90,8 +90,79 @@ public class EntityListConfig {
     private String viewConfig;
 
     /**
+     * 数据范围模式：INHERIT/NARROW/OVERRIDE
+     */
+    @TableField("data_scope_mode")
+    private String dataScopeMode;
+
+    /**
+     * 列表访问权限码，空时继承 entity:{code}:list
+     */
+    @TableField("access_permission_code")
+    private String accessPermissionCode;
+
+    /**
+     * 允许的运行场景JSON
+     */
+    @TableField("allowed_scenes")
+    private String allowedScenes;
+
+    /**
+     * 单选、多选和返回映射JSON
+     */
+    @TableField("selection_config")
+    private String selectionConfig;
+
+    /**
+     * 服务端固定查询条件JSON
+     */
+    @TableField("fixed_filter_config")
+    private String fixedFilterConfig;
+
+    /**
+     * 来源记录上下文绑定JSON
+     */
+    @TableField("context_binding_config")
+    private String contextBindingConfig;
+
+    /**
+     * 自定义安全查询提供者编码
+     */
+    @TableField("query_provider_code")
+    private String queryProviderCode;
+
+    /**
+     * 已发布版本
+     */
+    @TableField("published_version")
+    private Integer publishedVersion;
+
+    /**
+     * 草稿元数据修订号
+     */
+    private Integer revision;
+
+    /**
+     * 当前激活发布快照ID
+     */
+    private String activeReleaseId;
+
+    /**
+     * 当前草稿内容哈希
+     */
+    private String draftHash;
+
+    /**
+     * 统一列表查询数据源ID
+     */
+    private String queryDataSourceId;
+
+    /**
      * 更新时间
      */
-        @TableField("update_time")
+    @TableField("update_time")
     private LocalDateTime updatedAt;
+
+    @TableField(exist = false)
+    private Boolean publishedSnapshot;
 }

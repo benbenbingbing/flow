@@ -1,39 +1,27 @@
 package com.workflow.service.permission;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.permission.DataPermissionResult;
-import com.workflow.dto.permission.EntityActionRuleDTO;
-import com.workflow.dto.permission.FilterConfigDTO;
-import com.workflow.dto.permission.MatchConfigDTO;
-import com.workflow.entity.EntityListPermission;
-import com.workflow.entity.EntityListPermissionDelegate;
+import com.workflow.dto.permission.*;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.SysUser;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.mapper.EntityListPermissionDelegateMapper;
-import com.workflow.mapper.EntityListPermissionMapper;
-import com.workflow.mapper.EntityStatusMapper;
-import com.workflow.mapper.SysOrganizationMapper;
-import com.workflow.mapper.SysUserGroupMapper;
+import com.workflow.mapper.*;
+import com.workflow.service.SysUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class DataPermissionEngineTest {
 
-    private final EntityListPermissionMapper permissionMapper =
-            mock(EntityListPermissionMapper.class);
-    private final EntityListPermissionDelegateMapper delegateMapper =
-            mock(EntityListPermissionDelegateMapper.class);
+    private final EntityListScopeService scopeService =
+            mock(EntityListScopeService.class);
+    private final EntityListScopeDelegationMapper delegationMapper =
+            mock(EntityListScopeDelegationMapper.class);
     private final EntityDefinitionMapper definitionMapper =
             mock(EntityDefinitionMapper.class);
     private final EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
@@ -42,7 +30,12 @@ class DataPermissionEngineTest {
             mock(SysOrganizationMapper.class);
     private final SysUserGroupMapper userGroupMapper =
             mock(SysUserGroupMapper.class);
+    private final SysUserService userService = mock(SysUserService.class);
+    private final EntityListScopeAuditService auditService =
+            mock(EntityListScopeAuditService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final com.workflow.service.EntityRecordTeamService entityRecordTeamService =
+            mock(com.workflow.service.EntityRecordTeamService.class);
     private DataPermissionEngine engine;
 
     @BeforeEach
@@ -58,227 +51,167 @@ class DataPermissionEngineTest {
                 statusMapper,
                 List.of());
         engine = new DataPermissionEngine(
-                permissionMapper,
-                delegateMapper,
+                scopeService,
+                delegationMapper,
                 objectMapper,
                 new PermissionRuleMatcher(
                         organizationMapper,
                         userGroupMapper,
                         List.of()),
-                sqlBuilder);
+                sqlBuilder,
+                userService,
+                auditService,
+                entityRecordTeamService);
+        when(entityRecordTeamService.teamPermission(anyString(), anyString()))
+                .thenReturn(com.workflow.service.EntityRecordTeamService.TeamPermission.disabled());
     }
 
     @Test
-    void calculatePermissionDefaultsToCurrentUserWhenNoRulesExist() {
-        SysUser user = user("u'1", "alice", "dept-1");
-        when(permissionMapper.findEnabledByEntityCode("expense")).thenReturn(List.of());
-        when(delegateMapper.findActiveByToUserId("u'1", "expense")).thenReturn(List.of());
+    void missingPublishedSnapshotFailsClosed() {
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(null);
 
-        DataPermissionResult result = engine.calculatePermission("expense", user);
+        var result = engine.calculatePermission("expense", "default", user());
+
+        assertFalse(result.isHasPermission());
+        assertEquals("1=0", result.getSqlCondition());
+        assertTrue(result.getExplanation().contains("没有已发布"));
+    }
+
+    @Test
+    void absoluteTeamAccessSurvivesMissingNormalAllow() {
+        EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
+        snapshot.setBindings(List.of());
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+        when(entityRecordTeamService.teamPermission("expense", "u1"))
+                .thenReturn(new com.workflow.service.EntityRecordTeamService.TeamPermission(
+                        true,
+                        com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ABSOLUTE,
+                        "EXISTS (SELECT 1 FROM expense_team)"));
+
+        var result = engine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.isNeedFilter());
-        assertEquals("create_by = 'u''1'", result.getSqlCondition());
+        assertTrue(result.getSqlCondition().contains("expense_team"));
     }
 
     @Test
-    void denyRulesAreAppliedAfterAllowRules() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission allowAll = rule(
-                "允许全部",
-                "ALLOW",
-                "UNION",
-                100,
-                filter("ALL", null));
-        EntityListPermission denySecret = rule(
-                "排除保密",
-                "DENY",
-                "INTERSECT",
-                90,
-                filter("RULE", condition("STATUS_CODE", "IN", List.of("SECRET"))));
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(allowAll, denySecret));
-        when(delegateMapper.findActiveByToUserId("u1", "expense"))
-                .thenReturn(List.of());
+    void inheritUsesEntityAllowAndCurrentListDeny() {
+        EntityListScopeSnapshotDTO snapshot = snapshot(
+                "INHERIT",
+                policy("personal", filter("PERSONAL", null)),
+                policy("secret", filter("RULE", condition(
+                        "STATUS_CODE", "EQ", "SECRET"))));
+        snapshot.setBindings(List.of(
+                binding("personal", null, "ALLOW"),
+                binding("secret", "default", "DENY")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
-        DataPermissionResult result = engine.calculatePermission("expense", user);
+        var result = engine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.isNeedFilter());
-        assertEquals(
-                "(1=1) AND NOT (status IN ('SECRET'))",
-                result.getSqlCondition());
-        assertEquals(List.of("允许全部", "排除保密"), result.getMatchedRuleNames());
+        assertTrue(result.getSqlCondition().contains("create_by"));
+        assertTrue(result.getSqlCondition().contains("NOT (status = 'SECRET')"));
+        assertEquals("INHERIT", result.getDataScopeMode());
     }
 
     @Test
-    void denyAllCannotBeTurnedIntoAllowAll() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission denyAll = rule(
-                "禁止访问",
-                "DENY",
-                "UNION",
-                100,
-                filter("ALL", null));
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(denyAll));
+    void narrowIntersectsEntityAndListAllow() {
+        EntityListScopeSnapshotDTO snapshot = snapshot(
+                "NARROW",
+                policy("personal", filter("PERSONAL", null)),
+                policy("open", filter("RULE", condition(
+                        "STATUS_CODE", "EQ", "OPEN"))));
+        snapshot.setBindings(List.of(
+                binding("personal", null, "ALLOW"),
+                binding("open", "default", "ALLOW")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
-        DataPermissionResult result = engine.calculatePermission("expense", user);
+        var result = engine.calculatePermission("expense", "default", user());
 
-        assertFalse(result.isHasPermission());
-        assertEquals("1=0", result.getSqlCondition());
+        assertTrue(result.getSqlCondition().contains("create_by"));
+        assertTrue(result.getSqlCondition().contains("AND (status = 'OPEN')"));
     }
 
     @Test
-    void allowRulesSupportUnionAndIntersectionWithoutAffectingDenySemantics() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission department = rule(
-                "本部门",
-                "ALLOW",
-                "UNION",
-                100,
-                filter("DEPT", null));
-        EntityListPermission openStatus = rule(
-                "仅开放状态",
-                "ALLOW",
-                "INTERSECT",
-                90,
-                filter("RULE", condition("STATUS_CODE", "IN", List.of("OPEN"))));
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(department, openStatus));
-        when(delegateMapper.findActiveByToUserId("u1", "expense"))
-                .thenReturn(List.of());
+    void overrideUsesOnlyListAllow() {
+        EntityListScopeSnapshotDTO snapshot = snapshot(
+                "OVERRIDE",
+                policy("personal", filter("PERSONAL", null)),
+                policy("open", filter("RULE", condition(
+                        "STATUS_CODE", "EQ", "OPEN"))));
+        snapshot.setBindings(List.of(
+                binding("personal", null, "ALLOW"),
+                binding("open", "default", "ALLOW")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
-        DataPermissionResult result = engine.calculatePermission("expense", user);
+        var result = engine.calculatePermission("expense", "default", user());
 
-        assertEquals(
-                "(dept_id = 'dept-1') AND (status IN ('OPEN'))",
-                result.getSqlCondition());
+        assertEquals("status = 'OPEN'", result.getSqlCondition());
+        assertEquals("OVERRIDE", result.getDataScopeMode());
     }
 
     @Test
-    void allowStopProcessingCannotSkipLowerPriorityDenyRule() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission allowAll = rule(
-                "高优先级允许",
-                "ALLOW",
-                "UNION",
-                100,
-                filter("ALL", null));
-        allowAll.setStopProcessing(1);
-        EntityListPermission ignoredAllow = rule(
-                "应停止的低优先级允许",
-                "ALLOW",
-                "UNION",
-                90,
-                filter("RULE", condition("STATUS_CODE", "EQ", "OPEN")));
-        EntityListPermission denySecret = rule(
-                "必须执行的低优先级拒绝",
-                "DENY",
-                "UNION",
-                80,
-                filter("RULE", condition("STATUS_CODE", "EQ", "SECRET")));
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(allowAll, ignoredAllow, denySecret));
-        when(delegateMapper.findActiveByToUserId("u1", "expense"))
-                .thenReturn(List.of());
+    void denyForAnotherListDoesNotAffectCurrentList() {
+        EntityListScopeSnapshotDTO snapshot = snapshot(
+                "INHERIT",
+                policy("all", filter("ALL", null)),
+                policy("secret", filter("ALL", null)));
+        snapshot.getListModes().put("other", "INHERIT");
+        snapshot.setBindings(List.of(
+                binding("all", null, "ALLOW"),
+                binding("secret", "other", "DENY")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
-        DataPermissionResult result = engine.calculatePermission("expense", user);
+        var result = engine.calculatePermission("expense", "default", user());
 
-        assertEquals(
-                "(1=1) AND NOT (status = 'SECRET')",
-                result.getSqlCondition());
-        assertEquals(
-                List.of("高优先级允许", "必须执行的低优先级拒绝"),
-                result.getMatchedRuleNames());
+        assertTrue(result.isHasPermission());
+        assertFalse(result.isNeedFilter());
     }
 
-    @Test
-    void delegatedCreatorDataStillRespectsDenyRules() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission personal = rule(
-                "本人数据",
-                "ALLOW",
-                "UNION",
-                100,
-                filter("PERSONAL", null));
-        EntityListPermission denySecret = rule(
-                "排除保密数据",
-                "DENY",
-                "UNION",
-                90,
-                filter("RULE", condition("STATUS_CODE", "EQ", "SECRET")));
-        EntityListPermissionDelegate delegate = new EntityListPermissionDelegate();
-        delegate.setFromUserId("u2");
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(personal, denySecret));
-        when(delegateMapper.findActiveByToUserId("u1", "expense"))
-                .thenReturn(List.of(delegate));
-
-        DataPermissionResult result = engine.calculatePermission("expense", user);
-
-        assertEquals(
-                "((create_by IN ('u1','alice')) AND NOT (status = 'SECRET')) "
-                        + "OR ((create_by IN ('u2')) AND NOT (status = 'SECRET'))",
-                result.getSqlCondition());
+    private EntityListScopeSnapshotDTO snapshot(
+            String mode,
+            EntityListScopePolicyDTO... policies) {
+        EntityListScopeSnapshotDTO snapshot = new EntityListScopeSnapshotDTO();
+        snapshot.setEntityCode("expense");
+        snapshot.setVersion(3);
+        snapshot.setPolicies(List.of(policies));
+        snapshot.setListModes(new java.util.LinkedHashMap<>(Map.of("default", mode)));
+        return snapshot;
     }
 
-    @Test
-    void malformedDenyMatchConfigurationFailsClosed() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission allowAll = rule(
-                "允许全部",
-                "ALLOW",
-                "UNION",
-                100,
-                filter("ALL", null));
-        EntityListPermission brokenDeny = rule(
-                "损坏拒绝规则",
-                "DENY",
-                "UNION",
-                90,
-                filter("ALL", null));
-        brokenDeny.setMatchConfig("{broken-json");
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(allowAll, brokenDeny));
-
-        DataPermissionResult result = engine.calculatePermission("expense", user);
-
-        assertFalse(result.isHasPermission());
-        assertEquals("1=0", result.getSqlCondition());
-        assertEquals(List.of("损坏拒绝规则"), result.getMatchedRuleNames());
+    private EntityListScopePolicyDTO policy(String id, FilterConfigDTO filter) {
+        EntityListScopePolicyDTO policy = new EntityListScopePolicyDTO();
+        policy.setId(id);
+        policy.setPolicyKey(id);
+        policy.setPolicyName(id);
+        policy.setEnabled(1);
+        policy.setFilterConfig(filter);
+        return policy;
     }
 
-    @Test
-    void malformedDenyFilterConfigurationFailsClosed() throws Exception {
-        SysUser user = user("u1", "alice", "dept-1");
-        EntityListPermission allowAll = rule(
-                "允许全部",
-                "ALLOW",
-                "UNION",
-                100,
-                filter("ALL", null));
-        EntityListPermission brokenDeny = rule(
-                "损坏拒绝过滤",
-                "DENY",
-                "UNION",
-                90,
-                filter("ALL", null));
-        brokenDeny.setFilterConfig("{broken-json");
-        when(permissionMapper.findEnabledByEntityCode("expense"))
-                .thenReturn(List.of(allowAll, brokenDeny));
-
-        DataPermissionResult result = engine.calculatePermission("expense", user);
-
-        assertFalse(result.isHasPermission());
-        assertEquals("1=0", result.getSqlCondition());
+    private EntityListScopeBindingDTO binding(
+            String policyId,
+            String listKey,
+            String effect) {
+        EntityListScopeBindingDTO binding = new EntityListScopeBindingDTO();
+        binding.setPolicyId(policyId);
+        binding.setListKey(listKey);
+        binding.setRuleEffect(effect);
+        binding.setEnabled(1);
+        MatchConfigDTO match = new MatchConfigDTO();
+        MatchConfigDTO.MatchConditionDTO allUsers =
+                new MatchConfigDTO.MatchConditionDTO();
+        allUsers.setScopeType("ALL_USERS");
+        match.setConditions(List.of(allUsers));
+        binding.setMatchConfig(match);
+        return binding;
     }
 
-    private SysUser user(String id, String username, String deptId) {
+    private SysUser user() {
         SysUser user = new SysUser();
-        user.setId(id);
-        user.setUsername(username);
-        user.setDeptId(deptId);
+        user.setId("u1");
+        user.setUsername("alice");
+        user.setDeptId("dept-1");
         return user;
     }
 
@@ -286,28 +219,6 @@ class DataPermissionEngineTest {
         EntityStatus status = new EntityStatus();
         status.setStatusCode(code);
         return status;
-    }
-
-    private EntityListPermission rule(
-            String name,
-            String effect,
-            String combineMode,
-            int priority,
-            FilterConfigDTO filter) throws Exception {
-        MatchConfigDTO match = new MatchConfigDTO();
-        MatchConfigDTO.MatchConditionDTO allUsers = new MatchConfigDTO.MatchConditionDTO();
-        allUsers.setScopeType("ALL_USERS");
-        match.setConditions(List.of(allUsers));
-
-        EntityListPermission rule = new EntityListPermission();
-        rule.setEntityCode("expense");
-        rule.setRuleName(name);
-        rule.setRuleEffect(effect);
-        rule.setCombineMode(combineMode);
-        rule.setPriority(priority);
-        rule.setMatchConfig(objectMapper.writeValueAsString(match));
-        rule.setFilterConfig(objectMapper.writeValueAsString(filter));
-        return rule;
     }
 
     private FilterConfigDTO filter(

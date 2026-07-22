@@ -26,6 +26,10 @@ public class PermissionPreviewDTO {
     /** 预览提示/说明（如当前用户缺少某属性时给出提示） */
     private String remark;
 
+    private String dataScopeMode;
+
+    private Integer releaseVersion;
+
     /**
      * 命中规则明细
      */
@@ -33,7 +37,7 @@ public class PermissionPreviewDTO {
     public static class MatchedRuleDTO {
         private String ruleName;
         private String ruleEffect;
-        private String combineMode;
+        private String listKey;
         private String sql;
     }
 }

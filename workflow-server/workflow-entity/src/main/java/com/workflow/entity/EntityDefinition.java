@@ -49,10 +49,22 @@ public class EntityDefinition {
     private String processDefinitionId;
     
     /**
-     * 是否启用流程
+     * 实体生命周期模式。
      */
-    @TableField("enable_process")
-    private Boolean enableProcess;
+    @TableField("lifecycle_mode")
+    private LifecycleMode lifecycleMode;
+
+    /**
+     * 物理存储管理模式。
+     */
+    @TableField("storage_mode")
+    private StorageMode storageMode;
+
+    @TableField("team_visibility_enabled")
+    private Boolean teamVisibilityEnabled;
+
+    @TableField("team_visibility_level")
+    private TeamVisibilityLevel teamVisibilityLevel;
     
     /**
      * 状态
@@ -83,5 +95,21 @@ public class EntityDefinition {
     
     public enum Status {
         DRAFT, PUBLISHED, DISABLED
+    }
+
+    public enum LifecycleMode {
+        STANDALONE,
+        WORKFLOW
+    }
+
+    public enum StorageMode {
+        DYNAMIC,
+        SYSTEM
+    }
+
+    public enum TeamVisibilityLevel {
+        ADDITIVE,
+        OVERRIDE_SCOPE,
+        ABSOLUTE
     }
 }

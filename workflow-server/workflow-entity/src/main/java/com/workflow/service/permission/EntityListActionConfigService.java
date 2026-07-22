@@ -7,6 +7,7 @@ import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityListConfigMapper;
+import com.workflow.service.EntityListRelationalConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -30,6 +31,7 @@ public class EntityListActionConfigService {
     private final ObjectMapper objectMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityListConfigMapper configMapper;
+    private final EntityListRelationalConfigService relationalConfigService;
     private final List<EntityActionRuleConditionProvider> conditionProviders;
     private final List<EntityPermissionOptionProvider> permissionOptionProviders;
 
@@ -54,6 +56,14 @@ public class EntityListActionConfigService {
     }
 
     public List<Map<String, Object>> resolveRowButtons(EntityListConfig config, String entityCode) {
+        List<Map<String, Object>> relational = config == null
+                || Boolean.TRUE.equals(config.getPublishedSnapshot())
+                ? List.of()
+                : relationalConfigService.findActions(
+                        config.getId(), EntityListRelationalConfigService.ROW);
+        if (!relational.isEmpty()) {
+            return normalizeButtons(relational, false, entityCode, false);
+        }
         return parseAndNormalize(
                 config == null ? null : config.getRowActionConfig(),
                 false,
@@ -62,6 +72,14 @@ public class EntityListActionConfigService {
     }
 
     public List<Map<String, Object>> resolveToolbarButtons(EntityListConfig config, String entityCode) {
+        List<Map<String, Object>> relational = config == null
+                || Boolean.TRUE.equals(config.getPublishedSnapshot())
+                ? List.of()
+                : relationalConfigService.findActions(
+                        config.getId(), EntityListRelationalConfigService.TOOLBAR);
+        if (!relational.isEmpty()) {
+            return normalizeButtons(relational, true, entityCode, false);
+        }
         return parseAndNormalize(
                 config == null ? null : config.getToolbarConfig(),
                 true,
@@ -85,6 +103,23 @@ public class EntityListActionConfigService {
                 config.getToolbarConfig(), true, config.getEntityCode(), true)));
         config.setRowActionConfig(writeButtons(parseAndNormalize(
                 config.getRowActionConfig(), false, config.getEntityCode(), true)));
+    }
+
+    public void synchronizeRelationalConfig(EntityListConfig config) {
+        List<Map<String, Object>> toolbar = parseAndNormalize(
+                config.getToolbarConfig(), true, config.getEntityCode(), true);
+        List<Map<String, Object>> row = parseAndNormalize(
+                config.getRowActionConfig(), false, config.getEntityCode(), true);
+        relationalConfigService.replaceActions(
+                config.getId(), EntityListRelationalConfigService.TOOLBAR, toolbar);
+        relationalConfigService.replaceActions(
+                config.getId(), EntityListRelationalConfigService.ROW, row);
+        relationalConfigService.replaceScenes(
+                config.getId(), parseScenes(config.getAllowedScenes()));
+    }
+
+    public void deleteRelationalConfig(String listConfigId) {
+        relationalConfigService.deleteByListConfigId(listConfigId);
     }
 
     public boolean normalizeForMigration(EntityListConfig config) {
@@ -132,18 +167,35 @@ public class EntityListActionConfigService {
             boolean toolbar,
             String entityCode,
             boolean strictCustomPermission) {
-        List<Map<String, Object>> buttons = parseButtons(json);
+        return normalizeButtons(
+                parseButtons(json), toolbar, entityCode, strictCustomPermission);
+    }
+
+    private List<Map<String, Object>> normalizeButtons(
+            List<Map<String, Object>> source,
+            boolean toolbar,
+            String entityCode,
+            boolean strictCustomPermission) {
+        List<Map<String, Object>> buttons = new ArrayList<>(source);
         if (buttons.isEmpty()) {
             buttons = defaultButtons(toolbar);
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
+        EntityDefinition definition = StringUtils.hasText(entityCode)
+                ? definitionMapper.findByEntityCode(entityCode).orElse(null)
+                : null;
         for (Map<String, Object> original : buttons) {
             Map<String, Object> button = new LinkedHashMap<>(original);
             String key = asString(button.get("key"));
             String type = asString(button.get("type"));
             boolean enabled = !Boolean.FALSE.equals(button.get("enabled"));
             EntityPermissionAction action = EntityPermissionAction.fromButtonKey(key);
+            if (action == EntityPermissionAction.APPROVE
+                    && definition != null
+                    && definition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
+                continue;
+            }
 
             if (action != null) {
                 button.put("perm", action.permissionCode(entityCode));
@@ -170,6 +222,19 @@ public class EntityListActionConfigService {
             result.add(button);
         }
         return result;
+    }
+
+    private List<String> parseScenes(String json) {
+        if (!StringUtils.hasText(json)) {
+            return List.of(
+                    "MENU", "PAGE", "DIALOG", "DRAWER",
+                    "EMBEDDED", "FORM_PICKER", "SUB_TABLE");
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("列表允许场景JSON格式不正确", exception);
+        }
     }
 
     private List<Map<String, Object>> parseButtons(String json) {

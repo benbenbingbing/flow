@@ -40,6 +40,15 @@ public class EntityPublishHistory {
     @TableField("process_definition_id")
     private String processDefinitionId;
 
+    @TableField("lifecycle_mode")
+    private EntityDefinition.LifecycleMode lifecycleMode;
+
+    @TableField("team_visibility_enabled")
+    private Boolean teamVisibilityEnabled;
+
+    @TableField("team_visibility_level")
+    private EntityDefinition.TeamVisibilityLevel teamVisibilityLevel;
+
     /**
      * 版本号（从1开始递增）
      */

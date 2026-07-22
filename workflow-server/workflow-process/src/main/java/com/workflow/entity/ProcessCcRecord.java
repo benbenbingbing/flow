@@ -72,6 +72,20 @@ public class ProcessCcRecord {
      * 抄送时机：START-流程发起，APPROVE-审批通过，REJECT-驳回，COMPLETE-流程结束
      */
     private String ccTiming;
+
+    private String operatorId;
+
+    private String operatorName;
+
+    private String comment;
+
+    private String sourceTaskId;
+
+    private String sourceType;
+
+    private String recipientRuleSnapshot;
+
+    private String uniqueKey;
     
     /**
      * 阅读状态：UNREAD-未读，READ-已读

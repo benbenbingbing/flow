@@ -46,6 +46,11 @@ public class EntityPublishedSnapshotService {
         snapshot.setEntityCode(history.getEntityCode());
         snapshot.setEntityName(history.getEntityName());
         snapshot.setProcessDefinitionId(history.getProcessDefinitionId());
+        snapshot.setLifecycleMode(history.getLifecycleMode());
+        snapshot.setTeamVisibilityEnabled(Boolean.TRUE.equals(history.getTeamVisibilityEnabled()));
+        snapshot.setTeamVisibilityLevel(history.getTeamVisibilityLevel() == null
+                ? com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ADDITIVE
+                : history.getTeamVisibilityLevel());
         snapshot.setVersion(history.getVersion());
         snapshot.setFields(parseFields(history));
         return snapshot;

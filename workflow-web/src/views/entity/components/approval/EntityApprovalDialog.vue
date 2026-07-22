@@ -5,26 +5,34 @@
         <!-- 无 tab 子表单时：基本信息 tab -->
         <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
           <EntityApprovalBasicInfo
+            ref="basicInfoRef"
             v-model:entityData="entityData"
             :approvalNormalForm="approvalNormalForm"
             :effectiveApprovalConfig="effectiveApprovalConfig"
             :isViewMode="isViewMode"
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
-            v-model:approveForm="approveForm"
+            :approveForm="approveForm"
+            :entityCode="entityCode"
+            :context="approvalRuntimeContext"
+            :dataSourceRuntime="dataSourceRuntime"
           />
         </el-tab-pane>
 
         <!-- 有 tab 子表单时：基本信息 tab（普通字段） -->
         <el-tab-pane v-if="approvalHasTabSubForms" label="基本信息" name="basic">
           <EntityApprovalBasicInfo
+            ref="basicInfoRef"
             v-model:entityData="entityData"
             :approvalNormalForm="approvalNormalForm"
             :effectiveApprovalConfig="effectiveApprovalConfig"
             :isViewMode="isViewMode"
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
-            v-model:approveForm="approveForm"
+            :approveForm="approveForm"
+            :entityCode="entityCode"
+            :context="approvalRuntimeContext"
+            :dataSourceRuntime="dataSourceRuntime"
           />
         </el-tab-pane>
 
@@ -39,6 +47,8 @@
             :field="field"
             v-model="entityData[getFieldKey(field)]"
             :disabled="isRuntimeFieldReadonly(field, approvalFormReadonly, approvalRuntimeMode)"
+            :context="approvalRuntimeContext"
+            :data-source-runtime="dataSourceRuntime"
           />
         </el-tab-pane>
 
@@ -86,7 +96,8 @@ import {
   getFieldKey,
   isRuntimeFieldReadonly,
   isRuntimeFieldVisible,
-  isRuntimeFormReadonly
+  isRuntimeFormReadonly,
+  createFormDataSourceRuntime
 } from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
 import { useUserStore } from '@/stores/user'
@@ -115,6 +126,7 @@ const activeDialogTab = ref('approval')
 const approveSubmitLoading = ref(false)
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
+const basicInfoRef = ref<any>()
 
 const approveForm = reactive({
   action: 'approve',
@@ -155,6 +167,21 @@ const approvalFormReadonly = computed(() => {
 })
 
 const approvalRuntimeMode = computed(() => isViewMode.value ? 'view' : 'approve')
+const approvalRuntimeContext = computed(() => ({
+  entityCode: props.entityCode,
+  mode: approvalRuntimeMode.value,
+  record: entityData.value,
+  task: currentTask.value,
+  processInstanceId: currentTask.value?.processInstanceId
+}))
+const dataSourceRuntime = createFormDataSourceRuntime({
+  entityCode: props.entityCode,
+  getRecord: () => entityData.value || {},
+  getRecordId: () => entityData.value?.id,
+  getListKey: () => props.listKey,
+  getMode: () => approvalRuntimeMode.value,
+  getForm: () => approvalNormalForm.value
+})
 
 // 审批弹窗中是否有 Tab 子表单
 const approvalHasTabSubForms = computed(() => {
@@ -178,6 +205,27 @@ const approvalNormalForm = computed(() => {
     fields
   }
 })
+
+watch(
+  () => [
+    approvalNormalForm.value?.id,
+    entityData.value?.id,
+    approvalRuntimeMode.value
+  ],
+  async () => {
+    if (!approvalNormalForm.value || !entityData.value) return
+    try {
+      await dataSourceRuntime.initialize({
+        form: approvalNormalForm.value,
+        fields: approvalNormalForm.value.fields || [],
+        nodes: approvalNormalForm.value.nodes || []
+      })
+    } catch (error) {
+      console.warn('审批表单数据源初始化失败:', error)
+      ElMessage.error('审批表单初始化失败')
+    }
+  }
+)
 
 // 监听审批弹窗 Tab 切换，切换到流程图时重新触发渲染
 watch(activeDialogTab, (newVal) => {
@@ -298,9 +346,19 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
 
 // 提交审批
 const submitApprove = async () => {
-  if (!currentTask.value?.taskId) return
+  if (!currentTask.value?.taskId || approveSubmitLoading.value) return
   approveSubmitLoading.value = true
   try {
+    const valid = await basicInfoRef.value?.validate?.()
+    if (valid === false) {
+      ElMessage.warning('请先完成表单必填项')
+      return
+    }
+    await dataSourceRuntime.prevalidateBeforeSubmit({
+      form: approvalNormalForm.value,
+      fields: approvalNormalForm.value?.fields || [],
+      nodes: approvalNormalForm.value?.nodes || []
+    })
     const selectedOption = effectiveApprovalConfig.value.options?.find(
       (o: any) => o.value === approveForm.action
     )

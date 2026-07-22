@@ -34,6 +34,9 @@ class EntityDataListConfigServiceTest {
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         ListFieldDataProviderRegistry providerRegistry = mock(ListFieldDataProviderRegistry.class);
         EntityActionCapabilityService capabilityService = mock(EntityActionCapabilityService.class);
+        EntityListPublishedRuntimeService publishedRuntimeService =
+                mock(EntityListPublishedRuntimeService.class);
+        UiDataSourceService uiDataSourceService = mock(UiDataSourceService.class);
         EntityDataListConfigService service = new EntityDataListConfigService(
                 dynamicService,
                 configMapper,
@@ -41,7 +44,9 @@ class EntityDataListConfigServiceTest {
                 definitionMapper,
                 providerRegistry,
                 new ListFieldConditionEvaluator(),
-                capabilityService);
+                capabilityService,
+                publishedRuntimeService,
+                uiDataSourceService);
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -51,6 +56,7 @@ class EntityDataListConfigServiceTest {
         config.setId("list-1");
         config.setListKey("default");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
+        when(publishedRuntimeService.resolveConfig(config)).thenReturn(config);
 
         EntityListField virtualField = new EntityListField();
         virtualField.setFieldCode("summary");
@@ -59,11 +65,13 @@ class EntityDataListConfigServiceTest {
         virtualField.setIsQuery(true);
         virtualField.setQueryType("LIKE");
         when(fieldMapper.findByListConfigId("list-1")).thenReturn(List.of(virtualField));
+        when(publishedRuntimeService.resolveFields(config, List.of(virtualField)))
+                .thenReturn(List.of(virtualField));
 
         EntityDataDTO first = row("1", "张三");
         EntityDataDTO second = row("2", "李四");
         Map<String, Object> baseCondition = Map.of("status", "DRAFT", "status_op", "EQ");
-        when(dynamicService.findByCondition("expense", "list-1", baseCondition))
+        when(dynamicService.findByCondition("expense", "default", baseCondition))
                 .thenReturn(List.of(first, second));
 
         ListFieldDataProvider provider = mock(ListFieldDataProvider.class);
@@ -90,7 +98,7 @@ class EntityDataListConfigServiceTest {
                         "summary_op", "LIKE"));
 
         assertEquals(List.of(first), result);
-        verify(dynamicService).findByCondition("expense", "list-1", baseCondition);
+        verify(dynamicService).findByCondition("expense", "default", baseCondition);
     }
 
     @Test
@@ -101,6 +109,9 @@ class EntityDataListConfigServiceTest {
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         ListFieldDataProviderRegistry providerRegistry = mock(ListFieldDataProviderRegistry.class);
         EntityActionCapabilityService capabilityService = mock(EntityActionCapabilityService.class);
+        EntityListPublishedRuntimeService publishedRuntimeService =
+                mock(EntityListPublishedRuntimeService.class);
+        UiDataSourceService uiDataSourceService = mock(UiDataSourceService.class);
         EntityDataListConfigService service = new EntityDataListConfigService(
                 dynamicService,
                 configMapper,
@@ -108,7 +119,9 @@ class EntityDataListConfigServiceTest {
                 definitionMapper,
                 providerRegistry,
                 new ListFieldConditionEvaluator(),
-                capabilityService);
+                capabilityService,
+                publishedRuntimeService,
+                uiDataSourceService);
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -117,13 +130,15 @@ class EntityDataListConfigServiceTest {
         config.setId("list-1");
         config.setListKey("default");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
+        when(publishedRuntimeService.resolveConfig(config)).thenReturn(config);
         when(fieldMapper.findByListConfigId("list-1")).thenReturn(List.of());
+        when(publishedRuntimeService.resolveFields(config, List.of())).thenReturn(List.of());
 
         EntityDataDTO row = row("11", "张三");
         Map<String, Object> condition = Map.of("status", "OPEN", "status_op", "EQ");
         when(dynamicService.findPage(
                 "expense",
-                "list-1",
+                "default",
                 condition,
                 2,
                 10)).thenReturn(new PageResult<>(List.of(row), 21, 2, 10));
@@ -140,7 +155,7 @@ class EntityDataListConfigServiceTest {
         assertEquals(List.of(row), result.getRecords());
         verify(dynamicService).findPage(
                 "expense",
-                "list-1",
+                "default",
                 condition,
                 2,
                 10);

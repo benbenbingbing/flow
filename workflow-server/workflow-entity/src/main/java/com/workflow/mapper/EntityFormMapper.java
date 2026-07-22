@@ -43,4 +43,7 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
      */
     @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND is_default = 1 AND deleted = 0 LIMIT 1")
     EntityForm selectDefaultByEntityId(@Param("entityId") String entityId);
+
+    @Select("SELECT * FROM entity_form WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    EntityForm selectByIdForUpdate(@Param("id") String id);
 }

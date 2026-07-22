@@ -347,8 +347,8 @@
           <template v-if="assigneeForm.isMultiInstance">
             <el-form-item label="执行方式">
               <el-radio-group v-model="assigneeForm.multiInstanceType">
-                <el-radio-button label="parallel">并行（会签）</el-radio-button>
-                <el-radio-button label="sequential">串行（或签）</el-radio-button>
+                <el-radio-button label="parallel">并行多实例</el-radio-button>
+                <el-radio-button label="sequential">串行多实例</el-radio-button>
               </el-radio-group>
               <div class="form-tip">并行：多人同时审批；串行：按顺序审批</div>
             </el-form-item>
@@ -735,6 +735,9 @@
             <span class="unit">小时</span>
           </el-form-item>
         </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
       </el-tab-pane>
       
       <!-- ========== 业务规则配置（业务规则任务） ========== -->
@@ -1200,6 +1203,79 @@
         </div>
       </el-tab-pane>
       
+      <!-- ========== 知会配置 ========== -->
+      <el-tab-pane v-if="isCcConfigurable" name="cc">
+        <template #label>
+          <el-tooltip content="自动或显式生成知会，通知通过Outbox异步发送，不阻塞主流程" placement="top">
+            <span>知会</span>
+          </el-tooltip>
+        </template>
+        <el-form :model="ccForm" label-width="120px" size="small">
+          <el-form-item label="启用知会">
+            <el-switch v-model="ccForm.enabled" />
+          </el-form-item>
+          <template v-if="ccForm.enabled">
+            <el-form-item label="触发时机">
+              <el-select v-model="ccForm.timings" multiple style="width:100%">
+                <el-option v-if="isUserTask" label="任务创建时" value="TASK_CREATE" />
+                <el-option v-if="isUserTask" label="任务完成时" value="TASK_COMPLETE" />
+                <el-option v-if="isServiceTask || isSendTask" label="执行到知会节点" value="EXPLICIT" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="通知渠道">
+              <el-checkbox-group v-model="ccForm.channels">
+                <el-checkbox label="IN_APP">站内知会</el-checkbox>
+              </el-checkbox-group>
+              <div class="form-tip">邮件、短信通过后端注册通知渠道扩展，不在流程事务内直接发送</div>
+            </el-form-item>
+            <el-form-item label="包含当前办理人">
+              <el-switch v-model="ccForm.includeOperator" />
+            </el-form-item>
+            <el-divider>收件人规则</el-divider>
+            <div v-for="(rule, index) in ccForm.recipientRules" :key="index" class="cc-rule-row">
+              <el-select v-model="rule.type" style="width:150px" @change="rule.values = []">
+                <el-option label="固定用户" value="USER" />
+                <el-option label="角色成员" value="ROLE" />
+                <el-option label="用户组成员" value="GROUP" />
+                <el-option label="组织/部门成员" value="DEPARTMENT" />
+                <el-option label="流程发起人" value="STARTER" />
+                <el-option label="当前办理人" value="CURRENT_ASSIGNEE" />
+                <el-option label="历史办理人" value="HISTORY_APPROVERS" />
+                <el-option label="实体字段用户" value="ENTITY_FIELD" />
+                <el-option label="受控解析器" value="RESOLVER" />
+              </el-select>
+              <el-select v-if="rule.type === 'USER'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户">
+                <el-option v-for="item in userOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-else-if="rule.type === 'ROLE'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择角色">
+                <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-else-if="rule.type === 'GROUP'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户组">
+                <el-option v-for="item in groupOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择组织或部门">
+                <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
+              <el-input v-else-if="rule.type === 'RESOLVER'" v-model="rule.resolverCode" style="flex:1" placeholder="已注册解析器编码" />
+              <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
+              <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
+              <el-button type="danger" link @click="removeCcRule(index)" :disabled="ccForm.recipientRules.length <= 1">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
+            <el-button type="primary" link @click="addCcRule"><el-icon><Plus /></el-icon>添加收件人规则</el-button>
+            <el-form-item label="知会说明">
+              <el-input v-model="ccForm.summary" type="textarea" :rows="2" placeholder="展示在收件人的知会列表中" />
+            </el-form-item>
+            <el-alert type="info" :closable="false" show-icon :title="ccNaturalSummary" />
+          </template>
+        </el-form>
+        <div class="tab-footer">
+          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+        </div>
+      </el-tab-pane>
+
       <!-- ========== 高级配置 ========== -->
       <el-tab-pane v-if="isTask || isGateway" name="advanced">
         <template #label>
@@ -1290,6 +1366,7 @@ const isUserTask = computed(() => props.element?.type === 'bpmn:UserTask')
 // 监听 ACTIVITY_STARTED 事件按运行时实际到达的节点判断，避免 BFS 在网关分支下误判。
 const isServiceTask = computed(() => props.element?.type === 'bpmn:ServiceTask')
 const isSendTask = computed(() => props.element?.type === 'bpmn:SendTask')
+const isCcConfigurable = computed(() => isUserTask.value || isServiceTask.value || isSendTask.value)
 const isReceiveTask = computed(() => props.element?.type === 'bpmn:ReceiveTask')
 const isManualTask = computed(() => props.element?.type === 'bpmn:ManualTask')
 const isBusinessRuleTask = computed(() => props.element?.type === 'bpmn:BusinessRuleTask')
@@ -1551,6 +1628,24 @@ const formConfig = ref({
   entityCode: ''
 })
 const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '', skipNode: false })
+const organizationOptions = ref([])
+const createCcRule = () => ({
+  type: 'USER',
+  values: [],
+  includeChildren: false,
+  fieldCode: '',
+  resolverCode: '',
+  params: {}
+})
+const ccForm = ref({
+  enabled: false,
+  timings: ['TASK_COMPLETE'],
+  channels: ['IN_APP'],
+  includeOperator: false,
+  allowManualCc: true,
+  recipientRules: [createCcRule()],
+  summary: ''
+})
 
 // 审批配置
 const approvalForm = ref({
@@ -1580,6 +1675,47 @@ async function removeApprovalOption(index) {
 const userOptions = ref([])
 const groupOptions = ref([])
 const roleOptions = ref([])
+
+function addCcRule() {
+  ccForm.value.recipientRules.push(createCcRule())
+}
+
+function removeCcRule(index) {
+  if (ccForm.value.recipientRules.length > 1) {
+    ccForm.value.recipientRules.splice(index, 1)
+  }
+}
+
+function ccRuleStaticText(type) {
+  return {
+    STARTER: '流程发起人',
+    CURRENT_ASSIGNEE: '当前任务办理人',
+    HISTORY_APPROVERS: '流程历史办理人'
+  }[type] || '无需额外参数'
+}
+
+const ccNaturalSummary = computed(() => {
+  if (!ccForm.value.enabled) return '当前节点未启用知会'
+  const timingMap = {
+    TASK_CREATE: '任务创建时',
+    TASK_COMPLETE: '任务完成时',
+    EXPLICIT: '执行到本知会节点时'
+  }
+  const ruleMap = {
+    USER: '固定用户',
+    ROLE: '所选角色成员',
+    GROUP: '所选用户组成员',
+    DEPARTMENT: '所选组织/部门成员',
+    STARTER: '流程发起人',
+    CURRENT_ASSIGNEE: '当前办理人',
+    HISTORY_APPROVERS: '历史办理人',
+    ENTITY_FIELD: '实体字段中的用户',
+    RESOLVER: '受控人员解析器结果'
+  }
+  const timings = ccForm.value.timings.map(item => timingMap[item] || item).join('、')
+  const recipients = ccForm.value.recipientRules.map(item => ruleMap[item.type] || item.type).join('、')
+  return `${timings}，知会 ${recipients || '未配置收件人'}；通知异步发送，不阻塞流程`
+})
 
 // 实体表单选项
 const entityFormOptions = ref([])
@@ -1671,6 +1807,20 @@ async function loadRoles() {
   }
 }
 
+async function loadOrganizations() {
+  try {
+    const res = await request.get('/system/org/enabled')
+    if (res && Array.isArray(res)) {
+      organizationOptions.value = res.map(item => ({
+        label: item.orgName,
+        value: item.orgCode || item.id
+      }))
+    }
+  } catch (e) {
+    console.error('加载组织部门失败:', e)
+  }
+}
+
 // 绑定的实体信息
 const boundEntity = ref(null)
 
@@ -1727,6 +1877,7 @@ onMounted(() => {
   loadUsers()
   loadGroups()
   loadRoles()
+  loadOrganizations()
   loadEntityForms()
   loadEntityFields()
 })
@@ -1922,6 +2073,38 @@ watch(() => props.element, async (newElement) => {
           ]
         }
       }
+    }
+    if (isCcConfigurable.value) {
+      let ccConfig = null
+      if (extProps['ccConfig']) {
+        try {
+          ccConfig = JSON.parse(extProps['ccConfig'])
+        } catch (e) {
+          console.error('解析 ccConfig 失败:', e)
+        }
+      }
+      const defaultTimings = (isServiceTask.value || isSendTask.value) ? ['EXPLICIT'] : ['TASK_COMPLETE']
+      ccForm.value = ccConfig
+        ? {
+            enabled: ccConfig.enabled === true,
+            timings: Array.isArray(ccConfig.timings) && ccConfig.timings.length ? ccConfig.timings : defaultTimings,
+            channels: Array.isArray(ccConfig.channels) && ccConfig.channels.length ? ccConfig.channels : ['IN_APP'],
+            includeOperator: ccConfig.includeOperator === true,
+            allowManualCc: ccConfig.allowManualCc !== false,
+            recipientRules: Array.isArray(ccConfig.recipientRules) && ccConfig.recipientRules.length
+              ? ccConfig.recipientRules.map(rule => ({ ...createCcRule(), ...rule, values: Array.isArray(rule.values) ? rule.values : [] }))
+              : [createCcRule()],
+            summary: ccConfig.summary || ''
+          }
+        : {
+            enabled: false,
+            timings: defaultTimings,
+            channels: ['IN_APP'],
+            includeOperator: false,
+            allowManualCc: true,
+            recipientRules: [createCcRule()],
+            summary: ''
+          }
     }
     if (isServiceTask.value) {
       // 优先根据 BPMN 标准属性判断实现类型（class/expression/delegateExpression）
@@ -2780,6 +2963,7 @@ function saveCurrentTab() {
           updateRestConfig()
         } else {
           updateServiceImplementation()
+          updateExtensionProperty('serviceResultVariable', serviceForm.value.resultVariable)
         }
         break
       case 'send':
@@ -2838,6 +3022,39 @@ function saveCurrentTab() {
       case 'approval':
         updateExtensionProperty('approvalConfig', JSON.stringify(approvalForm.value))
         break
+      case 'cc': {
+        if (ccForm.value.enabled && ccForm.value.timings.length === 0) {
+          ElMessage.warning('请至少选择一个知会触发时机')
+          return
+        }
+        if (ccForm.value.enabled && ccForm.value.recipientRules.length === 0) {
+          ElMessage.warning('请至少配置一个知会收件人规则')
+          return
+        }
+        const config = {
+          ...ccForm.value,
+          summary: ccForm.value.summary || ccNaturalSummary.value
+        }
+        updateExtensionProperty('ccConfig', JSON.stringify(config))
+        if (ccForm.value.enabled && (isServiceTask.value || isSendTask.value)) {
+          const modeling = getModeling()
+          if (modeling) {
+            modeling.updateProperties(toRaw(props.element), {
+              class: undefined,
+              expression: undefined,
+              delegateExpression: '${ccNotificationDelegate}'
+            })
+          }
+          if (isServiceTask.value) {
+            serviceForm.value = {
+              implementationType: 'delegateExpression',
+              implementation: '${ccNotificationDelegate}',
+              resultVariable: ''
+            }
+          }
+        }
+        break
+      }
       case 'advanced':
         updateAsync()
         updateSkipExpression()
@@ -3275,6 +3492,17 @@ async function saveStatusConfig() {
   padding: 2px 6px;
   background-color: #f0f2f5;
   border-radius: 4px;
+}
+
+.cc-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  background: #f8f9fb;
 }
 
 .script-test-result .result-vars {

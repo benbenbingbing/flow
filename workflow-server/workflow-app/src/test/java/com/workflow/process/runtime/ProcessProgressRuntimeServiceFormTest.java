@@ -66,6 +66,6 @@ public class ProcessProgressRuntimeServiceFormTest {
 
     private ProcessProgressRuntimeService service() {
         return new ProcessProgressRuntimeService(null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 }

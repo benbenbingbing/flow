@@ -1,6 +1,8 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.workflow.common.PageResult;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.entity.SysMenu;
 import com.workflow.mapper.SysMenuMapper;
@@ -98,6 +100,63 @@ class SysMenuServiceTest {
     }
 
     @Test
+    @DisplayName("测试分页查询指定父菜单下的子菜单")
+    void testGetChildrenPage() {
+        SysMenu childMenu = new SysMenu();
+        childMenu.setId("child-id");
+        childMenu.setMenuName("子菜单");
+        childMenu.setParentId("parent-id");
+        childMenu.setSort(1);
+
+        Page<SysMenu> page = new Page<>(1, 10);
+        page.setRecords(Collections.singletonList(childMenu));
+        page.setTotal(1);
+
+        when(menuMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(page);
+        when(menuMapper.hasChildren("child-id")).thenReturn(false);
+
+        PageResult<SysMenu> result = menuService.getChildrenPage("parent-id", 1, 10);
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotal());
+        assertEquals(1, result.getRecords().size());
+        assertEquals("子菜单", result.getRecords().get(0).getMenuName());
+        assertEquals(Boolean.FALSE, result.getRecords().get(0).getHasChildren());
+    }
+
+    @Test
+    @DisplayName("测试查询指定节点的完整子树")
+    void testGetSubtree() {
+        SysMenu childMenu = new SysMenu();
+        childMenu.setId("child-id");
+        childMenu.setMenuName("子菜单");
+        childMenu.setParentId("parent-id");
+        childMenu.setSort(1);
+
+        SysMenu grandChildMenu = new SysMenu();
+        grandChildMenu.setId("grandchild-id");
+        grandChildMenu.setMenuName("孙菜单");
+        grandChildMenu.setParentId("child-id");
+        grandChildMenu.setSort(1);
+
+        when(menuMapper.selectChildrenByParentId("parent-id"))
+                .thenReturn(Collections.singletonList(childMenu));
+        when(menuMapper.selectChildrenByParentId("child-id"))
+                .thenReturn(Collections.singletonList(grandChildMenu));
+        when(menuMapper.selectChildrenByParentId("grandchild-id"))
+                .thenReturn(Collections.emptyList());
+
+        List<SysMenu> subtree = menuService.getSubtree("parent-id");
+
+        assertNotNull(subtree);
+        assertEquals(1, subtree.size());
+        assertEquals("子菜单", subtree.get(0).getMenuName());
+        assertNotNull(subtree.get(0).getChildren());
+        assertEquals(1, subtree.get(0).getChildren().size());
+        assertEquals("孙菜单", subtree.get(0).getChildren().get(0).getMenuName());
+    }
+
+    @Test
     @DisplayName("测试运行态侧栏菜单过滤不存在实体的数据列表菜单")
     void testGetSidebarMenuTree_FiltersMissingEntityListMenus() {
         SysMenu homeMenu = new SysMenu();
@@ -112,7 +171,7 @@ class SysMenuServiceTest {
         missingByEntityCode.setMenuName("需求申请");
         missingByEntityCode.setParentId("0");
         missingByEntityCode.setSort(2);
-        missingByEntityCode.setPath("/entity/list/req01");
+        missingByEntityCode.setPath("/entity-list/req01/default");
         missingByEntityCode.setEntityCode("req01");
 
         SysMenu missingByPath = new SysMenu();
@@ -120,14 +179,14 @@ class SysMenuServiceTest {
         missingByPath.setMenuName("立项管理");
         missingByPath.setParentId("0");
         missingByPath.setSort(3);
-        missingByPath.setPath("/entity/list/project_nitiation");
+        missingByPath.setPath("/entity-list/project_nitiation/default");
 
         SysMenu validEntityMenu = new SysMenu();
         validEntityMenu.setId("valid-entity");
         validEntityMenu.setMenuName("有效实体");
         validEntityMenu.setParentId("0");
         validEntityMenu.setSort(4);
-        validEntityMenu.setPath("/entity/list/customer");
+        validEntityMenu.setPath("/entity-list/customer/default");
         validEntityMenu.setEntityCode("customer");
 
         when(menuMapper.selectList(any(LambdaQueryWrapper.class)))

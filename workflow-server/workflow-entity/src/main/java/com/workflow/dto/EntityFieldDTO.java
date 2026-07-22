@@ -5,6 +5,7 @@ import com.workflow.entity.EntityFieldFileItem;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体字段DTO
@@ -23,6 +24,10 @@ public class EntityFieldDTO {
     private Boolean isUnique;
     private String defaultValue;
     private String optionsJson;
+
+    private List<Map<String, Object>> options;
+    private String dictType;
+    private String valueStorage;
     private String validateRules;
     private Integer sortOrder;
     private Boolean isSystem;       // 是否系统字段

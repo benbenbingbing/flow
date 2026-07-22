@@ -398,6 +398,24 @@ public class ProcessTaskService {
         log.info("转办本地待办: id={}, nodeName={}, transferTo={}", 
                 task.getId(), task.getNodeName(), transferTo);
     }
+
+    /**
+     * 将 Flowable 已认领任务同步到本地待办和实体运行时字段。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void synchronizeClaimedTask(String taskId, String processInstanceId, String assignee) {
+        ProcessTask task = taskMapper.selectByTaskIdForUpdate(taskId);
+        if (task != null) {
+            task.setAssigneeId(assignee);
+            task.setAssigneeName(sysUserService.getDisplayName(assignee));
+            task.setAssigneeType("user");
+            task.setUpdateTime(LocalDateTime.now());
+            taskMapper.updateById(task);
+        } else {
+            log.warn("认领任务缺少本地待办记录: taskId={}, processInstanceId={}", taskId, processInstanceId);
+        }
+        updateEntityCurrentTask(processInstanceId);
+    }
     
     /**
      * 同步Flowable任务到本地待办

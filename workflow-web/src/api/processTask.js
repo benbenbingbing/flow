@@ -40,6 +40,42 @@ export function completeTask(data) {
 }
 
 /**
+ * 认领候选任务
+ * @param {string} taskId - 任务ID
+ */
+export function claimTask(taskId) {
+  return request.post(`/process-task/claim/${taskId}`)
+}
+
+export function getTaskOperations(taskId) {
+  return request.get(`/tasks/${taskId}/operations`)
+}
+
+export function previewAddSign(taskId, userIds, type = 'PARALLEL') {
+  return request.get(`/tasks/${taskId}/add-sign-preview`, { params: { userIds, type } })
+}
+
+export function addSignTask(taskId, data) {
+  return request.post(`/tasks/${taskId}/add-sign`, data)
+}
+
+export function cancelAddSign(addSignId) {
+  return request.post(`/add-sign/${addSignId}/cancel`)
+}
+
+export function ccTask(taskId, data) {
+  return request.post(`/tasks/${taskId}/cc`, data)
+}
+
+export function getMyCcList(params) {
+  return request.get('/process-cc/my-cc', { params })
+}
+
+export function markCcRead(ccId) {
+  return request.post(`/process-cc/read/${ccId}`)
+}
+
+/**
  * 撤回流程
  * @param {Object} data - 撤回参数 {processInstanceId, reason}
  */
@@ -105,6 +141,14 @@ export const processTaskApi = {
   getStatistics,
   getTaskDetail,
   completeTask,
+  claimTask,
+  getTaskOperations,
+  previewAddSign,
+  addSignTask,
+  cancelAddSign,
+  ccTask,
+  getMyCcList,
+  markCcRead,
   withdrawProcess,
   getProcessHistory,
   getMyStartedList,

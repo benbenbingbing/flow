@@ -323,8 +323,8 @@ export default {
               ],
               rows: [
                 { role: '执行人 assignee', runtime: '任务创建后直接归属一个用户，进入其待办。', recommendation: '责任人明确且无需认领时使用。' },
-                { role: '候选人 candidateUsers', runtime: '多个用户都可见任务，通常需先认领再办理。', recommendation: '小范围共享待办时使用。' },
-                { role: '候选组 candidateGroups', runtime: '组或角色成员可见并认领。', recommendation: '按组织角色分配时使用；避免组过大导致所有人看到大量待办。' },
+                { role: '候选人 candidateUsers', runtime: '多个用户都可见任务；在工作台点击“认领”后写入当前办理人，才能审批、转办或加签。', recommendation: '小范围共享待办时使用；并发认领只有第一个用户成功，其他用户收到冲突提示。' },
+                { role: '候选组 candidateGroups', runtime: '组或角色成员可见任务；认领后任务从共享池转为个人待办。', recommendation: '按组织角色分配时使用；避免组过大导致所有人看到大量待办。' },
                 { role: '接口动态', runtime: '运行时根据业务数据解析一个或多个处理人。', recommendation: '组织规则复杂或需要外部主数据时使用，并准备空结果兜底。' }
               ]
             },

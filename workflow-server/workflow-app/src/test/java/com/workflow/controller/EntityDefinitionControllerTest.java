@@ -154,14 +154,16 @@ public class EntityDefinitionControllerTest {
     }
 
     @Test
-    void testBindProcess() throws Exception {
-        when(entityService.bindProcess("1", "2")).thenReturn(testEntity);
+    void testBindWorkflow() throws Exception {
+        when(entityService.bindWorkflow("1", "2")).thenReturn(testEntity);
 
-        mockMvc.perform(post("/api/entity/1/bind-process/2"))
+        mockMvc.perform(put("/api/entity/1/workflow-binding")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processDefinitionId\":\"2\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"));
 
-        verify(entityService, times(1)).bindProcess("1", "2");
+        verify(entityService, times(1)).bindWorkflow("1", "2");
     }
 }

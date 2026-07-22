@@ -47,8 +47,15 @@ public class EntityPermissionCatalogService {
 
     public List<EntityPermissionOptionDTO> getOptions(String entityCode) {
         String normalizedCode = EntityPermissionAction.normalizeEntityCode(entityCode);
+        EntityDefinition entity = definitionMapper.findByEntityCode(entityCode).orElse(null);
+        if (entity != null && entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            return List.of();
+        }
         List<EntityPermissionOptionDTO> options = new ArrayList<>();
         for (EntityPermissionAction action : EntityPermissionAction.values()) {
+            if (!supportsAction(entity, action)) {
+                continue;
+            }
             options.add(new EntityPermissionOptionDTO(
                     action.getCode(),
                     action.permissionCode(normalizedCode),
@@ -56,6 +63,12 @@ public class EntityPermissionCatalogService {
                     action.getDescription(),
                     "STANDARD"));
         }
+        options.add(new EntityPermissionOptionDTO(
+                "scope-bypass",
+                scopeBypassPermission(normalizedCode),
+                "绕过数据范围",
+                "访问该实体全部数据，仅应授予超级管理员",
+                "SYSTEM"));
         Set<String> existingPerms = menuMapper.selectPermsByEntityCode(entityCode);
         existingPerms.stream()
                 .filter(StringUtils::hasText)
@@ -97,6 +110,9 @@ public class EntityPermissionCatalogService {
 
         SysMenu root = ensureRootMenu();
         for (EntityDefinition entity : entities) {
+            if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+                continue;
+            }
             synchronizeEntity(entity, root, administratorRoles);
         }
 
@@ -116,6 +132,9 @@ public class EntityPermissionCatalogService {
     @Transactional(rollbackFor = Exception.class)
     public void synchronizeEntity(EntityDefinition entity) {
         if (entity == null || !StringUtils.hasText(entity.getEntityCode())) {
+            return;
+        }
+        if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
             return;
         }
         List<SysRole> administratorRoles = roleMapper.selectAdministratorRoles();
@@ -149,6 +168,9 @@ public class EntityPermissionCatalogService {
         if (entity == null) {
             return;
         }
+        if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
         List<SysRole> administratorRoles = roleMapper.selectAdministratorRoles();
         SysMenu container = ensureEntityContainer(ensureRootMenu(), entity);
         List<java.util.Map<String, Object>> buttons = new ArrayList<>();
@@ -168,6 +190,14 @@ public class EntityPermissionCatalogService {
                     container, entity, permissionCode, label);
             grantToAdministrators(permissionMenu.getId(), administratorRoles);
         }
+        if (StringUtils.hasText(config.getAccessPermissionCode())) {
+            SysMenu permissionMenu = ensureCustomPermissionMenu(
+                    container,
+                    entity,
+                    config.getAccessPermissionCode(),
+                    config.getListName() + "访问");
+            grantToAdministrators(permissionMenu.getId(), administratorRoles);
+        }
     }
 
     private void synchronizeEntity(
@@ -176,10 +206,70 @@ public class EntityPermissionCatalogService {
             List<SysRole> administratorRoles) {
         SysMenu container = ensureEntityContainer(root, entity);
         for (EntityPermissionAction action : EntityPermissionAction.values()) {
+            if (!supportsAction(entity, action)) {
+                disablePermission(entity, action);
+                continue;
+            }
             SysMenu permissionMenu = ensurePermissionMenu(container, entity, action);
             grantToAdministrators(permissionMenu.getId(), administratorRoles);
         }
-        ensureWithdrawnStatus(entity);
+        SysMenu bypassMenu = ensureScopeBypassPermissionMenu(container, entity);
+        grantToSuperAdministrators(bypassMenu.getId(), administratorRoles);
+        ensureInitialStatus(entity);
+        if (entity.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW) {
+            ensureWorkflowStatuses(entity);
+        }
+    }
+
+    private SysMenu ensureScopeBypassPermissionMenu(
+            SysMenu container,
+            EntityDefinition entity) {
+        String perm = scopeBypassPermission(entity.getEntityCode());
+        SysMenu menu = menuMapper.selectByPerm(perm);
+        if (menu == null) {
+            menu = new SysMenu();
+            menu.setParentId(container.getId());
+            menu.setMenuType("F");
+            menu.setPath("");
+            menu.setComponent("");
+            menu.setVisible("1");
+            menu.setSort(EntityPermissionAction.values().length + 1);
+            menu.setIsFrame("0");
+            menu.setIsCache("0");
+            menu.setCreateTime(LocalDateTime.now());
+        }
+        menu.setMenuName("绕过数据范围");
+        menu.setPerm(perm);
+        menu.setEntityCode(entity.getEntityCode());
+        menu.setStatus("0");
+        menu.setUpdateTime(LocalDateTime.now());
+        if (StringUtils.hasText(menu.getId())) {
+            menuMapper.updateById(menu);
+        } else {
+            menuMapper.insert(menu);
+        }
+        return menu;
+    }
+
+    private void grantToSuperAdministrators(
+            String menuId,
+            List<SysRole> administratorRoles) {
+        administratorRoles.stream()
+                .filter(role -> "super_admin".equals(role.getRoleCode()))
+                .forEach(role -> {
+                    if (!roleMenuMapper.existsRoleMenu(role.getId(), menuId)) {
+                        SysRoleMenu relation = new SysRoleMenu();
+                        relation.setRoleId(role.getId());
+                        relation.setMenuId(menuId);
+                        relation.setCreateTime(LocalDateTime.now());
+                        roleMenuMapper.insert(relation);
+                    }
+                });
+    }
+
+    private String scopeBypassPermission(String entityCode) {
+        return "entity:" + EntityPermissionAction.normalizeEntityCode(entityCode)
+                + ":scope:bypass";
     }
 
     private SysMenu ensureRootMenu() {
@@ -307,22 +397,56 @@ public class EntityPermissionCatalogService {
                 });
     }
 
-    private void ensureWithdrawnStatus(EntityDefinition entity) {
-        if (!Boolean.TRUE.equals(entity.getEnableProcess())) {
+    private boolean supportsAction(EntityDefinition entity, EntityPermissionAction action) {
+        if (entity != null && entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            return false;
+        }
+        return action != EntityPermissionAction.APPROVE
+                || entity == null
+                || entity.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW;
+    }
+
+    private void disablePermission(EntityDefinition entity, EntityPermissionAction action) {
+        SysMenu menu = menuMapper.selectByPerm(action.permissionCode(entity.getEntityCode()));
+        if (menu == null) {
             return;
         }
-        List<EntityStatus> withdrawn = statusMapper.findByCategory(entity.getEntityCode(), "WITHDRAWN");
-        if (withdrawn != null && !withdrawn.isEmpty()) {
+        menu.setStatus("1");
+        menu.setUpdateTime(LocalDateTime.now());
+        menuMapper.updateById(menu);
+    }
+
+    private void ensureInitialStatus(EntityDefinition entity) {
+        ensureStatus(entity, "NEW", "DRAFT", "草稿", 10, "新建或尚未处理的数据", "info");
+    }
+
+    private void ensureWorkflowStatuses(EntityDefinition entity) {
+        ensureStatus(entity, "PROCESSING", "PENDING", "处理中", 20, "流程处理中", "warning");
+        ensureStatus(entity, "COMPLETED", "APPROVED", "已完成", 30, "流程已正常完成", "success");
+        ensureStatus(entity, "TERMINATED", "TERMINATED", "已终止", 40, "流程已终止", "danger");
+        ensureStatus(entity, "WITHDRAWN", "WITHDRAWN", "已撤回", 50, "流程由发起人撤回", "info");
+    }
+
+    private void ensureStatus(
+            EntityDefinition entity,
+            String category,
+            String code,
+            String name,
+            int sort,
+            String description,
+            String color) {
+        List<EntityStatus> existing = statusMapper.findByCategory(entity.getEntityCode(), category);
+        if (existing != null && !existing.isEmpty()) {
             return;
         }
         EntityStatus status = new EntityStatus();
         status.setEntityCode(entity.getEntityCode());
-        status.setStatusCode("WITHDRAWN");
-        status.setStatusName("已撤回");
-        status.setStatusCategory("WITHDRAWN");
-        status.setSortOrder(999);
-        status.setDescription("流程由发起人撤回");
-        status.setColor("info");
+        status.setStatusCode(code);
+        status.setStatusName(name);
+        status.setStatusCategory(category);
+        status.setSortOrder(sort);
+        status.setDescription(description);
+        status.setColor(color);
         status.setDeleted(0);
         statusMapper.insert(status);
     }

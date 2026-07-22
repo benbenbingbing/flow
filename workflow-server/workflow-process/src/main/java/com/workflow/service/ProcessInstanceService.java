@@ -1,8 +1,12 @@
 package com.workflow.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.PageResult;
 import com.workflow.common.Result;
+import com.workflow.delegate.ConfiguredTaskPropertyReader;
 import com.workflow.dto.ProcessProgressDTO;
+import com.workflow.dto.ReceiveTaskTriggerRequest;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.runtime.ProcessDetailRuntimeService;
@@ -32,6 +36,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class ProcessInstanceService {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     
     private final RuntimeService runtimeService;
     private final HistoryService historyService;
@@ -71,6 +77,82 @@ public class ProcessInstanceService {
      */
     public String getBpmnXmlByProcessInstanceId(String processInstanceId) {
         return getBpmnXmlByInstanceId(processInstanceId);
+    }
+
+    public String triggerReceiveTask(
+            String processInstanceId,
+            ReceiveTaskTriggerRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("接收任务触发参数不能为空");
+        }
+        ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .singleResult();
+        if (processInstance == null) {
+            throw new IllegalArgumentException("流程实例不存在或已结束: " + processInstanceId);
+        }
+
+        Execution execution = resolveReceiveExecution(processInstanceId, request);
+        org.flowable.bpmn.model.FlowElement flowElement = repositoryService
+                .getBpmnModel(processInstance.getProcessDefinitionId())
+                .getFlowElement(execution.getActivityId());
+        if (!(flowElement instanceof org.flowable.bpmn.model.ReceiveTask)) {
+            throw new IllegalArgumentException("当前执行不在接收任务节点: " + execution.getActivityId());
+        }
+        validateReceiveMessage(flowElement, request.getMessageRef());
+        Map<String, Object> variables = request.getVariables() == null
+                ? Map.of()
+                : request.getVariables();
+        runtimeService.trigger(execution.getId(), variables);
+        return execution.getId();
+    }
+
+    private Execution resolveReceiveExecution(
+            String processInstanceId,
+            ReceiveTaskTriggerRequest request) {
+        if (request.getExecutionId() != null && !request.getExecutionId().isBlank()) {
+            Execution execution = runtimeService.createExecutionQuery()
+                    .executionId(request.getExecutionId())
+                    .singleResult();
+            if (execution == null || !processInstanceId.equals(execution.getProcessInstanceId())) {
+                throw new IllegalArgumentException("执行实例不存在或不属于当前流程: " + request.getExecutionId());
+            }
+            return execution;
+        }
+        if (request.getActivityId() == null || request.getActivityId().isBlank()) {
+            throw new IllegalArgumentException("activityId 与 executionId 至少填写一个");
+        }
+        List<Execution> executions = runtimeService.createExecutionQuery()
+                .processInstanceId(processInstanceId)
+                .activityId(request.getActivityId())
+                .list();
+        if (executions.isEmpty()) {
+            throw new IllegalArgumentException("接收任务未处于等待状态: " + request.getActivityId());
+        }
+        if (executions.size() > 1) {
+            throw new IllegalArgumentException("存在多个接收任务执行实例，请指定 executionId");
+        }
+        return executions.get(0);
+    }
+
+    private void validateReceiveMessage(
+            org.flowable.bpmn.model.FlowElement flowElement,
+            String messageRef) {
+        String configDocument = ConfiguredTaskPropertyReader.read(flowElement, "receiveConfig");
+        if (configDocument == null || configDocument.isBlank()) {
+            return;
+        }
+        try {
+            JsonNode config = OBJECT_MAPPER.readTree(configDocument);
+            String expected = config.path("messageRef").asText("");
+            if (!expected.isBlank() && !expected.equals(messageRef)) {
+                throw new IllegalArgumentException("消息标识不匹配，期望: " + expected);
+            }
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("接收任务配置无效: " + exception.getMessage(), exception);
+        }
     }
     
     /**

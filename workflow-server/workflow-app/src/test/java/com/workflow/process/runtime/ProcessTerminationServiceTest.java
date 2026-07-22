@@ -117,7 +117,8 @@ class ProcessTerminationServiceTest {
         ProcessTerminationService service() {
             return new ProcessTerminationService(
                     runtimeService, historyService, dynamicTableService, entityDataDynamicMapper,
-                    entityStatusMapper, operationLogMapper, processTaskService, sysUserService);
+                    entityStatusMapper, operationLogMapper, processTaskService, sysUserService,
+                    mock(com.workflow.service.EntityRecordTeamService.class));
         }
     }
 }

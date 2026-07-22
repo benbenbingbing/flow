@@ -13,6 +13,7 @@
     "test:ui-config": "node scripts/ui-config-audit.mjs",
     "test:e2e:mock": "npm run build && node scripts/e2e-mock-pages.mjs",
     "test:functional": "node --loader ./scripts/test-alias-loader.mjs src/__tests__/functional.spec.js",
+    "test:real-ui-config": "node scripts/real-ui-config-release.mjs",
     "test:visual:real": "node scripts/visual-acceptance-real.mjs",
     "test:workflow:real": "node scripts/e2e-real-workflow.mjs",
     "test:workflow:config-real": "node scripts/real-workflow-config-closure.mjs",

@@ -165,7 +165,9 @@ async function main() {
     ]
   })
   await api('POST', `/entity/${entity.id}/publish`)
-  await api('POST', `/entity/${entity.id}/bind-process/${process.id}`)
+  await api('PUT', `/entity/${entity.id}/workflow-binding`, {
+    processDefinitionId: process.id
+  })
   await api('POST', `/entity-status/save-list/${entityCode}`, [
     { statusCode: 'DRAFT', statusName: '草稿', statusCategory: 'NEW', color: '#909399' },
     { statusCode: 'IN_REVIEW', statusName: '审批中', statusCategory: 'PROCESSING', color: '#409eff' },

@@ -214,7 +214,9 @@ async function main() {
   await api('POST', `/process/${process.id}/publish`, {
     versionDescription: '节点表单矩阵发布'
   })
-  await api('POST', `/entity/${entity.id}/bind-process/${process.id}`)
+  await api('PUT', `/entity/${entity.id}/workflow-binding`, {
+    processDefinitionId: process.id
+  })
   record('createPublishBindProcess', { processId: process.id, processKey })
 
   const bindings = await api('GET', `/process-node-form/process/${process.id}`)

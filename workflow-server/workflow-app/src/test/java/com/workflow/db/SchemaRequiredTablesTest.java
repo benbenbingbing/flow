@@ -94,6 +94,33 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("001"), "baseline schema migration must be V001");
         assertTrue(versions.contains("002"), "built-in seed migration must be V002");
         assertTrue(versions.contains("017"), "database naming isolation must be V017");
+        assertTrue(versions.contains("018"), "entity list runtime migration must be V018");
+        assertTrue(versions.contains("019"), "entity lifecycle migration must be V019");
+        assertTrue(versions.contains("020"), "system entity catalog migration must be V020");
+        assertTrue(versions.contains("025"), "portable JSON document migration must be V025");
+        assertTrue(versions.contains("026"), "dynamic entity collation migration must be V026");
+        assertTrue(versions.contains("030"), "incremental UI configuration migration must be V030");
+        assertTrue(versions.contains("031"), "UI extension registry migration must be V031");
+    }
+
+    @Test
+    void entityListRuntimeMigrationCreatesScopeTablesAndCanonicalMenuFields() throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V018__unify_entity_list_runtime_and_scope.sql");
+        assertTrue(Files.exists(migration), "V018 entity list runtime migration must exist");
+        String sql = Files.readString(migration);
+        for (String table : List.of(
+                "entity_list_scope_policy",
+                "entity_list_scope_binding",
+                "entity_list_scope_release",
+                "entity_list_scope_audit_log",
+                "entity_list_scope_delegation")) {
+            assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS " + table),
+                    "V018 must create " + table);
+        }
+        assertTrue(sql.contains("'sys_menu',\n  'resource_type'"));
+        assertTrue(sql.contains("'sys_menu',\n  'list_key'"));
+        assertTrue(sql.contains("DROP TABLE IF EXISTS entity_list_permission"));
     }
 
     @Test
@@ -132,5 +159,71 @@ class SchemaRequiredTablesTest {
                 "V012 must create an F type list permission resource");
         assertTrue(permissionSql.contains("'config-migration:list'"),
                 "V012 must grant config-migration:list");
+    }
+
+    @Test
+    void entityLifecycleAndSystemCatalogMigrationsExist() throws Exception {
+        String lifecycleSql = Files.readString(Path.of(
+                "src/main/resources/db/migration/V019__support_standalone_entity_lifecycle.sql"));
+        assertTrue(lifecycleSql.contains("lifecycle_mode"));
+        assertTrue(lifecycleSql.contains("DROP COLUMN enable_process"));
+        assertTrue(lifecycleSql.contains("entity_publish_history"));
+
+        String storageSql = Files.readString(Path.of(
+                "src/main/resources/db/migration/V020__catalog_system_entities.sql"));
+        assertTrue(storageSql.contains("storage_mode"));
+        assertTrue(storageSql.contains("tables.TABLE_NAME LIKE 'sys\\_%'"));
+        assertTrue(storageSql.contains("'SYSTEM'"));
+        assertTrue(storageSql.contains("information_schema.COLUMNS"));
+    }
+
+    @Test
+    void incrementalUiConfigurationMigrationCreatesRequiredTables() throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V030__add_incremental_ui_configuration.sql");
+        assertTrue(Files.exists(migration), "V030 UI configuration migration must exist");
+        String sql = Files.readString(migration);
+        for (String table : List.of(
+                "entity_form_node",
+                "ui_config_release",
+                "ui_data_source_definition",
+                "ui_component_template",
+                "ui_component_template_version")) {
+            assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS " + table),
+                    "V030 must create " + table);
+        }
+        for (String column : List.of(
+                "'revision'",
+                "'active_release_id'",
+                "'query_data_source_id'",
+                "'data_source_id'",
+                "'order_key'")) {
+            assertTrue(sql.contains(column), "V030 must add " + column);
+        }
+        assertTrue(sql.contains("snapshot_document longtext NOT NULL"));
+        assertTrue(sql.contains("content_hash varchar(64) NOT NULL"));
+    }
+
+    @Test
+    void uiExtensionRegistryMigrationCreatesManifestAndVersionBindings()
+            throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V031__add_ui_extension_registry.sql");
+        assertTrue(Files.exists(migration),
+                "V031 UI extension registry migration must exist");
+        String sql = Files.readString(migration);
+        assertTrue(sql.contains(
+                "CREATE TABLE IF NOT EXISTS ui_extension_definition"));
+        for (String column : List.of(
+                "'custom_component_version'",
+                "'custom_component_snapshot_version'",
+                "'component_name'",
+                "'component_version'",
+                "'snapshot_version'")) {
+            assertTrue(sql.contains(column), "V031 must add " + column);
+        }
+        assertTrue(sql.contains(
+                "UNIQUE KEY uk_ui_extension_version "
+                        + "(extension_type, extension_key, version, deleted)"));
     }
 }

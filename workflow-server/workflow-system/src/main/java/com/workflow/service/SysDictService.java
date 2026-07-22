@@ -14,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 字典类型服务
@@ -116,6 +118,44 @@ public class SysDictService {
         }
 
         return dict;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public SysDict createWithItems(SysDict dict, List<SysDictItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("代码项不能为空");
+        }
+        Set<String> itemCodes = new HashSet<>();
+        for (SysDictItem item : items) {
+            if (!StringUtils.hasText(item.getItemCode())
+                    || !StringUtils.hasText(item.getItemLabel())) {
+                throw new IllegalArgumentException("代码项编码和名称不能为空");
+            }
+            if (!itemCodes.add(item.getItemCode())) {
+                throw new IllegalArgumentException("代码项编码重复：" + item.getItemCode());
+            }
+        }
+        SysDict saved = saveDict(dict);
+        LocalDateTime now = LocalDateTime.now();
+        for (int index = 0; index < items.size(); index++) {
+            SysDictItem item = items.get(index);
+            item.setId(null);
+            item.setDictId(saved.getId());
+            item.setDictCode(saved.getDictCode());
+            item.setItemValue(StringUtils.hasText(item.getItemValue())
+                    ? item.getItemValue()
+                    : item.getItemCode());
+            item.setParentId(StringUtils.hasText(item.getParentId()) ? item.getParentId() : "0");
+            item.setStatus(StringUtils.hasText(item.getStatus())
+                    ? item.getStatus()
+                    : SysDictItem.Status.ENABLED.getValue());
+            item.setSort(item.getSort() == null ? (index + 1) * 10 : item.getSort());
+            item.setCreateTime(now);
+            item.setUpdateTime(now);
+            dictItemMapper.insert(item);
+        }
+        dictCacheService.reload();
+        return saved;
     }
 
     /**

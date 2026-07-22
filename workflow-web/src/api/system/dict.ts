@@ -22,6 +22,10 @@ export const createDict = (data: any) => {
   return request.post('/system/dict', data)
 }
 
+export const createDictWithItems = (data: any) => {
+  return request.post('/system/dict/with-items', data)
+}
+
 // 更新字典类型
 export const updateDict = (id: string, data: any) => {
   return request.put(`/system/dict/${id}`, data)

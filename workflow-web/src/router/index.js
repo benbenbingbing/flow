@@ -66,10 +66,10 @@ const routes = [
         component: () => import('@/views/EntityDataManage.vue'),
         meta: { title: '数据管理' }
       },
-      // 通用实体数据列表（用于菜单跳转）
+      // entityCode + listKey 驱动的通用实体列表
       {
-        path: '/entity/list/:entityCode',
-        name: 'EntityDataList',
+        path: '/entity-list/:entityCode/:listKey',
+        name: 'EntityListRuntime',
         component: () => import('@/views/entity/EntityDataList.vue'),
         meta: { title: '实体数据列表' }
       },
@@ -229,22 +229,6 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  if (to.name === 'EntityDataList') {
-    const entityCode = String(to.params?.entityCode || '').toLowerCase()
-    const requiredPermission = `entity:${entityCode}:list`
-    if (!userStore.permissions.includes(requiredPermission)) {
-      try {
-        const permissions = await getPermissions()
-        userStore.setPermissions(permissions || [])
-      } catch (e) {}
-    }
-    if (!userStore.permissions.includes(requiredPermission)) {
-      ElMessage.warning('没有权限访问该实体列表')
-      next('/home')
-      return
-    }
-  }
-  
   // 拦截被禁用的菜单路径
   try {
     const disabledPaths = JSON.parse(localStorage.getItem('disabled_menu_paths') || '[]')

@@ -6,23 +6,37 @@
           <el-icon><ArrowLeft /></el-icon>返回
         </el-button>
         <span class="entity-name">{{ entityData.entityName || '实体设计' }}</span>
+        <el-tag :type="isWorkflowEntityMode ? 'success' : 'info'" effect="plain">
+          {{ isWorkflowEntityMode ? '流程实体' : '独立业务实体' }}
+        </el-tag>
+        <el-tag v-if="isSystemEntity" type="warning" effect="plain">平台系统表</el-tag>
       </div>
       <div class="header-right">
-        <el-button @click="codeRuleVisible = true">
+        <el-button v-if="!isSystemEntity" @click="codeRuleVisible = true">
           <el-icon><Ticket /></el-icon>编码规则
         </el-button>
-        <el-button @click="permissionVisible = true">
+        <el-button v-if="!isSystemEntity" @click="permissionVisible = true">
           <el-icon><Lock /></el-icon>数据权限
         </el-button>
-        <el-button type="primary" @click="handleSave">
+        <el-button v-if="!isSystemEntity" type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>保存
         </el-button>
       </div>
     </div>
 
+    <el-alert
+      v-if="isSystemEntity"
+      title="平台系统实体仅用于统一目录和结构查看"
+      description="字段来自现有 sys_* 物理表并由系统自动同步。这里不能新增字段、发布 DDL、配置通用表单列表或绑定流程。"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="system-entity-alert"
+    />
+
     <div class="design-body">
       <!-- 字段类型面板 -->
-      <div class="field-types-panel">
+      <div v-if="!isSystemEntity" class="field-types-panel">
         <div class="panel-title">字段类型</div>
         <div class="field-type-list">
           <div
@@ -43,13 +57,13 @@
       <div class="fields-panel">
         <div class="panel-title">
           字段列表
-          <el-button type="primary" size="small" @click="handleAddField()">
+          <el-button v-if="!isSystemEntity" type="primary" size="small" @click="handleAddField()">
             <el-icon><Plus /></el-icon>添加
           </el-button>
         </div>
         <div class="fields-list">
           <div
-            v-for="(field, index) in fields"
+            v-for="(field, index) in displayFields"
             :key="field.id || index"
             class="field-item"
             :class="{ active: selectedField === field }"
@@ -66,13 +80,13 @@
               <el-tag v-if="field.isPublished" type="success" size="small" effect="plain" title="该字段已发布到数据库">已发布</el-tag>
               <el-tag v-else-if="!field.isSystem" type="warning" size="small" effect="plain">未发布</el-tag>
             </div>
-            <div class="field-actions">
-              <el-icon class="action-btn" @click.stop="moveField(index, -1)"><ArrowUp /></el-icon>
-              <el-icon class="action-btn" @click.stop="moveField(index, 1)"><ArrowDown /></el-icon>
+            <div v-if="!isSystemEntity" class="field-actions">
+              <el-icon class="action-btn" @click.stop="moveField(field, -1)"><ArrowUp /></el-icon>
+              <el-icon class="action-btn" @click.stop="moveField(field, 1)"><ArrowDown /></el-icon>
               <el-icon 
                 v-if="!field.isSystem && !field.isPublished" 
                 class="action-btn delete" 
-                @click.stop="deleteField(index)"
+                @click.stop="deleteField(field)"
                 title="删除字段"
               ><Delete /></el-icon>
             </div>
@@ -81,7 +95,7 @@
       </div>
 
       <!-- 字段属性配置 -->
-      <div class="property-panel">
+      <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity }">
         <div class="panel-title">属性配置</div>
         <el-form v-if="selectedField" :model="selectedField" label-width="90px" size="small">
           <el-form-item label="字段名称" required>
@@ -174,14 +188,35 @@
             <el-input v-model="selectedField.defaultValue" :placeholder="showOptions ? '请输入选项的 value 值（如 1）' : '请输入默认值'" />
             <div v-if="showOptions" class="form-tip">默认值应填写选项的 value（key），而非显示文本 label</div>
           </el-form-item>
-          <el-form-item label="选项配置" v-if="showOptions">
-            <el-input
-              v-model="optionsText"
-              type="textarea"
-              rows="4"
-              placeholder="每行一个选项，格式：value:label"
-            />
-          </el-form-item>
+          <template v-if="showOptions">
+            <el-form-item label="选项来源" required>
+              <el-radio-group v-model="selectedField.optionSource">
+                <el-radio-button label="DICT">系统代码表</el-radio-button>
+                <el-radio-button label="LEGACY_INLINE" disabled>旧内嵌选项</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="selectedField.optionSource === 'DICT'" label="代码表" required>
+              <el-select
+                v-model="selectedField.dictType"
+                filterable
+                placeholder="选择系统代码表"
+                style="width: calc(100% - 88px)"
+              >
+                <el-option
+                  v-for="dict in dictOptions"
+                  :key="dict.dictCode"
+                  :label="`${dict.dictName} (${dict.dictCode})`"
+                  :value="dict.dictCode"
+                />
+              </el-select>
+              <el-button style="margin-left: 8px" @click="openQuickDictDialog">新建</el-button>
+              <div class="form-tip">数据保存代码项编码，显示名称从代码表关联解析。</div>
+            </el-form-item>
+            <el-form-item v-else label="旧选项">
+              <el-input v-model="optionsText" type="textarea" rows="4" disabled />
+              <div class="form-tip text-warning">旧内嵌选项仅用于兼容，请迁移到系统代码表。</div>
+            </el-form-item>
+          </template>
           <el-form-item label="验证规则">
             <el-input
               v-model="selectedField.validateRules"
@@ -292,34 +327,37 @@
           <!-- 实体引用配置 -->
           <template v-if="isReference">
             <el-divider>实体引用配置</el-divider>
-            <el-form-item label="引用类型" required>
-              <el-select 
-                v-model="selectedField.refEntityType" 
-                placeholder="选择引用类型"
-                style="width: 100%"
-              >
-                <el-option label="用户自定义实体" value="CUSTOM" />
-                <el-option label="系统用户" value="USER" />
-                <el-option label="系统部门" value="DEPT" />
-                <el-option label="系统角色" value="ROLE" />
-                <el-option label="系统用户组" value="GROUP" />
-              </el-select>
-              <div class="form-tip">选择要引用的实体类型</div>
-            </el-form-item>
-            <el-form-item label="关联实体" v-if="selectedField.refEntityType === 'CUSTOM'" required>
+            <el-form-item label="关联实体" required>
               <el-select 
                 v-model="selectedField.refEntityId" 
                 placeholder="选择关联实体"
                 style="width: 100%"
+                filterable
+                @change="onReferenceEntityChange"
               >
                 <el-option
                   v-for="entity in availableEntities"
                   :key="entity.id"
-                  :label="entity.entityName"
+                  :label="`${entity.entityName} (${entity.entityCode})`"
                   :value="entity.id"
                 />
               </el-select>
-              <div class="form-tip">选择用户自定义的业务实体</div>
+              <div class="form-tip">业务实体和平台系统实体使用同一套引用模型。</div>
+            </el-form-item>
+            <el-form-item label="显示字段" v-if="selectedField.refEntityId">
+              <el-select
+                v-model="selectedField.refFieldCode"
+                placeholder="默认使用 name"
+                style="width: 100%"
+                filterable
+              >
+                <el-option
+                  v-for="field in refEntityFields"
+                  :key="field.fieldCode"
+                  :label="`${field.fieldName || field.fieldCode} (${field.fieldCode})`"
+                  :value="field.fieldCode"
+                />
+              </el-select>
             </el-form-item>
           </template>
         </el-form>
@@ -391,22 +429,87 @@
   <!-- 数据权限配置对话框 -->
   <el-dialog v-model="permissionVisible" title="数据权限配置" width="900px" :close-on-click-modal="false">
     <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-      配置当前实体列表的数据查看权限。没有配置规则时，默认仅允许查看本人创建的数据。
+      配置“谁在什么列表能看到哪些数据”。保存只更新草稿，发布后才影响运行时；没有匹配的允许方案时默认拒绝全部数据。
     </el-alert>
+    <el-card shadow="never" style="margin-bottom: 16px">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span>数据参与团队</span>
+          <el-button size="small" type="primary" @click="handleSave">保存实体配置</el-button>
+        </div>
+      </template>
+      <el-form label-width="150px" size="small">
+        <el-form-item label="参与后允许查看">
+          <el-switch v-model="entityData.teamVisibilityEnabled" />
+          <span class="form-tip" style="margin-left: 12px">
+            所有人工操作始终形成参与事件；此开关只控制参与记录是否授予查看权限。
+          </span>
+        </el-form-item>
+        <el-form-item v-if="entityData.teamVisibilityEnabled" label="权限覆盖级别">
+          <el-select v-model="entityData.teamVisibilityLevel" style="width: 260px">
+            <el-option label="附加授权（列表收窄和拒绝仍生效）" value="ADDITIVE" />
+            <el-option label="覆盖普通数据范围（拒绝仍生效）" value="OVERRIDE_SCOPE" />
+            <el-option label="绝对参与授权（覆盖业务拒绝）" value="ABSOLUTE" />
+          </el-select>
+        </el-form-item>
+        <el-alert
+          v-if="entityData.teamVisibilityEnabled"
+          type="warning"
+          :closable="false"
+          title="配置保存后还需要重新发布实体，运行时才会建表并启用新版本。该能力只授予查看，不授予编辑、删除或审批。"
+        />
+      </el-form>
+    </el-card>
     <div class="permission-header">
       <el-button type="primary" size="small" @click="handleAddPermission">
         <el-icon><Plus /></el-icon>添加规则
       </el-button>
+      <el-select
+        v-model="simulationUserId"
+        filterable
+        clearable
+        placeholder="选择模拟用户"
+        size="small"
+        style="width: 220px"
+        @visible-change="visible => visible && loadSelectorOptions()"
+      >
+        <el-option v-for="opt in userOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+      </el-select>
       <el-button size="small" @click="handlePreviewPermissionSql('')">
-        <el-icon><View /></el-icon>预览 SQL
+        <el-icon><View /></el-icon>模拟默认列表
+      </el-button>
+      <el-button type="success" size="small" @click="publishPermissions">
+        发布数据范围
       </el-button>
     </div>
+    <el-table
+      v-if="availableListConfigs.length"
+      :data="availableListConfigs"
+      border
+      size="small"
+      style="margin-top: 12px"
+    >
+      <el-table-column prop="listName" label="列表" min-width="140" />
+      <el-table-column prop="listKey" label="listKey" min-width="130" />
+      <el-table-column label="范围模式" width="130">
+        <template #default="{ row }">
+          <el-tag :type="row.dataScopeMode === 'OVERRIDE' ? 'danger' : row.dataScopeMode === 'NARROW' ? 'warning' : 'info'">
+            {{ getScopeModeLabel(row.dataScopeMode) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="允许绑定" width="90" align="center">
+        <template #default="{ row }">{{ countListBindings(row.listKey, 'ALLOW') }}</template>
+      </el-table-column>
+      <el-table-column label="拒绝绑定" width="90" align="center">
+        <template #default="{ row }">{{ countListBindings(row.listKey, 'DENY') }}</template>
+      </el-table-column>
+    </el-table>
     <el-table :data="permissionList" border size="small" style="margin-top: 12px">
       <el-table-column prop="ruleName" label="规则名称" width="140" />
-      <el-table-column prop="priority" label="优先级" width="70" align="center" />
       <el-table-column label="适用列表" width="120" align="center">
         <template #default="{ row }">
-          <span>{{ getListConfigName(row.listConfigId) || '全部' }}</span>
+          <span>{{ getListConfigName(row.listKey) || '实体默认' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="匹配范围" min-width="160">
@@ -417,16 +520,6 @@
       <el-table-column label="效果" width="80" align="center">
         <template #default="{ row }">
           <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="合并" width="80" align="center">
-        <template #default="{ row }">
-          <span>{{ row.combineMode === 'INTERSECT' ? '交集' : '并集' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="停止" width="70" align="center">
-        <template #default="{ row }">
-          <span>{{ row.stopProcessing === 1 ? '是' : '否' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="数据范围" width="120" align="center">
@@ -442,7 +535,7 @@
       <el-table-column label="操作" width="200" align="center" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
-          <el-button size="small" text @click="handlePreviewRuleSql(row)">预览SQL</el-button>
+          <el-button size="small" text @click="handlePreviewPermissionSql(row.listKey)">模拟</el-button>
           <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -456,30 +549,16 @@
         <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
       </el-form-item>
       <el-form-item label="适用列表">
-        <el-select v-model="permissionForm.listConfigId" placeholder="留空表示对该实体所有列表生效" clearable style="width: 100%">
-          <el-option label="全部列表" value="" />
-          <el-option v-for="config in availableListConfigs" :key="config.id" :label="config.listName || config.listKey" :value="config.id" />
+        <el-select v-model="permissionForm.listKey" placeholder="留空表示实体默认范围" clearable style="width: 100%">
+          <el-option label="实体默认范围" value="" />
+          <el-option v-for="config in availableListConfigs" :key="config.listKey" :label="config.listName || config.listKey" :value="config.listKey" />
         </el-select>
-      </el-form-item>
-      <el-form-item label="优先级">
-        <el-input-number v-model="permissionForm.priority" :min="0" :max="9999" style="width: 120px" />
-        <span class="form-tip" style="margin-left: 8px">数字越大优先级越高</span>
       </el-form-item>
       <el-form-item label="规则效果">
         <el-radio-group v-model="permissionForm.ruleEffect">
           <el-radio-button label="ALLOW">允许（放行并附加范围）</el-radio-button>
           <el-radio-button label="DENY">拒绝（排除数据范围）</el-radio-button>
         </el-radio-group>
-      </el-form-item>
-      <el-form-item label="合并方式">
-        <el-radio-group v-model="permissionForm.combineMode">
-          <el-radio-button label="UNION">并集（OR）</el-radio-button>
-          <el-radio-button label="INTERSECT">交集（AND）</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="命中停止">
-        <el-switch v-model="permissionForm.stopProcessing" :active-value="1" :inactive-value="0" />
-        <span class="form-tip" style="margin-left: 8px">仅停止更低优先级 ALLOW；DENY 始终评估</span>
       </el-form-item>
       <el-form-item label="是否启用">
         <el-switch v-model="permissionForm.enabled" :active-value="1" :inactive-value="0" />
@@ -624,23 +703,6 @@
         </div>
       </el-form-item>
 
-      <el-form-item v-if="['PERSONAL', 'DEPT', 'DEPT_TREE'].includes(permissionForm.filterType)" label="字段映射">
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-input v-model="permissionForm.fieldMapping.userField" placeholder="用户字段" />
-            <div class="form-tip">默认 create_by</div>
-          </el-col>
-          <el-col :span="8">
-            <el-input v-model="permissionForm.fieldMapping.deptField" placeholder="部门字段" />
-            <div class="form-tip">默认 dept_id</div>
-          </el-col>
-          <el-col :span="8">
-            <el-input v-model="permissionForm.fieldMapping.statusField" placeholder="状态字段" />
-            <div class="form-tip">默认 status</div>
-          </el-col>
-        </el-row>
-      </el-form-item>
-
       <el-form-item label="状态限制">
         <el-switch v-model="permissionForm.statusLimit.enabled" />
         <span style="margin-left: 8px">启用状态过滤</span>
@@ -686,22 +748,43 @@
             <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="combineMode" label="合并" width="80" align="center">
-          <template #default="{ row }">
-            <span>{{ row.combineMode === 'INTERSECT' ? '交集' : '并集' }}</span>
-          </template>
-        </el-table-column>
+        <el-table-column prop="listKey" label="适用列表" width="120" align="center" />
         <el-table-column prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
       </el-table>
     </div>
     <div v-else class="preview-section">
-      <el-alert type="warning" :closable="false">没有命中任何规则，使用默认“仅本人”条件。</el-alert>
+      <el-alert type="warning" :closable="false">没有命中任何允许方案，运行时将拒绝全部数据。</el-alert>
     </div>
 
     <div class="preview-section">
       <div class="preview-section-title">最终生效 SQL</div>
       <el-input v-model="permissionSqlPreview.sql" type="textarea" :rows="4" readonly />
     </div>
+  </el-dialog>
+
+  <el-dialog v-model="quickDictVisible" title="新建代码表并绑定字段" width="560px">
+    <el-form label-width="100px">
+      <el-form-item label="代码表名称" required>
+        <el-input v-model="quickDictForm.dictName" placeholder="例如：报销类型" />
+      </el-form-item>
+      <el-form-item label="代码表编码" required>
+        <el-input v-model="quickDictForm.dictCode" placeholder="例如：expense_type" />
+      </el-form-item>
+      <el-form-item label="代码项" required>
+        <el-input
+          v-model="quickDictForm.itemsText"
+          type="textarea"
+          :rows="6"
+          placeholder="每行格式：编码:名称"
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="quickDictVisible = false">取消</el-button>
+      <el-button type="primary" :loading="quickDictSaving" @click="createAndBindDict">
+        创建并绑定
+      </el-button>
+    </template>
   </el-dialog>
 </template>
 
@@ -711,15 +794,22 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { entityApi } from '@/api/entity'
 import { codeRuleApi } from '@/api/codeRule'
-import { entityListPermissionApi } from '@/api/entityListPermission'
+import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getUserList } from '@/api/system/user'
 import { getEnabledRoles } from '@/api/system/role'
 import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
+import { getDictList, createDictWithItems } from '@/api/system/dict'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
-import { ENTITY_FIELD_TYPES, getEntityFieldTypeLabel, getEntityFieldTypeTag } from '@/shared/entity-design'
+import {
+  ENTITY_FIELD_TYPES,
+  WORKFLOW_SYSTEM_FIELD_CODES,
+  filterEntityFieldsByLifecycle,
+  getEntityFieldTypeLabel,
+  getEntityFieldTypeTag
+} from '@/shared/entity-design'
 
 const route = useRoute()
 const router = useRouter()
@@ -730,10 +820,19 @@ const fieldTypes = ENTITY_FIELD_TYPES
 
 const entityData = ref({})
 const fields = ref([])
+const isSystemEntity = computed(() => entityData.value?.storageMode === 'SYSTEM')
+const isWorkflowEntityMode = computed(() => entityData.value?.lifecycleMode === 'WORKFLOW')
+const displayFields = computed(() =>
+  filterEntityFieldsByLifecycle(entityData.value, fields.value)
+)
 const selectedField = ref(null)
 const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
+const dictOptions = ref([])
+const quickDictVisible = ref(false)
+const quickDictSaving = ref(false)
+const quickDictForm = ref({ dictName: '', dictCode: '', itemsText: '' })
 
 // 编码规则配置
 const codeRuleVisible = ref(false)
@@ -756,13 +855,14 @@ const availableListConfigs = ref([])
 const permissionSqlPreview = ref({ sql: '', matchedRules: [], hasPermission: true, needFilter: false })
 const permissionSqlPreviewVisible = ref(false)
 const permissionSqlPreviewTitle = ref('权限 SQL 预览')
+const simulationUserId = ref('')
 const userOptions = ref([])
 const roleOptions = ref([])
 const groupOptions = ref([])
 const deptOptions = ref([])
 const organizationOptions = ref([])
 
-const permissionSystemFields = [
+const permissionSystemFields = computed(() => [
   { label: '数据名称', value: 'name' },
   { label: '数据编码', value: 'code' },
   { label: '业务单号', value: 'dataNo' },
@@ -774,13 +874,13 @@ const permissionSystemFields = [
   { label: '当前办理人', value: 'currentTaskAssignee' },
   { label: '创建时间', value: 'createdAt' },
   { label: '更新时间', value: 'updatedAt' }
-]
+].filter(item => isWorkflowEntityMode.value || !WORKFLOW_SYSTEM_FIELD_CODES.has(item.value)))
 
 const permissionRuleFieldOptions = computed(() => [
-  ...permissionSystemFields,
+  ...permissionSystemFields.value,
   ...(fields.value || [])
     .filter(field => field.fieldCode && !['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType))
-    .filter(field => !permissionSystemFields.some(item => item.value === field.fieldCode))
+    .filter(field => !permissionSystemFields.value.some(item => item.value === field.fieldCode))
     .map(field => ({
       label: `${field.fieldName} (${field.fieldCode})`,
       value: field.fieldCode
@@ -812,14 +912,13 @@ const loadSelectorOptions = async () => {
 function createEmptyPermissionForm() {
   return {
     id: null,
+    policyId: null,
+    policyKey: '',
     entityCode: '',
     ruleName: '',
-    priority: 0,
     enabled: 1,
-    listConfigId: '',
+    listKey: '',
     ruleEffect: 'ALLOW',
-    combineMode: 'UNION',
-    stopProcessing: 0,
     matchLogic: 'OR',
     matchConditions: [{
       scopeType: 'ALL_USERS',
@@ -873,10 +972,19 @@ const availableEntities = ref([])
 // 加载可选实体列表
 const loadAvailableEntities = async () => {
   try {
-    const res = await entityApi.getList()
-    availableEntities.value = res.filter(item => item.id !== entityId)
+    const entities = await entityApi.getAll()
+    availableEntities.value = entities.filter(item => String(item.id) !== String(entityId))
   } catch (error) {
     console.error('加载实体列表失败:', error)
+  }
+}
+
+const loadDictOptions = async () => {
+  try {
+    dictOptions.value = await getDictList() || []
+  } catch (error) {
+    console.error('加载代码表失败:', error)
+    dictOptions.value = []
   }
 }
 
@@ -893,6 +1001,13 @@ const onRefEntityChange = async (entityId) => {
     console.error('加载实体字段失败:', error)
     refEntityFields.value = []
   }
+}
+
+const onReferenceEntityChange = async (entityId) => {
+  if (!selectedField.value) return
+  selectedField.value.refEntityType = 'CUSTOM'
+  selectedField.value.refFieldCode = ''
+  await onRefEntityChange(entityId)
 }
 
 // 监听选项文本变化
@@ -914,6 +1029,9 @@ const loadEntity = async () => {
     fields.value = (data.fields || []).map(f => {
       const field = {
         ...f,
+        valueStorage: ['MULTI_SELECT', 'CHECKBOX', 'MULTI_REFERENCE'].includes(f.fieldType)
+          ? 'MULTI_TABLE'
+          : (f.valueStorage || 'SCALAR'),
         childEntityId: f.childEntityId || f.refEntityId || '',
         childRefFieldCode: f.childRefFieldCode || f.refFieldCode || '',
         relationType: f.relationType || (f.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : f.fieldType === 'SUB_FORM_LIST' ? 'ONE_TO_MANY' : undefined),
@@ -1000,7 +1118,9 @@ const handleAddField = (type) => {
     fieldType: type?.value || 'STRING',
     isRequired: false,
     isUnique: false,
-    sortOrder: fields.value.length
+    sortOrder: fields.value.length,
+    optionSource: ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type?.value) ? 'DICT' : undefined,
+    dictType: ''
   }
   if (['SUB_FORM', 'SUB_FORM_LIST'].includes(newField.fieldType)) {
     newField.relationType = newField.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : 'ONE_TO_MANY'
@@ -1017,6 +1137,9 @@ const handleAddField = (type) => {
 const selectField = (field) => {
   selectedField.value = field
   refEntityFields.value = []
+  if (showOptions.value) {
+    field.optionSource = field.dictType ? 'DICT' : 'LEGACY_INLINE'
+  }
   
   // FILE/IMAGE 字段自动初始化 fileItems
   if ((field.fieldType === 'FILE' || field.fieldType === 'IMAGE') && (!field.fileItems || field.fileItems.length === 0)) {
@@ -1049,6 +1172,56 @@ const selectField = (field) => {
     if (field.childEntityId) {
       onRefEntityChange(field.childEntityId)
     }
+  } else if (isReference.value && field.refEntityId) {
+    field.refEntityType = 'CUSTOM'
+    onRefEntityChange(field.refEntityId)
+  }
+}
+
+const openQuickDictDialog = () => {
+  const fieldCode = selectedField.value?.fieldCode || ''
+  quickDictForm.value = {
+    dictName: selectedField.value?.fieldName || '',
+    dictCode: fieldCode ? `${entityData.value.entityCode}_${fieldCode}`.toLowerCase() : '',
+    itemsText: ''
+  }
+  quickDictVisible.value = true
+}
+
+const createAndBindDict = async () => {
+  const form = quickDictForm.value
+  const items = form.itemsText.split('\n').map(line => {
+    const separator = line.indexOf(':')
+    if (separator < 1) return null
+    const itemCode = line.slice(0, separator).trim()
+    const itemLabel = line.slice(separator + 1).trim()
+    return itemCode && itemLabel ? { itemCode, itemLabel } : null
+  }).filter(Boolean)
+  if (!form.dictName || !form.dictCode || !items.length) {
+    ElMessage.warning('请填写代码表名称、编码和至少一个有效代码项')
+    return
+  }
+  quickDictSaving.value = true
+  try {
+    const dict = await createDictWithItems({
+      dict: {
+        dictName: form.dictName,
+        dictCode: form.dictCode,
+        status: '0'
+      },
+      items
+    })
+    await loadDictOptions()
+    selectedField.value.optionSource = 'DICT'
+    selectedField.value.dictType = dict.dictCode
+    selectedField.value.optionsJson = null
+    quickDictVisible.value = false
+    ElMessage.success('代码表已创建并绑定')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('创建代码表失败')
+  } finally {
+    quickDictSaving.value = false
   }
 }
 
@@ -1069,8 +1242,9 @@ const syncRelationRefs = () => {
 }
 
 // 删除字段
-const deleteField = (index) => {
-  const field = fields.value[index]
+const deleteField = (field) => {
+  const index = fields.value.indexOf(field)
+  if (index < 0) return
   if (field.isPublished) {
     ElMessage.warning('已发布的字段不能删除，请先修改字段配置')
     return
@@ -1082,7 +1256,9 @@ const deleteField = (index) => {
 }
 
 // 移动字段
-const moveField = (index, direction) => {
+const moveField = (field, direction) => {
+  const index = fields.value.indexOf(field)
+  if (index < 0) return
   const newIndex = index + direction
   if (newIndex < 0 || newIndex >= fields.value.length) return
   const temp = fields.value[index]
@@ -1129,6 +1305,10 @@ const convertToFormField = (field) => {
 
 // 保存
 const handleSave = async () => {
+  if (isSystemEntity.value) {
+    ElMessage.warning('平台系统实体字段由数据库自动同步，不能在设计器中修改')
+    return
+  }
   // 验证字段
   for (const field of fields.value) {
     if (!field.fieldName || !field.fieldCode) {
@@ -1144,6 +1324,15 @@ const handleSave = async () => {
         ElMessage.warning(`请选择子表外键：${field.fieldName}`)
         return
       }
+    }
+    if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)
+        && !field.dictType) {
+      ElMessage.warning(`请选择代码表：${field.fieldName}`)
+      return
+    }
+    if (['REFERENCE', 'MULTI_REFERENCE'].includes(field.fieldType) && !field.refEntityId) {
+      ElMessage.warning(`请选择关联实体：${field.fieldName}`)
+      return
     }
   }
 
@@ -1182,7 +1371,7 @@ const loadPermissions = async () => {
   if (!entityData.value.entityCode) return
   try {
     const [permissionData, listConfigData] = await Promise.all([
-      entityListPermissionApi.getByEntityCode(entityData.value.entityCode),
+      entityListScopeRuleApi.getByEntityCode(entityData.value.entityCode),
       entityListConfigApi.getByEntityId(entityId)
     ])
     availableListConfigs.value = listConfigData || []
@@ -1193,10 +1382,8 @@ const loadPermissions = async () => {
         || ['EXPRESSION', 'CUSTOM_SQL'].includes(filter.type)
       return {
         ...item,
-        listConfigId: item.listConfigId || '',
+        listKey: item.listKey || '',
         ruleEffect: item.ruleEffect || 'ALLOW',
-        combineMode: item.combineMode || 'UNION',
-        stopProcessing: item.stopProcessing || 0,
         matchLogic: match.logic || 'OR',
         matchConditions: (match.conditions || []).map(c => ({
           ...c,
@@ -1254,7 +1441,7 @@ const handleEditPermission = (row) => {
 
 const handleDeletePermission = async (row) => {
   try {
-    await entityListPermissionApi.delete(row.id)
+    await entityListScopeRuleApi.delete(row)
     ElMessage.success('删除成功')
     loadPermissions()
   } catch (error) {
@@ -1265,7 +1452,7 @@ const handleDeletePermission = async (row) => {
 
 const togglePermission = async (row) => {
   try {
-    await entityListPermissionApi.toggleEnabled(row.id)
+    await entityListScopeRuleApi.updateEnabled(row)
     ElMessage.success('状态更新成功')
   } catch (error) {
     console.error(error)
@@ -1334,18 +1521,42 @@ const getFilterTypeLabel = (type) => {
   return labels[type] || type
 }
 
-const getListConfigName = (listConfigId) => {
-  if (!listConfigId) return ''
-  const config = availableListConfigs.value.find(c => c.id === listConfigId)
-  return config?.listName || config?.listKey || listConfigId
+const getScopeModeLabel = (mode) => {
+  const labels = {
+    INHERIT: '继承实体',
+    NARROW: '缩小范围',
+    OVERRIDE: '独立范围'
+  }
+  return labels[mode || 'INHERIT'] || mode
 }
 
-const handlePreviewPermissionSql = async (listConfigId) => {
+const countListBindings = (listKey, effect) => permissionList.value.filter(item =>
+  item.listKey === listKey && item.ruleEffect === effect
+).length
+
+const getListConfigName = (listKey) => {
+  if (!listKey) return ''
+  const config = availableListConfigs.value.find(c => c.listKey === listKey)
+  return config?.listName || config?.listKey || listKey
+}
+
+const handlePreviewPermissionSql = async (requestedListKey) => {
   if (!entityData.value.entityCode) return
   try {
-    const preview = await entityListPermissionApi.previewSql(entityData.value.entityCode, listConfigId || undefined)
+    const targetList = requestedListKey
+      || availableListConfigs.value.find(config => config.isDefault)?.listKey
+      || availableListConfigs.value[0]?.listKey
+    if (!targetList) {
+      ElMessage.warning('请先配置并保存至少一个实体列表')
+      return
+    }
+    const preview = await entityListScopeRuleApi.previewSql(
+      entityData.value.entityCode,
+      targetList,
+      { userId: simulationUserId.value || undefined }
+    )
     permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
-    permissionSqlPreviewTitle.value = listConfigId ? '列表权限 SQL 预览' : '全局权限 SQL 预览'
+    permissionSqlPreviewTitle.value = `数据范围模拟：${getListConfigName(targetList)}`
     permissionSqlPreviewVisible.value = true
   } catch (error) {
     console.error('预览权限 SQL 失败:', error)
@@ -1353,16 +1564,14 @@ const handlePreviewPermissionSql = async (listConfigId) => {
   }
 }
 
-const handlePreviewRuleSql = async (row) => {
-  if (!row || !row.id) return
+const publishPermissions = async () => {
   try {
-    const preview = await entityListPermissionApi.previewRuleSql(row.id)
-    permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
-    permissionSqlPreviewTitle.value = '规则 SQL 预览'
-    permissionSqlPreviewVisible.value = true
+    await entityListScopeRuleApi.publish(entityData.value.entityCode, '实体设计器发布数据范围')
+    ElMessage.success('数据范围发布成功')
+    loadPermissions()
   } catch (error) {
-    console.error('预览规则 SQL 失败:', error)
-    ElMessage.error('预览失败')
+    console.error('发布数据范围失败:', error)
+    ElMessage.error(error?.message || '发布失败')
   }
 }
 
@@ -1425,22 +1634,22 @@ const savePermission = async () => {
 
   const payload = {
     entityCode: form.entityCode || entityData.value.entityCode,
+    policyId: form.policyId,
+    policyKey: form.policyKey || `scope_${Date.now()}`,
     ruleName: form.ruleName,
-    priority: form.priority,
     enabled: form.enabled,
-    listConfigId: form.listConfigId || null,
+    listKey: form.listKey || null,
     ruleEffect: form.ruleEffect || 'ALLOW',
-    combineMode: form.combineMode || 'UNION',
-    stopProcessing: form.stopProcessing || 0,
+    filterType: form.filterType,
     matchConfig,
     filterConfig
   }
 
   try {
     if (form.id) {
-      await entityListPermissionApi.update(form.id, payload)
+      await entityListScopeRuleApi.update(form.id, payload)
     } else {
-      await entityListPermissionApi.create(payload)
+      await entityListScopeRuleApi.create(payload)
     }
     ElMessage.success('保存成功')
     permissionEditVisible.value = false
@@ -1487,6 +1696,7 @@ watch(permissionVisible, (val) => {
 onMounted(() => {
   loadEntity()
   loadAvailableEntities()
+  loadDictOptions()
   loadCodeRule()
 })
 </script>
@@ -1797,6 +2007,15 @@ onMounted(() => {
 .property-panel :deep(.el-form-item__label) {
   font-weight: 500;
   color: #606266;
+}
+
+.system-entity-alert {
+  margin: 12px 20px 0;
+}
+
+.readonly-panel :deep(.el-form) {
+  pointer-events: none;
+  opacity: 0.78;
 }
 
 .property-panel :deep(.el-input__inner),

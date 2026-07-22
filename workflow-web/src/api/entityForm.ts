@@ -78,11 +78,74 @@ export const setDefaultForm = (formId: string) => {
 }
 
 // 仅更新表单初始化配置
-export const updateFormInitConfig = (id: string, initConfig: string | null) => {
+export const updateFormInitConfig = (id: string, initConfig: Record<string, any> | null) => {
   return request.put(`/entity-form/${id}/init-config`, { initConfig })
 }
 
 // 复制表单
 export const copyForm = (id: string) => {
   return request.post(`/entity-form/${id}/copy`)
+}
+
+export const patchFormMetadata = (id: string, data: any) => {
+  return request.patch(`/entity-form/${id}`, data)
+}
+
+export const getFormNodes = (id: string) => {
+  return request.get(`/entity-forms/${id}/nodes`)
+}
+
+export const createFormNode = (id: string, data: any) => {
+  return request.post(`/entity-forms/${id}/nodes`, data)
+}
+
+export const patchFormNode = (formId: string, nodeId: string, data: any) => {
+  return request.patch(`/entity-forms/${formId}/nodes/${nodeId}`, data)
+}
+
+export const deleteFormNode = (
+  formId: string,
+  nodeId: string,
+  expectedRevision: number
+) => {
+  return request.delete(`/entity-forms/${formId}/nodes/${nodeId}`, {
+    params: { expectedRevision }
+  })
+}
+
+export const reorderFormNode = (formId: string, nodeId: string, data: any) => {
+  return request.put(`/entity-forms/${formId}/nodes/${nodeId}/order`, data)
+}
+
+export const replaceFormNodes = (formId: string, nodes: any[]) => {
+  return request.put(`/entity-forms/${formId}/nodes`, nodes)
+}
+
+export const getFormDiff = (id: string) => {
+  return request.get(`/entity-forms/${id}/diff`)
+}
+
+export const publishForm = (id: string, description = '') => {
+  return request.post(`/entity-forms/${id}/publish`, { description })
+}
+
+export const getFormReleases = (id: string) => {
+  return request.get(`/entity-forms/${id}/releases`)
+}
+
+export const getFormRuntimeRelease = (
+  id: string,
+  releaseId?: string | null,
+  version?: number | null
+) => {
+  return request.get(`/entity-forms/${id}/runtime-release`, {
+    params: {
+      releaseId: releaseId || undefined,
+      version: version ?? undefined
+    }
+  })
+}
+
+export const activateFormRelease = (id: string, releaseId: string) => {
+  return request.post(`/entity-forms/${id}/releases/${releaseId}/activate`)
 }

@@ -125,7 +125,7 @@
           </el-tabs>
         </div>
         
-        <template v-if="!isEdit && entityDefinition.enableProcess">
+        <template v-if="!isEdit && canStartProcess">
           <el-divider />
           <el-form-item label="发起流程">
             <el-switch v-model="formData.startProcess" />
@@ -290,6 +290,7 @@ import { LinkageEngine } from '@/utils/linkageEngine'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
+import { isWorkflowReady } from '@/shared/entity-design'
 
 const route = useRoute()
 const router = useRouter()
@@ -308,6 +309,7 @@ const submitting = ref(false)
 const currentRow = ref({})
 const formRef = ref()
 const entityName = computed(() => entityDefinition.value?.entityName || entityDefinition.value?.name || '')
+const canStartProcess = computed(() => isWorkflowReady(entityDefinition.value))
 const formRules = {}
 
 // 新增/查看数据时解析的表单（流程节点表单或默认表单）
@@ -840,7 +842,7 @@ const handleCreate = async () => {
         data: initialData,
         submitterId: userStore.username,
         submitterName: userStore.nickname,
-        startProcess: entityDefinition.value.enableProcess
+        startProcess: canStartProcess.value
       }
     } else {
       // 没有表单时，使用空表单
@@ -850,7 +852,7 @@ const handleCreate = async () => {
         data: {},
         submitterId: userStore.username,
         submitterName: userStore.nickname,
-        startProcess: entityDefinition.value.enableProcess
+        startProcess: canStartProcess.value
       }
       if (!form) {
         ElMessage.warning('未配置表单，请先在实体表单管理中配置默认表单')
@@ -866,7 +868,7 @@ const handleCreate = async () => {
       data: {},
       submitterId: userStore.username,
       submitterName: userStore.nickname,
-      startProcess: entityDefinition.value.enableProcess
+      startProcess: canStartProcess.value
     }
   } finally {
     formLoading.value = false

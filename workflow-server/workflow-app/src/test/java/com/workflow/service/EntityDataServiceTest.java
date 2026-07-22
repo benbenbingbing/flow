@@ -65,7 +65,8 @@ public class EntityDataServiceTest {
         testDefinition.setId("1");
         testDefinition.setEntityCode("test_entity");
         testDefinition.setEntityName("测试实体");
-        testDefinition.setEnableProcess(true);
+        testDefinition.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        testDefinition.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
         testDefinition.setProcessDefinitionId("proc-1");
 
         testProcess = new ProcessDefinitionConfig();

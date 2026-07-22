@@ -29,6 +29,86 @@ export const entityListConfigApi = {
     return request.post('/entity-list-config/save', data)
   },
 
+  patchMetadata(id, data) {
+    return request.patch(`/entity-list-config/${id}`, data)
+  },
+
+  createField(id, field) {
+    return request.post(`/entity-list-config/${id}/fields`, { field })
+  },
+
+  patchField(id, fieldId, expectedRevision, field) {
+    const clearFields = [
+      'dataSourceId',
+      'templateId',
+      'templateVersion',
+      'localOverridesDocument'
+    ].filter(key => field[key] == null)
+    return request.patch(`/entity-list-config/${id}/fields/${fieldId}`, {
+      expectedRevision,
+      field,
+      clearFields
+    })
+  },
+
+  reorderField(id, fieldId, data) {
+    return request.put(`/entity-list-config/${id}/fields/${fieldId}/order`, data)
+  },
+
+  deleteField(id, fieldId, expectedRevision) {
+    return request.delete(`/entity-list-config/${id}/fields/${fieldId}`, {
+      params: { expectedRevision }
+    })
+  },
+
+  getDiff(id) {
+    return request.get(`/entity-list-config/${id}/diff`)
+  },
+
+  publish(id, description = '') {
+    return request.post(`/entity-list-config/${id}/publish`, { description })
+  },
+
+  getReleases(id) {
+    return request.get(`/entity-list-config/${id}/releases`)
+  },
+
+  activateRelease(id, releaseId) {
+    return request.post(`/entity-list-config/${id}/releases/${releaseId}/activate`)
+  },
+
+  createAction(id, data) {
+    return request.post(`/entity-list-config/${id}/actions`, data)
+  },
+
+  patchAction(id, actionId, data) {
+    return request.patch(`/entity-list-config/${id}/actions/${actionId}`, data)
+  },
+
+  deleteAction(id, actionId, expectedRevision) {
+    return request.delete(`/entity-list-config/${id}/actions/${actionId}`, {
+      params: { expectedRevision }
+    })
+  },
+
+  createScene(id, data) {
+    return request.post(`/entity-list-config/${id}/scenes`, data)
+  },
+
+  getScenes(id) {
+    return request.get(`/entity-list-config/${id}/scenes`)
+  },
+
+  patchScene(id, sceneId, data) {
+    return request.patch(`/entity-list-config/${id}/scenes/${sceneId}`, data)
+  },
+
+  deleteScene(id, sceneId, expectedRevision) {
+    return request.delete(`/entity-list-config/${id}/scenes/${sceneId}`, {
+      params: { expectedRevision }
+    })
+  },
+
   previewActionRule(id, data) {
     return request.post(`/entity-list-config/${id}/action-rule/preview`, data)
   },

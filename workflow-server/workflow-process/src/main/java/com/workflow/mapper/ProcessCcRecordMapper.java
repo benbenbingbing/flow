@@ -42,12 +42,14 @@ public interface ProcessCcRecordMapper extends BaseMapper<ProcessCcRecord> {
     /**
      * 标记为已读
      */
-    @Update("UPDATE process_cc_record SET read_status = 'READ', read_time = NOW() WHERE id = #{id}")
-    int markAsRead(@Param("id") String id);
+    @Update("UPDATE process_cc_record SET read_status = 'READ', read_time = NOW() " +
+            "WHERE id = #{id} AND cc_user_id = #{userId} AND deleted = 0")
+    int markAsRead(@Param("id") String id, @Param("userId") String userId);
     
     /**
      * 批量标记为已读
      */
-    @Update("UPDATE process_cc_record SET read_status = 'READ', read_time = NOW() WHERE cc_user_id = #{userId} AND read_status = 'UNREAD'")
+    @Update("UPDATE process_cc_record SET read_status = 'READ', read_time = NOW() " +
+            "WHERE cc_user_id = #{userId} AND read_status = 'UNREAD' AND deleted = 0")
     int markAllAsRead(@Param("userId") String userId);
 }

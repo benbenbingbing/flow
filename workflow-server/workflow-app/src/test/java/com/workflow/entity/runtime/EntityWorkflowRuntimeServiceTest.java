@@ -138,7 +138,8 @@ class EntityWorkflowRuntimeServiceTest {
             return new EntityWorkflowRuntimeService(
                     dynamicMapper, entityStatusMapper, processDefinitionConfigMapper,
                     dynamicTableService, runtimeService, identityService, taskService,
-                    processTaskService, workflowAutoSkipService, multiInstanceCollectionListener, snapshotService);
+                    processTaskService, workflowAutoSkipService, multiInstanceCollectionListener,
+                    snapshotService, mock(com.workflow.service.EntityRecordTeamService.class));
         }
     }
 }

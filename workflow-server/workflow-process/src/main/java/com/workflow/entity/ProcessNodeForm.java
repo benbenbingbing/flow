@@ -47,6 +47,18 @@ public class ProcessNodeForm {
      * 排序号
      */
     private Integer sortOrder;
+
+    /**
+     * 流程发布时固定的表单发布版本ID（仅存在于流程发布快照）。
+     */
+    @TableField(exist = false)
+    private String formReleaseId;
+
+    /**
+     * 流程发布时固定的表单发布版本号（仅存在于流程发布快照）。
+     */
+    @TableField(exist = false)
+    private Integer formReleaseVersion;
     
     /**
      * 创建时间

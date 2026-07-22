@@ -58,6 +58,11 @@ public class SysDictController {
         return Result.success(dictService.saveDict(dict));
     }
 
+    @PostMapping("/with-items")
+    public Result<SysDict> createWithItems(@RequestBody DictWithItemsRequest request) {
+        return Result.success(dictService.createWithItems(request.dict(), request.items()));
+    }
+
     /**
      * 更新字典类型
      */
@@ -148,5 +153,8 @@ public class SysDictController {
         }
         dictItemService.updateStatus(id, finalStatus);
         return Result.success();
+    }
+
+    public record DictWithItemsRequest(SysDict dict, List<SysDictItem> items) {
     }
 }

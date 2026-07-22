@@ -16,11 +16,25 @@ public class EntityDefinitionDTO {
     private String entityName;
     private String description;
     private String processDefinitionId;
+    private String processKey;
     private String processName;
-    private Boolean enableProcess;
+    private EntityDefinition.LifecycleMode lifecycleMode;
+    private EntityDefinition.StorageMode storageMode;
+    private Boolean teamVisibilityEnabled;
+    private EntityDefinition.TeamVisibilityLevel teamVisibilityLevel;
+    private WorkflowBindingStatus workflowBindingStatus;
     private List<EntityFieldDTO> fields;
     private EntityDefinition.Status status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String createdBy;
+
+    public enum WorkflowBindingStatus {
+        NOT_APPLICABLE,
+        UNBOUND,
+        DRAFT,
+        ACTIVE,
+        DISABLED,
+        MISSING
+    }
 }

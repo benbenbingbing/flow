@@ -15,6 +15,7 @@ import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.FormConfigMapper;
 import com.workflow.mapper.NodeConfigMapper;
 import com.workflow.mapper.ProcessNodeApprovalMapper;
+import com.workflow.service.ProcessNodeApprovalOptionService;
 import com.workflow.mapper.ProcessNodeFormMapper;
 import com.workflow.service.EntityFlowStatusService;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +55,7 @@ public class ProcessDefinitionNodeSyncService {
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final ProcessNodeFormMapper nodeFormMapper;
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
+    private final ProcessNodeApprovalOptionService approvalOptionService;
     private final JdbcTemplate jdbcTemplate;
 
     public void syncDraftNodes(String processConfigId, List<NodeConfigDTO> nodes) {
@@ -137,6 +139,8 @@ public class ProcessDefinitionNodeSyncService {
                         existing.setOptionsJson(optionsJson);
                         existing.setUpdateTime(LocalDateTime.now());
                         nodeApprovalMapper.updateById(existing);
+                        approvalOptionService.replaceFromDocument(
+                                existing.getId(), optionsJson);
                     } else {
                         ProcessNodeApproval nodeApproval = new ProcessNodeApproval();
                         nodeApproval.setProcessConfigId(processConfigId);
@@ -148,11 +152,14 @@ public class ProcessDefinitionNodeSyncService {
                         nodeApproval.setCreateTime(LocalDateTime.now());
                         nodeApproval.setUpdateTime(LocalDateTime.now());
                         nodeApprovalMapper.insert(nodeApproval);
+                        approvalOptionService.replaceFromDocument(
+                                nodeApproval.getId(), optionsJson);
                     }
                     log.debug("同步节点审批配置: processConfigId={}, nodeId={}", processConfigId, nodeId);
                 } else {
                     ProcessNodeApproval existing = nodeApprovalMapper.selectByNodeId(processConfigId, nodeId);
                     if (existing != null) {
+                        approvalOptionService.delete(existing.getId());
                         nodeApprovalMapper.deleteById(existing.getId());
                     }
                 }
@@ -226,6 +233,7 @@ public class ProcessDefinitionNodeSyncService {
             savedCount += parseNodesByType(processConfigId, bpmnXml, "exclusiveGateway", NodeConfig.NodeType.EXCLUSIVE_GATEWAY);
             savedCount += parseNodesByType(processConfigId, bpmnXml, "parallelGateway", NodeConfig.NodeType.PARALLEL_GATEWAY);
             savedCount += parseNodesByType(processConfigId, bpmnXml, "inclusiveGateway", NodeConfig.NodeType.INCLUSIVE_GATEWAY);
+            savedCount += parseNodesByType(processConfigId, bpmnXml, "eventBasedGateway", NodeConfig.NodeType.EVENT_BASED_GATEWAY);
             savedCount += parseNodesByType(processConfigId, bpmnXml, "callActivity", NodeConfig.NodeType.CALL_ACTIVITY);
             savedCount += parseNodesByType(processConfigId, bpmnXml, "subProcess", NodeConfig.NodeType.SUB_PROCESS);
             log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, processConfigId);
@@ -390,12 +398,12 @@ public class ProcessDefinitionNodeSyncService {
     private int parseUserTasks(String processConfigId, String bpmnXml) {
         int count = 0;
         Pattern pattern = Pattern.compile(
-                "<(bpmn:)?userTask([^>]*)>(.*?)</(bpmn:)?userTask>",
+                "<(?:bpmn:)?userTask\\b([^>]*?)(?:/\\s*>|>(.*?)</(?:bpmn:)?userTask\\s*>)",
                 Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(bpmnXml);
         while (matcher.find()) {
-            String startTag = matcher.group(2);
-            String content = matcher.group(3);
+            String startTag = matcher.group(1);
+            String content = matcher.group(2) == null ? "" : matcher.group(2);
             Matcher idMatcher = Pattern.compile("id=\"([^\"]+)\"").matcher(startTag);
             if (!idMatcher.find()) {
                 continue;

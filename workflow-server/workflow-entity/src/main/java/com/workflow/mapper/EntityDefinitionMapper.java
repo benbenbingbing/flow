@@ -17,7 +17,8 @@ public interface EntityDefinitionMapper extends BaseMapper<EntityDefinition> {
 
     String SELECT_COLUMNS = "id, entity_code, entity_name, description, "
             + "table_name AS physical_table_name, process_definition_id, "
-            + "enable_process, status, create_time, update_time, created_by";
+            + "lifecycle_mode, storage_mode, team_visibility_enabled, team_visibility_level, "
+            + "status, create_time, update_time, created_by";
 
     /**
      * 根据编码查询

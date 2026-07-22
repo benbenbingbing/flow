@@ -5,6 +5,8 @@ import com.workflow.common.UserContext;
 import com.workflow.dto.ApiResponse;
 import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityDefinitionQueryDTO;
+import com.workflow.dto.EntityLifecycleModeRequest;
+import com.workflow.dto.EntityWorkflowBindingRequest;
 import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.service.EntityDefinitionService;
 import lombok.RequiredArgsConstructor;
@@ -85,14 +87,27 @@ public class EntityDefinitionController {
         return ApiResponse.success(entityService.publish(id, userId, userName, request));
     }
     
-    /**
-     * 绑定流程
-     */
-    @PostMapping("/{entityId}/bind-process/{processId}")
-    public ApiResponse<EntityDefinitionDTO> bindProcess(
+    @PutMapping("/{entityId}/workflow-binding")
+    public ApiResponse<EntityDefinitionDTO> bindWorkflow(
             @PathVariable String entityId,
-            @PathVariable String processId) {
-        return ApiResponse.success(entityService.bindProcess(entityId, processId));
+            @RequestBody EntityWorkflowBindingRequest request) {
+        return ApiResponse.success(entityService.bindWorkflow(
+                entityId,
+                request.getProcessDefinitionId()));
+    }
+
+    @DeleteMapping("/{entityId}/workflow-binding")
+    public ApiResponse<EntityDefinitionDTO> unbindWorkflow(@PathVariable String entityId) {
+        return ApiResponse.success(entityService.unbindWorkflow(entityId));
+    }
+
+    @PutMapping("/{entityId}/lifecycle-mode")
+    public ApiResponse<EntityDefinitionDTO> updateLifecycleMode(
+            @PathVariable String entityId,
+            @RequestBody EntityLifecycleModeRequest request) {
+        return ApiResponse.success(entityService.updateLifecycleMode(
+                entityId,
+                request.getLifecycleMode()));
     }
 
     /**

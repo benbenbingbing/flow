@@ -8,6 +8,7 @@ import com.workflow.entity.EntityRelation;
 import com.workflow.entity.publish.EntityPublishedSnapshot;
 import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.entity.runtime.EntityRelationRuntimeService;
+import com.workflow.entity.runtime.EntityMultiValueRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
@@ -125,6 +126,26 @@ class EntityDataDynamicServiceSubFormTest {
     }
 
     @Test
+    void standaloneEntityRejectsForgedProcessStart() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setStartProcess(true);
+        dto.setData(new HashMap<>(Map.of("name", "基础资料")));
+
+        com.workflow.common.BusinessConflictException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        com.workflow.common.BusinessConflictException.class,
+                        () -> service.save(dto));
+
+        assertEquals("ENTITY_WORKFLOW_NOT_SUPPORTED", exception.getErrorCode());
+        verify(fixture.dynamicMapper, never()).insert(
+                eq("wf_parent"),
+                org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
     void findByIdLoadsSubFormRowsByReferenceField() {
         Fixture fixture = new Fixture();
         EntityDataDynamicService service = fixture.service();
@@ -176,6 +197,7 @@ class EntityDataDynamicServiceSubFormTest {
         final DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         final EntityCodeGeneratorService codeGeneratorService = mock(EntityCodeGeneratorService.class);
         final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
+        final EntityMultiValueRuntimeService multiValueRuntimeService = mock(EntityMultiValueRuntimeService.class);
 
         Fixture() {
             EntityDefinition parent = entity("parent-id", "parent");
@@ -222,7 +244,8 @@ class EntityDataDynamicServiceSubFormTest {
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
                     dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
-                    null, null, null, snapshotService);
+                    multiValueRuntimeService, null, null, null, snapshotService,
+                    mock(EntityRecordTeamService.class));
         }
 
         private static EntityPublishedSnapshot snapshot(String entityCode) {
@@ -236,7 +259,8 @@ class EntityDataDynamicServiceSubFormTest {
             EntityDefinition entity = new EntityDefinition();
             entity.setId(id);
             entity.setEntityCode(code);
-            entity.setEnableProcess(false);
+            entity.setLifecycleMode(EntityDefinition.LifecycleMode.STANDALONE);
+            entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
             return entity;
         }
 

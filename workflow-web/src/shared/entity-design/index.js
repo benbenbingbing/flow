@@ -21,6 +21,34 @@ export const ENTITY_FIELD_TYPES = [
   { value: 'SUB_FORM_LIST', label: '子表单列表', icon: 'List' }
 ]
 
+export const WORKFLOW_SYSTEM_FIELD_CODES = new Set([
+  'dataNo',
+  'processInstanceId',
+  'processStartTime',
+  'processEndTime',
+  'currentTaskId',
+  'currentTaskName',
+  'currentTaskAssignee',
+  'submitterId',
+  'submitterName',
+  'submitTime'
+])
+
+export function isWorkflowEntity(entity) {
+  return entity?.lifecycleMode === 'WORKFLOW'
+}
+
+export function isWorkflowReady(entity) {
+  return isWorkflowEntity(entity) && entity?.workflowBindingStatus === 'ACTIVE'
+}
+
+export function filterEntityFieldsByLifecycle(entity, fields = []) {
+  if (entity?.storageMode === 'SYSTEM' || isWorkflowEntity(entity)) {
+    return fields
+  }
+  return fields.filter((field) => !WORKFLOW_SYSTEM_FIELD_CODES.has(field.fieldCode))
+}
+
 export function getEntityFieldTypeLabel(type) {
   const found = ENTITY_FIELD_TYPES.find((item) => item.value === type)
   return found?.label || type
@@ -28,14 +56,26 @@ export function getEntityFieldTypeLabel(type) {
 
 export function getEntityFieldTypeTag(type) {
   const tags = {
-    STRING: '',
+    STRING: 'info',
     TEXT: 'info',
+    RICH_TEXT: 'info',
     INTEGER: 'success',
     DECIMAL: 'success',
     DATE: 'warning',
     DATETIME: 'warning',
+    BOOLEAN: 'success',
+    SELECT: 'primary',
+    MULTI_SELECT: 'primary',
+    RADIO: 'primary',
+    CHECKBOX: 'primary',
+    FILE: 'warning',
+    IMAGE: 'warning',
+    USER: 'primary',
+    DEPT: 'primary',
     REFERENCE: 'primary',
-    MULTI_REFERENCE: 'primary'
+    MULTI_REFERENCE: 'primary',
+    SUB_FORM: 'warning',
+    SUB_FORM_LIST: 'warning'
   }
-  return tags[type] || ''
+  return tags[type] || 'info'
 }

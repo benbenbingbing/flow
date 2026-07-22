@@ -29,6 +29,11 @@ public class ApiResponse<T> {
     private String message;
 
     /**
+     * 稳定的业务错误编码，成功响应时为空。
+     */
+    private String errorCode;
+
+    /**
      * 响应数据
      * 成功时返回的具体数据
      */
@@ -85,6 +90,12 @@ public class ApiResponse<T> {
         ApiResponse<T> response = new ApiResponse<>();
         response.setCode(code);
         response.setMessage(message);
+        return response;
+    }
+
+    public static <T> ApiResponse<T> error(int code, String errorCode, String message) {
+        ApiResponse<T> response = error(code, message);
+        response.setErrorCode(errorCode);
         return response;
     }
 }

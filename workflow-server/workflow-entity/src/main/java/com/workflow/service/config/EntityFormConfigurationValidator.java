@@ -37,9 +37,29 @@ public class EntityFormConfigurationValidator {
             throw new IllegalArgumentException("表单标识只能包含字母、数字、下划线和短横线，且必须以字母开头");
         }
         validateExtensionName(form.getCustomComponent(), "自定义表单组件");
+        if (StringUtils.hasText(form.getCustomComponent())
+                && (form.getCustomComponentVersion() == null
+                || form.getCustomComponentVersion() < 1
+                || form.getCustomComponentSnapshotVersion() == null
+                || form.getCustomComponentSnapshotVersion() < 1)) {
+            throw new IllegalArgumentException(
+                    "自定义表单组件必须锁定实现版本和配置快照版本");
+        }
+        if (!StringUtils.hasText(form.getCustomComponent())
+                && (form.getCustomComponentVersion() != null
+                || form.getCustomComponentSnapshotVersion() != null)) {
+            throw new IllegalArgumentException(
+                    "未配置自定义表单组件时不能单独保存组件版本");
+        }
         structuredConfigValidator.parseObject(form.getViewConfig(), "表单视图配置");
         form.setViewConfig(blankToNull(form.getViewConfig()));
         structuredConfigValidator.parseObject(form.getInitConfig(), "表单初始化配置");
+        structuredConfigValidator.parseObject(
+                form.getDataSourceBindingsDocument(),
+                "表单级数据源绑定");
+        form.setDataSourceBindingsDocument(
+                blankToNull(
+                        form.getDataSourceBindingsDocument()));
         validateFields(form.getFields());
     }
 

@@ -89,6 +89,20 @@
           @page-change="handlePageChange"
         />
       </template>
+
+      <div v-if="selectionScene" class="selection-footer">
+        <span>已选择 {{ selectedRows.length }} 条</span>
+        <div>
+          <el-button @click="emit('cancel')">取消</el-button>
+          <el-button
+            type="primary"
+            :disabled="selectedRows.length === 0"
+            @click="confirmSelection"
+          >
+            确认选择
+          </el-button>
+        </div>
+      </div>
     </template>
 
     <EntityDataFormDialog
@@ -116,7 +130,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
-import { entityListConfigApi } from '@/api/entityListConfig'
+import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { getFormForNewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { getEntityStatusList } from '@/api/entityStatus'
@@ -136,8 +150,49 @@ import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue
 const route = useRoute()
 const userStore = useUserStore()
 
-// 从路由参数获取实体编码
-const entityCode = computed(() => route.params.entityCode as string || route.query.entityCode as string)
+const props = withDefaults(defineProps<{
+  entityCode?: string
+  listKey?: string
+  scene?: string
+  context?: Record<string, any>
+  selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
+}>(), {
+  entityCode: '',
+  listKey: '',
+  scene: 'PAGE',
+  context: () => ({}),
+  selectionMode: 'NONE'
+})
+
+const emit = defineEmits<{
+  confirm: [rows: any[]]
+  cancel: []
+}>()
+
+const entityCode = computed(() =>
+  props.entityCode
+  || route.params.entityCode as string
+  || route.query.entityCode as string
+)
+const runtimeListKey = computed(() =>
+  props.listKey
+  || route.params.listKey as string
+  || route.query.listKey as string
+)
+const runtimeScene = computed(() =>
+  (props.scene || route.query.scene as string || 'PAGE').toUpperCase()
+)
+const effectiveSelectionMode = computed(() => {
+  if (props.selectionMode !== 'NONE') return props.selectionMode
+  return safeParseConfig(listConfig.value?.selectionConfig)?.selectionMode || 'NONE'
+})
+const selectionScene = computed(() =>
+  ['FORM_PICKER', 'SUB_TABLE'].includes(runtimeScene.value)
+  || (
+    ['DIALOG', 'DRAWER'].includes(runtimeScene.value)
+    && effectiveSelectionMode.value !== 'NONE'
+  )
+)
 
 // 状态
 const loading = ref(false)
@@ -263,6 +318,7 @@ const customListRuntime = computed(() => ({
 
 function safeJsonParse(text: any) {
   if (!text) return null
+  if (typeof text === 'object') return text
   try {
     return JSON.parse(text)
   } catch (e) {
@@ -272,6 +328,7 @@ function safeJsonParse(text: any) {
 
 // 工具栏按钮（按配置 + 权限过滤）
 const toolbarButtons = computed(() => {
+  if (selectionScene.value) return []
   const DEFAULT_TOOLBAR_BUTTONS = [
     { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
     { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
@@ -292,6 +349,7 @@ const toolbarButtons = computed(() => {
 
 // 操作列按钮（按配置 + 权限过滤）
 const rowActionButtons = computed(() => {
+  if (selectionScene.value) return []
   const DEFAULT_ROW_ACTION_BUTTONS = [
     { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true, perm: '' },
     { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true, perm: '' },
@@ -308,7 +366,9 @@ const rowActionButtons = computed(() => {
 
 // 是否显示选择列
 const showSelectionColumn = computed(() => {
-  return toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
+  return selectionScene.value
+    || effectiveSelectionMode.value !== 'NONE'
+    || toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
 })
 
 // 引用实体名称缓存
@@ -466,23 +526,18 @@ const loadEntityDefinition = async () => {
 
 // 加载列表配置
 const loadListConfig = async () => {
-  if (!entityDefinition.value?.id) return
+  if (!entityDefinition.value?.id || !runtimeListKey.value) return
   try {
-    const configs = await entityListConfigApi.getByEntityId(entityDefinition.value.id)
-    if (configs && configs.length > 0) {
-      const config = configs.find((c: any) => c.isDefault) || configs[0]
-      const detail = await entityListConfigApi.getById(config.id)
-      if (detail) {
-        listConfig.value = detail
-        listConfigFields.value = detail.fields || []
-        const configuredPageSize = Number(safeParseConfig(detail.viewConfig)?.pagination?.pageSize)
-        if (configuredPageSize > 0) {
-          pageSize.value = configuredPageSize
-        }
-      }
-    } else {
-      listConfig.value = null
-      listConfigFields.value = []
+    const schema = await entityListRuntimeApi.getSchema(
+      entityCode.value,
+      runtimeListKey.value,
+      runtimeScene.value
+    )
+    listConfig.value = schema || null
+    listConfigFields.value = schema?.fields || []
+    const configuredPageSize = Number(safeParseConfig(schema?.viewConfig)?.pagination?.pageSize)
+    if (configuredPageSize > 0) {
+      pageSize.value = configuredPageSize
     }
   } catch (e) {
     console.error('加载列表配置失败:', e)
@@ -521,15 +576,17 @@ const loadDataList = async () => {
         params[code + '_op'] = field.queryType
       }
     })
-    params.pageNum = pageNum.value
-    params.pageSize = pageSize.value
-    
-    let res
-    if (listConfig.value?.id) {
-      res = await entityDataApi.getListWithConfig(entityCode.value, listConfig.value.listKey, params)
-    } else {
-      res = await entityDataApi.getList(entityCode.value, params)
-    }
+    const res = await entityListRuntimeApi.query(
+      entityCode.value,
+      runtimeListKey.value,
+      {
+        pageNum: pageNum.value,
+        pageSize: pageSize.value,
+        scene: runtimeScene.value,
+        filters: params,
+        context: props.context
+      }
+    )
     
     if (Array.isArray(res)) {
       total.value = res.length
@@ -669,9 +726,16 @@ const handleApprove = (row: any) => {
   approvalDialogRef.value?.openApprove(row)
 }
 
+const confirmSelection = () => {
+  const rows = effectiveSelectionMode.value === 'SINGLE'
+    ? selectedRows.value.slice(0, 1)
+    : selectedRows.value
+  emit('confirm', rows)
+}
+
 // 监听实体编码变化
-watch(() => entityCode.value, () => {
-  if (entityCode.value) {
+watch(() => [entityCode.value, runtimeListKey.value], () => {
+  if (entityCode.value && runtimeListKey.value) {
     loadEntityDefinition()
   }
 }, { immediate: true })
@@ -683,6 +747,15 @@ watch(() => entityCode.value, () => {
   
   .loading-container {
     padding: 10px;
+  }
+
+  .selection-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding: 12px 4px 0;
+    border-top: 1px solid var(--el-border-color-lighter);
   }
 }
 </style>

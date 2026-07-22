@@ -1,0 +1,141 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "cfg_2607201027gsv",
+  "entityCode": "cfg_entity_2607201027gsv",
+  "steps": [
+    {
+      "name": "login:admin",
+      "data": {
+        "id": "1",
+        "username": "admin",
+        "nickname": "超级管理员"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l1_2607201027gsv",
+      "data": {
+        "id": "2079151155585232898",
+        "username": "cfg_l1_2607201027gsv",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l2_2607201027gsv",
+      "data": {
+        "id": "2079151155983691777",
+        "username": "cfg_l2_2607201027gsv",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l1_2607201027gsv",
+      "data": {
+        "id": "2079151155585232898",
+        "username": "cfg_l1_2607201027gsv",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l2_2607201027gsv",
+      "data": {
+        "id": "2079151155983691777",
+        "username": "cfg_l2_2607201027gsv",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2079151157023879169",
+        "processKey": "cfg_2607201027gsv",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2079151157023879169",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2079151160597426178",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2079151160605814785",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2079151160614203393",
+          "nodeId": "Task_Level1_Review",
+          "nodeName": "一级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2079151160622592001",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l1_2607201027gsv",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2079151160639369217",
+          "nodeId": "Task_Level2_Review",
+          "nodeName": "二级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2079151160647757825",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l2_2607201027gsv",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2079151160903610370",
+        "entityCode": "cfg_entity_2607201027gsv"
+      }
+    },
+    {
+      "name": "publishAndBindEntity",
+      "data": {
+        "entityId": "2079151160903610370",
+        "processDefinitionId": "2079151157023879169",
+        "lifecycleMode": "WORKFLOW",
+        "workflowBindingStatus": "ACTIVE"
+      }
+    }
+  ],
+  "error": "Error: POST /entity-flow-status/save/2079151157023879169 failed: HTTP 404, body={\"code\":404,\"message\":\"资源不存在\",\"errorCode\":null,\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-config-closure.mjs:45:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-config-closure.mjs:221:3)"
+}

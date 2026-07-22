@@ -89,7 +89,7 @@ public class EntityDataService {
         
         // 验证实体是否启用流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) && 
-            !Boolean.TRUE.equals(definition.getEnableProcess())) {
+            definition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
             throw new RuntimeException("该实体未启用流程，无法发起流程");
         }
         
@@ -132,7 +132,7 @@ public class EntityDataService {
         
         // 判断是否发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) && 
-            Boolean.TRUE.equals(definition.getEnableProcess()) &&
+            definition.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW &&
             definition.getProcessDefinitionId() != null) {
             
             // 先保存数据获取ID（草稿状态）

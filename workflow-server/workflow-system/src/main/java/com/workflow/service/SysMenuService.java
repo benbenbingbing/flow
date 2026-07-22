@@ -1,6 +1,8 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.workflow.common.PageResult;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.entity.SysMenu;
 import com.workflow.mapper.SysMenuMapper;
@@ -35,6 +37,45 @@ public class SysMenuService {
                 .orderByAsc(SysMenu::getCreateTime)
         );
         return buildTree(allMenus);
+    }
+
+    /**
+     * 分页查询指定父菜单下的直接子菜单。
+     */
+    public PageResult<SysMenu> getChildrenPage(String parentId, Integer pageNum, Integer pageSize) {
+        if (parentId == null) {
+            parentId = "0";
+        }
+        Page<SysMenu> page = new Page<>(
+            pageNum != null && pageNum > 0 ? pageNum : 1,
+            pageSize != null && pageSize > 0 ? pageSize : 10
+        );
+
+        LambdaQueryWrapper<SysMenu> wrapper = new LambdaQueryWrapper<SysMenu>()
+                .eq(SysMenu::getParentId, parentId)
+                .orderByAsc(SysMenu::getSort)
+                .orderByAsc(SysMenu::getCreateTime);
+
+        Page<SysMenu> resultPage = menuMapper.selectPage(page, wrapper);
+        for (SysMenu menu : resultPage.getRecords()) {
+            menu.setHasChildren(menuMapper.hasChildren(menu.getId()));
+        }
+
+        return new PageResult<>(resultPage.getRecords(), resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
+    }
+
+    /**
+     * 查询以指定节点为根的完整子树（递归所有后代）。
+     */
+    public List<SysMenu> getSubtree(String parentId) {
+        if (parentId == null) {
+            parentId = "0";
+        }
+        List<SysMenu> children = menuMapper.selectChildrenByParentId(parentId);
+        for (SysMenu child : children) {
+            child.setChildren(getSubtree(child.getId()));
+        }
+        return children;
     }
 
     /**
@@ -236,7 +277,7 @@ public class SysMenuService {
             return menu.getEntityCode();
         }
         String path = menu.getPath();
-        String prefix = "/entity/list/";
+        String prefix = "/entity-list/";
         if (!StringUtils.hasText(path) || !path.startsWith(prefix)) {
             return null;
         }

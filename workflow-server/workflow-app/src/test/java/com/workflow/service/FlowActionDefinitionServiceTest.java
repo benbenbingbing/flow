@@ -5,6 +5,7 @@ import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.dto.FlowActionHandlerOptionDTO;
 import com.workflow.entity.FlowActionDefinition;
 import com.workflow.mapper.FlowActionDefinitionMapper;
+import com.workflow.mapper.FlowActionDefinitionEntityMapper;
 import com.workflow.process.action.FlowActionContext;
 import com.workflow.process.action.FlowActionHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +38,7 @@ class FlowActionDefinitionServiceTest {
         handler = context -> {};
         service = new FlowActionDefinitionService(
                 definitionMapper,
+                mock(FlowActionDefinitionEntityMapper.class),
                 applicationContext,
                 new ObjectMapper(),
                 entityCodeCatalogPort,

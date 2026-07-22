@@ -3,6 +3,7 @@ package com.workflow.service;
 import com.workflow.common.PageResult;
 import com.workflow.common.UserContext;
 import com.workflow.dto.EntityDataDTO;
+import com.workflow.dto.UiDataSourceExecuteRequest;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.entity.EntityListField;
@@ -38,6 +39,8 @@ public class EntityDataListConfigService {
     private final ListFieldDataProviderRegistry providerRegistry;
     private final ListFieldConditionEvaluator conditionEvaluator;
     private final EntityActionCapabilityService actionCapabilityService;
+    private final EntityListPublishedRuntimeService publishedRuntimeService;
+    private final UiDataSourceService uiDataSourceService;
 
     /**
      * 查询实体数据列表（带列表配置扩展）
@@ -49,12 +52,14 @@ public class EntityDataListConfigService {
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findListWithConfig(String entityCode, String listKey, Map<String, Object> condition) {
-        // 1. 先加载列表配置，获取 listConfigId 用于数据权限
+        // 1. 先加载列表配置，使用稳定 listKey 计算数据范围
         EntityListConfig config = findListConfig(entityCode, listKey);
-        String listConfigId = config != null ? config.getId() : null;
+        String resolvedListKey = config != null ? config.getListKey() : null;
         List<EntityListField> allFields = config == null
                 ? List.of()
-                : fieldMapper.findByListConfigId(config.getId());
+                : publishedRuntimeService.resolveFields(
+                        config,
+                        fieldMapper.findByListConfigId(config.getId()));
         ConditionPartition conditionPartition = partitionCondition(allFields, condition);
 
         // 2. 基础查询（传入 listConfigId 以应用列表级权限规则）
@@ -62,10 +67,10 @@ public class EntityDataListConfigService {
         if (!conditionPartition.baseCondition().isEmpty()) {
             records = dynamicService.findByCondition(
                     entityCode,
-                    listConfigId,
+                    resolvedListKey,
                     conditionPartition.baseCondition());
         } else {
-            records = dynamicService.findByEntityCode(entityCode, listConfigId);
+            records = dynamicService.findByEntityCode(entityCode, resolvedListKey);
         }
 
         if (records.isEmpty()) {
@@ -89,10 +94,12 @@ public class EntityDataListConfigService {
             long pageNum,
             long pageSize) {
         EntityListConfig config = findListConfig(entityCode, listKey);
-        String listConfigId = config != null ? config.getId() : null;
+        String resolvedListKey = config != null ? config.getListKey() : null;
         List<EntityListField> allFields = config == null
                 ? List.of()
-                : fieldMapper.findByListConfigId(config.getId());
+                : publishedRuntimeService.resolveFields(
+                        config,
+                        fieldMapper.findByListConfigId(config.getId()));
         ConditionPartition conditionPartition = partitionCondition(allFields, condition);
 
         if (!conditionPartition.extensionCondition().isEmpty()) {
@@ -115,7 +122,7 @@ public class EntityDataListConfigService {
 
         PageResult<EntityDataDTO> page = dynamicService.findPage(
                 entityCode,
-                listConfigId,
+                resolvedListKey,
                 conditionPartition.baseCondition(),
                 pageNum,
                 pageSize);
@@ -144,9 +151,15 @@ public class EntityDataListConfigService {
             return records == null ? List.of() : records;
         }
         if (config != null) {
+            enrichUnifiedDataSources(
+                    entityCode,
+                    listKey,
+                    allFields,
+                    records);
             // 3. 筛选出非 ENTITY_FIELD 的字段。查询字段即使不展示，也必须补充值后再过滤。
             List<EntityListField> customFields = allFields.stream()
                     .filter(f -> Boolean.TRUE.equals(f.getShowInList()) || Boolean.TRUE.equals(f.getIsQuery()))
+                    .filter(f -> !StringUtils.hasText(f.getDataSourceId()))
                     .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
                     .collect(Collectors.toList());
 
@@ -195,6 +208,84 @@ public class EntityDataListConfigService {
 
         actionCapabilityService.enrichRows(entityCode, config, records);
         return records;
+    }
+
+    private void enrichUnifiedDataSources(
+            String entityCode,
+            String listKey,
+            List<EntityListField> fields,
+            List<EntityDataDTO> records) {
+        for (EntityListField field : fields) {
+            if (!StringUtils.hasText(field.getDataSourceId())
+                    || (!Boolean.TRUE.equals(field.getShowInList())
+                    && !Boolean.TRUE.equals(field.getIsQuery()))) {
+                continue;
+            }
+            UiDataSourceExecuteRequest request = new UiDataSourceExecuteRequest();
+            request.setUsage("LIST_COLUMN");
+            request.setConfigType("LIST");
+            request.setConfigId(field.getListConfigId());
+            request.setEntityCode(entityCode);
+            request.setListKey(listKey);
+            request.setContext(Map.of(
+                    "fieldCode", field.getFieldCode(),
+                    "listConfigId", field.getListConfigId()));
+            request.setInput(Map.of(
+                    "field", field,
+                    "records", records));
+            Object result = uiDataSourceService.execute(
+                    field.getDataSourceId(),
+                    request);
+            applyUnifiedColumnResult(field, records, result);
+        }
+    }
+
+    private void applyUnifiedColumnResult(
+            EntityListField field,
+            List<EntityDataDTO> records,
+            Object result) {
+        if (result instanceof Map<?, ?> values) {
+            for (EntityDataDTO record : records) {
+                Object value = values.get(record.getId());
+                if (value == null) {
+                    value = values.get(String.valueOf(record.getId()));
+                }
+                putExtensionValue(record, field.getFieldCode(), value);
+            }
+            return;
+        }
+        if (result instanceof List<?> values) {
+            Map<String, Object> byRecord = new LinkedHashMap<>();
+            for (Object item : values) {
+                if (item instanceof Map<?, ?> map) {
+                    Object recordId = map.get("recordId");
+                    if (recordId == null) recordId = map.get("id");
+                    if (recordId != null) {
+                        byRecord.put(String.valueOf(recordId), map.get("value"));
+                    }
+                }
+            }
+            for (EntityDataDTO record : records) {
+                putExtensionValue(
+                        record,
+                        field.getFieldCode(),
+                        byRecord.get(record.getId()));
+            }
+            return;
+        }
+        for (EntityDataDTO record : records) {
+            putExtensionValue(record, field.getFieldCode(), result);
+        }
+    }
+
+    private void putExtensionValue(
+            EntityDataDTO record,
+            String fieldCode,
+            Object value) {
+        if (record.getExtData() == null) {
+            record.setExtData(new LinkedHashMap<>());
+        }
+        record.getExtData().put(fieldCode, value);
     }
 
     private ConditionPartition partitionCondition(
@@ -270,6 +361,6 @@ public class EntityDataListConfigService {
                     .findFirst()
                     .orElse(configs.isEmpty() ? null : configs.get(0));
         }
-        return config;
+        return publishedRuntimeService.resolveConfig(config);
     }
 }

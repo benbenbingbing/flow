@@ -12,6 +12,20 @@ export const entityApi = {
   },
 
   /**
+   * 获取全部实体定义，用于配置项下拉选择。
+   */
+  async getAll(params = {}) {
+    const response = await request.get('/entity', {
+      params: { pageNum: 1, pageSize: 1000, ...params }
+    })
+    if (Array.isArray(response)) return response
+    if (Array.isArray(response?.records)) return response.records
+    if (Array.isArray(response?.list)) return response.list
+    if (Array.isArray(response?.data)) return response.data
+    return []
+  },
+
+  /**
    * 根据ID获取实体定义
    */
   getById(id) {
@@ -53,11 +67,16 @@ export const entityApi = {
     return request.post(`/entity/${id}/publish`, data)
   },
 
-  /**
-   * 绑定流程
-   */
-  bindProcess(entityId, processId) {
-    return request.post(`/entity/${entityId}/bind-process/${processId}`)
+  bindWorkflow(entityId, processDefinitionId) {
+    return request.put(`/entity/${entityId}/workflow-binding`, { processDefinitionId })
+  },
+
+  unbindWorkflow(entityId) {
+    return request.delete(`/entity/${entityId}/workflow-binding`)
+  },
+
+  updateLifecycleMode(entityId, lifecycleMode) {
+    return request.put(`/entity/${entityId}/lifecycle-mode`, { lifecycleMode })
   },
 
   /**

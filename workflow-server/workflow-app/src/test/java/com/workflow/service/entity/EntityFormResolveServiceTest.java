@@ -6,8 +6,7 @@ import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessNodeFormMapper;
-import com.workflow.service.EntityFormService;
+import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
@@ -25,35 +24,40 @@ class EntityFormResolveServiceTest {
     void newDataUsesFirstReachableUserTaskForm() {
         EntityDefinitionMapper entityDefinitionMapper = mock(EntityDefinitionMapper.class);
         ProcessDefinitionConfigMapper processConfigMapper = mock(ProcessDefinitionConfigMapper.class);
-        ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
-        EntityFormService formService = mock(EntityFormService.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        EntityFormRuntimeService formService = mock(EntityFormRuntimeService.class);
         EntityFormResolveService service = new EntityFormResolveService(
                 entityDefinitionMapper,
                 processConfigMapper,
-                nodeFormMapper,
+                snapshotService,
                 formService,
                 mock(RuntimeService.class),
                 mock(TaskService.class));
 
         EntityDefinition entity = new EntityDefinition();
         entity.setId("entity-1");
-        entity.setEnableProcess(true);
+        entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
         entity.setProcessDefinitionId("process-1");
         when(entityDefinitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(entity));
 
         ProcessDefinitionConfig process = new ProcessDefinitionConfig();
         process.setId("process-1");
+        process.setProcessKey("expense-flow");
         process.setBpmnXml(bpmn());
         when(processConfigMapper.selectById("process-1")).thenReturn(process);
 
         ProcessNodeForm binding = new ProcessNodeForm();
         binding.setFormId("form-first");
-        when(nodeFormMapper.selectListByNodeId("process-1", "Task_First"))
+        binding.setFormReleaseId("release-2");
+        binding.setFormReleaseVersion(2);
+        when(snapshotService.getNodeForms("expense-flow", "Task_First"))
                 .thenReturn(List.of(binding));
 
         EntityForm form = new EntityForm();
         form.setId("form-first");
-        when(formService.getById("form-first")).thenReturn(form);
+        when(formService.getByBinding(binding)).thenReturn(form);
 
         assertEquals("form-first", service.resolveFormForNewData("expense").getId());
     }
@@ -63,8 +67,8 @@ class EntityFormResolveServiceTest {
         EntityFormResolveService service = new EntityFormResolveService(
                 mock(EntityDefinitionMapper.class),
                 mock(ProcessDefinitionConfigMapper.class),
-                mock(ProcessNodeFormMapper.class),
-                mock(EntityFormService.class),
+                mock(ProcessPublishedSnapshotService.class),
+                mock(EntityFormRuntimeService.class),
                 mock(RuntimeService.class),
                 mock(TaskService.class));
 

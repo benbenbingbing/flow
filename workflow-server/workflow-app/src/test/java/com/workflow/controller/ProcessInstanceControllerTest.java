@@ -93,4 +93,29 @@ public class ProcessInstanceControllerTest {
 
         verify(processInstanceService, times(1)).getProcessProgress("proc-inst-2");
     }
+
+    @Test
+    void triggerReceiveTaskPassesMessageAndVariablesToService() throws Exception {
+        when(processInstanceService.triggerReceiveTask(eq("proc-inst-1"), any()))
+                .thenReturn("execution-1");
+
+        mockMvc.perform(post("/api/process-instance/proc-inst-1/receive")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "activityId": "Receive_Payment",
+                                  "messageRef": "paymentCallback",
+                                  "variables": {"paymentStatus": "SUCCESS"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.processInstanceId").value("proc-inst-1"))
+                .andExpect(jsonPath("$.data.executionId").value("execution-1"));
+
+        verify(processInstanceService).triggerReceiveTask(eq("proc-inst-1"), argThat(request ->
+                "Receive_Payment".equals(request.getActivityId())
+                        && "paymentCallback".equals(request.getMessageRef())
+                        && "SUCCESS".equals(request.getVariables().get("paymentStatus"))));
+    }
 }

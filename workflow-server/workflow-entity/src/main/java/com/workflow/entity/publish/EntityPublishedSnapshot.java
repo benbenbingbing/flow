@@ -16,6 +16,9 @@ public class EntityPublishedSnapshot {
     private String entityCode;
     private String entityName;
     private String processDefinitionId;
+    private com.workflow.entity.EntityDefinition.LifecycleMode lifecycleMode;
+    private Boolean teamVisibilityEnabled;
+    private com.workflow.entity.EntityDefinition.TeamVisibilityLevel teamVisibilityLevel;
     private Integer version;
     private List<EntityField> fields;
 }

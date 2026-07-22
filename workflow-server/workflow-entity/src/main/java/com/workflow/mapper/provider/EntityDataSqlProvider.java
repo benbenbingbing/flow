@@ -337,6 +337,14 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+    public String countProcessInstances(Map<String, Object> params) {
+        String tableName = tableName(params);
+        return "SELECT COUNT(*) FROM " + tableName
+                + " WHERE deleted = 0"
+                + " AND process_instance_id IS NOT NULL"
+                + " AND process_instance_id <> ''";
+    }
+
     // ============ 私有辅助方法 ============
 
     /**
@@ -358,6 +366,9 @@ public class EntityDataSqlProvider {
         for (Map.Entry<String, Object> entry : condition.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
+            if (key.startsWith("__multi_")) {
+                continue;
+            }
             // 跳过 null 和空字符串
             if (value == null || (value instanceof String && ((String) value).trim().isEmpty())) {
                 continue;

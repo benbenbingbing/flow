@@ -25,9 +25,28 @@
         :linkageState="linkageState"
         :mode="mode"
         :config="formViewConfig.customComponentProps || {}"
-        :context="{ mode, form, readonly }"
+        :context="runtimeContext"
+        :entity-code="entityCode"
+        :entity-definition="entityDefinition"
+        :entity-fields="entityFields"
+        :data-source-runtime="dataSourceRuntime"
       />
     </template>
+    <FormNodeRenderer
+      v-else-if="hasNodeTree"
+      ref="nodeFormRef"
+      :nodes="form.nodes"
+      :fields="processedFields"
+      :model-value="formData"
+      :linkage-state="linkageState"
+      :readonly="readonly"
+      :mode="mode"
+      :context="runtimeContext"
+      :data-source-runtime="dataSourceRuntime"
+      :label-width="labelWidth"
+      :label-position="labelPosition"
+      @update:model-value="handleCustomFormUpdate"
+    />
     <el-form
       v-else
       ref="formRef"
@@ -61,6 +80,8 @@
               v-model="formData[getFieldKey(field)]"
               :disabled="isFieldDisabled(field)"
               :options="linkageState.options[getFieldKey(field)] || field.options"
+              :context="{ ...runtimeContext, field }"
+              :data-source-runtime="dataSourceRuntime"
             />
           </el-form-item>
         </div>
@@ -103,6 +124,8 @@
                     v-model="formData[getFieldKey(field)]"
                     :disabled="isFieldDisabled(field)"
                     :options="linkageState.options[getFieldKey(field)] || field.options"
+                    :context="{ ...runtimeContext, field }"
+                    :data-source-runtime="dataSourceRuntime"
                   />
                 </el-form-item>
               </div>
@@ -120,6 +143,8 @@
                 v-model="formData[getFieldKey(field)]"
                 :disabled="isFieldDisabled(field)"
                 :options="linkageState.options[getFieldKey(field)] || field.options"
+                :context="{ ...runtimeContext, field }"
+                :data-source-runtime="dataSourceRuntime"
               />
             </el-tab-pane>
           </el-tabs>
@@ -132,6 +157,7 @@
 <script setup>
 import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
+import FormNodeRenderer from './FormNodeRenderer.vue'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
@@ -171,6 +197,26 @@ const props = defineProps({
   height: {
     type: String,
     default: '70vh'
+  },
+  entityCode: {
+    type: String,
+    default: ''
+  },
+  entityDefinition: {
+    type: Object,
+    default: null
+  },
+  entityFields: {
+    type: Array,
+    default: () => []
+  },
+  context: {
+    type: Object,
+    default: () => ({})
+  },
+  dataSourceRuntime: {
+    type: Object,
+    default: null
   }
 })
 
@@ -195,6 +241,7 @@ function handleCustomFormUpdate(val) {
 
 const formRef = ref(null)
 const customFormRef = ref(null)
+const nodeFormRef = ref(null)
 const formData = ref(props.modelValue || {})
 const linkageState = ref({
   visibility: {},
@@ -203,6 +250,15 @@ const linkageState = ref({
   options: {}
 })
 const activeTabSubForm = ref('basic')
+const hasNodeTree = computed(() => Array.isArray(props.form?.nodes) && props.form.nodes.length > 0)
+const runtimeContext = computed(() => ({
+  ...props.context,
+  mode: props.mode,
+  form: props.form,
+  readonly: props.readonly,
+  entityCode: props.entityCode,
+  entityDefinition: props.entityDefinition
+}))
 
 // 判断是否为 Tab 模式的子表单
 function isSectionField(field) {
@@ -432,6 +488,9 @@ onMounted(() => {
 async function validate() {
   if (customFormRef.value?.validate) {
     return (await customFormRef.value.validate()) !== false
+  }
+  if (hasNodeTree.value) {
+    return (await nodeFormRef.value?.validate()) !== false
   }
   if (!formRef.value) return true
   try {

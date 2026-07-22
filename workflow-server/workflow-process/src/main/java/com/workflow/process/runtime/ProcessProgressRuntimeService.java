@@ -12,8 +12,9 @@ import com.workflow.mapper.SysUserGroupMapper;
 import com.workflow.mapper.SysUserMapper;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import com.workflow.service.EntityDataDynamicService;
-import com.workflow.service.EntityFormService;
+import com.workflow.service.ProcessNodeApprovalOptionService;
 import com.workflow.service.SysUserService;
+import com.workflow.service.entity.EntityFormRuntimeService;
 import com.workflow.service.form.EntityFormFieldRuntimeMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +54,7 @@ public class ProcessProgressRuntimeService {
     private final ProcessDefinitionConfigMapper processConfigMapper;
     private final SysUserService sysUserService;
     private final EntityDataDynamicService entityDataDynamicService;
-    private final EntityFormService entityFormService;
+    private final EntityFormRuntimeService entityFormRuntimeService;
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final ProcessTaskMapper processTaskMapper;
     private final SysGroupMapper sysGroupMapper;
@@ -61,6 +62,7 @@ public class ProcessProgressRuntimeService {
     private final SysUserMapper sysUserMapper;
     private final ProcessOperationLogMapper operationLogMapper;
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
+    private final ProcessNodeApprovalOptionService approvalOptionService;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -742,19 +744,29 @@ public class ProcessProgressRuntimeService {
             List<ProcessProgressDTO.FormConfigDTO> formConfigs = new ArrayList<>();
             
             // 3a. 最高优先级：从流程发布快照查询节点表单绑定
-            if (processKey != null && !processKey.isEmpty() && targetNodeId != null && !targetNodeId.isEmpty()) {
+            if (progress.getProcessDefinitionId() != null
+                    && !progress.getProcessDefinitionId().isEmpty()
+                    && targetNodeId != null
+                    && !targetNodeId.isEmpty()) {
                 try {
                     List<com.workflow.entity.ProcessNodeForm> nodeForms =
-                            processPublishedSnapshotService.getNodeForms(processKey, targetNodeId);
+                            processPublishedSnapshotService
+                                    .getNodeFormsByProcessDefinitionId(
+                                            progress.getProcessDefinitionId(),
+                                            targetNodeId);
                     for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
                         if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
                             continue;
                         }
-                        com.workflow.entity.EntityForm entityForm = entityFormService.getById(nodeForm.getFormId());
+                        com.workflow.entity.EntityForm entityForm =
+                                entityFormRuntimeService.getByBinding(nodeForm);
                         if (entityForm != null) {
                             Boolean nodeFormReadonly =
                                     Integer.valueOf(1).equals(nodeForm.getIsReadonly()) ? Boolean.TRUE : null;
-                            formConfigs.add(buildProgressFormConfig(entityForm, nodeFormReadonly));
+                            formConfigs.add(buildProgressFormConfig(
+                                    entityForm,
+                                    nodeFormReadonly,
+                                    nodeForm));
                             log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
                                 targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
                         }
@@ -766,9 +778,10 @@ public class ProcessProgressRuntimeService {
             
             // 3b. 映射表中没有表单绑定，尝试使用默认表单
             if (formConfigs.isEmpty()) {
-                com.workflow.entity.EntityForm entityForm = entityFormService.getDefaultForm(entityDef.getId());
+                com.workflow.entity.EntityForm entityForm =
+                        entityFormRuntimeService.getDefaultForm(entityDef.getId());
                 if (entityForm != null) {
-                    formConfigs.add(buildProgressFormConfig(entityForm, null));
+                    formConfigs.add(buildProgressFormConfig(entityForm, null, null));
                     log.debug("节点未配置表单，回退到默认表单: nodeId={}, formId={}", targetNodeId, entityForm.getId());
                 }
             }
@@ -789,9 +802,16 @@ public class ProcessProgressRuntimeService {
         }
     }
 
-    private ProcessProgressDTO.FormConfigDTO buildProgressFormConfig(com.workflow.entity.EntityForm entityForm, Boolean readonlyOverride) {
+    private ProcessProgressDTO.FormConfigDTO buildProgressFormConfig(
+            com.workflow.entity.EntityForm entityForm,
+            Boolean readonlyOverride,
+            com.workflow.entity.ProcessNodeForm nodeForm) {
         ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
         formConfig.setFormId(entityForm.getId());
+        if (nodeForm != null) {
+            formConfig.setFormReleaseId(nodeForm.getFormReleaseId());
+            formConfig.setFormReleaseVersion(nodeForm.getFormReleaseVersion());
+        }
         formConfig.setFormName(entityForm.getFormName());
         formConfig.setFormKey(entityForm.getFormKey());
         formConfig.setLayoutType(entityForm.getLayoutType());
@@ -806,6 +826,14 @@ public class ProcessProgressRuntimeService {
                 fields.add(EntityFormFieldRuntimeMapper.toMap(field, readonlyOverride, mapper));
             }
             formConfig.setFields(fields);
+        }
+        if (entityForm.getNodes() != null) {
+            com.fasterxml.jackson.databind.ObjectMapper mapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+            formConfig.setNodes(mapper.convertValue(
+                    entityForm.getNodes(),
+                    new com.fasterxml.jackson.core.type.TypeReference<
+                            List<Map<String, Object>>>() {}));
         }
 
         return formConfig;
@@ -886,21 +914,24 @@ public class ProcessProgressRuntimeService {
                         approvalConfig.setEnabled(nodeApproval.getEnabled() != null && nodeApproval.getEnabled() == 1);
                         approvalConfig.setCommentLabel(nodeApproval.getCommentLabel() != null ? nodeApproval.getCommentLabel() : "审批意见");
                         
-                        if (nodeApproval.getOptionsJson() != null && !nodeApproval.getOptionsJson().isEmpty()) {
-                            com.fasterxml.jackson.databind.JsonNode configNode = 
-                                new com.fasterxml.jackson.databind.ObjectMapper().readTree(nodeApproval.getOptionsJson());
-                            if (configNode.isArray()) {
-                                List<ProcessProgressDTO.ApprovalOptionDTO> options = new ArrayList<>();
-                                for (com.fasterxml.jackson.databind.JsonNode optNode : configNode) {
-                                    ProcessProgressDTO.ApprovalOptionDTO option = new ProcessProgressDTO.ApprovalOptionDTO();
-                                    option.setValue(optNode.has("value") ? optNode.get("value").asText() : "");
-                                    option.setLabel(optNode.has("label") ? optNode.get("label").asText() : "");
-                                    option.setType(optNode.has("type") ? optNode.get("type").asText() : "primary");
-                                    option.setShowComment(optNode.has("showComment") ? optNode.get("showComment").asBoolean() : true);
-                                    options.add(option);
-                                }
-                                approvalConfig.setOptions(options);
+                        List<Map<String, Object>> optionConfigs =
+                                approvalOptionService.findOptions(nodeApproval.getId());
+                        if (!optionConfigs.isEmpty()) {
+                            List<ProcessProgressDTO.ApprovalOptionDTO> options = new ArrayList<>();
+                            for (Map<String, Object> optionConfig : optionConfigs) {
+                                ProcessProgressDTO.ApprovalOptionDTO option =
+                                        new ProcessProgressDTO.ApprovalOptionDTO();
+                                option.setValue(String.valueOf(
+                                        optionConfig.getOrDefault("value", "")));
+                                option.setLabel(String.valueOf(
+                                        optionConfig.getOrDefault("label", "")));
+                                option.setType(String.valueOf(
+                                        optionConfig.getOrDefault("type", "primary")));
+                                option.setShowComment(!Boolean.FALSE.equals(
+                                        optionConfig.get("showComment")));
+                                options.add(option);
                             }
+                            approvalConfig.setOptions(options);
                         }
                         
                         progress.setApprovalConfig(approvalConfig);

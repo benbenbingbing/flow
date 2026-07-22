@@ -44,6 +44,26 @@ export const NODE_TYPE_DESCRIPTIONS = {
     desc: '封装一组相关任务',
     scene: '复杂流程分段、局部折叠'
   },
+  'bpmn:ExclusiveGateway': {
+    title: '排他网关',
+    desc: '根据条件只选择一条可用分支',
+    scene: '互斥条件判断、审批结果分流'
+  },
+  'bpmn:ParallelGateway': {
+    title: '并行网关',
+    desc: '同时开启或汇聚多条并行分支',
+    scene: '并行办理、并行汇聚'
+  },
+  'bpmn:InclusiveGateway': {
+    title: '包容网关',
+    desc: '根据条件选择一条或多条分支',
+    scene: '多条件可同时成立的分流与汇聚'
+  },
+  'bpmn:EventBasedGateway': {
+    title: '事件网关',
+    desc: '等待多个事件中的首个事件决定后续分支',
+    scene: '消息、信号或定时事件竞争'
+  },
   'bpmn:SequenceFlow': {
     title: '顺序流',
     desc: '连接节点并控制流转条件',
@@ -76,6 +96,7 @@ export const NODE_TYPE_TEXT = {
   'bpmn:ExclusiveGateway': '排他网关',
   'bpmn:ParallelGateway': '并行网关',
   'bpmn:InclusiveGateway': '包容网关',
+  'bpmn:EventBasedGateway': '事件网关',
   'bpmn:SequenceFlow': '顺序流'
 }
 

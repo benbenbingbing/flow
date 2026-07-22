@@ -70,6 +70,9 @@ class ProcessTaskServiceTest {
     @Mock
     private TaskQuery taskQuery;
 
+    @Mock
+    private org.flowable.task.api.Task flowableTask;
+
     private ProcessTaskService service;
 
     @BeforeEach
@@ -171,5 +174,38 @@ class ProcessTaskServiceTest {
         verify(taskMapper).updateById(captor.capture());
         ProcessTask updated = captor.getValue();
         Assertions.assertEquals("已有标签", updated.getActionLabel());
+    }
+
+    @Test
+    void synchronizeClaimedTaskUpdatesLocalTaskAndEntityAssignee() {
+        ProcessTask localTask = new ProcessTask();
+        localTask.setId(1L);
+        localTask.setTaskId("task-1");
+        localTask.setAssigneeId("candidate-group");
+        localTask.setAssigneeType("group");
+        when(taskMapper.selectByTaskIdForUpdate("task-1")).thenReturn(localTask);
+        when(sysUserService.getDisplayName("admin")).thenReturn("管理员(admin)");
+        when(runtimeService.getVariables("proc-1")).thenReturn(Map.of(
+                "entityCode", "expense",
+                "entityDataId", "record-1"
+        ));
+        when(flowableTaskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.processInstanceId("proc-1")).thenReturn(taskQuery);
+        when(taskQuery.active()).thenReturn(taskQuery);
+        when(taskQuery.list()).thenReturn(List.of(flowableTask));
+        when(flowableTask.getId()).thenReturn("task-1");
+        when(flowableTask.getName()).thenReturn("经理审批");
+        when(flowableTask.getAssignee()).thenReturn("admin");
+
+        service.synchronizeClaimedTask("task-1", "proc-1", "admin");
+
+        ArgumentCaptor<ProcessTask> captor = ArgumentCaptor.forClass(ProcessTask.class);
+        verify(taskMapper).updateById(captor.capture());
+        ProcessTask updated = captor.getValue();
+        Assertions.assertEquals("admin", updated.getAssigneeId());
+        Assertions.assertEquals("管理员(admin)", updated.getAssigneeName());
+        Assertions.assertEquals("user", updated.getAssigneeType());
+        verify(entityDataDynamicService).updateCurrentTask(
+                "expense", "record-1", "task-1", "经理审批", "admin");
     }
 }

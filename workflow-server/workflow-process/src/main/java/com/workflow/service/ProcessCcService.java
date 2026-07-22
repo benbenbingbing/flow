@@ -63,8 +63,10 @@ public class ProcessCcService {
      * 标记抄送为已读
      */
     @Transactional(rollbackFor = Exception.class)
-    public void markAsRead(String ccId) {
-        ccRecordMapper.markAsRead(ccId);
+    public void markAsRead(String ccId, String userId) {
+        if (ccRecordMapper.markAsRead(ccId, userId) == 0) {
+            throw new com.workflow.common.ForbiddenException("无权读取该知会记录");
+        }
         log.info("抄送记录标记为已读: {}", ccId);
     }
     

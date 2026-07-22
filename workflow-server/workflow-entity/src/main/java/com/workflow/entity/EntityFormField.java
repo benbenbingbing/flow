@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * 表单字段配置
@@ -158,6 +159,9 @@ public class EntityFormField {
 
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean relationRequired;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Map<String, Object> dataSourceBindings;
 
     /**
      * 栅格宽度（1-24）

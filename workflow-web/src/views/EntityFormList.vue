@@ -7,7 +7,7 @@
         </el-button>
         <span class="title">{{ entityInfo.entityName }} - 表单管理</span>
       </div>
-      <el-button type="primary" @click="handleCreate">
+      <el-button v-if="entityInfo.storageMode !== 'SYSTEM'" type="primary" @click="handleCreate">
         <el-icon><Plus /></el-icon>新建表单
       </el-button>
     </div>
@@ -256,6 +256,10 @@ const rules = {
 async function loadEntityInfo() {
   try {
     entityInfo.value = await entityApi.getById(entityId)
+    if (entityInfo.value.storageMode === 'SYSTEM') {
+      ElMessage.warning('平台系统实体只提供结构目录，不支持动态表单配置')
+      router.replace('/entity')
+    }
   } catch (e) {
     console.error('加载实体信息失败:', e)
   }
@@ -390,8 +394,7 @@ onMounted(() => {
 
 async function loadAllEntities() {
   try {
-    const res = await entityApi.getList()
-    allEntityList.value = res || []
+    allEntityList.value = await entityApi.getAll()
   } catch (e) {
     console.error('加载实体列表失败:', e)
     allEntityList.value = []
@@ -495,7 +498,7 @@ async function handleSaveInitConfig() {
   initConfigLoading.value = true
   try {
     const initConfig = buildInitConfigFromUI()
-    await updateFormInitConfig(currentInitFormId.value, initConfig ? JSON.stringify(initConfig) : null)
+    await updateFormInitConfig(currentInitFormId.value, initConfig || null)
     ElMessage.success('初始化配置保存成功')
     initConfigVisible.value = false
     loadForms()

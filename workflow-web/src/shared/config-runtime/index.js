@@ -39,7 +39,9 @@ export function normalizeExtensionDescriptor(name, component, metadata = {}) {
     configSchema: Array.isArray(metadata.configSchema) ? metadata.configSchema : [],
     capabilities: metadata.capabilities || {},
     supportedModes: metadata.supportedModes || [],
-    supportedFieldTypes: metadata.supportedFieldTypes || []
+    supportedFieldTypes: metadata.supportedFieldTypes || [],
+    version: Number(metadata.version || 1),
+    snapshotVersion: Number(metadata.snapshotVersion || 1)
   }
 }
 

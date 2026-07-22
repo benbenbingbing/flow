@@ -108,6 +108,8 @@ public class ProcessTask {
     public static final String STATUS_DONE = "done";
     public static final String STATUS_TRANSFER = "transfer";
     public static final String STATUS_SKIP = "skip";
+    public static final String STATUS_HOLD = "hold";
+    public static final String STATUS_WAITING = "waiting";
     
     // 操作常量
     public static final String ACTION_APPROVE = "approve";

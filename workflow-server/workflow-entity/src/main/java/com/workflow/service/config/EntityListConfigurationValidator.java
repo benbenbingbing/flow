@@ -1,5 +1,6 @@
 package com.workflow.service.config;
 
+import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityListField;
@@ -28,8 +29,13 @@ public class EntityListConfigurationValidator {
             "EQ", "NE", "LIKE", "NOT_LIKE", "GT", "GE", "LT", "LE",
             "BETWEEN", "IN", "NOT_IN", "EMPTY", "NOT_EMPTY");
     private static final Set<String> ALIGNMENTS = Set.of("left", "center", "right");
+    private static final Set<String> DATA_SCOPE_MODES =
+            Set.of("INHERIT", "NARROW", "OVERRIDE");
+    private static final Pattern PERMISSION_CODE =
+            Pattern.compile("[A-Za-z0-9:_-]{1,200}");
 
     private final StructuredConfigValidator structuredConfigValidator;
+    private final JsonDocumentCodec jsonDocumentCodec;
     private final ListFieldDataProviderRegistry providerRegistry;
     private final EntityFieldMapper entityFieldMapper;
 
@@ -44,10 +50,25 @@ public class EntityListConfigurationValidator {
             throw new IllegalArgumentException("列表标识只能包含字母、数字、下划线和短横线，且必须以字母开头");
         }
         validateExtensionName(dto.getCustomComponent(), "自定义列表组件");
-        structuredConfigValidator.parseObject(dto.getViewConfig(), "列表视图配置");
-        dto.setViewConfig(blankToNull(dto.getViewConfig()));
-        structuredConfigValidator.parseJson(dto.getToolbarConfig(), "工具栏配置");
-        structuredConfigValidator.parseJson(dto.getRowActionConfig(), "操作列配置");
+        validateExtensionName(dto.getQueryProviderCode(), "自定义查询提供者");
+        String dataScopeMode = StringUtils.hasText(dto.getDataScopeMode())
+                ? dto.getDataScopeMode().trim().toUpperCase(Locale.ROOT)
+                : "INHERIT";
+        if (!DATA_SCOPE_MODES.contains(dataScopeMode)) {
+            throw new IllegalArgumentException("数据范围模式只能是 INHERIT、NARROW 或 OVERRIDE");
+        }
+        dto.setDataScopeMode(dataScopeMode);
+        if (StringUtils.hasText(dto.getAccessPermissionCode())
+                && !PERMISSION_CODE.matcher(dto.getAccessPermissionCode()).matches()) {
+            throw new IllegalArgumentException("列表访问权限码格式不正确");
+        }
+        validateStructured(dto.getViewConfig(), "列表视图配置");
+        validateStructured(dto.getToolbarConfig(), "工具栏配置");
+        validateStructured(dto.getRowActionConfig(), "操作列配置");
+        validateStructured(dto.getAllowedScenes(), "允许场景配置");
+        validateStructured(dto.getSelectionConfig(), "选择模式配置");
+        validateStructured(dto.getFixedFilterConfig(), "固定查询条件");
+        validateStructured(dto.getContextBindingConfig(), "上下文绑定配置");
 
         List<EntityListField> fields = dto.getFields();
         if (fields == null) {
@@ -131,5 +152,11 @@ public class EntityListConfigurationValidator {
 
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
+    }
+
+    private void validateStructured(Object value, String label) {
+        if (value != null) {
+            jsonDocumentCodec.write(value, label);
+        }
     }
 }

@@ -49,6 +49,12 @@ export function isRuntimeFieldVisible(field, mode = 'view') {
 }
 
 export { buildRuntimeFieldRules }
+export {
+  createFormDataSourceRuntime,
+  getClientBeforeSubmitBindings,
+  isClientPrevalidationBinding,
+  getFormDataSourceBindings
+} from './dataSourceRuntime.js'
 
 export function normalizeRuntimeFormConfigs(progressRes) {
   if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {

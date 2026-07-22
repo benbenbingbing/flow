@@ -190,6 +190,7 @@ const initModeler = () => {
       'bpmn:ScriptTask', 'bpmn:BusinessRuleTask', 'bpmn:SendTask', 'bpmn:ReceiveTask',
       'bpmn:StartEvent', 'bpmn:EndEvent',
       'bpmn:ExclusiveGateway', 'bpmn:ParallelGateway', 'bpmn:InclusiveGateway', 'bpmn:EventBasedGateway',
+      'bpmn:CallActivity', 'bpmn:SubProcess',
       'bpmn:SequenceFlow'
     ]
     if (configurableTypes.some(type => element.type?.includes(type))) {

@@ -9,7 +9,7 @@ import java.util.Locale;
 public enum EntityPermissionAction {
     LIST("list", "查询列表", "访问、查询和统计实体列表"),
     VIEW("view", "查看", "查看实体数据详情"),
-    CREATE("create", "新增", "新增实体数据并可发起流程"),
+    CREATE("create", "新增", "新增实体数据；流程实体就绪时可选择发起流程"),
     UPDATE("update", "编辑", "修改实体数据"),
     DELETE("delete", "单条删除", "删除单条实体数据"),
     BATCH_DELETE("batch-delete", "批量删除", "批量删除实体数据"),

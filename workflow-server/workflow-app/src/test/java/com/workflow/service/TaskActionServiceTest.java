@@ -1,6 +1,8 @@
 package com.workflow.service;
 
+import com.workflow.common.BusinessConflictException;
 import com.workflow.common.UserContext;
+import com.workflow.dto.EntityDataDTO;
 import com.workflow.mapper.EntityDataMapper;
 import com.workflow.mapper.ProcessOperationLogMapper;
 import com.workflow.entity.ProcessTask;
@@ -28,7 +30,11 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,6 +74,9 @@ class TaskActionServiceTest {
     private EntityActionCapabilityService entityActionCapabilityService;
 
     @Mock
+    private EntityRecordTeamService entityRecordTeamService;
+
+    @Mock
     private TaskQuery taskQuery;
 
     @Mock
@@ -97,7 +106,8 @@ class TaskActionServiceTest {
                 sysUserService,
                 nodeFormSubmissionService,
                 entityDataDynamicService,
-                entityActionCapabilityService
+                entityActionCapabilityService,
+                entityRecordTeamService
         );
         UserContext.setCurrentUser("admin-id", "admin");
     }
@@ -127,6 +137,63 @@ class TaskActionServiceTest {
         verify(taskService).complete(eq("task-1"), anyMap());
         verify(processTaskService).completeTask("task-1", "reject", "资料不全", null);
         verify(processTaskService).syncTasksFromFlowable("proc-1");
+    }
+
+    @Test
+    void candidateCanReadTaskWithoutEntityApprovalCapability() {
+        mockCandidateTask("task-1");
+
+        service.requireTaskAccess("task-1");
+
+        verifyNoInteractions(entityActionCapabilityService);
+        verify(taskService, never()).claim(any(), any());
+    }
+
+    @Test
+    void candidateCompletionClaimsBeforeCheckingEntityApprovalCapability() {
+        mockCandidateTask("task-1");
+        when(task.getProcessInstanceId()).thenReturn("proc-1");
+        when(taskService.getVariable("task-1", "nrOfInstances")).thenReturn(null);
+        when(taskService.getVariable("task-1", "nrOfCompletedInstances")).thenReturn(null);
+        when(runtimeService.getVariable("proc-1", "entityCode")).thenReturn("expense");
+        when(runtimeService.getVariable("proc-1", "entityDataId")).thenReturn("record-1");
+        EntityDataDTO entityData = new EntityDataDTO();
+        entityData.setId("record-1");
+        when(entityDataDynamicService.findById("expense", "record-1")).thenReturn(entityData);
+
+        service.completeTask("task-1", "admin", "approve", "同意", null, null);
+
+        var ordered = inOrder(taskService, processTaskService, entityActionCapabilityService);
+        ordered.verify(taskService).claim("task-1", "admin");
+        ordered.verify(processTaskService).synchronizeClaimedTask("task-1", "proc-1", "admin");
+        ordered.verify(entityActionCapabilityService).requireRowAction(
+                "expense", null, "approve", entityData);
+        ordered.verify(taskService).complete(eq("task-1"), anyMap());
+        verify(operationLogMapper).insert(any(com.workflow.entity.ProcessOperationLog.class));
+        verify(entityRecordTeamService).record(
+                "expense", "record-1", "CLAIM", "认领任务", "proc-1", "task-1");
+    }
+
+    @Test
+    void concurrentClaimReturnsConflictWhenAnotherUserWins() {
+        Task latestTask = org.mockito.Mockito.mock(Task.class);
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task, latestTask);
+        when(taskQuery.taskCandidateUser(any())).thenReturn(taskQuery);
+        when(taskQuery.count()).thenReturn(1L);
+        when(task.getId()).thenReturn("task-1");
+        when(task.getAssignee()).thenReturn(null);
+        when(latestTask.getAssignee()).thenReturn("other-user");
+        org.mockito.Mockito.doThrow(new RuntimeException("already claimed"))
+                .when(taskService).claim("task-1", "admin");
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.claimTask("task-1"));
+
+        assertEquals("TASK_ALREADY_CLAIMED", exception.getErrorCode());
+        verify(processTaskService, never()).synchronizeClaimedTask(any(), any(), any());
     }
 
     @Test
@@ -171,6 +238,17 @@ class TaskActionServiceTest {
         when(task.getId()).thenReturn(taskId);
         when(task.getAssignee()).thenReturn(assignee);
         when(task.getProcessInstanceId()).thenReturn(processInstanceId);
-        when(runtimeService.getVariables(processInstanceId)).thenReturn(Collections.emptyMap());
+        when(taskService.getVariable(taskId, "nrOfInstances")).thenReturn(null);
+        when(taskService.getVariable(taskId, "nrOfCompletedInstances")).thenReturn(null);
+    }
+
+    private void mockCandidateTask(String taskId) {
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId(taskId)).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+        when(taskQuery.taskCandidateUser(any())).thenReturn(taskQuery);
+        when(taskQuery.count()).thenReturn(1L);
+        when(task.getId()).thenReturn(taskId);
+        when(task.getAssignee()).thenReturn(null);
     }
 }

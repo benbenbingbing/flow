@@ -46,6 +46,16 @@ public class EntityListField {
     private Integer sortOrder;
 
     /**
+     * 稀疏排序键
+     */
+    private Long orderKey;
+
+    /**
+     * 字段草稿修订号
+     */
+    private Integer revision;
+
+    /**
      * 列宽度（0表示自适应）
      */
     @TableField("width")
@@ -88,6 +98,11 @@ public class EntityListField {
     private String dataSourceConfig;
 
     /**
+     * 统一数据源ID
+     */
+    private String dataSourceId;
+
+    /**
      * 前端渲染组件名
      */
     @TableField("render_component")
@@ -116,6 +131,12 @@ public class EntityListField {
      */
     @TableField("render_config")
     private String renderConfig;
+
+    private String templateId;
+
+    private Integer templateVersion;
+
+    private String localOverridesDocument;
 
     /**
      * 是否删除

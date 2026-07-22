@@ -1,5 +1,6 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.common.Result;
 import com.workflow.dto.permission.EntityPermissionOptionDTO;
 import com.workflow.entity.SysMenu;
@@ -32,6 +33,26 @@ public class SysMenuController {
     @GetMapping("/tree")
     public Result<List<SysMenu>> tree() {
         return Result.success(menuService.getMenuTree());
+    }
+
+    /**
+     * 分页查询指定父菜单下的直接子菜单
+     */
+    @GetMapping("/children")
+    public Result<PageResult<SysMenu>> children(
+            @RequestParam(required = false, defaultValue = "0") String parentId,
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize) {
+        return Result.success(menuService.getChildrenPage(parentId, pageNum, pageSize));
+    }
+
+    /**
+     * 查询以指定节点为根的完整子树（展开时一次性加载所有后代）
+     */
+    @GetMapping("/subtree")
+    public Result<List<SysMenu>> subtree(
+            @RequestParam(required = false, defaultValue = "0") String parentId) {
+        return Result.success(menuService.getSubtree(parentId));
     }
 
     /**

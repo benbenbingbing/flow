@@ -4,11 +4,10 @@ import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
+import com.workflow.service.entity.EntityFormRuntimeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
-import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -25,10 +24,12 @@ import java.util.Set;
 public class NodeFormSubmissionService {
 
     private final RuntimeService runtimeService;
-    private final RepositoryService repositoryService;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
     private final EntityFormService entityFormService;
+    private final EntityFormRuntimeService entityFormRuntimeService;
     private final EntityDataDynamicService entityDataDynamicService;
+    private final PublishedFormSubmissionService formSubmissionService;
+    private final FormSubmissionTraceService formSubmissionTraceService;
 
     public void applyEditableData(Task task, Map<String, Object> submittedFormData) {
         if (task == null || submittedFormData == null || submittedFormData.isEmpty()) {
@@ -43,16 +44,39 @@ public class NodeFormSubmissionService {
             return;
         }
 
-        Set<String> editableFieldCodes = resolveEditableFieldCodes(task, entityCode);
+        List<ProcessNodeForm> nodeForms = getPublishedNodeForms(task);
+        Map<String, Object> submittedValues =
+                flattenSubmittedValues(submittedFormData);
+        Set<String> editableFieldCodes =
+                resolveEditableFieldCodes(
+                        nodeForms,
+                        entityCode);
         if (editableFieldCodes.isEmpty()) {
             return;
         }
+        FormSubmissionExecutionContext executionContext =
+                formSubmissionTraceService.current(
+                        "PROCESS_APPROVAL_SUBMIT",
+                        "task:" + task.getId(),
+                        submissionAttributes(
+                                task,
+                                entityCode,
+                                entityDataId));
+        Map<String, Object> processedValues =
+                applyBeforeSubmit(
+                        nodeForms,
+                        task,
+                        entityCode,
+                        entityDataId,
+                        submittedValues,
+                        executionContext);
 
-        Map<String, Object> submittedValues = flattenSubmittedValues(submittedFormData);
         Map<String, Object> editableValues = new HashMap<>();
         for (String fieldCode : editableFieldCodes) {
-            if (submittedValues.containsKey(fieldCode)) {
-                editableValues.put(fieldCode, submittedValues.get(fieldCode));
+            if (processedValues.containsKey(fieldCode)) {
+                editableValues.put(
+                        fieldCode,
+                        processedValues.get(fieldCode));
             }
         }
         if (editableValues.isEmpty()) {
@@ -65,8 +89,9 @@ public class NodeFormSubmissionService {
                 processInstanceId, task.getTaskDefinitionKey(), editableValues.keySet());
     }
 
-    private Set<String> resolveEditableFieldCodes(Task task, String entityCode) {
-        List<ProcessNodeForm> nodeForms = getPublishedNodeForms(task);
+    private Set<String> resolveEditableFieldCodes(
+            List<ProcessNodeForm> nodeForms,
+            String entityCode) {
         Set<String> editableFieldCodes = new HashSet<>();
 
         if (!nodeForms.isEmpty()) {
@@ -74,7 +99,10 @@ public class NodeFormSubmissionService {
                 if (Integer.valueOf(1).equals(nodeForm.getIsReadonly())) {
                     continue;
                 }
-                collectEditableFields(entityFormService.getById(nodeForm.getFormId()), editableFieldCodes);
+                collectEditableFields(
+                        entityFormRuntimeService.getByBinding(
+                                nodeForm),
+                        editableFieldCodes);
             }
             return editableFieldCodes;
         }
@@ -82,25 +110,98 @@ public class NodeFormSubmissionService {
         var entityDefinition = entityFormService.getEntityByCode(entityCode);
         if (entityDefinition != null) {
             collectEditableFields(
-                    entityFormService.getDefaultForm(entityDefinition.getId()),
+                    entityFormRuntimeService.getDefaultForm(
+                            entityDefinition.getId()),
                     editableFieldCodes);
         }
         return editableFieldCodes;
     }
 
-    private List<ProcessNodeForm> getPublishedNodeForms(Task task) {
-        try {
-            ProcessDefinition processDefinition =
-                    repositoryService.getProcessDefinition(task.getProcessDefinitionId());
-            if (processDefinition == null) {
-                return List.of();
+    private Map<String, Object> applyBeforeSubmit(
+            List<ProcessNodeForm> nodeForms,
+            Task task,
+            String entityCode,
+            String entityDataId,
+            Map<String, Object> submittedValues,
+            FormSubmissionExecutionContext executionContext) {
+        Map<String, Object> result =
+                new HashMap<>(submittedValues);
+        if (!nodeForms.isEmpty()) {
+            Set<String> appliedFormReleases =
+                    new HashSet<>();
+            for (ProcessNodeForm nodeForm : nodeForms) {
+                if (!StringUtils.hasText(nodeForm.getFormId())
+                        || !appliedFormReleases.add(
+                                releaseKey(nodeForm))) {
+                    continue;
+                }
+                result = formSubmissionService.applyForm(
+                        nodeForm.getFormId(),
+                        nodeForm.getFormReleaseId(),
+                        nodeForm.getFormReleaseVersion(),
+                        entityCode,
+                        entityDataId,
+                        "approve",
+                        result,
+                        executionContext);
             }
-            return processPublishedSnapshotService.getNodeForms(
-                    processDefinition.getKey(), task.getTaskDefinitionKey());
-        } catch (Exception exception) {
-            log.warn("读取节点表单发布快照失败: {}", exception.getMessage());
-            return List.of();
+            return result;
         }
+        var definition =
+                entityFormService.getEntityByCode(entityCode);
+        if (definition == null) {
+            return result;
+        }
+        EntityForm form =
+                entityFormService.getDefaultForm(
+                        definition.getId());
+        return form == null
+                ? result
+                : formSubmissionService.applyForm(
+                        form.getId(),
+                        entityCode,
+                        entityDataId,
+                        "approve",
+                        result,
+                        executionContext);
+    }
+
+    private Map<String, Object> submissionAttributes(
+            Task task,
+            String entityCode,
+            String entityDataId) {
+        Map<String, Object> attributes =
+                new HashMap<>();
+        attributes.put("taskId", task.getId());
+        attributes.put(
+                "processInstanceId",
+                task.getProcessInstanceId());
+        attributes.put(
+                "taskDefinitionKey",
+                task.getTaskDefinitionKey());
+        attributes.put(
+                "processDefinitionId",
+                task.getProcessDefinitionId());
+        attributes.put("entityCode", entityCode);
+        attributes.put("recordId", entityDataId);
+        return attributes;
+    }
+
+    private List<ProcessNodeForm> getPublishedNodeForms(Task task) {
+        return processPublishedSnapshotService
+                .getNodeFormsByProcessDefinitionId(
+                        task.getProcessDefinitionId(),
+                        task.getTaskDefinitionKey());
+    }
+
+    private String releaseKey(ProcessNodeForm nodeForm) {
+        return String.join(
+                "|",
+                nodeForm.getFormId(),
+                value(nodeForm.getFormReleaseId()),
+                nodeForm.getFormReleaseVersion() == null
+                        ? "" : String.valueOf(
+                        nodeForm.getFormReleaseVersion()));
     }
 
     private void collectEditableFields(EntityForm form, Set<String> editableFieldCodes) {
@@ -128,5 +229,9 @@ public class NodeFormSubmissionService {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String value(String value) {
+        return value == null ? "" : value;
     }
 }

@@ -31,6 +31,7 @@ public class ProcessTaskController {
     private final ProcessTaskService processTaskService;
     private final TaskDetailService taskDetailService;
     private final TaskActionService taskActionService;
+    private final com.workflow.service.TaskAddSignService taskAddSignService;
     private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
     private final com.workflow.service.EntityDataService entityDataService;
     private final org.flowable.engine.HistoryService historyService;
@@ -44,9 +45,7 @@ public class ProcessTaskController {
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize) {
         String currentUser = UserContext.getUsername();
-        if (currentUser == null) {
-            currentUser = "admin";
-        }
+        currentUser = requireCurrentUser(currentUser);
         List<ProcessTask> tasks = processTaskService.getTodoList(currentUser);
 
         // 转换为TaskVO格式
@@ -71,9 +70,7 @@ public class ProcessTaskController {
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize) {
         String currentUser = UserContext.getUsername();
-        if (currentUser == null) {
-            currentUser = "admin";
-        }
+        currentUser = requireCurrentUser(currentUser);
         List<ProcessTask> tasks = processTaskService.getDoneList(currentUser);
 
         // 转换为TaskVO格式
@@ -96,9 +93,7 @@ public class ProcessTaskController {
     @GetMapping("/count/todo")
     public Result<Long> countTodo() {
         String currentUser = UserContext.getUsername();
-        if (currentUser == null) {
-            currentUser = "admin";
-        }
+        currentUser = requireCurrentUser(currentUser);
         return Result.success(processTaskService.countTodo(currentUser));
     }
 
@@ -108,9 +103,7 @@ public class ProcessTaskController {
     @GetMapping("/count/done")
     public Result<Long> countDone() {
         String currentUser = UserContext.getUsername();
-        if (currentUser == null) {
-            currentUser = "admin";
-        }
+        currentUser = requireCurrentUser(currentUser);
         return Result.success(processTaskService.countDone(currentUser));
     }
 
@@ -133,6 +126,15 @@ public class ProcessTaskController {
     }
 
     /**
+     * 候选用户认领任务。
+     */
+    @PostMapping("/claim/{taskId}")
+    public Result<Void> claimTask(@PathVariable String taskId) {
+        taskActionService.claimTask(taskId);
+        return Result.success();
+    }
+
+    /**
      * 获取任务统计信息
      */
     @GetMapping("/statistics")
@@ -142,9 +144,7 @@ public class ProcessTaskController {
             if (currentUser == null || currentUser.isEmpty()) {
                 currentUser = UserContext.getUsername();
             }
-            if (currentUser == null || currentUser.isEmpty()) {
-                currentUser = "admin";
-            }
+            currentUser = requireCurrentUser(currentUser);
             Map<String, Object> stats = taskActionService.getTaskStatistics(currentUser);
             return Result.success(stats);
         } catch (Exception e) {
@@ -173,8 +173,16 @@ public class ProcessTaskController {
 
         try {
             String currentUser = UserContext.getUsername();
-            if (currentUser == null) {
-                currentUser = "admin";
+            if (currentUser == null || currentUser.isBlank()) {
+                throw new ForbiddenException("用户未登录");
+            }
+            if (taskAddSignService.isAddSignTask(taskId)) {
+                taskAddSignService.completeAddSignTask(taskId, action, comment);
+                return Result.success();
+            }
+            if (taskAddSignService.handleSourceCompletion(
+                    taskId, currentUser, action, comment, actionLabel, formData)) {
+                return Result.success();
             }
             taskActionService.completeTask(
                     taskId, currentUser, action, comment, transferTo, actionLabel, formData);
@@ -214,8 +222,8 @@ public class ProcessTaskController {
 
         try {
             String currentUser = UserContext.getUsername();
-            if (currentUser == null) {
-                currentUser = "admin";
+            if (currentUser == null || currentUser.isBlank()) {
+                throw new ForbiddenException("用户未登录");
             }
             taskActionService.withdrawProcess(processInstanceId, currentUser, reason);
             return Result.success();
@@ -231,11 +239,14 @@ public class ProcessTaskController {
         TaskVO vo = new TaskVO();
         vo.setTaskId(task.getTaskId());
         vo.setTaskName(task.getNodeName());
+        vo.setNodeType(task.getNodeType());
         vo.setProcessInstanceId(task.getProcessInstanceId());
         vo.setProcessDefinitionId(task.getProcessDefinitionId());
         vo.setProcessName(task.getProcessName());
         vo.setAssignee(task.getAssigneeId());
         vo.setAssigneeName(task.getAssigneeName()); // 执行人姓名
+        vo.setAssigneeType(task.getAssigneeType());
+        vo.setClaimRequired("group".equalsIgnoreCase(task.getAssigneeType()));
         
         // 发起人名称从流程实例历史记录中查询，不能复用 assigneeName（候选组任务时 assigneeName 是组名）
         String startUserName = null;
@@ -299,5 +310,12 @@ public class ProcessTaskController {
         }
 
         return vo;
+    }
+
+    private String requireCurrentUser(String username) {
+        if (username == null || username.isBlank()) {
+            throw new ForbiddenException("用户未登录");
+        }
+        return username;
     }
 }

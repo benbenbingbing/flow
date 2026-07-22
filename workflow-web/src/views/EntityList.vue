@@ -22,10 +22,16 @@
             <el-option label="已禁用" value="DISABLED" />
           </el-select>
         </el-form-item>
-        <el-form-item label="启用流程">
-          <el-select v-model="queryParams.enableProcess" placeholder="全部" clearable style="width: 120px">
-            <el-option label="是" :value="true" />
-            <el-option label="否" :value="false" />
+        <el-form-item label="实体类型">
+          <el-select v-model="queryParams.lifecycleMode" placeholder="全部" clearable style="width: 150px">
+            <el-option label="独立业务实体" value="STANDALONE" />
+            <el-option label="流程实体" value="WORKFLOW" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="存储类型">
+          <el-select v-model="queryParams.storageMode" placeholder="全部" clearable style="width: 150px">
+            <el-option label="动态业务表" value="DYNAMIC" />
+            <el-option label="平台系统表" value="SYSTEM" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -40,15 +46,24 @@
         <el-table-column prop="entityName" label="实体名称" min-width="150" />
         <el-table-column prop="entityCode" label="实体编码" min-width="120" />
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="enableProcess" label="启用流程" width="100">
+        <el-table-column prop="lifecycleMode" label="实体类型" width="130">
           <template #default="{ row }">
-            <el-tag v-if="row.enableProcess" type="success">是</el-tag>
-            <el-tag v-else type="info">否</el-tag>
+            <el-tag :type="row.lifecycleMode === 'WORKFLOW' ? 'success' : 'info'">
+              {{ row.lifecycleMode === 'WORKFLOW' ? '流程实体' : '独立业务实体' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="storageMode" label="存储类型" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.storageMode === 'SYSTEM' ? 'warning' : 'primary'" effect="plain">
+              {{ row.storageMode === 'SYSTEM' ? '平台系统表' : '动态业务表' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="processName" label="绑定流程" min-width="150">
           <template #default="{ row }">
-            {{ row.processName || '-' }}
+            <span v-if="row.lifecycleMode !== 'WORKFLOW'">-</span>
+            <span v-else>{{ row.processName || getWorkflowBindingText(row.workflowBindingStatus) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -60,9 +75,11 @@
         </el-table-column>
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
+            <el-button link type="primary" @click="handleDesign(row)">
+              {{ row.storageMode === 'SYSTEM' ? '查看结构' : '设计' }}
+            </el-button>
             <el-button
-              v-if="row.status !== 'PUBLISHED'"
+              v-if="row.storageMode !== 'SYSTEM' && row.status !== 'PUBLISHED'"
               link
               type="success"
               @click="handlePublish(row)"
@@ -70,24 +87,39 @@
               发布
             </el-button>
             <el-button
-              v-else
+              v-else-if="row.storageMode !== 'SYSTEM'"
               link
               type="success"
               @click="handleRepublish(row)"
             >
               重新发布
             </el-button>
-            <el-button link type="primary" @click="handleListConfig(row)">列表</el-button>
-            <el-button link type="primary" @click="handleForm(row)">表单</el-button>
-            <el-dropdown>
+            <el-button v-if="row.storageMode !== 'SYSTEM'" link type="primary" @click="handleListConfig(row)">列表</el-button>
+            <el-button v-if="row.storageMode !== 'SYSTEM'" link type="primary" @click="handleForm(row)">表单</el-button>
+            <el-dropdown v-if="row.storageMode !== 'SYSTEM'">
               <el-button link type="info">···</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="handleStatusConfig(row)">
                     <el-icon><SetUp /></el-icon>状态配置
                   </el-dropdown-item>
-                  <el-dropdown-item @click="handleBindProcess(row)">
-                    <el-icon><Link /></el-icon>绑定流程
+                  <el-dropdown-item
+                    v-if="row.lifecycleMode === 'STANDALONE'"
+                    @click="handleUpgradeWorkflow(row)"
+                  >
+                    <el-icon><Link /></el-icon>升级为流程实体
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="row.lifecycleMode === 'WORKFLOW'"
+                    @click="handleBindWorkflow(row)"
+                  >
+                    <el-icon><Link /></el-icon>{{ row.processDefinitionId ? '更换绑定流程' : '绑定流程' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="row.lifecycleMode === 'WORKFLOW' && row.processDefinitionId"
+                    @click="handleUnbindWorkflow(row)"
+                  >
+                    <el-icon><Link /></el-icon>解除流程绑定
                   </el-dropdown-item>
                   <el-dropdown-item @click="handleViewHistory(row)">
                     <el-icon><Clock /></el-icon>版本历史
@@ -125,7 +157,19 @@
           <el-input v-model="formData.entityCode" placeholder="请输入实体编码" :disabled="isEdit" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
-          <el-input v-model="formData.description" type="textarea" rows="3" placeholder="请输入描述" />
+          <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述" />
+        </el-form-item>
+        <el-form-item label="实体类型" prop="lifecycleMode">
+          <el-radio-group v-model="formData.lifecycleMode" class="entity-type-options">
+            <el-radio value="STANDALONE" border>
+              独立业务实体
+              <span class="entity-type-tip">不绑定流程，可作为基础资料或其他流程的数据来源</span>
+            </el-radio>
+            <el-radio value="WORKFLOW" border>
+              流程实体
+              <span class="entity-type-tip">支持绑定流程、节点表单和审批操作</span>
+            </el-radio>
+          </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -150,7 +194,7 @@
       </el-form>
       <template #footer>
         <el-button @click="bindDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleConfirmBind" :loading="bindLoading">确定</el-button>
+        <el-button type="primary" @click="handleConfirmBind" :loading="bindLoading">保存绑定</el-button>
       </template>
     </el-dialog>
 
@@ -178,10 +222,10 @@
         <el-table-column label="状态分类" width="150">
           <template #default="{ row }">
             <el-select v-model="row.statusCategory" placeholder="选择分类" size="small">
-              <el-option label="📋 新建流程" value="NEW" />
-              <el-option label="⏳ 审批中" value="PROCESSING" />
+              <el-option label="📋 初始" value="NEW" />
+              <el-option label="⏳ 处理中" value="PROCESSING" />
               <el-option label="✅ 已完成" value="COMPLETED" />
-              <el-option label="❌ 终止" value="TERMINATED" />
+              <el-option label="❌ 已终止" value="TERMINATED" />
               <el-option label="↩️ 已撤回" value="WITHDRAWN" />
             </el-select>
           </template>
@@ -516,7 +560,8 @@ const total = ref(0)
 const queryParams = ref({
   keyword: '',
   status: '',
-  enableProcess: null,
+  lifecycleMode: '',
+  storageMode: '',
   pageNum: 1,
   pageSize: 10
 })
@@ -534,7 +579,8 @@ const formRef = ref()
 const formData = ref({
   entityName: '',
   entityCode: '',
-  description: ''
+  description: '',
+  lifecycleMode: 'STANDALONE'
 })
 
 const formRules = {
@@ -542,16 +588,17 @@ const formRules = {
   entityCode: [
     { required: true, message: '请输入实体编码', trigger: 'blur' },
     { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '必须以字母开头，只能包含字母、数字、下划线', trigger: 'blur' }
-  ]
+  ],
+  lifecycleMode: [{ required: true, message: '请选择实体类型', trigger: 'change' }]
 }
 
 const fetchData = async () => {
   loading.value = true
   try {
     const params = { ...queryParams.value }
-    if (params.enableProcess === '') {
-      params.enableProcess = null
-    }
+    if (!params.lifecycleMode) delete params.lifecycleMode
+    if (!params.storageMode) delete params.storageMode
+    if (!params.status) delete params.status
     const res = await entityApi.getList(params)
     entityList.value = res.records || []
     total.value = res.total || 0
@@ -571,7 +618,8 @@ const handleReset = () => {
   queryParams.value = {
     keyword: '',
     status: '',
-    enableProcess: null,
+    lifecycleMode: '',
+    storageMode: '',
     pageNum: 1,
     pageSize: 10
   }
@@ -609,10 +657,26 @@ const getStatusText = (status) => {
   return texts[status] || status
 }
 
+const getWorkflowBindingText = (status) => {
+  const texts = {
+    UNBOUND: '未绑定流程',
+    DRAFT: '流程未发布',
+    ACTIVE: '流程可用',
+    DISABLED: '流程已禁用',
+    MISSING: '流程不存在'
+  }
+  return texts[status] || '-'
+}
+
 const handleCreate = () => {
   isEdit.value = false
   dialogTitle.value = '新建实体'
-  formData.value = { entityName: '', entityCode: '', description: '' }
+  formData.value = {
+    entityName: '',
+    entityCode: '',
+    description: '',
+    lifecycleMode: 'STANDALONE'
+  }
   dialogVisible.value = true
 }
 
@@ -655,13 +719,49 @@ const handleData = (row) => {
   router.push(`/entity/data/${row.entityCode}`)
 }
 
-const handleBindProcess = (row) => {
+const handleBindWorkflow = (row) => {
   currentEntity.value = row
   // 如果已绑定流程，默认显示当前绑定的流程ID
   selectedProcessId.value = row.processDefinitionId || ''
   // 获取可绑定的流程列表，包括当前已绑定的
   fetchProcessList(row.processDefinitionId)
   bindDialogVisible.value = true
+}
+
+const handleUpgradeWorkflow = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      '升级后该实体将永久成为流程实体，不能再降级。现有数据不会自动发起流程，是否继续？',
+      '升级为流程实体',
+      { type: 'warning', confirmButtonText: '确认升级' }
+    )
+    await entityApi.updateLifecycleMode(row.id, 'WORKFLOW')
+    ElMessage.success('已升级为流程实体，请继续绑定流程')
+    await fetchData()
+    const updated = entityList.value.find(item => item.id === row.id) || { ...row, lifecycleMode: 'WORKFLOW' }
+    handleBindWorkflow(updated)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+    }
+  }
+}
+
+const handleUnbindWorkflow = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      '解除后实体仍保持流程实体，但在重新绑定并发布流程前不能发起。存在流程实例时后端会拒绝该操作。',
+      '解除流程绑定',
+      { type: 'warning' }
+    )
+    await entityApi.unbindWorkflow(row.id)
+    ElMessage.success('流程绑定已解除')
+    fetchData()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+    }
+  }
 }
 
 const handleConfirmBind = async () => {
@@ -683,7 +783,7 @@ const handleConfirmBind = async () => {
   
   bindLoading.value = true
   try {
-    await entityApi.bindProcess(currentEntity.value.id, selectedProcessId.value)
+    await entityApi.bindWorkflow(currentEntity.value.id, selectedProcessId.value)
     ElMessage.success('绑定成功')
     bindDialogVisible.value = false
     fetchData()
@@ -894,13 +994,17 @@ const handleStatusConfig = async (row) => {
     
     // 如果没有配置，添加默认状态
     if (statusList.value.length === 0) {
-      statusList.value = [
-        { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '新建数据' },
-        { statusCategory: 'PROCESSING', statusCode: 'PENDING', statusName: '审批中', description: '审批进行中' },
-        { statusCategory: 'COMPLETED', statusCode: 'APPROVED', statusName: '已通过', description: '审批已通过' },
-        { statusCategory: 'TERMINATED', statusCode: 'TERMINATED', statusName: '已终止', description: '流程已终止' },
-        { statusCategory: 'WITHDRAWN', statusCode: 'WITHDRAWN', statusName: '已撤回', description: '发起人撤回流程' }
-      ]
+      statusList.value = row.lifecycleMode === 'WORKFLOW'
+        ? [
+            { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '新建数据' },
+            { statusCategory: 'PROCESSING', statusCode: 'PENDING', statusName: '处理中', description: '流程处理中' },
+            { statusCategory: 'COMPLETED', statusCode: 'APPROVED', statusName: '已完成', description: '流程已完成' },
+            { statusCategory: 'TERMINATED', statusCode: 'TERMINATED', statusName: '已终止', description: '流程已终止' },
+            { statusCategory: 'WITHDRAWN', statusCode: 'WITHDRAWN', statusName: '已撤回', description: '发起人撤回流程' }
+          ]
+        : [
+            { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '初始业务数据' }
+          ]
     }
     
     // 初始化拖拽排序
@@ -949,7 +1053,7 @@ const initSortable = () => {
 
 const addStatus = () => {
   statusList.value.push({
-    statusCategory: 'PROCESSING',
+    statusCategory: currentEntity.value?.lifecycleMode === 'WORKFLOW' ? 'PROCESSING' : 'NEW',
     statusCode: '',
     statusName: '',
     description: ''
@@ -1218,5 +1322,26 @@ onMounted(() => {
 .pagination {
   margin-top: 18px;
   justify-content: flex-end;
+}
+
+.entity-type-options {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.entity-type-options :deep(.el-radio) {
+  width: 100%;
+  height: auto;
+  margin-right: 0;
+  padding: 12px;
+}
+
+.entity-type-tip {
+  display: block;
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  white-space: normal;
 }
 </style>

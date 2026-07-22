@@ -181,4 +181,8 @@ public interface EntityDataDynamicMapper {
             @Param("tableName") String tableName,
             @Param("condition") Map<String, Object> condition,
             @Param("permissionSql") String permissionSql);
+
+    @SelectProvider(type = com.workflow.mapper.provider.EntityDataSqlProvider.class, method = "countProcessInstances")
+    @Options(statementType = StatementType.PREPARED)
+    long countProcessInstances(@Param("tableName") String tableName);
 }

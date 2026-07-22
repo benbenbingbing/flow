@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const baseUrl = process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const baseUrl = process.env.API_BASE || process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
 const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
 const processKey = `cfg_${suffix}`
 const entityCode = `cfg_entity_${suffix}`
 const firstApprover = `cfg_l1_${suffix}`
 const secondApprover = `cfg_l2_${suffix}`
+const approverRoleCode = `cfg_approver_${suffix}`
 const processName = `Codex配置闭环${suffix}`
 const entityName = `Codex配置实体${suffix}`
 const evidenceDir = path.resolve('docs/workflow-closure')
@@ -53,12 +54,13 @@ async function login(username, password) {
   record(`login:${username}`, { id: result.id, username: result.username, nickname: result.nickname })
 }
 
-async function createApprover(username, nickname) {
+async function createApprover(username, nickname, roleId) {
   const user = await api('POST', '/system/user', {
     username,
     nickname,
     email: `${username}@example.test`,
-    status: '0'
+    status: '0',
+    roleIds: [roleId]
   })
   await api('PUT', `/system/user/${user.id}/reset-password`)
   record(`createApprover:${username}`, { id: user.id, username, nickname })
@@ -82,13 +84,20 @@ function findTodo(page, processInstanceId) {
   return toList(page).find(task => task.processInstanceId === processInstanceId)
 }
 
+function flattenTree(items) {
+  return (items || []).flatMap(item => [
+    item,
+    ...flattenTree(item.children)
+  ])
+}
+
 function bpmnXml() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="http://flowable.org/bpmn" id="Definitions_${processKey}" targetNamespace="http://workflow.codex/config-test">
   <process id="${processKey}" name="${processName}" isExecutable="true">
     <startEvent id="StartEvent_1" name="开始"><outgoing>Flow_1</outgoing></startEvent>
-    <userTask id="Task_Level1_Review" name="一级审批" flowable:candidateUsers="${firstApprover}"><incoming>Flow_1</incoming><outgoing>Flow_2</outgoing></userTask>
-    <userTask id="Task_Level2_Review" name="二级审批" flowable:candidateUsers="${secondApprover}"><incoming>Flow_2</incoming><outgoing>Flow_3</outgoing></userTask>
+    <userTask id="Task_Level1_Review" name="一级审批" flowable:assignee="${firstApprover}"><incoming>Flow_1</incoming><outgoing>Flow_2</outgoing></userTask>
+    <userTask id="Task_Level2_Review" name="二级审批" flowable:assignee="${secondApprover}"><incoming>Flow_2</incoming><outgoing>Flow_3</outgoing></userTask>
     <endEvent id="EndEvent_1" name="结束"><incoming>Flow_3</incoming></endEvent>
     <sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_Level1_Review" />
     <sequenceFlow id="Flow_2" sourceRef="Task_Level1_Review" targetRef="Task_Level2_Review" />
@@ -111,8 +120,19 @@ function bpmnXml() {
 async function main() {
   await login('admin', 'admin')
   useUser('admin')
-  await createApprover(firstApprover, 'Codex一级审批人')
-  await createApprover(secondApprover, 'Codex二级审批人')
+  const approverRole = await api('POST', '/system/role', {
+    roleCode: approverRoleCode,
+    roleName: `Codex配置审批角色${suffix}`,
+    description: '真实流程配置闭环专用最小审批角色',
+    status: '0',
+    sort: 999
+  })
+  record('createApproverRole', {
+    id: approverRole.id,
+    roleCode: approverRole.roleCode
+  })
+  await createApprover(firstApprover, 'Codex一级审批人', approverRole.id)
+  await createApprover(secondApprover, 'Codex二级审批人', approverRole.id)
   await login(firstApprover, '123456')
   await login(secondApprover, '123456')
 
@@ -170,11 +190,25 @@ async function main() {
   record('createEntity', { id: entity.id, entityCode: entity.entityCode })
 
   await api('POST', `/entity/${entity.id}/publish`)
-  const boundEntity = await api('POST', `/entity/${entity.id}/bind-process/${process.id}`)
+  const boundEntity = await api('PUT', `/entity/${entity.id}/workflow-binding`, {
+    processDefinitionId: process.id
+  })
   record('publishAndBindEntity', {
     entityId: boundEntity.id,
     processDefinitionId: boundEntity.processDefinitionId,
-    enableProcess: boundEntity.enableProcess
+    lifecycleMode: boundEntity.lifecycleMode,
+    workflowBindingStatus: boundEntity.workflowBindingStatus
+  })
+
+  const approvePermission = `entity:${entityCode}:approve`
+  const menuTree = await api('GET', '/system/role/menu-tree')
+  const approveMenu = flattenTree(menuTree).find(menu => menu.perm === approvePermission)
+  assert.ok(approveMenu, `实体绑定后应生成审批权限 ${approvePermission}`)
+  await api('PUT', `/system/role/${approverRole.id}/menus`, [approveMenu.id])
+  record('grantApproverPermission', {
+    roleId: approverRole.id,
+    menuId: approveMenu.id,
+    permission: approvePermission
   })
 
   await api('POST', `/entity-status/save-list/${entityCode}`, [
@@ -215,7 +249,7 @@ async function main() {
     }
   ])
 
-  await api('POST', `/entity-flow-status/save/${process.id}`, {
+  await api('PUT', `/process-entity-status-mappings/process/${process.id}`, {
     processKey,
     entityCode,
     mappings: [
@@ -244,7 +278,7 @@ async function main() {
     ]
   })
 
-  const mappings = await api('GET', `/entity-flow-status/list/${process.id}`)
+  const mappings = await api('GET', `/process-entity-status-mappings/process/${process.id}`)
   record('savedStatusMappings', mappings)
   assert.equal(mappings.length, 2)
   assert.equal(mappings[0].entityStatus, mappings[0].entityStatusCode)
