@@ -14,12 +14,14 @@
 
   <el-card v-else-if="node.nodeType === 'SECTION'" shadow="never" class="node-section">
     <template #header>{{ node.props.label || node.props.title || node.nodeKey }}</template>
-    <FormNodeRuntimeItem
-      v-for="child in children"
-      :key="child.id"
-      v-bind="childProps(child)"
-      @update:model-value="$emit('update:modelValue', $event)"
-    />
+    <el-row :gutter="childGutter" class="node-child-row">
+      <el-col v-for="child in children" :key="child.id" :span="childSpan(child)">
+        <FormNodeRuntimeItem
+          v-bind="childProps(child)"
+          @update:model-value="$emit('update:modelValue', $event)"
+        />
+      </el-col>
+    </el-row>
   </el-card>
 
   <el-row
@@ -30,7 +32,7 @@
     <el-col
       v-for="child in children"
       :key="child.id"
-      :span="Number(child.props.span || node.props.defaultSpan || 12)"
+      :span="Number(child.props.gridSpan || child.props.span || node.props.defaultSpan || 12)"
     >
       <FormNodeRuntimeItem
         v-bind="childProps(child)"
@@ -43,6 +45,7 @@
     v-else-if="node.nodeType === 'TAB_SET'"
     :model-value="activeTab"
     type="border-card"
+    :tab-position="node.props.tabPosition || 'top'"
     class="node-tabs"
     @update:model-value="activeTab = $event"
   >
@@ -52,26 +55,40 @@
       :name="tabNode.id"
       :label="tabNode.props.label || tabNode.props.title || tabNode.nodeKey"
     >
-      <FormNodeRuntimeItem
-        v-for="child in childrenFor(tabNode.id)"
-        :key="child.id"
-        v-bind="childProps(child)"
-        @update:model-value="$emit('update:modelValue', $event)"
-      />
+      <el-row :gutter="childGutter" class="node-child-row">
+        <el-col
+          v-for="child in childrenFor(tabNode.id)"
+          :key="child.id"
+          :span="childSpan(child)"
+        >
+          <FormNodeRuntimeItem
+            v-bind="childProps(child)"
+            @update:model-value="$emit('update:modelValue', $event)"
+          />
+        </el-col>
+      </el-row>
     </el-tab-pane>
   </el-tabs>
 
-  <el-collapse v-else-if="node.nodeType === 'COLLAPSE'" class="node-collapse">
+  <el-collapse
+    v-else-if="node.nodeType === 'COLLAPSE'"
+    :model-value="collapseModelValue"
+    :accordion="node.props.accordion === true"
+    class="node-collapse"
+    @update:model-value="updateCollapseNames"
+  >
     <el-collapse-item
       :name="node.id"
       :title="node.props.label || node.props.title || node.nodeKey"
     >
-      <FormNodeRuntimeItem
-        v-for="child in children"
-        :key="child.id"
-        v-bind="childProps(child)"
-        @update:model-value="$emit('update:modelValue', $event)"
-      />
+      <el-row :gutter="childGutter" class="node-child-row">
+        <el-col v-for="child in children" :key="child.id" :span="childSpan(child)">
+          <FormNodeRuntimeItem
+            v-bind="childProps(child)"
+            @update:model-value="$emit('update:modelValue', $event)"
+          />
+        </el-col>
+      </el-row>
     </el-collapse-item>
   </el-collapse>
 
@@ -104,12 +121,14 @@
   </div>
 
   <div v-else class="node-container">
-    <FormNodeRuntimeItem
-      v-for="child in children"
-      :key="child.id"
-      v-bind="childProps(child)"
-      @update:model-value="$emit('update:modelValue', $event)"
-    />
+    <el-row :gutter="childGutter" class="node-child-row">
+      <el-col v-for="child in children" :key="child.id" :span="childSpan(child)">
+        <FormNodeRuntimeItem
+          v-bind="childProps(child)"
+          @update:model-value="$emit('update:modelValue', $event)"
+        />
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -138,16 +157,24 @@ const props = defineProps({
   context: { type: Object, default: () => ({}) },
   dataSourceRuntime: { type: Object, default: null },
   childrenFor: { type: Function, required: true },
+  layoutType: { type: String, default: 'vertical' },
   actionSlots: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(['update:modelValue'])
 const children = computed(() => props.childrenFor(props.node.id))
+const childGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
 const customDescriptor = computed(() => resolveFormNodeDescriptor(props.node))
 const customConfig = computed(() =>
   migrateFormNodeConfig(props.node, customDescriptor.value)
 )
 const activeTab = ref('')
+const activeCollapseNames = ref([])
+const collapseModelValue = computed(() =>
+  props.node.props?.accordion === true
+    ? (activeCollapseNames.value[0] || '')
+    : activeCollapseNames.value
+)
 const actionSlotRenderer = computed(() => defineComponent({
   name: 'FormNodeActionSlotOutlet',
   setup() {
@@ -165,6 +192,22 @@ watch(children, value => {
     activeTab.value = value[0].id
   }
 }, { immediate: true })
+
+watch(
+  () => [props.node.id, props.node.props?.defaultExpanded],
+  () => {
+    activeCollapseNames.value = props.node.props?.defaultExpanded === false
+      ? []
+      : [props.node.id]
+  },
+  { immediate: true }
+)
+
+function updateCollapseNames(value) {
+  activeCollapseNames.value = Array.isArray(value)
+    ? value
+    : (value ? [value] : [])
+}
 
 const nestedNodes = computed(() => collectDescendants(props.node.id))
 
@@ -299,8 +342,19 @@ function childProps(child) {
     context: props.context,
     dataSourceRuntime: props.dataSourceRuntime,
     childrenFor: props.childrenFor,
+    layoutType: props.layoutType,
     actionSlots: props.actionSlots
   }
+}
+
+function childSpan(child) {
+  const nodeType = String(child.nodeType || '').toUpperCase()
+  if (['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(nodeType)) {
+    return 24
+  }
+  if (props.layoutType === 'vertical') return 24
+  if (props.layoutType === 'horizontal') return 12
+  return Number(child.props?.gridSpan || child.props?.span || 24)
 }
 
 function collectDescendants(parentId) {
@@ -320,6 +374,9 @@ function collectDescendants(parentId) {
 .node-collapse,
 .node-text,
 .node-container {
+  margin-bottom: 12px;
+}
+.node-child-row :deep(.el-col) {
   margin-bottom: 12px;
 }
 .node-text {

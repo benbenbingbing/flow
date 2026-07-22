@@ -170,45 +170,34 @@
                 :selected-node-id="selectedField?.id"
                 :layout-type="form.layoutType"
                 :children-for="designChildrenFor"
-                :grid-style-for="getGridStyle"
-                :is-section-node="isSectionField"
-                :is-tab-sub-form="isTabSubForm"
+                :node-span-for="getNodeSpan"
+                :node-style-for="getNodeDesignStyle"
                 :legacy-node-type="legacyNodeType"
                 :node-label="nodeLabel"
                 @select="selectField"
                 @move="moveNode"
                 @remove="removeNode"
               />
-
-              <!-- Tab 子表单预览 -->
-              <div v-if="formFields.filter(f => isTabSubForm(f)).length > 0" class="tab-subforms-preview" style="width: 100%; margin-top: 16px;">
-                <el-tabs v-model="activeDesignTab" type="border-card">
-                  <el-tab-pane
-                    v-for="field in formFields.filter(f => isTabSubForm(f))"
-                    :key="field.id || field.fieldId"
-                    :label="field.fieldLabel || field.fieldName"
-                    :name="field.fieldCode || field.fieldId || field.id"
-                  >
-                    <div 
-                      @click="selectField(field)" 
-                      class="tab-form-field-wrapper"
-                      :class="{ active: selectedField?.id === field.id }"
-                    >
-                      <FormFieldRenderer :field="field" :disabled="true" />
-                    </div>
-                  </el-tab-pane>
-                </el-tabs>
-              </div>
             </el-form>
           </div>
         </div>
       </div>
 
       <!-- 右侧：属性配置 -->
-      <div class="property-panel">
-        <div class="panel-title">属性配置</div>
-        
+      <el-drawer
+        v-model="propertyDrawerVisible"
+        title="节点属性"
+        direction="rtl"
+        size="440px"
+        append-to-body
+        class="node-property-drawer"
+      >
         <template v-if="selectedField">
+          <div class="node-summary">
+            <strong>{{ selectedField.fieldLabel || selectedField.fieldName || selectedField.fieldCode }}</strong>
+            <span>{{ selectedNodeTypeLabel }}</span>
+            <p>{{ selectedNodeLockMessage }}</p>
+          </div>
           <!-- 添加联动配置按钮 -->
           <div class="linkage-config-header">
             <el-button
@@ -219,40 +208,19 @@
             >
               保存当前节点
             </el-button>
-            <el-button type="primary" size="small" @click="showLinkageConfig = true">
+            <el-button
+              v-if="isEditableFieldNode"
+              type="primary"
+              size="small"
+              @click="showLinkageConfig = true"
+            >
               <el-icon><Connection /></el-icon> 字段联动配置
             </el-button>
           </div>
           
           <el-scrollbar height="calc(100vh - 180px)">
             <el-form label-width="90px" size="small" class="property-form">
-              <el-form-item label="节点类型">
-                <el-select v-model="selectedField.nodeType" style="width: 100%">
-                  <el-option
-                    v-for="type in nodeTypeOptions"
-                    :key="type.value"
-                    :label="type.label"
-                    :value="type.value"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="父容器">
-                <el-select
-                  v-model="selectedField.parentId"
-                  clearable
-                  placeholder="根节点"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="option in availableParentNodes"
-                    :key="option.id"
-                    :label="option.label"
-                    :value="option.id"
-                  />
-                </el-select>
-                <div class="form-tip">递归嵌套最多 8 层，保存时校验循环引用。</div>
-              </el-form-item>
-              <el-form-item label="节点扩展">
+              <el-form-item v-if="canConfigureNodeExtension" label="节点扩展">
                 <el-select
                   v-model="selectedField.componentName"
                   clearable
@@ -273,15 +241,107 @@
                   配置快照 v{{ selectedField.snapshotVersion || 1 }}
                 </div>
               </el-form-item>
-              <el-form-item :label="isSelectedSection ? '节标题' : '字段名称'">
-                <el-input v-model="selectedField.fieldName" :disabled="!isSelectedSection" />
-              </el-form-item>
-              <el-form-item label="显示标签">
+
+              <el-form-item v-if="canEditNodeLabel" :label="isSelectedSection ? '节标题' : '显示标签'">
                 <el-input v-model="selectedField.fieldLabel" />
               </el-form-item>
-              <template v-if="!isSelectedSection">
+
+              <template v-if="isContainerNode">
+                <el-divider>容器显示</el-divider>
+                <el-form-item v-if="selectedNodeType === 'GRID'" label="列间距">
+                  <el-input-number
+                    :model-value="Number(selectedNodeConfig.gutter || 16)"
+                    :min="0"
+                    :max="48"
+                    @update:model-value="updateSelectedNodeConfig('gutter', $event)"
+                  />
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'GRID'" label="默认跨度">
+                  <el-input-number
+                    :model-value="Number(selectedNodeConfig.defaultSpan || 12)"
+                    :min="1"
+                    :max="24"
+                    @update:model-value="updateSelectedNodeConfig('defaultSpan', $event)"
+                  />
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'TAB_SET'" label="页签位置">
+                  <el-select
+                    :model-value="selectedNodeConfig.tabPosition || 'top'"
+                    @update:model-value="updateSelectedNodeConfig('tabPosition', $event)"
+                  >
+                    <el-option label="顶部" value="top" />
+                    <el-option label="左侧" value="left" />
+                    <el-option label="右侧" value="right" />
+                    <el-option label="底部" value="bottom" />
+                  </el-select>
+                </el-form-item>
+              </template>
+
+              <el-divider>结构位置</el-divider>
+              <el-form-item
+                :label="isTabNode ? '所属 Tab 集合' : '父容器'"
+                :required="isTabNode"
+              >
+                  <el-select
+                    :model-value="selectedParentValue"
+                    :placeholder="isTabNode ? '请选择 Tab 集合' : '请选择父容器'"
+                    filterable
+                    style="width: 100%"
+                    no-data-text="没有可用的父容器"
+                    @change="handleParentChange"
+                  >
+                    <el-option
+                      v-if="canMoveSelectedNodeToRoot"
+                      label="表单根节点"
+                      :value="ROOT_PARENT_VALUE"
+                    />
+                    <el-option
+                      v-for="parent in availableParentNodes"
+                      :key="parent.id"
+                      :label="parent.label"
+                      :value="parent.id"
+                    />
+                  </el-select>
+                  <div class="form-tip">
+                    {{ selectedParentHelp }}
+                  </div>
+              </el-form-item>
+
+              <template v-if="isContainerNode">
+                <el-form-item v-if="selectedNodeType === 'COLLAPSE'" label="默认展开">
+                  <el-switch
+                    :model-value="selectedNodeConfig.defaultExpanded !== false"
+                    @update:model-value="updateSelectedNodeConfig('defaultExpanded', $event)"
+                  />
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'COLLAPSE'" label="手风琴模式">
+                  <el-switch
+                    :model-value="selectedNodeConfig.accordion === true"
+                    @update:model-value="updateSelectedNodeConfig('accordion', $event)"
+                  />
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'TEXT'" label="说明内容">
+                  <el-input
+                    :model-value="selectedNodeConfig.text || selectedNodeConfig.content || ''"
+                    type="textarea"
+                    :rows="4"
+                    @update:model-value="updateSelectedNodeConfig('text', $event)"
+                  />
+                </el-form-item>
+                <div class="form-tip">
+                  {{ isTabNode
+                    ? 'TAB 页仅允许选择有效的 Tab 集合；同级排序仍请在画布中调整。'
+                    : '父容器可在上方受限选择；同级排序请在画布中调整，技术标识和节点类型不可直接修改。' }}
+                </div>
+              </template>
+
+              <template v-if="isEditableFieldNode">
+                <el-form-item label="绑定字段">
+                  <el-input :model-value="selectedField.fieldName || selectedField.fieldCode" disabled />
+                  <div class="form-tip">已绑定实体字段或关系的节点不可改变数据语义；如需替换，请新建节点。</div>
+                </el-form-item>
                 <el-form-item label="组件类型">
-                  <el-select v-model="selectedField.componentType" style="width: 100%">
+                  <el-select v-model="selectedField.componentType" style="width: 100%" @change="handleCompatibleComponentChange">
                     <el-option
                       v-for="option in availableFormFieldComponentOptions"
                       :key="option.value"
@@ -444,7 +504,7 @@
                   </div>
                 </div>
               </template>
-              <el-form-item label="栅格宽度" v-if="form.layoutType === 'grid'">
+              <el-form-item label="栅格宽度" v-if="canEditGridSpan">
                 <el-slider v-model="selectedField.gridSpan" :min="1" :max="24" show-stops />
                 <span class="slider-value">{{ selectedField.gridSpan }}/24</span>
               </el-form-item>
@@ -576,7 +636,7 @@
               </template>
 
               <!-- 字段事件配置 -->
-              <template v-if="selectedField">
+              <template v-if="isEditableFieldNode">
                 <el-divider>事件配置</el-divider>
                 <el-form-item>
                   <el-button type="primary" text @click="openEventConfig">
@@ -597,7 +657,7 @@
             </template>
           </el-empty>
         </div>
-      </div>
+      </el-drawer>
     </div>
 
     <!-- 预览弹窗 - 所见即所得 -->
@@ -808,6 +868,15 @@ import {
 import {
   getFormNodeComponentOptions
 } from '@/utils/formNodeRegistry'
+import {
+  FORM_NODE_MAX_DEPTH,
+  FORM_NODE_ORDER_STEP,
+  canContainFormNode,
+  canPlaceFormNodeAtRoot,
+  formNodeTypeLabel,
+  isFormNodeContainer,
+  normalizeFormNodeType
+} from '@/shared/form-node-hierarchy'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
 import { entityApi } from '@/api/entity'
@@ -844,6 +913,7 @@ const saving = ref(false)
 const savingNode = ref(false)
 const nodeBaselines = ref(new Map())
 const showPreview = ref(false)
+const propertyDrawerVisible = ref(false)
 const showLinkageConfig = ref(false)
 const showEventConfig = ref(false)
 const showFormExtensionConfig = ref(false)
@@ -931,9 +1001,7 @@ const nodeTypeOptions = [
   { value: 'REPEATER', label: '明细表' },
   { value: 'ACTION_SLOT', label: '动作插槽' }
 ]
-const containerNodeTypes = new Set([
-  'SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'SUB_FORM', 'REPEATER'
-])
+const ROOT_PARENT_VALUE = '__FORM_ROOT__'
 const formDataSourceUsages = [
   { value: 'FIELD_OPTIONS', label: '字段选项' },
   { value: 'FIELD_DEFAULT', label: '字段默认值' },
@@ -1079,17 +1147,79 @@ const selectedComponentConfig = computed({
   }
 })
 
+const selectedNodeType = computed(() =>
+  String(selectedField.value?.nodeType || legacyNodeType(selectedField.value) || 'FIELD').toUpperCase()
+)
+const isContainerNode = computed(() =>
+  ['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(selectedNodeType.value)
+)
+const isEditableFieldNode = computed(() =>
+  ['FIELD', 'SUB_FORM', 'REPEATER'].includes(selectedNodeType.value)
+)
+const isTabNode = computed(() => selectedNodeType.value === 'TAB')
+const canEditNodeLabel = computed(() =>
+  ['SECTION', 'TAB', 'COLLAPSE', 'FIELD', 'SUB_FORM', 'REPEATER'].includes(
+    selectedNodeType.value
+  )
+)
+const canEditGridSpan = computed(() =>
+  isEditableFieldNode.value
+    && selectedNodeType.value !== 'TEXT'
+)
+const canConfigureNodeExtension = computed(() =>
+  isEditableFieldNode.value
+)
+const selectedNodeTypeLabel = computed(() =>
+  nodeTypeOptions.find(option => option.value === selectedNodeType.value)?.label
+    || selectedNodeType.value
+)
+const selectedNodeLockMessage = computed(() => {
+  if (isTabNode.value) {
+    return 'TAB 页可在下方选择所属 Tab 集合；节点类型、同级排序和技术标识不可直接修改。'
+  }
+  if (selectedField.value?.fieldId || selectedField.value?.relationCode) {
+    return '已绑定业务数据：可调整合法父容器；节点类型、字段绑定和技术标识已锁定。'
+  }
+  return '可调整合法父容器；节点类型、同级排序和技术标识由画布结构控制。'
+})
+const selectedNodeConfig = computed(() =>
+  safeParseConfig(selectedField.value?.componentProps)
+)
+
 const availableParentNodes = computed(() =>
   formFields.value
+    .filter(field => isValidParentCandidate(field, selectedField.value))
+    .map(field => ({
+      id: field.id,
+      label: formatParentOptionLabel(field)
+    }))
+)
+const availableTabSetNodes = computed(() =>
+  formFields.value
     .filter(field =>
-      field.id !== selectedField.value?.id
-      && containerNodeTypes.has(field.nodeType || legacyNodeType(field))
+      String(field.nodeType || legacyNodeType(field)).toUpperCase() === 'TAB_SET'
     )
     .map(field => ({
       id: field.id,
       label: field.fieldLabel || field.fieldName || field.fieldCode
     }))
 )
+const canMoveSelectedNodeToRoot = computed(() =>
+  canPlaceFormNodeAtRoot(selectedNodeType.value)
+    && getSubtreeHeight(selectedField.value?.id) <= FORM_NODE_MAX_DEPTH
+)
+const selectedParentValue = computed(() =>
+  selectedField.value?.parentId || ROOT_PARENT_VALUE
+)
+const selectedParentHelp = computed(() => {
+  if (isTabNode.value) {
+    return 'Tab 页只能位于 Tab 集合下；候选项已排除非法类型、循环引用和超过 8 层的目标。'
+  }
+  if (selectedNodeType.value === 'TAB_SET') {
+    return 'Tab 集合可放在根节点或普通容器内，但其直接子节点只能是 Tab 页。'
+  }
+  return '可放在根节点或兼容容器内；不能直接放入 Tab 集合，候选项已排除自身、后代和超过 8 层的目标。'
+})
 
 const selectedValidationConfig = computed(() =>
   safeParseConfig(selectedField.value?.validationRules)
@@ -1130,12 +1260,20 @@ const hasEventConfig = computed(() => {
 
 // 预览数据
 const previewForm = computed(() => {
-  enrichFieldCodes()
   const sortedFields = [...formFields.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  const previewNodes = sortedFields.map((field, index) =>
+    fieldToNodeEntity({
+      ...field,
+      dataSourceBindings: { ...(field.dataSourceBindings || {}) },
+      legacyProps: { ...(field.legacyProps || {}) },
+      localOverrides: { ...(field.localOverrides || {}) }
+    }, index)
+  )
   return {
     ...form.value,
     viewConfig: viewConfig.value,
-    fields: sortedFields
+    fields: sortedFields,
+    nodes: previewNodes
   }
 })
 
@@ -1180,16 +1318,25 @@ function isFieldInForm(entityField) {
   return formFields.value.some(f => f.fieldId === entityField.id)
 }
 
-// 获取栅格样式
-function getGridStyle(field) {
-  if (form.value.layoutType === 'grid') {
-    const span = field.gridSpan || 24
-    return {
-      width: `${(span / 24) * 100}%`,
-      flex: `0 0 ${(span / 24) * 100}%`
-    }
+function getNodeSpan(field, fallback = 24) {
+  return Number(field?.gridSpan || fallback || 24)
+}
+
+function getNodeDesignStyle(field) {
+  const nodeType = String(field?.nodeType || legacyNodeType(field)).toUpperCase()
+  if (['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(nodeType)) {
+    return { width: '100%' }
   }
-  return {}
+  const span = form.value.layoutType === 'vertical'
+    ? 24
+    : form.value.layoutType === 'horizontal'
+      ? 12
+      : getNodeSpan(field)
+  const width = `${(span / 24) * 100}%`
+  return {
+    width,
+    flex: `0 0 ${width}`
+  }
 }
 
 // 加载实体信息
@@ -1596,10 +1743,159 @@ function legacyNodeType(field) {
   return 'FIELD'
 }
 
+function nodeTypeOf(field) {
+  return normalizeFormNodeType(field?.nodeType || legacyNodeType(field))
+}
+
 function nodeLabel(nodeId) {
   const node = formFields.value.find(item => item.id === nodeId)
   return node?.fieldLabel || node?.fieldName || node?.fieldCode || nodeId
 }
+
+function nodeById(nodeId) {
+  return formFields.value.find(item => String(item.id) === String(nodeId))
+}
+
+function collectDescendantNodeIds(nodeId) {
+  const descendants = new Set()
+  const pending = [...designChildrenFor(nodeId)]
+  while (pending.length) {
+    const child = pending.shift()
+    if (!child || descendants.has(String(child.id))) continue
+    descendants.add(String(child.id))
+    pending.push(...designChildrenFor(child.id))
+  }
+  return descendants
+}
+
+function getNodeDepth(nodeId) {
+  if (!nodeId) return 0
+  let depth = 0
+  let current = nodeById(nodeId)
+  const visited = new Set()
+  while (current) {
+    const currentId = String(current.id)
+    if (visited.has(currentId)) return FORM_NODE_MAX_DEPTH + 1
+    visited.add(currentId)
+    depth += 1
+    current = current.parentId ? nodeById(current.parentId) : null
+  }
+  return depth
+}
+
+function getSubtreeHeight(nodeId, visiting = new Set()) {
+  if (!nodeId) return 1
+  const normalizedId = String(nodeId)
+  if (visiting.has(normalizedId)) return FORM_NODE_MAX_DEPTH + 1
+  const nextVisiting = new Set(visiting)
+  nextVisiting.add(normalizedId)
+  const children = designChildrenFor(nodeId)
+  if (!children.length) return 1
+  return 1 + Math.max(
+    ...children.map(child => getSubtreeHeight(child.id, nextVisiting))
+  )
+}
+
+function isValidParentCandidate(parent, child) {
+  if (!parent || !child) return false
+  if (String(parent.id) === String(child.id)) return false
+  if (!isFormNodeContainer(nodeTypeOf(parent))) return false
+  if (!canContainFormNode(nodeTypeOf(parent), nodeTypeOf(child))) return false
+  if (collectDescendantNodeIds(child.id).has(String(parent.id))) return false
+  return getNodeDepth(parent.id) + getSubtreeHeight(child.id)
+    <= FORM_NODE_MAX_DEPTH
+}
+
+function nodePathLabels(node) {
+  const labels = []
+  const visited = new Set()
+  let current = node
+  while (current) {
+    const currentId = String(current.id)
+    if (visited.has(currentId)) break
+    visited.add(currentId)
+    labels.unshift(
+      current.fieldLabel || current.fieldName || current.fieldCode || currentId
+    )
+    current = current.parentId ? nodeById(current.parentId) : null
+  }
+  return labels
+}
+
+function formatParentOptionLabel(parent) {
+  const path = nodePathLabels(parent)
+  const parentLabel = path.pop()
+  const location = path.length ? `（${path.join(' / ')} 下）` : ''
+  return `${formNodeTypeLabel(nodeTypeOf(parent))} · ${parentLabel}${location}`
+}
+
+function nextNodePlacement(parentId, excludeId = '') {
+  const siblings = designChildrenFor(parentId)
+    .filter(item => String(item.id) !== String(excludeId))
+  const maxOrderKey = siblings.reduce(
+    (maximum, item) => Math.max(maximum, Number(item.orderKey || 0)),
+    0
+  )
+  return {
+    orderKey: maxOrderKey + FORM_NODE_ORDER_STEP,
+    sortOrder: siblings.length
+  }
+}
+
+function resolveDefaultParentId(nodeType) {
+  const normalizedType = normalizeFormNodeType(nodeType)
+  const selected = selectedField.value
+  if (selected) {
+    if (canContainFormNode(nodeTypeOf(selected), normalizedType)
+        && getNodeDepth(selected.id) + 1 <= FORM_NODE_MAX_DEPTH) {
+      return selected.id
+    }
+    const selectedParent = selected.parentId
+      ? nodeById(selected.parentId)
+      : null
+    if (selectedParent
+        && canContainFormNode(nodeTypeOf(selectedParent), normalizedType)
+        && getNodeDepth(selectedParent.id) + 1 <= FORM_NODE_MAX_DEPTH) {
+      return selectedParent.id
+    }
+    if (normalizedType === 'TAB') {
+      let ancestor = selectedParent
+      while (ancestor) {
+        if (nodeTypeOf(ancestor) === 'TAB_SET') return ancestor.id
+        ancestor = ancestor.parentId ? nodeById(ancestor.parentId) : null
+      }
+    }
+  }
+  if (normalizedType === 'TAB' && availableTabSetNodes.value.length === 1) {
+    return availableTabSetNodes.value[0].id
+  }
+  return ''
+}
+
+function handleParentChange(value) {
+  if (!selectedField.value) return
+  const parentId = value === ROOT_PARENT_VALUE ? '' : value
+  if (!parentId && !canPlaceFormNodeAtRoot(selectedNodeType.value)) {
+    ElMessage.warning('Tab 页必须选择所属 Tab 集合')
+    return
+  }
+  if (parentId) {
+    const parent = nodeById(parentId)
+    if (!isValidParentCandidate(parent, selectedField.value)) {
+      ElMessage.warning('该父容器与当前节点不兼容，或移动后会形成循环/超过 8 层')
+      return
+    }
+  }
+  const placement = nextNodePlacement(parentId, selectedField.value.id)
+  selectedField.value.parentId = parentId
+  selectedField.value.orderKey = placement.orderKey
+  selectedField.value.sortOrder = placement.sortOrder
+  const targetLabel = parentId
+    ? formatParentOptionLabel(nodeById(parentId))
+    : '表单根节点'
+  ElMessage.success(`已移动到${targetLabel}，保存当前节点后写入草稿`)
+}
+
 
 function nodeToField(node, legacyField) {
   const props = parseDocument(node.propsDocument)
@@ -1675,6 +1971,9 @@ function fieldToNodePayload(field) {
   serializeFieldConfig(field)
   const componentProps = parseDocument(field.componentProps)
   const subFormNode = isSubFormField(field)
+  const bindingType = field.relationCode
+    ? 'RELATION'
+    : (field.fieldId ? 'ENTITY_FIELD' : 'NONE')
   const childFormId = field.childFormId || field.refFormId || ''
   const childFormReleaseId = field.childFormReleaseId || ''
   const childFormReleaseVersion = field.childFormReleaseVersion == null
@@ -1711,10 +2010,10 @@ function fieldToNodePayload(field) {
     parentId: field.parentId || null,
     nodeKey: field.nodeKey || field.fieldCode || `node_${field.id}`,
     nodeType: field.nodeType || legacyNodeType(field),
-    bindingType: field.relationCode
-      ? 'RELATION'
-      : (field.fieldId ? 'ENTITY_FIELD' : 'NONE'),
-    bindingRef: field.relationCode || field.fieldCode || null,
+    bindingType,
+    bindingRef: bindingType === 'NONE'
+      ? null
+      : (field.relationCode || field.fieldCode || null),
     componentName: field.componentName || null,
     componentVersion: field.componentVersion || null,
     snapshotVersion: field.snapshotVersion || null,
@@ -1989,16 +2288,19 @@ function addField(entityField) {
   }
   
   const stableId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const nodeType = ['SUB_FORM', 'SUB_FORM_LIST'].includes(entityField.fieldType)
+    ? (entityField.fieldType === 'SUB_FORM_LIST' ? 'REPEATER' : 'SUB_FORM')
+    : 'FIELD'
+  const parentId = resolveDefaultParentId(nodeType)
+  const placement = nextNodePlacement(parentId)
   const newField = {
     id: stableId,
     nodeId: stableId,
     nodeKey: entityField.fieldCode,
-    nodeType: ['SUB_FORM', 'SUB_FORM_LIST'].includes(entityField.fieldType)
-      ? (entityField.fieldType === 'SUB_FORM_LIST' ? 'REPEATER' : 'SUB_FORM')
-      : 'FIELD',
-    parentId: '',
+    nodeType,
+    parentId,
     revision: 0,
-    orderKey: (formFields.value.length + 1) * 1000000,
+    orderKey: placement.orderKey,
     formId: formId,
     fieldId: entityField.id,
     fieldCode: entityField.fieldCode,
@@ -2012,7 +2314,7 @@ function addField(entityField) {
     validationRules: '',
     extensionConfig: '',
     gridSpan: 24,
-    sortOrder: formFields.value.length
+    sortOrder: placement.sortOrder
   }
 
   // 复制实体引用配置（统一将 refEntityId 转为字符串，避免 el-select 类型不匹配）
@@ -2058,7 +2360,7 @@ function addField(entityField) {
   }
 
   formFields.value.push(newField)
-  selectedField.value = newField
+  selectField(newField)
   if (['REFERENCE', 'MULTI_REFERENCE'].includes((newField.componentType || '').toUpperCase())) {
     loadReferenceLists(newField.refEntityId, false)
   }
@@ -2101,6 +2403,11 @@ function addSection() {
 }
 
 function addContainerNode(nodeType) {
+  const tabSetNodes = availableTabSetNodes.value
+  if (nodeType === 'TAB' && tabSetNodes.length === 0) {
+    ElMessage.warning('请先创建 Tab 集合，再添加 Tab 页')
+    return
+  }
   const ts = Date.now()
   const typeLabels = {
     SECTION: '新区块',
@@ -2113,14 +2420,16 @@ function addContainerNode(nodeType) {
     ACTION_SLOT: '动作插槽'
   }
   const stableId = `node_${nodeType.toLowerCase()}_${ts}`
+  const parentId = resolveDefaultParentId(nodeType)
+  const placement = nextNodePlacement(parentId)
   const section = {
     id: stableId,
     nodeId: stableId,
     nodeKey: stableId,
     nodeType,
-    parentId: '',
+    parentId,
     revision: 0,
-    orderKey: (formFields.value.length + 1) * 1000000,
+    orderKey: placement.orderKey,
     formId: formId,
     fieldId: null,
     fieldCode: stableId,
@@ -2134,16 +2443,21 @@ function addContainerNode(nodeType) {
     validationRules: '',
     extensionConfig: '',
     gridSpan: 24,
-    sortOrder: formFields.value.length
+    sortOrder: placement.sortOrder
   }
   formFields.value.push(section)
-  selectedField.value = section
-  ElMessage.success(`${typeLabels[nodeType] || '节点'}已添加`)
+  selectField(section)
+  if (nodeType === 'TAB' && !section.parentId) {
+    ElMessage.info('请选择“所属 Tab 集合”后再保存当前 Tab 页')
+  } else {
+    ElMessage.success(`${typeLabels[nodeType] || '节点'}已添加`)
+  }
 }
 
 // 选择字段
 function selectField(field) {
   selectedField.value = field
+  propertyDrawerVisible.value = true
   childFormReleases.value = []
   if (field && isSubFormField(field)) {
     field.childEntityId = field.childEntityId || field.refEntityId || ''
@@ -2192,6 +2506,11 @@ async function removeField(index) {
 }
 
 async function removeNode(field) {
+  const children = designChildrenFor(field.id)
+  if (children.length) {
+    ElMessage.warning(`当前节点包含 ${children.length} 个直接子节点，请先移动或删除子节点`)
+    return
+  }
   const index = formFields.value.findIndex(item => item.id === field.id)
   if (index >= 0) await removeField(index)
 }
@@ -2220,7 +2539,30 @@ async function moveNode({ node, direction }) {
   reorderedSiblings.forEach((item, index) => {
     item.sortOrder = index
   })
+  applyLocalSiblingOrder(node, targetIndex, reorderedSiblings)
   await persistNodeOrder(node, targetIndex, reorderedSiblings)
+}
+
+function applyLocalSiblingOrder(node, targetIndex, orderedSiblings) {
+  const previous = orderedSiblings[targetIndex - 1]
+  const next = orderedSiblings[targetIndex + 1]
+  const previousOrder = Number(previous?.orderKey || 0)
+  const nextOrder = Number(next?.orderKey || 0)
+  if (!previous && nextOrder > 1) {
+    node.orderKey = Math.max(1, Math.floor(nextOrder / 2))
+    return
+  }
+  if (previous && !next) {
+    node.orderKey = previousOrder + FORM_NODE_ORDER_STEP
+    return
+  }
+  if (previous && next && nextOrder - previousOrder > 1) {
+    node.orderKey = previousOrder + Math.floor((nextOrder - previousOrder) / 2)
+    return
+  }
+  orderedSiblings.forEach((item, index) => {
+    item.orderKey = (index + 1) * FORM_NODE_ORDER_STEP
+  })
 }
 
 // 上移
@@ -2335,6 +2677,32 @@ function updateValidationConfig(key, value) {
     ...selectedValidationConfig.value,
     [key]: value
   })
+}
+
+function updateSelectedNodeConfig(key, value) {
+  if (!selectedField.value) return
+  selectedField.value.componentProps = stringifyConfig({
+    ...selectedNodeConfig.value,
+    [key]: value
+  })
+}
+
+function handleCompatibleComponentChange() {
+  if (!selectedField.value) return
+  const descriptor = getFormFieldComponentDescriptor(selectedField.value.componentType)
+  const fieldType = String(selectedField.value.fieldType || '').toUpperCase()
+  const supported = descriptor?.supportedFieldTypes || []
+  if (supported.length
+      && !supported.map(type => String(type).toUpperCase()).includes(fieldType)) {
+    ElMessage.warning('该组件与当前字段类型不兼容，已恢复默认组件')
+    selectedField.value.componentType = getDefaultComponentType(fieldType)
+  }
+  selectedField.value.componentProps = '{}'
+  selectedField.value.validationRules = '{}'
+  selectedField.value.dataSourceBindings = {}
+  selectedField.value.dataSourceId = ''
+  selectedField.value.dataSourceInputMappingText = '{}'
+  selectedField.value.dataSourceOutputMappingText = '{}'
 }
 
 function getModeAccessValue(mode, key) {
@@ -2536,6 +2904,21 @@ async function ensureFormMetadata() {
 
 async function saveSelectedNode() {
   if (!selectedField.value) return
+  if (isTabNode.value && !selectedField.value.parentId) {
+    ElMessage.warning('请选择所属 Tab 集合后再保存 Tab 页')
+    return
+  }
+  if (selectedField.value.parentId) {
+    const parent = nodeById(selectedField.value.parentId)
+    if (!isValidParentCandidate(parent, selectedField.value)) {
+      ElMessage.warning('当前父容器不兼容，或节点树会形成循环/超过 8 层')
+      return
+    }
+  } else if (!canPlaceFormNodeAtRoot(selectedNodeType.value)
+      || getSubtreeHeight(selectedField.value.id) > FORM_NODE_MAX_DEPTH) {
+    ElMessage.warning('当前节点不能放在根节点，或节点树超过 8 层')
+    return
+  }
   savingNode.value = true
   try {
     const currentFormId = await ensureFormMetadata()
@@ -2738,13 +3121,16 @@ onMounted(async () => {
 <style scoped>
 .entity-form-design {
   height: 100vh;
+  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background-color: #f5f7fa;
 }
 
 .design-header {
+  flex: 0 0 auto;
   min-height: 56px;
   padding: 0 20px;
   display: flex;
@@ -2822,17 +3208,21 @@ onMounted(async () => {
 
 .design-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   overflow: hidden;
 }
 
 /* 左侧字段面板 */
 .field-panel {
+  flex: 0 0 260px;
+  min-height: 0;
   width: 260px;
   border-right: 1px solid #dcdfe6;
   background-color: #fff;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-title {
@@ -2937,6 +3327,7 @@ onMounted(async () => {
 /* 中间画布 */
 .canvas-panel {
   flex: 1;
+  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2960,6 +3351,7 @@ onMounted(async () => {
 }
 
 .form-basic-info {
+  flex: 0 0 auto;
   padding: 12px 20px;
   background-color: #fff;
   border-bottom: 1px solid #e4e7ed;
@@ -2967,8 +3359,9 @@ onMounted(async () => {
 
 .form-canvas-wrapper {
   flex: 1;
+  min-height: 0;
   padding: 20px;
-  overflow-y: auto;
+  overflow: auto;
   background-color: #f0f2f5;
 }
 
@@ -2984,129 +3377,34 @@ onMounted(async () => {
 .design-form {
   display: flex;
   flex-wrap: wrap;
-}
-
-.form-field-wrapper {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px;
-  margin-bottom: 8px;
-  background-color: #fff;
-  border: 2px solid transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-}
-
-.form-field-wrapper:hover {
-  border-color: #c0c4cc;
-}
-
-.form-field-wrapper.active {
-  border-color: #409eff;
-  background-color: #f5f7fa;
-}
-
-/* 垂直布局 */
-.form-canvas.vertical .form-field-wrapper {
-  width: 100%;
-}
-
-/* 水平布局 */
-.form-canvas.horizontal .design-form {
-  gap: 20px;
-}
-
-.form-canvas.horizontal .form-field-wrapper {
-  width: calc(50% - 10px);
-}
-
-/* 网格布局 */
-.form-canvas.grid .design-form {
-  gap: 0;
-}
-
-.form-canvas.grid .form-field-wrapper.grid-item {
-  padding: 8px;
-  margin-bottom: 0;
-}
-
-.field-order {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #409eff;
-  color: #fff;
-  border-radius: 50%;
-  font-size: 12px;
-  margin-right: 12px;
-  flex-shrink: 0;
-  margin-top: 8px;
-}
-
-.field-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.node-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-  color: #909399;
-  font-size: 11px;
-}
-
-/* 节字段在画布中占满一行，且不显示表单项标签 */
-.form-field-wrapper.section-field-wrapper {
-  width: 100% !important;
-  align-items: center;
-}
-
-.form-field-wrapper.section-field-wrapper .field-content {
-  flex: 1;
-}
-
-.design-form-item {
-  margin-bottom: 0 !important;
-}
-
-.design-form-item :deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #606266;
-}
-
-.field-actions {
-  margin-left: 12px;
-  opacity: 0;
-  transition: opacity 0.2s;
-  padding-top: 4px;
-}
-
-.form-field-wrapper:hover .field-actions,
-.form-field-wrapper.active .field-actions {
-  opacity: 1;
+  align-content: flex-start;
 }
 
 .empty-tip {
   padding: 80px 0;
 }
 
-/* 右侧属性面板 */
-.property-panel {
-  width: 280px;
-  border-left: 1px solid #dcdfe6;
-  background-color: #fff;
-  display: flex;
-  flex-direction: column;
-}
-
 .property-form {
   padding: 16px;
+}
+
+.node-summary {
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.node-summary strong,
+.node-summary span,
+.node-summary p {
+  display: block;
+}
+
+.node-summary span,
+.node-summary p {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .checkbox-group {
@@ -3161,8 +3459,8 @@ onMounted(async () => {
 
 @media (max-width: 1300px) {
   .entity-form-design {
-    height: auto;
-    min-height: 100vh;
+    height: 100vh;
+    min-height: 0;
   }
 
   .design-header {
@@ -3180,38 +3478,16 @@ onMounted(async () => {
     justify-content: flex-start;
   }
 
-  .design-body {
-    display: grid;
-    grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
-    grid-template-areas:
-      "fields canvas"
-      "properties properties";
-    overflow: visible;
-  }
-
   .field-panel {
-    grid-area: fields;
-    width: auto;
+    flex-basis: 240px;
+    width: 240px;
     min-width: 0;
-    min-height: 560px;
+    min-height: 0;
   }
 
   .canvas-panel {
-    grid-area: canvas;
-    overflow: visible;
-  }
-
-  .property-panel {
-    grid-area: properties;
-    width: auto;
-    min-width: 0;
-    border-top: 1px solid #dcdfe6;
-    border-left: 0;
-  }
-
-  .property-panel :deep(.el-scrollbar) {
-    height: auto !important;
-    max-height: none !important;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .form-basic-info {
@@ -3223,6 +3499,7 @@ onMounted(async () => {
   }
 
   .form-canvas-wrapper {
+    min-height: 0;
     padding: 12px;
   }
 
@@ -3233,18 +3510,21 @@ onMounted(async () => {
 
 @media (max-width: 900px) {
   .design-body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "fields"
-      "canvas"
-      "properties";
+    flex-direction: column;
   }
 
   .field-panel {
+    flex: 0 0 auto;
+    width: 100%;
     min-height: 0;
     max-height: 340px;
     border-right: 0;
     border-bottom: 1px solid #dcdfe6;
+  }
+
+  .canvas-panel {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .layout-selector {

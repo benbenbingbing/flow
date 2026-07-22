@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import {
+  FORM_NODE_ALLOWED_CHILD_TYPES,
+  canContainFormNode,
+  canPlaceFormNodeAtRoot,
+  isFormNodeContainer
+} from '../shared/form-node-hierarchy.js'
 
 const root = process.cwd()
 const routerSource = readFileSync(path.join(root, 'src/router/index.js'), 'utf8')
@@ -114,6 +120,165 @@ const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByE
   'getFormReleases'
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `子表单设计器缺少固定发布版本能力: ${marker}`)
+})
+
+const formNodeDesignItem = readFileSync(path.join(root, 'src/components/FormNodeDesignItem.vue'), 'utf8')
+const formNodeHierarchy = readFileSync(path.join(root, 'src/shared/form-node-hierarchy.js'), 'utf8')
+const formPreviewLinkage = readFileSync(path.join(root, 'src/components/FormPreviewLinkage.vue'), 'utf8')
+const formNodeRenderer = readFileSync(path.join(root, 'src/components/FormNodeRenderer.vue'), 'utf8')
+const formNodeRuntimeItem = readFileSync(path.join(root, 'src/components/FormNodeRuntimeItem.vue'), 'utf8')
+const formTreeRuntime = `${formNodeRenderer}\n${formNodeRuntimeItem}`
+
+assert.match(
+  formDesigner,
+  /<el-drawer[\s\S]{0,4000}(?:property|attribute|node)[\s\S]{0,4000}>/i,
+  '表单设计器应使用默认关闭的右侧节点属性抽屉，而非固定属性栏'
+)
+assert.match(
+  formDesigner,
+  /(?:selectField|selectNode)[\s\S]{0,1200}(?:drawer|property)[\w.]*\s*=\s*true/i,
+  '点击表单节点后应打开属性抽屉'
+)
+assert.match(
+  formDesigner,
+  /previewForm[\s\S]{0,2600}nodes\s*:/,
+  '草稿预览应传入当前节点树，而非只传递扁平字段'
+)
+assert.equal(
+  /node-order|rev\.\{\{\s*node\.revision|<el-tag[^>]*>\s*\{\{\s*node\.nodeType/.test(formNodeDesignItem),
+  false,
+  '设计画布不应展示节点序号、nodeType 或 revision 等技术元信息'
+)
+assert.match(
+  formNodeDesignItem,
+  /(?:SECTION|GRID|TAB_SET|COLLAPSE)[\s\S]{0,1000}(?:children|child)/,
+  '设计画布应按容器节点递归渲染，而非把所有节点作为同类卡片'
+)
+assert.match(
+  formPreviewLinkage,
+  /hasNodeTree[\s\S]{0,1400}FormNodeRenderer|FormNodeRenderer[\s\S]{0,1400}hasNodeTree/,
+  '表单预览应优先使用节点树运行时渲染器'
+)
+;['SECTION', 'GRID', 'TAB_SET', 'COLLAPSE'].forEach((containerType) => {
+  assert.ok(formNodeRuntimeItem.includes(containerType), `运行时缺少容器节点渲染: ${containerType}`)
+})
+assert.match(
+  formTreeRuntime,
+  /gridSpan[\s\S]{0,320}span|span[\s\S]{0,320}gridSpan/,
+  '节点运行时应兼容 gridSpan 与历史 span 的栅格宽度读取'
+)
+assert.match(
+  formDesigner,
+  /(?:nodePropertySchema|propertySchema|editableFields|nodeTypeSchema)|(?:(?:isContainerNode|selectedNodeType)[\s\S]{0,2400}(?:canEditNodeLabel|canConfigureNodeExtension|selectedNodeLockMessage))/,
+  '表单设计器应按节点类型 Schema 控制可编辑属性'
+)
+assert.match(
+  formDesigner,
+  /(?:bindingType|bindingRef)[\s\S]{0,1200}(?:readonly|disabled|locked)|(?:readonly|disabled|locked)[\s\S]{0,1200}(?:bindingType|bindingRef)/i,
+  '表单设计器应把已绑定数据语义展示为不可编辑'
+)
+;[
+  'availableTabSetNodes',
+  'availableParentNodes',
+  'handleParentChange',
+  'resolveDefaultParentId',
+  'collectDescendantNodeIds',
+  'getSubtreeHeight',
+  'FORM_NODE_MAX_DEPTH',
+  '父容器',
+  '所属 Tab 集合',
+  '请选择所属 Tab 集合后再保存 Tab 页',
+  '请先创建 Tab 集合，再添加 Tab 页'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单节点缺少受限父容器移动能力: ${marker}`)
+})
+;[
+  'FORM_NODE_ALLOWED_CHILD_TYPES',
+  'TAB_SET',
+  "Object.freeze(['TAB'])",
+  'canContainFormNode',
+  'canPlaceFormNodeAtRoot'
+].forEach((marker) => {
+  assert.ok(formNodeHierarchy.includes(marker), `前端层级规则缺少约束: ${marker}`)
+})
+const standardFormNodeChildren = [
+  'SECTION',
+  'GRID',
+  'TAB_SET',
+  'COLLAPSE',
+  'TEXT',
+  'FIELD',
+  'SUB_FORM',
+  'REPEATER',
+  'ACTION_SLOT'
+]
+;['SECTION', 'GRID', 'TAB', 'COLLAPSE', 'SUB_FORM', 'REPEATER'].forEach((parentType) => {
+  assert.deepEqual(
+    FORM_NODE_ALLOWED_CHILD_TYPES[parentType],
+    standardFormNodeChildren,
+    `${parentType} 的前端子节点矩阵应与后端普通容器一致`
+  )
+  standardFormNodeChildren.forEach((childType) => {
+    assert.equal(
+      canContainFormNode(parentType, childType),
+      true,
+      `${parentType} 应允许直接包含 ${childType}`
+    )
+  })
+  assert.equal(
+    canContainFormNode(parentType, 'TAB'),
+    false,
+    `${parentType} 不应直接包含 TAB`
+  )
+})
+assert.deepEqual(
+  FORM_NODE_ALLOWED_CHILD_TYPES.TAB_SET,
+  ['TAB'],
+  'TAB_SET 的直接子节点只能是 TAB'
+)
+assert.equal(canContainFormNode('TAB_SET', 'TAB'), true, 'TAB_SET 应允许直接包含 TAB')
+standardFormNodeChildren.forEach((childType) => {
+  assert.equal(
+    canContainFormNode('TAB_SET', childType),
+    false,
+    `TAB_SET 不应直接包含 ${childType}`
+  )
+})
+;['TEXT', 'FIELD', 'ACTION_SLOT'].forEach((nodeType) => {
+  assert.equal(isFormNodeContainer(nodeType), false, `${nodeType} 不应作为父容器`)
+})
+;[
+  'SECTION',
+  'GRID',
+  'TAB_SET',
+  'COLLAPSE',
+  'TEXT',
+  'FIELD',
+  'SUB_FORM',
+  'REPEATER',
+  'ACTION_SLOT'
+].forEach((nodeType) => {
+  assert.equal(canPlaceFormNodeAtRoot(nodeType), true, `${nodeType} 应允许放在根节点`)
+})
+assert.equal(canPlaceFormNodeAtRoot('TAB'), false, 'TAB 不应允许放在根节点')
+;[
+  'Tab 集合',
+  'Tab 页',
+  'design-container-caption',
+  'tab-node-toolbar',
+  'nested-field-children',
+  'design-orphan-tab',
+  'design-action-slot',
+  'findContainingTabId'
+].forEach((marker) => {
+  assert.ok(formNodeDesignItem.includes(marker), `设计画布缺少清晰递归层级表达: ${marker}`)
+})
+assert.ok(
+  formDesigner.includes('applyLocalSiblingOrder'),
+  '未保存节点同级移动应同步更新稀疏排序键'
+)
+;['tabPosition', 'defaultExpanded', 'accordion'].forEach((marker) => {
+  assert.ok(formNodeRuntimeItem.includes(marker), `容器运行时缺少属性支持: ${marker}`)
 })
 
 const subFormField = readFileSync(

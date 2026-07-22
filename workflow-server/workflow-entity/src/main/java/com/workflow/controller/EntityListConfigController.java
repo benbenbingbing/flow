@@ -2,6 +2,7 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.dto.EntityListConfigDTO;
+import com.workflow.dto.EntityListFieldDeleteRequest;
 import com.workflow.dto.EntityListFieldSaveRequest;
 import com.workflow.dto.EntityListItemReorderRequest;
 import com.workflow.dto.EntityListMetadataPatchRequest;
@@ -121,9 +122,9 @@ public class EntityListConfigController {
     public Result<Void> deleteField(
             @PathVariable String id,
             @PathVariable String fieldId,
-            @RequestParam Integer expectedRevision) {
+            @RequestBody EntityListFieldDeleteRequest request) {
         accessService.requireListAccess(id);
-        listConfigService.deleteField(id, fieldId, expectedRevision);
+        listConfigService.deleteField(id, fieldId, request.getExpectedRevision());
         return Result.success();
     }
 

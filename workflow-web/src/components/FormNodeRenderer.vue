@@ -6,28 +6,35 @@
     :label-position="labelPosition"
     class="form-node-renderer"
   >
-    <FormNodeRuntimeItem
-      v-for="node in rootNodes"
-      :key="node.id"
-      :node="node"
-      :model-value="modelValue"
-      :fields="fields"
-      :linkage-state="linkageState"
-      :readonly="readonly"
-      :mode="mode"
-      :context="context"
-      :data-source-runtime="dataSourceRuntime"
-      :children-for="childrenFor"
-      :action-slots="$slots"
-      @update:model-value="$emit('update:modelValue', $event)"
-    >
-      <template
-        v-for="(_, slotName) in $slots"
-        #[slotName]="slotProps"
+    <el-row :gutter="rootGutter" class="form-node-root-row">
+      <el-col
+        v-for="node in rootNodes"
+        :key="node.id"
+        :span="nodeSpan(node)"
       >
-        <slot :name="slotName" v-bind="slotProps || {}" />
-      </template>
-    </FormNodeRuntimeItem>
+        <FormNodeRuntimeItem
+          :node="node"
+          :model-value="modelValue"
+          :fields="fields"
+          :linkage-state="linkageState"
+          :readonly="readonly"
+          :mode="mode"
+          :context="context"
+          :data-source-runtime="dataSourceRuntime"
+          :children-for="childrenFor"
+          :layout-type="layoutType"
+          :action-slots="$slots"
+          @update:model-value="$emit('update:modelValue', $event)"
+        >
+          <template
+            v-for="(_, slotName) in $slots"
+            #[slotName]="slotProps"
+          >
+            <slot :name="slotName" v-bind="slotProps || {}" />
+          </template>
+        </FormNodeRuntimeItem>
+      </el-col>
+    </el-row>
   </el-form>
 </template>
 
@@ -47,7 +54,8 @@ const props = defineProps({
   dataSourceRuntime: { type: Object, default: null },
   rootParentId: { type: String, default: '' },
   labelWidth: { type: String, default: '100px' },
-  labelPosition: { type: String, default: 'right' }
+  labelPosition: { type: String, default: 'right' },
+  layoutType: { type: String, default: 'vertical' }
 })
 
 defineEmits(['update:modelValue'])
@@ -84,6 +92,18 @@ const rootNodes = computed(() => childrenFor(props.rootParentId || ''))
 
 function childrenFor(parentId) {
   return childrenMap.value.get(parentId || '') || []
+}
+
+const rootGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
+
+function nodeSpan(node) {
+  const nodeType = String(node.nodeType || '').toUpperCase()
+  if (['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(nodeType)) {
+    return 24
+  }
+  if (props.layoutType === 'vertical') return 24
+  if (props.layoutType === 'horizontal') return 12
+  return Number(node.props?.gridSpan || node.props?.span || 24)
 }
 
 async function validate() {

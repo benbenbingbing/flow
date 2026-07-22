@@ -2,6 +2,7 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.dto.EntityFormNodeCreateRequest;
+import com.workflow.dto.EntityFormNodeDeleteRequest;
 import com.workflow.dto.EntityFormNodePatchRequest;
 import com.workflow.dto.EntityFormNodeReorderRequest;
 import com.workflow.entity.EntityFormNode;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -62,9 +62,9 @@ public class EntityFormNodeController {
     public Result<Void> delete(
             @PathVariable String formId,
             @PathVariable String nodeId,
-            @RequestParam Integer expectedRevision) {
+            @RequestBody EntityFormNodeDeleteRequest request) {
         accessService.requireFormAccess(formId);
-        nodeService.delete(formId, nodeId, expectedRevision);
+        nodeService.delete(formId, nodeId, request.getExpectedRevision());
         return Result.success();
     }
 

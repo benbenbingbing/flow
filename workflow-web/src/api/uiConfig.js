@@ -15,7 +15,7 @@ export const uiDataSourceApi = {
   },
   remove(id, expectedRevision) {
     return request.post(`/ui-data-sources/${id}/delete`, {
-      params: { expectedRevision }
+      expectedRevision
     })
   },
   preview(id, data) {

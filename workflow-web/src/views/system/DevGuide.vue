@@ -97,11 +97,29 @@ Content-Type: application/json
             <li>同时通过 `/api/ui-extensions` 注册 `NODE` manifest；实现版本和快照版本必须与前端描述符一致。</li>
             <li>配置迁移会携带 manifest 和递归节点结构，但不会携带组件可执行代码；部署流水线必须先部署代码再激活快照。</li>
             <li>未知历史 `componentProps` 迁移到 `legacyProps`，扩展不得静默丢弃或直接执行其中脚本。</li>
+            <li>设计器父容器候选必须复用平台父子类型规则，排除自身、后代和移动整棵子树后超过 8 层的目标；服务端 PATCH/reorder 必须重新计算并校验，不能只信前端过滤。</li>
+          </ul>
+        </section>
+
+        <section id="node-property-schema" class="guide-section">
+          <h3>4. 节点属性 Schema、绑定锁定与预览契约</h3>
+          <el-table :data="nodePropertyRows" border size="small">
+            <el-table-column prop="types" label="节点类型" width="210" />
+            <el-table-column prop="editable" label="设计器可编辑属性" min-width="280" />
+            <el-table-column prop="locked" label="不可编辑或不适用属性" min-width="280" />
+          </el-table>
+          <ul class="check-list">
+            <li>属性抽屉默认关闭；选中画布节点后才从右侧打开。节点 ID、nodeKey、revision、orderKey、发布快照版本、bindingType 与 bindingRef 只能作为只读摘要展示。</li>
+            <li>父容器是受限结构属性：TAB 只能选择 TAB_SET；TAB_SET 只直接接受 TAB；其他节点可位于根节点或 SECTION、GRID、TAB、COLLAPSE、SUB_FORM、REPEATER，不能直接放入 TAB_SET。</li>
+            <li>实体字段或实体关系已经绑定时，`nodeType`、fieldId、fieldCode、关系与子实体绑定必须锁定。需要改变数据语义时创建新节点，再显式迁移可复用显示配置。</li>
+            <li>扩展 manifest 必须声明适用 `nodeTypes`、supportedBindings 与 configSchema。设计器只渲染该类型允许的参数；后端 PATCH 仍须按节点类型白名单拒绝未知、不兼容或已锁定字段。</li>
+            <li>组件切换只能发生在兼容的实体字段类型集合内；切换后应清除不兼容的组件参数、校验和数据源绑定，不能静默保留无效配置。</li>
+            <li>设计画布、草稿预览和激活 release 使用同一递归节点布局：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先；容器节点不能在预览中退回扁平字段列表。</li>
           </ul>
         </section>
 
         <section id="field-config" class="guide-section">
-          <h3>4. 动态列配置模型</h3>
+          <h3>5. 动态列配置模型</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="fieldCode">运行时唯一键；实体字段使用原字段编码，虚拟列使用自定义安全编码。</el-descriptions-item>
             <el-descriptions-item label="dataSourceType">`ENTITY_FIELD` 或已注册的 `ListFieldDataProvider` 编码。</el-descriptions-item>
@@ -118,7 +136,7 @@ Content-Type: application/json
         </section>
 
         <section id="provider" class="guide-section">
-          <h3>5. 既有列表数据提供者</h3>
+          <h3>6. 既有列表数据提供者</h3>
           <p>复杂关联、聚合或业务计算通过 Spring Bean 注册。编码必须稳定且唯一，配置保存时后端会校验数据源是否存在、参数是否完整、是否支持虚拟列和查询。</p>
           <CodeCard title="CustomerLevelProvider.java" language="Java">
             <pre v-pre><code>@Component
@@ -172,7 +190,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="provider-context" class="guide-section">
-          <h3>6. 提供者上下文与约束</h3>
+          <h3>7. 提供者上下文与约束</h3>
           <el-table :data="providerContext" border size="small">
             <el-table-column prop="key" label="上下文键" width="180" />
             <el-table-column prop="meaning" label="含义" />
@@ -188,7 +206,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="unified-data-source" class="guide-section">
-          <h3>7. 统一数据源目录</h3>
+          <h3>8. 统一数据源目录</h3>
           <el-table :data="dataSourceTypes" border size="small">
             <el-table-column prop="type" label="sourceType" width="230" />
             <el-table-column prop="capability" label="能力与安全限制" />
@@ -207,7 +225,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="data-source-spi" class="guide-section">
-          <h3>8. Provider 与 Connector SPI</h3>
+          <h3>9. Provider 与 Connector SPI</h3>
           <CodeCard title="UiDataSourceProvider.java" language="Java">
             <pre v-pre><code>public interface UiDataSourceProvider {
     String code();
@@ -244,7 +262,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="release-api" class="guide-section">
-          <h3>9. 草稿、发布、回滚与模板升级</h3>
+          <h3>10. 草稿、发布、回滚与模板升级</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">返回可编辑草稿、稳定项目 ID、revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">按稳定 ID 比较草稿与激活快照，并返回树、数据源、权限、模板和兼容校验；`changedItems[]` 使用 section、id、label、changeType、changedFields 标识新增、修改、移动、删除，`changedSections` 仅保留兼容用途。</el-descriptions-item>
@@ -281,7 +299,7 @@ Content-Type: application/json
         </section>
 
         <section id="migration-compatibility" class="guide-section">
-          <h3>10. 迁移、废弃与运行时回退</h3>
+          <h3>11. 迁移、废弃与运行时回退</h3>
           <ul class="check-list">
             <li>迁移必须幂等：旧表单字段转一级 FIELD 节点，列表项目保留已有 ID，缺失 ID 只生成一次。</li>
             <li>历史子表、引用、事件和选项迁入显式属性，未知内容进入 `legacyProps` 并写入迁移报告。</li>
@@ -292,7 +310,7 @@ Content-Type: application/json
         </section>
 
         <section id="cell" class="guide-section">
-          <h3>11. 前端单元格组件</h3>
+          <h3>12. 前端单元格组件</h3>
           <p>组件注册时同时声明名称、说明和参数 Schema，设计器会自动生成参数表单，不需要管理员手写 JSON。</p>
           <CodeCard title="extension.ts" language="TypeScript">
             <pre v-pre><code>import { registerCellComponent } from '@/utils/listCellRegistry'
@@ -321,7 +339,7 @@ const props = defineProps({
         </section>
 
         <section id="built-in" class="guide-section">
-          <h3>12. 内置能力</h3>
+          <h3>13. 内置能力</h3>
           <el-table :data="builtIns" border size="small">
             <el-table-column prop="type" label="类型" width="180" />
             <el-table-column prop="capability" label="能力" />
@@ -330,7 +348,7 @@ const props = defineProps({
         </section>
 
         <section id="demo" class="guide-section">
-          <h3>13. 可运行 Demo</h3>
+          <h3>14. 可运行 Demo</h3>
           <p>仓库已经提供真实注册示例，不需要从文档片段重新拼装：</p>
           <ul class="check-list">
             <li>`src/demo/list-fields/DemoRiskProgressCell.vue`：读取 `value / row / field / config / context`，展示风险进度和等级。</li>
@@ -347,7 +365,7 @@ const props = defineProps({
         </section>
 
         <section id="acceptance" class="guide-section">
-          <h3>14. 验收清单</h3>
+          <h3>15. 验收清单</h3>
           <ul class="check-list">
             <li>虚拟列能显示、排序位置正确，空值有明确占位。</li>
             <li>隐藏查询项仍可查询，虚拟查询不会触发未知数据库列错误。</li>
@@ -376,6 +394,7 @@ const toc = [
   { id: 'levels', label: '扩展层级' },
   { id: 'config-contract', label: '单项与并发' },
   { id: 'form-node-spi', label: '表单节点 SPI' },
+  { id: 'node-property-schema', label: '属性与预览约束' },
   { id: 'field-config', label: '动态列配置' },
   { id: 'provider', label: '后端提供者' },
   { id: 'provider-context', label: '上下文与约束' },
@@ -400,11 +419,19 @@ const extensionLevels = [
 
 const nodeTypes = [
   { type: 'SECTION / GRID', capability: '业务区块和栅格容器，可递归包含布局或内容节点' },
-  { type: 'TAB_SET / TAB', capability: '页签集合与页签内容；发布校验固定父子关系' },
+  { type: 'TAB_SET / TAB', capability: 'TAB_SET 只直接包含 TAB；TAB 可递归承载字段、布局、文本和其他合法内容节点' },
   { type: 'COLLAPSE / TEXT', capability: '折叠容器与无数据说明节点；TEXT 不执行脚本' },
   { type: 'FIELD', capability: '绑定实体字段、实体关系、计算字段或上下文字段' },
   { type: 'SUB_FORM / REPEATER', capability: '引用已发布子表单版本或一对多明细；检查跨表单循环' },
   { type: 'ACTION_SLOT', capability: '受控动作插槽；权限和操作校验仍由平台负责' }
+]
+
+const nodePropertyRows = [
+  { types: 'SECTION / GRID', editable: '合法父容器、标题、显示标签和容器样式；GRID 还可配置列间距和默认跨度。', locked: '不显示字段组件、默认值、实体绑定、字段校验或字段数据源。' },
+  { types: 'TAB_SET / TAB / COLLAPSE', editable: '合法父容器；TAB_SET 的页签位置；TAB 的页签标题和所属 Tab 集合；COLLAPSE 的标题、默认展开与手风琴模式。', locked: 'TAB 只能位于 TAB_SET；TAB_SET 的直接子节点只能是 TAB。' },
+  { types: 'TEXT / ACTION_SLOT', editable: '合法父容器；TEXT 的受限说明内容；ACTION_SLOT 仅展示稳定插槽标识。', locked: 'TEXT 禁止脚本和实体绑定；ACTION_SLOT 暂不开放动作、权限或位置编辑。' },
+  { types: 'FIELD', editable: '合法父容器、显示标签、兼容组件、必填、只读、隐藏、占位、默认值、校验、受控数据源、事件和模式权限。', locked: '不能直接放入 TAB_SET；已绑定时 nodeType、fieldId、fieldCode、bindingType 与 bindingRef 不可改。' },
+  { types: 'SUB_FORM / REPEATER', editable: '合法父容器、展示模式、子表布局、已发布子表单版本与受控行数据源。', locked: '子实体、关系与外键不可由表单配置覆盖；其内嵌节点必须递归渲染。' }
 ]
 
 const dataSourceTypes = [

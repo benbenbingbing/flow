@@ -45,6 +45,7 @@
       :data-source-runtime="dataSourceRuntime"
       :label-width="labelWidth"
       :label-position="labelPosition"
+      :layout-type="form?.layoutType || 'vertical'"
       @update:model-value="handleCustomFormUpdate"
     />
     <el-form

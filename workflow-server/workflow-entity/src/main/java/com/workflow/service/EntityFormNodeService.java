@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -64,6 +63,21 @@ public class EntityFormNodeService {
             "REPEATER", STANDARD_CONTAINER_CHILD_TYPES);
     private static final Set<String> BINDING_TYPES = Set.of(
             "ENTITY_FIELD", "RELATION", "COMPUTED", "CONTEXT", "NONE");
+    private static final Set<String> BINDABLE_NODE_TYPES = Set.of(
+            "FIELD", "SUB_FORM", "REPEATER");
+    private static final Set<String> COMPONENT_NODE_TYPES = Set.of(
+            "FIELD", "SUB_FORM", "REPEATER");
+    private static final Set<String> RULE_NODE_TYPES = Set.of(
+            "FIELD", "SUB_FORM", "REPEATER", "ACTION_SLOT");
+    private static final Set<String> DATA_SOURCE_NODE_TYPES = Set.of(
+            "FIELD", "SUB_FORM", "REPEATER");
+    private static final Set<String> SUB_FORM_NODE_TYPES = Set.of(
+            "SUB_FORM", "REPEATER");
+    private static final Set<String> CLEARABLE_PATCH_FIELDS = Set.of(
+            "parentId", "bindingRef", "componentName", "componentVersion",
+            "snapshotVersion", "props", "childFormId", "childFormReleaseId",
+            "childFormReleaseVersion", "rules", "dataSourceBindings",
+            "legacyProps", "templateId", "templateVersion", "localOverrides");
     private static final Set<String> DATA_SOURCE_USAGES = Set.of(
             "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
             "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
@@ -135,8 +149,19 @@ public class EntityFormNodeService {
             String formId,
             String nodeId,
             EntityFormNodePatchRequest request) {
+        return patchInternal(formId, nodeId, request, true);
+    }
+
+    private EntityFormNode patchInternal(
+            String formId,
+            String nodeId,
+            EntityFormNodePatchRequest request,
+            boolean enforcePatchConstraints) {
         EntityFormNode current = requireNode(formId, nodeId);
         requireExpectedRevision(request.getExpectedRevision(), current);
+        if (enforcePatchConstraints) {
+            validatePatchConstraints(current, request);
+        }
         EntityFormNode updated = copy(current);
         applyPatch(updated, request);
         updated.setRevision(current.getRevision() + 1);
@@ -260,7 +285,7 @@ public class EntityFormNodeService {
                 EntityFormNodePatchRequest request = toPatchRequest(source, current);
                 if (hasChanges(source, current)
                         || requiresLegacyReleasePin(source)) {
-                    patch(formId, current.getId(), request);
+                    patchInternal(formId, current.getId(), request, false);
                 }
             }
             fallbackOrder += ORDER_STEP;
@@ -869,34 +894,75 @@ public class EntityFormNodeService {
     }
 
     private void validateParent(String formId, String nodeId, String parentId) {
-        if (!StringUtils.hasText(parentId)) {
-            return;
-        }
-        EntityFormNode parent = requireNode(formId, parentId);
-        if (Objects.equals(nodeId, parentId)) {
-            throw new IllegalArgumentException("节点不能作为自己的父节点");
-        }
-        if (!CONTAINER_TYPES.contains(parent.getNodeType())) {
-            throw new IllegalArgumentException("父节点不是容器节点");
-        }
-        ArrayDeque<String> parents = new ArrayDeque<>();
-        parents.add(parentId);
-        int depth = 1;
-        while (!parents.isEmpty()) {
-            String currentId = parents.removeFirst();
-            if (Objects.equals(nodeId, currentId)) {
-                throw new IllegalArgumentException("移动节点会形成循环引用");
+        int parentDepth = 0;
+        if (StringUtils.hasText(parentId)) {
+            EntityFormNode parent = requireNode(formId, parentId);
+            if (!CONTAINER_TYPES.contains(parent.getNodeType())) {
+                throw new IllegalArgumentException("父节点不是容器节点");
             }
-            EntityFormNode current = nodeMapper.selectById(currentId);
-            if (current != null && StringUtils.hasText(current.getParentId())) {
-                parents.addLast(current.getParentId());
-                depth++;
-                if (depth >= MAX_DEPTH) {
-                    throw new IllegalArgumentException(
-                            "表单嵌套层级不能超过 " + MAX_DEPTH + " 层");
+            Set<String> visited = new HashSet<>();
+            EntityFormNode current = parent;
+            while (current != null) {
+                if (Objects.equals(nodeId, current.getId())) {
+                    throw new IllegalArgumentException("移动节点会形成循环引用");
                 }
+                if (!visited.add(current.getId())) {
+                    throw new IllegalArgumentException("父节点链存在循环引用");
+                }
+                parentDepth++;
+                current = StringUtils.hasText(current.getParentId())
+                        ? requireNode(formId, current.getParentId())
+                        : null;
             }
         }
+        int subtreeHeight = currentSubtreeHeight(formId, nodeId);
+        if (parentDepth + subtreeHeight > MAX_DEPTH) {
+            throw new IllegalArgumentException(
+                    "表单嵌套层级不能超过 " + MAX_DEPTH + " 层");
+        }
+    }
+
+    private int currentSubtreeHeight(String formId, String nodeId) {
+        if (!StringUtils.hasText(nodeId)) {
+            return 1;
+        }
+        List<EntityFormNode> nodes = nodeMapper.findByFormId(formId);
+        if (nodes == null || nodes.isEmpty()) {
+            return 1;
+        }
+        Map<String, List<EntityFormNode>> childrenByParent = new HashMap<>();
+        for (EntityFormNode node : nodes) {
+            if (StringUtils.hasText(node.getParentId())) {
+                childrenByParent
+                        .computeIfAbsent(node.getParentId(), ignored -> new ArrayList<>())
+                        .add(node);
+            }
+        }
+        return currentSubtreeHeight(
+                nodeId,
+                childrenByParent,
+                new HashSet<>());
+    }
+
+    private int currentSubtreeHeight(
+            String nodeId,
+            Map<String, List<EntityFormNode>> childrenByParent,
+            Set<String> visiting) {
+        if (!visiting.add(nodeId)) {
+            throw new IllegalArgumentException("节点子树存在循环引用");
+        }
+        int height = 1;
+        for (EntityFormNode child :
+                childrenByParent.getOrDefault(nodeId, List.of())) {
+            height = Math.max(
+                    height,
+                    1 + currentSubtreeHeight(
+                            child.getId(),
+                            childrenByParent,
+                            visiting));
+        }
+        visiting.remove(nodeId);
+        return height;
     }
 
     private void validateParentChildType(
@@ -1025,6 +1091,114 @@ public class EntityFormNodeService {
             target.setLocalOverridesDocument(clear.contains("localOverrides")
                     ? null : write(request.getLocalOverrides(), "模板本地覆盖"));
         }
+    }
+
+    private void validatePatchConstraints(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request) {
+        Set<String> clear = request.getClearFields() == null
+                ? Set.of() : request.getClearFields();
+        for (String field : clear) {
+            if (!CLEARABLE_PATCH_FIELDS.contains(field)) {
+                throw new IllegalArgumentException("不支持清空表单节点字段: " + field);
+            }
+        }
+        if (isBound(current)) {
+            validateBoundNodeIdentity(current, request, clear);
+        }
+        String nodeType = request.getNodeType() == null
+                ? normalize(current.getNodeType(), "FIELD")
+                : normalize(request.getNodeType(), "FIELD");
+        validateNodeTypePatchFields(nodeType, request, clear);
+    }
+
+    private void validateBoundNodeIdentity(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        if (request.getNodeKey() != null
+                && !Objects.equals(request.getNodeKey(), current.getNodeKey())) {
+            throw new IllegalArgumentException("已绑定节点不能修改节点编码");
+        }
+        if (request.getNodeType() != null
+                && !Objects.equals(
+                        normalize(request.getNodeType(), "FIELD"),
+                        normalize(current.getNodeType(), "FIELD"))) {
+            throw new IllegalArgumentException("已绑定节点不能修改节点类型");
+        }
+        if (request.getBindingType() != null
+                && !Objects.equals(
+                        normalize(request.getBindingType(), "NONE"),
+                        normalize(current.getBindingType(), "NONE"))) {
+            throw new IllegalArgumentException("已绑定节点不能修改绑定类型");
+        }
+        if ((request.getBindingRef() != null || clear.contains("bindingRef"))
+                && !Objects.equals(
+                        clear.contains("bindingRef")
+                                ? null : blankToNull(request.getBindingRef()),
+                        blankToNull(current.getBindingRef()))) {
+            throw new IllegalArgumentException("已绑定节点不能修改绑定引用");
+        }
+    }
+
+    private void validateNodeTypePatchFields(
+            String nodeType,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        if (!COMPONENT_NODE_TYPES.contains(nodeType)
+                && (request.getComponentName() != null
+                || request.getComponentVersion() != null
+                || request.getSnapshotVersion() != null
+                || clear.contains("componentName")
+                || clear.contains("componentVersion")
+                || clear.contains("snapshotVersion"))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持扩展组件配置");
+        }
+        if (!RULE_NODE_TYPES.contains(nodeType)
+                && (request.getRules() != null || clear.contains("rules"))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持字段规则配置");
+        }
+        if (!DATA_SOURCE_NODE_TYPES.contains(nodeType)
+                && (request.getDataSourceBindings() != null
+                || clear.contains("dataSourceBindings"))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持数据源绑定");
+        }
+        if (!SUB_FORM_NODE_TYPES.contains(nodeType)
+                && (request.getChildFormId() != null
+                || request.getChildFormReleaseId() != null
+                || request.getChildFormReleaseVersion() != null
+                || clear.contains("childFormId")
+                || clear.contains("childFormReleaseId")
+                || clear.contains("childFormReleaseVersion"))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持子表单发布引用");
+        }
+        if (!BINDABLE_NODE_TYPES.contains(nodeType)) {
+            if (request.getBindingType() != null
+                    && !"NONE".equals(normalize(request.getBindingType(), "NONE"))) {
+                throw new IllegalArgumentException(
+                        nodeType + " 节点不支持数据绑定");
+            }
+            if (request.getBindingRef() != null
+                    && StringUtils.hasText(request.getBindingRef())) {
+                throw new IllegalArgumentException(
+                        nodeType + " 节点不支持数据绑定");
+            }
+        } else if (SUB_FORM_NODE_TYPES.contains(nodeType)
+                && request.getBindingType() != null
+                && !Set.of("NONE", "RELATION").contains(
+                        normalize(request.getBindingType(), "NONE"))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点仅支持关系绑定");
+        }
+    }
+
+    private boolean isBound(EntityFormNode node) {
+        return !"NONE".equals(normalize(node.getBindingType(), "NONE"))
+                || StringUtils.hasText(node.getBindingRef());
     }
 
     private EntityFormNode copy(EntityFormNode source) {

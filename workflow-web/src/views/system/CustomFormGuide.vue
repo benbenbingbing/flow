@@ -75,12 +75,30 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
             <li>FIELD 可绑定实体字段、实体关系、计算字段或运行上下文字段；TEXT 和布局节点可以不绑定数据。</li>
             <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象执行子表 `FORM_INIT`、`AFTER_LOAD`、默认值和计算，不会污染父记录。</li>
             <li>树深度超过 8、TAB 不属于 TAB_SET、孤儿节点或父子类型不合法时禁止发布。</li>
+            <li>所有节点都可在属性抽屉选择合法父容器；TAB 只能选择 TAB_SET，普通字段不能直接放入 TAB_SET，但可以放入具体 TAB 页。候选项必须排除自身、后代、循环和移动整棵子树后超过 8 层的目标。</li>
             <li>历史 `componentProps` 中可识别的子表、引用、事件和选项迁移为显式属性，未知内容保存在 `legacyProps`。</li>
           </ul>
         </section>
 
+        <section id="property-schema" class="guide-section">
+          <h3>5. 属性抽屉、类型 Schema 与不可变绑定</h3>
+          <el-table :data="propertyRows" border size="small">
+            <el-table-column prop="types" label="节点类型" width="210" />
+            <el-table-column prop="editable" label="允许配置" min-width="270" />
+            <el-table-column prop="boundary" label="边界与锁定规则" min-width="280" />
+          </el-table>
+          <ul class="check-list">
+            <li>设计器默认不占用画布显示属性面板；点击节点才打开右侧属性抽屉。关闭抽屉不会丢失当前选中节点和本地编辑值。</li>
+            <li>画布不展示序号、nodeType、revision、父级等技术信息；这些内容只在抽屉只读摘要中展示，选中与操作浮层不得改变节点布局。</li>
+            <li>画布用轻量“Tab 集合 / Tab 页”“栅格容器”和“内嵌节点”标题表达结构；选择字段后可通过父容器选择器移动到某个 Tab 页，选中的后代会自动切换到对应页签。</li>
+            <li>`id`、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 不可编辑。已绑定实体字段或实体关系后，nodeType、fieldId、fieldCode、关系和子实体绑定同样不可编辑。</li>
+            <li>节点级扩展必须通过 `nodeTypes`、supportedBindings 与 configSchema 声明可配置范围。前端只显示允许属性，服务端 PATCH 仍须按类型白名单校验，不能相信前端隐藏。</li>
+            <li>默认动态表单的画布、草稿预览和已发布运行时使用同一递归树：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先。SECTION、GRID、TAB_SET、TAB、COLLAPSE 等容器在预览中必须保持容器语义。</li>
+          </ul>
+        </section>
+
         <section id="field-component" class="guide-section">
-          <h3>5. 节点级自定义组件</h3>
+          <h3>6. 节点级自定义组件</h3>
           <p>只替换某一类字段或局部展示节点时，注册节点级组件即可，表单树、校验、数据源、联动、模式权限和发布快照继续由平台管理。</p>
           <CodeCard title="rating-field-extension.ts" language="TypeScript">
             <pre v-pre><code>import { registerFormFieldComponent } from '@/components/form-fields'
@@ -129,7 +147,7 @@ const emit = defineEmits([
         </section>
 
         <section id="whole-form" class="guide-section">
-          <h3>6. 整表单自定义组件</h3>
+          <h3>7. 整表单自定义组件</h3>
           <p>复杂分步表单、矩阵录入、图形化编辑器等场景可以接管整个表单区域。`modelValue` 在所有场景中统一为业务字段对象，不再在新增场景传整条记录、审批场景传字段对象。</p>
           <CodeCard title="custom-form-extension.ts" language="TypeScript">
             <pre v-pre><code>import { registerCustomFormComponent } from '@/utils/customComponentRegistry'
@@ -154,7 +172,7 @@ registerCustomFormComponent('ProjectWizardForm', ProjectWizardForm, {
         </section>
 
         <section id="contract" class="guide-section">
-          <h3>7. 整表单运行时契约</h3>
+          <h3>8. 整表单运行时契约</h3>
           <el-table :data="contractRows" border size="small">
             <el-table-column prop="name" label="Prop" width="190" />
             <el-table-column prop="meaning" label="含义" />
@@ -191,7 +209,7 @@ defineExpose({ validate })
         </section>
 
         <section id="modes" class="guide-section">
-          <h3>8. 四种模式与只读规则</h3>
+          <h3>9. 四种模式与只读规则</h3>
           <el-table :data="modeRows" border size="small">
             <el-table-column prop="mode" label="mode" width="120" />
             <el-table-column prop="scene" label="场景" width="180" />
@@ -206,7 +224,7 @@ defineExpose({ validate })
         </section>
 
         <section id="data" class="guide-section">
-          <h3>9. 数据、校验和联动</h3>
+          <h3>10. 数据、校验和联动</h3>
           <ul class="check-list">
             <li>通过 `emit('update:modelValue', nextValue)` 更新业务字段对象。</li>
             <li>新增/编辑场景的整条记录、发起流程开关等信息在 `context.record` 中提供。</li>
@@ -217,7 +235,7 @@ defineExpose({ validate })
         </section>
 
         <section id="data-source" class="guide-section">
-          <h3>10. 表单统一数据源</h3>
+          <h3>11. 表单统一数据源</h3>
           <ul class="check-list">
             <li>类型包括 `ENTITY_QUERY`、`DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`INTEGRATION_CONNECTOR`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
             <li>可绑定 `FORM_INIT`、`FIELD_OPTIONS`、`FIELD_DEFAULT`、`FIELD_COMPUTE`、`SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
@@ -229,7 +247,7 @@ defineExpose({ validate })
         </section>
 
         <section id="release-template" class="guide-section">
-          <h3>11. 草稿发布、版本回滚与模板升级</h3>
+          <h3>12. 草稿发布、版本回滚与模板升级</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
@@ -245,7 +263,7 @@ defineExpose({ validate })
         </section>
 
         <section id="demo" class="guide-section">
-          <h3>12. 可运行 Demo</h3>
+          <h3>13. 可运行 Demo</h3>
           <ul class="check-list">
             <li>`src/demo/forms/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
             <li>`src/demo/index.js`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
@@ -255,7 +273,7 @@ defineExpose({ validate })
         </section>
 
         <section id="security" class="guide-section">
-          <h3>13. 安全边界</h3>
+          <h3>14. 安全边界</h3>
           <ul class="check-list">
             <li>组件注册名和配置参数会在后端校验格式、JSON 类型、嵌套深度和模式编码。</li>
             <li>组件注册和 `configSchema` 参数不支持加载任意 Vue 文件，也不执行 JavaScript、Groovy 或自由 SQL。</li>
@@ -268,7 +286,7 @@ defineExpose({ validate })
         </section>
 
         <section id="migration" class="guide-section">
-          <h3>14. 迁移、版本兼容与回退</h3>
+          <h3>15. 迁移、版本兼容与回退</h3>
           <ul class="check-list">
             <li>旧表单字段幂等转换为一级 FIELD 节点，重复迁移不会再次生成 nodeId。</li>
             <li>未知历史属性写入 `legacyProps` 和迁移报告；报告同时输出节点数、快照哈希和初始 release。启动迁移按单表单/单列表独立事务执行，失败项只输出结构化失败报告，不回滚已成功迁移和发布的其他配置。</li>
@@ -280,7 +298,7 @@ defineExpose({ validate })
         </section>
 
         <section id="acceptance" class="guide-section">
-          <h3>15. 验收清单</h3>
+          <h3>16. 验收清单</h3>
           <ul class="check-list">
             <li>新增、编辑、审批、查看四种模式分别验收显隐和编辑性。</li>
             <li>节点整表单只读与字段只读叠加后仍严格只读。</li>
@@ -311,6 +329,7 @@ const toc = [
   { id: 'configuration', label: '配置能力' },
   { id: 'node-contract', label: '单项与并发' },
   { id: 'node-types', label: '递归节点' },
+  { id: 'property-schema', label: '属性与绑定' },
   { id: 'field-component', label: '字段组件' },
   { id: 'whole-form', label: '整表单组件' },
   { id: 'contract', label: '运行时契约' },
@@ -332,12 +351,20 @@ const levels = [
 
 const nodeRows = [
   { type: 'SECTION / GRID', meaning: '业务区块和栅格容器，可递归包含布局与内容节点' },
-  { type: 'TAB_SET / TAB', meaning: '页签集合与页签内容，父子关系固定' },
+  { type: 'TAB_SET / TAB', meaning: 'TAB_SET 只直接包含 TAB；TAB 可递归包含字段、布局、文本和其他合法内容节点' },
   { type: 'COLLAPSE / TEXT', meaning: '折叠容器与无数据说明节点，TEXT 不执行脚本' },
   { type: 'FIELD', meaning: '绑定实体字段、关系、计算字段或上下文字段' },
   { type: 'SUB_FORM', meaning: '引用子实体、关系和指定已发布表单版本' },
   { type: 'REPEATER', meaning: '一对多明细容器，通过 SUBFORM_ROWS 加载' },
   { type: 'ACTION_SLOT', meaning: '受控动作插槽，权限与后端操作仍由平台校验' }
+]
+
+const propertyRows = [
+  { types: 'SECTION / GRID', editable: '合法父容器、标题、显示标签和容器样式；GRID 支持列间距和默认跨度。', boundary: '不显示字段组件、默认值、实体引用、字段校验或字段数据源。' },
+  { types: 'TAB_SET / TAB / COLLAPSE', editable: '合法父容器；TAB_SET 的页签位置；TAB 的页签标题和所属 Tab 集合；COLLAPSE 的标题、默认展开和手风琴模式。', boundary: 'TAB 父级只能选择有效 TAB_SET；TAB_SET 的直接子项只能是 TAB。' },
+  { types: 'TEXT / ACTION_SLOT', editable: '合法父容器；TEXT 的受限说明内容；ACTION_SLOT 仅展示稳定插槽标识。', boundary: 'TEXT 禁止脚本和实体绑定；ACTION_SLOT 暂不开放动作、权限或位置编辑。' },
+  { types: 'FIELD', editable: '合法父容器、兼容组件、标签、必填、只读、隐藏、占位、默认值、校验、数据源、事件和模式权限。', boundary: '不能直接放入 TAB_SET；已绑定时 nodeType、fieldId、fieldCode、bindingType、bindingRef 不可改。' },
+  { types: 'SUB_FORM / REPEATER', editable: '合法父容器、展示模式、子表布局、已发布子表单版本和受控行数据源。', boundary: '子实体、关系和外键属于实体模型，表单层不可改写；内嵌节点递归展示。' }
 ]
 
 const contractRows = [

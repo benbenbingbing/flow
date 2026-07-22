@@ -1,8 +1,10 @@
 package com.workflow.controller;
 
 import com.workflow.common.Result;
+import com.workflow.dto.EntityListActionDeleteRequest;
 import com.workflow.dto.EntityListActionSaveRequest;
 import com.workflow.dto.EntityListItemReorderRequest;
+import com.workflow.dto.EntityListSceneDeleteRequest;
 import com.workflow.dto.EntityListSceneSaveRequest;
 import com.workflow.entity.EntityListAction;
 import com.workflow.entity.EntityListScene;
@@ -14,7 +16,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -57,9 +58,9 @@ public class EntityListItemController {
     public Result<Void> deleteAction(
             @PathVariable String listId,
             @PathVariable String actionId,
-            @RequestParam Integer expectedRevision) {
+            @RequestBody EntityListActionDeleteRequest request) {
         accessService.requireListAccess(listId);
-        service.deleteAction(listId, actionId, expectedRevision);
+        service.deleteAction(listId, actionId, request.getExpectedRevision());
         return Result.success();
     }
 
@@ -90,9 +91,9 @@ public class EntityListItemController {
     public Result<Void> deleteScene(
             @PathVariable String listId,
             @PathVariable String sceneId,
-            @RequestParam Integer expectedRevision) {
+            @RequestBody EntityListSceneDeleteRequest request) {
         accessService.requireListAccess(listId);
-        service.deleteScene(listId, sceneId, expectedRevision);
+        service.deleteScene(listId, sceneId, request.getExpectedRevision());
         return Result.success();
     }
 }

@@ -109,7 +109,7 @@ export const deleteFormNode = (
   expectedRevision: number
 ) => {
   return request.post(`/entity-forms/${formId}/nodes/${nodeId}/delete`, {
-    params: { expectedRevision }
+    expectedRevision
   })
 }
 

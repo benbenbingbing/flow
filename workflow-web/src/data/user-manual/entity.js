@@ -630,16 +630,19 @@ export default {
       topics: [
         {
           id: 'entity-form-designer-layout',
-          title: '画布与表单级配置',
+          title: '画布、属性抽屉与表单级配置',
           blocks: [
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
                 { field: '搜索字段', meaning: '按实体字段名称或编码过滤左侧字段。', defaultLimit: '默认空。', effect: '快速定位字段；已添加字段显示“已添加”。', publish: '无发布影响。' },
-                { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树。', defaultLimit: '最大嵌套深度 8 层。', effect: '区块、栅格、Tab、折叠面板和子表可以任意组合。', publish: '发布校验会拒绝循环引用、孤儿节点和超过 8 层的结构。' },
+                { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树；画布用“Tab 集合 / Tab 页”“栅格容器”等轻量结构标题区分层级，不展示技术标签。', defaultLimit: '最大嵌套深度 8 层；不显示序号、nodeType、revision 或父级 ID 等技术元信息。', effect: '区块、栅格、Tab、折叠面板、子表和明细表可以递归组合；选中任一节点后可在属性抽屉移动到合法父容器。', publish: '保存和发布都会拒绝非法父子类型、循环引用、孤儿节点和移动整棵子树后超过 8 层的结构。' },
+                { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；默认关闭以保留设计画布空间。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '技术摘要只读展示，当前节点独立保存，不会修改其他节点。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
                 { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
+                { field: '统一栅格布局', meaning: '垂直布局默认每项 24 栅格，水平布局默认每项 12 栅格，网格布局按节点 gridSpan 排列。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
+                { field: '草稿预览', meaning: '预览读取当前草稿节点树和草稿数据源绑定。', defaultLimit: '默认动态表单优先递归渲染节点树；旧扁平表单保留兼容回退。', effect: 'SECTION、GRID、TAB_SET、TAB、COLLAPSE、TEXT、FIELD、SUB_FORM、REPEATER、ACTION_SLOT 的结构与运行时一致。', publish: '预览不影响当前激活 release，也不能代替真实角色和权限验证。' },
                 { field: '自定义组件', meaning: '使用已注册的自定义表单组件替代默认动态表单。', defaultLimit: '组件名必须同时存在前端注册和服务端扩展清单。', effect: '运行时整体表单由扩展组件渲染，并锁定实现版本与配置快照版本。', publish: '扩展未登记、已禁用、版本或快照协议不匹配时禁止发布。' },
                 { field: '扩展清单', meaning: '登记 FORM/NODE/FIELD/LIST 扩展的注册名、实现版本、快照版本、兼容范围和 Schema。', defaultLimit: '同类型、注册名和版本唯一；修改必须携带 revision。', effect: '设计器按目标环境真实 manifest 锁定版本。', publish: '清单不会传输可执行代码，目标环境仍须先部署对应扩展。' },
                 { field: '标签宽度', meaning: '动态表单标签宽度。', defaultLimit: '60–240，默认 120。', effect: '影响水平和网格布局对齐。', publish: '长标签需要实际预览。' },
@@ -658,7 +661,7 @@ export default {
               rows: [
                 { option: 'SECTION', meaning: '业务区块和标题容器，可包含布局与内容节点。', notes: '适合按业务主题分组，不绑定数据。' },
                 { option: 'GRID', meaning: '栅格容器，控制子节点列宽与响应式排列。', notes: '不要为单个字段创建无意义多层 GRID。' },
-                { option: 'TAB_SET / TAB', meaning: 'TAB_SET 只包含 TAB，TAB 承载具体内容。', notes: '发布时校验父子类型；移动端避免过多页签。' },
+                { option: 'TAB_SET / TAB', meaning: 'TAB_SET 只直接包含 TAB，TAB 承载字段、布局、文本和其他合法内容节点。', notes: '画布分别显示“Tab 集合”和“Tab 页”；新增 TAB 必须选择有效 TAB_SET，其他节点可通过“父容器”移动到指定 Tab 页。' },
                 { option: 'COLLAPSE', meaning: '可折叠内容容器。', notes: '关键必填项不应默认折叠且无错误定位。' },
                 { option: 'TEXT', meaning: '说明、提示或无数据展示节点。', notes: '内容必须经过安全渲染，不执行脚本。' },
                 { option: 'FIELD', meaning: '绑定实体字段、计算字段或上下文字段。', notes: '字段编码变化不改变 nodeId。' },
@@ -671,14 +674,37 @@ export default {
         },
         {
           id: 'entity-form-field-properties',
-          title: '字段属性与组件',
+          title: '节点类型属性、绑定锁定与组件',
           blocks: [
+            {
+              type: 'table',
+              title: '属性抽屉按节点类型收敛',
+              columns: optionColumns,
+              rows: [
+                { option: 'SECTION', meaning: '可编辑区块标题和合法父容器。', notes: '不显示字段组件、默认值、实体引用或字段校验。' },
+                { option: 'GRID', meaning: '可编辑列间距、默认子项跨度和合法父容器。', notes: '子项的 gridSpan 属于子节点；不能在 GRID 上配置字段数据源或校验。' },
+                { option: 'TAB_SET', meaning: '可编辑页签位置和合法父容器。', notes: 'TAB_SET 只接受 TAB 直接子项；当前不提供默认激活页配置。' },
+                { option: 'TAB', meaning: '可编辑页签标题和所属 Tab 集合。', notes: '父级选择器只列出有效 TAB_SET；不显示字段默认值、校验或实体绑定。' },
+                { option: 'COLLAPSE', meaning: '可编辑标题、默认展开、手风琴模式和合法父容器。', notes: '这些属性在设计器预览和运行时同时生效。' },
+                { option: 'TEXT', meaning: '可编辑说明内容和合法父容器。', notes: '不支持事件、实体绑定、任意脚本或任意 HTML 执行。' },
+                { option: 'FIELD', meaning: '可编辑父容器、显示标签、兼容组件、必填、只读、隐藏、占位、默认值、校验、受控数据源、字段事件和模式权限。', notes: '组件候选必须与实体字段类型兼容；切换组件时清除不兼容参数、校验和数据源绑定。' },
+                { option: 'SUB_FORM / REPEATER', meaning: '可编辑父容器、展示模式、子表布局、已发布子表单版本和受控行数据源。', notes: '子实体、实体关系和外键由数据模型决定，不能在表单层改写；其内嵌节点在画布中递归显示。' },
+                { option: 'ACTION_SLOT', meaning: '可编辑合法父容器并显示稳定插槽标识，供已注册运行时动作注入。', notes: '当前不开放动作、权限或显示条件编辑，避免形成无效配置。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '绑定和技术字段不可直接修改',
+              text: 'id、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 始终只读。节点一旦绑定实体字段或实体关系，nodeType、fieldId、fieldCode、关系和子实体绑定一并锁定；如需改变数据语义，请新建节点并迁移可复用的显示配置，不要通过改绑定让历史记录指向新字段。前端隐藏不构成安全边界，服务端 PATCH 也必须按 nodeType 白名单拒绝未知、不兼容或已锁定字段。'
+            },
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '字段名称 / 节标题', meaning: '实体字段名称只读；节标题可编辑。', defaultLimit: '实体字段不可在表单层改名。', effect: '节标题直接显示，普通字段保留实体语义。', publish: '改实体字段名称应回实体设计。' },
+                { field: '字段名称 / 节标题', meaning: '实体字段名称和绑定摘要只读；节标题可编辑。', defaultLimit: '实体字段不可在表单层改名。', effect: '节标题直接显示，普通字段保留实体语义。', publish: '改实体字段名称或关系时应回实体设计并新建节点。' },
                 { field: '显示标签', meaning: '当前表单中的标签文本。', defaultLimit: '默认实体字段名称。', effect: '只影响此表单显示。', publish: '适合按场景简化名称。' },
+                { field: '父容器', meaning: '将当前节点移动到根节点或兼容容器；TAB 显示为“所属 Tab 集合”。', defaultLimit: '候选项按父子类型过滤，并排除自身、后代、循环引用和移动后超过 8 层的目标；TAB 不允许根节点。', effect: '可把已有 FIELD、SECTION、GRID、TAB_SET、COLLAPSE、TEXT、SUB_FORM、REPEATER、ACTION_SLOT 移入指定 Tab 页或其他兼容容器，不需要删除重建。', publish: '保存当前节点后写入草稿；服务端再次校验整棵子树深度和父子类型。' },
                 { field: '组件类型', meaning: '选择与字段类型兼容的渲染组件。', defaultLimit: '按字段类型过滤可用组件。', effect: '改变输入交互，不改变实体字段数据库类型。', publish: '组件必须在目标环境注册。' },
                 { field: '必填', meaning: '当前表单场景要求填写。', defaultLimit: '从实体字段继承，可单独调整。', effect: '运行时表单校验。', publish: '不要与模式权限的不可编辑配置冲突。' },
                 { field: '只读', meaning: '字段显示但不可编辑。', defaultLimit: '默认关闭。', effect: '运行时禁用输入。', publish: '只读不等于隐藏，敏感数据仍可见。' },

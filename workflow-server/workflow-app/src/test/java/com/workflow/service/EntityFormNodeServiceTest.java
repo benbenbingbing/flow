@@ -5,6 +5,7 @@ import com.workflow.common.RevisionConflictException;
 import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.dto.EntityFormNodeCreateRequest;
 import com.workflow.dto.EntityFormNodePatchRequest;
+import com.workflow.dto.EntityFormNodeReorderRequest;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormNode;
 import com.workflow.entity.UiConfigRelease;
@@ -31,6 +32,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +52,126 @@ class EntityFormNodeServiceTest {
         assertThrows(
                 RevisionConflictException.class,
                 () -> service.patch("form-1", "n1", request));
+    }
+
+    @Test
+    void patchRejectsBoundNodeIdentityAndBindingChanges() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode current = node("n1", null, 1);
+        current.setBindingType("ENTITY_FIELD");
+        current.setBindingRef("name");
+        when(nodeMapper.selectById("n1")).thenReturn(current);
+        EntityFormNodeService service = service(nodeMapper);
+
+        EntityFormNodePatchRequest nodeKeyRequest =
+                new EntityFormNodePatchRequest();
+        nodeKeyRequest.setExpectedRevision(1);
+        nodeKeyRequest.setNodeKey("renamed");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.patch("form-1", "n1", nodeKeyRequest));
+
+        EntityFormNodePatchRequest nodeTypeRequest =
+                new EntityFormNodePatchRequest();
+        nodeTypeRequest.setExpectedRevision(1);
+        nodeTypeRequest.setNodeType("TEXT");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.patch("form-1", "n1", nodeTypeRequest));
+
+        EntityFormNodePatchRequest bindingRequest =
+                new EntityFormNodePatchRequest();
+        bindingRequest.setExpectedRevision(1);
+        bindingRequest.setBindingRef("code");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.patch("form-1", "n1", bindingRequest));
+
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    @Test
+    void patchRejectsPropertiesThatDoNotApplyToNodeType() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode section = typedNode("section", null, "SECTION");
+        EntityFormNode text = typedNode("text", null, "TEXT");
+        EntityFormNode field = typedNode("field", null, "FIELD");
+        when(nodeMapper.selectById("section")).thenReturn(section);
+        when(nodeMapper.selectById("text")).thenReturn(text);
+        when(nodeMapper.selectById("field")).thenReturn(field);
+        EntityFormNodeService service = service(nodeMapper);
+
+        EntityFormNodePatchRequest componentRequest =
+                new EntityFormNodePatchRequest();
+        componentRequest.setExpectedRevision(1);
+        componentRequest.setComponentName("custom-section");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.patch("form-1", "section", componentRequest));
+
+        EntityFormNodePatchRequest dataSourceRequest =
+                new EntityFormNodePatchRequest();
+        dataSourceRequest.setExpectedRevision(1);
+        dataSourceRequest.setDataSourceBindings(Map.of(
+                "FIELD_OPTIONS", Map.of("provider", "departments")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.patch("form-1", "text", dataSourceRequest));
+
+        EntityFormNodePatchRequest subFormRequest =
+                new EntityFormNodePatchRequest();
+        subFormRequest.setExpectedRevision(1);
+        subFormRequest.setChildFormId("form-2");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.patch("form-1", "field", subFormRequest));
+
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    @Test
+    void reorderAllowsBoundNodePlacementChange() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode current = node("n1", null, 1);
+        current.setBindingType("ENTITY_FIELD");
+        current.setBindingRef("name");
+        when(nodeMapper.selectById("n1")).thenReturn(current);
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+        request.setParentId(null);
+
+        assertSame(
+                current,
+                service(nodeMapper).reorder("form-1", "n1", request));
+        verify(nodeMapper).update(isNull(), any());
+    }
+
+    @Test
+    void replaceByDiffPreservesBoundNodeImportChanges() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode current = node("n1", null, 1);
+        current.setBindingType("ENTITY_FIELD");
+        current.setBindingRef("name");
+        EntityFormNode imported = node("n1", null, 1);
+        imported.setNodeKey("details");
+        imported.setNodeType("SUB_FORM");
+        imported.setBindingType("RELATION");
+        imported.setBindingRef("details_relation");
+        when(nodeMapper.findByFormId("form-1"))
+                .thenReturn(List.of(current), List.of(imported));
+        when(nodeMapper.selectById("n1")).thenReturn(current);
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+
+        assertDoesNotThrow(
+                () -> service(nodeMapper)
+                        .replaceByDiff("form-1", List.of(imported)));
+
+        verify(nodeMapper).update(isNull(), any());
     }
 
     @Test
@@ -94,6 +216,56 @@ class EntityFormNodeServiceTest {
         when(nodeMapper.findByFormId("form-1")).thenReturn(nodes);
 
         assertDoesNotThrow(() -> service(nodeMapper).validateTree("form-1"));
+    }
+
+    @Test
+    void patchRejectsMovingSubtreeBeyondEightLevels() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        List<EntityFormNode> nodes = nestedSections(nodeMapper, 6);
+        EntityFormNode subtree = typedNode("subtree", null, "SECTION");
+        EntityFormNode child = typedNode("subtree-child", "subtree", "SECTION");
+        EntityFormNode grandchild =
+                typedNode("subtree-grandchild", "subtree-child", "FIELD");
+        nodes.add(subtree);
+        nodes.add(child);
+        nodes.add(grandchild);
+        when(nodeMapper.selectById("subtree")).thenReturn(subtree);
+        when(nodeMapper.findByFormId("form-1")).thenReturn(nodes);
+
+        EntityFormNodePatchRequest request =
+                new EntityFormNodePatchRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("n6");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(nodeMapper).patch("form-1", "subtree", request));
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    @Test
+    void patchAllowsMovingSubtreeToExactlyEightLevels() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        List<EntityFormNode> nodes = nestedSections(nodeMapper, 5);
+        EntityFormNode subtree = typedNode("subtree", null, "SECTION");
+        EntityFormNode child = typedNode("subtree-child", "subtree", "SECTION");
+        EntityFormNode grandchild =
+                typedNode("subtree-grandchild", "subtree-child", "FIELD");
+        nodes.add(subtree);
+        nodes.add(child);
+        nodes.add(grandchild);
+        when(nodeMapper.selectById("subtree")).thenReturn(subtree);
+        when(nodeMapper.findByFormId("form-1")).thenReturn(nodes);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+
+        EntityFormNodePatchRequest request =
+                new EntityFormNodePatchRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("n5");
+
+        assertDoesNotThrow(
+                () -> service(nodeMapper).patch("form-1", "subtree", request));
+        verify(nodeMapper).update(isNull(), any());
     }
 
     @Test

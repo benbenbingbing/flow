@@ -1,6 +1,7 @@
 package com.workflow.controller;
 
 import com.workflow.common.Result;
+import com.workflow.dto.UiDataSourceDeleteRequest;
 import com.workflow.dto.UiDataSourceExecuteRequest;
 import com.workflow.dto.UiDataSourceSaveRequest;
 import com.workflow.entity.UiDataSourceDefinition;
@@ -60,9 +61,9 @@ public class UiDataSourceController {
     @PostMapping("/{id}/delete")
     public Result<Void> delete(
             @PathVariable String id,
-            @RequestParam Integer expectedRevision) {
+            @RequestBody UiDataSourceDeleteRequest request) {
         accessService.requireGlobalConfigurationAccess();
-        service.delete(id, expectedRevision);
+        service.delete(id, request.getExpectedRevision());
         return Result.success();
     }
 

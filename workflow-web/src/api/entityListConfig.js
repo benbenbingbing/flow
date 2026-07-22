@@ -57,7 +57,7 @@ export const entityListConfigApi = {
 
   deleteField(id, fieldId, expectedRevision) {
     return request.post(`/entity-list-config/${id}/fields/${fieldId}/delete`, {
-      params: { expectedRevision }
+      expectedRevision
     })
   },
 
@@ -87,7 +87,7 @@ export const entityListConfigApi = {
 
   deleteAction(id, actionId, expectedRevision) {
     return request.post(`/entity-list-config/${id}/actions/${actionId}`, {
-      params: { expectedRevision }
+      expectedRevision
     })
   },
 
@@ -105,7 +105,7 @@ export const entityListConfigApi = {
 
   deleteScene(id, sceneId, expectedRevision) {
     return request.post(`/entity-list-config/${id}/scenes/${sceneId}`, {
-      params: { expectedRevision }
+      expectedRevision
     })
   },
 
