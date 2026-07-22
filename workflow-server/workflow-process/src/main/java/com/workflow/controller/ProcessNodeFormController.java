@@ -50,7 +50,7 @@ public class ProcessNodeFormController {
     /**
      * 删除节点表单绑定
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}")
     public Result<Void> delete(@PathVariable String id) {
         nodeFormService.deleteNodeForm(id);
         return Result.success();
@@ -59,7 +59,7 @@ public class ProcessNodeFormController {
     /**
      * 批量保存节点表单绑定
      */
-    @PutMapping("/process/{processConfigId}")
+    @PostMapping("/process/{processConfigId}")
     public Result<Void> saveNodeForms(
             @PathVariable String processConfigId,
             @RequestBody List<ProcessNodeForm> nodeForms) {

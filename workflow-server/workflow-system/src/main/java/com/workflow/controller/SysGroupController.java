@@ -57,7 +57,7 @@ public class SysGroupController {
     /**
      * 更新组
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<SysGroup> update(@PathVariable String id, @RequestBody SysGroup group) {
         group.setId(id);
         return Result.success(groupService.saveGroup(group));
@@ -66,7 +66,7 @@ public class SysGroupController {
     /**
      * 删除组
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         groupService.deleteGroup(id);
         return Result.success();
@@ -75,7 +75,7 @@ public class SysGroupController {
     /**
      * 更新组状态
      */
-    @PutMapping("/{id}/status")
+    @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -90,7 +90,7 @@ public class SysGroupController {
     /**
      * 保存组用户
      */
-    @PutMapping("/{id}/users")
+    @PostMapping("/{id}/users")
     public Result<Void> saveGroupUsers(@PathVariable String id, @RequestBody List<String> userIds) {
         groupService.saveGroupUsers(id, userIds);
         return Result.success();

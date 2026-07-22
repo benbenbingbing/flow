@@ -11,10 +11,10 @@ export const uiDataSourceApi = {
     return request.post('/ui-data-sources', data)
   },
   update(id, data) {
-    return request.put(`/ui-data-sources/${id}`, data)
+    return request.post(`/ui-data-sources/${id}/update`, data)
   },
   remove(id, expectedRevision) {
-    return request.delete(`/ui-data-sources/${id}`, {
+    return request.post(`/ui-data-sources/${id}/delete`, {
       params: { expectedRevision }
     })
   },
@@ -55,6 +55,6 @@ export const uiExtensionApi = {
     return request.post('/ui-extensions', data)
   },
   update(id, data) {
-    return request.put(`/ui-extensions/${id}`, data)
+    return request.post(`/ui-extensions/${id}`, data)
   }
 }

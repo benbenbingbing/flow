@@ -32,27 +32,27 @@ export const createMenu = (data: any) => {
 
 // 更新菜单
 export const updateMenu = (id: string, data: any) => {
-  return request.put(`/system/menu/${id}`, data)
+  return request.post(`/system/menu/${id}/update`, data)
 }
 
 // 删除菜单
 export const deleteMenu = (id: string) => {
-  return request.delete(`/system/menu/${id}`)
+  return request.post(`/system/menu/${id}/delete`)
 }
 
 // 更新菜单状态
 export const updateStatus = (id: string, status: string) => {
-  return request.put(`/system/menu/${id}/status?status=${status}`)
+  return request.post(`/system/menu/${id}/status?status=${status}`)
 }
 
 // 更新菜单显示状态
 export const updateVisible = (id: string, visible: string) => {
-  return request.put(`/system/menu/${id}/visible?visible=${visible}`)
+  return request.post(`/system/menu/${id}/visible?visible=${visible}`)
 }
 
 // 更新菜单排序
 export const updateSort = (menuIds: string[]) => {
-  return request.put('/system/menu/sort', menuIds)
+  return request.post('/system/menu/sort', menuIds)
 }
 
 // 导出菜单

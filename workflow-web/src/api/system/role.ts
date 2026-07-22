@@ -22,17 +22,17 @@ export const createRole = (data: any) => {
 
 // 更新角色
 export const updateRole = (id: string, data: any) => {
-  return request.put(`/system/role/${id}`, data)
+  return request.post(`/system/role/${id}/update`, data)
 }
 
 // 删除角色
 export const deleteRole = (id: string) => {
-  return request.delete(`/system/role/${id}`)
+  return request.post(`/system/role/${id}/delete`)
 }
 
 // 更新角色状态
 export const updateRoleStatus = (id: string, status: string) => {
-  return request.put(`/system/role/${id}/status?status=${status}`)
+  return request.post(`/system/role/${id}/status?status=${status}`)
 }
 
 // 获取菜单树
@@ -47,5 +47,5 @@ export const getRoleMenus = (id: string) => {
 
 // 保存角色菜单权限
 export const saveRoleMenus = (id: string, menuIds: string[]) => {
-  return request.put(`/system/role/${id}/menus`, menuIds)
+  return request.post(`/system/role/${id}/menus`, menuIds)
 }

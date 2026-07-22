@@ -30,7 +30,7 @@ export const entityListConfigApi = {
   },
 
   patchMetadata(id, data) {
-    return request.patch(`/entity-list-config/${id}`, data)
+    return request.post(`/entity-list-config/${id}`, data)
   },
 
   createField(id, field) {
@@ -44,7 +44,7 @@ export const entityListConfigApi = {
       'templateVersion',
       'localOverridesDocument'
     ].filter(key => field[key] == null)
-    return request.patch(`/entity-list-config/${id}/fields/${fieldId}`, {
+    return request.post(`/entity-list-config/${id}/fields/${fieldId}/patch`, {
       expectedRevision,
       field,
       clearFields
@@ -52,11 +52,11 @@ export const entityListConfigApi = {
   },
 
   reorderField(id, fieldId, data) {
-    return request.put(`/entity-list-config/${id}/fields/${fieldId}/order`, data)
+    return request.post(`/entity-list-config/${id}/fields/${fieldId}/order`, data)
   },
 
   deleteField(id, fieldId, expectedRevision) {
-    return request.delete(`/entity-list-config/${id}/fields/${fieldId}`, {
+    return request.post(`/entity-list-config/${id}/fields/${fieldId}/delete`, {
       params: { expectedRevision }
     })
   },
@@ -82,11 +82,11 @@ export const entityListConfigApi = {
   },
 
   patchAction(id, actionId, data) {
-    return request.patch(`/entity-list-config/${id}/actions/${actionId}`, data)
+    return request.post(`/entity-list-config/${id}/actions/${actionId}`, data)
   },
 
   deleteAction(id, actionId, expectedRevision) {
-    return request.delete(`/entity-list-config/${id}/actions/${actionId}`, {
+    return request.post(`/entity-list-config/${id}/actions/${actionId}`, {
       params: { expectedRevision }
     })
   },
@@ -100,11 +100,11 @@ export const entityListConfigApi = {
   },
 
   patchScene(id, sceneId, data) {
-    return request.patch(`/entity-list-config/${id}/scenes/${sceneId}`, data)
+    return request.post(`/entity-list-config/${id}/scenes/${sceneId}`, data)
   },
 
   deleteScene(id, sceneId, expectedRevision) {
-    return request.delete(`/entity-list-config/${id}/scenes/${sceneId}`, {
+    return request.post(`/entity-list-config/${id}/scenes/${sceneId}`, {
       params: { expectedRevision }
     })
   },
@@ -117,6 +117,6 @@ export const entityListConfigApi = {
    * 删除列表配置
    */
   delete(id) {
-    return request.delete(`/entity-list-config/delete/${id}`)
+    return request.post(`/entity-list-config/delete/${id}`)
   }
 }

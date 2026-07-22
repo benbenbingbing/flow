@@ -32,5 +32,5 @@ export function saveEntityStatusList(entityCode, statuses) {
  * 删除实体状态
  */
 export function deleteEntityStatus(id) {
-  return request.delete(`/entity-status/delete/${id}`)
+  return request.post(`/entity-status/delete/${id}`)
 }

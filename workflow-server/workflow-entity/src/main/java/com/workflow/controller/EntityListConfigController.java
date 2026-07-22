@@ -81,7 +81,7 @@ public class EntityListConfigController {
         return Result.success(listConfigService.saveConfig(dto));
     }
 
-    @PatchMapping("/{id}")
+    @PostMapping("/{id}")
     public Result<EntityListConfigDTO> patchMetadata(
             @PathVariable String id,
             @RequestBody EntityListMetadataPatchRequest request) {
@@ -97,7 +97,7 @@ public class EntityListConfigController {
         return Result.success(listConfigService.createField(id, request));
     }
 
-    @PatchMapping("/{id}/fields/{fieldId}")
+    @PostMapping("/{id}/fields/{fieldId}/patch")
     public Result<EntityListField> patchField(
             @PathVariable String id,
             @PathVariable String fieldId,
@@ -107,7 +107,7 @@ public class EntityListConfigController {
                 listConfigService.patchField(id, fieldId, request));
     }
 
-    @PutMapping("/{id}/fields/{fieldId}/order")
+    @PostMapping("/{id}/fields/{fieldId}/order")
     public Result<EntityListField> reorderField(
             @PathVariable String id,
             @PathVariable String fieldId,
@@ -117,7 +117,7 @@ public class EntityListConfigController {
                 listConfigService.reorderField(id, fieldId, request));
     }
 
-    @DeleteMapping("/{id}/fields/{fieldId}")
+    @PostMapping("/{id}/fields/{fieldId}/delete")
     public Result<Void> deleteField(
             @PathVariable String id,
             @PathVariable String fieldId,
@@ -152,7 +152,7 @@ public class EntityListConfigController {
     /**
      * 删除列表配置
      */
-    @DeleteMapping("/delete/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable String id) {
         accessService.requireListAccess(id);
         listConfigService.deleteConfig(id);

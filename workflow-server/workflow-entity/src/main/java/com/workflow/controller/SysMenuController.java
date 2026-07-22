@@ -82,7 +82,7 @@ public class SysMenuController {
     /**
      * 更新菜单
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<SysMenu> update(@PathVariable String id, @RequestBody SysMenu menu) {
         menu.setId(id);
         return Result.success(menuService.saveMenu(menu));
@@ -91,7 +91,7 @@ public class SysMenuController {
     /**
      * 删除菜单
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         menuService.deleteMenu(id);
         return Result.success();
@@ -100,7 +100,7 @@ public class SysMenuController {
     /**
      * 更新菜单状态
      */
-    @PutMapping("/{id}/status")
+    @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -115,7 +115,7 @@ public class SysMenuController {
     /**
      * 更新菜单显示状态
      */
-    @PutMapping("/{id}/visible")
+    @PostMapping("/{id}/visible")
     public Result<Void> updateVisible(@PathVariable String id, @RequestParam String visible) {
         menuService.updateVisible(id, visible);
         return Result.success();
@@ -124,7 +124,7 @@ public class SysMenuController {
     /**
      * 更新菜单排序
      */
-    @PutMapping("/sort")
+    @PostMapping("/sort")
     public Result<Void> updateSort(@RequestBody List<String> menuIds) {
         menuService.updateSort(menuIds);
         return Result.success();

@@ -67,7 +67,7 @@ public class NodeConfigController {
      * @param id 节点配置ID
      * @return 操作结果
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable String id) {
         nodeService.delete(id);
         return ApiResponse.success();

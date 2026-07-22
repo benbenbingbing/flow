@@ -58,7 +58,7 @@ public class SysRoleController {
     /**
      * 更新角色
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<SysRole> update(@PathVariable String id, @RequestBody SysRole role) {
         role.setId(id);
         return Result.success(roleService.saveRole(role));
@@ -67,7 +67,7 @@ public class SysRoleController {
     /**
      * 删除角色
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         roleService.deleteRole(id);
         return Result.success();
@@ -76,7 +76,7 @@ public class SysRoleController {
     /**
      * 更新角色状态
      */
-    @PutMapping("/{id}/status")
+    @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -107,7 +107,7 @@ public class SysRoleController {
     /**
      * 保存角色菜单权限
      */
-    @PutMapping("/{id}/menus")
+    @PostMapping("/{id}/menus")
     public Result<Void> saveRoleMenus(@PathVariable String id, @RequestBody List<String> menuIds) {
         roleService.saveRoleMenus(id, menuIds);
         return Result.success();

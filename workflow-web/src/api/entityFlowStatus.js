@@ -4,7 +4,7 @@ import request from '@/utils/request'
  * 保存流程状态映射配置
  */
 export function saveStatusMappings(processConfigId, data) {
-  return request.put(`/process-entity-status-mappings/process/${processConfigId}`, data)
+  return request.post(`/process-entity-status-mappings/process/${processConfigId}/update`, data)
 }
 
 /**
@@ -25,5 +25,5 @@ export function getStatusMappingsByProcessKey(processKey) {
  * 删除流程的状态映射配置
  */
 export function deleteStatusMappings(processConfigId) {
-  return request.delete(`/process-entity-status-mappings/process/${processConfigId}`)
+  return request.post(`/process-entity-status-mappings/process/${processConfigId}/delete`)
 }

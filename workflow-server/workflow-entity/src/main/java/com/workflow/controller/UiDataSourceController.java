@@ -7,11 +7,9 @@ import com.workflow.entity.UiDataSourceDefinition;
 import com.workflow.service.UiConfigurationAccessService;
 import com.workflow.service.UiDataSourceService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -50,7 +48,7 @@ public class UiDataSourceController {
         return Result.success(service.save(request));
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<UiDataSourceDefinition> update(
             @PathVariable String id,
             @RequestBody UiDataSourceSaveRequest request) {
@@ -59,7 +57,7 @@ public class UiDataSourceController {
         return Result.success(service.save(request));
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(
             @PathVariable String id,
             @RequestParam Integer expectedRevision) {

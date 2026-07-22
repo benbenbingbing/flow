@@ -10,7 +10,7 @@ export const configMigrationApi = {
   },
 
   updateAssetMark(id, data) {
-    return request.put(`/config-migration/assets/${id}/mark`, data)
+    return request.post(`/config-migration/assets/${id}/mark`, data)
   },
 
   exportPackage(data) {
@@ -49,7 +49,7 @@ export const configMigrationApi = {
   },
 
   saveMappings(id, mappings) {
-    return request.put(`/config-migration/imports/${id}/mappings`, { mappings })
+    return request.post(`/config-migration/imports/${id}/mappings`, { mappings })
   },
 
   compareImport(id) {

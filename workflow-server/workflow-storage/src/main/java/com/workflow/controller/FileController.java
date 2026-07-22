@@ -66,7 +66,7 @@ public class FileController {
     /**
      * 删除文件
      */
-    @DeleteMapping
+    @PostMapping
     public Result<Void> deleteFile(@RequestParam("url") String fileUrl) {
         try {
             FileStorageStrategy strategy = storageFactory.getStrategy();

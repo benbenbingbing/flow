@@ -31,7 +31,7 @@ public class EntityListScopeController {
         return Result.success(scopeService.savePolicy(null, request));
     }
 
-    @PutMapping("/policies/{id}")
+    @PostMapping("/policies/{id}/update")
     public Result<EntityListScopePolicyDTO> updatePolicy(
             @PathVariable String id,
             @RequestBody EntityListScopePolicyDTO request) {
@@ -39,7 +39,7 @@ public class EntityListScopeController {
         return Result.success(scopeService.savePolicy(id, request));
     }
 
-    @DeleteMapping("/policies/{id}")
+    @PostMapping("/policies/{id}/delete")
     public Result<Void> deletePolicy(@PathVariable String id) {
         requireAdministrator();
         scopeService.deletePolicy(id);
@@ -53,7 +53,7 @@ public class EntityListScopeController {
         return Result.success(scopeService.saveBinding(null, request));
     }
 
-    @PutMapping("/bindings/{id}")
+    @PostMapping("/bindings/{id}/update")
     public Result<EntityListScopeBindingDTO> updateBinding(
             @PathVariable String id,
             @RequestBody EntityListScopeBindingDTO request) {
@@ -61,7 +61,7 @@ public class EntityListScopeController {
         return Result.success(scopeService.saveBinding(id, request));
     }
 
-    @DeleteMapping("/bindings/{id}")
+    @PostMapping("/bindings/{id}/delete")
     public Result<Void> deleteBinding(@PathVariable String id) {
         requireAdministrator();
         scopeService.deleteBinding(id);

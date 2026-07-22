@@ -17,22 +17,22 @@ export const createUser = (data: any) => {
 
 // 更新用户
 export const updateUser = (id: string, data: any) => {
-  return request.put(`/system/user/${id}`, data)
+  return request.post(`/system/user/${id}/update`, data)
 }
 
 // 删除用户
 export const deleteUser = (id: string) => {
-  return request.delete(`/system/user/${id}`)
+  return request.post(`/system/user/${id}/delete`)
 }
 
 // 更新用户状态
 export const updateUserStatus = (id: string, status: string) => {
-  return request.put(`/system/user/${id}/status?status=${status}`)
+  return request.post(`/system/user/${id}/status?status=${status}`)
 }
 
 // 重置密码
 export const resetPassword = (id: string) => {
-  return request.put(`/system/user/${id}/reset-password`)
+  return request.post(`/system/user/${id}/reset-password`)
 }
 
 // 获取角色列表

@@ -91,7 +91,7 @@ public class NodeConfigControllerTest {
     void testDelete() throws Exception {
         doNothing().when(nodeService).delete("1");
 
-        mockMvc.perform(delete("/api/process/proc-1/nodes/1"))
+        mockMvc.perform(post("/api/process/proc-1/nodes/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 

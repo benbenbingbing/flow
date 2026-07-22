@@ -55,7 +55,7 @@ export const processActionApi = {
    * 删除动作
    */
   deleteAction(actionId) {
-    return request.delete(`/process-actions/${actionId}`)
+    return request.post(`/process-actions/${actionId}`)
   },
 
   /**
@@ -86,7 +86,7 @@ export const processActionApi = {
   },
 
   saveHandlerConfig(beanName, data) {
-    return request.put(`/process-action-handlers/configs/${encodeURIComponent(beanName)}`, data)
+    return request.post(`/process-action-handlers/configs/${encodeURIComponent(beanName)}`, data)
   },
 
   findExecutions(processInstanceId) {

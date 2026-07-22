@@ -28,17 +28,17 @@ export const createDictWithItems = (data: any) => {
 
 // 更新字典类型
 export const updateDict = (id: string, data: any) => {
-  return request.put(`/system/dict/${id}`, data)
+  return request.post(`/system/dict/${id}/update`, data)
 }
 
 // 删除字典类型
 export const deleteDict = (id: string) => {
-  return request.delete(`/system/dict/${id}`)
+  return request.post(`/system/dict/${id}/delete`)
 }
 
 // 更新字典类型状态
 export const updateDictStatus = (id: string, status: string) => {
-  return request.put(`/system/dict/${id}/status?status=${status}`)
+  return request.post(`/system/dict/${id}/status?status=${status}`)
 }
 
 // ==================== 字典项 ====================
@@ -60,15 +60,15 @@ export const createDictItem = (data: any) => {
 
 // 更新字典项
 export const updateDictItem = (id: string, data: any) => {
-  return request.put(`/system/dict/item/${id}`, data)
+  return request.post(`/system/dict/item/${id}/update`, data)
 }
 
 // 删除字典项
 export const deleteDictItem = (id: string) => {
-  return request.delete(`/system/dict/item/${id}`)
+  return request.post(`/system/dict/item/${id}/delete`)
 }
 
 // 更新字典项状态
 export const updateDictItemStatus = (id: string, status: string) => {
-  return request.put(`/system/dict/item/${id}/status?status=${status}`)
+  return request.post(`/system/dict/item/${id}/status?status=${status}`)
 }

@@ -31,7 +31,7 @@ async function request(path, options = {}) {
 
 async function requestConflict(path, body) {
   const response = await fetch(`${apiBase}${path}`, {
-    method: 'PATCH',
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`
@@ -105,8 +105,8 @@ async function acceptForm(form) {
       '初始运行时标签与激活版本不一致'
     )
 
-    const patched = await request(`/entity-forms/${form.id}/nodes/${selected.id}`, {
-      method: 'PATCH',
+    const patched = await request(`/entity-forms/${\1}/nodes/${\2}/patch`, {
+          method: \'POST\',
       body: JSON.stringify({
         expectedRevision: selected.revision,
         props: { ...originalProps, label: testLabel }
@@ -121,7 +121,7 @@ async function acceptForm(form) {
       '单节点保存修改了其他节点'
     )
 
-    await requestConflict(`/entity-forms/${form.id}/nodes/${selected.id}`, {
+    await requestConflict(`/entity-forms/${\1}/nodes/${\2}/patch`, {
       expectedRevision: selected.revision,
       props: { ...originalProps, label: `${testLabel}-冲突写入` }
     })
@@ -161,8 +161,8 @@ async function acceptForm(form) {
 
     const latestNodes = await request(`/entity-forms/${form.id}/nodes`)
     const latestSelected = latestNodes.find(node => node.id === selected.id)
-    await request(`/entity-forms/${form.id}/nodes/${selected.id}`, {
-      method: 'PATCH',
+    await request(`/entity-forms/${\1}/nodes/${\2}/patch`, {
+          method: \'POST\',
       body: JSON.stringify({
         expectedRevision: latestSelected.revision,
         props: originalProps
@@ -203,8 +203,8 @@ async function acceptForm(form) {
       const nodes = await request(`/entity-forms/${form.id}/nodes`).catch(() => [])
       const current = nodes.find(node => node.id === selected.id)
       if (current) {
-        await request(`/entity-forms/${form.id}/nodes/${selected.id}`, {
-          method: 'PATCH',
+        await request(`/entity-forms/${\1}/nodes/${\2}/patch`, {
+          method: \'POST\',
           body: JSON.stringify({
             expectedRevision: current.revision,
             props: originalProps
@@ -238,8 +238,8 @@ function runtimeActionLabel(schema, selected) {
 }
 
 async function patchListField(listId, field, expectedRevision, fieldName) {
-  return request(`/entity-list-config/${listId}/fields/${field.id}`, {
-    method: 'PATCH',
+  return request(`/entity-list-config/${\1}/fields/${\2}/patch`, {
+    method: \'POST\',
     body: JSON.stringify({
       expectedRevision,
       field: { fieldName }
@@ -248,8 +248,8 @@ async function patchListField(listId, field, expectedRevision, fieldName) {
 }
 
 async function patchListAction(listId, action, expectedRevision, buttonLabel) {
-  return request(`/entity-list-config/${listId}/actions/${action.id}`, {
-    method: 'PATCH',
+  return request(`/entity-list-config/${\1}/actions/${\2}/patch`, {
+    method: \'POST\',
     body: JSON.stringify({
       expectedRevision,
       buttonLabel
@@ -258,8 +258,8 @@ async function patchListAction(listId, action, expectedRevision, buttonLabel) {
 }
 
 async function patchListScene(listId, scene, expectedRevision, sortOrder) {
-  return request(`/entity-list-config/${listId}/scenes/${scene.id}`, {
-    method: 'PATCH',
+  return request(`/entity-list-config/${\1}/scenes/${\2}/patch`, {
+    method: \'POST\',
     body: JSON.stringify({
       expectedRevision,
       sortOrder
@@ -363,15 +363,15 @@ async function acceptList(form) {
       '单场景保存修改了其他场景'
     )
 
-    await requestConflict(`/entity-list-config/${list.id}/fields/${field.id}`, {
+    await requestConflict(`/entity-list-config/${\1}/fields/${\2}/patch`, {
       expectedRevision: field.revision,
       field: { fieldName: `${testFieldName}-冲突写入` }
     })
-    await requestConflict(`/entity-list-config/${list.id}/actions/${action.id}`, {
+    await requestConflict(`/entity-list-config/${\1}/actions/${\2}/patch`, {
       expectedRevision: action.revision,
       buttonLabel: `${testActionLabel}-冲突写入`
     })
-    await requestConflict(`/entity-list-config/${list.id}/scenes/${scene.id}`, {
+    await requestConflict(`/entity-list-config/${\1}/scenes/${\2}/patch`, {
       expectedRevision: scene.revision,
       sortOrder: testSceneSort + 1
     })

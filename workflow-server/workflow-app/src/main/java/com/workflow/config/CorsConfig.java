@@ -34,7 +34,7 @@ public class CorsConfig {
                         // 允许所有来源（生产环境应限制具体域名）
                         .allowedOrigins("*")
                         // 允许的HTTP方法
-                        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                        .allowedMethods("GET", "POST", "OPTIONS")
                         // 允许所有请求头
                         .allowedHeaders("*")
                         // 预检请求缓存时间（秒）

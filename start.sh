@@ -48,14 +48,14 @@ echo "========== 1. 清理旧进程 =========="
 
 stop_pid_file() {
     local pid_file="$1"
-    local service_name="$2"
+    local service_name="${2:-}"
     if [ ! -f "$pid_file" ]; then
         return
     fi
     local old_pid
     old_pid="$(cat "$pid_file")"
     if kill -0 "$old_pid" > /dev/null 2>&1; then
-        echo "🛑 停止旧的$service_name进程 (PID: $old_pid)"
+        echo "🛑 停止旧的${service_name}进程 (PID: $old_pid)"
         kill "$old_pid"
     fi
     rm -f "$pid_file"
@@ -63,17 +63,17 @@ stop_pid_file() {
 
 stop_orphaned_project_listener() {
     local port="$1"
-    local service_name="$2"
+    local service_name="${2:-}"
     local command_pattern="$3"
     local listeners listener command
     listeners="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
     for listener in $listeners; do
         command="$(ps -p "$listener" -o command= 2>/dev/null || true)"
         if [[ "$command" == *"$command_pattern"* ]]; then
-            echo "🛑 停止无 PID 文件的旧$service_name进程 (PID: $listener)"
+            echo "🛑 停止无 PID 文件的旧${service_name}进程 (PID: $listener)"
             kill "$listener"
         else
-            echo "❌ $service_name端口 $port 被非本项目进程占用: $listener"
+            echo "❌ ${service_name}端口 $port 被非本项目进程占用: $listener"
             echo "   $command"
             exit 1
         fi
@@ -103,11 +103,11 @@ echo "✅ 旧进程已清理"
 
 ensure_port_available() {
     local port="$1"
-    local service_name="$2"
+    local service_name="${2:-}"
     local listeners
     listeners="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
     if [ -n "$listeners" ]; then
-        echo "❌ $service_name 端口 $port 已被进程占用: $listeners"
+        echo "❌ ${service_name} 端口 $port 已被进程占用: $listeners"
         echo "   请先停止占用进程，或在 .env 中修改对应端口。"
         exit 1
     fi

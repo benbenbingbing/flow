@@ -117,7 +117,7 @@ public class ProcessDefinitionController {
      * @param dto 更新的流程定义数据
      * @return 更新后的流程定义
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public ApiResponse<ProcessDefinitionDTO> update(@PathVariable String id, @RequestBody ProcessDefinitionDTO dto) {
         return ApiResponse.success(processService.update(id, dto));
     }
@@ -128,7 +128,7 @@ public class ProcessDefinitionController {
      * @param id 流程定义ID
      * @return 操作结果
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public ApiResponse<Void> delete(@PathVariable String id) {
         processService.delete(id);
         return ApiResponse.success();
@@ -209,7 +209,7 @@ public class ProcessDefinitionController {
      * @param versionId 版本ID
      * @return 操作结果
      */
-    @DeleteMapping("/versions/{versionId}")
+    @PostMapping("/versions/{versionId}")
     public ApiResponse<Void> deleteVersion(@PathVariable String versionId) {
         processService.deleteVersion(versionId);
         return ApiResponse.success();

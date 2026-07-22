@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -42,7 +41,7 @@ public class UiExtensionDefinitionController {
         return Result.success(service.save(request));
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/{id}")
     public Result<UiExtensionDefinition> update(
             @PathVariable String id,
             @RequestBody UiExtensionDefinitionSaveRequest request) {

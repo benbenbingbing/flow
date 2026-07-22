@@ -112,7 +112,7 @@ public class EntityDefinitionControllerTest {
     void testUpdate() throws Exception {
         when(entityService.update(eq("1"), any(EntityDefinitionDTO.class))).thenReturn(testEntity);
 
-        mockMvc.perform(put("/api/entity/1")
+        mockMvc.perform(post("/api/entity/1/update")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(testEntity)))
                 .andExpect(status().isOk())
@@ -126,7 +126,7 @@ public class EntityDefinitionControllerTest {
     void testDelete() throws Exception {
         doNothing().when(entityService).delete("1");
 
-        mockMvc.perform(delete("/api/entity/1"))
+        mockMvc.perform(post("/api/entity/1/delete"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
@@ -157,7 +157,7 @@ public class EntityDefinitionControllerTest {
     void testBindWorkflow() throws Exception {
         when(entityService.bindWorkflow("1", "2")).thenReturn(testEntity);
 
-        mockMvc.perform(put("/api/entity/1/workflow-binding")
+        mockMvc.perform(post("/api/entity/1/workflow-binding/update")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"processDefinitionId\":\"2\"}"))
                 .andExpect(status().isOk())

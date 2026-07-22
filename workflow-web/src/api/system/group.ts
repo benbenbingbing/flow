@@ -22,22 +22,22 @@ export const createGroup = (data: any) => {
 
 // 更新组
 export const updateGroup = (id: string, data: any) => {
-  return request.put(`/system/group/${id}`, data)
+  return request.post(`/system/group/${id}/update`, data)
 }
 
 // 删除组
 export const deleteGroup = (id: string) => {
-  return request.delete(`/system/group/${id}`)
+  return request.post(`/system/group/${id}/delete`)
 }
 
 // 更新组状态
 export const updateGroupStatus = (id: string, status: string) => {
-  return request.put(`/system/group/${id}/status?status=${status}`)
+  return request.post(`/system/group/${id}/status?status=${status}`)
 }
 
 // 保存组用户
 export const saveGroupUsers = (id: string, userIds: string[]) => {
-  return request.put(`/system/group/${id}/users`, userIds)
+  return request.post(`/system/group/${id}/users`, userIds)
 }
 
 // 获取用户列表

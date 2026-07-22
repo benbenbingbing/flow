@@ -61,7 +61,7 @@ public class EntityDefinitionController {
     /**
      * 更新实体定义
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public ApiResponse<EntityDefinitionDTO> update(@PathVariable String id, @RequestBody EntityDefinitionDTO dto) {
         return ApiResponse.success(entityService.update(id, dto));
     }
@@ -69,7 +69,7 @@ public class EntityDefinitionController {
     /**
      * 删除实体定义
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public ApiResponse<Void> delete(@PathVariable String id) {
         entityService.delete(id);
         return ApiResponse.success();
@@ -87,7 +87,7 @@ public class EntityDefinitionController {
         return ApiResponse.success(entityService.publish(id, userId, userName, request));
     }
     
-    @PutMapping("/{entityId}/workflow-binding")
+    @PostMapping("/{entityId}/workflow-binding/update")
     public ApiResponse<EntityDefinitionDTO> bindWorkflow(
             @PathVariable String entityId,
             @RequestBody EntityWorkflowBindingRequest request) {
@@ -96,12 +96,12 @@ public class EntityDefinitionController {
                 request.getProcessDefinitionId()));
     }
 
-    @DeleteMapping("/{entityId}/workflow-binding")
+    @PostMapping("/{entityId}/workflow-binding/delete")
     public ApiResponse<EntityDefinitionDTO> unbindWorkflow(@PathVariable String entityId) {
         return ApiResponse.success(entityService.unbindWorkflow(entityId));
     }
 
-    @PutMapping("/{entityId}/lifecycle-mode")
+    @PostMapping("/{entityId}/lifecycle-mode")
     public ApiResponse<EntityDefinitionDTO> updateLifecycleMode(
             @PathVariable String entityId,
             @RequestBody EntityLifecycleModeRequest request) {

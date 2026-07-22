@@ -50,14 +50,14 @@ export const entityApi = {
    * 更新实体定义
    */
   update(id, data) {
-    return request.put(`/entity/${id}`, data)
+    return request.post(`/entity/${id}/update`, data)
   },
 
   /**
    * 删除实体定义
    */
   delete(id) {
-    return request.delete(`/entity/${id}`)
+    return request.post(`/entity/${id}/delete`)
   },
 
   /**
@@ -68,15 +68,15 @@ export const entityApi = {
   },
 
   bindWorkflow(entityId, processDefinitionId) {
-    return request.put(`/entity/${entityId}/workflow-binding`, { processDefinitionId })
+    return request.post(`/entity/${entityId}/workflow-binding/update`, { processDefinitionId })
   },
 
   unbindWorkflow(entityId) {
-    return request.delete(`/entity/${entityId}/workflow-binding`)
+    return request.post(`/entity/${entityId}/workflow-binding/delete`)
   },
 
   updateLifecycleMode(entityId, lifecycleMode) {
-    return request.put(`/entity/${entityId}/lifecycle-mode`, { lifecycleMode })
+    return request.post(`/entity/${entityId}/lifecycle-mode`, { lifecycleMode })
   },
 
   /**
@@ -150,8 +150,7 @@ export const entityDataApi = {
    * 更新数据
    */
   update(entityCode, id, data, startProcess = false, listKey) {
-    return request.put(
-      `/entity-data/entity/${entityCode}/detail/${id}`,
+    return request.post(`/entity-data/entity/${entityCode}/detail/${id}/update`,
       { ...data, startProcess },
       { params: listKey ? { listKey } : {} }
     )
@@ -161,7 +160,7 @@ export const entityDataApi = {
    * 删除数据
    */
   delete(entityCode, id, listKey) {
-    return request.delete(`/entity-data/entity/${entityCode}/detail/${id}`, {
+    return request.post(`/entity-data/entity/${entityCode}/detail/${id}/delete`, {
       params: listKey ? { listKey } : {}
     })
   },

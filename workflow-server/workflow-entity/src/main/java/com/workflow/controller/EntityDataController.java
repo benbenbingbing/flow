@@ -172,7 +172,7 @@ public class EntityDataController {
     /**
      * 更新数据
      */
-    @PutMapping("/entity/{entityCode}/detail/{id}")
+    @PostMapping("/entity/{entityCode}/detail/{id}/update")
     public ApiResponse<EntityDataDTO> update(
             @PathVariable String entityCode, 
             @PathVariable String id, 
@@ -184,7 +184,7 @@ public class EntityDataController {
     /**
      * 删除数据
      */
-    @DeleteMapping("/entity/{entityCode}/detail/{id}")
+    @PostMapping("/entity/{entityCode}/detail/{id}/delete")
     public ApiResponse<Void> delete(
             @PathVariable String entityCode,
             @PathVariable String id,

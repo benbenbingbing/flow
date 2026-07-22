@@ -215,7 +215,7 @@ class SysMenuControllerTest {
         updateMenu.setPath("/test/menu");
         updateMenu.setPerm("test:menu:list");
 
-        mockMvc.perform(put("/api/system/menu/{id}", "test-id-1")
+        mockMvc.perform(post("/api/system/menu/{id}/update", "test-id-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateMenu)))
                 .andExpect(status().isOk())
@@ -228,7 +228,7 @@ class SysMenuControllerTest {
     void testDelete_Success() throws Exception {
         doNothing().when(menuService).deleteMenu("test-id-1");
 
-        mockMvc.perform(delete("/api/system/menu/{id}", "test-id-1"))
+        mockMvc.perform(post("/api/system/menu/{id}/delete", "test-id-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
@@ -240,7 +240,7 @@ class SysMenuControllerTest {
     void testDelete_NotFound() throws Exception {
         doThrow(new RuntimeException("菜单不存在")).when(menuService).deleteMenu("non-existent");
 
-        mockMvc.perform(delete("/api/system/menu/{id}", "non-existent"))
+        mockMvc.perform(post("/api/system/menu/{id}/delete", "non-existent"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.message").value("菜单不存在"));
@@ -251,7 +251,7 @@ class SysMenuControllerTest {
     void testUpdateStatus() throws Exception {
         doNothing().when(menuService).updateStatus("test-id-1", "1");
 
-        mockMvc.perform(put("/api/system/menu/{id}/status", "test-id-1")
+        mockMvc.perform(post("/api/system/menu/{id}/status", "test-id-1")
                         .param("status", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
@@ -264,7 +264,7 @@ class SysMenuControllerTest {
     void testUpdateVisible() throws Exception {
         doNothing().when(menuService).updateVisible("test-id-1", "1");
 
-        mockMvc.perform(put("/api/system/menu/{id}/visible", "test-id-1")
+        mockMvc.perform(post("/api/system/menu/{id}/visible", "test-id-1")
                         .param("visible", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
@@ -279,7 +279,7 @@ class SysMenuControllerTest {
 
         List<String> menuIds = Arrays.asList("id-2", "id-1");
 
-        mockMvc.perform(put("/api/system/menu/sort")
+        mockMvc.perform(post("/api/system/menu/sort")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(menuIds)))
                 .andExpect(status().isOk())
@@ -372,7 +372,7 @@ class SysMenuControllerTest {
     void testDelete_CascadeDelete() throws Exception {
         doNothing().when(menuService).deleteMenu("parent-id");
 
-        mockMvc.perform(delete("/api/system/menu/{id}", "parent-id"))
+        mockMvc.perform(post("/api/system/menu/{id}/delete", "parent-id"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 

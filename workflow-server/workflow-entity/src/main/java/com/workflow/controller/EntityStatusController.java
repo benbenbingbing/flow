@@ -57,7 +57,7 @@ public class EntityStatusController {
     /**
      * 删除实体状态
      */
-    @DeleteMapping("/delete/{id}")
+    @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable String id) {
         entityStatusService.deleteStatus(id);
         return Result.success();

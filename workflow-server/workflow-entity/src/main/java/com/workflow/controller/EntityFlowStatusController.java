@@ -21,7 +21,7 @@ public class EntityFlowStatusController {
     /**
      * 保存流程状态映射配置
      */
-    @PutMapping("/process/{processConfigId}")
+    @PostMapping("/process/{processConfigId}/update")
     public Result<Void> saveStatusMappings(
             @PathVariable String processConfigId,
             @RequestBody SaveStatusMappingRequest request) {
@@ -55,7 +55,7 @@ public class EntityFlowStatusController {
     /**
      * 删除流程的状态映射配置
      */
-    @DeleteMapping("/process/{processConfigId}")
+    @PostMapping("/process/{processConfigId}/delete")
     public Result<Void> deleteByProcessConfigId(@PathVariable String processConfigId) {
         entityFlowStatusService.deleteByProcessConfigId(processConfigId);
         return Result.success();

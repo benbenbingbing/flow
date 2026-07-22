@@ -190,8 +190,8 @@ if (!process) {
     })
   })
 } else {
-  process = await request(`/process/${process.id}`, {
-    method: 'PUT',
+  process = await request(`/process/${\1}/update`, {
+    method: \'POST\',
     body: JSON.stringify({
       ...process,
       processName: 'Codex真实流程闭环',
@@ -202,8 +202,8 @@ if (!process) {
   })
 }
 
-entity = await request(`/entity/${entity.id}/workflow-binding`, {
-  method: 'PUT',
+entity = await request(`/entity/${\1}/workflow-binding/update`, {
+    method: \'POST\',
   body: JSON.stringify({ processDefinitionId: process.id })
 })
 process = await request(`/process/${process.id}/publish`, {

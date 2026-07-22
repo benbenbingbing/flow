@@ -126,7 +126,7 @@ public class ProcessDefinitionControllerTest {
     void testUpdate() throws Exception {
         when(processService.update(eq("1"), any(ProcessDefinitionDTO.class))).thenReturn(testProcess);
 
-        mockMvc.perform(put("/api/process/1")
+        mockMvc.perform(post("/api/process/1/update")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(testProcess)))
                 .andExpect(status().isOk())
@@ -140,7 +140,7 @@ public class ProcessDefinitionControllerTest {
     void testDelete() throws Exception {
         doNothing().when(processService).delete("1");
 
-        mockMvc.perform(delete("/api/process/1"))
+        mockMvc.perform(post("/api/process/1/delete"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 

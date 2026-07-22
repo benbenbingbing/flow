@@ -49,7 +49,7 @@ public class SysUserController {
     /**
      * 更新用户
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<SysUser> update(@PathVariable String id, @RequestBody SysUser user) {
         user.setId(id);
         return Result.success(userService.saveUser(user));
@@ -58,7 +58,7 @@ public class SysUserController {
     /**
      * 删除用户
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         userService.deleteUser(id);
         return Result.success();
@@ -67,7 +67,7 @@ public class SysUserController {
     /**
      * 更新用户状态
      */
-    @PutMapping("/{id}/status")
+    @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -82,7 +82,7 @@ public class SysUserController {
     /**
      * 重置密码
      */
-    @PutMapping("/{id}/reset-password")
+    @PostMapping("/{id}/reset-password")
     public Result<Void> resetPassword(@PathVariable String id) {
         userService.resetPassword(id);
         return Result.success();

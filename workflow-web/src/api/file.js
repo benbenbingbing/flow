@@ -42,7 +42,7 @@ export const fileApi = {
    * @param fileUrl 文件URL
    */
   delete(fileUrl) {
-    return request.delete('/file', {
+    return request.post('/file', {
       params: { url: fileUrl }
     })
   },

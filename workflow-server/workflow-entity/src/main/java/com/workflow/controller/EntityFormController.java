@@ -72,7 +72,7 @@ public class EntityFormController {
     /**
      * 更新表单
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<EntityForm> update(
             @PathVariable String id,
             @RequestBody EntityFormSaveRequest request) {
@@ -82,7 +82,7 @@ public class EntityFormController {
                 request.getExpectedRevision()));
     }
 
-    @PatchMapping("/{id}")
+    @PostMapping("/{id}/patch")
     public Result<EntityForm> patch(
             @PathVariable String id,
             @RequestBody EntityFormMetadataPatchRequest request) {
@@ -93,7 +93,7 @@ public class EntityFormController {
     /**
      * 删除表单
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         accessService.requireFormAccess(id);
         formService.deleteForm(id);
@@ -112,7 +112,7 @@ public class EntityFormController {
     /**
      * 保存表单字段
      */
-    @PutMapping("/{id}/fields")
+    @PostMapping("/{id}/fields")
     public Result<Void> saveFormFields(
             @PathVariable String id,
             @RequestParam Integer expectedRevision,
@@ -156,7 +156,7 @@ public class EntityFormController {
     /**
      * 设置默认表单
      */
-    @PutMapping("/{id}/default")
+    @PostMapping("/{id}/default")
     public Result<Void> setDefaultForm(@PathVariable String id) {
         accessService.requireFormAccess(id);
         formService.setDefaultForm(id);
@@ -166,7 +166,7 @@ public class EntityFormController {
     /**
      * 仅更新表单初始化配置
      */
-    @PutMapping("/{id}/init-config")
+    @PostMapping("/{id}/init-config")
     public Result<Void> updateInitConfig(@PathVariable String id, @RequestBody InitConfigRequest request) {
         accessService.requireFormAccess(id);
         formService.updateInitConfig(id, request.getInitConfig());

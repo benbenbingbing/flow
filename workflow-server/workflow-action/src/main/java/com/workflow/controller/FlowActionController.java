@@ -86,7 +86,7 @@ public class FlowActionController {
     /**
      * 删除动作（仅草稿）
      */
-    @DeleteMapping("/{actionId}")
+    @PostMapping("/{actionId}")
     public ApiResponse<Void> deleteAction(@PathVariable String actionId) {
         flowActionService.deleteAction(actionId);
         return ApiResponse.success();

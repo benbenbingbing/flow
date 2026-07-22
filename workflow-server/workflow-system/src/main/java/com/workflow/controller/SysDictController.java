@@ -66,7 +66,7 @@ public class SysDictController {
     /**
      * 更新字典类型
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<SysDict> update(@PathVariable String id, @RequestBody SysDict dict) {
         dict.setId(id);
         return Result.success(dictService.saveDict(dict));
@@ -75,7 +75,7 @@ public class SysDictController {
     /**
      * 删除字典类型
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         dictService.deleteDict(id);
         return Result.success();
@@ -84,7 +84,7 @@ public class SysDictController {
     /**
      * 更新字典类型状态
      */
-    @PutMapping("/{id}/status")
+    @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -125,7 +125,7 @@ public class SysDictController {
     /**
      * 更新字典项
      */
-    @PutMapping("/item/{id}")
+    @PostMapping("/item/{id}/update")
     public Result<SysDictItem> updateItem(@PathVariable String id, @RequestBody SysDictItem item) {
         item.setId(id);
         return Result.success(dictItemService.saveItem(item));
@@ -134,7 +134,7 @@ public class SysDictController {
     /**
      * 删除字典项
      */
-    @DeleteMapping("/item/{id}")
+    @PostMapping("/item/{id}/delete")
     public Result<Void> deleteItem(@PathVariable String id) {
         dictItemService.deleteItem(id);
         return Result.success();
@@ -143,7 +143,7 @@ public class SysDictController {
     /**
      * 更新字典项状态
      */
-    @PutMapping("/item/{id}/status")
+    @PostMapping("/item/{id}/status")
     public Result<Void> updateItemStatus(@PathVariable String id, 
                                          @RequestParam(required = false) String status,
                                          @RequestBody(required = false) java.util.Map<String, String> body) {

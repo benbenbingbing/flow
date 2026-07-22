@@ -242,7 +242,7 @@ async function submitForm() {
   submitLoading.value = true
   try {
     if (isEdit.value) {
-      await request.put(`/system/org/${form.id}`, form)
+      await request.post(`/system/org/${form.id}`, form)
       ElMessage.success('更新成功')
     } else {
       await request.post('/system/org', form)
@@ -265,7 +265,7 @@ function handleDelete(row) {
     type: 'warning'
   }).then(async () => {
     try {
-      await request.delete(`/system/org/${row.id}`)
+      await request.post(`/system/org/${row.id}`)
       ElMessage.success('删除成功')
       loadOrgTree()
     } catch (e) {

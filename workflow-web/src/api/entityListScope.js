@@ -10,11 +10,11 @@ export const entityListScopeApi = {
   },
 
   updatePolicy(id, data) {
-    return request.put(`/entity-list-scopes/policies/${id}`, data)
+    return request.post(`/entity-list-scopes/policies/${id}/update`, data)
   },
 
   deletePolicy(id) {
-    return request.delete(`/entity-list-scopes/policies/${id}`)
+    return request.post(`/entity-list-scopes/policies/${id}/delete`)
   },
 
   createBinding(data) {
@@ -22,11 +22,11 @@ export const entityListScopeApi = {
   },
 
   updateBinding(id, data) {
-    return request.put(`/entity-list-scopes/bindings/${id}`, data)
+    return request.post(`/entity-list-scopes/bindings/${id}/update`, data)
   },
 
   deleteBinding(id) {
-    return request.delete(`/entity-list-scopes/bindings/${id}`)
+    return request.post(`/entity-list-scopes/bindings/${id}/delete`)
   },
 
   publish(entityCode, description = '') {

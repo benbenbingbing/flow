@@ -53,7 +53,7 @@ public class SysOrganizationController {
     /**
      * 更新组织部门
      */
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public Result<SysOrganization> update(@PathVariable String id, @RequestBody SysOrganization org) {
         org.setId(id);
         return Result.success(orgService.saveOrg(org));
@@ -62,7 +62,7 @@ public class SysOrganizationController {
     /**
      * 删除组织部门
      */
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
         orgService.deleteOrg(id);
         return Result.success();
@@ -71,7 +71,7 @@ public class SysOrganizationController {
     /**
      * 更新状态
      */
-    @PutMapping("/{id}/status")
+    @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {

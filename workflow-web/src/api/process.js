@@ -37,12 +37,12 @@ export const processApi = {
   
   // 更新流程
   update(id, data) {
-    return request.put(`/process/${id}`, data)
+    return request.post(`/process/${id}/update`, data)
   },
   
   // 删除流程
   delete(id) {
-    return request.delete(`/process/${id}`)
+    return request.post(`/process/${id}/delete`)
   },
   
   // 发布流程（支持迁移清单和批次标记）
@@ -68,7 +68,7 @@ export const processApi = {
   
   // 删除节点
   deleteNode(processId, id) {
-    return request.delete(`/process/${processId}/nodes/${id}`)
+    return request.post(`/process/${processId}/nodes/${id}`)
   },
   
   // ==================== 版本管理接口 ====================
@@ -90,7 +90,7 @@ export const processApi = {
   
   // 删除版本
   deleteVersion(versionId) {
-    return request.delete(`/process/versions/${versionId}`)
+    return request.post(`/process/versions/${versionId}`)
   },
   
   // ==================== 流程实例接口 ====================

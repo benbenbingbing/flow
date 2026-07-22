@@ -17,12 +17,12 @@ export const createForm = (data: any) => {
 
 // 更新表单
 export const updateForm = (id: string, data: any) => {
-  return request.put(`/entity-form/${id}`, data)
+  return request.post(`/entity-form/${id}/update`, data)
 }
 
 // 删除表单
 export const deleteForm = (id: string) => {
-  return request.delete(`/entity-form/${id}`)
+  return request.post(`/entity-form/${id}/delete`)
 }
 
 // 获取实体的字段列表
@@ -32,7 +32,7 @@ export const getEntityFields = (entityId: string) => {
 
 // 保存表单字段
 export const saveFormFields = (id: string, fields: any[]) => {
-  return request.put(`/entity-form/${id}/fields`, fields)
+  return request.post(`/entity-form/${id}/fields`, fields)
 }
 
 // 获取表单字段
@@ -59,12 +59,12 @@ export const saveNodeForm = (data: any) => {
 
 // 删除节点表单绑定
 export const deleteNodeForm = (id: string) => {
-  return request.delete(`/process-node-form/${id}`)
+  return request.post(`/process-node-form/${id}`)
 }
 
 // 批量保存节点表单绑定
 export const saveNodeForms = (processConfigId: string, nodeForms: any[]) => {
-  return request.put(`/process-node-form/process/${processConfigId}`, nodeForms)
+  return request.post(`/process-node-form/process/${processConfigId}`, nodeForms)
 }
 
 // 获取实体的表单列表（用于绑定选择）
@@ -74,12 +74,12 @@ export const getEntityFormsForBind = (entityId: string) => {
 
 // 设置默认表单
 export const setDefaultForm = (formId: string) => {
-  return request.put(`/entity-form/${formId}/default`)
+  return request.post(`/entity-form/${formId}/default`)
 }
 
 // 仅更新表单初始化配置
 export const updateFormInitConfig = (id: string, initConfig: Record<string, any> | null) => {
-  return request.put(`/entity-form/${id}/init-config`, { initConfig })
+  return request.post(`/entity-form/${id}/init-config`, { initConfig })
 }
 
 // 复制表单
@@ -88,7 +88,7 @@ export const copyForm = (id: string) => {
 }
 
 export const patchFormMetadata = (id: string, data: any) => {
-  return request.patch(`/entity-form/${id}`, data)
+  return request.post(`/entity-form/${id}/patch`, data)
 }
 
 export const getFormNodes = (id: string) => {
@@ -100,7 +100,7 @@ export const createFormNode = (id: string, data: any) => {
 }
 
 export const patchFormNode = (formId: string, nodeId: string, data: any) => {
-  return request.patch(`/entity-forms/${formId}/nodes/${nodeId}`, data)
+  return request.post(`/entity-forms/${formId}/nodes/${nodeId}/patch`, data)
 }
 
 export const deleteFormNode = (
@@ -108,17 +108,17 @@ export const deleteFormNode = (
   nodeId: string,
   expectedRevision: number
 ) => {
-  return request.delete(`/entity-forms/${formId}/nodes/${nodeId}`, {
+  return request.post(`/entity-forms/${formId}/nodes/${nodeId}/delete`, {
     params: { expectedRevision }
   })
 }
 
 export const reorderFormNode = (formId: string, nodeId: string, data: any) => {
-  return request.put(`/entity-forms/${formId}/nodes/${nodeId}/order`, data)
+  return request.post(`/entity-forms/${formId}/nodes/${nodeId}/order`, data)
 }
 
 export const replaceFormNodes = (formId: string, nodes: any[]) => {
-  return request.put(`/entity-forms/${formId}/nodes`, nodes)
+  return request.post(`/entity-forms/${formId}/nodes/update`, nodes)
 }
 
 export const getFormDiff = (id: string) => {

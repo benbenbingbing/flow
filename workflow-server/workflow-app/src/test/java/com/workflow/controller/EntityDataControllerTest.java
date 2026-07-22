@@ -169,7 +169,7 @@ public class EntityDataControllerTest {
     void testUpdate() throws Exception {
         when(entityDataActionService.update(eq("test_entity"), eq("1"), isNull(), anyMap())).thenReturn(testData);
 
-        mockMvc.perform(put("/api/entity-data/entity/test_entity/detail/1")
+        mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/update")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(testData)))
                 .andExpect(status().isOk())
@@ -183,7 +183,7 @@ public class EntityDataControllerTest {
     void testDelete() throws Exception {
         doNothing().when(entityDataActionService).delete("test_entity", "1", null);
 
-        mockMvc.perform(delete("/api/entity-data/entity/test_entity/detail/1"))
+        mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/delete"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
