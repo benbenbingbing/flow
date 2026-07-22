@@ -73,7 +73,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
           </el-table>
           <ul class="check-list">
             <li>FIELD 可绑定实体字段、实体关系、计算字段或运行上下文字段；TEXT 和布局节点可以不绑定数据。</li>
-            <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象执行子表 `FORM_INIT`、`AFTER_LOAD`、默认值和计算，不会污染父记录。</li>
+            <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；关系编码、子实体、关系类型和外键由实体关系定义只读推导，引用 release 必须属于该子实体。发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象执行子表 `FORM_INIT`、`AFTER_LOAD`、默认值和计算，不会污染父记录。</li>
             <li>树深度超过 8、TAB 不属于 TAB_SET、孤儿节点或父子类型不合法时禁止发布。</li>
             <li>所有节点都可在属性抽屉选择合法父容器；TAB 只能选择 TAB_SET，普通字段不能直接放入 TAB_SET，但可以放入具体 TAB 页。候选项必须排除自身、后代、循环和移动整棵子树后超过 8 层的目标。</li>
             <li>历史 `componentProps` 中可识别的子表、引用、事件和选项迁移为显式属性，未知内容保存在 `legacyProps`。</li>
@@ -91,7 +91,10 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
             <li>设计器默认不占用画布显示属性面板；点击节点才打开右侧属性抽屉。关闭抽屉不会丢失当前选中节点和本地编辑值。</li>
             <li>画布不展示序号、nodeType、revision、父级等技术信息；这些内容只在抽屉只读摘要中展示，选中与操作浮层不得改变节点布局。</li>
             <li>画布用轻量“Tab 集合 / Tab 页”“栅格容器”和“内嵌节点”标题表达结构；选择字段后可通过父容器选择器移动到某个 Tab 页，选中的后代会自动切换到对应页签。</li>
+            <li>新增和编辑读取同一份节点类型 Schema，并经过同一套服务端创建/PATCH 白名单；不能依赖“新增时没有旧数据”或“编辑面板已隐藏”放宽校验。</li>
+            <li>编辑历史节点时，不属于当前 nodeType 的活动 props、rules、组件参数和数据源绑定会被清除；需要审计的原值仅进入 `legacyProps` 等非活动兼容区，不参与预览、发布或运行时执行。</li>
             <li>`id`、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 不可编辑。已绑定实体字段或实体关系后，nodeType、fieldId、fieldCode、关系和子实体绑定同样不可编辑。</li>
+            <li>需要改字段或关系语义时，新建目标节点并绑定新字段/关系，迁移显示标签、布局、兼容组件、模板和该类型允许的数据源；草稿预览、发布验证通过后再删除旧节点。</li>
             <li>节点级扩展必须通过 `nodeTypes`、supportedBindings 与 configSchema 声明可配置范围。前端只显示允许属性，服务端 PATCH 仍须按类型白名单校验，不能相信前端隐藏。</li>
             <li>默认动态表单的画布、草稿预览和已发布运行时使用同一递归树：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先。SECTION、GRID、TAB_SET、TAB、COLLAPSE 等容器在预览中必须保持容器语义。</li>
           </ul>
@@ -238,7 +241,8 @@ defineExpose({ validate })
           <h3>11. 表单统一数据源</h3>
           <ul class="check-list">
             <li>类型包括 `ENTITY_QUERY`、`DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`INTEGRATION_CONNECTOR`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
-            <li>可绑定 `FORM_INIT`、`FIELD_OPTIONS`、`FIELD_DEFAULT`、`FIELD_COMPUTE`、`SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
+            <li>表单级使用 `FORM_INIT`；FIELD 仅使用 `FIELD_OPTIONS`、`FIELD_DEFAULT`、`FIELD_COMPUTE`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
+            <li>SUB_FORM 与 REPEATER 仅使用 `SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`，不能复用 FIELD 的选项、默认值或字段计算 Usage。</li>
             <li>配置统一输入/输出映射、分页、超时、缓存和失败策略；组件只通过 `dataSourceRuntime.execute(bindingId, context)` 调用。</li>
             <li>实体查询始终执行 `DataScopePlan`；客户端上下文、隐藏字段和组件本地状态不能扩大数据权限。</li>
             <li>禁止任意 SQL、脚本和外网 URL。远程调用只能引用受控 Connector 与凭据引用，配置中不得保存令牌。</li>
@@ -290,6 +294,7 @@ defineExpose({ validate })
           <ul class="check-list">
             <li>旧表单字段幂等转换为一级 FIELD 节点，重复迁移不会再次生成 nodeId。</li>
             <li>未知历史属性写入 `legacyProps` 和迁移报告；报告同时输出节点数、快照哈希和初始 release。启动迁移按单表单/单列表独立事务执行，失败项只输出结构化失败报告，不回滚已成功迁移和发布的其他配置。</li>
+            <li>历史节点首次编辑保存时按当前 nodeType Schema 归一化，不兼容配置从活动区域移除并作为非活动兼容数据保留；运行时不得继续读取这些旧规则或旧数据源。</li>
             <li>新运行时优先读取激活 release；不存在时仅临时回退旧配置并记录告警。</li>
             <li>节点组件通过 `snapshotVersion` 与迁移函数兼容旧发布快照；废弃注册名必须提供替代和过渡期。</li>
             <li>实体迁移包携带递归节点和引用的扩展 manifest；导入时先登记 manifest，再按 `nodeKey / parentNodeKey` 重建节点树。</li>
@@ -360,11 +365,16 @@ const nodeRows = [
 ]
 
 const propertyRows = [
-  { types: 'SECTION / GRID', editable: '合法父容器、标题、显示标签和容器样式；GRID 支持列间距和默认跨度。', boundary: '不显示字段组件、默认值、实体引用、字段校验或字段数据源。' },
-  { types: 'TAB_SET / TAB / COLLAPSE', editable: '合法父容器；TAB_SET 的页签位置；TAB 的页签标题和所属 Tab 集合；COLLAPSE 的标题、默认展开和手风琴模式。', boundary: 'TAB 父级只能选择有效 TAB_SET；TAB_SET 的直接子项只能是 TAB。' },
-  { types: 'TEXT / ACTION_SLOT', editable: '合法父容器；TEXT 的受限说明内容；ACTION_SLOT 仅展示稳定插槽标识。', boundary: 'TEXT 禁止脚本和实体绑定；ACTION_SLOT 暂不开放动作、权限或位置编辑。' },
-  { types: 'FIELD', editable: '合法父容器、兼容组件、标签、必填、只读、隐藏、占位、默认值、校验、数据源、事件和模式权限。', boundary: '不能直接放入 TAB_SET；已绑定时 nodeType、fieldId、fieldCode、bindingType、bindingRef 不可改。' },
-  { types: 'SUB_FORM / REPEATER', editable: '合法父容器、展示模式、子表布局、已发布子表单版本和受控行数据源。', boundary: '子实体、关系和外键属于实体模型，表单层不可改写；内嵌节点递归展示。' }
+  { types: 'SECTION', editable: '显示标签（区块标题）、合法父容器；用于组织一个业务区块。', boundary: '不显示组件、默认值、实体绑定、字段规则或数据源。' },
+  { types: 'GRID', editable: '合法父容器、列间距 gutter、默认子项跨度 defaultSpan；用于控制栅格排列。', boundary: '子项 gridSpan 由子节点配置；GRID 不配置字段规则、组件或数据源。' },
+  { types: 'TAB_SET', editable: '合法父容器、页签位置 tabPosition；用于组织一组 Tab 页。', boundary: '直接子项只能是 TAB；当前不开放默认激活页。' },
+  { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', boundary: '不能位于根节点，父级只能选择有效 TAB_SET；无字段规则或数据源。' },
+  { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', boundary: '不显示字段组件、默认值、校验或字段数据源。' },
+  { types: 'TEXT', editable: '合法父容器、受限说明内容 text；用于提示或静态文本。', boundary: '禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、展示模式、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；子实体、关系和外键绑定锁定。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、展示模式、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'ACTION_SLOT', editable: '仅合法父容器；用于在表单树中放置稳定动作插槽。', boundary: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 
 const contractRows = [

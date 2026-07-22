@@ -594,7 +594,7 @@ export default {
               type: 'callout',
               tone: 'warning',
               title: '整包接口仅用于兼容',
-              text: '导入或旧客户端仍可提交整包配置，但后端按稳定 ID 计算差异并执行 upsert，不再全删全插。单项修改验收时应确认其他节点的 ID、revision、更新时间和内容完全不变。'
+              text: '旧客户端整包更新必须携带表单 expectedRevision，后端先做表单草稿 CAS，再按稳定 ID 差异 upsert，并继续执行节点技术字段、绑定身份和排序锁定；只有启动迁移或配置导入等可信系统命令可进入兼容迁移通道。单项修改验收时应确认其他节点的 ID、revision、更新时间和内容完全不变。'
             }
           ]
         },
@@ -640,7 +640,7 @@ export default {
                 { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树；画布用“Tab 集合 / Tab 页”“栅格容器”等轻量结构标题区分层级，不展示技术标签。', defaultLimit: '最大嵌套深度 8 层；不显示序号、nodeType、revision 或父级 ID 等技术元信息。', effect: '区块、栅格、Tab、折叠面板、子表和明细表可以递归组合；选中任一节点后可在属性抽屉移动到合法父容器。', publish: '保存和发布都会拒绝非法父子类型、循环引用、孤儿节点和移动整棵子树后超过 8 层的结构。' },
                 { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；默认关闭以保留设计画布空间。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '技术摘要只读展示，当前节点独立保存，不会修改其他节点。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
-                { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
+                { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定；历史 RELATION 缺少 bindingRef 时先迁移修复，普通编辑不会自动解除绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
                 { field: '统一栅格布局', meaning: '垂直布局默认每项 24 栅格，水平布局默认每项 12 栅格，网格布局按节点 gridSpan 排列。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
                 { field: '草稿预览', meaning: '预览读取当前草稿节点树和草稿数据源绑定。', defaultLimit: '默认动态表单优先递归渲染节点树；旧扁平表单保留兼容回退。', effect: 'SECTION、GRID、TAB_SET、TAB、COLLAPSE、TEXT、FIELD、SUB_FORM、REPEATER、ACTION_SLOT 的结构与运行时一致。', publish: '预览不影响当前激活 release，也不能代替真实角色和权限验证。' },
                 { field: '自定义组件', meaning: '使用已注册的自定义表单组件替代默认动态表单。', defaultLimit: '组件名必须同时存在前端注册和服务端扩展清单。', effect: '运行时整体表单由扩展组件渲染，并锁定实现版本与配置快照版本。', publish: '扩展未登记、已禁用、版本或快照协议不匹配时禁止发布。' },
@@ -681,22 +681,29 @@ export default {
               title: '属性抽屉按节点类型收敛',
               columns: optionColumns,
               rows: [
-                { option: 'SECTION', meaning: '可编辑区块标题和合法父容器。', notes: '不显示字段组件、默认值、实体引用或字段校验。' },
-                { option: 'GRID', meaning: '可编辑列间距、默认子项跨度和合法父容器。', notes: '子项的 gridSpan 属于子节点；不能在 GRID 上配置字段数据源或校验。' },
-                { option: 'TAB_SET', meaning: '可编辑页签位置和合法父容器。', notes: 'TAB_SET 只接受 TAB 直接子项；当前不提供默认激活页配置。' },
-                { option: 'TAB', meaning: '可编辑页签标题和所属 Tab 集合。', notes: '父级选择器只列出有效 TAB_SET；不显示字段默认值、校验或实体绑定。' },
-                { option: 'COLLAPSE', meaning: '可编辑标题、默认展开、手风琴模式和合法父容器。', notes: '这些属性在设计器预览和运行时同时生效。' },
-                { option: 'TEXT', meaning: '可编辑说明内容和合法父容器。', notes: '不支持事件、实体绑定、任意脚本或任意 HTML 执行。' },
-                { option: 'FIELD', meaning: '可编辑父容器、显示标签、兼容组件、必填、只读、隐藏、占位、默认值、校验、受控数据源、字段事件和模式权限。', notes: '组件候选必须与实体字段类型兼容；切换组件时清除不兼容参数、校验和数据源绑定。' },
-                { option: 'SUB_FORM / REPEATER', meaning: '可编辑父容器、展示模式、子表布局、已发布子表单版本和受控行数据源。', notes: '子实体、实体关系和外键由数据模型决定，不能在表单层改写；其内嵌节点在画布中递归显示。' },
-                { option: 'ACTION_SLOT', meaning: '可编辑合法父容器并显示稳定插槽标识，供已注册运行时动作注入。', notes: '当前不开放动作、权限或显示条件编辑，避免形成无效配置。' }
+                { option: 'SECTION', meaning: '可编辑显示标签（区块标题）和父容器，用于把相关节点组织为一个业务区块。', notes: '不显示字段组件、默认值、实体引用、校验或数据源。' },
+                { option: 'GRID', meaning: '可编辑父容器、列间距 gutter 和默认子项跨度 defaultSpan，用于控制容器内的栅格排列。', notes: '单个子项的 gridSpan 属于子节点；GRID 不配置字段规则、字段组件或数据源。' },
+                { option: 'TAB_SET', meaning: '可编辑父容器和页签位置 tabPosition，用于组织一组 Tab 页。', notes: 'TAB_SET 只接受 TAB 直接子项；当前不提供默认激活页配置。' },
+                { option: 'TAB', meaning: '可编辑页签标题和所属 TAB_SET，用于承载该页签下的递归内容。', notes: '父级选择器只列出有效 TAB_SET；TAB 不能位于根节点，也不配置字段规则或数据源。' },
+                { option: 'COLLAPSE', meaning: '可编辑标题、父容器、默认展开 defaultExpanded 和手风琴 accordion，用于折叠一组内容。', notes: '展开和手风琴设置在设计器预览与发布运行时使用同一语义。' },
+                { option: 'TEXT', meaning: '可编辑父容器和受限说明内容 text，用于展示提示、说明或静态文本。', notes: '不支持事件、实体绑定、字段规则、任意脚本或任意 HTML 执行。' },
+                { option: 'FIELD', meaning: '可编辑显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、字段事件、模板、节点扩展和受控数据源。', notes: '仅允许 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式只对 STRING、TEXT 显示，数值范围只对 INTEGER、LONG、DECIMAL、DOUBLE 显示；组件切换会清理不兼容参数、规则和绑定。' },
+                { option: 'SUB_FORM', meaning: '可编辑显示标签、父容器、展示模式、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源，用于引用一个子实体表单。', notes: '仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；子实体、关系和外键绑定锁定。' },
+                { option: 'REPEATER', meaning: '可编辑显示标签、父容器、展示模式、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源，用于一对多重复明细。', notes: '仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；不显示 FIELD 的默认值、普通组件、字段校验、模式权限或字段事件。' },
+                { option: 'ACTION_SLOT', meaning: '仅可编辑父容器，用于在递归树中放置稳定的运行时动作插槽。', notes: '插槽标识只读；当前不开放动作、权限、位置、字段默认值、规则或数据源编辑。' }
               ]
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '新增与编辑使用同一属性契约',
+              text: '新增节点和编辑节点必须读取同一份 nodeType Schema，并经过同一套后端 PATCH/创建白名单。普通属性 PATCH 只提交 parentId、props、rules、数据源、模板和扩展等当前类型允许修改的内容，不提交 nodeKey、nodeType、bindingType、bindingRef 或 legacyProps；同级排序必须调用排序接口。前端未展示的属性不能被请求绕过；历史节点中不属于当前类型的字段 props、rules、组件参数或数据源绑定，在编辑保存时从活动配置清除，必要的原始值仅保留到 legacyProps 等非活动兼容区，不参与预览、发布校验或运行时执行。'
             },
             {
               type: 'callout',
               tone: 'warning',
               title: '绑定和技术字段不可直接修改',
-              text: 'id、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 始终只读。节点一旦绑定实体字段或实体关系，nodeType、fieldId、fieldCode、关系和子实体绑定一并锁定；如需改变数据语义，请新建节点并迁移可复用的显示配置，不要通过改绑定让历史记录指向新字段。前端隐藏不构成安全边界，服务端 PATCH 也必须按 nodeType 白名单拒绝未知、不兼容或已锁定字段。'
+              text: 'id、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 始终只读。节点一旦绑定实体字段或实体关系，nodeType、fieldId、fieldCode、关系和子实体绑定一并锁定；如需改变数据语义，先新建目标节点并选择新字段或关系，再迁移显示标签、布局、兼容组件、模板和允许的数据源配置，完成草稿预览与发布后再删除旧节点。不要直接改绑定让历史记录指向新字段；服务端白名单同样拒绝未知、不兼容或已锁定字段。'
             },
             {
               type: 'table',
@@ -741,9 +748,9 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '最小长度 / 最大长度', meaning: '字符串长度校验。', defaultLimit: '0–20000；可留空；最小不能大于最大。', effect: '提交前阻止不符合长度的数据。', publish: '应小于等于数据库字段长度。' },
-                { field: '最小值 / 最大值', meaning: '数字范围校验。', defaultLimit: '可留空；最小不能大于最大。', effect: '限制数字输入。', publish: '与业务单位和小数精度一致。' },
-                { field: '格式', meaning: '预置格式校验。', defaultLimit: 'EMAIL、PHONE、URL 或空。', effect: '校验常见文本格式。', publish: '格式仅校验形态，不验证邮箱/手机号真实存在。' },
+                { field: '最小长度 / 最大长度', meaning: 'STRING、TEXT 字段的字符串长度校验。', defaultLimit: '仅兼容字段显示；0–20000；可留空；最小不能大于最大。', effect: '提交前阻止不符合长度的数据。', publish: '应小于等于数据库字段长度；其他字段类型的手工请求由后端拒绝。' },
+                { field: '最小值 / 最大值', meaning: 'INTEGER、LONG、DECIMAL、DOUBLE 字段的数字范围校验。', defaultLimit: '仅兼容字段显示；可留空；最小不能大于最大。', effect: '限制数字输入。', publish: '与业务单位和小数精度一致；文本字段的手工数值规则由后端拒绝。' },
+                { field: '格式', meaning: 'STRING、TEXT 字段的预置格式校验。', defaultLimit: '仅兼容字段显示；EMAIL、PHONE、URL 或空。', effect: '校验常见文本格式。', publish: '格式仅校验形态，不验证邮箱/手机号真实存在。' },
                 { field: '新增 create', meaning: '新增记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制新增表单字段。', publish: '关键创建字段不可隐藏或只读。' },
                 { field: '编辑 edit', meaning: '编辑记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制编辑页面字段。', publish: '编码、流程字段等通常应只读。' },
                 { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制节点表单办理体验。', publish: '结合节点只读开关和审批字段权限测试。' },
@@ -760,7 +767,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '子实体 / 关系 / 外键', meaning: '从实体关系只读回显。', defaultLimit: '由实体字段决定。', effect: '防止表单层破坏数据模型。', publish: '需要改关系时返回实体设计。' },
+                { field: '子实体 / 关系 / 外键', meaning: '从实体关系定义只读推导 relationCode、childEntityId、relationType 和 childRefFieldCode。', defaultLimit: '请求值只能与实体关系一致，不能在表单层补写或覆盖。', effect: '防止表单层破坏数据模型或伪造子实体。', publish: '引用的已发布子表单必须属于该关系的子实体；需要改关系时返回实体设计。' },
                 { field: '显示', meaning: 'embedded 嵌入或 tab 页签。', defaultLimit: '默认 embedded。', effect: '页签模式在画布底部独立 Tab 展示。', publish: '移动端页签过多会降低可用性。' },
                 { field: '布局', meaning: 'form 分行或 table 表格。', defaultLimit: '默认 form。', effect: '一对多明细可使用表格。', publish: '字段较多或含附件时优先分行。' },
                 { field: '子表表单', meaning: '指定子实体表单。', defaultLimit: '留空使用默认表单；不能选择当前正在编辑表单。', effect: '决定子记录字段与布局。', publish: '被选表单必须启用且在目标环境存在。' },
@@ -819,6 +826,17 @@ export default {
                 { option: 'LIST_QUERY / LIST_COLUMN', meaning: '提供整表查询或单列扩展值。', notes: '兼容 EntityListDataProvider 与 ListFieldDataProvider 适配器。' },
                 { option: 'AFTER_LOAD', meaning: '数据加载完成后的受控补充与转换。', notes: '不能把未授权字段重新拼回响应。' },
                 { option: 'BEFORE_SUBMIT', meaning: '提交前执行结构化映射或 Provider 校验。', notes: '失败策略不得静默放行关键校验。' }
+              ]
+            },
+            {
+              type: 'table',
+              title: '节点类型可用 Usage',
+              columns: optionColumns,
+              rows: [
+                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT。', notes: '分别用于候选项、默认值、结构化计算、加载后补充和提交前校验/映射。' },
+                { option: 'SUB_FORM', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向子记录集合加载和子表生命周期；不能选择 FIELD_OPTIONS、FIELD_DEFAULT 或 FIELD_COMPUTE。' },
+                { option: 'REPEATER', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向一对多明细行；分页、最大行数和失败策略必须受平台限制。' },
+                { option: '表单级', meaning: 'FORM_INIT。', notes: '属于整个表单草稿/发布配置，不是 FIELD、SUB_FORM 或 REPEATER 的节点级 Usage。' }
               ]
             },
             {
@@ -1225,6 +1243,7 @@ export default {
               items: [
                 '旧表单字段转换为一级 FIELD 节点，历史 componentProps 中可识别的子表、引用、事件和选项迁移到显式属性。',
                 '无法识别的历史属性保存在 legacyProps，并在迁移报告中列出，不得静默丢弃。',
+                '编辑历史节点时按当前 nodeType Schema 重新归一化；不兼容的活动 props、rules、组件参数和数据源绑定会被清除，必要原值只作为非活动 legacyProps 兼容数据保留，不再参与运行时。',
                 '列表列、按钮和场景保留已有稳定 ID；缺失 ID 时只生成一次，重复执行迁移结果一致。',
                 '为已有表单和列表生成初始 release，快照内容哈希与旧运行时输出核对一致。',
                 '迁移输出节点数、未知属性、生成 ID 数、release 版本和快照哈希；失败可安全重跑。',

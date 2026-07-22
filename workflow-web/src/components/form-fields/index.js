@@ -23,6 +23,9 @@ import SubFormField from './components/SubFormField.vue'
 import CascaderField from './components/CascaderField.vue'
 import SectionField from './components/SectionField.vue'
 import { normalizeExtensionDescriptor } from '@/shared/config-runtime'
+import {
+  getBuiltInFormFieldSupportedTypes
+} from '@/shared/form-field-component-policy'
 
 // ========== 组件导出 ==========
 
@@ -107,45 +110,46 @@ export const formFieldComponentMap = {
 // ========== 扩展注册机制 ==========
 
 const extensionRegistry = new Map()
+const supportedTypes = getBuiltInFormFieldSupportedTypes
 
 const builtInDescriptors = [
-  descriptor('input', '文本输入', TextField, ['STRING'], [
+  descriptor('input', '文本输入', TextField, supportedTypes('input'), [
     { key: 'maxlength', label: '最大长度', type: 'number', min: 1, max: 10000 },
     { key: 'showWordLimit', label: '显示字数', type: 'boolean', defaultValue: true }
   ]),
-  descriptor('textarea', '多行文本', TextField, ['STRING', 'TEXT'], [
+  descriptor('textarea', '多行文本', TextField, supportedTypes('textarea'), [
     { key: 'rows', label: '显示行数', type: 'number', min: 2, max: 20, defaultValue: 3 },
     { key: 'maxlength', label: '最大长度', type: 'number', min: 1, max: 20000 }
   ]),
-  descriptor('rich_text', '富文本', RichTextField, ['TEXT'], [
+  descriptor('rich_text', '富文本', RichTextField, supportedTypes('rich_text'), [
     { key: 'height', label: '编辑器高度', type: 'number', min: 120, max: 1000, defaultValue: 200 }
   ]),
-  descriptor('number', '数字', NumberField, ['INTEGER', 'LONG', 'DECIMAL', 'DOUBLE'], [
+  descriptor('number', '数字', NumberField, supportedTypes('number'), [
     { key: 'min', label: '最小值', type: 'number' },
     { key: 'max', label: '最大值', type: 'number' },
     { key: 'precision', label: '小数位', type: 'number', min: 0, max: 10, defaultValue: 0 },
     { key: 'step', label: '步长', type: 'number', defaultValue: 1 },
     { key: 'controls', label: '显示控制器', type: 'boolean', defaultValue: true }
   ]),
-  descriptor('date', '日期', DateField, ['DATE']),
-  descriptor('datetime', '日期时间', DateField, ['DATETIME']),
-  descriptor('select', '下拉单选', SelectField, ['SELECT', 'STRING']),
-  descriptor('select_multiple', '下拉多选', SelectField, ['MULTI_SELECT']),
-  descriptor('radio', '单选框', RadioField, ['RADIO', 'SELECT']),
-  descriptor('checkbox', '复选框', CheckboxField, ['CHECKBOX', 'MULTI_SELECT']),
-  descriptor('switch', '开关', SwitchField, ['BOOLEAN'], [
+  descriptor('date', '日期', DateField, supportedTypes('date')),
+  descriptor('datetime', '日期时间', DateField, supportedTypes('datetime')),
+  descriptor('select', '下拉单选', SelectField, supportedTypes('select')),
+  descriptor('select_multiple', '下拉多选', SelectField, supportedTypes('select_multiple')),
+  descriptor('radio', '单选框', RadioField, supportedTypes('radio')),
+  descriptor('checkbox', '复选框', CheckboxField, supportedTypes('checkbox')),
+  descriptor('switch', '开关', SwitchField, supportedTypes('switch'), [
     { key: 'activeText', label: '开启文本', type: 'text' },
     { key: 'inactiveText', label: '关闭文本', type: 'text' }
   ]),
-  descriptor('file', '文件上传', FileField, ['FILE']),
-  descriptor('image', '图片上传', FileField, ['IMAGE']),
-  descriptor('cascader', '级联选择', CascaderField, ['STRING', 'MULTI_SELECT'], [
+  descriptor('file', '文件上传', FileField, supportedTypes('file')),
+  descriptor('image', '图片上传', FileField, supportedTypes('image')),
+  descriptor('cascader', '级联选择', CascaderField, supportedTypes('cascader'), [
     { key: 'cascaderOptions', label: '级联选项', type: 'json' }
   ]),
-  descriptor('reference', '实体引用单选', EntityField, ['REFERENCE', 'USER', 'DEPT', 'ROLE', 'GROUP']),
-  descriptor('multi_reference', '实体引用多选', EntityField, ['MULTI_REFERENCE']),
-  descriptor('sub_form', '子表单', SubFormField, ['SUB_FORM', 'SUB_FORM_LIST']),
-  descriptor('section', '分组标题', SectionField, ['SECTION'])
+  descriptor('reference', '实体引用单选', EntityField, supportedTypes('reference')),
+  descriptor('multi_reference', '实体引用多选', EntityField, supportedTypes('multi_reference')),
+  descriptor('sub_form', '子表单', SubFormField, supportedTypes('sub_form')),
+  descriptor('section', '分组标题', SectionField, supportedTypes('section'))
 ]
 
 function descriptor(type, label, component, supportedFieldTypes = [], configSchema = []) {

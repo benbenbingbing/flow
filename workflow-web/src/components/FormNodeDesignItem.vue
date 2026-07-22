@@ -91,6 +91,7 @@
         v-if="children.length"
         v-model="activeTabId"
         type="border-card"
+        :tab-position="nodeConfig.tabPosition || 'top'"
         class="design-tabs"
         @tab-click="handleTabClick"
       >

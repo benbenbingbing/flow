@@ -8,9 +8,11 @@ import com.workflow.dto.EntityFormNodePatchRequest;
 import com.workflow.dto.EntityFormNodeReorderRequest;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormNode;
+import com.workflow.entity.EntityRelation;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.EntityFormNodeMapper;
+import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.UiConfigReleaseMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -439,6 +441,7 @@ class EntityFormNodeServiceTest {
         request.setNodeKey("details");
         request.setNodeType("SUB_FORM");
         request.setBindingType("RELATION");
+        request.setBindingRef("details_relation");
         request.setProps(Map.of(
                 "componentProps",
                 Map.of(
@@ -483,6 +486,7 @@ class EntityFormNodeServiceTest {
         request.setNodeKey("lines");
         request.setNodeType("REPEATER");
         request.setBindingType("RELATION");
+        request.setBindingRef("lines_relation");
         request.setProps(Map.of("publishedFormId", "form-2"));
 
         EntityFormNode created =
@@ -509,6 +513,7 @@ class EntityFormNodeServiceTest {
         request.setNodeKey("details");
         request.setNodeType("SUB_FORM");
         request.setBindingType("RELATION");
+        request.setBindingRef("details_relation");
         request.setChildFormId("form-2");
         request.setChildFormReleaseId("release-2");
         request.setChildFormReleaseVersion(5);
@@ -612,6 +617,7 @@ class EntityFormNodeServiceTest {
         EntityFormNodeService service = new EntityFormNodeService(
                 formMapper,
                 nodeMapper,
+                mock(EntityRelationMapper.class),
                 mock(UiConfigReleaseMapper.class),
                 mock(EntityDefinitionAccessPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper()));
@@ -666,15 +672,14 @@ class EntityFormNodeServiceTest {
                         "Duplicate entry for key "
                                 + "'uk_entity_form_node_active_key'"));
         EntityFormNode conflicting = node("conflicting", null, 5);
-        conflicting.setNodeKey("raced_patch_key");
+        conflicting.setNodeKey("node_n1");
         when(nodeMapper.findActiveByFormIdAndNodeKey(
-                "form-1", "raced_patch_key"))
+                "form-1", "node_n1"))
                 .thenReturn(conflicting);
 
         EntityFormNodePatchRequest request =
                 new EntityFormNodePatchRequest();
         request.setExpectedRevision(2);
-        request.setNodeKey("raced_patch_key");
 
         RevisionConflictException exception = assertThrows(
                 RevisionConflictException.class,
@@ -737,6 +742,7 @@ class EntityFormNodeServiceTest {
         EntityFormNode legacy = typedNode("legacy", null, "SUB_FORM");
         legacy.setNodeKey("details");
         legacy.setBindingType("RELATION");
+        legacy.setBindingRef("details_relation");
         legacy.setPropsDocument(codec().write(
                 Map.of(
                         "componentProps",
@@ -747,6 +753,7 @@ class EntityFormNodeServiceTest {
         EntityFormNode pinned = typedNode("legacy", null, "SUB_FORM");
         pinned.setNodeKey("details");
         pinned.setBindingType("RELATION");
+        pinned.setBindingRef("details_relation");
         pinned.setPropsDocument(codec().write(
                 Map.of(
                         "childFormId", "form-2",
@@ -799,9 +806,30 @@ class EntityFormNodeServiceTest {
         form.setId("form-1");
         form.setEntityId("entity-1");
         when(formMapper.selectById("form-1")).thenReturn(form);
+        EntityForm childForm = new EntityForm();
+        childForm.setId("form-2");
+        childForm.setEntityId("entity-2");
+        when(formMapper.selectById("form-2")).thenReturn(childForm);
+        EntityRelationMapper relationMapper =
+                mock(EntityRelationMapper.class);
+        when(relationMapper.selectActiveByBindingRef(
+                anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    String bindingRef = invocation.getArgument(1);
+                    EntityRelation relation = new EntityRelation();
+                    relation.setRelationCode(bindingRef);
+                    relation.setChildEntityId("entity-2");
+                    relation.setChildRefFieldCode("parent_id");
+                    relation.setRelationType(
+                            bindingRef.contains("lines")
+                                    ? EntityRelation.RelationType.ONE_TO_MANY
+                                    : EntityRelation.RelationType.ONE_TO_ONE);
+                    return relation;
+                });
         return new EntityFormNodeService(
                 formMapper,
                 nodeMapper,
+                relationMapper,
                 releaseMapper,
                 mock(EntityDefinitionAccessPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper()));

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -71,9 +72,10 @@ public class EntityFormNodeController {
     @PostMapping("/update")
     public Result<Void> replaceByDiff(
             @PathVariable String formId,
+            @RequestParam Integer expectedRevision,
             @RequestBody List<EntityFormNode> nodes) {
         accessService.requireFormAccess(formId);
-        nodeService.replaceByDiff(formId, nodes);
+        nodeService.replaceByDiff(formId, nodes, expectedRevision);
         return Result.success();
     }
 }

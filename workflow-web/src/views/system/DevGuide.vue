@@ -33,7 +33,7 @@
             <li>属性面板只 PATCH 当前项目，拖拽单独保存 `orderKey`；不同项目可并行保存，不再全删全插。</li>
             <li>所有修改和删除请求必须携带 `expectedRevision`；成功后使用响应中的新 `revision` 更新 Store。</li>
             <li>同一项目发生并发冲突时返回 HTTP `409`，服务器当前对象位于响应 `data`；客户端以 `data.revision` 作为 serverRevision、以 `data` 作为 currentData，保留本地值并展示差异。</li>
-            <li>兼容整包导入时，后端仍按稳定 ID 计算差异并 upsert，不得退回“删除全部再插入”。</li>
+            <li>兼容整包更新调用 `/nodes/update?expectedRevision=...`，先校验表单草稿 revision，再按稳定 ID 差异 upsert；HTTP 请求仍执行节点锁定和 CAS。只有启动迁移/配置导入等可信系统命令可进入兼容迁移通道。</li>
           </ul>
           <CodeCard title="PATCH 单个表单节点" language="HTTP">
             <pre v-pre><code>PATCH /api/entity-forms/frm_order/nodes/node_amount
@@ -111,7 +111,11 @@ Content-Type: application/json
           <ul class="check-list">
             <li>属性抽屉默认关闭；选中画布节点后才从右侧打开。节点 ID、nodeKey、revision、orderKey、发布快照版本、bindingType 与 bindingRef 只能作为只读摘要展示。</li>
             <li>父容器是受限结构属性：TAB 只能选择 TAB_SET；TAB_SET 只直接接受 TAB；其他节点可位于根节点或 SECTION、GRID、TAB、COLLAPSE、SUB_FORM、REPEATER，不能直接放入 TAB_SET。</li>
+            <li>创建与 PATCH 必须读取同一份 nodeType Schema 和服务端白名单；新增、编辑、整包 diff/upsert 不得出现不同的属性能力或绕过路径。</li>
+            <li>历史节点编辑保存时按当前 Schema 归一化：不兼容的活动 props、rules、组件参数和数据源绑定必须清除，必要原值仅进入 `legacyProps` 等非活动兼容区，运行时和发布快照不得继续消费。</li>
             <li>实体字段或实体关系已经绑定时，`nodeType`、fieldId、fieldCode、关系与子实体绑定必须锁定。需要改变数据语义时创建新节点，再显式迁移可复用显示配置。</li>
+            <li>RELATION 子表节点的 childEntityId、relationType、childRefFieldCode 和 relationCode 必须由实体关系定义反向计算；请求值只能匹配，不能补写或覆盖。引用 release 所属表单的 entityId 必须等于关系子实体。</li>
+            <li>绑定迁移采用“新建目标节点 → 绑定新字段/关系 → 迁移标签、布局、兼容组件、模板和允许的数据源 → 预览与发布 → 删除旧节点”，禁止原地改 bindingType/bindingRef。</li>
             <li>扩展 manifest 必须声明适用 `nodeTypes`、supportedBindings 与 configSchema。设计器只渲染该类型允许的参数；后端 PATCH 仍须按节点类型白名单拒绝未知、不兼容或已锁定字段。</li>
             <li>组件切换只能发生在兼容的实体字段类型集合内；切换后应清除不兼容的组件参数、校验和数据源绑定，不能静默保留无效配置。</li>
             <li>设计画布、草稿预览和激活 release 使用同一递归节点布局：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先；容器节点不能在预览中退回扁平字段列表。</li>
@@ -217,6 +221,8 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           </el-table>
           <ul class="check-list">
             <li>禁止任意 SQL、JavaScript、Groovy、SpEL、动态类名和外网 URL；外部调用只能引用已注册 Connector 与平台凭据。</li>
+            <li>`FORM_INIT` 是表单级绑定；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / AFTER_LOAD / BEFORE_SUBMIT`。</li>
+            <li>SUB_FORM 与 REPEATER 仅允许 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`，不能借用 FIELD Usage 配置选项、默认值或字段计算。</li>
             <li>配置 Schema、输入映射、输出映射、分页、超时、缓存和失败策略在预览与发布时统一校验。</li>
             <li>所有实体查询、LIST_QUERY 和 LIST_COLUMN 都接收不可绕过的 `DataScopePlan`；缓存键必须包含用户、权限版本和发布版本。</li>
             <li>`AFTER_LOAD` 不得重新拼回未授权字段，`BEFORE_SUBMIT` 的关键校验失败策略必须为 FAIL。</li>
@@ -303,6 +309,7 @@ Content-Type: application/json
           <ul class="check-list">
             <li>迁移必须幂等：旧表单字段转一级 FIELD 节点，列表项目保留已有 ID，缺失 ID 只生成一次。</li>
             <li>历史子表、引用、事件和选项迁入显式属性，未知内容进入 `legacyProps` 并写入迁移报告。</li>
+            <li>历史节点首次按新 Schema 编辑保存时，不兼容配置从活动文档移除并保留为非活动兼容数据；后续 diff、发布和运行时不得再次把它提升为有效属性。</li>
             <li>已有表单和列表生成初始不可变 release；报告节点数、未知属性、快照哈希和版本。启动迁移必须按单个配置的 `REQUIRES_NEW` 事务执行并输出结构化失败报告，禁止一个坏配置回滚已成功项或阻塞应用启动。</li>
             <li>新运行时优先读取激活 release；不存在时仅临时回退旧配置并记录告警，生成初始 release 后停止依赖回退。</li>
             <li>扩展废弃必须保留快照读取和配置迁移路径，不得因为 Provider、Connector 或组件升级导致历史 release 无法渲染。</li>
@@ -427,11 +434,16 @@ const nodeTypes = [
 ]
 
 const nodePropertyRows = [
-  { types: 'SECTION / GRID', editable: '合法父容器、标题、显示标签和容器样式；GRID 还可配置列间距和默认跨度。', locked: '不显示字段组件、默认值、实体绑定、字段校验或字段数据源。' },
-  { types: 'TAB_SET / TAB / COLLAPSE', editable: '合法父容器；TAB_SET 的页签位置；TAB 的页签标题和所属 Tab 集合；COLLAPSE 的标题、默认展开与手风琴模式。', locked: 'TAB 只能位于 TAB_SET；TAB_SET 的直接子节点只能是 TAB。' },
-  { types: 'TEXT / ACTION_SLOT', editable: '合法父容器；TEXT 的受限说明内容；ACTION_SLOT 仅展示稳定插槽标识。', locked: 'TEXT 禁止脚本和实体绑定；ACTION_SLOT 暂不开放动作、权限或位置编辑。' },
-  { types: 'FIELD', editable: '合法父容器、显示标签、兼容组件、必填、只读、隐藏、占位、默认值、校验、受控数据源、事件和模式权限。', locked: '不能直接放入 TAB_SET；已绑定时 nodeType、fieldId、fieldCode、bindingType 与 bindingRef 不可改。' },
-  { types: 'SUB_FORM / REPEATER', editable: '合法父容器、展示模式、子表布局、已发布子表单版本与受控行数据源。', locked: '子实体、关系与外键不可由表单配置覆盖；其内嵌节点必须递归渲染。' }
+  { types: 'SECTION', editable: '显示标签（区块标题）、合法父容器；用于组织业务区块。', locked: '不显示组件、默认值、实体绑定、字段规则或数据源。' },
+  { types: 'GRID', editable: '合法父容器、列间距 gutter、默认子项跨度 defaultSpan；用于控制栅格布局。', locked: '子项 gridSpan 属于子节点；GRID 不配置字段规则、组件或数据源。' },
+  { types: 'TAB_SET', editable: '合法父容器、页签位置 tabPosition；用于组织 Tab 页集合。', locked: '直接子项只能是 TAB；当前不提供默认激活页配置。' },
+  { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', locked: '不能位于根节点，父级只能是有效 TAB_SET；无字段规则和数据源。' },
+  { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', locked: '不显示字段组件、默认值、校验或字段数据源。' },
+  { types: 'TEXT', editable: '合法父容器、受限说明内容 text；用于提示和静态文本。', locked: '禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', locked: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份不可改。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、展示模式、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；子实体、关系与外键绑定不可改。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、展示模式、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；不支持 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'ACTION_SLOT', editable: '仅合法父容器；用于放置稳定的运行时动作插槽。', locked: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 
 const dataSourceTypes = [
@@ -445,12 +457,12 @@ const dataSourceTypes = [
 ]
 
 const dataSourceBindings = [
-  { binding: 'FORM_INIT', meaning: '初始化表单业务对象' },
-  { binding: 'FIELD_OPTIONS / FIELD_DEFAULT', meaning: '字段选项与默认值' },
-  { binding: 'FIELD_COMPUTE', meaning: '结构化字段计算' },
-  { binding: 'SUBFORM_ROWS', meaning: '子表或明细行加载' },
+  { binding: 'FORM_INIT', meaning: '表单级初始化业务对象，不属于节点级 Usage' },
+  { binding: 'FIELD_OPTIONS / FIELD_DEFAULT', meaning: '仅 FIELD：字段选项与默认值' },
+  { binding: 'FIELD_COMPUTE', meaning: '仅 FIELD：结构化字段计算' },
+  { binding: 'SUBFORM_ROWS', meaning: '仅 SUB_FORM / REPEATER：子表或明细行加载' },
   { binding: 'LIST_QUERY / LIST_COLUMN', meaning: '整表查询与单列扩展' },
-  { binding: 'AFTER_LOAD / BEFORE_SUBMIT', meaning: '加载后转换与提交前校验/映射' }
+  { binding: 'AFTER_LOAD / BEFORE_SUBMIT', meaning: 'FIELD、SUB_FORM、REPEATER：加载后转换与提交前校验/映射' }
 ]
 
 const providerContext = [

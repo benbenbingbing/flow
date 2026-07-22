@@ -9,9 +9,11 @@ import com.workflow.dto.EntityFormNodePatchRequest;
 import com.workflow.dto.EntityFormNodeReorderRequest;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormNode;
+import com.workflow.entity.EntityRelation;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.EntityFormNodeMapper;
+import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.UiConfigReleaseMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -75,15 +77,26 @@ public class EntityFormNodeService {
             "SUB_FORM", "REPEATER");
     private static final Set<String> CLEARABLE_PATCH_FIELDS = Set.of(
             "parentId", "bindingRef", "componentName", "componentVersion",
-            "snapshotVersion", "props", "childFormId", "childFormReleaseId",
+            "snapshotVersion", "childFormId", "childFormReleaseId",
             "childFormReleaseVersion", "rules", "dataSourceBindings",
-            "legacyProps", "templateId", "templateVersion", "localOverrides");
+            "templateId", "templateVersion", "localOverrides");
+    private static final Set<String> IMMUTABLE_BOUND_PROP_KEYS = Set.of(
+            "fieldId", "fieldCode", "fieldType");
+    private static final Set<String> IMMUTABLE_SUB_FORM_CONFIG_KEYS = Set.of(
+            "refEntityId", "childEntityId", "relationType",
+            "childRefFieldCode", "refFieldCode", "relationCode");
+    private static final Set<String> IMMUTABLE_REFERENCE_CONFIG_KEYS = Set.of(
+            "refEntityType", "refEntityId", "entityCode");
+    private static final Set<String> EDITABLE_LABEL_NODE_TYPES = Set.of(
+            "SECTION", "TAB", "COLLAPSE",
+            "FIELD", "SUB_FORM", "REPEATER");
     private static final Set<String> DATA_SOURCE_USAGES = Set.of(
             "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
             "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
 
     private final EntityFormMapper formMapper;
     private final EntityFormNodeMapper nodeMapper;
+    private final EntityRelationMapper relationMapper;
     private final UiConfigReleaseMapper releaseMapper;
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
     private final JsonDocumentCodec codec;
@@ -95,6 +108,13 @@ public class EntityFormNodeService {
 
     @Transactional(rollbackFor = Exception.class)
     public EntityFormNode create(String formId, EntityFormNodeCreateRequest request) {
+        return createInternal(formId, request, false);
+    }
+
+    private EntityFormNode createInternal(
+            String formId,
+            EntityFormNodeCreateRequest request,
+            boolean migrateUnsupported) {
         requireForm(formId);
         EntityFormNode node = new EntityFormNode();
         node.setId(StringUtils.hasText(request.getId())
@@ -133,6 +153,10 @@ public class EntityFormNodeService {
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
         node.setDeleted(0);
+        if (!migrateUnsupported) {
+            validateCreateConfiguration(request, node.getNodeType());
+        }
+        normalizeAndValidateConfiguration(node, migrateUnsupported);
         validateNode(node, null);
         try {
             nodeMapper.insert(node);
@@ -149,21 +173,35 @@ public class EntityFormNodeService {
             String formId,
             String nodeId,
             EntityFormNodePatchRequest request) {
-        return patchInternal(formId, nodeId, request, true);
+        return patchInternal(
+                formId, nodeId, request, PatchMode.USER_PROPERTY);
     }
 
     private EntityFormNode patchInternal(
             String formId,
             String nodeId,
             EntityFormNodePatchRequest request,
-            boolean enforcePatchConstraints) {
+            PatchMode mode) {
         EntityFormNode current = requireNode(formId, nodeId);
         requireExpectedRevision(request.getExpectedRevision(), current);
-        if (enforcePatchConstraints) {
+        if (mode.userFacing() && !hasValidBindingState(current)) {
+            throw new IllegalArgumentException(
+                    "当前节点绑定配置不完整，请先通过配置迁移修复后再编辑");
+        }
+        if (mode == PatchMode.USER_PROPERTY) {
             validatePatchConstraints(current, request);
         }
         EntityFormNode updated = copy(current);
+        normalizeAndValidateConfiguration(updated, true);
         applyPatch(updated, request);
+        if (mode == PatchMode.USER_PROPERTY
+                && !Objects.equals(
+                        blankToNull(current.getParentId()),
+                        blankToNull(updated.getParentId()))) {
+            updated.setOrderKey(
+                    nextOrderKey(formId, updated.getParentId()));
+        }
+        normalizeAndValidateConfiguration(updated, false);
         updated.setRevision(current.getRevision() + 1);
         updated.setUpdatedAt(LocalDateTime.now());
         validateNode(updated, current.getId());
@@ -225,9 +263,14 @@ public class EntityFormNodeService {
         }
         EntityFormNodePatchRequest patch = new EntityFormNodePatchRequest();
         patch.setExpectedRevision(current.getRevision());
-        patch.setParentId(parentId);
+        if (parentId == null) {
+            patch.setClearFields(Set.of("parentId"));
+        } else {
+            patch.setParentId(parentId);
+        }
         patch.setOrderKey(previous + ((next - previous) / 2));
-        return patch(formId, nodeId, patch);
+        return patchInternal(
+                formId, nodeId, patch, PatchMode.USER_REORDER);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -258,7 +301,35 @@ public class EntityFormNodeService {
 
     @Transactional(rollbackFor = Exception.class)
     public void replaceByDiff(String formId, List<EntityFormNode> incoming) {
-        requireForm(formId);
+        replaceByDiffInternal(
+                formId,
+                incoming,
+                null,
+                PatchMode.SYSTEM_IMPORT);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void replaceByDiff(
+            String formId,
+            List<EntityFormNode> incoming,
+            Integer expectedRevision) {
+        replaceByDiffInternal(
+                formId,
+                incoming,
+                expectedRevision,
+                PatchMode.USER_PROPERTY);
+    }
+
+    private void replaceByDiffInternal(
+            String formId,
+            List<EntityFormNode> incoming,
+            Integer expectedRevision,
+            PatchMode mode) {
+        if (mode.userFacing()) {
+            requireFormForUpdate(formId, expectedRevision);
+        } else {
+            requireForm(formId);
+        }
         List<EntityFormNode> existing = nodeMapper.findByFormId(formId);
         Map<String, EntityFormNode> existingById = new HashMap<>();
         existing.forEach(node -> existingById.put(node.getId(), node));
@@ -278,14 +349,18 @@ public class EntityFormNodeService {
                     : null;
             if (current == null) {
                 EntityFormNodeCreateRequest request = toCreateRequest(source, fallbackOrder);
-                EntityFormNode created = create(formId, request);
+                EntityFormNode created = createInternal(
+                        formId,
+                        request,
+                        mode == PatchMode.SYSTEM_IMPORT);
                 retained.add(created.getId());
             } else {
                 retained.add(current.getId());
-                EntityFormNodePatchRequest request = toPatchRequest(source, current);
+                EntityFormNodePatchRequest request =
+                        toPatchRequest(source, current, mode);
                 if (hasChanges(source, current)
                         || requiresLegacyReleasePin(source)) {
-                    patchInternal(formId, current.getId(), request, false);
+                    patchInternal(formId, current.getId(), request, mode);
                 }
             }
             fallbackOrder += ORDER_STEP;
@@ -650,8 +725,14 @@ public class EntityFormNodeService {
             removeReleaseVersionAliases(props);
             removeReleaseVersionAliases(nestedConfig);
         }
-        if (!componentProps.isEmpty() || props.containsKey("componentProps")) {
+        if (nestedConfig.isEmpty()) {
+            componentProps.remove("subFormConfig");
+        } else {
             componentProps.put("subFormConfig", nestedConfig);
+        }
+        if (componentProps.isEmpty()) {
+            props.remove("componentProps");
+        } else {
             props.put("componentProps", componentProps);
         }
         return props;
@@ -675,6 +756,99 @@ public class EntityFormNodeService {
         value.remove("publishedFormReleaseVersion");
     }
 
+    private Map<String, Object> normalizeRelationBoundSubFormProps(
+            EntityFormNode node) {
+        EntityRelation relation = requireBoundRelation(node);
+        String expectedNodeType =
+                relation.getRelationType()
+                        == EntityRelation.RelationType.ONE_TO_ONE
+                ? "SUB_FORM"
+                : "REPEATER";
+        if (!expectedNodeType.equals(
+                normalize(node.getNodeType(), null))) {
+            throw new IllegalArgumentException(
+                    "关系 "
+                            + relation.getRelationCode()
+                            + " 必须使用 "
+                            + expectedNodeType
+                            + " 节点");
+        }
+
+        Map<String, Object> props =
+                mutableMap(read(node.getPropsDocument(), "表单节点属性"));
+        Map<String, Object> componentProps =
+                objectMap(props.get("componentProps"), "子表单组件属性");
+        Map<String, Object> subFormConfig =
+                objectMap(componentProps.get("subFormConfig"), "子表单配置");
+        putCanonicalRelationValue(
+                subFormConfig,
+                "relationCode",
+                relation.getRelationCode());
+        putCanonicalRelationValue(
+                subFormConfig,
+                "childEntityId",
+                relation.getChildEntityId());
+        putCanonicalRelationValue(
+                subFormConfig,
+                "refEntityId",
+                relation.getChildEntityId());
+        putCanonicalRelationValue(
+                subFormConfig,
+                "relationType",
+                relation.getRelationType() == null
+                        ? null
+                        : relation.getRelationType().name());
+        putCanonicalRelationValue(
+                subFormConfig,
+                "childRefFieldCode",
+                relation.getChildRefFieldCode());
+        putCanonicalRelationValue(
+                subFormConfig,
+                "refFieldCode",
+                relation.getChildRefFieldCode());
+        componentProps.put("subFormConfig", subFormConfig);
+        props.put("componentProps", componentProps);
+        return props;
+    }
+
+    private void putCanonicalRelationValue(
+            Map<String, Object> target,
+            String key,
+            String expected) {
+        Object current = target.get(key);
+        if (EntityFormNodePropertyPolicy.meaningful(current)
+                && !Objects.equals(
+                        String.valueOf(current).trim(),
+                        expected)) {
+            throw new IllegalArgumentException(
+                    "子表单关系属性与实体关系定义不一致: " + key);
+        }
+        if (StringUtils.hasText(expected)) {
+            target.put(key, expected);
+        }
+    }
+
+    private EntityRelation requireBoundRelation(EntityFormNode node) {
+        EntityForm form = requireForm(node.getFormId());
+        EntityRelation relation =
+                relationMapper.selectActiveByBindingRef(
+                        form.getEntityId(),
+                        node.getBindingRef());
+        if (relation == null) {
+            throw new IllegalArgumentException(
+                    "表单节点绑定的实体关系不存在或已禁用: "
+                            + node.getBindingRef());
+        }
+        if (relation.getRelationType() == null
+                || !StringUtils.hasText(relation.getChildEntityId())
+                || !StringUtils.hasText(relation.getChildRefFieldCode())) {
+            throw new IllegalArgumentException(
+                    "实体关系配置不完整: "
+                            + relation.getRelationCode());
+        }
+        return relation;
+    }
+
     private void validateSubFormReleaseBinding(EntityFormNode node) {
         if (!Set.of("SUB_FORM", "REPEATER").contains(node.getNodeType())) {
             return;
@@ -683,7 +857,29 @@ public class EntityFormNodeService {
                 read(node.getPropsDocument(), "子表单节点属性"),
                 node.getNodeKey());
         if (reference != null) {
-            requireReferencedRelease(reference);
+            UiConfigRelease release =
+                    requireReferencedRelease(reference);
+            validateRelationReleaseEntity(node, release);
+        }
+    }
+
+    private void validateRelationReleaseEntity(
+            EntityFormNode node,
+            UiConfigRelease release) {
+        if (!"RELATION".equals(
+                normalize(node.getBindingType(), "NONE"))) {
+            return;
+        }
+        EntityRelation relation = requireBoundRelation(node);
+        EntityForm childForm =
+                formMapper.selectById(release.getConfigId());
+        if (childForm == null
+                || !Objects.equals(
+                        relation.getChildEntityId(),
+                        childForm.getEntityId())) {
+            throw new IllegalArgumentException(
+                    "子表单发布版本所属实体与绑定关系不一致: "
+                            + release.getConfigId());
         }
     }
 
@@ -834,6 +1030,195 @@ public class EntityFormNodeService {
             String formId,
             String releaseId,
             Integer releaseVersion) {
+    }
+
+    private void validateCreateConfiguration(
+            EntityFormNodeCreateRequest request,
+            String nodeType) {
+        EntityFormNodePropertyPolicy.normalizeProps(
+                nodeType, request.getProps(), false);
+        EntityFormNodePropertyPolicy.normalizeRules(
+                nodeType,
+                request.getRules(),
+                request.getProps(),
+                false);
+        EntityFormNodePropertyPolicy.normalizeDataSourceBindings(
+                nodeType, request.getDataSourceBindings());
+        EntityFormNodePropertyPolicy.validateExtension(
+                nodeType,
+                request.getComponentName(),
+                request.getComponentVersion(),
+                request.getSnapshotVersion());
+        if (!EntityFormNodePropertyPolicy.supportsChildForm(nodeType)
+                && (StringUtils.hasText(request.getChildFormId())
+                || StringUtils.hasText(request.getChildFormReleaseId())
+                || request.getChildFormReleaseVersion() != null)) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持子表单发布引用");
+        }
+        EntityFormNodePropertyPolicy.validateBinding(
+                nodeType,
+                normalize(request.getBindingType(), "NONE"),
+                blankToNull(request.getBindingRef()));
+        EntityFormNodePropertyPolicy.validateTemplate(
+                nodeType,
+                request.getTemplateId(),
+                request.getTemplateVersion(),
+                request.getLocalOverrides());
+    }
+
+    private void normalizeAndValidateConfiguration(
+            EntityFormNode node,
+            boolean migrateUnsupported) {
+        String nodeType = normalize(node.getNodeType(), "FIELD");
+        Map<String, Object> inactive = new LinkedHashMap<>();
+
+        EntityFormNodePropertyPolicy.NormalizedProps normalizedProps =
+                EntityFormNodePropertyPolicy.normalizeProps(
+                        nodeType,
+                        read(node.getPropsDocument(), "表单节点属性"),
+                        migrateUnsupported);
+        node.setPropsDocument(write(
+                normalizedProps.active(), "表单节点属性"));
+        if (!normalizedProps.inactive().isEmpty()) {
+            inactive.put("props", normalizedProps.inactive());
+        }
+
+        Map<String, Object> rules =
+                read(node.getRulesDocument(), "表单节点规则");
+        try {
+            EntityFormNodePropertyPolicy.NormalizedRules normalizedRules =
+                    EntityFormNodePropertyPolicy.normalizeRules(
+                            nodeType,
+                            rules,
+                            normalizedProps.active(),
+                            migrateUnsupported);
+            node.setRulesDocument(write(
+                    normalizedRules.active(), "表单节点规则"));
+            if (!normalizedRules.inactive().isEmpty()) {
+                inactive.put("rules", normalizedRules.inactive());
+            }
+        } catch (IllegalArgumentException exception) {
+            if (!migrateUnsupported
+                    || !EntityFormNodePropertyPolicy.meaningful(rules)) {
+                throw exception;
+            }
+            inactive.put("rules", rules);
+            node.setRulesDocument(null);
+        }
+
+        Map<String, Object> bindings = read(
+                node.getDataSourceBindingsDocument(),
+                "表单节点数据源绑定");
+        try {
+            Map<String, Object> normalizedBindings =
+                    EntityFormNodePropertyPolicy.normalizeDataSourceBindings(
+                            nodeType, bindings);
+            node.setDataSourceBindingsDocument(write(
+                    normalizedBindings, "表单节点数据源绑定"));
+        } catch (IllegalArgumentException exception) {
+            if (!migrateUnsupported
+                    || !EntityFormNodePropertyPolicy.meaningful(bindings)) {
+                throw exception;
+            }
+            inactive.put("dataSourceBindings", bindings);
+            node.setDataSourceBindingsDocument(null);
+        }
+
+        try {
+            EntityFormNodePropertyPolicy.validateExtension(
+                    nodeType,
+                    node.getComponentName(),
+                    node.getComponentVersion(),
+                    node.getSnapshotVersion());
+        } catch (IllegalArgumentException exception) {
+            if (!migrateUnsupported) {
+                throw exception;
+            }
+            Map<String, Object> component = new LinkedHashMap<>();
+            component.put("componentName", node.getComponentName());
+            component.put("componentVersion", node.getComponentVersion());
+            component.put("snapshotVersion", node.getSnapshotVersion());
+            if (EntityFormNodePropertyPolicy.meaningful(component)) {
+                inactive.put("component", component);
+            }
+            node.setComponentName(null);
+            node.setComponentVersion(null);
+            node.setSnapshotVersion(null);
+        }
+
+        Map<String, Object> localOverrides =
+                read(node.getLocalOverridesDocument(), "模板本地覆盖");
+        try {
+            EntityFormNodePropertyPolicy.validateTemplate(
+                    nodeType,
+                    node.getTemplateId(),
+                    node.getTemplateVersion(),
+                    localOverrides);
+        } catch (IllegalArgumentException exception) {
+            if (!migrateUnsupported) {
+                throw exception;
+            }
+            Map<String, Object> template = new LinkedHashMap<>();
+            template.put("templateId", node.getTemplateId());
+            template.put("templateVersion", node.getTemplateVersion());
+            template.put("localOverrides", localOverrides);
+            if (EntityFormNodePropertyPolicy.meaningful(template)) {
+                inactive.put("template", template);
+            }
+            node.setTemplateId(null);
+            node.setTemplateVersion(null);
+            node.setLocalOverridesDocument(null);
+        }
+
+        try {
+            EntityFormNodePropertyPolicy.validateBinding(
+                    nodeType,
+                    node.getBindingType(),
+                    node.getBindingRef());
+        } catch (IllegalArgumentException exception) {
+            if (!migrateUnsupported) {
+                throw exception;
+            }
+            inactive.put("binding", Map.of(
+                    "bindingType",
+                    Objects.toString(node.getBindingType(), "NONE"),
+                    "bindingRef",
+                    Objects.toString(node.getBindingRef(), "")));
+            node.setBindingType("NONE");
+            node.setBindingRef(null);
+        }
+
+        if ("RELATION".equals(normalize(
+                node.getBindingType(), "NONE"))
+                && SUB_FORM_NODE_TYPES.contains(nodeType)) {
+            node.setPropsDocument(write(
+                    normalizeRelationBoundSubFormProps(node),
+                    "表单节点属性"));
+        }
+
+        mergeInactiveConfiguration(node, nodeType, inactive);
+    }
+
+    private void mergeInactiveConfiguration(
+            EntityFormNode node,
+            String nodeType,
+            Map<String, Object> inactive) {
+        if (inactive.isEmpty()) {
+            return;
+        }
+        Map<String, Object> legacy = mutableMap(
+                read(node.getLegacyPropsDocument(), "历史节点属性"));
+        Map<String, Object> inactiveByType = objectMap(
+                legacy.get("inactiveNodeProperties"),
+                "非活动节点属性");
+        Map<String, Object> typeProperties = objectMap(
+                inactiveByType.get(nodeType),
+                "非活动节点类型属性");
+        typeProperties.putAll(inactive);
+        inactiveByType.put(nodeType, typeProperties);
+        legacy.put("inactiveNodeProperties", inactiveByType);
+        node.setLegacyPropsDocument(write(legacy, "历史节点属性"));
     }
 
     private void validateNode(EntityFormNode node, String excludeId) {
@@ -1073,8 +1458,15 @@ public class EntityFormNodeService {
                     : write(request.getDataSourceBindings(), "表单节点数据源绑定"));
         }
         if (request.getLegacyProps() != null || clear.contains("legacyProps")) {
-            target.setLegacyPropsDocument(clear.contains("legacyProps")
-                    ? null : write(request.getLegacyProps(), "历史节点属性"));
+            if (clear.contains("legacyProps")) {
+                target.setLegacyPropsDocument(null);
+            } else {
+                Map<String, Object> legacy = mutableMap(
+                        read(target.getLegacyPropsDocument(), "历史节点属性"));
+                legacy.putAll(request.getLegacyProps());
+                target.setLegacyPropsDocument(
+                        write(legacy, "历史节点属性"));
+            }
         }
         if (request.getOrderKey() != null) {
             target.setOrderKey(request.getOrderKey());
@@ -1103,29 +1495,57 @@ public class EntityFormNodeService {
                 throw new IllegalArgumentException("不支持清空表单节点字段: " + field);
             }
         }
-        if (isBound(current)) {
-            validateBoundNodeIdentity(current, request, clear);
-        }
         String nodeType = request.getNodeType() == null
                 ? normalize(current.getNodeType(), "FIELD")
                 : normalize(request.getNodeType(), "FIELD");
-        validateNodeTypePatchFields(nodeType, request, clear);
+        validateTechnicalIdentity(current, request, clear);
+        validateRequestedPatchConfiguration(
+                current,
+                nodeType,
+                request,
+                clear);
+    }
+
+    private void validateTechnicalIdentity(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        if (request.getNodeKey() != null
+                && !Objects.equals(
+                        request.getNodeKey(),
+                        current.getNodeKey())) {
+            throw new IllegalArgumentException(
+                    "节点编码由系统管理，不能通过属性 PATCH 修改");
+        }
+        if (request.getNodeType() != null
+                && !Objects.equals(
+                        normalize(request.getNodeType(), "FIELD"),
+                        normalize(current.getNodeType(), "FIELD"))) {
+            throw new IllegalArgumentException(
+                    "节点类型由系统管理，不能通过属性 PATCH 修改");
+        }
+        if (request.getOrderKey() != null
+                && !Objects.equals(
+                        request.getOrderKey(),
+                        current.getOrderKey())) {
+            throw new IllegalArgumentException(
+                    "节点排序必须使用节点排序接口");
+        }
+        if (request.getLegacyProps() != null
+                || clear.contains("legacyProps")) {
+            throw new IllegalArgumentException(
+                    "历史兼容属性由服务端管理，不能直接修改");
+        }
+        validateReadOnlyDisplayProps(current, request);
+        if (hasValidBindingState(current)) {
+            validateBoundNodeIdentity(current, request, clear);
+        }
     }
 
     private void validateBoundNodeIdentity(
             EntityFormNode current,
             EntityFormNodePatchRequest request,
             Set<String> clear) {
-        if (request.getNodeKey() != null
-                && !Objects.equals(request.getNodeKey(), current.getNodeKey())) {
-            throw new IllegalArgumentException("已绑定节点不能修改节点编码");
-        }
-        if (request.getNodeType() != null
-                && !Objects.equals(
-                        normalize(request.getNodeType(), "FIELD"),
-                        normalize(current.getNodeType(), "FIELD"))) {
-            throw new IllegalArgumentException("已绑定节点不能修改节点类型");
-        }
         if (request.getBindingType() != null
                 && !Objects.equals(
                         normalize(request.getBindingType(), "NONE"),
@@ -1139,60 +1559,173 @@ public class EntityFormNodeService {
                         blankToNull(current.getBindingRef()))) {
             throw new IllegalArgumentException("已绑定节点不能修改绑定引用");
         }
+        if (isBound(current)) {
+            validateBoundProps(current, request, clear);
+        }
     }
 
-    private void validateNodeTypePatchFields(
+    private void validateReadOnlyDisplayProps(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request) {
+        String nodeType = normalize(current.getNodeType(), "FIELD");
+        if (EDITABLE_LABEL_NODE_TYPES.contains(nodeType)
+                || request.getProps() == null) {
+            return;
+        }
+        Map<String, Object> currentProps =
+                read(current.getPropsDocument(), "表单节点属性");
+        Object currentLabel = currentProps.get("label");
+        Object requestedLabel = request.getProps().get("label");
+        if (EntityFormNodePropertyPolicy.meaningful(currentLabel)
+                && !Objects.deepEquals(
+                        currentLabel,
+                        requestedLabel)) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点显示标识由系统管理，不能直接修改");
+        }
+    }
+
+    private void validateBoundProps(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        if (clear.contains("props")) {
+            throw new IllegalArgumentException(
+                    "已绑定节点不能清空数据语义属性");
+        }
+        if (request.getProps() == null) {
+            return;
+        }
+        Map<String, Object> currentProps =
+                read(current.getPropsDocument(), "表单节点属性");
+        Map<String, Object> requestedProps = request.getProps();
+        requireSameMeaningfulValues(
+                currentProps,
+                requestedProps,
+                IMMUTABLE_BOUND_PROP_KEYS,
+                "已绑定节点不能修改字段身份属性");
+
+        Map<String, Object> currentComponentProps =
+                objectMap(
+                        currentProps.get("componentProps"),
+                        "字段组件属性");
+        Map<String, Object> requestedComponentProps =
+                objectMap(
+                        requestedProps.get("componentProps"),
+                        "字段组件属性");
+        String nodeType = normalize(current.getNodeType(), "FIELD");
+        if (SUB_FORM_NODE_TYPES.contains(nodeType)) {
+            requireSameMeaningfulValues(
+                    objectMap(
+                            currentComponentProps.get("subFormConfig"),
+                            "子表单配置"),
+                    objectMap(
+                            requestedComponentProps.get("subFormConfig"),
+                            "子表单配置"),
+                    IMMUTABLE_SUB_FORM_CONFIG_KEYS,
+                    "已绑定子表单不能修改实体关系属性");
+        }
+        if ("FIELD".equals(nodeType)) {
+            requireSameMeaningfulValues(
+                    objectMap(
+                            currentComponentProps.get("refConfig"),
+                            "实体引用配置"),
+                    objectMap(
+                            requestedComponentProps.get("refConfig"),
+                            "实体引用配置"),
+                    IMMUTABLE_REFERENCE_CONFIG_KEYS,
+                    "已绑定引用字段不能修改引用实体属性");
+        }
+    }
+
+    private void requireSameMeaningfulValues(
+            Map<String, Object> current,
+            Map<String, Object> requested,
+            Set<String> keys,
+            String message) {
+        for (String key : keys) {
+            Object expected = current.get(key);
+            if (EntityFormNodePropertyPolicy.meaningful(expected)
+                    && !Objects.deepEquals(
+                            expected,
+                            requested.get(key))) {
+                throw new IllegalArgumentException(
+                        message + ": " + key);
+            }
+        }
+    }
+
+    private void validateRequestedPatchConfiguration(
+            EntityFormNode current,
             String nodeType,
             EntityFormNodePatchRequest request,
             Set<String> clear) {
-        if (!COMPONENT_NODE_TYPES.contains(nodeType)
+        if (request.getProps() != null && !clear.contains("props")) {
+            EntityFormNodePropertyPolicy.normalizeProps(
+                    nodeType, request.getProps(), false);
+        }
+        if (request.getRules() != null && !clear.contains("rules")) {
+            Map<String, Object> props = request.getProps() == null
+                    ? read(current.getPropsDocument(), "表单节点属性")
+                    : request.getProps();
+            EntityFormNodePropertyPolicy.normalizeRules(
+                    nodeType,
+                    request.getRules(),
+                    props,
+                    false);
+        }
+        if (request.getDataSourceBindings() != null
+                && !clear.contains("dataSourceBindings")) {
+            EntityFormNodePropertyPolicy.normalizeDataSourceBindings(
+                    nodeType, request.getDataSourceBindings());
+        }
+        if (!EntityFormNodePropertyPolicy.supportsExtension(nodeType)
                 && (request.getComponentName() != null
                 || request.getComponentVersion() != null
-                || request.getSnapshotVersion() != null
-                || clear.contains("componentName")
-                || clear.contains("componentVersion")
-                || clear.contains("snapshotVersion"))) {
+                || request.getSnapshotVersion() != null)) {
             throw new IllegalArgumentException(
                     nodeType + " 节点不支持扩展组件配置");
         }
-        if (!RULE_NODE_TYPES.contains(nodeType)
-                && (request.getRules() != null || clear.contains("rules"))) {
-            throw new IllegalArgumentException(
-                    nodeType + " 节点不支持字段规则配置");
-        }
-        if (!DATA_SOURCE_NODE_TYPES.contains(nodeType)
-                && (request.getDataSourceBindings() != null
-                || clear.contains("dataSourceBindings"))) {
-            throw new IllegalArgumentException(
-                    nodeType + " 节点不支持数据源绑定");
-        }
-        if (!SUB_FORM_NODE_TYPES.contains(nodeType)
+        if (!EntityFormNodePropertyPolicy.supportsChildForm(nodeType)
                 && (request.getChildFormId() != null
                 || request.getChildFormReleaseId() != null
-                || request.getChildFormReleaseVersion() != null
-                || clear.contains("childFormId")
-                || clear.contains("childFormReleaseId")
-                || clear.contains("childFormReleaseVersion"))) {
+                || request.getChildFormReleaseVersion() != null)) {
             throw new IllegalArgumentException(
                     nodeType + " 节点不支持子表单发布引用");
         }
-        if (!BINDABLE_NODE_TYPES.contains(nodeType)) {
-            if (request.getBindingType() != null
-                    && !"NONE".equals(normalize(request.getBindingType(), "NONE"))) {
-                throw new IllegalArgumentException(
-                        nodeType + " 节点不支持数据绑定");
-            }
-            if (request.getBindingRef() != null
-                    && StringUtils.hasText(request.getBindingRef())) {
-                throw new IllegalArgumentException(
-                        nodeType + " 节点不支持数据绑定");
-            }
-        } else if (SUB_FORM_NODE_TYPES.contains(nodeType)
-                && request.getBindingType() != null
-                && !Set.of("NONE", "RELATION").contains(
-                        normalize(request.getBindingType(), "NONE"))) {
+        if (!EntityFormNodePropertyPolicy.supportsTemplate(nodeType)
+                && (StringUtils.hasText(request.getTemplateId())
+                || request.getTemplateVersion() != null
+                || EntityFormNodePropertyPolicy.meaningful(
+                        request.getLocalOverrides()))) {
             throw new IllegalArgumentException(
-                    nodeType + " 节点仅支持关系绑定");
+                    nodeType + " 节点不支持组件模板配置");
+        }
+        if (request.getBindingType() != null
+                && !EntityFormNodePropertyPolicy.bindingTypes(nodeType)
+                        .contains(normalize(request.getBindingType(), "NONE"))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持绑定类型: "
+                            + normalize(request.getBindingType(), "NONE"));
+        }
+        if (request.getBindingRef() != null
+                && !EntityFormNodePropertyPolicy.bindingTypes(nodeType)
+                        .stream()
+                        .anyMatch(type -> !"NONE".equals(type))) {
+            throw new IllegalArgumentException(
+                    nodeType + " 节点不支持数据绑定");
+        }
+    }
+
+    private boolean hasValidBindingState(EntityFormNode node) {
+        try {
+            EntityFormNodePropertyPolicy.validateBinding(
+                    node.getNodeType(),
+                    node.getBindingType(),
+                    node.getBindingRef());
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
         }
     }
 
@@ -1256,9 +1789,13 @@ public class EntityFormNodeService {
 
     private EntityFormNodePatchRequest toPatchRequest(
             EntityFormNode source,
-            EntityFormNode current) {
+            EntityFormNode current,
+            PatchMode mode) {
         EntityFormNodePatchRequest request = new EntityFormNodePatchRequest();
-        request.setExpectedRevision(current.getRevision());
+        Set<String> clear = new LinkedHashSet<>();
+        request.setExpectedRevision(mode.userFacing()
+                ? source.getRevision()
+                : current.getRevision());
         request.setParentId(source.getParentId());
         request.setNodeKey(source.getNodeKey());
         request.setNodeType(source.getNodeType());
@@ -1271,13 +1808,71 @@ public class EntityFormNodeService {
         request.setRules(read(source.getRulesDocument(), "表单节点规则"));
         request.setDataSourceBindings(
                 read(source.getDataSourceBindingsDocument(), "表单节点数据源绑定"));
-        request.setLegacyProps(read(source.getLegacyPropsDocument(), "历史节点属性"));
+        if (mode == PatchMode.SYSTEM_IMPORT) {
+            request.setLegacyProps(
+                    read(source.getLegacyPropsDocument(), "历史节点属性"));
+        } else if (!Objects.equals(
+                source.getLegacyPropsDocument(),
+                current.getLegacyPropsDocument())) {
+            throw new IllegalArgumentException(
+                    "历史兼容属性由服务端管理，整包更新不能修改");
+        }
         request.setOrderKey(source.getOrderKey());
         request.setTemplateId(source.getTemplateId());
         request.setTemplateVersion(source.getTemplateVersion());
         request.setLocalOverrides(
                 read(source.getLocalOverridesDocument(), "模板本地覆盖"));
+        addClearIfMissing(
+                clear, "parentId", source.getParentId(), current.getParentId());
+        addClearIfMissing(
+                clear, "bindingRef", source.getBindingRef(), current.getBindingRef());
+        addClearIfMissing(
+                clear, "componentName",
+                source.getComponentName(), current.getComponentName());
+        addClearIfMissing(
+                clear, "componentVersion",
+                source.getComponentVersion(), current.getComponentVersion());
+        addClearIfMissing(
+                clear, "snapshotVersion",
+                source.getSnapshotVersion(), current.getSnapshotVersion());
+        addClearIfMissing(
+                clear, "props",
+                source.getPropsDocument(), current.getPropsDocument());
+        addClearIfMissing(
+                clear, "rules",
+                source.getRulesDocument(), current.getRulesDocument());
+        addClearIfMissing(
+                clear, "dataSourceBindings",
+                source.getDataSourceBindingsDocument(),
+                current.getDataSourceBindingsDocument());
+        if (mode == PatchMode.SYSTEM_IMPORT) {
+            addClearIfMissing(
+                    clear, "legacyProps",
+                    source.getLegacyPropsDocument(),
+                    current.getLegacyPropsDocument());
+        }
+        addClearIfMissing(
+                clear, "templateId",
+                source.getTemplateId(), current.getTemplateId());
+        addClearIfMissing(
+                clear, "templateVersion",
+                source.getTemplateVersion(), current.getTemplateVersion());
+        addClearIfMissing(
+                clear, "localOverrides",
+                source.getLocalOverridesDocument(),
+                current.getLocalOverridesDocument());
+        request.setClearFields(clear.isEmpty() ? null : clear);
         return request;
+    }
+
+    private void addClearIfMissing(
+            Set<String> clear,
+            String field,
+            Object sourceValue,
+            Object currentValue) {
+        if (sourceValue == null && currentValue != null) {
+            clear.add(field);
+        }
     }
 
     private boolean hasChanges(EntityFormNode source, EntityFormNode current) {
@@ -1408,6 +2003,27 @@ public class EntityFormNodeService {
         return form;
     }
 
+    private EntityForm requireFormForUpdate(
+            String formId,
+            Integer expectedRevision) {
+        if (expectedRevision == null) {
+            throw new IllegalArgumentException("expectedRevision 不能为空");
+        }
+        EntityForm form = formMapper.selectByIdForUpdate(formId);
+        if (form == null) {
+            throw new IllegalArgumentException("表单不存在");
+        }
+        entityAccessPolicy.requireDynamicById(form.getEntityId());
+        int currentRevision =
+                form.getRevision() == null ? 1 : form.getRevision();
+        if (!Objects.equals(expectedRevision, currentRevision)) {
+            throw new RevisionConflictException(
+                    "表单草稿已被其他人修改，请刷新后重试",
+                    form);
+        }
+        return form;
+    }
+
     private EntityFormNode requireNode(String formId, String nodeId) {
         EntityFormNode node = nodeMapper.selectById(nodeId);
         if (node == null || !formId.equals(node.getFormId())
@@ -1482,5 +2098,15 @@ public class EntityFormNodeService {
 
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private enum PatchMode {
+        USER_PROPERTY,
+        USER_REORDER,
+        SYSTEM_IMPORT;
+
+        boolean userFacing() {
+            return this != SYSTEM_IMPORT;
+        }
     }
 }

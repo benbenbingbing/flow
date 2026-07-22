@@ -209,7 +209,7 @@
               保存当前节点
             </el-button>
             <el-button
-              v-if="isEditableFieldNode"
+              v-if="isFieldNode"
               type="primary"
               size="small"
               @click="showLinkageConfig = true"
@@ -246,7 +246,7 @@
                 <el-input v-model="selectedField.fieldLabel" />
               </el-form-item>
 
-              <template v-if="isContainerNode">
+              <template v-if="hasNodeSpecificConfig">
                 <el-divider>容器显示</el-divider>
                 <el-form-item v-if="selectedNodeType === 'GRID'" label="列间距">
                   <el-input-number
@@ -307,7 +307,7 @@
                   </div>
               </el-form-item>
 
-              <template v-if="isContainerNode">
+              <template v-if="hasNodeSpecificConfig">
                 <el-form-item v-if="selectedNodeType === 'COLLAPSE'" label="默认展开">
                   <el-switch
                     :model-value="selectedNodeConfig.defaultExpanded !== false"
@@ -336,39 +336,41 @@
               </template>
 
               <template v-if="isEditableFieldNode">
-                <el-form-item label="绑定字段">
-                  <el-input :model-value="selectedField.fieldName || selectedField.fieldCode" disabled />
-                  <div class="form-tip">已绑定实体字段或关系的节点不可改变数据语义；如需替换，请新建节点。</div>
-                </el-form-item>
-                <el-form-item label="组件类型">
-                  <el-select v-model="selectedField.componentType" style="width: 100%" @change="handleCompatibleComponentChange">
-                    <el-option
-                      v-for="option in availableFormFieldComponentOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="属性">
-                  <div class="checkbox-group">
-                    <el-checkbox v-model="selectedField.isRequired" :true-label="1" :false-label="0">必填</el-checkbox>
-                    <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">只读</el-checkbox>
-                    <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">隐藏</el-checkbox>
-                  </div>
-                </el-form-item>
-                <el-form-item label="默认值">
-                  <el-input v-model="selectedField.defaultValue" placeholder="默认值" />
-                </el-form-item>
-                <el-form-item label="占位提示">
-                  <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
-                </el-form-item>
+                <template v-if="isFieldNode">
+                  <el-form-item label="绑定字段">
+                    <el-input :model-value="selectedField.fieldName || selectedField.fieldCode" disabled />
+                    <div class="form-tip">已绑定实体字段或关系的节点不可改变数据语义；如需替换，请新建节点。</div>
+                  </el-form-item>
+                  <el-form-item label="组件类型">
+                    <el-select v-model="selectedField.componentType" style="width: 100%" @change="handleCompatibleComponentChange">
+                      <el-option
+                        v-for="option in availableFormFieldComponentOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="属性">
+                    <div class="checkbox-group">
+                      <el-checkbox v-model="selectedField.isRequired" :true-label="1" :false-label="0">必填</el-checkbox>
+                      <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">只读</el-checkbox>
+                      <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">隐藏</el-checkbox>
+                    </div>
+                  </el-form-item>
+                  <el-form-item label="默认值">
+                    <el-input v-model="selectedField.defaultValue" placeholder="默认值" />
+                  </el-form-item>
+                  <el-form-item label="占位提示">
+                    <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
+                  </el-form-item>
+                </template>
 
                 <el-divider>统一数据源</el-divider>
                 <el-form-item label="绑定位置">
                   <el-select v-model="selectedField.dataSourceUsage" style="width: 100%">
                     <el-option
-                      v-for="usage in formDataSourceUsages"
+                      v-for="usage in availableNodeDataSourceUsages"
                       :key="usage.value"
                       :label="usage.label"
                       :value="usage.value"
@@ -439,7 +441,7 @@
                   <div class="form-tip">目标字段映射到数据源返回路径；留空时使用原始返回值。</div>
                 </el-form-item>
 
-                <template v-if="selectedComponentSchema.length">
+                <template v-if="isFieldNode && selectedComponentSchema.length">
                   <el-divider>组件参数</el-divider>
                   <ConfigSchemaEditor
                     v-model="selectedComponentConfig"
@@ -447,62 +449,79 @@
                   />
                 </template>
 
-                <el-divider>结构化校验</el-divider>
-                <el-form-item label="最小长度">
-                  <el-input-number
-                    :model-value="selectedValidationConfig.minLength"
-                    :min="0"
-                    :max="20000"
-                    @update:model-value="updateValidationConfig('minLength', $event)"
-                  />
-                </el-form-item>
-                <el-form-item label="最大长度">
-                  <el-input-number
-                    :model-value="selectedValidationConfig.maxLength"
-                    :min="0"
-                    :max="20000"
-                    @update:model-value="updateValidationConfig('maxLength', $event)"
-                  />
-                </el-form-item>
-                <el-form-item label="最小值">
-                  <el-input-number
-                    :model-value="selectedValidationConfig.min"
-                    @update:model-value="updateValidationConfig('min', $event)"
-                  />
-                </el-form-item>
-                <el-form-item label="最大值">
-                  <el-input-number
-                    :model-value="selectedValidationConfig.max"
-                    @update:model-value="updateValidationConfig('max', $event)"
-                  />
-                </el-form-item>
-                <el-form-item label="格式">
-                  <el-select
-                    :model-value="selectedValidationConfig.format || ''"
-                    clearable
-                    style="width: 100%"
-                    @update:model-value="updateValidationConfig('format', $event)"
+                <template v-if="isFieldNode">
+                  <el-divider>结构化校验</el-divider>
+                  <el-form-item
+                    v-if="selectedValidationCapabilities.length"
+                    label="最小长度"
                   >
-                    <el-option label="邮箱" value="EMAIL" />
-                    <el-option label="手机号" value="PHONE" />
-                    <el-option label="URL" value="URL" />
-                  </el-select>
-                </el-form-item>
+                    <el-input-number
+                      :model-value="selectedValidationConfig.minLength"
+                      :min="0"
+                      :max="20000"
+                      @update:model-value="updateValidationConfig('minLength', $event)"
+                    />
+                  </el-form-item>
+                  <el-form-item
+                    v-if="selectedValidationCapabilities.length"
+                    label="最大长度"
+                  >
+                    <el-input-number
+                      :model-value="selectedValidationConfig.maxLength"
+                      :min="0"
+                      :max="20000"
+                      @update:model-value="updateValidationConfig('maxLength', $event)"
+                    />
+                  </el-form-item>
+                  <el-form-item
+                    v-if="selectedValidationCapabilities.range"
+                    label="最小值"
+                  >
+                    <el-input-number
+                      :model-value="selectedValidationConfig.min"
+                      @update:model-value="updateValidationConfig('min', $event)"
+                    />
+                  </el-form-item>
+                  <el-form-item
+                    v-if="selectedValidationCapabilities.range"
+                    label="最大值"
+                  >
+                    <el-input-number
+                      :model-value="selectedValidationConfig.max"
+                      @update:model-value="updateValidationConfig('max', $event)"
+                    />
+                  </el-form-item>
+                  <el-form-item
+                    v-if="selectedValidationCapabilities.format"
+                    label="格式"
+                  >
+                    <el-select
+                      :model-value="selectedValidationConfig.format || ''"
+                      clearable
+                      style="width: 100%"
+                      @update:model-value="updateValidationConfig('format', $event)"
+                    >
+                      <el-option label="邮箱" value="EMAIL" />
+                      <el-option label="手机号" value="PHONE" />
+                      <el-option label="URL" value="URL" />
+                    </el-select>
+                  </el-form-item>
 
-                <el-divider>运行模式权限</el-divider>
-                <div class="mode-access-grid">
-                  <div v-for="modeOption in modeOptions" :key="modeOption.value" class="mode-access-row">
-                    <span>{{ modeOption.label }}</span>
-                    <el-checkbox
-                      :model-value="getModeAccessValue(modeOption.value, 'visible')"
-                      @change="updateModeAccess(modeOption.value, 'visible', $event)"
-                    >显示</el-checkbox>
-                    <el-checkbox
-                      :model-value="getModeAccessValue(modeOption.value, 'editable')"
-                      @change="updateModeAccess(modeOption.value, 'editable', $event)"
-                    >可编辑</el-checkbox>
+                  <el-divider>运行模式权限</el-divider>
+                  <div class="mode-access-grid">
+                    <div v-for="modeOption in modeOptions" :key="modeOption.value" class="mode-access-row">
+                      <span>{{ modeOption.label }}</span>
+                      <el-checkbox
+                        :model-value="getModeAccessValue(modeOption.value, 'visible')"
+                        @change="updateModeAccess(modeOption.value, 'visible', $event)"
+                      >显示</el-checkbox>
+                      <el-checkbox
+                        :model-value="getModeAccessValue(modeOption.value, 'editable')"
+                        @change="updateModeAccess(modeOption.value, 'editable', $event)"
+                      >可编辑</el-checkbox>
+                    </div>
                   </div>
-                </div>
+                </template>
               </template>
               <el-form-item label="栅格宽度" v-if="canEditGridSpan">
                 <el-slider v-model="selectedField.gridSpan" :min="1" :max="24" show-stops />
@@ -636,7 +655,7 @@
               </template>
 
               <!-- 字段事件配置 -->
-              <template v-if="isEditableFieldNode">
+              <template v-if="isFieldNode">
                 <el-divider>事件配置</el-divider>
                 <el-form-item>
                   <el-button type="primary" text @click="openEventConfig">
@@ -877,6 +896,18 @@ import {
   isFormNodeContainer,
   normalizeFormNodeType
 } from '@/shared/form-node-hierarchy'
+import {
+  buildFormNodePayload,
+  extractFormNodeComponentConfig,
+  formNodeSupports,
+  getFormFieldValidationCapabilities,
+  getFormNodeDataSourceUsages,
+  getFormNodePropertySchema,
+  normalizeFormFieldValidation
+} from '@/shared/form-node-property-schema'
+import {
+  getDefaultFormFieldComponentType as getDefaultComponentType
+} from '@/shared/form-field-component-policy'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
 import { entityApi } from '@/api/entity'
@@ -1078,8 +1109,18 @@ const formDataSourceBindingCount = computed(() =>
 
 const availableNodeExtensionOptions = computed(() => {
   const nodeType = String(selectedField.value?.nodeType || '').toUpperCase()
+  const bindingType = String(
+    selectedField.value?.bindingType
+      || (selectedField.value?.relationCode
+        ? 'RELATION'
+        : (selectedField.value?.fieldId ? 'ENTITY_FIELD' : 'NONE'))
+  ).toUpperCase()
   return nodeExtensionOptions.value.filter(option =>
-    !option.nodeTypes?.length || option.nodeTypes.includes(nodeType)
+    (!option.nodeTypes?.length || option.nodeTypes.includes(nodeType))
+      && (!option.supportedBindings?.length
+        || option.supportedBindings
+          .map(value => String(value).toUpperCase())
+          .includes(bindingType))
   )
 })
 
@@ -1150,12 +1191,16 @@ const selectedComponentConfig = computed({
 const selectedNodeType = computed(() =>
   String(selectedField.value?.nodeType || legacyNodeType(selectedField.value) || 'FIELD').toUpperCase()
 )
-const isContainerNode = computed(() =>
-  ['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(selectedNodeType.value)
+const selectedNodePropertySchema = computed(() =>
+  getFormNodePropertySchema(selectedNodeType.value)
+)
+const hasNodeSpecificConfig = computed(() =>
+  selectedNodePropertySchema.value.configKeys.length > 0
 )
 const isEditableFieldNode = computed(() =>
   ['FIELD', 'SUB_FORM', 'REPEATER'].includes(selectedNodeType.value)
 )
+const isFieldNode = computed(() => selectedNodeType.value === 'FIELD')
 const isTabNode = computed(() => selectedNodeType.value === 'TAB')
 const canEditNodeLabel = computed(() =>
   ['SECTION', 'TAB', 'COLLAPSE', 'FIELD', 'SUB_FORM', 'REPEATER'].includes(
@@ -1163,11 +1208,14 @@ const canEditNodeLabel = computed(() =>
   )
 )
 const canEditGridSpan = computed(() =>
-  isEditableFieldNode.value
-    && selectedNodeType.value !== 'TEXT'
+  selectedNodePropertySchema.value.gridSpan
+    && (
+      form.value.layoutType === 'grid'
+      || nodeTypeOf(nodeById(selectedField.value?.parentId)) === 'GRID'
+    )
 )
 const canConfigureNodeExtension = computed(() =>
-  isEditableFieldNode.value
+  selectedNodePropertySchema.value.nodeExtension
 )
 const selectedNodeTypeLabel = computed(() =>
   nodeTypeOptions.find(option => option.value === selectedNodeType.value)?.label
@@ -1185,6 +1233,10 @@ const selectedNodeLockMessage = computed(() => {
 const selectedNodeConfig = computed(() =>
   safeParseConfig(selectedField.value?.componentProps)
 )
+const availableNodeDataSourceUsages = computed(() => {
+  const allowed = new Set(getFormNodeDataSourceUsages(selectedNodeType.value))
+  return formDataSourceUsages.filter(usage => allowed.has(usage.value))
+})
 
 const availableParentNodes = computed(() =>
   formFields.value
@@ -1223,6 +1275,9 @@ const selectedParentHelp = computed(() => {
 
 const selectedValidationConfig = computed(() =>
   safeParseConfig(selectedField.value?.validationRules)
+)
+const selectedValidationCapabilities = computed(() =>
+  getFormFieldValidationCapabilities(selectedField.value?.fieldType)
 )
 
 // 当前选中字段的事件配置值
@@ -1901,15 +1956,24 @@ function nodeToField(node, legacyField) {
   const props = parseDocument(node.propsDocument)
   const rules = parseDocument(node.rulesDocument)
   const bindings = parseDocument(node.dataSourceBindingsDocument)
-  const firstBinding = Object.entries(bindings)[0] || []
+  const nodeType = normalizeFormNodeType(node.nodeType)
+  const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType)
+  const firstBinding = Object.entries(bindings)
+    .find(([usage]) =>
+      allowedDataSourceUsages.includes(String(usage).toUpperCase())
+    ) || []
+  const componentConfig = extractFormNodeComponentConfig(nodeType, props)
+  const rulesSupported = formNodeSupports(nodeType, 'rules')
   const field = {
     ...(legacyField || {}),
     id: node.id,
     nodeId: node.id,
     formId: node.formId,
     parentId: node.parentId || '',
-    nodeType: node.nodeType,
+    nodeType,
     nodeKey: node.nodeKey,
+    bindingType: node.bindingType || 'NONE',
+    bindingRef: node.bindingRef || '',
     revision: node.revision,
     orderKey: node.orderKey,
     templateId: node.templateId,
@@ -1948,13 +2012,23 @@ function nodeToField(node, legacyField) {
       ?? props.publishedFormReleaseVersion
       ?? legacyField?.childFormReleaseVersion
       ?? null,
-    isRequired: props.required ? 1 : (legacyField?.isRequired || 0),
-    isReadonly: props.readonly ? 1 : (legacyField?.isReadonly || 0),
-    isHidden: props.hidden ? 1 : (legacyField?.isHidden || 0),
-    componentProps: stringifyConfig(props.componentProps || props),
-    validationRules: stringifyConfig(rules.validation || rules),
-    extensionConfig: stringifyConfig(rules.extension || {}),
-    dataSourceUsage: firstBinding[0] || 'FIELD_OPTIONS',
+    isRequired: Object.hasOwn(props, 'required')
+      ? (props.required === true ? 1 : 0)
+      : (legacyField?.isRequired || 0),
+    isReadonly: Object.hasOwn(props, 'readonly')
+      ? (props.readonly === true ? 1 : 0)
+      : (legacyField?.isReadonly || 0),
+    isHidden: Object.hasOwn(props, 'hidden')
+      ? (props.hidden === true ? 1 : 0)
+      : (legacyField?.isHidden || 0),
+    componentProps: stringifyConfig(componentConfig),
+    validationRules: rulesSupported
+      ? stringifyConfig(rules.validation || rules)
+      : '',
+    extensionConfig: rulesSupported
+      ? stringifyConfig(rules.extension || {})
+      : '',
+    dataSourceUsage: firstBinding[0] || allowedDataSourceUsages[0] || '',
     dataSourceId: firstBinding[1]?.sourceId || firstBinding[1] || '',
     dataSourceInputMappingText: stringifyConfig(
       firstBinding[1]?.inputMapping || {}
@@ -1967,86 +2041,17 @@ function nodeToField(node, legacyField) {
   return field
 }
 
-function fieldToNodePayload(field) {
-  serializeFieldConfig(field)
-  const componentProps = parseDocument(field.componentProps)
-  const subFormNode = isSubFormField(field)
-  const bindingType = field.relationCode
-    ? 'RELATION'
-    : (field.fieldId ? 'ENTITY_FIELD' : 'NONE')
-  const childFormId = field.childFormId || field.refFormId || ''
-  const childFormReleaseId = field.childFormReleaseId || ''
-  const childFormReleaseVersion = field.childFormReleaseVersion == null
-    ? null
-    : Number(field.childFormReleaseVersion)
-  const childFormBindingProps = subFormNode && childFormId
-    ? {
-        childFormId,
-        refFormId: childFormId,
-        publishedFormId: childFormId,
-        childFormReleaseId,
-        refFormReleaseId: childFormReleaseId,
-        publishedFormReleaseId: childFormReleaseId,
-        childFormReleaseVersion,
-        refFormReleaseVersion: childFormReleaseVersion,
-        publishedFormReleaseVersion: childFormReleaseVersion
-      }
-    : {}
-  const dataSourceBindings = {
-    ...(field.dataSourceBindings || {})
-  }
-  const usage = field.dataSourceUsage || 'FIELD_OPTIONS'
-  if (field.dataSourceId) {
-    dataSourceBindings[usage] = {
-      sourceId: field.dataSourceId,
-      inputMapping: parseDocument(field.dataSourceInputMappingText),
-      outputMapping: parseDocument(field.dataSourceOutputMappingText)
+function fieldToNodePayload(field, options = {}) {
+  return buildFormNodePayload(
+    {
+      ...field,
+      nodeType: field.nodeType || legacyNodeType(field)
+    },
+    {
+      componentProps: buildSerializedFieldComponentProps(field),
+      forPatch: options.forPatch === true
     }
-  } else {
-    delete dataSourceBindings[usage]
-  }
-  return {
-    id: field.id,
-    parentId: field.parentId || null,
-    nodeKey: field.nodeKey || field.fieldCode || `node_${field.id}`,
-    nodeType: field.nodeType || legacyNodeType(field),
-    bindingType,
-    bindingRef: bindingType === 'NONE'
-      ? null
-      : (field.relationCode || field.fieldCode || null),
-    componentName: field.componentName || null,
-    componentVersion: field.componentVersion || null,
-    snapshotVersion: field.snapshotVersion || null,
-    childFormId: childFormId || null,
-    childFormReleaseId: childFormReleaseId || null,
-    childFormReleaseVersion,
-    props: {
-      fieldId: field.fieldId,
-      fieldCode: field.fieldCode,
-      fieldName: field.fieldName,
-      label: field.fieldLabel,
-      fieldType: field.fieldType,
-      componentType: field.componentType,
-      placeholder: field.placeholder,
-      defaultValue: field.defaultValue,
-      gridSpan: field.gridSpan,
-      required: field.isRequired === 1,
-      readonly: field.isReadonly === 1,
-      hidden: field.isHidden === 1,
-      componentProps,
-      ...childFormBindingProps
-    },
-    rules: {
-      validation: parseDocument(field.validationRules),
-      extension: parseDocument(field.extensionConfig)
-    },
-    dataSourceBindings,
-    legacyProps: field.legacyProps || {},
-    orderKey: field.orderKey,
-    templateId: field.templateId,
-    templateVersion: field.templateVersion,
-    localOverrides: field.localOverrides || {}
-  }
+  )
 }
 
 function nodeFingerprint(field) {
@@ -2144,11 +2149,13 @@ function restoreFieldConfig(field) {
   }
 }
 
-// 将子表单和事件配置序列化到 componentProps
-function serializeFieldConfig(field) {
+// 将子表单和事件配置纯函数序列化到 componentProps
+function buildSerializedFieldComponentProps(field) {
   try {
     const compProps = field.componentProps
-      ? (typeof field.componentProps === 'string' ? JSON.parse(field.componentProps) : field.componentProps)
+      ? (typeof field.componentProps === 'string'
+        ? JSON.parse(field.componentProps)
+        : JSON.parse(JSON.stringify(field.componentProps)))
       : {}
 
     // 序列化子表单配置
@@ -2186,7 +2193,7 @@ function serializeFieldConfig(field) {
         refEntityId: field.refEntityId || '',
         entityCode: field.refEntityCode || '',
         listKey: field.refListKey || '',
-        apiUrl: field.apiUrl || ''
+        apiUrl: ''
       }
     }
 
@@ -2214,9 +2221,10 @@ function serializeFieldConfig(field) {
       } catch (e) {}
     }
 
-    field.componentProps = JSON.stringify(compProps)
+    return compProps
   } catch (e) {
     console.error('序列化字段配置失败:', e)
+    return parseDocument(field.componentProps)
   }
 }
 
@@ -2303,6 +2311,9 @@ function addField(entityField) {
     orderKey: placement.orderKey,
     formId: formId,
     fieldId: entityField.id,
+    bindingType: entityField.relationCode ? 'RELATION' : 'ENTITY_FIELD',
+    bindingRef: entityField.relationCode || entityField.fieldCode,
+    relationCode: entityField.relationCode || '',
     fieldCode: entityField.fieldCode,
     fieldName: entityField.fieldName,
     fieldLabel: entityField.fieldName,
@@ -2367,30 +2378,6 @@ function addField(entityField) {
   ElMessage.success('字段已添加')
 }
 
-// 获取默认组件类型
-function getDefaultComponentType(fieldType) {
-  const typeMap = {
-    'STRING': 'input',
-    'TEXT': 'textarea',
-    'INTEGER': 'number',
-    'LONG': 'number',
-    'DOUBLE': 'number',
-    'DECIMAL': 'number',
-    'DATE': 'date',
-    'DATETIME': 'datetime',
-    'BOOLEAN': 'switch',
-    'SUB_FORM': 'sub_form',
-    'SUB_FORM_LIST': 'sub_form',
-    'REFERENCE': 'reference',
-    'MULTI_REFERENCE': 'multi_reference',
-    'SELECT': 'select',
-    'MULTI_SELECT': 'select_multiple',
-    'RADIO': 'radio',
-    'CHECKBOX': 'checkbox'
-  }
-  return typeMap[fieldType] || 'input'
-}
-
 // 判断是否为节字段
 function isSectionField(field) {
   return (field?.fieldType || '').toUpperCase() === 'SECTION' ||
@@ -2435,8 +2422,12 @@ function addContainerNode(nodeType) {
     fieldCode: stableId,
     fieldName: typeLabels[nodeType] || '新节点',
     fieldLabel: typeLabels[nodeType] || '新节点',
-    fieldType: nodeType,
-    componentType: nodeType.toLowerCase(),
+    fieldType: nodeType === 'REPEATER' ? 'SUB_FORM_LIST' : nodeType,
+    componentType: nodeType === 'REPEATER'
+      ? 'sub_form_list'
+      : nodeType.toLowerCase(),
+    bindingType: 'NONE',
+    bindingRef: null,
     isRequired: 0,
     isReadonly: 1,
     isHidden: 0,
@@ -2673,10 +2664,15 @@ function parseComponentProps(propsStr) {
 
 function updateValidationConfig(key, value) {
   if (!selectedField.value) return
-  selectedField.value.validationRules = stringifyConfig({
-    ...selectedValidationConfig.value,
-    [key]: value
-  })
+  selectedField.value.validationRules = stringifyConfig(
+    normalizeFormFieldValidation(
+      selectedField.value.fieldType,
+      {
+        ...selectedValidationConfig.value,
+        [key]: value
+      }
+    )
+  )
 }
 
 function updateSelectedNodeConfig(key, value) {
@@ -2923,7 +2919,9 @@ async function saveSelectedNode() {
   try {
     const currentFormId = await ensureFormMetadata()
     await ensureChildFormReleaseBinding(selectedField.value)
-    const payload = fieldToNodePayload(selectedField.value)
+    const payload = fieldToNodePayload(selectedField.value, {
+      forPatch: selectedField.value.revision > 0
+    })
     let saved
     if (selectedField.value.revision > 0) {
       saved = await patchFormNode(
@@ -3068,7 +3066,9 @@ async function handleSave() {
 
     for (const field of formFields.value) {
       await ensureChildFormReleaseBinding(field)
-      const payload = fieldToNodePayload(field)
+      const payload = fieldToNodePayload(field, {
+        forPatch: Boolean(field.revision)
+      })
       let saved = null
       if (!field.revision) {
         saved = await createFormNode(currentFormId, payload)

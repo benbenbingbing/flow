@@ -112,6 +112,15 @@ const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByE
 ;['getFormFieldComponentOptions', 'selectedComponentConfig', 'validationRules', 'extensionConfig', 'modeOptions'].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })
+assert.ok(
+  formDesigner.includes('getDefaultFormFieldComponentType as getDefaultComponentType'),
+  '新增实体字段必须使用共享的兼容默认组件策略'
+)
+const formFieldRegistrySource = readFileSync(path.join(root, 'src/components/form-fields/index.js'), 'utf8')
+assert.ok(
+  formFieldRegistrySource.includes('getBuiltInFormFieldSupportedTypes'),
+  '字段组件注册必须复用共享 supportedFieldTypes 策略'
+)
 ;[
   'childFormReleaseId',
   'childFormReleaseVersion',
@@ -155,6 +164,11 @@ assert.match(
   '设计画布应按容器节点递归渲染，而非把所有节点作为同类卡片'
 )
 assert.match(
+  formNodeDesignItem,
+  /tab-position="nodeConfig\.tabPosition \|\| 'top'"/,
+  '设计画布的 Tab 集合应读取 tabPosition，与预览和运行时保持一致'
+)
+assert.match(
   formPreviewLinkage,
   /hasNodeTree[\s\S]{0,1400}FormNodeRenderer|FormNodeRenderer[\s\S]{0,1400}hasNodeTree/,
   '表单预览应优先使用节点树运行时渲染器'
@@ -172,6 +186,14 @@ assert.match(
   /(?:nodePropertySchema|propertySchema|editableFields|nodeTypeSchema)|(?:(?:isContainerNode|selectedNodeType)[\s\S]{0,2400}(?:canEditNodeLabel|canConfigureNodeExtension|selectedNodeLockMessage))/,
   '表单设计器应按节点类型 Schema 控制可编辑属性'
 )
+;[
+  'getFormFieldValidationCapabilities',
+  'selectedValidationCapabilities.length',
+  'selectedValidationCapabilities.range',
+  'selectedValidationCapabilities.format'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `字段校验属性缺少类型兼容控制: ${marker}`)
+})
 assert.match(
   formDesigner,
   /(?:bindingType|bindingRef)[\s\S]{0,1200}(?:readonly|disabled|locked)|(?:readonly|disabled|locked)[\s\S]{0,1200}(?:bindingType|bindingRef)/i,
