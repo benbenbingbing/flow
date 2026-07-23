@@ -26,10 +26,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class FileController {
 
+    /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
 
     /**
      * 上传文件
+     *
+     * @param file 上传的文件
+     * @return 文件信息（url、filename 等）或错误信息
      */
     @PostMapping("/upload")
     public Result<Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -48,6 +52,11 @@ public class FileController {
 
     /**
      * 上传图片（支持压缩）
+     *
+     * @param file     上传的图片文件
+     * @param maxWidth  最大宽度，默认 1920
+     * @param quality   压缩质量，默认 0.8
+     * @return 文件信息或错误信息
      */
     @PostMapping("/upload-image")
     public Result<Map<String, String>> uploadImage(
@@ -65,6 +74,9 @@ public class FileController {
 
     /**
      * 删除文件
+     *
+     * @param fileUrl 文件访问URL
+     * @return 删除成功返回成功结果，否则返回错误信息
      */
     @PostMapping
     public Result<Void> deleteFile(@RequestParam("url") String fileUrl) {
@@ -85,6 +97,9 @@ public class FileController {
     /**
      * 预览/下载文件
      * 本地存储模式下直接读取文件流
+     *
+     * @param fileUrl  文件访问URL
+     * @param response HTTP 响应，用于写出文件流
      */
     @GetMapping("/preview")
     public void previewFile(@RequestParam("url") String fileUrl, HttpServletResponse response) {
@@ -112,6 +127,7 @@ public class FileController {
                     + URLEncoder.encode(filename, StandardCharsets.UTF_8));
             response.setContentLength((int) file.length());
 
+            // 以缓冲流方式写出文件内容
             try (FileInputStream fis = new FileInputStream(file)) {
                 byte[] buffer = new byte[4096];
                 int bytesRead;
@@ -125,6 +141,12 @@ public class FileController {
         }
     }
 
+    /**
+     * 从访问 URL 中提取安全的文件名，过滤路径穿越字符。
+     *
+     * @param fileUrl 文件访问URL
+     * @return 安全的文件名；包含 ..、/、\ 或为空时返回 null
+     */
     private String extractSafeFilename(String fileUrl) {
         if (fileUrl == null || fileUrl.isEmpty()) {
             return null;
@@ -136,6 +158,13 @@ public class FileController {
         return filename;
     }
 
+    /**
+     * 判断文件是否位于指定目录内（规范化路径后比较）。
+     *
+     * @param file      待检查文件
+     * @param directory 目录路径
+     * @return 文件在目录内返回 true
+     */
     private boolean isFileInsideDirectory(File file, String directory) {
         try {
             File canonicalFile = file.getCanonicalFile();

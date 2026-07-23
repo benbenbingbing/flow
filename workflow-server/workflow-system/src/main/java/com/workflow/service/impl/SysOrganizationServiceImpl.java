@@ -24,9 +24,17 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysOrganizationServiceImpl implements SysOrganizationService {
     
+    /** 组织部门 Mapper */
     private final SysOrganizationMapper orgMapper;
+    /** 用户 Mapper，用于查询用户所属组织/部门 */
     private final SysUserMapper userMapper;
     
+    /**
+     * 查询组织部门树
+     *
+     * @param type 组织类型（org-组织，dept-部门），为空则查询所有启用项
+     * @return 树形结构的组织部门列表
+     */
     @Override
     public List<SysOrganization> getOrgTree(String type) {
         List<SysOrganization> allList;
@@ -38,11 +46,22 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         return buildTree(allList);
     }
     
+    /**
+     * 查询所有启用中的组织部门（平铺列表）
+     *
+     * @return 启用中的组织部门平铺列表
+     */
     @Override
     public List<SysOrganization> getEnabledList() {
         return orgMapper.selectEnabledList();
     }
     
+    /**
+     * 根据ID查询
+     *
+     * @param id 组织部门ID
+     * @return 组织部门对象，不存在返回 null
+     */
     @Override
     public SysOrganization getById(String id) {
         SysOrganization org = orgMapper.selectById(id);
@@ -58,6 +77,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         return org;
     }
     
+    /**
+     * 保存组织部门（新增或更新）
+     *
+     * @param org 组织部门对象
+     * @return 保存后的组织部门对象
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SysOrganization saveOrg(SysOrganization org) {
@@ -97,6 +122,11 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         return org;
     }
     
+    /**
+     * 删除组织部门
+     *
+     * @param id 组织部门ID
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteOrg(String id) {
@@ -119,6 +149,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         log.info("删除组织部门：{} ({})", org.getOrgName(), org.getOrgCode());
     }
     
+    /**
+     * 更新状态
+     *
+     * @param id     组织部门ID
+     * @param status 状态值：0-启用 1-禁用
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(String id, String status) {
@@ -129,6 +165,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         orgMapper.updateById(org);
     }
     
+    /**
+     * 获取父级路径名称（如：集团/公司/部门）
+     *
+     * @param id 组织部门ID
+     * @return 从顶级到当前节点的完整路径名称，不存在返回空串
+     */
     @Override
     public String getFullPathName(String id) {
         SysOrganization org = orgMapper.selectById(id);
@@ -151,6 +193,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         return sb.toString();
     }
     
+    /**
+     * 根据用户ID查询其组织
+     *
+     * @param userId 用户ID
+     * @return 用户所属组织对象，未关联则返回 null
+     */
     @Override
     public SysOrganization getUserOrg(String userId) {
         SysUser user = userMapper.selectById(userId);
@@ -160,6 +208,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         return orgMapper.selectById(user.getOrgId());
     }
     
+    /**
+     * 根据用户ID查询其部门
+     *
+     * @param userId 用户ID
+     * @return 用户所属部门对象，未关联则返回 null
+     */
     @Override
     public SysOrganization getUserDept(String userId) {
         SysUser user = userMapper.selectById(userId);
@@ -171,6 +225,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     
     /**
      * 计算层级和路径
+     *
+     * @param org 待计算的组织部门对象（会被设置 level 和 path）
      */
     private void calcLevelAndPath(SysOrganization org) {
         if ("0".equals(org.getParentId())) {
@@ -189,6 +245,9 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     
     /**
      * 更新子节点path
+     *
+     * @param oldPath 原路径
+     * @param newPath 新路径
      */
     private void updateChildrenPath(String oldPath, String newPath) {
         if (oldPath.equals(newPath)) {
@@ -200,6 +259,9 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     
     /**
      * 构建树形结构
+     *
+     * @param list 平铺的组织部门列表
+     * @return 树形结构的组织部门列表
      */
     private List<SysOrganization> buildTree(List<SysOrganization> list) {
         List<SysOrganization> rootList = list.stream()
@@ -215,6 +277,9 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     
     /**
      * 递归构建子节点
+     *
+     * @param parent  父节点
+     * @param allList 全部节点平铺列表
      */
     private void buildChildren(SysOrganization parent, List<SysOrganization> allList) {
         List<SysOrganization> children = allList.stream()

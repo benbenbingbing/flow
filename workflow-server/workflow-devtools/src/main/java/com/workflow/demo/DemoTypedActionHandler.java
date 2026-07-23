@@ -14,11 +14,22 @@ import org.springframework.stereotype.Component;
 @Component("demoTypedActionHandler")
 public class DemoTypedActionHandler implements TypedFlowActionHandler<DemoActionParams> {
 
+    /**
+     * 返回类型化参数的类型，供平台将 paramsJson 反序列化为该类型。
+     *
+     * @return 参数类型
+     */
     @Override
     public Class<DemoActionParams> getParamType() {
         return DemoActionParams.class;
     }
 
+    /**
+     * 执行流程动作：打印动作上下文与类型化参数的详细信息，用于联调演示。
+     *
+     * @param ctx    流程动作上下文
+     * @param params 类型化业务参数
+     */
     @Override
     public void execute(FlowActionContext ctx, DemoActionParams params) {
         log.info("========== [DemoTypedActionHandler] 流程动作执行开始 ==========");

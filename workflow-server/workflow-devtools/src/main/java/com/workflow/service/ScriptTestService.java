@@ -114,32 +114,67 @@ public class ScriptTestService {
     
     /**
      * 脚本测试执行上下文。
+     * 封装脚本执行期间可读写的变量集合，作为脚本与平台之间的变量桥梁。
      */
     public static class ScriptExecutionContext {
+        /** 脚本执行期间的变量集合 */
         private final Map<String, Object> variables = new HashMap<>();
-        
+
+        /**
+         * 根据传入的初始变量构造执行上下文。
+         *
+         * @param initialVars 初始变量集合，可为 null
+         */
         public ScriptExecutionContext(Map<String, Object> initialVars) {
             if (initialVars != null) {
                 variables.putAll(initialVars);
             }
         }
-        
+
+        /**
+         * 设置变量。
+         *
+         * @param name  变量名
+         * @param value 变量值
+         */
         public void setVariable(String name, Object value) {
             variables.put(name, value);
         }
-        
+
+        /**
+         * 获取变量值。
+         *
+         * @param name 变量名
+         * @return 变量值，不存在时返回 null
+         */
         public Object getVariable(String name) {
             return variables.get(name);
         }
-        
+
+        /**
+         * 判断变量是否存在。
+         *
+         * @param name 变量名
+         * @return 存在返回 true，否则返回 false
+         */
         public boolean hasVariable(String name) {
             return variables.containsKey(name);
         }
-        
+
+        /**
+         * 移除指定变量。
+         *
+         * @param name 变量名
+         */
         public void removeVariable(String name) {
             variables.remove(name);
         }
-        
+
+        /**
+         * 获取所有变量的副本。
+         *
+         * @return 变量集合的拷贝，对返回值的修改不影响内部状态
+         */
         public Map<String, Object> getVariables() {
             return new HashMap<>(variables);
         }

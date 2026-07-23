@@ -77,14 +77,21 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 配置迁移资产服务。
+ *
+ * <p>实现 {@link MigrationAssetRecorder}，负责在实体/流程发布时记录可迁移快照资产、
+ * 构建实体与流程的可移植快照(含依赖收集、敏感信息脱敏、数据源引用重写)、
+ * 提供资产查询/标记/历史回填能力，是配置迁移导出侧的核心服务。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ConfigMigrationAssetService implements MigrationAssetRecorder {
 
-    public static final String ENTITY = "ENTITY";
-    public static final String PROCESS = "PROCESS";
-    public static final String COMPLETE = "COMPLETE";
-    public static final String PARTIAL = "PARTIAL";
+    public static final String ENTITY = "ENTITY";       // 资产类型：实体
+    public static final String PROCESS = "PROCESS";     // 资产类型：流程
+    public static final String COMPLETE = "COMPLETE";   // 快照完整度：完整
+    public static final String PARTIAL = "PARTIAL";     // 快照完整度：部分(历史回填)
 
     private static final int SNAPSHOT_SCHEMA_VERSION = 1;
     private static final DateTimeFormatter TAG_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
@@ -129,6 +136,12 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
     private final ObjectMapper objectMapper;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
 
+    /**
+     * 按条件查询迁移资产列表(按发布时间、创建时间倒序)。
+     *
+     * @param query 过滤条件(字段均可选)
+     * @return 资产列表
+     */
     @Transactional(readOnly = true)
     public List<ConfigMigrationAsset> query(ConfigMigrationAssetQuery query) {
         LambdaQueryWrapper<ConfigMigrationAsset> wrapper = new LambdaQueryWrapper<ConfigMigrationAsset>()
@@ -144,6 +157,13 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return assetMapper.selectList(wrapper);
     }
 
+    /**
+     * 根据ID获取迁移资产，不存在抛异常。
+     *
+     * @param id 资产ID
+     * @return 迁移资产
+     * @throws IllegalArgumentException 资产不存在
+     */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset getRequired(String id) {
         ConfigMigrationAsset asset = assetMapper.selectById(id);
@@ -153,6 +173,13 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return asset;
     }
 
+    /**
+     * 查询指定类型与业务编码的最新版本迁移资产。
+     *
+     * @param assetType   资产类型
+     * @param businessKey 业务编码
+     * @return 最新资产，不存在返回 null
+     */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset findLatest(String assetType, String businessKey) {
         return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
@@ -162,6 +189,13 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
                 .last("LIMIT 1"));
     }
 
+    /**
+     * 更新迁移资产的待导出标记与迁移标签(为空字段不修改)。
+     *
+     * @param id      资产ID
+     * @param request 标记请求
+     * @return 更新后的资产
+     */
     @Transactional
     public ConfigMigrationAsset updateMark(String id, ConfigMigrationMarkRequest request) {
         ConfigMigrationAsset asset = getRequired(id);
@@ -176,6 +210,15 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return asset;
     }
 
+    /**
+     * 记录实体发布的迁移资产(系统实体不可迁移)。
+     *
+     * @param entity   实体定义
+     * @param history  发布历史
+     * @param request  发布请求(含迁移标签、版本描述等)
+     * @return 新建的迁移资产
+     * @throws IllegalArgumentException 实体为系统实体
+     */
     @Transactional
     public ConfigMigrationAsset recordEntity(EntityDefinition entity,
                                              EntityPublishHistory history,
@@ -200,6 +243,16 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
                 firstNonBlank(history.getPublishedByName(), history.getPublishedBy()));
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>按实体ID与发布历史ID加载上下文后委托 {@link #recordEntity}。</p>
+     *
+     * @param entityId         实体ID
+     * @param publishHistoryId 发布历史ID
+     * @param request          发布请求
+     * @throws IllegalStateException 实体或发布历史不存在
+     */
     @Override
     @Transactional
     public void recordEntity(String entityId,
@@ -213,6 +266,14 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         recordEntity(entity, history, request);
     }
 
+    /**
+     * 记录流程发布的迁移资产。
+     *
+     * @param config  流程定义配置
+     * @param history 流程版本历史
+     * @param request 发布请求
+     * @return 新建的迁移资产
+     */
     @Transactional
     public ConfigMigrationAsset recordProcess(ProcessDefinitionConfig config,
                                               ProcessVersionHistory history,
@@ -234,6 +295,16 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
                 history.getPublishedBy());
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>按流程ID与版本历史ID加载上下文后委托 {@link #recordProcess}。</p>
+     *
+     * @param processId        流程ID
+     * @param versionHistoryId 版本历史ID
+     * @param request          发布请求
+     * @throws IllegalStateException 流程或版本历史不存在
+     */
     @Override
     @Transactional
     public void recordProcess(String processId,
@@ -247,6 +318,13 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         recordProcess(process, history, request);
     }
 
+    /**
+     * 为缺少迁移资产的历史实体/流程发布版本补建 PARTIAL 快照资产。
+     *
+     * <p>历史版本通常缺少表单、列表、权限等完整快照，仅记录基本字段并提示重新发布。</p>
+     *
+     * @return 本次回填新建的资产数量
+     */
     @Transactional
     public int backfillLegacyAssets() {
         int created = 0;
@@ -292,6 +370,10 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return created;
     }
 
+    /**
+     * 构建实体的可迁移快照：定义、字段、关系、状态、编码规则、表单(优先取已发布版本)、
+     * 扩展清单、列表、数据源(重写为编码引用)、数据范围策略/绑定、菜单，并收集依赖清单。
+     */
     private Map<String, Object> buildEntitySnapshot(EntityDefinition entity) {
         Map<String, Object> snapshot = baseSnapshot(ENTITY, entity.getEntityCode(), entity.getEntityName());
         Map<String, Object> definition = new LinkedHashMap<>();
@@ -636,6 +718,12 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return value;
     }
 
+    /**
+     * 判断指定名称是否为数据源ID引用键(sourceId/dataSourceId/queryDataSourceId)。
+     *
+     * @param name 字段名
+     * @return 是否为数据源ID键
+     */
     static boolean isDataSourceIdKey(String name) {
         return Set.of(
                 "sourceId",
@@ -643,6 +731,12 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
                 "queryDataSourceId").contains(name);
     }
 
+    /**
+     * 将数据源ID键映射为导出用的数据源编码键。
+     *
+     * @param idKey 数据源ID键
+     * @return 对应的数据源编码键
+     */
     static String dataSourceCodeKey(String idKey) {
         return switch (idKey) {
             case "dataSourceId" -> "dataSourceCode";
@@ -661,6 +755,16 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return result;
     }
 
+    /**
+     * 从已发布快照中选取指定分区，缺失该分区时回退使用 fallback。
+     *
+     * <p>注意：若发布快照显式包含该分区但为空对象，则返回空 Map 而不回退。</p>
+     *
+     * @param releaseSnapshot 已发布快照
+     * @param section         分区名
+     * @param fallback        缺失分区时的回退值
+     * @return 选取结果
+     */
     static Map<String, Object> selectReleasedSection(
             Map<String, Object> releaseSnapshot,
             String section,
@@ -692,6 +796,10 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return Integer.parseInt(String.valueOf(value));
     }
 
+    /**
+     * 构建流程的可迁移快照：定义、BPMN(表单/办理人引用替换为可移植 URI)、节点、
+     * 节点表单、节点审批、流程动作、状态映射，并收集办理人/表单/实体/处理器/子流程依赖。
+     */
     private Map<String, Object> buildProcessSnapshot(ProcessDefinitionConfig config, ProcessVersionHistory history) {
         Map<String, Object> snapshot = baseSnapshot(PROCESS, config.getProcessKey(), config.getProcessName());
         Map<String, Object> definition = new LinkedHashMap<>();
@@ -783,6 +891,12 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return snapshot;
     }
 
+    /**
+     * 持久化一条迁移资产：若同一历史ID已存在则直接复用，否则计算内容哈希、
+     * 写入快照与依赖 JSON、清空依赖表后重新写入依赖记录。
+     *
+     * @return 新建或复用的迁移资产
+     */
     private ConfigMigrationAsset saveAsset(String assetType,
                                            String businessKey,
                                            String assetName,
@@ -1024,6 +1138,11 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
         return request == null ? null : request.getMigrationTag();
     }
 
+    /**
+     * 生成默认迁移标签(REL-yyyyMMdd-HHmmss)。
+     *
+     * @return 迁移标签
+     */
     public String generateMigrationTag() {
         return "REL-" + LocalDateTime.now().format(TAG_FORMAT);
     }

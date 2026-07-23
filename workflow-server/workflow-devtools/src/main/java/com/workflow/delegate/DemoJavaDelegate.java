@@ -13,6 +13,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class DemoJavaDelegate implements JavaDelegate {
 
+    /**
+     * 执行服务任务：读取 inputVar 变量并拼接前缀生成 result，结果写回流程变量。
+     *
+     * @param execution 流程执行上下文
+     */
     @Override
     public void execute(DelegateExecution execution) {
         log.info("[DemoJavaDelegate] 执行服务任务，流程实例: {}", execution.getProcessInstanceId());

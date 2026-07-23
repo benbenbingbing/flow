@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
 @Component("demoServiceTask")
 public class DemoSpringDelegate implements JavaDelegate {
 
+    /**
+     * 执行服务任务：读取 amount 变量并按固定折扣计算总额，结果写回流程变量。
+     *
+     * @param execution 流程执行上下文
+     */
     @Override
     public void execute(DelegateExecution execution) {
         log.info("[DemoSpringDelegate] 执行服务任务，流程实例: {}", execution.getProcessInstanceId());

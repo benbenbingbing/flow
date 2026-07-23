@@ -10,8 +10,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * {@link ConfigMigrationImportApplyService#resolveNodeIds} 单元测试。
+ *
+ * <p>验证表单节点导入时按 nodeKey 复用已有ID、拒绝重复 nodeKey、空入参产出空保留集，
+ * 以及重复导入保持稳定节点ID的行为。</p>
+ */
 class ConfigMigrationFormImportSupportTest {
 
+    /** 入参节点的 nodeKey 与已有节点匹配时，应复用已有节点ID，其余生成新ID。 */
     @Test
     void reusesExistingNodeIdByNodeKey() {
         EntityFormNode existing = new EntityFormNode();
@@ -32,6 +39,7 @@ class ConfigMigrationFormImportSupportTest {
         assertEquals(1, generated.get());
     }
 
+    /** 入参节点中存在重复 nodeKey 时应抛出 IllegalStateException。 */
     @Test
     void rejectsDuplicateIncomingNodeKeys() {
         assertThrows(
@@ -44,6 +52,7 @@ class ConfigMigrationFormImportSupportTest {
                         () -> "new-id"));
     }
 
+    /** 入参节点为空时，应产出空保留集(不保留任何已有节点)。 */
     @Test
     void emptyIncomingNodesProduceEmptyRetainedSet() {
         EntityFormNode existing = new EntityFormNode();
@@ -59,6 +68,7 @@ class ConfigMigrationFormImportSupportTest {
         assertEquals(Map.of(), result);
     }
 
+    /** 重复导入相同节点时，第二次应直接复用第一次生成的节点ID，不再生成新ID。 */
     @Test
     void repeatedImportKeepsPreviouslyGeneratedNodeIds() {
         AtomicInteger generated = new AtomicInteger();

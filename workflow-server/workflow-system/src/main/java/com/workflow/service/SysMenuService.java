@@ -18,17 +18,25 @@ import java.util.stream.Collectors;
 
 /**
  * 菜单管理服务
+ * <p>
+ * 提供菜单的树形查询、分页子菜单查询、子树查询、增删改、状态/显示/排序更新、导入导出等能力。
+ * 菜单类型分为 M-目录、C-菜单、F-按钮。
+ * </p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SysMenuService {
     
+    /** 菜单 Mapper */
     private final SysMenuMapper menuMapper;
+    /** 实体编码目录端口，用于校验动态实体列表菜单引用的实体是否存在 */
     private final EntityCodeCatalogPort entityCodeCatalogPort;
     
     /**
      * 查询菜单树
+     *
+     * @return 树形结构的菜单列表
      */
     public List<SysMenu> getMenuTree() {
         List<SysMenu> allMenus = menuMapper.selectList(
@@ -41,6 +49,11 @@ public class SysMenuService {
 
     /**
      * 分页查询指定父菜单下的直接子菜单。
+     *
+     * @param parentId 父菜单ID，为空时取 "0"
+     * @param pageNum  页码，为空或非正时取 1
+     * @param pageSize 每页条数，为空或非正时取 10
+     * @return 分页结果，每条记录已回填 hasChildren 字段
      */
     public PageResult<SysMenu> getChildrenPage(String parentId, Integer pageNum, Integer pageSize) {
         if (parentId == null) {
@@ -66,6 +79,9 @@ public class SysMenuService {
 
     /**
      * 查询以指定节点为根的完整子树（递归所有后代）。
+     *
+     * @param parentId 父菜单ID，为空时取 "0"
+     * @return 子树菜单列表，已逐层填充 children
      */
     public List<SysMenu> getSubtree(String parentId) {
         if (parentId == null) {
@@ -81,6 +97,8 @@ public class SysMenuService {
     /**
      * 查询运行态侧栏菜单树。
      * 管理端菜单树保留全部菜单；侧栏菜单会过滤已经指向不存在实体的动态数据列表菜单。
+     *
+     * @return 过滤后构建的侧栏菜单树
      */
     public List<SysMenu> getSidebarMenuTree() {
         List<SysMenu> allMenus = menuMapper.selectList(
@@ -97,6 +115,9 @@ public class SysMenuService {
     
     /**
      * 根据ID查询菜单
+     *
+     * @param id 菜单ID
+     * @return 菜单对象（已回填父菜单名称），不存在返回 null
      */
     public SysMenu getById(String id) {
         SysMenu menu = menuMapper.selectById(id);
@@ -110,7 +131,11 @@ public class SysMenuService {
     }
     
     /**
-     * 保存菜单
+     * 保存菜单（新增或更新）
+     *
+     * @param menu 菜单对象
+     * @return 保存后的菜单对象
+     * @throws RuntimeException 权限标识已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public SysMenu saveMenu(SysMenu menu) {
@@ -168,6 +193,9 @@ public class SysMenuService {
     
     /**
      * 删除菜单（逻辑删除，同时删除子菜单）
+     *
+     * @param id 菜单ID
+     * @throws RuntimeException 菜单不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteMenu(String id) {
@@ -186,6 +214,8 @@ public class SysMenuService {
     
     /**
      * 递归删除子菜单
+     *
+     * @param parentId 父菜单ID
      */
     private void deleteChildrenRecursively(String parentId) {
         List<SysMenu> children = menuMapper.selectChildrenByParentId(parentId);
@@ -197,6 +227,9 @@ public class SysMenuService {
     
     /**
      * 更新菜单状态
+     *
+     * @param id     菜单ID
+     * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(String id, String status) {

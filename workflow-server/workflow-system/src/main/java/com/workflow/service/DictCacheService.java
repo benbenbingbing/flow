@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DictCacheService {
 
+    /** 字典项 Mapper，用于加载字典项数据 */
     private final SysDictItemMapper dictItemMapper;
 
     /**
@@ -77,6 +78,10 @@ public class DictCacheService {
 
     /**
      * 根据字典编码和值，获取字典项
+     *
+     * @param dictCode 字典编码
+     * @param value   字典项值
+     * @return 字典项对象，未命中返回 null
      */
     public SysDictItem getItem(String dictCode, String value) {
         return valueCache.getOrDefault(dictCode, Collections.emptyMap()).get(value);
@@ -84,6 +89,10 @@ public class DictCacheService {
 
     /**
      * 根据字典编码和值，获取项编码
+     *
+     * @param dictCode 字典编码
+     * @param value   字典项值
+     * @return 项编码，未命中返回 null
      */
     public String getCode(String dictCode, String value) {
         SysDictItem item = getItem(dictCode, value);
@@ -92,6 +101,10 @@ public class DictCacheService {
 
     /**
      * 根据字典编码和值，获取标签
+     *
+     * @param dictCode 字典编码
+     * @param value   字典项值
+     * @return 项标签，未命中返回 null
      */
     public String getLabel(String dictCode, String value) {
         SysDictItem item = getItem(dictCode, value);
@@ -102,6 +115,10 @@ public class DictCacheService {
 
     /**
      * 根据字典编码和项编码，获取字典项
+     *
+     * @param dictCode 字典编码
+     * @param itemCode 项编码
+     * @return 字典项对象，未命中返回 null
      */
     public SysDictItem getItemByCode(String dictCode, String itemCode) {
         return codeCache.getOrDefault(dictCode, Collections.emptyMap()).get(itemCode);
@@ -109,6 +126,10 @@ public class DictCacheService {
 
     /**
      * 根据字典编码和项编码，获取值
+     *
+     * @param dictCode 字典编码
+     * @param itemCode 项编码
+     * @return 项值，未命中返回 null
      */
     public String getValue(String dictCode, String itemCode) {
         SysDictItem item = getItemByCode(dictCode, itemCode);
@@ -117,6 +138,10 @@ public class DictCacheService {
 
     /**
      * 根据字典编码和项编码，获取标签
+     *
+     * @param dictCode 字典编码
+     * @param itemCode 项编码
+     * @return 项标签，未命中返回 null
      */
     public String getLabelByCode(String dictCode, String itemCode) {
         SysDictItem item = getItemByCode(dictCode, itemCode);
@@ -127,6 +152,9 @@ public class DictCacheService {
 
     /**
      * 获取某个字典下的所有字典项（按值索引）
+     *
+     * @param dictCode 字典编码
+     * @return 值 -> 字典项 的映射，无数据返回空 Map
      */
     public Map<String, SysDictItem> getItems(String dictCode) {
         return valueCache.getOrDefault(dictCode, Collections.emptyMap());
@@ -134,6 +162,9 @@ public class DictCacheService {
 
     /**
      * 获取某个字典下的所有字典项列表
+     *
+     * @param dictCode 字典编码
+     * @return 字典项列表，无数据返回空列表
      */
     public List<SysDictItem> getItemList(String dictCode) {
         return valueCache.getOrDefault(dictCode, Collections.emptyMap())

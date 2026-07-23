@@ -93,6 +93,15 @@ public class ApiResponse<T> {
         return response;
     }
 
+    /**
+     * 创建错误响应（带自定义状态码和业务错误编码）
+     *
+     * @param code      错误状态码
+     * @param errorCode 稳定的业务错误编码
+     * @param message   错误消息
+     * @param <T>       数据类型
+     * @return ApiResponse对象
+     */
     public static <T> ApiResponse<T> error(int code, String errorCode, String message) {
         ApiResponse<T> response = error(code, message);
         response.setErrorCode(errorCode);

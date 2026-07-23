@@ -65,10 +65,27 @@ public class FlowActionExecutor {
         }
     }
 
+    /**
+     * 执行单个流程动作（无既有执行记录）。
+     *
+     * @param action         动作配置
+     * @param event          触发事件
+     * @param idempotencyKey 幂等键
+     * @return 流程动作执行上下文（含执行结果与步骤轨迹）
+     */
     public FlowActionContext executeAction(FlowAction action, FlowActionTriggerEvent event, String idempotencyKey) {
         return executeAction(action, event, idempotencyKey, null);
     }
 
+    /**
+     * 执行单个流程动作并同步回写执行记录。
+     *
+     * @param action         动作配置
+     * @param event          触发事件
+     * @param idempotencyKey 幂等键
+     * @param execution      既有执行记录；为 null 表示不持久化中间状态
+     * @return 流程动作执行上下文（含执行结果与步骤轨迹）
+     */
     public FlowActionContext executeAction(
             FlowAction action,
             FlowActionTriggerEvent event,
@@ -80,6 +97,7 @@ public class FlowActionExecutor {
         }
         try {
             invoke(action, context);
+            // 处理器未显式写入结果时，补充默认成功标记
             if (context.getExecutionResult() == null) {
                 context.setExecutionResult(Map.of(
                         "status", "SUCCESS",
@@ -91,6 +109,7 @@ public class FlowActionExecutor {
             }
             return context;
         } catch (RuntimeException error) {
+            // 捕获失败上下文后重新抛出，交由上层决定是否回滚或重试
             context.addExecutionTrace(
                     "HANDLER_FAILED",
                     "流程动作处理器执行失败",
@@ -102,6 +121,14 @@ public class FlowActionExecutor {
         }
     }
 
+    /**
+     * 组装流程动作执行上下文：填充触发事件相关标识并解析业务参数。
+     *
+     * @param action         动作配置
+     * @param event          触发事件
+     * @param idempotencyKey 幂等键
+     * @return 已填充字段的执行上下文
+     */
     private FlowActionContext buildContext(
             FlowAction action,
             FlowActionTriggerEvent event,
@@ -137,6 +164,13 @@ public class FlowActionExecutor {
         return ctx;
     }
 
+    /**
+     * 解析 paramsJson，支持以 ${变量名} 形式引用流程变量或 SpEL 表达式。
+     *
+     * @param paramsJson 参数 JSON 字符串
+     * @param variables  流程变量集合
+     * @return 解析后的参数 map；解析失败时返回空 map 并记录警告
+     */
     private Map<String, Object> resolveCustomParams(String paramsJson, Map<String, Object> variables) {
         Map<String, Object> params = new HashMap<>();
         if (!StringUtils.hasText(paramsJson)) {
@@ -146,6 +180,7 @@ public class FlowActionExecutor {
             Map<String, Object> raw = objectMapper.readValue(paramsJson, Map.class);
             for (Map.Entry<String, Object> entry : raw.entrySet()) {
                 Object value = entry.getValue();
+                // 字符串值如以 ${...} 包裹，则视作变量引用或 SpEL 表达式解析
                 if (value instanceof String) {
                     String str = (String) value;
                     if (str.startsWith("${") && str.endsWith("}")) {
@@ -168,6 +203,14 @@ public class FlowActionExecutor {
         return params;
     }
 
+    /**
+     * 由历史顺序流执行上下文构造触发事件，用于兼容旧的 BPMN 监听器入口。
+     *
+     * @param versionId      流程发布版本 ID
+     * @param sequenceFlowId 顺序流 ID
+     * @param execution      Flowable 执行上下文
+     * @return 组装后的触发事件
+     */
     private FlowActionTriggerEvent fromLegacyExecution(
             String versionId,
             String sequenceFlowId,
@@ -194,6 +237,13 @@ public class FlowActionExecutor {
         return value == null ? "" : value;
     }
 
+    /**
+     * 从 Spring 容器查找并调用动作处理器 Bean。
+     *
+     * @param action 动作配置
+     * @param ctx    执行上下文
+     * @throws RuntimeException 处理器 Bean 不存在或未实现 FlowActionHandler 接口时抛出
+     */
     private void invoke(FlowAction action, FlowActionContext ctx) {
         String beanName = action.getInterfaceName();
         if (!StringUtils.hasText(beanName)) {

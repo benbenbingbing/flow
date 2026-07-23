@@ -18,17 +18,24 @@ import java.util.stream.Collectors;
 
 /**
  * 用户组管理服务
+ * <p>
+ * 负责用户组的增删改查、状态切换以及组与用户的关联维护。
+ * </p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SysGroupService {
     
+    /** 用户组 Mapper */
     private final SysGroupMapper groupMapper;
+    /** 用户组关联 Mapper，维护组与用户的关联关系 */
     private final SysUserGroupMapper userGroupMapper;
     
     /**
      * 查询组列表
+     *
+     * @return 按排序升序的用户组列表，每组已填充成员用户信息
      */
     public List<SysGroup> getGroupList() {
         List<SysGroup> groups = groupMapper.selectList(
@@ -41,6 +48,8 @@ public class SysGroupService {
     
     /**
      * 查询所有启用的组
+     *
+     * @return 启用状态的用户组列表，按排序升序
      */
     public List<SysGroup> getEnabledGroups() {
         return groupMapper.selectList(
@@ -52,6 +61,9 @@ public class SysGroupService {
     
     /**
      * 根据ID查询组
+     *
+     * @param id 组ID
+     * @return 用户组对象（已填充成员用户信息），不存在返回 null
      */
     public SysGroup getById(String id) {
         SysGroup group = groupMapper.selectById(id);
@@ -62,7 +74,11 @@ public class SysGroupService {
     }
     
     /**
-     * 保存组
+     * 保存组（新增或更新），并同步组与用户的关联
+     *
+     * @param group 用户组对象，userIds 为关联的用户ID列表
+     * @return 保存后的用户组对象
+     * @throws RuntimeException 组编码已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public SysGroup saveGroup(SysGroup group) {
@@ -104,7 +120,10 @@ public class SysGroupService {
     }
     
     /**
-     * 删除组
+     * 删除组（先删除用户关联，再逻辑删除组）
+     *
+     * @param id 组ID
+     * @throws RuntimeException 组不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteGroup(String id) {
@@ -123,6 +142,9 @@ public class SysGroupService {
     
     /**
      * 更新组状态
+     *
+     * @param id     组ID
+     * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(String id, String status) {
@@ -134,7 +156,10 @@ public class SysGroupService {
     }
     
     /**
-     * 保存组用户关联
+     * 保存组用户关联（先删除原有关联，再批量插入新关联）
+     *
+     * @param groupId  组ID
+     * @param userIds 用户ID列表
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveGroupUsers(String groupId, List<String> userIds) {
@@ -154,7 +179,9 @@ public class SysGroupService {
     }
     
     /**
-     * 填充组用户信息
+     * 填充组用户信息（查询组成员并回填 users、userIds 字段）
+     *
+     * @param group 待填充的用户组对象
      */
     private void fillGroupUsers(SysGroup group) {
         List<SysUser> users = groupMapper.selectGroupUsers(group.getId());

@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
 @Component("demoSimpleActionHandler")
 public class DemoSimpleActionHandler implements FlowActionHandler {
 
+    /**
+     * 执行流程动作：打印动作上下文与自定义参数的详细信息，用于联调演示。
+     *
+     * @param ctx 流程动作上下文
+     */
     @Override
     public void execute(FlowActionContext ctx) {
         log.info("========== [DemoSimpleActionHandler] 流程动作执行开始 ==========");

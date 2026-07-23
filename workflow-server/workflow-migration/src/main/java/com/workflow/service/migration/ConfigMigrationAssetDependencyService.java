@@ -13,6 +13,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 配置迁移资产依赖服务。
+ *
+ * <p>负责迁移资产依赖记录的重建与查询：在保存资产快照时清空并重写其依赖清单，
+ * 在导入分析/展示时按资产ID读取依赖列表。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ConfigMigrationAssetDependencyService {
@@ -20,6 +26,14 @@ public class ConfigMigrationAssetDependencyService {
     private final ConfigMigrationAssetDependencyMapper dependencyMapper;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 用新的依赖列表覆盖指定资产的依赖记录。
+     *
+     * <p>先删除该资产全部依赖，再依次写入新的依赖项；忽略缺少 type 或 key 的条目。</p>
+     *
+     * @param assetId     资产ID
+     * @param dependencies 新的依赖列表(可为空)
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replace(String assetId, List<Map<String, Object>> dependencies) {
         dependencyMapper.deleteByAssetId(assetId);
@@ -45,12 +59,21 @@ public class ConfigMigrationAssetDependencyService {
         }
     }
 
+    /**
+     * 查询指定资产的依赖列表，并以 Map 形式返回。
+     *
+     * @param assetId 资产ID
+     * @return 依赖描述列表
+     */
     public List<Map<String, Object>> find(String assetId) {
         return dependencyMapper.findByAssetId(assetId).stream()
                 .map(this::toMap)
                 .toList();
     }
 
+    /**
+     * 将依赖实体转换为依赖描述 Map，合并存储文档与冗余字段。
+     */
     private Map<String, Object> toMap(ConfigMigrationAssetDependency dependency) {
         Map<String, Object> result = StringUtils.hasText(dependency.getDependencyDocument())
                 ? new LinkedHashMap<>(codec.readObject(

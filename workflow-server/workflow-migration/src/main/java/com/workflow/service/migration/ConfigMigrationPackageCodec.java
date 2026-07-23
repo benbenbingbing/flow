@@ -29,23 +29,41 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
+/**
+ * 配置迁移发布包编解码器。
+ *
+ * <p>负责 wfpack 发布包的打包与解包：编码时将迁移资产快照、依赖清单、清单文件、
+ * 校验文件与 HMAC 签名打包成 zip；解码时校验大小/路径/签名/校验和并解析为资产结构。</p>
+ */
 @Component
 @RequiredArgsConstructor
 public class ConfigMigrationPackageCodec {
 
-    private static final int FORMAT_VERSION = 1;
-    private static final int MAX_ENTRY_COUNT = 500;
-    private static final int MAX_ENTRY_SIZE = 20 * 1024 * 1024;
-    private static final int MAX_TOTAL_SIZE = 100 * 1024 * 1024;
+    private static final int FORMAT_VERSION = 1;              // 发布包格式版本
+    private static final int MAX_ENTRY_COUNT = 500;           // 单包最大条目数
+    private static final int MAX_ENTRY_SIZE = 20 * 1024 * 1024;   // 单个条目最大字节数(20MB)
+    private static final int MAX_TOTAL_SIZE = 100 * 1024 * 1024;  // 解压后最大总字节数(100MB)
 
     private final ObjectMapper objectMapper;
 
     @Value("${config.migration.signing-key:workflow-config-migration-development-key}")
-    private String signingKey;
+    private String signingKey;            // 发布包 HMAC 签名密钥
 
     @Value("${config.migration.environment-name:local}")
-    private String environmentName;
+    private String environmentName;       // 当前环境名称(写入清单)
 
+    /**
+     * 将迁移资产列表编码为 wfpack 发布包。
+     *
+     * <p>对每个资产按选择配置裁剪快照并写入条目，流程资产额外写入 BPMN，
+     * 实体资产额外写入表单/列表明细；随后生成依赖清单、清单文件、校验文件与签名。</p>
+     *
+     * @param packageNo    发布包编号
+     * @param migrationTag 迁移标签
+     * @param assets       待打包的迁移资产列表
+     * @param selections   资产ID -> 快照选择配置(可为空)
+     * @return 编码后的发布包数据
+     */
     public EncodedPackage encode(String packageNo,
                                  String migrationTag,
                                  List<ConfigMigrationAsset> assets,
@@ -110,6 +128,16 @@ public class ConfigMigrationPackageCodec {
                 packageNo + ".wfpack", manifest);
     }
 
+    /**
+     * 解码 wfpack 发布包二进制为结构化资产数据。
+     *
+     * <p>依次校验：非空与大小上限、zip 解压条目数/单条目大小/总大小/路径合法性、
+     * 清单存在性、HMAC 签名、每个条目的校验和、清单格式版本，最终还原资产列表。</p>
+     *
+     * @param packageData 发布包二进制内容
+     * @return 解码后的发布包数据
+     * @throws IllegalArgumentException 包内容为空、超限、签名或校验失败、格式不支持等
+     */
     public DecodedPackage decode(byte[] packageData) {
         if (packageData == null || packageData.length == 0) {
             throw new IllegalArgumentException("发布包内容为空");
@@ -397,6 +425,7 @@ public class ConfigMigrationPackageCodec {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
+    /** 编码后的发布包数据(二进制内容、校验和、签名、文件名、清单)。 */
     public record EncodedPackage(byte[] data,
                                  String checksum,
                                  String signature,
@@ -404,6 +433,7 @@ public class ConfigMigrationPackageCodec {
                                  Map<String, Object> manifest) {
     }
 
+    /** 解码后的发布包数据(编号、标签、源环境、校验和、签名、清单、资产列表)。 */
     public record DecodedPackage(String packageNo,
                                  String migrationTag,
                                  String sourceEnvironment,
@@ -413,6 +443,7 @@ public class ConfigMigrationPackageCodec {
                                  List<DecodedAsset> assets) {
     }
 
+    /** 解码后的单个迁移资产(类型、键、名称、源版本、源哈希、快照、依赖列表)。 */
     public record DecodedAsset(String assetType,
                                String businessKey,
                                String assetName,

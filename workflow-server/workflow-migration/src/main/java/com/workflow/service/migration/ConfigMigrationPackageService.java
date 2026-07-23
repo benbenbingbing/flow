@@ -56,6 +56,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 配置迁移包服务。
+ *
+ * <p>负责配置导出包的生成、查询、下载，以及导入批次的上传、条目生成、
+ * 分析(冲突比较/依赖解析/风险识别)、环境映射保存与比较结果查询。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ConfigMigrationPackageService {
@@ -83,6 +89,16 @@ public class ConfigMigrationPackageService {
     private final ApplicationContext applicationContext;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 生成配置导出包。
+     *
+     * <p>展开硬依赖并校验可导出性后，调用编解码器打包，持久化导出包及其条目，
+     * 并将涉及的资产标记为 EXPORTED、更新导出统计。</p>
+     *
+     * @param request 导出请求
+     * @return 导出包摘要
+     * @throws IllegalArgumentException 未选择资产或缺少可导出依赖
+     */
     @Transactional
     public Map<String, Object> exportPackage(ConfigExportRequest request) {
         if (request == null || request.getAssetIds() == null || request.getAssetIds().isEmpty()) {
@@ -132,6 +148,11 @@ public class ConfigMigrationPackageService {
         return exportSummary(exportPackage);
     }
 
+    /**
+     * 查询所有导出包摘要列表(按创建时间倒序)。
+     *
+     * @return 导出包摘要列表
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listExports() {
         return exportPackageMapper.selectList(new LambdaQueryWrapper<ConfigExportPackage>()
@@ -139,6 +160,13 @@ public class ConfigMigrationPackageService {
                 .stream().map(this::exportSummary).toList();
     }
 
+    /**
+     * 下载指定导出包并累加下载次数。
+     *
+     * @param id 导出包ID
+     * @return 下载文件数据
+     * @throws IllegalArgumentException 导出包不存在
+     */
     @Transactional
     public DownloadFile downloadExport(String id) {
         ConfigExportPackage exportPackage = exportPackageMapper.selectById(id);
@@ -152,6 +180,17 @@ public class ConfigMigrationPackageService {
                 exportPackage.getPackageData());
     }
 
+    /**
+     * 上传并导入 wfpack 发布包。
+     *
+     * <p>解码校验通过后，若同校验和批次已存在则直接返回；否则新建导入批次，
+     * 为每个资产生成导入条目并初始化比较状态、依赖映射状态与发布状态。</p>
+     *
+     * @param file              发布包文件
+     * @param sourceEnvironment 源环境名称(可选，覆盖包内信息)
+     * @return 导入批次摘要
+     * @throws IllegalArgumentException 文件为空或解码失败
+     */
     @Transactional
     public Map<String, Object> importPackage(MultipartFile file, String sourceEnvironment) {
         if (file == null || file.isEmpty()) {
@@ -210,6 +249,11 @@ public class ConfigMigrationPackageService {
         }
     }
 
+    /**
+     * 查询所有导入批次摘要列表(按导入时间倒序)。
+     *
+     * @return 导入批次摘要列表
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listImports() {
         return importPackageMapper.selectList(new LambdaQueryWrapper<ConfigImportPackage>()
@@ -217,6 +261,12 @@ public class ConfigMigrationPackageService {
                 .stream().map(this::importSummary).toList();
     }
 
+    /**
+     * 查询指定导入批次的条目列表(按资产类型、业务编码排序)。
+     *
+     * @param importId 导入批次ID
+     * @return 导入条目列表
+     */
     @Transactional(readOnly = true)
     public List<ConfigImportItem> listImportItems(String importId) {
         return importItemMapper.selectList(new LambdaQueryWrapper<ConfigImportItem>()
@@ -225,6 +275,15 @@ public class ConfigMigrationPackageService {
                 .orderByAsc(ConfigImportItem::getBusinessKey));
     }
 
+    /**
+     * 对导入批次执行分析。
+     *
+     * <p>逐条目重新比较、解析依赖、识别风险，据此更新比较状态/映射状态/异常信息，
+     * 汇总生成校验报告；任一条目存在阻断项则批次置为 BLOCKED，否则置为 ANALYZED。</p>
+     *
+     * @param importId 导入批次ID
+     * @return 校验报告
+     */
     @Transactional
     public Map<String, Object> analyze(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
@@ -275,6 +334,13 @@ public class ConfigMigrationPackageService {
         return validationReport;
     }
 
+    /**
+     * 保存环境映射并在保存后重新触发导入批次分析。
+     *
+     * @param importId 导入批次ID
+     * @param request  环境映射保存请求
+     * @throws IllegalArgumentException 映射缺少类型/来源键/目标键
+     */
     @Transactional
     public void saveMappings(String importId, ConfigEnvironmentMappingRequest request) {
         requiredImport(importId);
@@ -311,6 +377,12 @@ public class ConfigMigrationPackageService {
         analyze(importId);
     }
 
+    /**
+     * 查询导入批次的比较结果(批次摘要、条目列表、校验报告)。
+     *
+     * @param importId 导入批次ID
+     * @return 比较结果
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> compare(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
@@ -321,6 +393,11 @@ public class ConfigMigrationPackageService {
         return result;
     }
 
+    /**
+     * 展开所选资产的全部硬依赖(BFS)，返回去重后按类型+编码排序的资产列表。
+     *
+     * <p>硬依赖缺失会抛异常；validateOnlyDependencies 中的依赖仅校验存在性而不打包。</p>
+     */
     private List<ConfigMigrationAsset> expandDependencies(ConfigExportRequest request) {
         Map<String, ConfigMigrationAsset> selected = new LinkedHashMap<>();
         Deque<ConfigMigrationAsset> queue = new ArrayDeque<>();
@@ -361,6 +438,13 @@ public class ConfigMigrationPackageService {
                 .toList();
     }
 
+    /**
+     * 根据依赖类型与编码查找对应的迁移资产(实体/流程/表单引用)。
+     *
+     * @param type 依赖类型
+     * @param key  依赖编码
+     * @return 匹配的迁移资产，不存在返回 null
+     */
     private ConfigMigrationAsset findDependencyAsset(String type, String key) {
         if (ConfigMigrationAssetService.ENTITY.equals(type)) {
             return assetService.findLatest(ConfigMigrationAssetService.ENTITY, key);
@@ -402,6 +486,14 @@ public class ConfigMigrationPackageService {
         return value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9._-]", "-");
     }
 
+    /**
+     * 比较导入条目与目标环境当前资产，返回比较状态并写入目标前置版本/哈希。
+     *
+     * <p>结合迁移基线区分：NEW/CONSISTENT/CONFLICT(双方改动)/LOCAL_CHANGED/SOURCE_NEWER。</p>
+     *
+     * @param item 导入条目(会被写入 targetBeforeVersion/targetBeforeHash)
+     * @return 比较状态
+     */
     private String compare(ConfigImportItem item) {
         ConfigMigrationAsset target = assetService.findLatest(item.getAssetType(), item.getBusinessKey());
         item.setTargetBeforeVersion(target == null ? null : target.getSourceVersion());
@@ -431,6 +523,13 @@ public class ConfigMigrationPackageService {
         return sourceChanged ? "SOURCE_NEWER" : "CONSISTENT";
     }
 
+    /**
+     * 解析硬依赖，返回是否全部满足及缺失依赖列表。
+     *
+     * @param dependencies 依赖列表
+     * @param packageAssets 包内已含资产集合(type:key)
+     * @return 依赖解析结果
+     */
     private DependencyResolution resolveDependencies(List<Map<String, Object>> dependencies,
                                                      Set<String> packageAssets) {
         List<Map<String, Object>> missing = new ArrayList<>();
@@ -450,6 +549,17 @@ public class ConfigMigrationPackageService {
         return new DependencyResolution(missing.isEmpty(), missing);
     }
 
+    /**
+     * 判断单个依赖在目标环境是否已满足：包内含或本地存在或存在环境映射。
+     *
+     * <p>支持 ENTITY/PROCESS/FORM/DICTIONARY/USER/ROLE/DEPT/GROUP/
+     * FLOW_ACTION_HANDLER/CUSTOM_COMPONENT/DATA_PROVIDER 等类型。</p>
+     *
+     * @param type         依赖类型
+     * @param key          依赖编码(经 mappedKey 转换后的目标键)
+     * @param packageAssets 包内已含资产集合
+     * @return 是否已满足
+     */
     private boolean isDependencyResolved(String type, String key, Set<String> packageAssets) {
         if (ConfigMigrationAssetService.ENTITY.equals(type)) {
             return packageAssets.contains(type + ":" + key) || entityMapper.findByEntityCode(key).isPresent();
@@ -518,6 +628,15 @@ public class ConfigMigrationPackageService {
         }
     }
 
+    /**
+     * 对实体资产识别字段层面的危险变更风险(均为 BLOCKING 级)。
+     *
+     * <p>检查项：删除已有字段、字段类型变更、字段长度收窄、改为必填、改为唯一、
+     * 新增必填字段无默认值等。</p>
+     *
+     * @param item 导入条目
+     * @return 风险列表
+     */
     private List<Map<String, Object>> analyzeRisks(ConfigImportItem item) {
         List<Map<String, Object>> risks = new ArrayList<>();
         if (!ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
@@ -719,6 +838,7 @@ public class ConfigMigrationPackageService {
         return result;
     }
 
+    /** 依赖解析结果：是否全部满足及缺失依赖列表。 */
     private record DependencyResolution(boolean resolved, List<Map<String, Object>> missing) {
     }
 }

@@ -22,6 +22,9 @@ public class FileStorageProperties {
      */
     private LocalConfig local = new LocalConfig();
 
+    /**
+     * 本地存储相关配置。
+     */
     @Data
     public static class LocalConfig {
         /**

@@ -94,6 +94,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+/**
+ * 配置迁移导入应用服务。
+ *
+ * <p>负责将导入批次中的资产快照应用到目标环境：发布时按"实体先配置→绑定流程→流程应用→实体发布"顺序
+ * 落库实体定义/字段/表单/列表/数据源/数据范围/菜单与流程定义/节点/动作/状态映射，回滚时恢复到上一版本或停用新资产。
+ * 全程在事务内执行，并在发布完成后更新迁移资产基线。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ConfigMigrationImportApplyService {
@@ -136,6 +143,19 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationAssetService assetService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 发布导入批次，将所选资产配置应用到目标环境。
+     *
+     * <p>流程：校验状态为 ANALYZED 且无阻断项 → 标记条目 PUBLISHING → 准备并应用实体配置 →
+     * 绑定实体与流程 → 准备并应用流程配置 → 发布实体 → 标记条目 SUCCESS 并更新基线 → 批次置 PUBLISHED。
+     * 幂等：已发布批次直接返回结果。</p>
+     *
+     * @param importId 导入批次ID
+     * @param request 发布请求(可选指定条目)
+     * @return 发布结果
+     * @throws IllegalStateException 批次未分析、存在阻断项或发布后未生成迁移资产
+     * @throws IllegalArgumentException 没有可发布条目
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> publish(String importId, ConfigImportPublishRequest request) {
         ConfigImportPackage importPackage = requiredImport(importId);
@@ -193,6 +213,16 @@ public class ConfigMigrationImportApplyService {
         return publishResult(importPackage, items);
     }
 
+    /**
+     * 回滚已发布的导入批次。
+     *
+     * <p>对每个条目：若存在上一版本完整快照则按其重新应用配置；否则停用该新资产。
+     * 全部应用完成后将条目标记 ROLLED_BACK、清理迁移基线、批次置 ROLLED_BACK。幂等：已回滚批次直接返回结果。</p>
+     *
+     * @param importId 导入批次ID
+     * @return 回滚结果
+     * @throws IllegalStateException 批次未发布、上一版本非完整快照不能自动回滚
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> rollback(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
@@ -255,6 +285,14 @@ public class ConfigMigrationImportApplyService {
         return publishResult(importPackage, items);
     }
 
+    /**
+     * 准备实体上下文：按快照定义创建或更新实体(系统实体不可迁移)，并解析绑定的流程Key。
+     *
+     * @param item        导入条目
+     * @param rollbackMode 是否回滚模式(影响后续字段处理)
+     * @return 实体上下文
+     * @throws IllegalStateException 系统实体或实体创建失败
+     */
     private EntityContext prepareEntity(ConfigImportItem item, boolean rollbackMode) {
         Map<String, Object> snapshot = readMap(item.getSnapshotJson());
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
@@ -290,6 +328,10 @@ public class ConfigMigrationImportApplyService {
                 text(definition.get("processKey"), null), rollbackMode);
     }
 
+    /**
+     * 应用实体快照中的各分区配置：字段、状态、编码规则、扩展、数据源、表单、列表、数据范围、菜单，
+     * 最后同步实体权限目录。
+     */
     private void applyEntityConfiguration(EntityContext context, boolean rollbackMode) {
         Map<String, Object> snapshot = context.snapshot();
         EntityDefinition entity = context.entity();
@@ -464,6 +506,17 @@ public class ConfigMigrationImportApplyService {
                 "配置迁移导入表单初始发布");
     }
 
+    /**
+     * 解析表单节点的 nodeKey 与 ID 映射：复用已有同 nodeKey 的节点ID，缺失时调用 idSupplier 生成。
+     *
+     * <p>校验每个入参节点必填 nodeKey 且不重复；返回的映射仅包含入参节点(保留集)。</p>
+     *
+     * @param existing    已有节点列表(用于复用ID)
+     * @param incoming    入参节点列表(nodeKey)
+     * @param idSupplier  缺失节点ID生成器
+     * @return nodeKey -> 节点ID
+     * @throws IllegalStateException 入参节点缺少 nodeKey 或 nodeKey 重复
+     */
     static Map<String, String> resolveNodeIds(
             List<EntityFormNode> existing,
             List<Map<String, Object>> incoming,
@@ -506,6 +559,13 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 应用数据源定义并返回 sourceCode -> 保存后ID 的映射，供后续表单/列表引用重写。
+     *
+     * @param entity 所属实体
+     * @param values 数据源定义列表
+     * @return sourceCode -> 数据源ID
+     */
     private Map<String, String> applyDataSources(
             EntityDefinition entity,
             List<Map<String, Object>> values) {
@@ -636,6 +696,12 @@ public class ConfigMigrationImportApplyService {
         return value;
     }
 
+    /**
+     * 判断指定名称是否为数据源编码引用键(sourceCode/dataSourceCode/queryDataSourceCode)。
+     *
+     * @param name 字段名
+     * @return 是否为数据源编码键
+     */
     static boolean isDataSourceCodeKey(String name) {
         return Set.of(
                 "sourceCode",
@@ -643,6 +709,12 @@ public class ConfigMigrationImportApplyService {
                 "queryDataSourceCode").contains(name);
     }
 
+    /**
+     * 将数据源编码键映射为导入落库用的数据源ID键。
+     *
+     * @param codeKey 数据源编码键
+     * @return 对应的数据源ID键
+     */
     static String dataSourceIdKey(String codeKey) {
         return switch (codeKey) {
             case "dataSourceCode" -> "dataSourceId";
@@ -856,6 +928,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 准备流程上下文：按快照定义创建或更新流程定义配置(含可移植 BPMN)。
+     *
+     * @param item 导入条目
+     * @return 流程上下文
+     */
     private ProcessContext prepareProcess(ConfigImportItem item) {
         Map<String, Object> snapshot = readMap(item.getSnapshotJson());
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
@@ -905,6 +983,9 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 应用流程快照中的节点表单、节点审批、流程动作、状态映射，并发布流程新版本。
+     */
     private void applyProcessConfiguration(ProcessContext context, ConfigImportPackage importPackage) {
         Map<String, Object> snapshot = context.snapshot();
         ProcessDefinitionConfig process = context.process();
@@ -971,6 +1052,12 @@ public class ConfigMigrationImportApplyService {
         entityService.publish(context.entity().getId(), UserContext.getUserId(), UserContext.getUsername(), request);
     }
 
+    /**
+     * 标记条目发布成功：回写发布后版本/哈希、置 SUCCESS，并更新迁移资产基线。
+     *
+     * @param item 导入条目
+     * @throws IllegalStateException 发布后未生成迁移资产
+     */
     private void markPublished(ConfigImportItem item) {
         ConfigMigrationAsset target = assetService.findLatest(item.getAssetType(), item.getBusinessKey());
         if (target == null) {
@@ -1017,6 +1104,9 @@ public class ConfigMigrationImportApplyService {
                 .last("LIMIT 1"));
     }
 
+    /**
+     * 回滚场景下停用新增资产：实体置为 DISABLED 并禁用其权限，流程调用 disable。
+     */
     private void disableNewAsset(ConfigImportItem item) {
         if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
             EntityDefinition entity = entityMapper.findByEntityCode(item.getBusinessKey()).orElse(null);
@@ -1033,6 +1123,9 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 将 BPMN 中的可移植表单引用与办理人引用替换为目标环境的实际 ID。
+     */
     private String resolvePortableBpmn(String bpmnXml, Map<String, Object> snapshot) {
         String result = bpmnXml;
         for (Map<String, Object> value : mapList(snapshot.get("nodeForms"))) {
@@ -1055,6 +1148,11 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 将可移植表单引用(wf-form://entityCode/formKey)解析为目标环境的表单ID。
+     *
+     * @throws IllegalStateException 引用格式非法、所属实体或表单不存在
+     */
     private String resolveFormId(String formRef) {
         if (!StringUtils.hasText(formRef) || !formRef.startsWith("wf-form://")) {
             return formRef;
@@ -1074,6 +1172,11 @@ public class ConfigMigrationImportApplyService {
         return form.getId();
     }
 
+    /**
+     * 将可移植办理人引用解析为目标环境的实际 ID/编码(USER→用户ID，DEPT→部门ID，ROLE→角色编码)。
+     *
+     * @throws IllegalStateException 用户或部门不存在
+     */
     private String resolveAssigneeValue(String type, String portableValue) {
         if ("USER".equals(type)) {
             String username = portableValue.startsWith("wf-user://")
@@ -1273,6 +1376,7 @@ public class ConfigMigrationImportApplyService {
         return value == null ? null : booleanValue(value);
     }
 
+    /** 实体应用上下文：导入条目、快照、定义、实体、绑定流程Key与是否回滚模式。 */
     private record EntityContext(ConfigImportItem item,
                                  Map<String, Object> snapshot,
                                  Map<String, Object> definition,
@@ -1281,6 +1385,7 @@ public class ConfigMigrationImportApplyService {
                                  boolean rollbackMode) {
     }
 
+    /** 流程应用上下文：导入条目、快照、定义与流程定义配置。 */
     private record ProcessContext(ConfigImportItem item,
                                   Map<String, Object> snapshot,
                                   Map<String, Object> definition,

@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 
 /**
  * 任务动作服务
- * 处理任务完成、流程撤回、历史查询等操作
+ * 处理任务完成、流程撤回、历史查询等操作，并提供首页/工作台所需的任务统计信息
  */
 @Slf4j
 @Service
@@ -53,6 +53,7 @@ public class TaskActionService {
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService entityActionCapabilityService;
     private final EntityRecordTeamService entityRecordTeamService;
+    /** 抄送/知会服务：用于统计未读抄送数等 */
     private final ProcessCcService processCcService;
 
     /**
@@ -652,38 +653,48 @@ public class TaskActionService {
     }
 
     /**
-     * 获取任务统计信息
+     * 获取当前用户的任务统计信息，供首页/工作台统计卡片与页签徽标使用。
      *
-     * @param userId 用户ID
-     * @return 统计信息
+     * 返回的统计项：
+     * <ul>
+     *   <li>todoCount      待办任务数（未处理的流程任务）</li>
+     *   <li>doneCount      已办任务数（已处理完成的任务）</li>
+     *   <li>processCount   我发起的流程数（当前用户作为发起人的历史流程实例数）</li>
+     *   <li>avgProcessTime 已办任务的平均处理时长（小时，保留一位小数）</li>
+     *   <li>unreadCcCount  未读抄送/知会数（用于"抄送我的"页签徽标，仅统计未读）</li>
+     * </ul>
+     *
+     * @param userId 当前登录用户ID
+     * @return 统计信息 Map，key 为统计项名称，value 为数值
      */
     public Map<String, Object> getTaskStatistics(String userId) {
         Map<String, Object> statistics = new HashMap<>();
 
-        // 待办数
+        // 待办任务数：当前用户待处理的流程任务数量
         Long todoCount = processTaskService.countTodo(userId);
         statistics.put("todoCount", todoCount);
 
-        // 已办数
+        // 已办任务数：当前用户已处理完成的任务数量
         Long doneCount = processTaskService.countDone(userId);
         statistics.put("doneCount", doneCount);
 
-        // 我发起的流程数（简化统计）
+        // 我发起的流程数：当前用户作为发起人的历史流程实例数量
         long myProcessCount = historyService.createHistoricProcessInstanceQuery()
                 .startedBy(userId)
                 .count();
         statistics.put("processCount", myProcessCount);
 
-        // 平均处理时长（简化计算）
+        // 平均处理时长：基于已办任务的 duration 累加后取平均，单位小时（保留一位小数）
         List<ProcessTask> doneTasks = processTaskService.getDoneList(userId);
         long totalDuration = doneTasks.stream()
                 .filter(t -> t.getDuration() != null)
                 .mapToLong(ProcessTask::getDuration)
                 .sum();
+        // duration 单位为毫秒，先除以任务数得到平均值，再换算为小时
         double avgHours = doneTasks.isEmpty() ? 0 : (totalDuration / doneTasks.size() / 1000.0 / 60 / 60);
         statistics.put("avgProcessTime", Math.round(avgHours * 10) / 10.0);
 
-        // 未读抄送数
+        // 未读抄送数：仅统计未读的抄送/知会记录，用于"抄送我的"页签徽标显示数量
         statistics.put("unreadCcCount", processCcService.countUnreadCc(userId));
 
         return statistics;

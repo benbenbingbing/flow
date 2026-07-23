@@ -13,6 +13,11 @@ import org.springframework.stereotype.Service;
 @Service("demoExpressionService")
 public class DemoExpressionService {
 
+    /**
+     * 执行表达式服务：根据 status 变量推导下一状态并写回流程变量。
+     *
+     * @param execution 流程执行上下文
+     */
     public void execute(DelegateExecution execution) {
         log.info("[DemoExpressionService] 执行表达式服务，流程实例: {}", execution.getProcessInstanceId());
 
@@ -32,6 +37,12 @@ public class DemoExpressionService {
         log.info("[DemoExpressionService] 执行完成，status={}, nextStatus={}", status, nextStatus);
     }
 
+    /**
+     * 根据流程变量 score 计算等级（A/B/C/D），并写回 scoreLevel 变量。
+     *
+     * @param execution 流程执行上下文
+     * @return 计算得到的等级字符串
+     */
     public String evaluate(DelegateExecution execution) {
         Object score = execution.getVariable("score");
         if (score == null) {

@@ -17,7 +17,11 @@ import java.util.Map;
 public class DemoController {
 
     /**
-     * GET 回调：返回固定数据，不修改任何数据
+     * GET 回调：返回固定数据，不修改任何数据。
+     *
+     * @param name   调用方传入的名称，可选
+     * @param userId 调用方传入的用户ID，可选
+     * @return 固定回调数据
      */
     @GetMapping("/hello")
     public ApiResponse<Map<String, Object>> hello(
@@ -36,7 +40,10 @@ public class DemoController {
     }
 
     /**
-     * POST 回调：接收 JSON，返回处理结果，不修改任何数据
+     * POST 回调：接收 JSON，返回处理结果，不修改任何数据。
+     *
+     * @param body 调用方提交的请求体
+     * @return 回显请求体并标记已处理的结果
      */
     @PostMapping("/process")
     public ApiResponse<Map<String, Object>> process(@RequestBody Map<String, Object> body) {

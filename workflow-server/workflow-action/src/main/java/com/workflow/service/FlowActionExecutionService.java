@@ -27,6 +27,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * 流程动作执行服务。
+ *
+ * <p>负责流程动作执行记录的全生命周期管理：创建、抢占、状态流转（成功 / 失败 / 重试 / 死信）、
+ * 执行轨迹持久化、敏感字段脱敏、重试调度以及执行详情查询。状态回写均使用独立新事务，
+ * 保证即使主事务回滚也能保留执行审计。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class FlowActionExecutionService {
@@ -36,6 +43,15 @@ public class FlowActionExecutionService {
     private final ObjectMapper objectMapper;
     private final FlowActionDefinitionService definitionService;
 
+    /**
+     * 在主事务内创建执行记录。
+     *
+     * @param action         动作配置
+     * @param event          触发事件
+     * @param idempotencyKey 幂等键
+     * @param status         初始状态
+     * @return 已创建的执行记录
+     */
     @Transactional
     public FlowActionExecution create(
             FlowAction action,
@@ -45,6 +61,15 @@ public class FlowActionExecutionService {
         return createRecord(action, event, idempotencyKey, status);
     }
 
+    /**
+     * 在独立新事务内创建执行记录，用于事务内动作的审计写入。
+     *
+     * @param action         动作配置
+     * @param event          触发事件
+     * @param idempotencyKey 幂等键
+     * @param status         初始状态
+     * @return 已创建的执行记录
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public FlowActionExecution createInTransactionAudit(
             FlowAction action,
@@ -54,6 +79,15 @@ public class FlowActionExecutionService {
         return createRecord(action, event, idempotencyKey, status);
     }
 
+    /**
+     * 实际构建并落库执行记录，序列化触发事件为 payload 并写入初始轨迹。
+     *
+     * @param action         动作配置
+     * @param event          触发事件
+     * @param idempotencyKey 幂等键
+     * @param status         初始状态
+     * @return 已创建的执行记录
+     */
     private FlowActionExecution createRecord(
             FlowAction action,
             FlowActionTriggerEvent event,
@@ -96,6 +130,12 @@ public class FlowActionExecutionService {
         return execution;
     }
 
+    /**
+     * 在独立新事务中标记处理器开始执行，并记录解析后的参数。
+     *
+     * @param execution 执行记录
+     * @param context   执行上下文
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markHandlerStarted(FlowActionExecution execution, FlowActionContext context) {
         if (execution.getStartedAt() == null) {
@@ -113,6 +153,12 @@ public class FlowActionExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 在独立新事务中捕获处理器的执行结果与轨迹，用于成功/失败前的中间状态落盘。
+     *
+     * @param execution 执行记录
+     * @param context   执行上下文
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void captureContext(FlowActionExecution execution, FlowActionContext context) {
         execution.setResolvedParamsJson(writeJson(sanitize(context.getCustomParams())));
@@ -132,6 +178,12 @@ public class FlowActionExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 在独立新事务中标记执行成功，补充结果并记录耗时。
+     *
+     * @param execution 执行记录
+     * @param context   执行上下文；非空时先捕获中间状态
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markSuccess(FlowActionExecution execution, FlowActionContext context) {
         if (context != null && execution.getResultJson() == null) {
@@ -151,6 +203,12 @@ public class FlowActionExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 在独立新事务中标记最终失败（不再自动重试），记录错误信息与堆栈。
+     *
+     * @param execution 执行记录
+     * @param error      失败异常
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markFinalFailure(FlowActionExecution execution, Throwable error) {
         execution.setStatus(FlowActionExecution.Status.DEAD.name());
