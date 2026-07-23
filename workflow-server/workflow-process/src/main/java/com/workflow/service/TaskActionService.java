@@ -53,6 +53,7 @@ public class TaskActionService {
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService entityActionCapabilityService;
     private final EntityRecordTeamService entityRecordTeamService;
+    private final ProcessCcService processCcService;
 
     /**
      * 完成任务
@@ -681,6 +682,9 @@ public class TaskActionService {
                 .sum();
         double avgHours = doneTasks.isEmpty() ? 0 : (totalDuration / doneTasks.size() / 1000.0 / 60 / 60);
         statistics.put("avgProcessTime", Math.round(avgHours * 10) / 10.0);
+
+        // 未读抄送数
+        statistics.put("unreadCcCount", processCcService.countUnreadCc(userId));
 
         return statistics;
     }

@@ -75,13 +75,16 @@
                 <span>
                   <el-icon><Share /></el-icon>
                   我发起的
-                  <el-badge v-if="startedTotal > 0" :value="startedTotal" class="tab-badge" />
                 </span>
               </template>
             </el-tab-pane>
             <el-tab-pane name="cc">
               <template #label>
-                <span><el-icon><Bell /></el-icon>抄送我的</span>
+                <span>
+                  <el-icon><Bell /></el-icon>
+                  抄送我的
+                  <el-badge v-if="statistics.unreadCcCount > 0" :value="statistics.unreadCcCount" class="tab-badge" />
+                </span>
               </template>
             </el-tab-pane>
           </el-tabs>
@@ -317,7 +320,8 @@ const statistics = reactive({
   todoCount: 0,
   doneCount: 0,
   processCount: 0,
-  avgProcessTime: 0
+  avgProcessTime: 0,
+  unreadCcCount: 0
 })
 
 // Tab 和分页
@@ -601,6 +605,7 @@ async function submitCc() {
 async function readCc(row) {
   await markCcRead(row.id)
   row.readStatus = 'READ'
+  if (statistics.unreadCcCount > 0) statistics.unreadCcCount--
 }
 
 function viewCc(row) {

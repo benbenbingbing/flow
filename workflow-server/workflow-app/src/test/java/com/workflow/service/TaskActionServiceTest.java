@@ -90,6 +90,8 @@ class TaskActionServiceTest {
 
     @Mock
     private HistoricTaskInstance historicTask;
+    @Mock
+    private ProcessCcService processCcService;
 
     private TaskActionService service;
 
@@ -107,7 +109,8 @@ class TaskActionServiceTest {
                 nodeFormSubmissionService,
                 entityDataDynamicService,
                 entityActionCapabilityService,
-                entityRecordTeamService
+                entityRecordTeamService,
+                processCcService
         );
         UserContext.setCurrentUser("admin-id", "admin");
     }

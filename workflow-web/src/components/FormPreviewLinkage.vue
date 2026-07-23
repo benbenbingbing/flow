@@ -6,7 +6,7 @@
 <template>
   <div
     class="linkage-form-preview"
-    :class="[form?.layoutType, { 'has-tabs': tabSubForms.length > 0 && !noInternalTabs }]"
+    :class="[form?.layoutType, { 'has-tabs': useTabLayout }]"
     :style="previewStyle"
   >
     <div class="preview-header" v-if="showHeader">
@@ -226,13 +226,10 @@ const formViewConfig = computed(() => safeParseConfig(props.form?.viewConfig))
 
 // 预览容器样式：支持自定义高度，默认 70vh
 // 无 tab 时整体滚动；有 tab 时只滚动 tab content，tab header 固定
-const previewStyle = computed(() => {
-  const hasTabs = tabSubForms.value.length > 0 && !props.noInternalTabs
-  return {
-    height: props.height,
-    overflowY: hasTabs ? 'hidden' : 'auto'
-  }
-})
+const previewStyle = computed(() => ({
+  height: props.height,
+  overflowY: useTabLayout.value ? 'hidden' : 'auto'
+}))
 
 // 自定义表单组件数据更新回调
 function handleCustomFormUpdate(val) {
@@ -316,6 +313,9 @@ const normalFields = computed(() => {
 const tabSubForms = computed(() => {
   return processedFields.value.filter(f => isTabSubForm(f))
 })
+
+const useTabLayout = computed(() =>
+  tabSubForms.value.length > 0 && !props.noInternalTabs && !hasNodeTree.value)
 
 // 自动设置第一个 tab 为激活状态
 watchEffect(() => {
