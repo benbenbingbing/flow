@@ -8,9 +8,10 @@
     "preview": "vite preview",
     "test:unit": "node src/utils/__tests__/calcEngine.spec.js && node src/utils/__tests__/flowConditionGroups.spec.js",
     "test:form-node-schema": "node src/shared/__tests__/form-node-property-schema.spec.js",
+    "test:form-node-drag": "node src/shared/__tests__/form-node-drag.spec.js",
     "test:integration": "node --loader ./scripts/test-alias-loader.mjs src/__tests__/runtime-integration.spec.js",
     "test:page-config": "node src/__tests__/page-config-audit.spec.js",
-    "test": "npm run test:unit && npm run test:form-node-schema && npm run test:integration && npm run test:functional && npm run test:page-config && npm run test:ui-config",
+    "test": "npm run test:unit && npm run test:form-node-schema && npm run test:form-node-drag && npm run test:integration && npm run test:functional && npm run test:page-config && npm run test:ui-config",
     "test:ui-config": "node scripts/ui-config-audit.mjs",
     "test:e2e:mock": "npm run build && node scripts/e2e-mock-pages.mjs",
     "test:functional": "node --loader ./scripts/test-alias-loader.mjs src/__tests__/functional.spec.js",
@@ -36,10 +37,10 @@
     "diagram-js": "^14.0.0",
     "element-plus": "^2.5.0",
     "pinia": "^2.1.0",
+    "sortablejs": "1.14.0",
     "vue": "^3.4.0",
     "vue-codemirror": "^6.1.1",
     "vue-router": "^4.2.0",
-    "vuedraggable": "^4.1.0",
     "xml-formatter": "^3.7.0"
   },
   "devDependencies": {

@@ -126,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
@@ -239,6 +239,7 @@ const queryForm = reactive<Record<string, any>>({})
 
 // 默认表单配置（用于自定义表单组件）
 const defaultForm = ref<any>(null)
+const createFormLoading = ref(false)
 
 // 弹窗组件 ref
 const formDialogRef = ref<InstanceType<typeof EntityDataFormDialog>>()
@@ -547,14 +548,19 @@ const loadListConfig = async () => {
 }
 
 // 加载新增数据表单
-const loadDefaultForm = async () => {
-  if (!entityCode.value) return
+const loadDefaultForm = async (notifyOnError = false) => {
+  if (!entityCode.value) return false
   try {
-    const res = await getFormForNewData(entityCode.value)
+    const res = await getFormForNewData(entityCode.value, { silentError: true })
     defaultForm.value = res || null
+    return true
   } catch (e) {
-    console.log('加载新增数据表单失败:', e)
+    console.error('加载新增数据表单失败:', e)
     defaultForm.value = null
+    if (notifyOnError) {
+      ElMessage.error(e?.message || '加载最新发布表单失败，请稍后重试')
+    }
+    return false
   }
 }
 
@@ -707,8 +713,17 @@ const getActionReason = (row: any, buttonKey: string) => {
 }
 
 // 打开新增弹窗
-const handleCreate = () => {
-  formDialogRef.value?.openCreate()
+const handleCreate = async () => {
+  if (createFormLoading.value) return
+  createFormLoading.value = true
+  try {
+    const loaded = await loadDefaultForm(true)
+    if (!loaded) return
+    await nextTick()
+    await formDialogRef.value?.openCreate()
+  } finally {
+    createFormLoading.value = false
+  }
 }
 
 // 打开编辑弹窗

@@ -812,8 +812,11 @@ const handleCreate = async () => {
   
   // 调用接口获取解析后的表单（流程节点表单或默认表单）
   try {
-    const form = await getFormForNewData(entityCode)
+    const form = await getFormForNewData(entityCode, { silentError: true })
     resolvedForm.value = form
+    dialogTitle.value = form?.formName
+      ? `新增数据 - ${form.formName}${form.formKey ? `（${form.formKey}）` : ''}`
+      : '新增数据'
     
     // 如果有解析的表单，初始化表单数据
     if (form && form.fields) {
@@ -860,7 +863,7 @@ const handleCreate = async () => {
     }
   } catch (error) {
     console.error('获取表单失败:', error)
-    ElMessage.error('获取表单失败')
+    ElMessage.error(error?.message || '获取表单失败')
     // 失败时使用空表单
     formData.value = {
       entityCode: entityCode,

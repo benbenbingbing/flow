@@ -73,14 +73,6 @@ public class EntityFormNodeService {
             "REPEATER", STANDARD_CONTAINER_CHILD_TYPES);
     private static final Set<String> BINDING_TYPES = Set.of(
             "ENTITY_FIELD", "RELATION", "COMPUTED", "CONTEXT", "NONE");
-    private static final Set<String> BINDABLE_NODE_TYPES = Set.of(
-            "FIELD", "SUB_FORM", "REPEATER");
-    private static final Set<String> COMPONENT_NODE_TYPES = Set.of(
-            "FIELD", "SUB_FORM", "REPEATER");
-    private static final Set<String> RULE_NODE_TYPES = Set.of(
-            "FIELD", "SUB_FORM", "REPEATER", "ACTION_SLOT");
-    private static final Set<String> DATA_SOURCE_NODE_TYPES = Set.of(
-            "FIELD", "SUB_FORM", "REPEATER");
     private static final Set<String> SUB_FORM_NODE_TYPES = Set.of(
             "SUB_FORM", "REPEATER");
     private static final Set<String> CLEARABLE_PATCH_FIELDS = Set.of(

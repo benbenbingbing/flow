@@ -151,6 +151,10 @@
         <!-- 表单画布 - 所见即所得 -->
         <div class="form-canvas-wrapper">
           <div class="form-canvas" :class="form.layoutType">
+            <div v-if="formFields.length" class="form-drag-guide">
+              <el-icon><Rank /></el-icon>
+              <span>拖拽节点右上角手柄调整顺序，或移动到兼容容器；位置保存到草稿，发布后生效。</span>
+            </div>
             <div v-if="formFields.length === 0" class="empty-tip">
               <el-empty description="点击左侧字段添加到表单">
                 <template #image>
@@ -161,23 +165,35 @@
             
             <!-- 使用 el-form 包裹，与预览保持一致 -->
             <el-form v-else :label-width="formLabelWidth" :label-position="formLabelPosition" class="design-form">
-              <FormNodeDesignItem
-                v-for="(field, index) in rootDesignNodes"
-                :key="field.id"
-                :node="field"
-                :sibling-index="index"
-                :sibling-count="rootDesignNodes.length"
-                :selected-node-id="selectedField?.id"
-                :layout-type="form.layoutType"
-                :children-for="designChildrenFor"
-                :node-span-for="getNodeSpan"
-                :node-style-for="getNodeDesignStyle"
-                :legacy-node-type="legacyNodeType"
-                :node-label="nodeLabel"
-                @select="selectField"
-                @move="moveNode"
-                @remove="removeNode"
-              />
+              <FormNodeDraggableList
+                :items="rootDesignNodes"
+                parent-id=""
+                :can-drop="canDropNode"
+                :disabled="reorderingNode"
+                zone-class="root-design-drop-zone"
+                @drop="handleNodeDrop"
+              >
+                <template #item="{ element: field, index }">
+                  <FormNodeDesignItem
+                    :node="field"
+                    :sibling-index="index"
+                    :sibling-count="rootDesignNodes.length"
+                    :selected-node-id="selectedField?.id"
+                    :layout-type="form.layoutType"
+                    :children-for="designChildrenFor"
+                    :node-span-for="getNodeSpan"
+                    :node-style-for="getNodeDesignStyle"
+                    :legacy-node-type="legacyNodeType"
+                    :node-label="nodeLabel"
+                    :can-drop-node="canDropNode"
+                    :drag-disabled="reorderingNode"
+                    @select="selectField"
+                    @move="moveNode"
+                    @remove="removeNode"
+                    @drop="handleNodeDrop"
+                  />
+                </template>
+              </FormNodeDraggableList>
             </el-form>
           </div>
         </div>
@@ -869,8 +885,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank } from '@element-plus/icons-vue'
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
+import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
@@ -893,9 +910,14 @@ import {
   canContainFormNode,
   canPlaceFormNodeAtRoot,
   formNodeTypeLabel,
-  isFormNodeContainer,
   normalizeFormNodeType
 } from '@/shared/form-node-hierarchy'
+import {
+  buildFormNodeDropPlan,
+  getFormNodeDepth as getSharedFormNodeDepth,
+  getFormNodeSubtreeHeight,
+  validateFormNodeDrop
+} from '@/shared/form-node-drag'
 import {
   buildFormNodePayload,
   extractFormNodeComponentConfig,
@@ -942,6 +964,7 @@ const entityId = route.query.entityId || ''
 const isEdit = ref(!!formId)
 const saving = ref(false)
 const savingNode = ref(false)
+const reorderingNode = ref(false)
 const nodeBaselines = ref(new Map())
 const showPreview = ref(false)
 const propertyDrawerVisible = ref(false)
@@ -1811,54 +1834,21 @@ function nodeById(nodeId) {
   return formFields.value.find(item => String(item.id) === String(nodeId))
 }
 
-function collectDescendantNodeIds(nodeId) {
-  const descendants = new Set()
-  const pending = [...designChildrenFor(nodeId)]
-  while (pending.length) {
-    const child = pending.shift()
-    if (!child || descendants.has(String(child.id))) continue
-    descendants.add(String(child.id))
-    pending.push(...designChildrenFor(child.id))
-  }
-  return descendants
-}
-
 function getNodeDepth(nodeId) {
-  if (!nodeId) return 0
-  let depth = 0
-  let current = nodeById(nodeId)
-  const visited = new Set()
-  while (current) {
-    const currentId = String(current.id)
-    if (visited.has(currentId)) return FORM_NODE_MAX_DEPTH + 1
-    visited.add(currentId)
-    depth += 1
-    current = current.parentId ? nodeById(current.parentId) : null
-  }
-  return depth
+  return getSharedFormNodeDepth(formFields.value, nodeId)
 }
 
-function getSubtreeHeight(nodeId, visiting = new Set()) {
-  if (!nodeId) return 1
-  const normalizedId = String(nodeId)
-  if (visiting.has(normalizedId)) return FORM_NODE_MAX_DEPTH + 1
-  const nextVisiting = new Set(visiting)
-  nextVisiting.add(normalizedId)
-  const children = designChildrenFor(nodeId)
-  if (!children.length) return 1
-  return 1 + Math.max(
-    ...children.map(child => getSubtreeHeight(child.id, nextVisiting))
-  )
+function getSubtreeHeight(nodeId) {
+  return getFormNodeSubtreeHeight(formFields.value, nodeId)
 }
 
 function isValidParentCandidate(parent, child) {
   if (!parent || !child) return false
-  if (String(parent.id) === String(child.id)) return false
-  if (!isFormNodeContainer(nodeTypeOf(parent))) return false
-  if (!canContainFormNode(nodeTypeOf(parent), nodeTypeOf(child))) return false
-  if (collectDescendantNodeIds(child.id).has(String(parent.id))) return false
-  return getNodeDepth(parent.id) + getSubtreeHeight(child.id)
-    <= FORM_NODE_MAX_DEPTH
+  return validateFormNodeDrop(
+    formFields.value,
+    child,
+    parent.id
+  ).valid
 }
 
 function nodePathLabels(node) {
@@ -2511,27 +2501,65 @@ async function moveNode({ node, direction }) {
   const siblingIndex = siblings.findIndex(item => item.id === node.id)
   const targetIndex = siblingIndex + direction
   if (siblingIndex < 0 || targetIndex < 0 || targetIndex >= siblings.length) return
+  await handleNodeDrop({
+    node,
+    newParentId: node.parentId || '',
+    newIndex: targetIndex
+  })
+}
 
-  const reorderedSiblings = [...siblings]
-  reorderedSiblings.splice(siblingIndex, 1)
-  reorderedSiblings.splice(targetIndex, 0, node)
-  const target = siblings[targetIndex]
-  const currentGlobalIndex = formFields.value.findIndex(item => item.id === node.id)
-  const targetGlobalIndex = formFields.value.findIndex(item => item.id === target.id)
-  if (currentGlobalIndex < 0 || targetGlobalIndex < 0) return
+function canDropNode(node, targetParentId) {
+  return !reorderingNode.value
+    && validateFormNodeDrop(formFields.value, node, targetParentId).valid
+}
 
-  formFields.value.splice(currentGlobalIndex, 1)
-  const insertionIndex = formFields.value.findIndex(item => item.id === target.id)
-  formFields.value.splice(
-    direction < 0 ? insertionIndex : insertionIndex + 1,
-    0,
-    node
+async function handleNodeDrop({ node, newParentId, newIndex }) {
+  if (!node || reorderingNode.value) return
+  const plan = buildFormNodeDropPlan(
+    formFields.value,
+    node,
+    newParentId,
+    newIndex
   )
-  reorderedSiblings.forEach((item, index) => {
+  if (!plan.valid) {
+    ElMessage.warning(plan.message || '该节点不能移动到目标容器')
+    return
+  }
+  const currentSiblings = designChildrenFor(node.parentId || '')
+  const currentIndex = currentSiblings.findIndex(item =>
+    String(item.id) === String(node.id)
+  )
+  if (String(node.parentId || '') === String(plan.parentId)
+      && currentIndex === plan.targetIndex) {
+    return
+  }
+
+  node.parentId = plan.parentId
+  plan.orderedSiblings.forEach((item, index) => {
     item.sortOrder = index
   })
-  applyLocalSiblingOrder(node, targetIndex, reorderedSiblings)
-  await persistNodeOrder(node, targetIndex, reorderedSiblings)
+  applyLocalSiblingOrder(node, plan.targetIndex, plan.orderedSiblings)
+
+  if (!form.value.id || !node.revision) {
+    ElMessage.success('节点位置已调整，保存草稿后写入服务器')
+    return
+  }
+
+  const selectedNodeId = selectedField.value?.id
+  reorderingNode.value = true
+  const saved = await persistNodeOrder(
+    node,
+    plan.targetIndex,
+    plan.orderedSiblings
+  )
+  await loadFormFields()
+  if (selectedNodeId) {
+    selectedField.value = nodeById(selectedNodeId) || null
+  }
+  reorderingNode.value = false
+  if (saved) {
+    ElMessage.success('节点位置已保存到草稿，发布后生效')
+  }
 }
 
 function applyLocalSiblingOrder(node, targetIndex, orderedSiblings) {
@@ -2556,28 +2584,8 @@ function applyLocalSiblingOrder(node, targetIndex, orderedSiblings) {
   })
 }
 
-// 上移
-async function moveUp(index) {
-  if (index === 0) return
-  const temp = formFields.value[index]
-  formFields.value[index] = formFields.value[index - 1]
-  formFields.value[index - 1] = temp
-  formFields.value.forEach((f, i) => f.sortOrder = i)
-  await persistNodeOrder(temp, index - 1)
-}
-
-// 下移
-async function moveDown(index) {
-  if (index === formFields.value.length - 1) return
-  const temp = formFields.value[index]
-  formFields.value[index] = formFields.value[index + 1]
-  formFields.value[index + 1] = temp
-  formFields.value.forEach((f, i) => f.sortOrder = i)
-  await persistNodeOrder(temp, index + 1)
-}
-
 async function persistNodeOrder(field, newIndex, orderedSiblings = formFields.value) {
-  if (!form.value.id || !field?.revision) return
+  if (!form.value.id || !field?.revision) return false
   const previous = orderedSiblings[newIndex - 1]
   const next = orderedSiblings[newIndex + 1]
   try {
@@ -2592,12 +2600,14 @@ async function persistNodeOrder(field, newIndex, orderedSiblings = formFields.va
       orderKey: saved.orderKey,
       parentId: saved.parentId || ''
     })
+    rememberNodeBaseline(field)
     const latest = await getFormById(form.value.id)
     form.value.revision = latest.revision
     await loadDiff()
+    return true
   } catch (error) {
     handleRevisionConflict(error, field)
-    await loadFormFields()
+    return false
   }
 }
 
@@ -3373,11 +3383,33 @@ onMounted(async () => {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
 }
 
+.form-drag-guide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  border-radius: 4px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  font-size: 12px;
+}
+
 /* 设计表单样式 */
 .design-form {
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
+}
+
+.root-design-drop-zone {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 120px;
 }
 
 .empty-tip {

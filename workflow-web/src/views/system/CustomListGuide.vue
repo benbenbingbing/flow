@@ -236,6 +236,7 @@ emit('pageChange', 2)</code></pre>
             <li>组件未注册时平台自动回退默认动态列表，避免配置错误导致页面不可用。</li>
             <li>自定义数据源必须实现 `EntityListDataProvider` 并执行平台传入的 `DataScopePlan`。</li>
             <li>打开列表按钮和表单选择器必须使用已发布的 entityCode + listKey，不得回退为无数据范围的自由 URL。</li>
+            <li>实体列表菜单的侧栏显示由角色菜单授权控制；列表设计中的访问权限码负责运行时数据访问，菜单管理中无需重复填写同一权限码。</li>
             <li>整页组件只能读取当前激活 release 的 `runtime.viewConfig`；不得自行加载草稿接口或绕过发布。</li>
           </ul>
         </section>

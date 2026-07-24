@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -67,6 +68,7 @@ class EntityFormResolveServiceTest {
         when(formService.getByBinding(binding)).thenReturn(form);
 
         assertEquals("form-first", service.resolveFormForNewData("expense").getId());
+        verify(formService).requireCurrentBindingForNewData(binding);
     }
 
     /** 测试首个用户任务解析可穿越网关：验证解析结果为网关之后的 Task_First */

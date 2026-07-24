@@ -124,37 +124,73 @@
     <!-- 分配权限对话框 -->
     <el-dialog
       v-model="menuDialogVisible"
-      title="分配权限"
-      width="500px"
+      :title="currentRoleName ? `分配权限 - ${currentRoleName}` : '分配权限'"
+      class="permission-transfer-dialog"
+      width="960px"
+      top="5vh"
       :close-on-click-modal="false"
+      destroy-on-close
     >
-      <el-tree
-        ref="menuTreeRef"
-        :data="menuTree"
-        show-checkbox
-        node-key="id"
-        :default-expand-all="true"
-        :props="{ label: 'menuName', children: 'children' }"
-        :default-checked-keys="selectedMenuIds"
-      />
+      <div v-loading="menuLoading" class="permission-transfer">
+        <el-transfer
+          v-model="selectedMenuIds"
+          :data="permissionOptions"
+          :titles="['未分配', '已分配']"
+          :props="{ key: 'id', label: 'menuName' }"
+          :format="{ noChecked: '${total} 项', hasChecked: '${checked}/${total} 项' }"
+          filterable
+          filter-placeholder="搜索权限"
+          target-order="original"
+          :filter-method="filterPermission"
+          @change="handleMenuTransferChange"
+        >
+          <template #default="{ option }">
+            <div class="permission-option" :title="option.fullPath">
+              <span class="permission-option__path">{{ option.fullPath }}</span>
+              <el-tag
+                class="permission-option__type"
+                size="small"
+                effect="plain"
+                :type="getMenuTypeTag(option.menuType)"
+              >
+                {{ option.menuTypeLabel }}
+              </el-tag>
+            </div>
+          </template>
+        </el-transfer>
+      </div>
       
       <template #footer>
-        <el-button @click="menuDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSaveMenus" :loading="menuSubmitLoading">确定</el-button>
+        <div class="permission-dialog-footer">
+          <span class="permission-dialog-footer__count">
+            已分配 {{ selectedMenuIds.length }} / {{ permissionOptions.length }} 项
+          </span>
+          <div class="permission-dialog-footer__actions">
+            <el-button @click="menuDialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleSaveMenus" :loading="menuSubmitLoading">确定</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getRoleList, createRole, updateRole, deleteRole, updateRoleStatus, getMenuTree, getRoleMenus, saveRoleMenus } from '@/api/system/role'
+import { getRoleList, createRole, updateRole, deleteRole, updateRoleStatus, getMenuTree, saveRoleMenus } from '@/api/system/role'
+import {
+  applyPermissionTransferChange,
+  flattenPermissionMenuTree,
+  sanitizePermissionKeys
+} from '@/shared/role-permission-transfer'
 
 const loading = ref(false)
 const roleList = ref<any[]>([])
 const menuTree = ref<any[]>([])
+const menuLoading = ref(false)
+const permissionOptions = computed(() => flattenPermissionMenuTree(menuTree.value))
 
 // 角色对话框
 const dialogVisible = ref(false)
@@ -178,10 +214,10 @@ const formRules = {
 
 // 权限对话框
 const menuDialogVisible = ref(false)
-const menuTreeRef = ref()
 const menuSubmitLoading = ref(false)
 const selectedMenuIds = ref<string[]>([])
 const currentRoleId = ref('')
+const currentRoleName = ref('')
 
 // 获取角色列表
 const fetchRoleList = async () => {
@@ -195,10 +231,13 @@ const fetchRoleList = async () => {
 
 // 获取菜单树
 const fetchMenuTree = async () => {
+  menuLoading.value = true
   try {
     menuTree.value = await getMenuTree() || []
   } catch (error) {
     console.error('获取菜单树失败', error)
+  } finally {
+    menuLoading.value = false
   }
 }
 
@@ -278,12 +317,33 @@ const handleStatusChange = async (row: any) => {
 // 分配权限
 const handleAssignMenu = async (row: any) => {
   currentRoleId.value = row.id
-  selectedMenuIds.value = row.menuIds || []
+  currentRoleName.value = row.roleName || ''
+
+  if (!menuTree.value.length) {
+    await fetchMenuTree()
+  }
+
+  selectedMenuIds.value = sanitizePermissionKeys(row.menuIds || [], permissionOptions.value)
   menuDialogVisible.value = true
-  
-  // 等待DOM更新后设置选中状态
-  await nextTick()
-  menuTreeRef.value?.setCheckedKeys(selectedMenuIds.value)
+}
+
+const filterPermission = (query: string, option: any) => {
+  return !query || option.searchText.includes(query.trim().toLowerCase())
+}
+
+const getMenuTypeTag = (menuType: string) => {
+  if (menuType === 'M') return 'warning'
+  if (menuType === 'C') return 'success'
+  return 'info'
+}
+
+const handleMenuTransferChange = (keys: string[], direction: 'left' | 'right', movedKeys: string[]) => {
+  selectedMenuIds.value = applyPermissionTransferChange(
+    keys,
+    direction,
+    movedKeys,
+    permissionOptions.value
+  )
 }
 
 // 保存权限
@@ -292,12 +352,7 @@ const handleSaveMenus = async () => {
   
   menuSubmitLoading.value = true
   try {
-    // 获取选中的节点keys（包括半选中的父节点）
-    const checkedKeys = menuTreeRef.value?.getCheckedKeys() || []
-    const halfCheckedKeys = menuTreeRef.value?.getHalfCheckedKeys() || []
-    const allKeys = [...checkedKeys, ...halfCheckedKeys]
-    
-    await saveRoleMenus(currentRoleId.value, allKeys)
+    await saveRoleMenus(currentRoleId.value, selectedMenuIds.value)
     ElMessage.success('权限分配成功')
     menuDialogVisible.value = false
     fetchRoleList()
@@ -327,6 +382,131 @@ onMounted(() => {
       font-size: 20px;
       font-weight: 500;
     }
+  }
+}
+
+.permission-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.permission-option__path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-option__type {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.permission-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.permission-dialog-footer__count {
+  color: #909399;
+  font-size: 13px;
+}
+
+.permission-dialog-footer__actions {
+  display: flex;
+  gap: 8px;
+}
+
+:global(.permission-transfer-dialog) {
+  display: flex;
+  flex-direction: column;
+  height: min(620px, 90vh);
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+}
+
+:global(.permission-transfer-dialog .el-dialog__header) {
+  flex: 0 0 auto;
+  margin-right: 0;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+:global(.permission-transfer-dialog .el-dialog__body) {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: 18px 24px;
+  overflow: hidden;
+}
+
+:global(.permission-transfer-dialog .el-dialog__footer) {
+  flex: 0 0 auto;
+  padding: 14px 24px 16px;
+  border-top: 1px solid #ebeef5;
+}
+
+.permission-transfer {
+  height: 100%;
+}
+
+.permission-transfer :deep(.el-transfer) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+  align-items: stretch;
+  height: 100%;
+}
+
+.permission-transfer :deep(.el-transfer-panel) {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.permission-transfer :deep(.el-transfer-panel__header) {
+  flex: 0 0 auto;
+}
+
+.permission-transfer :deep(.el-transfer-panel__body) {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.permission-transfer :deep(.el-transfer-panel__item) {
+  margin-right: 0;
+  padding-right: 12px;
+}
+
+.permission-transfer :deep(.el-transfer__buttons) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+}
+
+.permission-transfer :deep(.el-transfer__button:nth-child(2)) {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 760px) {
+  .permission-transfer :deep(.el-transfer) {
+    grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr);
+  }
+
+  .permission-transfer :deep(.el-transfer__buttons) {
+    padding: 0 8px;
+  }
+
+  .permission-option__type {
+    display: none;
   }
 }
 </style>

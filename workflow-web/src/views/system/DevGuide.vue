@@ -31,6 +31,7 @@
           <ul class="check-list">
             <li>表单节点、列表列、按钮和场景都以稳定 `id` 定位；禁止使用数组下标、显示名称或排序值充当业务键。</li>
             <li>属性面板只 PATCH 当前项目，拖拽单独保存 `orderKey`；不同项目可并行保存，不再全删全插。</li>
+            <li>表单节点拖拽必须走平台递归拖拽容器与 reorder 接口：目标父容器按 nodeType、循环引用和最大 8 层校验，成功后重新读取节点 revision。自定义节点组件不得自行改 parentId 或绕过服务端校验。</li>
             <li>所有修改和删除请求必须携带 `expectedRevision`；成功后使用响应中的新 `revision` 更新 Store。</li>
             <li>同一项目发生并发冲突时返回 HTTP `409`，服务器当前对象位于响应 `data`；客户端以 `data.revision` 作为 serverRevision、以 `data` 作为 currentData，保留本地值并展示差异。</li>
             <li>兼容整包更新调用 `/nodes/update?expectedRevision=...`，先校验表单草稿 revision，再按稳定 ID 差异 upsert；HTTP 请求仍执行节点锁定和 CAS。只有启动迁移/配置导入等可信系统命令可进入兼容迁移通道。</li>

@@ -43,6 +43,7 @@
           <ul class="check-list">
             <li>每个布局和内容节点都使用稳定 `nodeId`；改名、拖拽、发布和模板升级不会重建 ID。</li>
             <li>右侧属性面板只 PATCH 当前节点，删除和同级排序使用独立接口；其他节点的 revision 与更新时间保持不变。</li>
+            <li>设计器统一通过节点右上角手柄拖拽；同级排序和跨容器移动都复用父子类型、循环引用与 8 层深度校验。已保存节点立即调用 reorder 并携带 expectedRevision，响应后刷新整棵草稿树，避免服务端 orderKey 重平衡造成其他节点 revision 过期。</li>
             <li>请求必须携带 `expectedRevision`。同节点并发修改返回 HTTP `409`，不同节点允许并行保存。</li>
             <li>409 响应将服务器当前节点放在 `data`；设计器以 `data.revision` 作为 serverRevision、以 `data` 作为 currentData，保留本地编辑并提供逐字段合并，禁止自动覆盖。</li>
           </ul>

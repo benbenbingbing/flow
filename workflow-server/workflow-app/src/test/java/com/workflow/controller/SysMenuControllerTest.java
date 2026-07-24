@@ -2,11 +2,13 @@ package com.workflow.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.PageResult;
+import com.workflow.common.UserContext;
 import com.workflow.entity.SysMenu;
 import com.workflow.mapper.SysMenuMapper;
 import com.workflow.service.SysMenuService;
 import com.workflow.service.permission.EntityPermissionCatalogService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +64,7 @@ class SysMenuControllerTest {
 
     @BeforeEach
     void setUp() {
+        UserContext.setCurrentUser("user-1", "admin");
         testMenu = new SysMenu();
         testMenu.setId("test-id-1");
         testMenu.setMenuName("测试菜单");
@@ -74,6 +77,11 @@ class SysMenuControllerTest {
         testMenu.setStatus("0");
         testMenu.setVisible("0");
         testMenu.setParentId("0");
+    }
+
+    @AfterEach
+    void tearDown() {
+        UserContext.clear();
     }
 
     @Test
@@ -91,13 +99,14 @@ class SysMenuControllerTest {
     @Test
     @DisplayName("测试查询运行态侧栏菜单树接口")
     void testSidebarTree() throws Exception {
-        when(menuService.getSidebarMenuTree()).thenReturn(Collections.singletonList(testMenu));
+        when(menuService.getSidebarMenuTree("user-1")).thenReturn(Collections.singletonList(testMenu));
 
         mockMvc.perform(get("/api/system/menu/sidebar-tree"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].menuName").value("测试菜单"));
+        verify(menuService).getSidebarMenuTree("user-1");
     }
 
     @Test

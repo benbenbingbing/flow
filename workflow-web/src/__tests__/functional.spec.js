@@ -52,6 +52,11 @@ import {
   getEntityFieldTypeLabel,
   getEntityFieldTypeTag
 } from '@/shared/entity-design'
+import {
+  applyPermissionTransferChange,
+  flattenPermissionMenuTree,
+  sanitizePermissionKeys
+} from '@/shared/role-permission-transfer'
 
 const DemoComponent = { name: 'DemoComponent' }
 const DemoForm = { name: 'DemoForm' }
@@ -60,6 +65,41 @@ const DemoListV1 = { name: 'DemoListV1' }
 const DemoListV2 = { name: 'DemoListV2' }
 const DemoNodeV1 = { name: 'DemoNodeV1' }
 const DemoNodeV2 = { name: 'DemoNodeV2' }
+
+const permissionOptions = flattenPermissionMenuTree([
+  {
+    id: 'system',
+    menuName: '系统管理',
+    menuType: 'M',
+    children: [
+      { id: 'user', menuName: '用户管理', menuType: 'C', children: [] },
+      {
+        id: 'role',
+        menuName: '角色管理',
+        menuType: 'C',
+        children: [
+          { id: 'role-edit', menuName: '编辑角色', menuType: 'F', perm: 'system:role:edit' }
+        ]
+      }
+    ]
+  }
+])
+assert.equal(permissionOptions.length, 4)
+assert.equal(permissionOptions.find(item => item.id === 'role-edit').fullPath, '系统管理 / 角色管理 / 编辑角色')
+assert.deepEqual(permissionOptions.find(item => item.id === 'role').descendantIds, ['role-edit'])
+assert.deepEqual(sanitizePermissionKeys(['missing', 'role'], permissionOptions), ['role'])
+assert.deepEqual(
+  applyPermissionTransferChange(['role-edit'], 'right', ['role-edit'], permissionOptions),
+  ['system', 'role', 'role-edit']
+)
+assert.deepEqual(
+  applyPermissionTransferChange(['system'], 'right', ['system'], permissionOptions),
+  ['system', 'user', 'role', 'role-edit']
+)
+assert.deepEqual(
+  applyPermissionTransferChange(['system', 'user', 'role', 'role-edit'], 'left', ['role'], permissionOptions),
+  ['system', 'user']
+)
 
 registerCustomListComponent('functionalList', DemoComponent, {
   label: '功能列表',
@@ -219,7 +259,19 @@ const apiExpectations = {
   'src/api/auth.js': ['login', 'getCurrentUser', 'logout', 'getPermissions'],
   'src/api/process.js': ['getList', 'getPublishedList', 'getById', 'create', 'update', 'delete', 'publish', 'getProcessProgress'],
   'src/api/entity.js': ['getList', 'getAll', 'getByCode', 'create', 'update', 'delete', 'publish', 'getListWithConfig', 'getDetail', 'save', 'exportData'],
-  'src/api/entityListConfig.js': ['getByEntityId', 'getById', 'getExtensionOptions', 'save', 'delete'],
+  'src/api/entityListConfig.js': [
+    'getByEntityId',
+    'getById',
+    'getExtensionOptions',
+    'save',
+    'patchMetadata',
+    'patchAction',
+    'deleteAction',
+    'patchScene',
+    'deleteScene',
+    'publish',
+    'delete'
+  ],
   'src/api/entityListRuntime.js': ['getSchema', 'query', 'simulate'],
   'src/api/entityListScope.js': ['getConfiguration', 'createPolicy', 'createBinding', 'publish'],
   'src/api/processTask.js': ['getTodoList', 'getDoneList', 'getStatistics', 'completeTask', 'getTaskOperations', 'previewAddSign', 'addSignTask', 'cancelAddSign', 'ccTask', 'getMyCcList', 'markCcRead', 'withdrawProcess', 'terminateProcess'],
@@ -236,6 +288,45 @@ for (const [file, names] of Object.entries(apiExpectations)) {
     assert.ok(source.includes(name), `${file} 缺少功能 API: ${name}`)
   }
 }
+
+const entityListConfigApiSource = readFileSync(
+  'src/api/entityListConfig.js',
+  'utf8'
+)
+for (const route of [
+  '/actions/${actionId}/patch',
+  '/actions/${actionId}/delete',
+  '/scenes/${sceneId}/patch',
+  '/scenes/${sceneId}/delete'
+]) {
+  assert.ok(
+    entityListConfigApiSource.includes(route),
+    `列表单项接口路径错误: ${route}`
+  )
+}
+
+const entityListConfigPageSource = readFileSync(
+  'src/views/EntityListConfig.vue',
+  'utf8'
+)
+assert.ok(
+  /patchMetadata\(formData\.value\.id,[\s\S]*?expectedRevision:\s*formData\.value\.revision/.test(
+    entityListConfigPageSource
+  ),
+  '列表基本信息编辑未携带 expectedRevision'
+)
+
+const layoutSource = readFileSync('src/views/Layout.vue', 'utf8')
+assert.ok(
+  !layoutSource.includes('userStore.permissions.includes(required)'),
+  '侧栏菜单不应再用按钮权限集合二次过滤实体菜单'
+)
+
+const menuPageSource = readFileSync('src/views/system/Menu.vue', 'utf8')
+assert.ok(
+  /formData\.resourceType = 'ENTITY_LIST'[\s\S]*?formData\.perm = ''/.test(menuPageSource),
+  '实体列表菜单应由角色菜单授权控制，不应重复保存列表访问权限码'
+)
 
 const pageFeatureExpectations = {
   'src/views/ProcessList.vue': ['handleCreate', 'handleEdit', 'handleDelete', 'handlePublish', 'handleDisable', 'handleDesign', 'handleViewVersions', 'handleDeleteVersion'],

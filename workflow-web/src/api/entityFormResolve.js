@@ -5,8 +5,8 @@ import request from '@/utils/request'
  * @param entityCode 实体编码
  * @returns 表单信息，包含表单字段
  */
-export function getFormForNewData(entityCode) {
-  return request.get(`/entity-form-resolve/new-data/${entityCode}`)
+export function getFormForNewData(entityCode, config = {}) {
+  return request.get(`/entity-form-resolve/new-data/${entityCode}`, config)
 }
 
 /**

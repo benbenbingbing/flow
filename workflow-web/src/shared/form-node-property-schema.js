@@ -141,6 +141,8 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
   })
 })
 
+const UNKNOWN_FORM_NODE_PROPERTY_SCHEMA = schema({})
+
 const FIELD_PROP_KEYS = Object.freeze([
   'fieldId',
   'fieldCode',
@@ -239,7 +241,7 @@ export function normalizeFormFieldValidation(fieldType, value) {
 export function getFormNodePropertySchema(value) {
   const nodeType = normalizeFormNodeType(value)
   return FORM_NODE_PROPERTY_SCHEMAS[nodeType]
-    || FORM_NODE_PROPERTY_SCHEMAS.FIELD
+    || UNKNOWN_FORM_NODE_PROPERTY_SCHEMA
 }
 
 export function formNodeSupports(value, capability) {

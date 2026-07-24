@@ -174,7 +174,9 @@ const openCreate = async () => {
   currentProcessName.value = ''
   activeTab.value = hasTabSubForms.value ? 'basic' : 'form'
   resetForm()
-  dialogTitle.value = '新增数据'
+  dialogTitle.value = props.defaultForm?.formName
+    ? `新增数据 - ${props.defaultForm.formName}${props.defaultForm.formKey ? `（${props.defaultForm.formKey}）` : ''}`
+    : '新增数据'
 
   if (props.defaultForm?.initConfig) {
     try {

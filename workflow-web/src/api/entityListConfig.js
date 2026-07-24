@@ -82,11 +82,11 @@ export const entityListConfigApi = {
   },
 
   patchAction(id, actionId, data) {
-    return request.post(`/entity-list-config/${id}/actions/${actionId}`, data)
+    return request.post(`/entity-list-config/${id}/actions/${actionId}/patch`, data)
   },
 
   deleteAction(id, actionId, expectedRevision) {
-    return request.post(`/entity-list-config/${id}/actions/${actionId}`, {
+    return request.post(`/entity-list-config/${id}/actions/${actionId}/delete`, {
       expectedRevision
     })
   },
@@ -100,11 +100,11 @@ export const entityListConfigApi = {
   },
 
   patchScene(id, sceneId, data) {
-    return request.post(`/entity-list-config/${id}/scenes/${sceneId}`, data)
+    return request.post(`/entity-list-config/${id}/scenes/${sceneId}/patch`, data)
   },
 
   deleteScene(id, sceneId, expectedRevision) {
-    return request.post(`/entity-list-config/${id}/scenes/${sceneId}`, {
+    return request.post(`/entity-list-config/${id}/scenes/${sceneId}/delete`, {
       expectedRevision
     })
   },

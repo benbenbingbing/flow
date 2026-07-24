@@ -1,6 +1,8 @@
 <template>
   <div
     class="form-node-design-item"
+    :data-node-id="node.id"
+    :data-node-type="nodeType"
     :class="{
       active: selectedNodeId === node.id,
       'is-container': containerNode,
@@ -10,6 +12,15 @@
     @click.stop="$emit('select', node)"
   >
     <div class="node-actions" @click.stop>
+      <span
+        class="form-node-drag-handle"
+        role="button"
+        tabindex="0"
+        aria-label="拖拽节点"
+        title="拖拽调整顺序或移动到其他容器"
+      >
+        <el-icon><Rank /></el-icon>
+      </span>
       <el-button-group size="small">
         <el-button
           aria-label="上移节点"
@@ -33,16 +44,29 @@
 
     <el-card v-if="nodeType === 'SECTION'" shadow="never" class="design-section">
       <template #header>{{ nodeLabelValue }}</template>
-      <div class="design-node-children">
-        <FormNodeDesignItem
-          v-for="(child, index) in children"
-          :key="child.id"
-          v-bind="childItemProps(child, index)"
-          @select="$emit('select', $event)"
-          @move="$emit('move', $event)"
-          @remove="$emit('remove', $event)"
-        />
-      </div>
+      <FormNodeDraggableList
+        :items="children"
+        :parent-id="node.id"
+        :can-drop="canDropNode"
+        :disabled="dragDisabled"
+        zone-class="design-node-children"
+        @drop="$emit('drop', $event)"
+      >
+        <template #item="{ element: child, index }">
+          <FormNodeDesignItem
+            v-bind="childItemProps(child, index)"
+            @select="$emit('select', $event)"
+            @move="$emit('move', $event)"
+            @remove="$emit('remove', $event)"
+            @drop="$emit('drop', $event)"
+          />
+        </template>
+        <template #footer>
+          <div v-if="!children.length" class="design-container-empty">
+            拖拽节点到此区块
+          </div>
+        </template>
+      </FormNodeDraggableList>
     </el-card>
 
     <div v-else-if="nodeType === 'GRID'" class="design-container-shell design-grid-shell">
@@ -56,24 +80,35 @@
         <strong>栅格容器</strong>
         <span>{{ children.length }} 个节点</span>
       </div>
-      <el-row
-        :gutter="Number(nodeConfig.gutter || 16)"
-        class="design-grid"
+      <FormNodeDraggableList
+        :items="children"
+        :parent-id="node.id"
+        :can-drop="canDropNode"
+        :disabled="dragDisabled"
+        tag="el-row"
+        :component-data="{ gutter: Number(nodeConfig.gutter || 16) }"
+        zone-class="design-grid"
+        @drop="$emit('drop', $event)"
       >
-        <el-col
-          v-for="(child, index) in children"
-          :key="child.id"
-          :span="nodeSpanFor(child, Number(nodeConfig.defaultSpan || 12))"
-        >
-          <FormNodeDesignItem
-            v-bind="childItemProps(child, index, 'GRID')"
-            @select="$emit('select', $event)"
-            @move="$emit('move', $event)"
-            @remove="$emit('remove', $event)"
-          />
-        </el-col>
-      </el-row>
-      <div v-if="!children.length" class="design-container-empty">暂无内容</div>
+        <template #item="{ element: child, index }">
+          <el-col
+            :span="nodeSpanFor(child, Number(nodeConfig.defaultSpan || 12))"
+          >
+            <FormNodeDesignItem
+              v-bind="childItemProps(child, index, 'GRID')"
+              @select="$emit('select', $event)"
+              @move="$emit('move', $event)"
+              @remove="$emit('remove', $event)"
+              @drop="$emit('drop', $event)"
+            />
+          </el-col>
+        </template>
+        <template #footer>
+          <div v-if="!children.length" class="design-container-empty">
+            拖拽节点到此栅格
+          </div>
+        </template>
+      </FormNodeDraggableList>
     </div>
 
     <div v-else-if="nodeType === 'TAB_SET'" class="design-container-shell design-tab-set-shell">
@@ -87,6 +122,47 @@
         <strong>Tab 集合</strong>
         <span>{{ children.length }} 个页签</span>
       </div>
+      <div class="design-tab-order-caption">拖拽页签手柄调整顺序或移动到其他 Tab 集合</div>
+      <FormNodeDraggableList
+        :items="children"
+        :parent-id="node.id"
+        :can-drop="canDropNode"
+        :disabled="dragDisabled"
+        zone-class="design-tab-order"
+        @drop="$emit('drop', $event)"
+      >
+        <template #item="{ element: tabNode }">
+          <div
+            class="design-tab-order-item"
+            :data-node-id="tabNode.id"
+            data-node-type="TAB"
+            :class="{ active: String(activeTabId) === String(tabNode.id) }"
+            @click.stop
+          >
+            <span
+              class="form-node-drag-handle"
+              role="button"
+              tabindex="0"
+              aria-label="拖拽 Tab 页"
+              title="拖拽调整 Tab 页顺序"
+            >
+              <el-icon><Rank /></el-icon>
+            </span>
+            <button
+              type="button"
+              class="design-tab-order-label"
+              @click="selectTabNode(tabNode)"
+            >
+              {{ nodeLabelFor(tabNode) }}
+            </button>
+          </div>
+        </template>
+        <template #footer>
+          <div v-if="!children.length" class="design-container-empty">
+            拖拽 Tab 页到此集合
+          </div>
+        </template>
+      </FormNodeDraggableList>
       <el-tabs
         v-if="children.length"
         v-model="activeTabId"
@@ -138,22 +214,34 @@
               </el-button>
             </el-button-group>
           </div>
-          <div class="design-node-children tab-node-children">
-            <FormNodeDesignItem
-              v-for="(child, childIndex) in childrenFor(tabNode.id)"
-              :key="child.id"
-              v-bind="childItemProps(child, childIndex, 'TAB')"
-              @select="$emit('select', $event)"
-              @move="$emit('move', $event)"
-              @remove="$emit('remove', $event)"
-            />
-          </div>
-          <div v-if="!childrenFor(tabNode.id).length" class="design-container-empty">
-            暂无内容
-          </div>
+          <FormNodeDraggableList
+            :items="childrenFor(tabNode.id)"
+            :parent-id="tabNode.id"
+            :can-drop="canDropNode"
+            :disabled="dragDisabled"
+            zone-class="design-node-children tab-node-children"
+            @drop="$emit('drop', $event)"
+          >
+            <template #item="{ element: child, index: childIndex }">
+              <FormNodeDesignItem
+                v-bind="childItemProps(child, childIndex, 'TAB')"
+                @select="$emit('select', $event)"
+                @move="$emit('move', $event)"
+                @remove="$emit('remove', $event)"
+                @drop="$emit('drop', $event)"
+              />
+            </template>
+            <template #footer>
+              <div
+                v-if="!childrenFor(tabNode.id).length"
+                class="design-container-empty"
+              >
+                拖拽节点到此 Tab 页
+              </div>
+            </template>
+          </FormNodeDraggableList>
         </el-tab-pane>
       </el-tabs>
-      <div v-else class="design-container-empty">暂无 Tab 页</div>
     </div>
 
     <el-collapse v-else-if="nodeType === 'COLLAPSE'" model-value="design-collapse" class="design-collapse">
@@ -161,16 +249,29 @@
         :name="node.id"
         :title="nodeLabelValue"
       >
-        <div class="design-node-children">
-          <FormNodeDesignItem
-            v-for="(child, index) in children"
-            :key="child.id"
-            v-bind="childItemProps(child, index)"
-            @select="$emit('select', $event)"
-            @move="$emit('move', $event)"
-            @remove="$emit('remove', $event)"
-          />
-        </div>
+        <FormNodeDraggableList
+          :items="children"
+          :parent-id="node.id"
+          :can-drop="canDropNode"
+          :disabled="dragDisabled"
+          zone-class="design-node-children"
+          @drop="$emit('drop', $event)"
+        >
+          <template #item="{ element: child, index }">
+            <FormNodeDesignItem
+              v-bind="childItemProps(child, index)"
+              @select="$emit('select', $event)"
+              @move="$emit('move', $event)"
+              @remove="$emit('remove', $event)"
+              @drop="$emit('drop', $event)"
+            />
+          </template>
+          <template #footer>
+            <div v-if="!children.length" class="design-container-empty">
+              拖拽节点到此折叠面板
+            </div>
+          </template>
+        </FormNodeDraggableList>
       </el-collapse-item>
     </el-collapse>
 
@@ -197,36 +298,58 @@
         <FormFieldRenderer :field="node" :disabled="true" />
       </el-form-item>
       <div
-        v-if="nestedFieldContainer && children.length"
+        v-if="nestedFieldContainer"
         class="nested-field-children"
       >
         <div class="design-container-caption">
           <strong>内嵌节点</strong>
           <span>{{ children.length }} 个节点</span>
         </div>
-        <div class="design-node-children">
-          <FormNodeDesignItem
-            v-for="(child, index) in children"
-            :key="child.id"
-            v-bind="childItemProps(child, index)"
-            @select="$emit('select', $event)"
-            @move="$emit('move', $event)"
-            @remove="$emit('remove', $event)"
-          />
-        </div>
+        <FormNodeDraggableList
+          :items="children"
+          :parent-id="node.id"
+          :can-drop="canDropNode"
+          :disabled="dragDisabled"
+          zone-class="design-node-children"
+          @drop="$emit('drop', $event)"
+        >
+          <template #item="{ element: child, index }">
+            <FormNodeDesignItem
+              v-bind="childItemProps(child, index)"
+              @select="$emit('select', $event)"
+              @move="$emit('move', $event)"
+              @remove="$emit('remove', $event)"
+              @drop="$emit('drop', $event)"
+            />
+          </template>
+          <template #footer>
+            <div v-if="!children.length" class="design-container-empty">
+              拖拽节点到此内嵌区域
+            </div>
+          </template>
+        </FormNodeDraggableList>
       </div>
     </div>
 
-    <div v-else class="design-node-children">
-      <FormNodeDesignItem
-        v-for="(child, index) in children"
-        :key="child.id"
-        v-bind="childItemProps(child, index)"
-        @select="$emit('select', $event)"
-        @move="$emit('move', $event)"
-        @remove="$emit('remove', $event)"
-      />
-    </div>
+    <FormNodeDraggableList
+      v-else
+      :items="children"
+      :parent-id="node.id"
+      :can-drop="canDropNode"
+      :disabled="dragDisabled"
+      zone-class="design-node-children"
+      @drop="$emit('drop', $event)"
+    >
+      <template #item="{ element: child, index }">
+        <FormNodeDesignItem
+          v-bind="childItemProps(child, index)"
+          @select="$emit('select', $event)"
+          @move="$emit('move', $event)"
+          @remove="$emit('remove', $event)"
+          @drop="$emit('drop', $event)"
+        />
+      </template>
+    </FormNodeDraggableList>
   </div>
 </template>
 
@@ -237,9 +360,11 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  Delete
+  Delete,
+  Rank
 } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
+import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
 
 defineOptions({ name: 'FormNodeDesignItem' })
@@ -255,10 +380,12 @@ const props = defineProps({
   nodeSpanFor: { type: Function, required: true },
   nodeStyleFor: { type: Function, required: true },
   legacyNodeType: { type: Function, required: true },
-  nodeLabel: { type: Function, required: true }
+  nodeLabel: { type: Function, required: true },
+  canDropNode: { type: Function, required: true },
+  dragDisabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'move', 'remove'])
+const emit = defineEmits(['select', 'move', 'remove', 'drop'])
 
 const containerTypes = new Set([
   'SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'ACTION_SLOT'
@@ -340,6 +467,11 @@ function handleTabClick(tab) {
   }
 }
 
+function selectTabNode(tabNode) {
+  activeTabId.value = tabNode.id
+  emit('select', tabNode)
+}
+
 function childItemProps(child, index, parentNodeType = nodeType.value) {
   const siblings = props.childrenFor(child.parentId || '')
   return {
@@ -353,7 +485,9 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
     nodeSpanFor: props.nodeSpanFor,
     nodeStyleFor: props.nodeStyleFor,
     legacyNodeType: props.legacyNodeType,
-    nodeLabel: props.nodeLabel
+    nodeLabel: props.nodeLabel,
+    canDropNode: props.canDropNode,
+    dragDisabled: props.dragDisabled
   }
 }
 </script>
@@ -425,6 +559,7 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
 }
 
 .design-container-empty {
+  width: 100%;
   min-height: 48px;
   padding: 14px;
   border: 1px dashed var(--el-border-color-lighter);
@@ -439,6 +574,10 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
   flex-wrap: wrap;
   gap: 12px;
   min-height: 24px;
+}
+
+.design-node-children.is-empty {
+  min-height: 64px;
 }
 
 .design-grid :deep(.el-col) {
@@ -501,6 +640,9 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
   z-index: 3;
   top: 6px;
   right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   opacity: 0;
   transition: opacity 0.18s;
 }
@@ -510,8 +652,79 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
   opacity: 1;
 }
 
+.form-node-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-bg-color);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.form-node-drag-handle:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+.form-node-drag-handle:active {
+  cursor: grabbing;
+}
+
+.design-tab-order-caption {
+  margin-bottom: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.design-tab-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 36px;
+  margin-bottom: 10px;
+}
+
+.design-tab-order-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 5px;
+  background: var(--el-bg-color);
+}
+
+.design-tab-order-item.active {
+  border-color: var(--el-color-primary);
+  background: color-mix(in srgb, var(--el-color-primary) 8%, white);
+}
+
+.design-tab-order-label {
+  max-width: 180px;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 0;
+  color: var(--el-text-color-primary);
+  background: transparent;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .design-tabs :deep(.el-tabs__content) {
   padding: 12px;
+}
+
+.design-tabs :deep(.el-tabs__header) {
+  display: none;
 }
 
 .tab-node-toolbar {

@@ -77,7 +77,8 @@ public class EntityFormResolveService {
         EntityForm nodeForm = getNodeBoundEntityForm(
                 processConfig.getProcessKey(),
                 null,
-                firstUserTaskId);
+                firstUserTaskId,
+                true);
         if (nodeForm != null) {
             log.debug("新增数据使用首节点表单: processConfigId={}, nodeId={}, formId={}",
                     processConfig.getId(), firstUserTaskId, nodeForm.getId());
@@ -125,7 +126,8 @@ public class EntityFormResolveService {
                 getNodeBoundEntityForm(
                         null,
                         processInstance.getProcessDefinitionId(),
-                        currentTask.getTaskDefinitionKey());
+                        currentTask.getTaskDefinitionKey(),
+                        false);
         return nodeForm != null
                 ? nodeForm
                 : entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
@@ -214,12 +216,14 @@ public class EntityFormResolveService {
      * @param processKey         流程标识（与 processDefinitionId 二选一）
      * @param processDefinitionId 流程定义ID
      * @param nodeId             节点ID
+     * @param requireCurrentRelease 是否要求节点表单仍是当前激活发布版本
      * @return 运行时表单，无绑定或节点为空时返回 null
      */
     private EntityForm getNodeBoundEntityForm(
             String processKey,
             String processDefinitionId,
-            String nodeId) {
+            String nodeId,
+            boolean requireCurrentRelease) {
         if (nodeId == null || nodeId.isBlank()) {
             return null;
         }
@@ -241,6 +245,10 @@ public class EntityFormResolveService {
         if (nodeForms == null || nodeForms.isEmpty()) {
             return null;
         }
-        return entityFormRuntimeService.getByBinding(nodeForms.get(0));
+        ProcessNodeForm binding = nodeForms.get(0);
+        if (requireCurrentRelease) {
+            entityFormRuntimeService.requireCurrentBindingForNewData(binding);
+        }
+        return entityFormRuntimeService.getByBinding(binding);
     }
 }

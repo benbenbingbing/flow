@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.dto.UiConfigDiffDTO;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
@@ -148,6 +149,58 @@ class UiConfigReleaseServiceTest {
                         && "MOVED".equals(item.getChangeType())
                         && item.getChangedFields().contains("parentId")
                         && item.getChangedFields().contains("orderKey")));
+    }
+
+    /**
+     * 测试列表首次发布前的差异计算：
+     * 验证没有激活版本时，允许场景差异被报告而不会修改不可变空集合。
+     */
+    @Test
+    void reportsInitialListDiffWhenNoActiveReleaseExists() {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
+        UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
+        EntityListConfigService listConfigService =
+                mock(EntityListConfigService.class);
+        EntityListConfigDTO list = new EntityListConfigDTO();
+        list.setId("list-1");
+        list.setEntityId("entity-1");
+        list.setEntityCode("demo_entity");
+        list.setListKey("default");
+        list.setListName("默认列表");
+        list.setAllowedScenes(List.of("PAGE", "DIALOG"));
+        list.setFields(List.of());
+        when(listConfigService.findById("list-1")).thenReturn(list);
+        when(releaseMapper.findActive(
+                UiConfigReleaseService.LIST, "list-1")).thenReturn(null);
+
+        UiConfigReleaseService service = new UiConfigReleaseService(
+                releaseMapper,
+                mock(UiDataSourceDefinitionMapper.class),
+                mock(UiComponentTemplateMapper.class),
+                mock(UiComponentTemplateVersionMapper.class),
+                mock(EntityFormMapper.class),
+                mock(EntityListConfigMapper.class),
+                mock(EntityFormService.class),
+                mock(EntityFormNodeService.class),
+                mock(UiExtensionDefinitionService.class),
+                listConfigService,
+                mock(EntityListConfigurationValidator.class),
+                codec,
+                objectMapper);
+
+        UiConfigDiffDTO diff = service.diff(
+                UiConfigReleaseService.LIST, "list-1");
+
+        assertTrue(diff.isChanged());
+        assertTrue(diff.getChangedItems().stream().anyMatch(item ->
+                "allowedScenes".equals(item.getSection())
+                        && "PAGE".equals(item.getId())
+                        && "ADDED".equals(item.getChangeType())));
+        assertTrue(diff.getChangedItems().stream().anyMatch(item ->
+                "allowedScenes".equals(item.getSection())
+                        && "DIALOG".equals(item.getId())
+                        && "ADDED".equals(item.getChangeType())));
     }
 
     /**

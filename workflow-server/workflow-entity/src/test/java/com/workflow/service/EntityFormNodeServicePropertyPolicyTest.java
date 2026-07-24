@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.dto.EntityFormNodePatchRequest;
@@ -10,13 +11,16 @@ import com.workflow.mapper.EntityFormNodeMapper;
 import com.workflow.mapper.EntityRelationMapper;
 import com.workflow.mapper.UiConfigReleaseMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -179,6 +183,52 @@ class EntityFormNodeServicePropertyPolicyTest {
                 fixture.service().patch(
                         "form-1", current.getId(), displayRequest));
         verify(fixture.nodeMapper()).update(isNull(), any());
+    }
+
+    /**
+     * 验证可选文本属性显式清空时，空字符串会进入最终 props_document，
+     * 避免接口返回成功但数据库仍保留旧提示文字。
+     */
+    @Test
+    void optionalTextCanBeExplicitlyClearedInPersistedProps() {
+        JsonDocumentCodec codec =
+                new JsonDocumentCodec(new ObjectMapper());
+        EntityFormNode current = boundAmountField();
+        Map<String, Object> currentProps =
+                new LinkedHashMap<>(codec.readObject(
+                        current.getPropsDocument(),
+                        "测试字段属性"));
+        currentProps.put("placeholder", "旧提示");
+        current.setPropsDocument(codec.write(
+                currentProps,
+                "测试字段属性"));
+
+        Map<String, Object> requestedProps =
+                new LinkedHashMap<>(currentProps);
+        requestedProps.put("placeholder", "");
+        EntityFormNodePatchRequest request =
+                new EntityFormNodePatchRequest();
+        request.setExpectedRevision(1);
+        request.setProps(requestedProps);
+
+        Fixture fixture = fixture(current);
+        assertDoesNotThrow(() ->
+                fixture.service().patch(
+                        "form-1", current.getId(), request));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<UpdateWrapper<EntityFormNode>> captor =
+                ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(fixture.nodeMapper()).update(
+                isNull(), captor.capture());
+        assertTrue(
+                captor.getValue().getParamNameValuePairs().values().stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .anyMatch(value ->
+                                value.contains("\"placeholder\":\"\"")
+                                        && !value.contains("旧提示")),
+                "props_document 必须持久化显式空 placeholder");
     }
 
     /** 构造测试桩 Fixture：mock mapper 与访问策略，预置当前节点及 form-1 数据。 */

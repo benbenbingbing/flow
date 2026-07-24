@@ -1,7 +1,9 @@
 <template>
   <div class="sub-form-renderer">
     <div v-if="showHeader" class="sub-form-header">
-      <span class="sub-form-title">{{ config.label || '明细' }}</span>
+      <span v-if="config.showHeaderTitle !== false" class="sub-form-title">
+        {{ config.label || '明细' }}
+      </span>
       <el-tag v-if="config.required" type="danger" size="small" effect="plain">必填</el-tag>
       <span class="sub-form-summary" v-if="showSummary">
         共 {{ rowData.length }} 条，

@@ -2,6 +2,7 @@ package com.workflow.controller;
 
 import com.workflow.common.PageResult;
 import com.workflow.common.Result;
+import com.workflow.common.UserContext;
 import com.workflow.dto.permission.EntityPermissionOptionDTO;
 import com.workflow.entity.SysMenu;
 import com.workflow.mapper.SysMenuMapper;
@@ -60,7 +61,7 @@ public class SysMenuController {
      */
     @GetMapping("/sidebar-tree")
     public Result<List<SysMenu>> sidebarTree() {
-        return Result.success(menuService.getSidebarMenuTree());
+        return Result.success(menuService.getSidebarMenuTree(UserContext.getUserId()));
     }
     
     /**

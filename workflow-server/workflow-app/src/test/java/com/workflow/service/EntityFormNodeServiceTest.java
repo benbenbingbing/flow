@@ -163,6 +163,143 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper).update(isNull(), any());
     }
 
+    /** 测试拖拽允许节点跨父容器移动：验证 FIELD 从源 SECTION 移入目标 GRID 后触发更新 */
+    @Test
+    void reorderMovesNodeAcrossParentContainers() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode source = typedNode("source", null, "SECTION");
+        EntityFormNode target = typedNode("target", null, "GRID");
+        EntityFormNode current = typedNode("field", "source", "FIELD");
+        when(nodeMapper.selectById("source")).thenReturn(source);
+        when(nodeMapper.selectById("target")).thenReturn(target);
+        when(nodeMapper.selectById("field")).thenReturn(current);
+        when(nodeMapper.findByFormId("form-1"))
+                .thenReturn(List.of(source, target, current));
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("target");
+
+        assertDoesNotThrow(() ->
+                service(nodeMapper).reorder(
+                        "form-1", current.getId(), request));
+        verify(nodeMapper).update(isNull(), any());
+    }
+
+    /** 测试拖拽拒绝 TAB 移入普通容器：验证 TAB 的目标父节点不是 TAB_SET 时不写库 */
+    @Test
+    void reorderRejectsTabOutsideTabSet() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode tabSet = typedNode("tabs", null, "TAB_SET");
+        EntityFormNode section = typedNode("section", null, "SECTION");
+        EntityFormNode tab = typedNode("tab", "tabs", "TAB");
+        when(nodeMapper.selectById("tabs")).thenReturn(tabSet);
+        when(nodeMapper.selectById("section")).thenReturn(section);
+        when(nodeMapper.selectById("tab")).thenReturn(tab);
+        when(nodeMapper.findByFormId("form-1"))
+                .thenReturn(List.of(tabSet, section, tab));
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("section");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(nodeMapper).reorder(
+                        "form-1", tab.getId(), request));
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    /** 测试拖拽拒绝移入自身后代：验证 SECTION 移入其子节点会形成循环且不写库 */
+    @Test
+    void reorderRejectsMovingNodeIntoOwnDescendant() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode parent = typedNode("parent", null, "SECTION");
+        EntityFormNode child = typedNode("child", "parent", "SECTION");
+        when(nodeMapper.selectById("parent")).thenReturn(parent);
+        when(nodeMapper.selectById("child")).thenReturn(child);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("child");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(nodeMapper).reorder(
+                        "form-1", parent.getId(), request));
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    /** 测试拖拽允许移动到恰好第 8 层：验证边界层级合法并触发更新 */
+    @Test
+    void reorderAllowsMoveToExactlyEightLevels() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        List<EntityFormNode> nodes = nestedSections(nodeMapper, 7);
+        EntityFormNode current = typedNode("field", null, "FIELD");
+        nodes.add(current);
+        when(nodeMapper.selectById("field")).thenReturn(current);
+        when(nodeMapper.findByFormId("form-1")).thenReturn(nodes);
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("n7");
+
+        assertDoesNotThrow(() ->
+                service(nodeMapper).reorder(
+                        "form-1", current.getId(), request));
+        verify(nodeMapper).update(isNull(), any());
+    }
+
+    /** 测试拖拽拒绝移动到第 9 层：验证超过最大 8 层时不写库 */
+    @Test
+    void reorderRejectsMoveBeyondEightLevels() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        List<EntityFormNode> nodes = nestedSections(nodeMapper, 8);
+        EntityFormNode current = typedNode("field", null, "FIELD");
+        nodes.add(current);
+        when(nodeMapper.selectById("field")).thenReturn(current);
+        when(nodeMapper.findByFormId("form-1")).thenReturn(nodes);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+        request.setParentId("n8");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(nodeMapper).reorder(
+                        "form-1", current.getId(), request));
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    /** 测试拖拽使用过期修订号时返回冲突：验证冲突发生在层级计算和写库之前 */
+    @Test
+    void reorderRejectsStaleRevision() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode current = typedNode("field", null, "FIELD");
+        current.setRevision(2);
+        when(nodeMapper.selectById("field")).thenReturn(current);
+
+        EntityFormNodeReorderRequest request =
+                new EntityFormNodeReorderRequest();
+        request.setExpectedRevision(1);
+
+        assertThrows(
+                RevisionConflictException.class,
+                () -> service(nodeMapper).reorder(
+                        "form-1", current.getId(), request));
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
     /** 测试差量替换保留已绑定节点的导入变更：验证对绑定关系节点的导入替换不抛异常并触发 update */
     @Test
     void replaceByDiffPreservesBoundNodeImportChanges() {

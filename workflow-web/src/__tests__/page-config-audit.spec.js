@@ -78,9 +78,28 @@ dynamicRuntimeFiles.forEach((file) => {
 })
 
 const entityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
+const entityDataFormDialog = readFileSync(
+  path.join(root, 'src/views/entity/components/EntityDataFormDialog.vue'),
+  'utf8'
+)
 assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/, '动态实体列表应支持自定义列表组件')
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 assert.match(entityDataList, /selectionScene[\s\S]*toolbarButtons[\s\S]*return \[\]/s, '选择型列表应隐藏业务工具栏动作')
+assert.match(
+  entityDataList,
+  /const handleCreate = async[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*await formDialogRef\.value\?\.openCreate\(\)/,
+  '新增实体数据前应重新加载最新发布表单，并等待子组件 props 更新后再打开弹窗'
+)
+assert.ok(
+  entityDataList.includes("getFormForNewData(entityCode.value, { silentError: true })")
+    && entityDataList.includes("ElMessage.error(e?.message || '加载最新发布表单失败，请稍后重试')"),
+  '最新发布表单加载失败时不得继续打开旧缓存表单'
+)
+assert.ok(
+  entityDataFormDialog.includes('新增数据 - ${props.defaultForm.formName}')
+    && entityDataFormDialog.includes('props.defaultForm.formKey'),
+  '新增实体数据弹窗应明确展示实际运行时表单名称和标识'
+)
 const listButtonConfig = readFileSync(path.join(root, 'src/components/ListButtonConfigPanel.vue'), 'utf8')
 ;['open-list', 'targetEntityCode', 'targetListKey', 'relationKey'].forEach((marker) => {
   assert.ok(listButtonConfig.includes(marker), `列表按钮缺少打开列表配置: ${marker}`)
@@ -132,6 +151,8 @@ assert.ok(
 })
 
 const formNodeDesignItem = readFileSync(path.join(root, 'src/components/FormNodeDesignItem.vue'), 'utf8')
+const formNodeDraggableList = readFileSync(path.join(root, 'src/components/FormNodeDraggableList.vue'), 'utf8')
+const formNodeDrag = readFileSync(path.join(root, 'src/shared/form-node-drag.js'), 'utf8')
 const formNodeHierarchy = readFileSync(path.join(root, 'src/shared/form-node-hierarchy.js'), 'utf8')
 const formPreviewLinkage = readFileSync(path.join(root, 'src/components/FormPreviewLinkage.vue'), 'utf8')
 const formNodeRenderer = readFileSync(path.join(root, 'src/components/FormNodeRenderer.vue'), 'utf8')
@@ -204,7 +225,7 @@ assert.match(
   'availableParentNodes',
   'handleParentChange',
   'resolveDefaultParentId',
-  'collectDescendantNodeIds',
+  'collectFormNodeDescendantIds',
   'getSubtreeHeight',
   'FORM_NODE_MAX_DEPTH',
   '父容器',
@@ -212,7 +233,38 @@ assert.match(
   '请选择所属 Tab 集合后再保存 Tab 页',
   '请先创建 Tab 集合，再添加 Tab 页'
 ].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `表单节点缺少受限父容器移动能力: ${marker}`)
+  assert.ok(
+    `${formDesigner}\n${formNodeDrag}`.includes(marker),
+    `表单节点缺少受限父容器移动能力: ${marker}`
+  )
+})
+;[
+  "import Sortable from 'sortablejs'",
+  'new Sortable',
+  'data-sortable-ready',
+  'form-node-sortable-item',
+  'form-node-drag-handle',
+  'data-form-node-parent-id',
+  'forceFallback: true',
+  'fallbackTolerance: 3',
+  'resolveDragDirection',
+  'onAdd: handleAdd',
+  'onUpdate: handleUpdate',
+  'handleEnd'
+].forEach((marker) => {
+  assert.ok(
+    `${formNodeDesignItem}\n${formNodeDraggableList}`.includes(marker),
+    `表单设计器缺少递归拖拽能力: ${marker}`
+  )
+})
+;[
+  'buildFormNodeDropPlan',
+  'validateFormNodeDrop',
+  'reorderFormNode',
+  'expectedRevision',
+  'loadFormFields'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `拖拽排序缺少草稿持久化能力: ${marker}`)
 })
 ;[
   'FORM_NODE_ALLOWED_CHILD_TYPES',
@@ -306,6 +358,18 @@ assert.ok(
 const subFormField = readFileSync(
   path.join(root, 'src/components/form-fields/components/SubFormField.vue'),
   'utf8'
+)
+const subFormRenderer = readFileSync(
+  path.join(root, 'src/components/SubFormRenderer.vue'),
+  'utf8'
+)
+assert.ok(
+  subFormRenderer.includes("config.showHeaderTitle !== false"),
+  '子表单渲染器应支持由外层表单项统一展示标题'
+)
+assert.ok(
+  subFormField.includes('showHeaderTitle: false'),
+  '节点树中的子表单不应重复展示内外两层标题'
 )
 ;[
   'childFormReleaseId',
@@ -457,6 +521,8 @@ for (const [file, markers] of Object.entries(guideExpectations)) {
 const configurationArchitectureExpectations = {
   'src/data/user-manual/entity.js': [
     '稳定节点 ID',
+    '节点拖拽',
+    '右上角手柄',
     'expectedRevision',
     '409',
     'SECTION',
@@ -480,6 +546,7 @@ const configurationArchitectureExpectations = {
     '运行时回退'
   ],
   'src/views/system/DevGuide.vue': [
+    '表单节点拖拽必须走平台递归拖拽容器',
     'expectedRevision',
     '409 Conflict',
     'serverRevision',
@@ -523,6 +590,7 @@ const configurationArchitectureExpectations = {
   ],
   'src/views/system/CustomFormGuide.vue': [
     '稳定 `nodeId`',
+    '设计器统一通过节点右上角手柄拖拽',
     'expectedRevision',
     'HTTP `409`',
     'SECTION、GRID、TAB_SET、TAB、COLLAPSE、TEXT、FIELD、SUB_FORM、REPEATER、ACTION_SLOT',

@@ -67,6 +67,18 @@ public interface SysMenuMapper extends BaseMapper<SysMenu> {
     Set<String> selectPermsByUserId(@Param("userId") String userId);
 
     /**
+     * 根据用户ID查询已分配的菜单资源ID集合。
+     *
+     * @param userId 用户ID
+     * @return 用户通过启用角色获得的菜单资源ID集合
+     */
+    @Select("SELECT DISTINCT rm.menu_id FROM sys_role_menu rm " +
+            "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
+            "JOIN sys_role r ON r.id = ur.role_id " +
+            "WHERE ur.user_id = #{userId} AND r.status = '0' AND r.deleted = 0")
+    Set<String> selectMenuIdsByUserId(@Param("userId") String userId);
+
+    /**
      * 根据实体编码查询F类型按钮菜单的权限标识集合
      *
      * @param entityCode 实体编码

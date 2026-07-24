@@ -494,6 +494,7 @@ const subFormConfig = computed(() => {
 
   return {
     label: field?.fieldName || '明细',
+    showHeaderTitle: false,
     fieldKey: field?.fieldCode || field?.fieldKey || 'detailList',
     required: field?.required || false,
     minRows: field?.minRows || 0,

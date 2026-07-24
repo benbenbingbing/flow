@@ -486,10 +486,10 @@ public class UiConfigReleaseService {
     }
 
     private Set<String> textSet(Object source) {
-        if (!(source instanceof List<?> list)) {
-            return Set.of();
-        }
         Set<String> result = new LinkedHashSet<>();
+        if (!(source instanceof List<?> list)) {
+            return result;
+        }
         for (Object value : list) {
             String text = text(value);
             if (StringUtils.hasText(text)) {

@@ -207,7 +207,14 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="权限标识" prop="perm">
-              <el-input v-model="formData.perm" placeholder="如: system:menu:list" />
+              <el-input
+                v-model="formData.perm"
+                placeholder="如: system:menu:list"
+                :disabled="isEntityListMenu"
+              />
+              <div v-if="isEntityListMenu" class="form-tip">
+                菜单显示由角色的菜单授权控制；列表数据访问使用列表设计中的访问权限码，此处无需重复填写。
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -370,6 +377,11 @@ const fetchMenuTreeOptions = async () => {
 // 实体列表
 const entityList = ref<any[]>([])
 const entityListConfigs = ref<any[]>([])
+const isEntityListMenu = computed(() =>
+  formData.menuType === 'C'
+  && !!formData.entityCode
+  && !!formData.listKey
+)
 
 // 加载实体列表
 const fetchEntityList = async () => {
@@ -381,17 +393,17 @@ const fetchEntityList = async () => {
 }
 
 // 自动设置实体路由
-const autoSetEntityPath = () => {
+const autoSetEntityPath = (showMessage = true) => {
   if (!formData.entityCode || !formData.listKey) return
   const entity = entityList.value.find(e => e.entityCode === formData.entityCode)
   if (entity) {
-    const list = entityListConfigs.value.find(item => item.listKey === formData.listKey)
     formData.resourceType = 'ENTITY_LIST'
     formData.path = `/entity-list/${formData.entityCode}/${formData.listKey}`
     formData.component = 'entity/EntityListRuntime'
-    formData.perm = list?.accessPermissionCode
-      || `entity:${String(formData.entityCode).toLowerCase()}:list`
-    ElMessage.success(`已自动设置路由：${formData.path}`)
+    formData.perm = ''
+    if (showMessage) {
+      ElMessage.success(`已自动设置路由：${formData.path}`)
+    }
   }
 }
 
@@ -605,9 +617,14 @@ const handleEdit = async (row: any) => {
   if (formData.entityCode) {
     const entity = entityList.value.find(item => item.entityCode === formData.entityCode)
     if (entity) {
-      entityListConfigApi.getByEntityId(entity.id)
-        .then(data => { entityListConfigs.value = data || [] })
-        .catch(() => { entityListConfigs.value = [] })
+      try {
+        entityListConfigs.value = await entityListConfigApi.getByEntityId(entity.id) || []
+        if (formData.listKey) {
+          autoSetEntityPath(false)
+        }
+      } catch {
+        entityListConfigs.value = []
+      }
     }
   }
   isTopLevelMenu.value = row.parentId === '0' || !row.parentId
@@ -618,6 +635,9 @@ const handleEdit = async (row: any) => {
 
 // 提交表单
 const handleSubmit = async () => {
+  if (isEntityListMenu.value) {
+    autoSetEntityPath(false)
+  }
   await formRef.value.validate()
   submitLoading.value = true
   try {

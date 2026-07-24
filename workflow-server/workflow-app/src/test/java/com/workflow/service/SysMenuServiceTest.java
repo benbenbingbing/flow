@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.common.PageResult;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.entity.SysMenu;
+import com.workflow.entity.SysRole;
 import com.workflow.mapper.SysMenuMapper;
+import com.workflow.mapper.SysRoleMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,9 @@ class SysMenuServiceTest {
 
     @Mock
     private SysMenuMapper menuMapper;
+
+    @Mock
+    private SysRoleMapper roleMapper;
 
     @Mock
     private EntityCodeCatalogPort entityCodeCatalogPort;
@@ -193,11 +198,67 @@ class SysMenuServiceTest {
                 .thenReturn(Arrays.asList(homeMenu, missingByEntityCode, missingByPath, validEntityMenu));
         when(entityCodeCatalogPort.findAllEntityCodes()).thenReturn(java.util.Set.of("customer"));
 
-        List<SysMenu> tree = menuService.getSidebarMenuTree();
+        SysRole superAdmin = new SysRole();
+        superAdmin.setRoleCode("super_admin");
+        superAdmin.setStatus("0");
+        when(roleMapper.selectRolesByUserId("admin-user"))
+                .thenReturn(Collections.singletonList(superAdmin));
+
+        List<SysMenu> tree = menuService.getSidebarMenuTree("admin-user");
 
         assertEquals(2, tree.size());
         assertEquals("首页", tree.get(0).getMenuName());
         assertEquals("有效实体", tree.get(1).getMenuName());
+    }
+
+    @Test
+    @DisplayName("测试普通用户侧栏仅返回角色授权菜单及祖先目录")
+    void testGetSidebarMenuTree_FiltersByRoleMenuAssignment() {
+        SysMenu parent = new SysMenu();
+        parent.setId("parent");
+        parent.setMenuName("配置管理");
+        parent.setMenuType("M");
+        parent.setParentId("0");
+        parent.setSort(1);
+
+        SysMenu assigned = new SysMenu();
+        assigned.setId("assigned");
+        assigned.setMenuName("客户列表");
+        assigned.setMenuType("C");
+        assigned.setParentId("parent");
+        assigned.setSort(1);
+        assigned.setEntityCode("customer");
+
+        SysMenu unrelated = new SysMenu();
+        unrelated.setId("unrelated");
+        unrelated.setMenuName("未授权列表");
+        unrelated.setMenuType("C");
+        unrelated.setParentId("0");
+        unrelated.setSort(2);
+        unrelated.setEntityCode("customer");
+
+        SysMenu button = new SysMenu();
+        button.setId("button");
+        button.setMenuName("客户导出");
+        button.setMenuType("F");
+        button.setParentId("parent");
+        button.setSort(2);
+
+        when(menuMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Arrays.asList(parent, assigned, unrelated, button));
+        when(entityCodeCatalogPort.findAllEntityCodes())
+                .thenReturn(java.util.Set.of("customer"));
+        when(roleMapper.selectRolesByUserId("user-1"))
+                .thenReturn(Collections.emptyList());
+        when(menuMapper.selectMenuIdsByUserId("user-1"))
+                .thenReturn(java.util.Set.of("assigned", "button"));
+
+        List<SysMenu> tree = menuService.getSidebarMenuTree("user-1");
+
+        assertEquals(1, tree.size());
+        assertEquals("配置管理", tree.get(0).getMenuName());
+        assertEquals(1, tree.get(0).getChildren().size());
+        assertEquals("客户列表", tree.get(0).getChildren().get(0).getMenuName());
     }
 
     @Test
@@ -245,6 +306,29 @@ class SysMenuServiceTest {
         assertEquals("0", saved.getIsFrame());
         assertEquals("0", saved.getIsCache());
         verify(menuMapper).insert(any(SysMenu.class));
+    }
+
+    @Test
+    @DisplayName("测试实体列表菜单不重复保存列表访问权限码")
+    void testSaveMenu_EntityListNavigationClearsPermissionCode() {
+        when(menuMapper.selectMaxSortByParentId("0")).thenReturn(0);
+        when(menuMapper.insert(any(SysMenu.class))).thenReturn(1);
+
+        SysMenu entityListMenu = new SysMenu();
+        entityListMenu.setMenuName("客户列表");
+        entityListMenu.setMenuType("C");
+        entityListMenu.setEntityCode("customer");
+        entityListMenu.setListKey("default");
+        entityListMenu.setResourceType("ENTITY_LIST");
+        entityListMenu.setPath("/entity-list/customer/default");
+        entityListMenu.setPerm("entity:customer:list");
+        entityListMenu.setParentId("0");
+
+        SysMenu saved = menuService.saveMenu(entityListMenu);
+
+        assertNull(saved.getPerm());
+        verify(menuMapper, never()).existsPerm(anyString(), anyString());
+        verify(menuMapper).insert(entityListMenu);
     }
 
     @Test

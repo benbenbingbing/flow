@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.common.PageResult;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.entity.SysMenu;
+import com.workflow.entity.SysRole;
 import com.workflow.mapper.SysMenuMapper;
+import com.workflow.mapper.SysRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,8 @@ public class SysMenuService {
     
     /** 菜单 Mapper */
     private final SysMenuMapper menuMapper;
+    /** 角色 Mapper，用于识别超级管理员并应用菜单授权 */
+    private final SysRoleMapper roleMapper;
     /** 实体编码目录端口，用于校验动态实体列表菜单引用的实体是否存在 */
     private final EntityCodeCatalogPort entityCodeCatalogPort;
     
@@ -95,12 +99,17 @@ public class SysMenuService {
     }
 
     /**
-     * 查询运行态侧栏菜单树。
-     * 管理端菜单树保留全部菜单；侧栏菜单会过滤已经指向不存在实体的动态数据列表菜单。
+     * 查询当前用户的运行态侧栏菜单树。
+     * 管理端菜单树保留全部菜单；侧栏菜单会过滤未授权菜单和已经指向不存在实体的动态数据列表菜单。
+     * 超级管理员默认拥有全部菜单；普通用户仅返回角色直接授权的目录/菜单及其祖先目录。
      *
+     * @param userId 当前用户ID
      * @return 过滤后构建的侧栏菜单树
      */
-    public List<SysMenu> getSidebarMenuTree() {
+    public List<SysMenu> getSidebarMenuTree(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return Collections.emptyList();
+        }
         List<SysMenu> allMenus = menuMapper.selectList(
             new LambdaQueryWrapper<SysMenu>()
                 .orderByAsc(SysMenu::getSort)
@@ -110,7 +119,20 @@ public class SysMenuService {
         List<SysMenu> validMenus = allMenus.stream()
                 .filter(menu -> !isMissingEntityListMenu(menu, entityCodes))
                 .collect(Collectors.toList());
-        return buildTree(validMenus);
+        if (isSuperAdministrator(userId)) {
+            return buildTree(validMenus);
+        }
+
+        Set<String> assignedMenuIds = menuMapper.selectMenuIdsByUserId(userId);
+        if (assignedMenuIds == null || assignedMenuIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<String> visibleMenuIds = collectAuthorizedNavigationIds(
+                validMenus,
+                assignedMenuIds);
+        return buildTree(validMenus.stream()
+                .filter(menu -> visibleMenuIds.contains(menu.getId()))
+                .collect(Collectors.toList()));
     }
     
     /**
@@ -139,6 +161,7 @@ public class SysMenuService {
      */
     @Transactional(rollbackFor = Exception.class)
     public SysMenu saveMenu(SysMenu menu) {
+        normalizeEntityListMenu(menu);
         // 校验权限标识唯一性
         if (StringUtils.hasText(menu.getPerm())) {
             String excludeId = menu.getId() != null ? menu.getId() : "";
@@ -189,6 +212,24 @@ public class SysMenuService {
         }
         
         return menu;
+    }
+
+    /**
+     * 实体列表菜单的侧栏可见性由角色菜单关系控制，列表数据访问权限由列表配置控制。
+     * 因此菜单记录不重复保存列表访问权限码，避免与隐藏的 F 类型权限资源冲突。
+     *
+     * @param menu 待保存菜单
+     */
+    private void normalizeEntityListMenu(SysMenu menu) {
+        if (menu == null || !"C".equals(menu.getMenuType())) {
+            return;
+        }
+        if ("ENTITY_LIST".equalsIgnoreCase(menu.getResourceType())
+                || (StringUtils.hasText(menu.getEntityCode())
+                && StringUtils.hasText(menu.getListKey()))) {
+            menu.setResourceType("ENTITY_LIST");
+            menu.setPerm(null);
+        }
     }
     
     /**
@@ -341,6 +382,54 @@ public class SysMenuService {
         String code = path.substring(prefix.length());
         int slashIndex = code.indexOf('/');
         return slashIndex >= 0 ? code.substring(0, slashIndex) : code;
+    }
+
+    /**
+     * 判断用户是否具有启用的超级管理员角色。
+     *
+     * @param userId 用户ID
+     * @return 是超级管理员返回 true
+     */
+    private boolean isSuperAdministrator(String userId) {
+        List<SysRole> roles = roleMapper.selectRolesByUserId(userId);
+        return roles != null && roles.stream().anyMatch(role ->
+                role != null
+                        && "super_admin".equals(role.getRoleCode())
+                        && !"1".equals(role.getStatus()));
+    }
+
+    /**
+     * 收集用户已授权的可导航菜单及其祖先目录。
+     * F 类型按钮只提供功能权限，不应因为被授权而单独撑起侧栏目录。
+     *
+     * @param menus           有效菜单全集
+     * @param assignedMenuIds 用户角色直接关联的菜单ID
+     * @return 应出现在侧栏树中的菜单ID集合
+     */
+    private Set<String> collectAuthorizedNavigationIds(
+            List<SysMenu> menus,
+            Set<String> assignedMenuIds) {
+        Map<String, SysMenu> menuMap = menus.stream()
+                .collect(Collectors.toMap(
+                        SysMenu::getId,
+                        menu -> menu,
+                        (left, right) -> left));
+        Set<String> result = new HashSet<>();
+        for (SysMenu menu : menus) {
+            if ("F".equals(menu.getMenuType())
+                    || !assignedMenuIds.contains(menu.getId())) {
+                continue;
+            }
+            SysMenu current = menu;
+            Set<String> visited = new HashSet<>();
+            while (current != null
+                    && StringUtils.hasText(current.getId())
+                    && visited.add(current.getId())) {
+                result.add(current.getId());
+                current = menuMap.get(current.getParentId());
+            }
+        }
+        return result;
     }
     
     /**

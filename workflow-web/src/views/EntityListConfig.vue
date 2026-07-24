@@ -91,6 +91,7 @@ const formData = ref({
   listName: '',
   description: '',
   isDefault: false,
+  revision: 0,
   fields: []
 })
 
@@ -143,6 +144,7 @@ function handleCreate() {
     listName: '',
     description: '',
     isDefault: false,
+    revision: 0,
     fields: []
   }
   dialogVisible.value = true
@@ -159,6 +161,7 @@ function handleEdit(row) {
     listName: row.listName,
     description: row.description,
     isDefault: row.isDefault,
+    revision: row.revision,
     fields: row.fields || []
   }
   dialogVisible.value = true
@@ -170,13 +173,24 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    await entityListConfigApi.save(formData.value)
+    if (isEdit.value) {
+      await entityListConfigApi.patchMetadata(formData.value.id, {
+        expectedRevision: formData.value.revision,
+        listName: formData.value.listName,
+        description: formData.value.description,
+        isDefault: formData.value.isDefault
+      })
+    } else {
+      await entityListConfigApi.save(formData.value)
+    }
     ElMessage.success('保存成功')
     dialogVisible.value = false
-    loadConfigList()
+    await loadConfigList()
   } catch (e) {
     console.error('保存列表配置失败:', e)
-    ElMessage.error('保存失败')
+    if (e?.status === 409 || e?.errorCode === 'CONFIG_REVISION_CONFLICT') {
+      ElMessage.warning('列表配置已被其他人修改，当前输入已保留，请刷新后重试')
+    }
   } finally {
     submitting.value = false
   }

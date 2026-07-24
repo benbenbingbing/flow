@@ -155,6 +155,15 @@ Object.entries(expectedSchemas).forEach(([nodeType, expected]) => {
   })
 })
 
+const unknownSchema = getFormNodePropertySchema('UNKNOWN_NODE')
+assert.deepEqual(
+  unknownSchema.editable,
+  [],
+  'unknown node types must not expose FIELD editing controls'
+)
+assert.equal(unknownSchema.fieldProperties, false)
+assert.equal(unknownSchema.binding, false)
+
 assert.deepEqual(
   getFormNodeDataSourceUsages('FIELD'),
   ['FIELD_OPTIONS', 'FIELD_DEFAULT', 'FIELD_COMPUTE', 'AFTER_LOAD', 'BEFORE_SUBMIT']

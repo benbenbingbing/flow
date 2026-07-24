@@ -143,17 +143,12 @@ const loadMenus = async () => {
     // 保存完整的原始数据，用于提取禁用路径
     const disabledPaths = collectDisabledPaths(res)
     localStorage.setItem('disabled_menu_paths', JSON.stringify(disabledPaths))
-    // 递归清洗：只过滤禁用(status=1)菜单；隐藏(visible=1)菜单不显示在侧边栏但保留路由
+    // 后端已按当前用户的角色菜单授权裁剪；前端只处理禁用、按钮和隐藏状态。
     const clean = (menus, parentVisible = '0') => {
       if (!menus) return []
       return menus
         .filter(m => m.status !== '1')
         .filter(m => m.menuType !== 'F')
-        .filter(m => {
-          if (!m.entityCode || m.menuType !== 'C') return true
-          const required = m.perm || `entity:${String(m.entityCode).toLowerCase()}:list`
-          return userStore.permissions.includes(required)
-        })
         .filter(m => parentVisible !== '1' && m.visible !== '1')
         .map(m => {
           const item = { ...m }
