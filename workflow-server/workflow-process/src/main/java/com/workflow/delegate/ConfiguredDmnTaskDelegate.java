@@ -14,13 +14,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 配置化 DMN 业务规则任务代理
+ * 从节点 ruleConfig 配置中读取决策表Key与输入输出映射，调用 Flowable DMN 引擎执行决策，
+ * 并将决策结果写回流程变量。
+ */
 @Component("configuredDmnTaskDelegate")
 @RequiredArgsConstructor
 public class ConfiguredDmnTaskDelegate implements JavaDelegate {
 
+    /** Flowable DMN 决策服务，执行决策表 */
     private final DmnDecisionService decisionService;
+    /** JSON 序列化工具 */
     private final ObjectMapper objectMapper;
 
+    /**
+     * 节点执行回调：执行配置化的 DMN 决策并回写结果。
+     * <p>
+     * 受检异常包装为 IllegalStateException，运行时异常原样抛出。
+     *
+     * @param execution Flowable 执行上下文
+     * @throws IllegalStateException 当决策执行失败或配置缺失时抛出
+     */
     @Override
     public void execute(DelegateExecution execution) {
         try {
@@ -32,6 +47,12 @@ public class ConfiguredDmnTaskDelegate implements JavaDelegate {
         }
     }
 
+    /**
+     * 执行配置化的 DMN 决策：读取配置、组装输入变量、执行决策、回写结果变量。
+     *
+     * @param execution Flowable 执行上下文
+     * @throws Exception 配置缺失或决策执行失败时抛出
+     */
     private void executeConfigured(DelegateExecution execution) throws Exception {
         String configDocument = ConfiguredTaskPropertyReader.read(
                 execution.getCurrentFlowElement(),
@@ -75,6 +96,14 @@ public class ConfiguredDmnTaskDelegate implements JavaDelegate {
         }
     }
 
+    /**
+     * 解析决策输入变量映射：无映射时返回全部流程变量，有映射时按映射键取值。
+     *
+     * @param mappingDocument 输入变量映射 JSON，可为空
+     * @param execution       Flowable 执行上下文
+     * @return 决策输入变量集合
+     * @throws Exception 当映射 JSON 不是对象时抛出
+     */
     private Map<String, Object> resolveInputVariables(
             String mappingDocument,
             DelegateExecution execution) throws Exception {
@@ -91,6 +120,13 @@ public class ConfiguredDmnTaskDelegate implements JavaDelegate {
         return variables;
     }
 
+    /**
+     * 解析单个映射值：文本形如 {@code ${var}} 时取流程变量，否则原样返回或转换。
+     *
+     * @param value     JSON 节点值
+     * @param execution Flowable 执行上下文
+     * @return 解析后的值
+     */
     private Object resolveValue(JsonNode value, DelegateExecution execution) {
         if (!value.isTextual()) {
             return objectMapper.convertValue(value, Object.class);

@@ -46,8 +46,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程进度运行时服务单元测试。
+ *
+ * <p>被测对象为 {@link ProcessProgressRuntimeService}，验证运行中流程进度构建
+ * (含活动节点、已完成节点、节点历史、处理人映射)以及从发布快照加载表单配置。</p>
+ */
 class ProcessProgressRuntimeServiceTest {
 
+    /**
+     * 查询运行中流程进度应包含活动节点、已完成节点与处理人映射。
+     *
+     * <p>场景：mock 运行实例、流程定义、历史活动与任务、活动任务，
+     * 断言进度含状态 RUNNING、活动节点 task-1、已完成节点列表、节点历史与处理人。</p>
+     */
     @Test
     void getProcessProgressBuildsRunningProgress() {
         Fixture fixture = new Fixture();
@@ -77,6 +89,12 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("管理员", progress.getNodeAssigneeMap().get("task-1").getAssigneeName());
     }
 
+    /**
+     * 查询进度时应从发布快照加载节点表单配置。
+     *
+     * <p>场景：mock 实体变量、实体定义、实体数据与发布快照节点表单，
+     * 断言进度含表单配置且 snapshotService.getNodeFormsByProcessDefinitionId 被调用。</p>
+     */
     @Test
     void getProcessProgressLoadsFormsFromPublishedSnapshot() {
         Fixture fixture = new Fixture();
@@ -101,6 +119,7 @@ class ProcessProgressRuntimeServiceTest {
                 .getNodeFormsByProcessDefinitionId("pd-1", "task-1");
     }
 
+    /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
     private static class Fixture {
         final RuntimeService runtimeService = mock(RuntimeService.class);
         final HistoryService historyService = mock(HistoryService.class);
@@ -128,6 +147,7 @@ class ProcessProgressRuntimeServiceTest {
         final HistoricTaskInstanceQuery historicTaskQuery = mock(HistoricTaskInstanceQuery.class);
         final HistoricVariableInstanceQuery variableQuery = mock(HistoricVariableInstanceQuery.class);
 
+        /** 构造夹具，设置各查询链路的 mock 返回值 */
         Fixture() {
             when(runtimeService.createProcessInstanceQuery()).thenReturn(processInstanceQuery);
             when(processInstanceQuery.processInstanceId("pi-1")).thenReturn(processInstanceQuery);
@@ -157,12 +177,14 @@ class ProcessProgressRuntimeServiceTest {
             when(processConfigMapper.findByProcessKey("expense_flow")).thenReturn(Optional.empty());
         }
 
+        /** 设置运行中流程实例桩数据 */
         void runningInstance() {
             ProcessInstance processInstance = mock(ProcessInstance.class);
             when(processInstance.getProcessDefinitionId()).thenReturn("pd-1");
             when(processInstanceQuery.singleResult()).thenReturn(processInstance);
         }
 
+        /** 设置流程定义桩数据，含 Key 与名称 */
         void processDefinition() {
             ProcessDefinition processDefinition = mock(ProcessDefinition.class);
             when(processDefinition.getKey()).thenReturn("expense_flow");
@@ -170,6 +192,7 @@ class ProcessProgressRuntimeServiceTest {
             when(processDefinitionQuery.singleResult()).thenReturn(processDefinition);
         }
 
+        /** 设置历史活动与历史任务桩数据，含开始节点、审批任务与连线 */
         void history() {
             HistoricActivityInstance start = activity("start-1", "开始", "startEvent", null, null, new Date(1000), new Date(1500));
             HistoricActivityInstance task = activity("task-0", "审批", "userTask", "admin", "hist-task-1", new Date(2000), new Date(3000));
@@ -184,6 +207,18 @@ class ProcessProgressRuntimeServiceTest {
             when(historicTaskQuery.list()).thenReturn(List.of(historicTask));
         }
 
+        /**
+         * 构造历史活动实例桩对象。
+         *
+         * @param id 活动 ID
+         * @param name 活动名称
+         * @param type 活动类型
+         * @param assignee 处理人
+         * @param taskId 关联任务 ID
+         * @param startTime 开始时间
+         * @param endTime 结束时间
+         * @return 已设置属性的 mock 历史活动实例
+         */
         HistoricActivityInstance activity(String id, String name, String type, String assignee,
                                           String taskId, Date startTime, Date endTime) {
             HistoricActivityInstance activity = mock(HistoricActivityInstance.class);
@@ -199,12 +234,14 @@ class ProcessProgressRuntimeServiceTest {
             return activity;
         }
 
+        /** 设置活动执行桩数据，活动 ID 为 task-1 */
         void activeExecution() {
             Execution execution = mock(Execution.class);
             when(execution.getActivityId()).thenReturn("task-1");
             when(executionQuery.list()).thenReturn(List.of(execution));
         }
 
+        /** 设置当前活动任务桩数据 */
         void activeTask() {
             Task task = mock(Task.class);
             when(task.getId()).thenReturn("task-1-runtime");
@@ -215,16 +252,19 @@ class ProcessProgressRuntimeServiceTest {
             when(taskQuery.list()).thenReturn(List.of(task));
         }
 
+        /** 设置操作日志查询返回空列表 */
         void noOperationLogs() {
             when(operationLogMapper.selectList(any())).thenReturn(List.of());
         }
 
+        /** 设置实体相关流程变量桩数据(entityCode、entityDataId、formKey 为 null) */
         void entityVariables() {
             when(runtimeService.getVariable("pi-1", "entityCode")).thenReturn("expense");
             when(runtimeService.getVariable("pi-1", "entityDataId")).thenReturn("data-1");
             when(runtimeService.getVariable("pi-1", "formKey")).thenReturn(null);
         }
 
+        /** 设置实体定义桩数据，编码为 expense */
         void entityDefinition() {
             EntityDefinition definition = new EntityDefinition();
             definition.setId("entity-1");
@@ -232,6 +272,7 @@ class ProcessProgressRuntimeServiceTest {
             when(entityDefinitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(definition));
         }
 
+        /** 设置实体运行时数据 DTO 桩数据 */
         void entityData() {
             EntityDataDTO dto = new EntityDataDTO();
             dto.setId("data-1");
@@ -239,6 +280,7 @@ class ProcessProgressRuntimeServiceTest {
             when(entityDataDynamicService.findById("expense", "data-1")).thenReturn(dto);
         }
 
+        /** 设置发布快照节点表单与表单运行时绑定桩数据 */
         void publishedNodeForms() {
             ProcessNodeForm nodeForm = new ProcessNodeForm();
             nodeForm.setNodeId("task-1");
@@ -260,6 +302,7 @@ class ProcessProgressRuntimeServiceTest {
                     .thenReturn(form);
         }
 
+        /** 组装并返回被测服务实例 */
         ProcessProgressRuntimeService service() {
             return new ProcessProgressRuntimeService(
                     runtimeService, historyService, repositoryService, taskService,

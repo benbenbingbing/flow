@@ -19,6 +19,7 @@ import java.util.List;
 @TableName("sys_organization")
 public class SysOrganization {
     
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

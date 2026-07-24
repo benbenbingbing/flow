@@ -19,8 +19,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProcessCcListener implements ExecutionListener {
     
+    /** 抄送服务，创建抄送记录 */
     private final ProcessCcService ccService;
-    
+
+    /**
+     * 节点执行事件回调：从流程变量读取抄送人列表并逐人生成抄送记录。
+     *
+     * @param execution Flowable 执行上下文
+     */
     @Override
     public void notify(DelegateExecution execution) {
         String eventName = execution.getEventName();

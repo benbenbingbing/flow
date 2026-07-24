@@ -30,22 +30,31 @@ import java.util.regex.Pattern;
 @Component
 public class PermissionSqlBuilder {
 
+    /** 规则树最大嵌套深度。 */
     private static final int MAX_RULE_DEPTH = 6;
+    /** 规则树最大节点数。 */
     private static final int MAX_RULE_NODES = 100;
+    /** 合法 SQL 标识符正则，用于字段名白名单校验。 */
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
+    /** 支持的字段比较操作符。 */
     private static final Set<String> FIELD_OPERATORS = Set.of(
             "EQ", "NE", "IN", "NOT_IN", "CONTAINS", "NOT_CONTAINS",
             "EMPTY", "NOT_EMPTY", "GT", "GTE", "LT", "LTE");
+    /** 仅支持单值或集合的操作符集合。 */
     private static final Set<String> SIMPLE_OPERATORS = Set.of("EQ", "NE", "IN", "NOT_IN");
+    /** 内置的当前用户关系类型。 */
     private static final Set<String> RELATIONS = Set.of(
             "CURRENT_USER_IS_CREATOR",
             "CURRENT_USER_IS_SUBMITTER",
             "CURRENT_USER_IS_ASSIGNEE",
             "CURRENT_USER_SAME_DEPT");
+    /** 流程状态枚举值。 */
     private static final Set<String> PROCESS_STATES = Set.of(
             "NOT_STARTED", "RUNNING", "COMPLETED", "TERMINATED", "WITHDRAWN");
+    /** 状态分类枚举值。 */
     private static final Set<String> STATUS_CATEGORIES = Set.of(
             "NEW", "PROCESSING", "COMPLETED", "TERMINATED", "WITHDRAWN");
+    /** 系统字段到数据库列名的映射（含驼峰和下划线两种形式）。 */
     private static final Map<String, String> SYSTEM_FIELD_COLUMNS = systemFieldColumns();
 
     private final EntityDefinitionMapper definitionMapper;
@@ -64,10 +73,28 @@ public class PermissionSqlBuilder {
         this.filterProviders = filterProviders == null ? List.of() : filterProviders;
     }
 
+    /**
+     * 编译数据过滤配置为 SQL 条件片段，不带实体编码。
+     *
+     * @param filter 数据过滤配置
+     * @param user   当前用户
+     * @return SQL 条件片段，非法或为空时返回 "1=0"
+     */
     public String buildFilterSql(FilterConfigDTO filter, SysUser user) {
         return buildFilterSql(null, filter, user);
     }
 
+    /**
+     * 编译数据过滤配置为 SQL 条件片段。
+     *
+     * <p>根据过滤类型（全部、本人、提交人、当前办理人、部门、部门树、结构化规则）
+     * 生成基础范围 SQL，再叠加状态限制条件。</p>
+     *
+     * @param entityCode 实体编码，可为 null（不解析实体字段）
+     * @param filter     数据过滤配置，为空返回 "1=0"
+     * @param user       当前用户，为空返回 "1=0"
+     * @return SQL 条件片段
+     */
     public String buildFilterSql(String entityCode, FilterConfigDTO filter, SysUser user) {
         if (filter == null || user == null) {
             return "1=0";
@@ -114,6 +141,13 @@ public class PermissionSqlBuilder {
         return "(" + baseSql + ") AND (" + statusSql + ")";
     }
 
+    /**
+     * 校验数据过滤配置的合法性，拒绝表达式或自定义 SQL 等不安全配置。
+     *
+     * @param entityCode 实体编码
+     * @param filter     数据过滤配置
+     * @throws IllegalArgumentException 配置为空、类型非法、字段名非法或规则结构错误时抛出
+     */
     public void validateFilter(String entityCode, FilterConfigDTO filter) {
         if (filter == null) {
             throw new IllegalArgumentException("数据过滤配置不能为空");
@@ -153,6 +187,12 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 转义 SQL 字符串字面量中的单引号，防止注入。
+     *
+     * @param input 原始输入
+     * @return 转义后的字符串，null 返回空串
+     */
     public String escapeLiteral(String input) {
         if (input == null) {
             return "";

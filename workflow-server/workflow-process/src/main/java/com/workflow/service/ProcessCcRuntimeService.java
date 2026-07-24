@@ -22,6 +22,13 @@ import org.springframework.util.StringUtils;
 
 import java.util.*;
 
+/**
+ * 流程知会运行时服务。
+ *
+ * <p>负责知会（抄送）的运行时处理：包括人工知会、基于配置的自动知会触发，
+ * 以及知会人员的多维度解析（用户、角色、组、部门、历史审批人、实体字段、自定义解析器等）。
+ * 解析结果写入知会记录并入队发送箱。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ProcessCcRuntimeService {
@@ -29,7 +36,9 @@ public class ProcessCcRuntimeService {
     private final ProcessTaskMapper processTaskMapper;
     private final ProcessOperationLogMapper operationLogMapper;
     private final ProcessCcService ccService;
+    /** 知会发送箱服务 */
     private final ProcessCcOutboxService outboxService;
+    /** 知会配置服务（读取节点知会配置） */
     private final ProcessCcConfigService configService;
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
@@ -38,8 +47,20 @@ public class ProcessCcRuntimeService {
     private final SysUserGroupMapper userGroupMapper;
     private final SysOrganizationMapper organizationMapper;
     private final ObjectMapper objectMapper;
+    /** 自定义知会人员解析器列表 */
     private final List<CcRecipientResolver> customResolvers;
 
+    /**
+     * 人工知会：办理人手动添加知会人员。
+     *
+     * <p>校验任务与权限 -> 构建运行时上下文 -> 解析直接用户 -> 创建知会记录并入队 -> 记录操作日志。</p>
+     *
+     * @param taskId  任务ID
+     * @param request 知会请求（含知会人员与备注）
+     * @return 创建的知会记录数
+     * @throws IllegalArgumentException 任务不存在时抛出
+     * @throws ForbiddenException       当前节点未开放人工知会或用户无权限时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public int manualCc(String taskId, TaskCcRequest request) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
@@ -86,6 +107,14 @@ public class ProcessCcRuntimeService {
         return created;
     }
 
+    /**
+     * 判断当前任务是否允许人工知会。
+     *
+     * <p>未配置时默认允许；配置 allowManualCc 为 false 时禁止。</p>
+     *
+     * @param taskId 任务ID
+     * @return true 表示允许人工知会
+     */
     @Transactional(readOnly = true)
     public boolean isManualCcAllowed(String taskId) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
@@ -95,6 +124,17 @@ public class ProcessCcRuntimeService {
         return isManualCcAllowed(task);
     }
 
+    /**
+     * 基于知会配置自动触发知会。
+     *
+     * <p>解析配置JSON：校验启用与时机匹配 -> 按规则解析收件人 -> 排除操作人（可选） ->
+     * 创建知会记录并入队指定渠道。</p>
+     *
+     * @param context    知会运行时上下文
+     * @param configJson 知会配置JSON
+     * @return 创建的知会记录数（配置为空或未启用/时机不匹配时返回0）
+     * @throws IllegalArgumentException 配置解析失败时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public int trigger(CcRuntimeContext context, String configJson) {
         if (!StringUtils.hasText(configJson)) {
@@ -131,6 +171,7 @@ public class ProcessCcRuntimeService {
         }
     }
 
+    /** 按规则类型解析知会收件人（USER/ROLE/GROUP/DEPARTMENT/STARTER/HISTORY_APPROVERS 等） */
     private List<SysUser> resolveRule(JsonNode rule, CcRuntimeContext context) {
         String type = rule.path("type").asText("").toUpperCase(Locale.ROOT);
         List<String> values = stringList(rule.path("values"));
@@ -158,6 +199,7 @@ public class ProcessCcRuntimeService {
         };
     }
 
+    /** 判断当前任务节点是否允许人工知会（读取节点知会配置 allowManualCc） */
     private boolean isManualCcAllowed(Task task) {
         String configJson = configService.findConfig(task.getProcessDefinitionId(), task.getTaskDefinitionKey());
         if (!StringUtils.hasText(configJson)) {
@@ -198,6 +240,7 @@ public class ProcessCcRuntimeService {
         return new ArrayList<>(users.values());
     }
 
+    /** 解析组织/部门收件人，可选包含子组织，仅取启用状态用户 */
     private List<SysUser> resolveOrganizations(List<String> values, boolean includeChildren) {
         LinkedHashSet<String> organizationIds = new LinkedHashSet<>();
         for (String value : values) {
@@ -225,6 +268,7 @@ public class ProcessCcRuntimeService {
                         .or().in(SysUser::getOrgId, organizationIds)));
     }
 
+    /** 调用自定义解析器（按 resolverCode 匹配）解析知会人员 */
     private List<SysUser> resolveCustom(JsonNode rule, CcRuntimeContext context) {
         String resolverCode = rule.path("resolverCode").asText();
         CcRecipientResolver resolver = customResolvers.stream()
@@ -235,6 +279,20 @@ public class ProcessCcRuntimeService {
         return resolveDirectUsers(resolver.resolve(context, parameters));
     }
 
+    /**
+     * 批量创建知会记录并入队发送箱。
+     *
+     * <p>通过 uniqueKey 保证幂等，重复投递时跳过。</p>
+     *
+     * @param context       运行时上下文
+     * @param recipients    知会收件人列表
+     * @param ccType        知会类型（MANUAL/AUTO）
+     * @param comment       备注
+     * @param ruleSnapshot  规则快照JSON
+     * @param channels      通知渠道列表
+     * @param sourceTaskId  来源任务ID
+     * @return 实际创建的记录数
+     */
     private int createRecords(
             CcRuntimeContext context,
             List<SysUser> recipients,
@@ -280,6 +338,7 @@ public class ProcessCcRuntimeService {
         return created;
     }
 
+    /** 按用户名/ID解析启用状态的用户列表（去重） */
     private List<SysUser> resolveDirectUsers(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         if (values == null) {
@@ -295,6 +354,7 @@ public class ProcessCcRuntimeService {
         return new ArrayList<>(users.values());
     }
 
+    /** 优先按用户名查询，查不到再按ID查询 */
     private SysUser findUser(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -303,10 +363,12 @@ public class ProcessCcRuntimeService {
         return user != null ? user : userMapper.selectById(value);
     }
 
+    /** 判断当前时机是否在配置的时机列表中（大小写不敏感） */
     private boolean timingMatches(JsonNode timings, String timing) {
         return stringList(timings).stream().anyMatch(value -> value.equalsIgnoreCase(timing));
     }
 
+    /** 将JSON节点转为字符串列表；字符串值会作为流程变量名解析 */
     private List<String> stringList(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return List.of();
@@ -331,6 +393,7 @@ public class ProcessCcRuntimeService {
         }
     }
 
+    /** 从流程变量值解析出字符串列表（支持集合与逗号分隔字符串） */
     private List<String> valuesFromVariable(Object value) {
         if (value == null) {
             return List.of();
@@ -357,6 +420,7 @@ public class ProcessCcRuntimeService {
         return value == null ? "" : value;
     }
 
+    /** 校验并返回当前操作人：需为任务办理人或候选办理人，否则抛出禁止异常 */
     private String requireOperator(Task task) {
         String username = UserContext.getUsername();
         String userId = UserContext.getUserId();

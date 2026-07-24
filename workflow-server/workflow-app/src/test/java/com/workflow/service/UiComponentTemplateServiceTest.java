@@ -20,8 +20,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * UI 组件模板服务测试。
+ *
+ * <p>被测对象：{@link UiComponentTemplateService}，覆盖模板显式升级时保留本地改动并追加新模板字段的合并场景。
+ */
 class UiComponentTemplateServiceTest {
 
+    /**
+     * 测试显式升级保留本地改动并追加新模板字段：
+     * 验证合并快照中本地标题被保留、新字段 color 被追加，且标记需要用户确认。
+     */
     @Test
     void explicitUpgradeKeepsLocalChangesAndAddsNewTemplateFields() {
         ObjectMapper objectMapper = new ObjectMapper();
@@ -65,6 +74,7 @@ class UiComponentTemplateServiceTest {
         assertTrue((Boolean) result.get("requiresConfirmation"));
     }
 
+    /** 构造带完整性哈希的模板版本对象 */
     private UiComponentTemplateVersion version(
             JsonDocumentCodec codec,
             int version,
@@ -78,6 +88,7 @@ class UiComponentTemplateServiceTest {
         return value;
     }
 
+    /** 计算字符串的 SHA-256 十六进制哈希，用于模拟模板快照完整性哈希 */
     private String sha256(String document) {
         try {
             return HexFormat.of().formatHex(

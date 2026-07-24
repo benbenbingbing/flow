@@ -45,6 +45,12 @@ public class EntityPermissionCatalogService {
     private final EntityListActionConfigService actionConfigService;
     private final List<EntityPermissionOptionProvider> optionProviders;
 
+    /**
+     * 返回实体的所有可选权限选项，包含标准动作、绕过权限、已有自定义权限和扩展提供器注入的权限。
+     *
+     * @param entityCode 实体编码
+     * @return 权限选项列表，系统实体返回空列表
+     */
     public List<EntityPermissionOptionDTO> getOptions(String entityCode) {
         String normalizedCode = EntityPermissionAction.normalizeEntityCode(entityCode);
         EntityDefinition entity = definitionMapper.findByEntityCode(entityCode).orElse(null);
@@ -95,6 +101,12 @@ public class EntityPermissionCatalogService {
         return options;
     }
 
+    /**
+     * 全量同步所有动态实体的标准权限菜单、状态及列表自定义权限。
+     *
+     * <p>为每个实体创建权限菜单容器和按钮权限，授予管理员角色，
+     * 并初始化流程实体的状态数据。</p>
+     */
     @Transactional(rollbackFor = Exception.class)
     public void synchronizeAll() {
         List<EntityDefinition> entities = definitionMapper.selectList(
@@ -129,6 +141,11 @@ public class EntityPermissionCatalogService {
         log.info("实体标准权限初始化完成: entities={}, listConfigs={}", entities.size(), configs.size());
     }
 
+    /**
+     * 同步单个实体的标准权限菜单与初始状态。
+     *
+     * @param entity 实体定义，为空或系统实体直接返回
+     */
     @Transactional(rollbackFor = Exception.class)
     public void synchronizeEntity(EntityDefinition entity) {
         if (entity == null || !StringUtils.hasText(entity.getEntityCode())) {
@@ -144,6 +161,11 @@ public class EntityPermissionCatalogService {
         synchronizeEntity(entity, ensureRootMenu(), administratorRoles);
     }
 
+    /**
+     * 禁用实体的所有标准权限菜单（标记为停用状态）。
+     *
+     * @param entityCode 实体编码
+     */
     @Transactional(rollbackFor = Exception.class)
     public void disableEntityPermissions(String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
@@ -159,6 +181,11 @@ public class EntityPermissionCatalogService {
         }
     }
 
+    /**
+     * 同步列表配置中的自定义按钮权限和访问权限码到菜单资源。
+     *
+     * @param config 列表配置，为空或实体不存在直接返回
+     */
     @Transactional(rollbackFor = Exception.class)
     public void synchronizeCustomPermissions(EntityListConfig config) {
         if (config == null || !StringUtils.hasText(config.getEntityCode())) {

@@ -29,8 +29,10 @@ public class ProcessInstanceControllerTest {
     @MockBean
     private ProcessInstanceService processInstanceService;
 
+    /** 每个测试前初始化的流程进度测试 DTO */
     private ProcessProgressDTO testProgress;
 
+    /** 初始化测试用流程进度 DTO，含节点历史与处理人映射 */
     @BeforeEach
     void setUp() {
         testProgress = new ProcessProgressDTO();
@@ -61,6 +63,7 @@ public class ProcessInstanceControllerTest {
         testProgress.setNodeAssigneeMap(assigneeMap);
     }
 
+    /** 测试查询运行中流程进度接口，断言返回 200 且进度数据含已完成节点、活动节点与处理人 */
     @Test
     void testGetProcessProgress() throws Exception {
         when(processInstanceService.getProcessProgress("proc-inst-1")).thenReturn(testProgress);
@@ -79,6 +82,7 @@ public class ProcessInstanceControllerTest {
         verify(processInstanceService, times(1)).getProcessProgress("proc-inst-1");
     }
 
+    /** 测试查询已完成流程进度接口，断言返回 200 且状态为 COMPLETED、活动节点为空 */
     @Test
     void testGetProcessProgressCompleted() throws Exception {
         testProgress.setStatus("COMPLETED");
@@ -94,6 +98,12 @@ public class ProcessInstanceControllerTest {
         verify(processInstanceService, times(1)).getProcessProgress("proc-inst-2");
     }
 
+    /**
+     * 测试触发接收任务接口，断言消息与流程变量正确传递给服务层。
+     *
+     * <p>场景：POST 请求携带 activityId、messageRef 与 variables，
+     * 断言返回 200 且服务层收到正确的参数对象。</p>
+     */
     @Test
     void triggerReceiveTaskPassesMessageAndVariablesToService() throws Exception {
         when(processInstanceService.triggerReceiveTask(eq("proc-inst-1"), any()))

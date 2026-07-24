@@ -19,8 +19,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * UI 配置草稿元数据服务测试。
+ *
+ * <p>被测对象：{@link UiConfigDraftMetadataService}，覆盖表单草稿元数据按乐观锁修订号（revision）补丁更新的场景。
+ */
 class UiConfigDraftMetadataServiceTest {
 
+    /**
+     * 测试通过乐观锁修订号补丁更新表单级数据源绑定：
+     * 验证传入校验器的表单数据源绑定 JSON 文档与修订号自增（4 -> 5）符合预期。
+     */
     @Test
     void patchesFormLevelDataSourceBindingsWithRevisionCas() {
         EntityFormMapper formMapper =

@@ -23,6 +23,12 @@ import java.sql.SQLException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /**
+     * 处理业务状态冲突异常，返回 409 状态码。
+     *
+     * @param e 业务冲突异常
+     * @return 包含错误码与错误信息的 409 响应
+     */
     @ExceptionHandler(BusinessConflictException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessConflictException(BusinessConflictException e) {
         log.warn("业务状态冲突: errorCode={}, message={}", e.getErrorCode(), e.getMessage());
@@ -30,6 +36,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(409, e.getErrorCode(), e.getMessage()));
     }
 
+    /**
+     * 处理配置修订版本冲突异常，返回 409 状态码并附带当前最新数据。
+     *
+     * @param e 修订冲突异常
+     * @return 包含错误信息与当前最新数据的 409 响应
+     */
     @ExceptionHandler(RevisionConflictException.class)
     public ResponseEntity<ApiResponse<Object>> handleRevisionConflictException(
             RevisionConflictException e) {
@@ -40,6 +52,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
+    /**
+     * 处理访问拒绝异常，返回 403 状态码。
+     *
+     * <p>当异常为 {@link BusinessForbiddenException} 时附带业务错误码，否则返回通用 403。
+     *
+     * @param e 访问拒绝异常
+     * @return 403 响应
+     */
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ApiResponse<Void>> handleForbiddenException(ForbiddenException e) {
         log.warn("访问拒绝: {}", e.getMessage());
@@ -54,6 +74,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(403, e.getMessage()));
     }
 
+    /**
+     * 处理非法参数异常，返回 400 状态码。
+     *
+     * @param e 非法参数异常
+     * @return 包含错误信息的 400 响应
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException e) {
         log.warn("请求参数异常: {}", e.getMessage());
@@ -61,6 +87,11 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, e.getMessage()));
     }
 
+    /**
+     * 处理静态资源未找到异常，返回 404 状态码。
+     *
+     * @return 404 响应
+     */
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException() {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)

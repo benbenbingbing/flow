@@ -14,18 +14,36 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+/**
+ * 实体表单配置校验器
+ * 
+ * 对表单及表单字段配置进行保存前的合法性校验：表单标识/名称、自定义组件版本锁定、
+ * 字段编码唯一性与格式、字段校验规则（min/max、minLength/maxLength、format）、
+ * 字段在不同运行模式（create/edit/approve/view）下的可见与可编辑权限、栅格宽度等。
+ */
 @Component
 @RequiredArgsConstructor
 public class EntityFormConfigurationValidator {
 
+    /** 表单标识正则：字母开头，字母数字下划线短横线，长度 1~100 */
     private static final Pattern FORM_KEY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
+    /** 字段编码正则：字母开头，字母数字下划线，长度 1~100 */
     private static final Pattern FIELD_CODE = Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,99}");
+    /** 扩展组件标识正则：字母开头，字母数字下划线点短横线，长度 1~100 */
     private static final Pattern EXTENSION_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
+    /** 支持的表单运行模式 */
     private static final Set<String> MODES = Set.of("create", "edit", "approve", "view");
+    /** 支持的字段格式校验类型 */
     private static final Set<String> FORMATS = Set.of("", "EMAIL", "PHONE", "URL");
 
     private final StructuredConfigValidator structuredConfigValidator;
 
+    /**
+     * 校验表单整体配置。
+     *
+     * @param form 表单对象（含字段列表）
+     * @throws IllegalArgumentException 实体为空、名称为空、标识不合法、组件版本未锁定等校验失败时抛出
+     */
     public void validateForm(EntityForm form) {
         if (form == null || !StringUtils.hasText(form.getEntityId())) {
             throw new IllegalArgumentException("表单实体不能为空");
@@ -63,6 +81,12 @@ public class EntityFormConfigurationValidator {
         validateFields(form.getFields());
     }
 
+    /**
+     * 校验表单字段列表。
+     *
+     * @param fields 字段列表，为 null 时跳过
+     * @throws IllegalArgumentException 字段数量超过 300 或字段配置不合法时抛出
+     */
     public void validateFields(List<EntityFormField> fields) {
         if (fields == null) {
             return;
@@ -76,6 +100,7 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /** 校验单个字段：编码格式、唯一性、组件标识、各类配置 JSON 合法性及栅格宽度 */
     private void validateField(EntityFormField field, Set<String> fieldCodes) {
         if (field == null || !StringUtils.hasText(field.getFieldCode())
                 || !FIELD_CODE.matcher(field.getFieldCode()).matches()) {
@@ -101,6 +126,7 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /** 校验字段校验规则：min/max、minLength/maxLength 区间合理性及 format 取值 */
     private void validateValidationRules(Map<String, Object> validation) {
         if (validation.isEmpty()) {
             return;
@@ -121,6 +147,7 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /** 校验扩展配置中各运行模式的可见/可编辑权限项是否合法 */
     private void validateModeAccess(Map<String, Object> extension) {
         Object modesValue = extension.get("modes");
         if (!(modesValue instanceof Map<?, ?> modes)) {
@@ -139,12 +166,14 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /** 校验权限配置项值必须为布尔或 null */
     private void validateBoolean(Object value, String key) {
         if (value != null && !(value instanceof Boolean)) {
             throw new IllegalArgumentException("字段模式配置 " + key + " 必须为布尔值");
         }
     }
 
+    /** 将值解析为 BigDecimal，空或格式不合法时抛出 IllegalArgumentException */
     private BigDecimal number(Object value) {
         if (value == null || String.valueOf(value).isBlank()) {
             return null;
@@ -156,12 +185,14 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /** 校验扩展组件标识格式 */
     private void validateExtensionName(String name, String label) {
         if (StringUtils.hasText(name) && !EXTENSION_NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(label + "标识不合法");
         }
     }
 
+    /** 空白字符串转 null */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }

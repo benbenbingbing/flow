@@ -37,6 +37,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * 任务动作服务测试。
+ *
+ * <p>被测对象：{@link TaskActionService}，覆盖任务完成（审批/驳回）、候选人访问与认领、
+ * 并发认领冲突、流程历史回退到本地任务评论等场景。
+ */
 @ExtendWith(MockitoExtension.class)
 class TaskActionServiceTest {
 
@@ -93,8 +99,10 @@ class TaskActionServiceTest {
     @Mock
     private ProcessCcService processCcService;
 
+    /** 被测任务动作服务 */
     private TaskActionService service;
 
+    /** 装配被测服务并设置当前用户上下文 */
     @BeforeEach
     void setUp() {
         service = new TaskActionService(
@@ -115,11 +123,13 @@ class TaskActionServiceTest {
         UserContext.setCurrentUser("admin-id", "admin");
     }
 
+    /** 清理用户上下文，避免用例间污染 */
     @AfterEach
     void tearDown() {
         UserContext.clear();
     }
 
+    /** 测试完成任务接受 APPROVED 状态值：验证触发 Flowable complete、本地任务完成与任务同步 */
     @Test
     void completeTaskAcceptsApprovedStatusValue() {
         mockTask("task-1", "proc-1", "admin");
@@ -131,6 +141,7 @@ class TaskActionServiceTest {
         verify(processTaskService).syncTasksFromFlowable("proc-1");
     }
 
+    /** 测试完成任务接受 REJECTED 状态值：验证按 reject 动作完成本地任务并同步 */
     @Test
     void completeTaskAcceptsRejectedStatusValue() {
         mockTask("task-1", "proc-1", "admin");
@@ -142,6 +153,7 @@ class TaskActionServiceTest {
         verify(processTaskService).syncTasksFromFlowable("proc-1");
     }
 
+    /** 测试候选人在无实体审批权限时仍可查看任务：验证不触发实体权限校验与 claim */
     @Test
     void candidateCanReadTaskWithoutEntityApprovalCapability() {
         mockCandidateTask("task-1");
@@ -152,6 +164,7 @@ class TaskActionServiceTest {
         verify(taskService, never()).claim(any(), any());
     }
 
+    /** 测试候选人完成时先认领再校验实体审批权限：验证 claim、同步、权限校验、complete 的顺序，以及操作日志与记录写入 */
     @Test
     void candidateCompletionClaimsBeforeCheckingEntityApprovalCapability() {
         mockCandidateTask("task-1");
@@ -177,6 +190,7 @@ class TaskActionServiceTest {
                 "expense", "record-1", "CLAIM", "认领任务", "proc-1", "task-1");
     }
 
+    /** 测试并发认领时另一用户抢先认领返回冲突：验证抛出业务冲突异常且不触发同步认领 */
     @Test
     void concurrentClaimReturnsConflictWhenAnotherUserWins() {
         Task latestTask = org.mockito.Mockito.mock(Task.class);
@@ -199,6 +213,7 @@ class TaskActionServiceTest {
         verify(processTaskService, never()).synchronizeClaimedTask(any(), any(), any());
     }
 
+    /** 测试流程历史在运行时无记录时回退到本地任务评论：验证历史项的评论与结果取自本地任务 */
     @Test
     void processHistoryFallsBackToLocalTaskComment() {
         when(historyService.createHistoricProcessInstanceQuery()).thenReturn(historicProcessInstanceQuery);
@@ -232,6 +247,7 @@ class TaskActionServiceTest {
         assertEquals("approve", history.get(0).getResult());
     }
 
+    /** Mock 一个已分配给指定处理人的任务查询链 */
     private void mockTask(String taskId, String processInstanceId, String assignee) {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
         when(taskQuery.taskId(taskId)).thenReturn(taskQuery);
@@ -245,6 +261,7 @@ class TaskActionServiceTest {
         when(taskService.getVariable(taskId, "nrOfCompletedInstances")).thenReturn(null);
     }
 
+    /** Mock 一个候选人任务查询链（assignee 为空、候选人计数为 1） */
     private void mockCandidateTask(String taskId) {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
         when(taskQuery.taskId(taskId)).thenReturn(taskQuery);

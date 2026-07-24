@@ -22,8 +22,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程发布历史服务单元测试。
+ *
+ * <p>被测对象为 {@link ProcessPublishHistoryService}，验证版本号递增规则、
+ * 发布记录创建流程(含节点表单快照写入与动作发布)，以及节点表单缺少活动发布版本时的拒绝逻辑。</p>
+ */
 class ProcessPublishHistoryServiceTest {
 
+    /**
+     * 下一版本号应在当前最大版本基础上递增。
+     *
+     * <p>场景：最大版本为 2，断言 nextVersion 返回 3。</p>
+     */
     @Test
     void nextVersionIncrementsLatestVersion() {
         ProcessVersionHistoryMapper versionHistoryMapper = mock(ProcessVersionHistoryMapper.class);
@@ -42,6 +53,13 @@ class ProcessPublishHistoryServiceTest {
         assertEquals(3, service.nextVersion("process-1"));
     }
 
+    /**
+     * 发布记录应创建为活动状态，并写入节点表单快照与发布动作。
+     *
+     * <p>场景：配置流程并 mock 节点表单与表单发布版本，调用 recordPublish，
+     * 断言历史记录字段(版本、描述、BPMN、快照 JSON、部署 ID、状态)均正确，
+     * 且 flowActionDesignPort 发布动作被调用。</p>
+     */
     @Test
     void recordPublishCreatesActiveHistoryAndPublishesActions() {
         ProcessVersionHistoryMapper versionHistoryMapper = mock(ProcessVersionHistoryMapper.class);
@@ -90,6 +108,11 @@ class ProcessPublishHistoryServiceTest {
         verify(flowActionDesignPort).publishActions("process-1", "version-1");
     }
 
+    /**
+     * 无历史记录时下一版本号应从 1 开始。
+     *
+     * <p>场景：mapper 未返回最大版本，断言 nextVersion 返回 1。</p>
+     */
     @Test
     void nextVersionStartsAtOneWhenNoHistoryExists() {
         ProcessVersionHistoryMapper versionHistoryMapper = mock(ProcessVersionHistoryMapper.class);
@@ -107,6 +130,11 @@ class ProcessPublishHistoryServiceTest {
         assertEquals(1, service.nextVersion("process-1"));
     }
 
+    /**
+     * 节点表单缺少活动发布版本时发布应被拒绝并抛出 IllegalStateException。
+     *
+     * <p>场景：节点表单引用未发布的表单，断言异常消息包含节点 ID 与表单 ID。</p>
+     */
     @Test
     void recordPublishRejectsNodeFormWithoutActiveRelease() {
         ProcessVersionHistoryMapper versionHistoryMapper =
@@ -145,6 +173,14 @@ class ProcessPublishHistoryServiceTest {
                 exception.getMessage());
     }
 
+    /**
+     * 构造测试用流程节点表单对象。
+     *
+     * @param nodeId 节点 ID
+     * @param formId 表单 ID
+     * @param sortOrder 排序序号
+     * @return 已填充字段的 ProcessNodeForm 实例
+     */
     private static ProcessNodeForm nodeForm(String nodeId, String formId, int sortOrder) {
         ProcessNodeForm nodeForm = new ProcessNodeForm();
         nodeForm.setProcessConfigId("process-1");

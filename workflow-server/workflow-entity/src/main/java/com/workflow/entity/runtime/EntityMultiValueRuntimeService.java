@@ -39,6 +39,13 @@ public class EntityMultiValueRuntimeService {
     private final DynamicTableService dynamicTableService;
     private final EntityPhysicalTableResolver tableResolver;
 
+    /**
+     * 从数据中抽取并移除配置为多值字段（多选、多引用、复选框）的取值。
+     *
+     * @param definition 实体定义
+     * @param data       实体数据（抽取后多值字段会从该 Map 中移除）
+     * @return 字段编码到多值取值列表的映射
+     */
     public Map<String, List<String>> extractConfiguredValues(
             EntityDefinition definition,
             Map<String, Object> data) {
@@ -58,6 +65,12 @@ public class EntityMultiValueRuntimeService {
         return values;
     }
 
+    /**
+     * 校验单值字典字段的取值是否为有效字典项，无效时抛出异常。
+     *
+     * @param definition 实体定义
+     * @param data       实体数据
+     */
     public void validateScalarDictValues(
             EntityDefinition definition,
             Map<String, Object> data) {
@@ -90,6 +103,13 @@ public class EntityMultiValueRuntimeService {
         }
     }
 
+    /**
+     * 保存多值字段取值：先按字段清除旧值，再逐条插入新的关联记录。
+     *
+     * @param definition 实体定义
+     * @param recordId   实体记录ID
+     * @param values     字段编码到多值取值列表的映射
+     */
     @Transactional
     public void save(
             EntityDefinition definition,
@@ -132,6 +152,12 @@ public class EntityMultiValueRuntimeService {
         }
     }
 
+    /**
+     * 为一批实体记录回填多值字段取值及选项（含显示标签）。
+     *
+     * @param definition 实体定义
+     * @param records    实体记录集合
+     */
     public void enrich(EntityDefinition definition, Collection<com.workflow.dto.EntityDataDTO> records) {
         if (definition == null || records == null || records.isEmpty()) {
             return;
@@ -202,6 +228,14 @@ public class EntityMultiValueRuntimeService {
         }
     }
 
+    /**
+     * 将多值字段的查询条件转换为多值表 EXISTS 子查询条件。
+     * 支持按值匹配、按标签匹配、为空判断及不包含等操作。
+     *
+     * @param definition      实体定义
+     * @param sourceCondition 原始查询条件（方法会从中移除多值字段相关键并补充占位参数）
+     * @return 处理后的条件与拼接好的 SQL 片段
+     */
     public PreparedConditions prepareConditions(
             EntityDefinition definition,
             Map<String, Object> sourceCondition) {
@@ -280,6 +314,12 @@ public class EntityMultiValueRuntimeService {
                 fragments.isEmpty() ? null : String.join(" AND ", fragments));
     }
 
+    /**
+     * 物理删除指定记录在多值表中的全部关联数据。
+     *
+     * @param entityCode 实体编码
+     * @param recordId   实体记录ID
+     */
     @Transactional
     public void delete(String entityCode, String recordId) {
         jdbcTemplate.update(
@@ -513,6 +553,12 @@ public class EntityMultiValueRuntimeService {
         return value == null ? null : String.valueOf(value).trim();
     }
 
+    /**
+     * 多值字段条件预处理结果。
+     *
+     * @param condition     处理后的查询参数 Map
+     * @param sqlCondition  拼接好的多值表 SQL 条件片段（无可多值条件时为 null）
+     */
     public record PreparedConditions(Map<String, Object> condition, String sqlCondition) {
     }
 }

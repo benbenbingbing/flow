@@ -20,8 +20,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体多值字段运行时服务单元测试。
+ *
+ * <p>被测对象为 {@link EntityMultiValueRuntimeService}，验证从主记录提取配置化多值字段
+ * (多选去重、多引用 JSON 解析)以及将多值查询条件编译为参数化 EXISTS 子查询。</p>
+ */
 class EntityMultiValueRuntimeServiceTest {
 
+    /**
+     * 从主记录提取配置化编码与多值字段，去重后从原记录移除。
+     *
+     * <p>场景：记录含多选标签(含重复值)与多引用项目(JSON 字符串)，
+     * 断言提取后标签去重、项目解析为列表，且原记录中多值字段被移除、普通字段保留。</p>
+     */
     @Test
     void extractsConfiguredCodeAndEntityMultiValuesFromMainRecord() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
@@ -65,6 +77,13 @@ class EntityMultiValueRuntimeServiceTest {
         assertEquals("差旅报销", record.get("name"));
     }
 
+    /**
+     * 多值查询条件应编译为参数化 EXISTS 子查询。
+     *
+     * <p>场景：多引用字段 projects 使用 CONTAINS_ANY 操作符，
+     * 断言编译后 SQL 含多值表 FROM、record_id 关联与 IN 占位符，
+     * 条件参数含目标实体 ID 与项目 ID。</p>
+     */
     @Test
     void compilesEntityMultiValueConditionToParameterizedExists() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);

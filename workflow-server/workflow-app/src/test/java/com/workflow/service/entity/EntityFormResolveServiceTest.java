@@ -18,8 +18,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体表单解析服务测试。
+ *
+ * <p>被测对象：{@link EntityFormResolveService}，覆盖新建数据时使用首个可达用户任务绑定的表单、
+ * 首个用户任务解析可穿越网关等场景。
+ */
 class EntityFormResolveServiceTest {
 
+    /** 测试新建数据使用首个可达用户任务绑定的表单：验证解析返回的表单 id 与首个用户任务绑定一致 */
     @Test
     void newDataUsesFirstReachableUserTaskForm() {
         EntityDefinitionMapper entityDefinitionMapper = mock(EntityDefinitionMapper.class);
@@ -62,6 +69,7 @@ class EntityFormResolveServiceTest {
         assertEquals("form-first", service.resolveFormForNewData("expense").getId());
     }
 
+    /** 测试首个用户任务解析可穿越网关：验证解析结果为网关之后的 Task_First */
     @Test
     void firstUserTaskParserTraversesGateway() {
         EntityFormResolveService service = new EntityFormResolveService(
@@ -75,6 +83,7 @@ class EntityFormResolveServiceTest {
         assertEquals("Task_First", service.resolveFirstUserTaskId(bpmn()));
     }
 
+    /** 构造含网关与两个用户任务的测试 BPMN XML */
     private String bpmn() {
         return "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">"
                 + "<process id=\"test\">"

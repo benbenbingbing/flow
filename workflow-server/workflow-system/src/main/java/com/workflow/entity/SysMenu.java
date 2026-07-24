@@ -12,11 +12,17 @@ import java.util.List;
 
 /**
  * 菜单权限实体
+ * <p>
+ * 对应 sys_menu 表，存储菜单/目录/按钮及权限标识。菜单类型分为 M-目录、C-菜单、F-按钮。
+ * 通过 entity_code/list_key/resource_type 字段支持动态实体数据列表菜单。
+ * 非数据库字段（children、parentName、hasChildren）用于树形回显。
+ * </p>
  */
 @Data
 @TableName("sys_menu")
 public class SysMenu {
     
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

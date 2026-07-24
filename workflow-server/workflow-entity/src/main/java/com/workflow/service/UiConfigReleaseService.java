@@ -45,11 +45,20 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * UI 配置发布服务，负责表单与列表草稿的快照构建、发布、激活、差异比对与运行时解析。
+ *
+ * <p>发布时构建草稿快照并校验节点树、模板引用、扩展引用和数据源引用，
+ * 计算内容哈希保证完整性；支持版本激活回滚、草稿与发布版本差异比对，
+ * 以及运行时表单/列表发布版本的解析与完整性校验。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UiConfigReleaseService {
 
+    /** 表单配置类型。 */
     public static final String FORM = "FORM";
+    /** 列表配置类型。 */
     public static final String LIST = "LIST";
     private static final int MAX_FORM_DEPTH = 8;
     private static final Set<String> FORM_NODE_TYPES = Set.of(
@@ -101,16 +110,37 @@ public class UiConfigReleaseService {
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 查询指定配置的所有发布历史记录。
+     *
+     * @param configType 配置类型（FORM 或 LIST）
+     * @param configId   配置ID
+     * @return 发布记录列表
+     */
     public List<UiConfigRelease> releases(String configType, String configId) {
         requireType(configType);
         return releaseMapper.findReleases(configType, configId);
     }
 
+    /**
+     * 查询指定配置当前激活的发布记录。
+     *
+     * @param configType 配置类型
+     * @param configId   配置ID
+     * @return 激活的发布记录，不存在返回 null
+     */
     public UiConfigRelease active(String configType, String configId) {
         requireType(configType);
         return releaseMapper.findActive(configType, configId);
     }
 
+    /**
+     * 读取当前激活发布版本的快照 Map。
+     *
+     * @param configType 配置类型
+     * @param configId   配置ID
+     * @return 快照 Map，不存在激活版本返回 null
+     */
     public Map<String, Object> activeSnapshot(String configType, String configId) {
         UiConfigRelease release = active(configType, configId);
         return release == null
@@ -118,6 +148,15 @@ public class UiConfigReleaseService {
                 : codec.readObject(release.getSnapshotDocument(), "UI发布快照");
     }
 
+    /**
+     * 解析表单运行时发布版本，返回发布元信息与已校验快照文档。
+     *
+     * @param formId          表单ID
+     * @param releaseId       发布记录ID，为空取当前激活版本
+     * @param expectedVersion 期望版本号，为空跳过校验
+     * @return 包含 id、configId、version、contentHash、snapshotDocument 的 Map
+     * @throws IllegalArgumentException 发布版本不存在或版本号不一致时抛出
+     */
     public Map<String, Object> runtimeFormRelease(
             String formId,
             String releaseId,
@@ -143,10 +182,25 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 构建配置的草稿快照（不落库），用于差异比对与发布预览。
+     *
+     * @param configType 配置类型
+     * @param configId   配置ID
+     * @return 草稿快照 Map
+     * @throws IllegalArgumentException 配置不存在时抛出
+     */
     public Map<String, Object> draftSnapshot(String configType, String configId) {
         return buildDraftSnapshot(configType, configId);
     }
 
+    /**
+     * 比较草稿快照与当前激活发布快照的差异。
+     *
+     * @param configType 配置类型
+     * @param configId   配置ID
+     * @return 差异 DTO，包含是否变化、变化区块与明细
+     */
     public UiConfigDiffDTO diff(String configType, String configId) {
         Map<String, Object> draft = buildDraftSnapshot(configType, configId);
         String draftDocument = canonical(draft);
@@ -445,6 +499,15 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 发布配置草稿快照，校验完整性后生成新版本并激活；内容未变化时直接复用激活版本。
+     *
+     * @param configType  配置类型
+     * @param configId    配置ID
+     * @param description 发布描述
+     * @return 发布记录
+     * @throws IllegalArgumentException 配置不存在或快照校验失败时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease publish(
             String configType,
@@ -486,6 +549,15 @@ public class UiConfigReleaseService {
         return release;
     }
 
+    /**
+     * 激活指定历史发布版本，校验快照完整性后切换激活状态。
+     *
+     * @param configType 配置类型
+     * @param configId   配置ID
+     * @param releaseId  要激活的发布记录ID
+     * @return 激活的发布记录
+     * @throws IllegalArgumentException 发布版本不存在或完整性校验失败时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease activate(
             String configType,
@@ -528,10 +600,22 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 解析表单运行时发布版本对应的表单对象（取当前激活版本）。
+     *
+     * @param formId 表单ID
+     * @return 运行时表单对象
+     */
     public EntityForm resolveRuntimeForm(String formId) {
         return resolveRuntimeFormRelease(formId).form();
     }
 
+    /**
+     * 解析表单运行时发布版本信息（取当前激活版本，非钉定）。
+     *
+     * @param formId 表单ID
+     * @return 解析后的表单发布版本信息
+     */
     public ResolvedEntityFormRelease resolveRuntimeFormRelease(
             String formId) {
         UiConfigRelease release = active(FORM, formId);
@@ -544,6 +628,15 @@ public class UiConfigReleaseService {
         return resolvedRuntimeForm(release, false);
     }
 
+    /**
+     * 解析指定发布版本的表单运行时对象，支持版本号一致性校验。
+     *
+     * @param formId          表单ID
+     * @param releaseId       发布记录ID，为空取当前激活版本
+     * @param expectedVersion 期望版本号，为空跳过校验
+     * @return 运行时表单对象
+     * @throws IllegalArgumentException 发布版本不存在或版本号不一致时抛出
+     */
     public EntityForm resolveRuntimeForm(
             String formId,
             String releaseId,
@@ -554,6 +647,15 @@ public class UiConfigReleaseService {
                 expectedVersion).form();
     }
 
+    /**
+     * 解析指定发布版本的表单运行时发布版本信息，支持版本号一致性校验。
+     *
+     * @param formId          表单ID
+     * @param releaseId       发布记录ID，为空取当前激活版本
+     * @param expectedVersion 期望版本号，为空跳过校验
+     * @return 解析后的表单发布版本信息（钉定发布时 pinned 为 true）
+     * @throws IllegalArgumentException 发布版本不存在或版本号不一致时抛出
+     */
     public ResolvedEntityFormRelease resolveRuntimeFormRelease(
             String formId,
             String releaseId,
@@ -595,6 +697,13 @@ public class UiConfigReleaseService {
         return snapshot;
     }
 
+    /**
+     * 校验并返回发布版本的快照 Map，确保内容哈希一致。
+     *
+     * @param release 发布记录，不能为空
+     * @return 已校验的快照 Map
+     * @throws IllegalArgumentException 发布记录为空或完整性校验失败时抛出
+     */
     public Map<String, Object> verifiedReleaseSnapshot(
             UiConfigRelease release) {
         if (release == null) {
@@ -615,6 +724,12 @@ public class UiConfigReleaseService {
         return form;
     }
 
+    /**
+     * 解析列表运行时配置，优先取激活发布快照，回退到数据库草稿配置。
+     *
+     * @param listConfigId 列表配置ID
+     * @return 运行时列表配置 DTO
+     */
     public EntityListConfigDTO resolveRuntimeList(String listConfigId) {
         Map<String, Object> snapshot = activeSnapshot(LIST, listConfigId);
         return snapshot == null

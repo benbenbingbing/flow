@@ -19,8 +19,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体列表增量配置测试。
+ *
+ * <p>被测对象：{@link EntityListConfigService} 与 {@link EntityListRelationalConfigService}，
+ * 覆盖字段补丁显式清空可选绑定、动作创建持久化显式排序等增量配置场景。
+ */
 class EntityListIncrementalConfigurationTest {
 
+    /**
+     * 测试字段补丁可显式清空可选绑定：
+     * 验证通过 copyMutableFieldProperties 将源字段为空的属性复制到目标后，相关绑定被清空为 null。
+     */
     @Test
     void fieldPatchCanExplicitlyClearOptionalBindings() {
         EntityListConfigService service = new EntityListConfigService(
@@ -50,6 +60,10 @@ class EntityListIncrementalConfigurationTest {
         assertNull(target.getLocalOverridesDocument());
     }
 
+    /**
+     * 测试动作创建持久化显式排序值：
+     * 验证保存动作时 sortOrder 与 orderKey 按请求显式值落库，不被自动覆盖。
+     */
     @Test
     void actionCreatePersistsExplicitSortOrder() {
         EntityListActionMapper actionMapper = mock(EntityListActionMapper.class);

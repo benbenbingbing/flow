@@ -40,7 +40,10 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 流程进度运行时。
+ * 流程进度运行时服务
+ * 负责组装流程进度视图，包含流程状态、BPMN XML、已完成节点、已执行连线、
+ * 当前活动节点、节点审批历史、节点处理人映射、当前任务、实体数据与表单/审批配置，
+ * 供前端流程进度图与审批弹窗展示。
  */
 @Slf4j
 @Service
@@ -65,8 +68,15 @@ public class ProcessProgressRuntimeService {
     private final ProcessNodeApprovalOptionService approvalOptionService;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
 
+    /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /**
+     * 将日期格式化为 "yyyy-MM-dd HH:mm:ss" 字符串。
+     *
+     * @param date 日期，为 null 时返回 null
+     * @return 格式化后的字符串
+     */
     private String formatDate(java.util.Date date) {
         if (date == null) {
             return null;
@@ -74,6 +84,16 @@ public class ProcessProgressRuntimeService {
         return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
     }
 
+    /**
+     * 获取流程进度视图。
+     * <p>
+     * 步骤：获取流程实例与状态 -> 解析流程定义与 BPMN XML -> 提取已完成节点/已执行连线/当前活动节点 ->
+     * 识别被终止节点 -> 构建节点审批历史（含转办、终止记录合并）-> 组装当前任务 -> 构建节点处理人映射 ->
+     * 加载实体数据与表单/审批配置。
+     *
+     * @param processInstanceId 流程实例ID
+     * @return 流程进度视图对象
+     */
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
         ProcessProgressDTO progress = new ProcessProgressDTO();
         progress.setProcessInstanceId(processInstanceId);
@@ -802,6 +822,16 @@ public class ProcessProgressRuntimeService {
         }
     }
 
+    /**
+     * 根据实体表单与节点表单绑定构建进度表单配置 DTO。
+     * <p>
+     * 合并表单字段、布局节点、只读设置与发布版本信息。
+     *
+     * @param entityForm       实体表单
+     * @param readonlyOverride 节点级只读覆盖，为 null 表示不强制只读
+     * @param nodeForm         节点表单绑定，用于补充发布版本ID/版本号，可为 null
+     * @return 进度表单配置 DTO
+     */
     private ProcessProgressDTO.FormConfigDTO buildProgressFormConfig(
             com.workflow.entity.EntityForm entityForm,
             Boolean readonlyOverride,

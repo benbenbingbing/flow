@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @TableName("entity_field")
 public class EntityField {
     
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
@@ -94,6 +95,7 @@ public class EntityField {
     @TableField("dict_type")
     private String dictType;
 
+    /** 多值字段的值存储方式（如 id/code/label 等） */
     @TableField("value_storage")
     private String valueStorage;
     

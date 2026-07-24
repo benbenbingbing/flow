@@ -18,6 +18,9 @@ import java.util.stream.Collectors;
 
 /**
  * 认证控制器
+ * <p>
+ * 提供用户登录、获取当前登录用户信息、退出登录及权限码查询接口。
+ * </p>
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -25,11 +28,16 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "*")
 public class AuthController {
     
+    /** 用户服务，用于登录校验与用户信息查询 */
     private final SysUserService userService;
+    /** BCrypt 密码编码器，用于登录密码校验 */
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     
     /**
      * 用户登录
+     *
+     * @param loginDTO 登录请求（用户名、密码）
+     * @return 登录成功返回包含 JWT Token 的用户信息；用户不存在、被禁用或密码错误返回错误信息
      */
     @PostMapping("/login")
     public Result<LoginUserVO> login(@Validated @RequestBody LoginDTO loginDTO) {
@@ -87,6 +95,8 @@ public class AuthController {
     
     /**
      * 获取当前登录用户信息
+     *
+     * @return 当前登录用户信息；未登录或用户不存在返回错误信息
      */
     @GetMapping("/current")
     public Result<LoginUserVO> getCurrentUser() {
@@ -128,6 +138,8 @@ public class AuthController {
     
     /**
      * 获取当前登录用户的权限码集合
+     *
+     * @return 当前用户的权限码集合；未登录返回错误信息
      */
     @GetMapping("/permissions")
     public Result<Set<String>> getPermissions() {

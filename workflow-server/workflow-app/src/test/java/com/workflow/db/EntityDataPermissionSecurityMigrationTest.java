@@ -8,8 +8,20 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 实体数据权限安全迁移脚本单元测试。
+ *
+ * <p>验证 V016 迁移脚本禁用不安全的旧版规则(CUSTOM_SQL、EXPRESSION)，
+ * 规范化时间戳列名，并添加运行时索引。</p>
+ */
 class EntityDataPermissionSecurityMigrationTest {
 
+    /**
+     * 迁移脚本应禁用不安全的旧版规则并添加运行时索引。
+     *
+     * <p>断言 SQL 含 SET enabled=0、CUSTOM_SQL、EXPRESSION、字段映射路径、
+     * 列名规范化(created_at→create_time)与运行时索引名。</p>
+     */
     @Test
     void migrationDisablesUnsafeLegacyRulesAndAddsRuntimeIndex() throws IOException {
         String sql = Files.readString(Path.of(

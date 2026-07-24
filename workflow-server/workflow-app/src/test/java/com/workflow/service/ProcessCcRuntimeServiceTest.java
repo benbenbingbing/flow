@@ -21,6 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 流程知会运行时服务测试。
+ *
+ * <p>被测对象：{@link ProcessCcRuntimeService}，覆盖固定用户规则触发知会收件箱与 Outbox 一次性写入、
+ * 时机不匹配时不触发任何动作等场景。
+ */
 @ExtendWith(MockitoExtension.class)
 class ProcessCcRuntimeServiceTest {
     @Mock TaskService taskService;
@@ -36,6 +42,7 @@ class ProcessCcRuntimeServiceTest {
     @Mock SysUserGroupMapper userGroupMapper;
     @Mock SysOrganizationMapper organizationMapper;
 
+    /** 测试固定用户规则触发收件箱与 Outbox 各一次：验证知会记录的用户、唯一键与渠道符合预期 */
     @Test
     void fixedUserRuleCreatesInboxAndOutboxOnce() {
         ProcessCcRuntimeService service = new ProcessCcRuntimeService(
@@ -87,6 +94,7 @@ class ProcessCcRuntimeServiceTest {
         verify(outboxService).enqueue(captor.getValue(), List.of("IN_APP"));
     }
 
+    /** 测试时机不匹配时不做任何动作：验证返回 0 且未与知会服务、Outbox 交互 */
     @Test
     void unmatchedTimingDoesNothing() {
         ProcessCcRuntimeService service = new ProcessCcRuntimeService(

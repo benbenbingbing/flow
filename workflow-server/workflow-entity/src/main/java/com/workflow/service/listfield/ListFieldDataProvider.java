@@ -20,26 +20,32 @@ public interface ListFieldDataProvider {
      */
     String getDataSourceType();
 
+    /** 数据源在选项清单中展示的名称，默认与数据源类型相同 */
     default String getDisplayName() {
         return getDataSourceType();
     }
 
+    /** 数据源描述文本，默认为空 */
     default String getDescription() {
         return "";
     }
 
+    /** 是否支持虚拟字段（无对应实体字段的计算列），默认支持 */
     default boolean supportsVirtualField() {
         return true;
     }
 
+    /** 是否支持作为查询条件使用，默认不支持 */
     default boolean supportsQuery() {
         return false;
     }
 
+    /** 返回数据源配置项 schema（key/label/type/required/defaultValue），默认无配置项 */
     default List<Map<String, Object>> getConfigSchema() {
         return List.of();
     }
 
+    /** 对字段配置进行自定义校验，默认不做任何校验 */
     default void validateConfig(EntityListField field, Map<String, Object> config) {
     }
 

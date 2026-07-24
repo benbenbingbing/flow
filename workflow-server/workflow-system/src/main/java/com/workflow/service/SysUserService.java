@@ -22,20 +22,30 @@ import java.util.stream.Collectors;
 
 /**
  * 用户管理服务
+ * <p>
+ * 提供用户的增删改查、状态切换、密码重置/更新、角色关联维护及显示名称解析等能力。
+ * </p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SysUserService {
     
+    /** 用户 Mapper */
     private final SysUserMapper userMapper;
+    /** 角色 Mapper，用于查询用户角色 */
     private final SysRoleMapper roleMapper;
+    /** 用户角色关联 Mapper */
     private final SysUserRoleMapper userRoleMapper;
+    /** 组织部门 Mapper，用于回填用户的组织/部门名称 */
     private final SysOrganizationMapper orgMapper;
+    /** BCrypt 密码编码器，用于密码加密与校验 */
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     
     /**
-     * 查询用户列表
+     * 查询用户列表（已填充角色和组织部门信息）
+     *
+     * @return 用户列表，按创建时间倒序
      */
     public List<SysUser> getUserList() {
         List<SysUser> users = userMapper.selectList(
@@ -52,6 +62,9 @@ public class SysUserService {
     
     /**
      * 根据ID查询用户
+     *
+     * @param id 用户ID
+     * @return 用户对象（已填充角色和组织部门信息），不存在返回 null
      */
     public SysUser getById(String id) {
         SysUser user = userMapper.selectById(id);
@@ -64,6 +77,9 @@ public class SysUserService {
     
     /**
      * 根据用户名查询用户
+     *
+     * @param username 用户名
+     * @return 用户对象（已填充角色和组织部门信息），不存在返回 null
      */
     public SysUser getByUsername(String username) {
         SysUser user = userMapper.selectByUsername(username);
@@ -76,6 +92,13 @@ public class SysUserService {
     
     /**
      * 根据用户名查询用户昵称
+     * <p>
+     * 先按用户名查询，未命中时再尝试按用户ID查询（多实例任务中 assignee 可能是用户ID）。
+     * 昵称为空时回退为用户名，仍无则返回入参原值。
+     * </p>
+     *
+     * @param username 用户名或用户ID
+     * @return 用户昵称；查无用户时返回入参原值
      */
     public String getNicknameByUsername(String username) {
         if (username == null || username.isEmpty()) {
@@ -127,7 +150,11 @@ public class SysUserService {
     }
     
     /**
-     * 保存用户
+     * 保存用户（新增或更新），并同步用户角色关联
+     *
+     * @param user 用户对象，roleIds 为关联的角色ID列表
+     * @return 保存后的用户对象
+     * @throws RuntimeException 用户名已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public SysUser saveUser(SysUser user) {
@@ -172,7 +199,10 @@ public class SysUserService {
     }
     
     /**
-     * 删除用户
+     * 删除用户（先删除角色关联，再逻辑删除用户）
+     *
+     * @param id 用户ID
+     * @throws RuntimeException 用户不存在或为超级管理员时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteUser(String id) {
@@ -196,6 +226,10 @@ public class SysUserService {
     
     /**
      * 更新用户状态
+     *
+     * @param id     用户ID
+     * @param status 状态值：0-启用 1-禁用
+     * @throws RuntimeException 禁用超级管理员时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(String id, String status) {
@@ -215,7 +249,9 @@ public class SysUserService {
     }
     
     /**
-     * 重置密码
+     * 重置密码（重置为默认密码 123456 的加密值）
+     *
+     * @param id 用户ID
      */
     @Transactional(rollbackFor = Exception.class)
     public void resetPassword(String id) {
@@ -229,6 +265,9 @@ public class SysUserService {
     
     /**
      * 更新用户密码
+     *
+     * @param id             用户ID
+     * @param encodedPassword 已加密的密码
      */
     @Transactional(rollbackFor = Exception.class)
     public void updatePassword(String id, String encodedPassword) {
@@ -240,7 +279,10 @@ public class SysUserService {
     }
     
     /**
-     * 保存用户角色关联
+     * 保存用户角色关联（先删除原有角色，再批量插入新角色）
+     *
+     * @param userId  用户ID
+     * @param roleIds 角色ID列表
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveUserRoles(String userId, List<String> roleIds) {
@@ -260,7 +302,9 @@ public class SysUserService {
     }
     
     /**
-     * 填充用户角色信息
+     * 填充用户角色信息（回填 roles、roleIds 字段）
+     *
+     * @param user 待填充的用户对象
      */
     private void fillUserRoles(SysUser user) {
         List<SysRole> roles = roleMapper.selectRolesByUserId(user.getId());
@@ -269,7 +313,9 @@ public class SysUserService {
     }
     
     /**
-     * 填充用户组织部门信息
+     * 填充用户组织部门信息（回填 orgName、deptName 字段）
+     *
+     * @param user 待填充的用户对象
      */
     private void fillUserOrgInfo(SysUser user) {
         if (StringUtils.hasText(user.getOrgId())) {

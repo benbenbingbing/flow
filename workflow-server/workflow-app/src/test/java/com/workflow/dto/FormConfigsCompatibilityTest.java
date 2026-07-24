@@ -6,8 +6,19 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * 表单配置兼容性单元测试。
+ *
+ * <p>验证流程进度 DTO 与任务详情 DTO 同时支持单个表单配置(getFormConfig)
+ * 与多表单配置列表(getFormConfigs)的兼容设计。</p>
+ */
 class FormConfigsCompatibilityTest {
 
+    /**
+     * 流程进度 DTO 应保留单个表单配置并支持多表单配置列表。
+     *
+     * <p>断言 getFormConfig 返回首个表单，getFormConfigs 返回全部表单列表。</p>
+     */
     @Test
     void processProgressKeepsSingleFormConfigAndSupportsMultipleFormConfigs() {
         ProcessProgressDTO dto = new ProcessProgressDTO();
@@ -23,6 +34,11 @@ class FormConfigsCompatibilityTest {
         assertEquals(2, dto.getFormConfigs().size());
     }
 
+    /**
+     * 任务详情 DTO 应保留单个表单配置并支持多表单配置列表。
+     *
+     * <p>断言 getFormConfig 返回首个表单，getFormConfigs 返回全部表单列表。</p>
+     */
     @Test
     void taskDetailKeepsSingleFormConfigAndSupportsMultipleFormConfigs() {
         TaskDetailDTO dto = new TaskDetailDTO();

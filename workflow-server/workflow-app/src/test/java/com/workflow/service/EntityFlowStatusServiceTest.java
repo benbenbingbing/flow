@@ -11,8 +11,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+/**
+ * 实体流程状态映射服务测试。
+ *
+ * <p>被测对象：{@link EntityFlowStatusService}，覆盖流程状态映射保存时对必填遗留状态字段的自动填充逻辑。
+ */
 class EntityFlowStatusServiceTest {
 
+    /**
+     * 测试保存状态映射时自动回填必填的 legacy status 值：
+     * 验证仅设置 statusCode 时，status 字段会被同步填充为相同的值。
+     */
     @Test
     void saveStatusMappingsPopulatesRequiredLegacyStatusValue() {
         EntityFlowStatusMappingMapper mapper = mock(EntityFlowStatusMappingMapper.class);

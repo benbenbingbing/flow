@@ -11,6 +11,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 实体表单节点属性与规则的规范化、校验策略。
+ *
+ * <p>集中管理各类表单节点（FIELD、SUB_FORM、REPEATER、容器节点等）允许的属性集合、
+ * 数据源绑定位置、字段绑定类型、扩展组件与模板的校验规则，并提供属性迁移、
+ * 校验项归一化和非法属性剥离能力。所有方法均为纯函数，便于在不同上下文复用。</p>
+ */
 final class EntityFormNodePropertyPolicy {
 
     private static final Set<String> FIELD_DATA_SOURCE_USAGES = Set.of(
@@ -99,6 +106,15 @@ final class EntityFormNodePropertyPolicy {
     private EntityFormNodePropertyPolicy() {
     }
 
+    /**
+     * 规范化节点属性，拆分为活跃属性与不支持属性；非迁移模式下遇到不支持属性将抛出异常。
+     *
+     * @param nodeType           节点类型
+     * @param source             原始属性 Map
+     * @param migrateUnsupported 是否将不支持属性迁移到 inactive 而非抛出异常
+     * @return 活跃属性与不支持属性组成的归一化结果
+     * @throws IllegalArgumentException 非迁移模式存在不支持属性或属性值非法时抛出
+     */
     static NormalizedProps normalizeProps(
             String nodeType,
             Map<String, Object> source,
@@ -155,6 +171,13 @@ final class EntityFormNodePropertyPolicy {
         return new NormalizedProps(active, inactive);
     }
 
+    /**
+     * 规范化节点字段规则（仅保留活跃部分）。
+     *
+     * @param nodeType 节点类型
+     * @param source   原始规则 Map
+     * @return 归一化后的规则 Map
+     */
     static Map<String, Object> normalizeRules(
             String nodeType,
             Map<String, Object> source) {
@@ -165,6 +188,16 @@ final class EntityFormNodePropertyPolicy {
                 false).active();
     }
 
+    /**
+     * 规范化节点字段规则，拆分为活跃与不支持校验项；非迁移模式下遇到不支持项将抛出异常。
+     *
+     * @param nodeType           节点类型
+     * @param source             原始规则 Map
+     * @param props              节点属性，用于读取字段类型以决定支持哪些校验
+     * @param migrateUnsupported 是否将不支持校验迁移到 inactive 而非抛出异常
+     * @return 活跃规则与不支持规则组成的归一化结果
+     * @throws IllegalArgumentException 节点不支持规则、校验值非法或字段类型不支持时抛出
+     */
     static NormalizedRules normalizeRules(
             String nodeType,
             Map<String, Object> source,
@@ -265,6 +298,14 @@ final class EntityFormNodePropertyPolicy {
                 pruneMap(inactive));
     }
 
+    /**
+     * 规范化节点数据源绑定配置，仅保留该节点允许的绑定位置。
+     *
+     * @param nodeType 节点类型
+     * @param source   原始数据源绑定 Map
+     * @return 归一化后的数据源绑定 Map
+     * @throws IllegalArgumentException 节点不支持数据源或位置非法、重复时抛出
+     */
     static Map<String, Object> normalizeDataSourceBindings(
             String nodeType,
             Map<String, Object> source) {
@@ -297,6 +338,14 @@ final class EntityFormNodePropertyPolicy {
         return normalized;
     }
 
+    /**
+     * 校验节点的字段绑定类型与引用一致性。
+     *
+     * @param nodeType    节点类型
+     * @param bindingType 绑定类型，为空按 NONE 处理
+     * @param bindingRef  绑定引用ID
+     * @throws IllegalArgumentException 绑定类型不支持或引用与类型不匹配时抛出
+     */
     static void validateBinding(
             String nodeType,
             String bindingType,
@@ -322,6 +371,15 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验节点是否允许配置扩展组件，不允许时拒绝组件名/版本/快照。
+     *
+     * @param nodeType         节点类型
+     * @param componentName    扩展组件名
+     * @param componentVersion 组件版本
+     * @param snapshotVersion  快照版本
+     * @throws IllegalArgumentException 节点不支持扩展但配置了扩展组件时抛出
+     */
     static void validateExtension(
             String nodeType,
             String componentName,
@@ -337,6 +395,15 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验组件模板配置的合法性：模板ID与版本必须成对出现，局部覆盖依赖已锁定模板。
+     *
+     * @param nodeType        节点类型
+     * @param templateId      模板ID
+     * @param templateVersion 模板版本
+     * @param localOverrides  局部覆盖属性
+     * @throws IllegalArgumentException 节点不支持模板或模板配置不完整时抛出
+     */
     static void validateTemplate(
             String nodeType,
             String templateId,
@@ -364,22 +431,52 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 判断节点是否支持扩展组件配置。
+     *
+     * @param nodeType 节点类型
+     * @return 支持返回 true
+     */
     static boolean supportsExtension(String nodeType) {
         return EXTENSIBLE_TYPES.contains(normalize(nodeType));
     }
 
+    /**
+     * 判断节点是否支持字段规则配置。
+     *
+     * @param nodeType 节点类型
+     * @return 支持返回 true
+     */
     static boolean supportsRules(String nodeType) {
         return RULE_TYPES.contains(normalize(nodeType));
     }
 
+    /**
+     * 判断节点是否支持子表单配置。
+     *
+     * @param nodeType 节点类型
+     * @return 支持返回 true
+     */
     static boolean supportsChildForm(String nodeType) {
         return CHILD_FORM_TYPES.contains(normalize(nodeType));
     }
 
+    /**
+     * 判断节点是否支持组件模板配置。
+     *
+     * @param nodeType 节点类型
+     * @return 支持返回 true
+     */
     static boolean supportsTemplate(String nodeType) {
         return TEMPLATE_TYPES.contains(normalize(nodeType));
     }
 
+    /**
+     * 返回节点支持的数据源绑定位置集合，不支持数据源返回空集。
+     *
+     * @param nodeType 节点类型
+     * @return 允许的绑定位置集合
+     */
     static Set<String> dataSourceUsages(String nodeType) {
         return switch (normalize(nodeType)) {
             case "FIELD" -> FIELD_DATA_SOURCE_USAGES;
@@ -388,6 +485,12 @@ final class EntityFormNodePropertyPolicy {
         };
     }
 
+    /**
+     * 返回节点支持的字段绑定类型集合，不支持绑定的节点返回仅含 NONE。
+     *
+     * @param nodeType 节点类型
+     * @return 允许的绑定类型集合
+     */
     static Set<String> bindingTypes(String nodeType) {
         return switch (normalize(nodeType)) {
             case "FIELD" -> FIELD_BINDING_TYPES;
@@ -396,6 +499,12 @@ final class EntityFormNodePropertyPolicy {
         };
     }
 
+    /**
+     * 判断值是否有意义（非空、非空白字符串，或非空集合/Map）。
+     *
+     * @param value 待判断值
+     * @return 有意义返回 true
+     */
     static boolean meaningful(Object value) {
         if (value == null) {
             return false;
@@ -414,6 +523,12 @@ final class EntityFormNodePropertyPolicy {
         return true;
     }
 
+    /**
+     * 将源 Map 转为可变的 LinkedHashMap，为空时返回空 Map。
+     *
+     * @param source 源 Map，可为 null
+     * @return 可变 Map 副本
+     */
     static Map<String, Object> mutableMap(Map<String, Object> source) {
         return source == null
                 ? new LinkedHashMap<>()

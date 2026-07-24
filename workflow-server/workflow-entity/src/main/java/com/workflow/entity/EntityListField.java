@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 @TableName("entity_list_field")
 public class EntityListField {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
@@ -132,10 +133,13 @@ public class EntityListField {
     @TableField("render_config")
     private String renderConfig;
 
+    /** 字段引用的模板ID */
     private String templateId;
 
+    /** 字段引用的模板版本号 */
     private Integer templateVersion;
 
+    /** 模板本地覆盖配置（JSON） */
     private String localOverridesDocument;
 
     /**

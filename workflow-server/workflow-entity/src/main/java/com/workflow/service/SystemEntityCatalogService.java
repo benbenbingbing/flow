@@ -43,6 +43,11 @@ public class SystemEntityCatalogService {
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFieldMapper fieldMapper;
 
+    /**
+     * 扫描数据库中以 sys_ 开头的系统表，登记为只读系统实体目录并同步列字段。
+     *
+     * @return 本次同步登记的系统表数量
+     */
     @Transactional
     public int synchronize() {
         List<Map<String, Object>> tables = jdbcTemplate.queryForList(
@@ -86,6 +91,9 @@ public class SystemEntityCatalogService {
         return synchronizedCount;
     }
 
+    /**
+     * 读取系统表列信息并同步为实体字段（标记为系统字段、不可编辑）。
+     */
     private void synchronizeFields(EntityDefinition definition, String tableName) {
         List<Map<String, Object>> columns = jdbcTemplate.queryForList(
                 "SELECT COLUMN_NAME, COLUMN_COMMENT, DATA_TYPE, COLUMN_TYPE, "

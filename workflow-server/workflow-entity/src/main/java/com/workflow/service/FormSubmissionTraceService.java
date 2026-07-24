@@ -10,9 +10,16 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+/**
+ * 表单提交业务追踪键解析服务。
+ *
+ * <p>优先从请求头 X-Business-Trace-Key 获取并校验，缺失时生成服务端追踪键，
+ * 单次请求内复用同一追踪键以串联幂等操作。</p>
+ */
 @Service
 public class FormSubmissionTraceService {
 
+    /** 业务追踪键请求头名称。 */
     public static final String BUSINESS_TRACE_HEADER =
             "X-Business-Trace-Key";
 
@@ -22,6 +29,14 @@ public class FormSubmissionTraceService {
     private static final Pattern VALID_TRACE_KEY =
             Pattern.compile("[A-Za-z0-9._:@-]{1,160}");
 
+    /**
+     * 构建当前提交的执行上下文，自动解析业务追踪键。
+     *
+     * @param operation         操作类型
+     * @param fallbackTraceKey  回退追踪键，请求头缺失时使用
+     * @param attributes        附加属性
+     * @return 表单提交执行上下文
+     */
     public FormSubmissionExecutionContext current(
             String operation,
             String fallbackTraceKey,

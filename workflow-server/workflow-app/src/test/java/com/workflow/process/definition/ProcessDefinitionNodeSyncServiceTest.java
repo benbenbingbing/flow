@@ -26,8 +26,20 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程定义节点同步服务单元测试。
+ *
+ * <p>被测对象为 {@link ProcessDefinitionNodeSyncService}，验证草稿节点同步(先删后插)、
+ * BPMN 节点表单解析写入、实体状态映射同步，以及全节点类型解析持久化。</p>
+ */
 class ProcessDefinitionNodeSyncServiceTest {
 
+    /**
+     * 同步草稿节点时应先删除旧节点再插入新节点。
+     *
+     * <p>场景：传入一个 USER_TASK 节点 DTO，断言 deleteByProcessConfigId 被调用，
+     * 插入的 NodeConfig 字段与 DTO 一致且 skipNode 为 true。</p>
+     */
     @Test
     void syncDraftNodesReplacesExistingNodes() {
         NodeConfigMapper nodeMapper = mock(NodeConfigMapper.class);
@@ -56,6 +68,12 @@ class ProcessDefinitionNodeSyncServiceTest {
         assertEquals(true, node.getSkipNode());
     }
 
+    /**
+     * 从 BPMN 同步节点表单时应按顺序持久化多个实体表单 ID。
+     *
+     * <p>场景：BPMN 中 task-1 绑定 form-a 与 form-b，
+     * 断言先删除旧记录再按 sortOrder 依次插入两条只读表单记录。</p>
+     */
     @Test
     void syncNodeFormsFromBpmnPersistsMultipleEntityFormIdsInOrder() {
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
@@ -75,6 +93,12 @@ class ProcessDefinitionNodeSyncServiceTest {
         assertEquals(1, inserted.get(1).getIsReadonly());
     }
 
+    /**
+     * 从 BPMN 同步状态映射时应读取实体绑定并写入状态映射列表。
+     *
+     * <p>场景：流程绑定 expense 实体，BPMN 中连线 flow-1 携带 entityStatusCode，
+     * 断言 entityFlowStatusService.saveStatusMappings 收到的映射字段正确。</p>
+     */
     @Test
     void syncStatusMappingsFromBpmnReadsEntityBinding() {
         EntityDefinitionMapper entityDefinitionMapper = mock(EntityDefinitionMapper.class);
@@ -102,6 +126,12 @@ class ProcessDefinitionNodeSyncServiceTest {
         assertEquals("approving", mapping.getEntityStatusCode());
     }
 
+    /**
+     * 解析并保存节点配置时应持久化所有受支持的节点类型。
+     *
+     * <p>场景：BPMN 包含全部 15 种节点类型，断言 insert 被调用 15 次，
+     * 且节点类型列表与预期顺序一致。</p>
+     */
     @Test
     void parseAndSaveNodeConfigsPersistsEverySupportedNodeType() {
         NodeConfigMapper nodeMapper = mock(NodeConfigMapper.class);
@@ -141,6 +171,19 @@ class ProcessDefinitionNodeSyncServiceTest {
         ), nodeTypes);
     }
 
+    /**
+     * 构造被测服务实例，按参数注入对应 mock 依赖。
+     *
+     * @param nodeMapper 节点配置 Mapper
+     * @param assigneeMapper 审批人配置 Mapper
+     * @param formMapper 表单配置 Mapper
+     * @param objectMapper JSON 序列化器
+     * @param entityFlowStatusService 实体流程状态服务
+     * @param entityDefinitionMapper 实体定义 Mapper
+     * @param nodeFormMapper 节点表单 Mapper
+     * @param nodeApprovalMapper 节点审批 Mapper
+     * @return 已组装的节点同步服务实例
+     */
     private static ProcessDefinitionNodeSyncService service(NodeConfigMapper nodeMapper,
                                                            AssigneeConfigMapper assigneeMapper,
                                                            FormConfigMapper formMapper,
@@ -155,6 +198,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 null, null);
     }
 
+    /** 构造包含多表单绑定扩展属性的 BPMN XML */
     private static String bpmnWithEntityFormIds() {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                 + "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\""
@@ -172,6 +216,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 + "</bpmn:definitions>";
     }
 
+    /** 构造包含实体状态映射扩展属性的 BPMN XML */
     private static String bpmnWithStatusMapping() {
         return "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">"
                 + "<bpmn:process id=\"expense_flow\">"
@@ -186,6 +231,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 + "</bpmn:definitions>";
     }
 
+    /** 构造包含全部受支持节点类型的 BPMN XML */
     private static String bpmnWithEverySupportedNodeType() {
         return "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">"
                 + "<bpmn:process id=\"all_nodes\">"

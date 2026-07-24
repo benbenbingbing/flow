@@ -13,12 +13,19 @@ import java.util.Set;
 
 /**
  * 数据权限用户匹配器。
+ *
+ * <p>根据 {@link MatchConfigDTO} 中的适用用户条件判断当前用户是否命中。
+ * 支持内置范围（全部用户、用户、角色、用户组、部门、组织）以及通过
+ * {@link EntityDataPermissionMatchProvider} 扩展的自定义范围。</p>
  */
 @Component
 public class PermissionRuleMatcher {
 
+    /** 条件树最大嵌套深度，防止配置过于复杂导致递归过深。 */
     private static final int MAX_DEPTH = 6;
+    /** 条件树最大节点数，防止配置过于复杂。 */
     private static final int MAX_NODES = 100;
+    /** 内置的适用用户范围类型集合。 */
     private static final Set<String> BUILTIN_TYPES =
             Set.of("ALL_USERS", "USER", "ROLE", "GROUP", "DEPT", "ORG");
 
@@ -26,6 +33,13 @@ public class PermissionRuleMatcher {
     private final SysUserGroupMapper userGroupMapper;
     private final List<EntityDataPermissionMatchProvider> matchProviders;
 
+    /**
+     * 构造匹配器。
+     *
+     * @param orgMapper       组织架构数据访问
+     * @param userGroupMapper 用户组数据访问
+     * @param matchProviders  自定义范围匹配扩展点集合，可为 null
+     */
     public PermissionRuleMatcher(
             SysOrganizationMapper orgMapper,
             SysUserGroupMapper userGroupMapper,
@@ -35,6 +49,13 @@ public class PermissionRuleMatcher {
         this.matchProviders = matchProviders == null ? List.of() : matchProviders;
     }
 
+    /**
+     * 判断用户是否命中数据权限适用范围。
+     *
+     * @param match 适用用户配置，为空返回 false
+     * @param user  当前用户，为空返回 false
+     * @return 命中返回 true
+     */
     public boolean matches(MatchConfigDTO match, SysUser user) {
         if (match == null || user == null) {
             return false;
@@ -49,6 +70,12 @@ public class PermissionRuleMatcher {
         return matchesConditions(match.getLogic(), conditions, user);
     }
 
+    /**
+     * 校验适用用户配置的合法性与复杂度。
+     *
+     * @param match 适用用户配置，为空抛出异常
+     * @throws IllegalArgumentException 配置为空、缺少条件、逻辑非法或过于复杂时抛出
+     */
     public void validate(MatchConfigDTO match) {
         if (match == null) {
             throw new IllegalArgumentException("适用用户配置不能为空");
@@ -149,6 +176,7 @@ public class PermissionRuleMatcher {
             return false;
         }
         String scopeType = condition.getScopeType().toUpperCase(Locale.ROOT);
+        // 根据范围类型分派到不同的内置匹配或自定义扩展匹配
         return switch (scopeType) {
             case "ALL_USERS" -> true;
             case "USER" -> matchesCollection(condition, List.of(user.getId()));

@@ -16,6 +16,7 @@ import java.util.Map;
 @TableName("entity_form_field")
 public class EntityFormField {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
@@ -139,27 +140,35 @@ public class EntityFormField {
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationCode;
 
+    /** 关系名称（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationName;
 
+    /** 子实体ID（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String childEntityId;
 
+    /** 子实体编码（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String childEntityCode;
 
+    /** 子表单关联字段编码（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String childRefFieldCode;
 
+    /** 关系类型（ONE_TO_ONE/ONE_TO_MANY，非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationType;
 
+    /** 是否级联删除（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean cascadeDelete;
 
+    /** 关系是否必填（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean relationRequired;
 
+    /** 数据源绑定配置（非数据库字段，从entity_field补充） */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Map<String, Object> dataSourceBindings;
 

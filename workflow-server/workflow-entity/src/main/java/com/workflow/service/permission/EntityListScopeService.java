@@ -28,7 +28,9 @@ public class EntityListScopeService {
 
     private static final Pattern KEY_PATTERN =
             Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
+    /** 允许的规则效果：允许或拒绝。 */
     private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
+    /** 允许的列表数据范围模式：继承、缩小、覆盖。 */
     private static final Set<String> LIST_MODES =
             Set.of("INHERIT", "NARROW", "OVERRIDE");
 
@@ -43,6 +45,12 @@ public class EntityListScopeService {
     private final EntityListScopeAuditService auditService;
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
 
+    /**
+     * 查询实体的数据范围配置，包含方案、绑定和当前发布版本。
+     *
+     * @param entityCode 实体编码
+     * @return 数据范围配置 DTO
+     */
     @Transactional(readOnly = true)
     public EntityListScopeConfigurationDTO getConfiguration(String entityCode) {
         requireEntity(entityCode);
@@ -59,6 +67,14 @@ public class EntityListScopeService {
         return result;
     }
 
+    /**
+     * 新增或更新数据范围方案，并记录审计日志。
+     *
+     * @param id      方案ID，为空表示新增
+     * @param request 方案请求体
+     * @return 保存后的方案 DTO
+     * @throws IllegalArgumentException 编码为空、方案编码重复或过滤配置非法时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListScopePolicyDTO savePolicy(
             String id,
@@ -126,6 +142,14 @@ public class EntityListScopeService {
         return toPolicyDTO(policyMapper.selectById(policy.getId()));
     }
 
+    /**
+     * 新增或更新数据范围绑定（方案与适用对象/列表的关联），并记录审计日志。
+     *
+     * @param id      绑定ID，为空表示新增
+     * @param request 绑定请求体
+     * @return 保存后的绑定 DTO
+     * @throws IllegalArgumentException 方案不存在、列表不存在、适用用户或效果配置非法时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListScopeBindingDTO saveBinding(
             String id,
@@ -185,6 +209,12 @@ public class EntityListScopeService {
         return toBindingDTO(bindingMapper.selectById(binding.getId()));
     }
 
+    /**
+     * 删除数据范围方案，若仍被绑定引用则抛出异常。
+     *
+     * @param id 方案ID
+     * @throws IllegalStateException 方案仍被绑定引用时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void deletePolicy(String id) {
         EntityListScopePolicy policy = policyMapper.selectById(id);
@@ -201,11 +231,25 @@ public class EntityListScopeService {
         policyMapper.deleteById(id);
     }
 
+    /**
+     * 删除数据范围绑定。
+     *
+     * @param id 绑定ID
+     */
     @Transactional(rollbackFor = Exception.class)
     public void deleteBinding(String id) {
         bindingMapper.deleteById(id);
     }
 
+    /**
+     * 发布实体的数据范围快照，生成新版本并激活，同时更新列表已发布版本号。
+     *
+     * @param entityCode  实体编码
+     * @param description 发布描述
+     * @return 发布记录
+     * @throws IllegalStateException       存在需人工复核的历史规则或缺少默认 ALLOW 绑定时抛出
+     * @throws EntityListScopeManualReviewRequiredException 存在待人工复核规则时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListScopeRelease publish(String entityCode, String description) {
         requireEntity(entityCode);
@@ -268,6 +312,14 @@ public class EntityListScopeService {
         return release;
     }
 
+    /**
+     * 激活指定历史发布版本，实现数据范围回滚。
+     *
+     * @param entityCode 实体编码
+     * @param version    要激活的版本号
+     * @return 激活的发布记录
+     * @throws IllegalArgumentException 版本不存在时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListScopeRelease activateRelease(String entityCode, int version) {
         EntityListScopeRelease release = releaseMapper.selectOne(
@@ -287,6 +339,13 @@ public class EntityListScopeService {
         return release;
     }
 
+    /**
+     * 获取实体当前激活的发布快照。
+     *
+     * @param entityCode 实体编码
+     * @return 快照 DTO，不存在已发布版本时返回 null
+     * @throws IllegalStateException 快照 JSON 损坏时抛出
+     */
     @Transactional(readOnly = true)
     public EntityListScopeSnapshotDTO getActiveSnapshot(String entityCode) {
         EntityListScopeRelease release = releaseMapper.findActive(entityCode);
@@ -302,6 +361,13 @@ public class EntityListScopeService {
         }
     }
 
+    /**
+     * 确保实体存在默认数据范围方案并已发布，用于新实体初始化。
+     *
+     * <p>若无任何方案则生成"本人创建或提交"的默认方案并发布。</p>
+     *
+     * @param entityCode 实体编码
+     */
     @Transactional(rollbackFor = Exception.class)
     public void ensureDefaultAndRelease(String entityCode) {
         requireEntity(entityCode);

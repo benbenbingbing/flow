@@ -31,7 +31,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 流程实例服务单元测试
+ * 流程实例服务单元测试。
+ *
+ * <p>被测对象：{@link ProcessInstanceService}，覆盖按流程 key 获取 BPMN XML、流程不存在时返回 null、
+ * 服务依赖注入等场景。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -55,6 +58,7 @@ public class ProcessInstanceServiceTest {
     @InjectMocks
     private ProcessInstanceService processInstanceService;
 
+    /** 测试按流程 key 获取 BPMN XML：验证返回的 XML 与配置中一致 */
     @Test
     void testGetBpmnXmlByProcessKey() {
         ProcessDefinitionConfig config = new ProcessDefinitionConfig();
@@ -69,6 +73,7 @@ public class ProcessInstanceServiceTest {
         assertEquals("<bpmn>...</bpmn>", result);
     }
 
+    /** 测试按不存在的流程 key 获取 BPMN XML：验证流程定义查询也为空时返回 null */
     @Test
     void testGetBpmnXmlByProcessKeyNotFound() {
         when(processConfigMapper.findByProcessKey("not_exist")).thenReturn(Optional.empty());
@@ -84,6 +89,7 @@ public class ProcessInstanceServiceTest {
         assertNull(result);
     }
 
+    /** 测试服务及其依赖被正确注入：验证各 Mock 与被测服务均非空 */
     @Test
     void testServiceInjected() {
         assertNotNull(processInstanceService);

@@ -15,6 +15,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 @TableName("entity_field_file_item")
 public class EntityFieldFileItem {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 

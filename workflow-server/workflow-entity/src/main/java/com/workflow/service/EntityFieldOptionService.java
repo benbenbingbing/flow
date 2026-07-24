@@ -15,6 +15,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 实体字段选项服务，负责字段下拉选项的持久化、文档序列化与解析。
+ *
+ * <p>选项以 value/label 为核心字段，可携带样式类型、禁用状态等附加属性，
+ * 序列化为 JSON 文档便于发布快照与表单运行时加载。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class EntityFieldOptionService {
@@ -25,6 +31,12 @@ public class EntityFieldOptionService {
     private final EntityFieldOptionMapper optionMapper;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 查询字段的所有选项，返回 Map 列表。
+     *
+     * @param fieldId 字段ID
+     * @return 选项 Map 列表，fieldId 为空返回空列表
+     */
     public List<Map<String, Object>> findOptions(String fieldId) {
         if (!StringUtils.hasText(fieldId)) {
             return List.of();
@@ -34,11 +46,23 @@ public class EntityFieldOptionService {
                 .toList();
     }
 
+    /**
+     * 将字段选项序列化为 JSON 文档，无选项返回 null。
+     *
+     * @param fieldId 字段ID
+     * @return 选项 JSON 文档
+     */
     public String toDocument(String fieldId) {
         List<Map<String, Object>> options = findOptions(fieldId);
         return options.isEmpty() ? null : codec.write(options, "实体字段选项");
     }
 
+    /**
+     * 解析选项 JSON 文档为 Map 列表，兼容转义引号场景。
+     *
+     * @param document 选项 JSON 文档
+     * @return 选项 Map 列表，文档为空返回空列表
+     */
     public List<Map<String, Object>> parseDocument(String document) {
         if (!StringUtils.hasText(document)) {
             return List.of();
@@ -52,6 +76,12 @@ public class EntityFieldOptionService {
         }
     }
 
+    /**
+     * 全量替换字段选项（先删除再插入），忽略 value 为空的项。
+     *
+     * @param fieldId 字段ID
+     * @param options 选项 Map 列表
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replace(String fieldId, List<Map<String, Object>> options) {
         optionMapper.deleteByFieldId(fieldId);
@@ -79,11 +109,22 @@ public class EntityFieldOptionService {
         }
     }
 
+    /**
+     * 从选项 JSON 文档解析并全量替换字段选项。
+     *
+     * @param fieldId  字段ID
+     * @param document 选项 JSON 文档
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replaceFromDocument(String fieldId, String document) {
         replace(fieldId, parseDocument(document));
     }
 
+    /**
+     * 删除字段的所有选项。
+     *
+     * @param fieldId 字段ID
+     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String fieldId) {
         optionMapper.deleteByFieldId(fieldId);

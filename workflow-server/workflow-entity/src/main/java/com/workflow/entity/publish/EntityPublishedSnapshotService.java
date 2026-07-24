@@ -21,6 +21,13 @@ public class EntityPublishedSnapshotService {
     private final EntityPublishHistoryMapper historyMapper;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 按实体ID获取最新发布快照。
+     *
+     * @param entityId 实体定义ID
+     * @return 最新发布快照
+     * @throws RuntimeException 该实体尚未发布时抛出
+     */
     @Transactional(readOnly = true)
     public EntityPublishedSnapshot getLatestByEntityId(String entityId) {
         EntityPublishHistory history = historyMapper.findLatestByEntityId(entityId);
@@ -30,6 +37,13 @@ public class EntityPublishedSnapshotService {
         return toSnapshot(history);
     }
 
+    /**
+     * 按实体编码获取最新发布快照。
+     *
+     * @param entityCode 实体编码
+     * @return 最新发布快照
+     * @throws RuntimeException 该实体尚未发布时抛出
+     */
     @Transactional(readOnly = true)
     public EntityPublishedSnapshot getLatestByEntityCode(String entityCode) {
         EntityPublishHistory history = historyMapper.findLatestByEntityCode(entityCode);
@@ -39,6 +53,12 @@ public class EntityPublishedSnapshotService {
         return toSnapshot(history);
     }
 
+    /**
+     * 将发布历史记录转换为发布快照对象。
+     *
+     * @param history 发布历史记录
+     * @return 发布快照
+     */
     private EntityPublishedSnapshot toSnapshot(EntityPublishHistory history) {
         EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
         snapshot.setHistoryId(history.getId());

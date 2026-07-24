@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @TableName("entity_list_config")
 public class EntityListConfig {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
@@ -163,6 +164,7 @@ public class EntityListConfig {
     @TableField("update_time")
     private LocalDateTime updatedAt;
 
+    /** 是否已存在发布快照（非数据库字段，运行时标记） */
     @TableField(exist = false)
     private Boolean publishedSnapshot;
 }

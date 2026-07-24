@@ -39,10 +39,22 @@ public enum EntityPermissionAction {
         return description;
     }
 
+    /**
+     * 拼接实体标准功能权限码，格式为 entity:{实体编码}:{动作码}。
+     *
+     * @param entityCode 实体编码
+     * @return 标准权限码字符串
+     */
     public String permissionCode(String entityCode) {
         return "entity:" + normalizeEntityCode(entityCode) + ":" + code;
     }
 
+    /**
+     * 根据前端按钮 key 解析对应的标准动作。
+     *
+     * @param buttonKey 前端按钮 key，如 create、edit、batchDelete
+     * @return 对应动作枚举，无法识别返回 null
+     */
     public static EntityPermissionAction fromButtonKey(String buttonKey) {
         if (buttonKey == null) {
             return null;
@@ -60,6 +72,12 @@ public enum EntityPermissionAction {
         };
     }
 
+    /**
+     * 根据动作码解析枚举。
+     *
+     * @param code 动作码，大小写不敏感
+     * @return 对应动作枚举，无法识别返回 null
+     */
     public static EntityPermissionAction fromCode(String code) {
         if (code == null) {
             return null;
@@ -70,6 +88,13 @@ public enum EntityPermissionAction {
                 .orElse(null);
     }
 
+    /**
+     * 规范化实体编码：转小写并校验只允许小写字母、数字和下划线，须以字母开头。
+     *
+     * @param entityCode 原始实体编码
+     * @return 规范化后的实体编码
+     * @throws IllegalArgumentException 实体编码为空或格式不正确时抛出
+     */
     public static String normalizeEntityCode(String entityCode) {
         if (entityCode == null || entityCode.isBlank()) {
             throw new IllegalArgumentException("实体编码不能为空");

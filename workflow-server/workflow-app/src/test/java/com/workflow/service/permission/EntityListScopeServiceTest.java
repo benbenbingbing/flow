@@ -16,8 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 实体列表作用域服务测试。
+ *
+ * <p>被测对象：{@link EntityListScopeService}，覆盖保存遗留策略时清除审核标志并创建草稿、
+ * 发布时拒绝未审核的遗留规则等场景。
+ */
 class EntityListScopeServiceTest {
 
+    /** 测试保存遗留策略清除审核标志并创建草稿：验证保存后状态为 DRAFT、审核标志为 0 且触发过滤校验 */
     @Test
     void savingLegacyPolicyClearsReviewFlagAndCreatesDraft() {
         EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
@@ -82,6 +89,7 @@ class EntityListScopeServiceTest {
         verify(sqlBuilder).validateFilter("expense", filter);
     }
 
+    /** 测试发布拒绝未审核的遗留规则：验证存在需审核策略时发布抛出 IllegalStateException */
     @Test
     void publishRejectsUnreviewedLegacyRules() {
         EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);

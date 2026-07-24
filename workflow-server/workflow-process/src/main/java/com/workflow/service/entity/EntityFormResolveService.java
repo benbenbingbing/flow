@@ -29,6 +29,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 实体表单解析服务。
+ *
+ * <p>根据实体编码与数据状态，解析出新增数据、查看数据时应使用的表单：
+ * 流程绑定时优先取流程首个/当前节点绑定的表单，否则回落到实体默认表单。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -41,6 +47,14 @@ public class EntityFormResolveService {
     private final RuntimeService runtimeService;
     private final TaskService taskService;
 
+    /**
+     * 解析实体新增数据时使用的表单。
+     *
+     * <p>实体绑定流程时取流程首个用户任务节点绑定的表单；未绑定流程或无节点表单时回落到默认表单。</p>
+     *
+     * @param entityCode 实体编码
+     * @return 运行时表单，不存在时返回 null
+     */
     public EntityForm resolveFormForNewData(String entityCode) {
         EntityDefinition entityDefinition = entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
         if (entityDefinition == null) {
@@ -73,6 +87,15 @@ public class EntityFormResolveService {
         return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
     }
 
+    /**
+     * 解析查看实体数据时使用的表单。
+     *
+     * <p>根据数据对应的流程实例当前任务节点取绑定的表单；无流程或无任务时回落到默认表单。</p>
+     *
+     * @param entityCode   实体编码
+     * @param entityDataId 实体数据ID（作为流程业务Key）
+     * @return 运行时表单，不存在时返回 null
+     */
     public EntityForm resolveFormForViewData(String entityCode, String entityDataId) {
         EntityDefinition entityDefinition = entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
         if (entityDefinition == null) {
@@ -108,6 +131,15 @@ public class EntityFormResolveService {
                 : entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
     }
 
+    /**
+     * 解析 BPMN 中首个用户任务节点ID。
+     *
+     * <p>从开始事件出发按广度优先遍历顺序流，找到的第一个 userTask 即返回；
+     * 遍历不到时返回任意一个 userTask，解析失败返回 null。</p>
+     *
+     * @param bpmnXml BPMN XML 内容
+     * @return 首个用户任务节点ID
+     */
     String resolveFirstUserTaskId(String bpmnXml) {
         if (bpmnXml == null || bpmnXml.isBlank()) {
             return null;
@@ -163,6 +195,7 @@ public class EntityFormResolveService {
         }
     }
 
+    /** 提取 XML 节点集合中所有非空的 id 属性值，保持顺序去重 */
     private Set<String> elementIds(NodeList elements) {
         Set<String> ids = new java.util.LinkedHashSet<>();
         for (int index = 0; index < elements.getLength(); index++) {
@@ -175,6 +208,14 @@ public class EntityFormResolveService {
         return ids;
     }
 
+    /**
+     * 根据流程标识或流程定义ID查询节点绑定的运行时表单。
+     *
+     * @param processKey         流程标识（与 processDefinitionId 二选一）
+     * @param processDefinitionId 流程定义ID
+     * @param nodeId             节点ID
+     * @return 运行时表单，无绑定或节点为空时返回 null
+     */
     private EntityForm getNodeBoundEntityForm(
             String processKey,
             String processDefinitionId,

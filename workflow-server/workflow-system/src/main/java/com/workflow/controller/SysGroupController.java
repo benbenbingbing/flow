@@ -13,17 +13,24 @@ import java.util.List;
 
 /**
  * 用户组管理控制器
+ * <p>
+ * 提供用户组的增删改查、状态切换、组用户保存及用户列表查询接口。
+ * </p>
  */
 @RestController
 @RequestMapping("/api/system/group")
 @RequiredArgsConstructor
 public class SysGroupController {
     
+    /** 用户组服务 */
     private final SysGroupService groupService;
+    /** 用户服务，用于查询用户列表供选择组成员 */
     private final SysUserService userService;
     
     /**
      * 查询组列表
+     *
+     * @return 用户组列表
      */
     @GetMapping("/list")
     public Result<List<SysGroup>> list() {
@@ -32,6 +39,8 @@ public class SysGroupController {
     
     /**
      * 查询启用的组列表
+     *
+     * @return 启用状态的用户组列表
      */
     @GetMapping("/enabled")
     public Result<List<SysGroup>> getEnabledGroups() {
@@ -40,6 +49,9 @@ public class SysGroupController {
     
     /**
      * 根据ID查询组
+     *
+     * @param id 组ID
+     * @return 用户组对象
      */
     @GetMapping("/{id}")
     public Result<SysGroup> getById(@PathVariable String id) {
@@ -48,6 +60,9 @@ public class SysGroupController {
     
     /**
      * 新增组
+     *
+     * @param group 用户组对象
+     * @return 保存后的用户组对象
      */
     @PostMapping
     public Result<SysGroup> save(@Validated @RequestBody SysGroup group) {
@@ -56,6 +71,10 @@ public class SysGroupController {
     
     /**
      * 更新组
+     *
+     * @param id    组ID
+     * @param group 用户组对象
+     * @return 更新后的用户组对象
      */
     @PostMapping("/{id}/update")
     public Result<SysGroup> update(@PathVariable String id, @RequestBody SysGroup group) {
@@ -65,6 +84,9 @@ public class SysGroupController {
     
     /**
      * 删除组
+     *
+     * @param id 组ID
+     * @return 操作结果
      */
     @PostMapping("/{id}/delete")
     public Result<Void> delete(@PathVariable String id) {
@@ -74,6 +96,11 @@ public class SysGroupController {
     
     /**
      * 更新组状态
+     *
+     * @param id     组ID
+     * @param status 状态值（可空，优先取 query 参数）
+     * @param body   请求体（status 字段作为兜底）
+     * @return 操作结果
      */
     @PostMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable String id, 
@@ -89,6 +116,10 @@ public class SysGroupController {
     
     /**
      * 保存组用户
+     *
+     * @param id      组ID
+     * @param userIds 用户ID列表
+     * @return 操作结果
      */
     @PostMapping("/{id}/users")
     public Result<Void> saveGroupUsers(@PathVariable String id, @RequestBody List<String> userIds) {
@@ -98,6 +129,8 @@ public class SysGroupController {
     
     /**
      * 获取用户列表（用于选择组成员）
+     *
+     * @return 用户列表
      */
     @GetMapping("/users")
     public Result<List<SysUser>> getUsers() {

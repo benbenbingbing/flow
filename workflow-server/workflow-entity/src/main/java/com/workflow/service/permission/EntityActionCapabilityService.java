@@ -34,6 +34,13 @@ public class EntityActionCapabilityService {
     private final EntityStatusMapper statusMapper;
     private final SysUserService userService;
 
+    /**
+     * 强制要求当前用户拥有指定标准动作权限，否则抛出禁止访问异常。
+     *
+     * @param entityCode 实体编码
+     * @param action     标准动作
+     * @throws ForbiddenException 缺少权限时抛出
+     */
     public void requireStandardPermission(String entityCode, EntityPermissionAction action) {
         String permissionCode = action.permissionCode(entityCode);
         if (!PermissionUtil.hasPermission(permissionCode)) {
@@ -41,6 +48,13 @@ public class EntityActionCapabilityService {
         }
     }
 
+    /**
+     * 强制要求当前用户拥有给定动作中任意一个的权限。
+     *
+     * @param entityCode 实体编码
+     * @param actions    候选标准动作集合
+     * @throws ForbiddenException 全部缺失时抛出
+     */
     public void requireAnyStandardPermission(String entityCode, EntityPermissionAction... actions) {
         for (EntityPermissionAction action : actions) {
             if (PermissionUtil.hasPermission(action.permissionCode(entityCode))) {
@@ -50,6 +64,13 @@ public class EntityActionCapabilityService {
         deny(entityCode, "any", null, "缺少所需实体操作权限");
     }
 
+    /**
+     * 为数据行批量填充按钮操作能力（可见/可用/禁用原因）。
+     *
+     * @param entityCode 实体编码
+     * @param config     列表配置，用于解析行内和工具栏按钮
+     * @param rows       待填充的数据行列表，为空直接返回
+     */
     public void enrichRows(
             String entityCode,
             EntityListConfig config,
@@ -91,6 +112,13 @@ public class EntityActionCapabilityService {
         }
     }
 
+    /**
+     * 评估工具栏按钮的操作能力，返回每个按钮的能力描述。
+     *
+     * @param entityCode 实体编码
+     * @param config     列表配置
+     * @return 按钮 key 到能力描述的映射
+     */
     public Map<String, EntityActionCapabilityDTO> evaluateToolbarActions(
             String entityCode,
             EntityListConfig config) {
@@ -109,6 +137,15 @@ public class EntityActionCapabilityService {
         return capabilities;
     }
 
+    /**
+     * 评估单行指定按钮的操作能力。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码
+     * @param buttonKey  按钮 key
+     * @param row        当前数据行
+     * @return 按钮能力描述，按钮未启用时返回 hidden
+     */
     public EntityActionCapabilityDTO evaluateRowAction(
             String entityCode,
             String listKey,
@@ -129,6 +166,14 @@ public class EntityActionCapabilityService {
                 status == null ? null : status.getStatusCategory());
     }
 
+    /**
+     * 强制要求当前用户可执行指定工具栏按钮，否则抛出禁止访问异常。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码
+     * @param buttonKey  按钮 key
+     * @throws ForbiddenException 按钮未启用或不可见时抛出
+     */
     public void requireToolbarAction(String entityCode, String listKey, String buttonKey) {
         Map<String, Object> button = actionConfigService.resolveButton(entityCode, listKey, buttonKey);
         if (button == null || Boolean.FALSE.equals(button.get("enabled"))) {
@@ -145,6 +190,15 @@ public class EntityActionCapabilityService {
         }
     }
 
+    /**
+     * 强制要求当前用户可执行指定行内按钮，否则抛出禁止访问异常。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码
+     * @param buttonKey  按钮 key
+     * @param row        当前数据行
+     * @throws ForbiddenException 按钮不可见或不可用时抛出
+     */
     public void requireRowAction(
             String entityCode,
             String listKey,

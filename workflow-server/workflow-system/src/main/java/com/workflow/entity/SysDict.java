@@ -10,11 +10,15 @@ import java.time.LocalDateTime;
 
 /**
  * 字典类型实体
+ * <p>
+ * 对应 sys_dict 表，存储字典编码、名称、状态等，字典编码唯一。
+ * </p>
  */
 @Data
 @TableName("sys_dict")
 public class SysDict {
 
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 

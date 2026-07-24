@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @TableName("entity_publish_history")
 public class EntityPublishHistory {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
@@ -40,12 +41,15 @@ public class EntityPublishHistory {
     @TableField("process_definition_id")
     private String processDefinitionId;
 
+    /** 实体生命周期模式 */
     @TableField("lifecycle_mode")
     private EntityDefinition.LifecycleMode lifecycleMode;
 
+    /** 是否启用团队可见性 */
     @TableField("team_visibility_enabled")
     private Boolean teamVisibilityEnabled;
 
+    /** 团队可见性级别 */
     @TableField("team_visibility_level")
     private EntityDefinition.TeamVisibilityLevel teamVisibilityLevel;
 

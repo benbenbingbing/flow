@@ -19,9 +19,18 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TaskCreateListener implements TaskListener {
 
+    /** 流程任务服务，同步任务到本地待办 */
     private final ProcessTaskService processTaskService;
+    /** Flowable 运行时服务，读取流程变量 */
     private final RuntimeService runtimeService;
 
+    /**
+     * 任务创建回调：将 Flowable 任务连同流程变量同步到本地待办表。
+     * <p>
+     * 同步失败仅记录日志，不抛出异常以免阻断流程。
+     *
+     * @param delegateTask Flowable 委托任务
+     */
     @Override
     public void notify(DelegateTask delegateTask) {
         String taskId = delegateTask.getId();

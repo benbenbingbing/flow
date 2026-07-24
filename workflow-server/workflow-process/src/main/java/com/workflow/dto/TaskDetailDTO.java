@@ -90,15 +90,27 @@ public class TaskDetailDTO {
         this.processInstance = processInstance;
     }
     
+    /**
+     * 表单配置DTO（任务详情中展示的表单信息）
+     */
     public static class FormConfigDTO {
+        /** 表单Key */
         private String formKey;
+        /** 实体表单ID */
         private String entityFormId;
+        /** 表单发布版本ID */
         private String formReleaseId;
+        /** 表单发布版本号 */
         private Integer formReleaseVersion;
+        /** 表单名称 */
         private String formName;
+        /** 布局类型 */
         private String layoutType;
+        /** 是否只读 */
         private Boolean isReadonly;
+        /** 表单字段列表 */
         private List<Map<String, Object>> fields;
+        /** 表单节点列表（递归结构） */
         private List<Map<String, Object>> nodes;
         
         public String getFormKey() {
@@ -174,12 +186,21 @@ public class TaskDetailDTO {
         }
     }
     
+    /**
+     * 流程实例信息DTO（任务详情中展示的流程实例信息）
+     */
     public static class ProcessInstanceDTO {
+        /** 流程实例ID */
         private String processInstanceId;
+        /** 流程名称 */
         private String processName;
+        /** 发起人ID */
         private String startUserId;
+        /** 发起人姓名 */
         private String startUserName;
+        /** 业务Key */
         private String businessKey;
+        /** 发起时间 */
         private String startTime;
         
         public String getProcessInstanceId() {

@@ -227,6 +227,12 @@ public class FlowActionExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 在独立新事务中处理重试失败：未达上限则安排下次重试，达到上限则进入死信。
+     *
+     * @param execution 执行记录
+     * @param error      失败异常
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markRetryFailure(FlowActionExecution execution, Throwable error) {
         int retryCount = execution.getRetryCount() == null ? 1 : execution.getRetryCount() + 1;
@@ -235,6 +241,7 @@ public class FlowActionExecutionService {
         execution.setErrorStack(errorStack(error));
         execution.setUpdatedAt(LocalDateTime.now());
         if (retryCount >= execution.getMaxRetries()) {
+            // 重试次数耗尽，进入死信
             execution.setStatus(FlowActionExecution.Status.DEAD.name());
             execution.setFinishedAt(LocalDateTime.now());
             execution.setNextRetryTime(null);
@@ -248,6 +255,7 @@ public class FlowActionExecutionService {
                             "maxRetries", execution.getMaxRetries(),
                             "errorMessage", execution.getErrorMessage()));
         } else {
+            // 仍有重试机会，按指数退避安排下次执行
             execution.setStatus(FlowActionExecution.Status.FAILED.name());
             execution.setNextRetryTime(LocalDateTime.now().plusSeconds(retryDelaySeconds(retryCount)));
             appendTrace(
@@ -263,29 +271,64 @@ public class FlowActionExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 按主键查询执行记录。
+     *
+     * @param id 执行记录 ID
+     * @return 执行记录；不存在返回 null
+     */
     public FlowActionExecution get(String id) {
         return executionMapper.selectById(id);
     }
 
+    /**
+     * 查询当前可执行的就绪记录（PENDING 或已到重试时间的 FAILED）。
+     *
+     * @param limit 最多返回条数
+     * @return 就绪执行记录列表
+     */
     public List<FlowActionExecution> findReady(int limit) {
         return executionMapper.findReady(LocalDateTime.now(), limit);
     }
 
+    /**
+     * 恢复中断的运行中记录：将超过 10 分钟仍处于 RUNNING 的记录改回 FAILED 以便重新抢占。
+     *
+     * @return 恢复的记录条数
+     */
     public int recoverStale() {
         LocalDateTime now = LocalDateTime.now();
         return executionMapper.recoverStale(now, now.minusMinutes(10));
     }
 
+    /**
+     * 抢占执行记录：仅当原状态为 PENDING/FAILED 时可成功。
+     *
+     * @param id 执行记录 ID
+     * @return 抢占成功返回 true，已被其他线程抢占返回 false
+     */
     public boolean claim(String id) {
         return executionMapper.claim(id, LocalDateTime.now()) == 1;
     }
 
+    /**
+     * 查询流程实例下的全部执行详情。
+     *
+     * @param processInstanceId 流程实例 ID
+     * @return 执行详情 DTO 列表
+     */
     public List<FlowActionExecutionDetailDTO> findDetailsByProcessInstanceId(String processInstanceId) {
         return executionMapper.findByProcessInstanceId(processInstanceId).stream()
                 .map(this::toDetail)
                 .toList();
     }
 
+    /**
+     * 超级管理员手动重试死信/失败记录：清空错误信息并重置为 PENDING 立即可执行。
+     *
+     * @param id 执行记录 ID
+     * @throws RuntimeException 记录不存在或状态不可重试时抛出
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void retry(String id) {
         FlowActionExecution execution = executionMapper.selectById(id);
@@ -308,6 +351,13 @@ public class FlowActionExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 从执行记录的 payload 中还原触发事件。
+     *
+     * @param execution 执行记录
+     * @return 还原后的触发事件
+     * @throws RuntimeException 反序列化失败时抛出
+     */
     public FlowActionTriggerEvent readEvent(FlowActionExecution execution) {
         try {
             return objectMapper.readValue(execution.getPayloadJson(), FlowActionTriggerEvent.class);
@@ -316,6 +366,7 @@ public class FlowActionExecutionService {
         }
     }
 
+    /** 序列化触发事件为 payload JSON */
     private String writePayload(FlowActionTriggerEvent event) {
         try {
             return objectMapper.writeValueAsString(event);
@@ -324,6 +375,12 @@ public class FlowActionExecutionService {
         }
     }
 
+    /**
+     * 将执行记录转换为详情 DTO，并在缺失动作名称/处理器名时回查补全。
+     *
+     * @param execution 执行记录
+     * @return 执行详情 DTO
+     */
     private FlowActionExecutionDetailDTO toDetail(FlowActionExecution execution) {
         FlowActionExecutionDetailDTO detail = objectMapper.convertValue(
                 execution,
@@ -350,6 +407,7 @@ public class FlowActionExecutionService {
         return detail;
     }
 
+    /** 追加一条执行轨迹（含时间、阶段、消息、详情）并回写到记录 */
     private void appendTrace(
             FlowActionExecution execution,
             String stage,
@@ -367,6 +425,7 @@ public class FlowActionExecutionService {
         execution.setExecutionTraceJson(writeJson(trace));
     }
 
+    /** 读取执行轨迹 JSON 为可变列表；解析失败返回空列表 */
     private List<Map<String, Object>> readTrace(String value) {
         if (!StringUtils.hasText(value)) {
             return new ArrayList<>();
@@ -378,6 +437,7 @@ public class FlowActionExecutionService {
         }
     }
 
+    /** 读取并脱敏 JSON 为 map；非对象或解析失败返回空 map */
     private Map<String, Object> readSanitizedMap(String value) {
         Object parsed = readSanitizedObject(value);
         if (parsed instanceof Map<?, ?> map) {
@@ -388,6 +448,7 @@ public class FlowActionExecutionService {
         return Map.of();
     }
 
+    /** 读取并脱敏 JSON 为对象；解析失败返回原始字符串 */
     private Object readSanitizedObject(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -399,6 +460,7 @@ public class FlowActionExecutionService {
         }
     }
 
+    /** 将对象序列化为 JSON；失败返回 null */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -407,6 +469,7 @@ public class FlowActionExecutionService {
         }
     }
 
+    /** 递归脱敏：对 map 中敏感键替换为 ******，对集合/数组递归处理 */
     private Object sanitize(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -427,6 +490,7 @@ public class FlowActionExecutionService {
         return value;
     }
 
+    /** 判断字段名是否为敏感键（password/secret/token/authorization/cookie/credential） */
     private boolean isSensitiveKey(String key) {
         String normalized = key.toLowerCase(Locale.ROOT);
         return normalized.contains("password")
@@ -437,6 +501,7 @@ public class FlowActionExecutionService {
                 || normalized.contains("credential");
     }
 
+    /** 计算执行耗时（毫秒），起始时间为 startedAt 或 createdAt */
     private long duration(FlowActionExecution execution) {
         LocalDateTime start = execution.getStartedAt() == null
                 ? execution.getCreatedAt()
@@ -447,6 +512,7 @@ public class FlowActionExecutionService {
         return Math.max(0, Duration.between(start, finish).toMillis());
     }
 
+    /** 从重试配置 JSON 解析最大重试次数，限制在 0~20，缺省或异常返回 5 */
     private int resolveMaxRetries(String retryConfig) {
         if (!StringUtils.hasText(retryConfig)) {
             return 5;
@@ -459,11 +525,13 @@ public class FlowActionExecutionService {
         }
     }
 
+    /** 计算第 retryCount 次重试的延迟秒数，按 60 * 3^(n-1) 指数退避，上限 6 小时 */
     private long retryDelaySeconds(int retryCount) {
         long delay = 60L * (long) Math.pow(3, Math.max(0, retryCount - 1));
         return Math.min(delay, 21600L);
     }
 
+    /** 提取异常消息，截断到 4000 字符 */
     private String errorMessage(Throwable error) {
         String message = error == null ? "未知错误" : error.getMessage();
         if (!StringUtils.hasText(message) && error != null) {
@@ -472,6 +540,7 @@ public class FlowActionExecutionService {
         return message == null ? "未知错误" : message.substring(0, Math.min(message.length(), 4000));
     }
 
+    /** 提取异常堆栈字符串，截断到 16000 字符 */
     private String errorStack(Throwable error) {
         if (error == null) {
             return null;

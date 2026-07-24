@@ -26,6 +26,11 @@ public class WithdrawnEntityDataBackfillRunner implements ApplicationRunner {
     private final HistoryService historyService;
     private final EntityDataDynamicService entityDataDynamicService;
 
+    /**
+     * 应用启动入口：查询已结束的历史流程实例，识别发起人撤回的流程并将对应实体数据标记为撤回状态。
+     *
+     * @param args 启动参数（本 Runner 未使用）
+     */
     @Override
     public void run(ApplicationArguments args) {
         List<HistoricProcessInstance> instances = historyService
@@ -34,6 +39,7 @@ public class WithdrawnEntityDataBackfillRunner implements ApplicationRunner {
                 .list();
         int updated = 0;
         for (HistoricProcessInstance instance : instances) {
+            // 仅处理「发起人撤回」类删除原因的流程
             if (instance.getDeleteReason() == null
                     || !instance.getDeleteReason().startsWith("发起人撤回")) {
                 continue;
@@ -60,6 +66,13 @@ public class WithdrawnEntityDataBackfillRunner implements ApplicationRunner {
         }
     }
 
+    /**
+     * 读取指定流程实例的历史变量值。
+     *
+     * @param processInstanceId 流程实例ID
+     * @param variableName      变量名
+     * @return 变量字符串值；变量不存在或为空时返回 {@code null}
+     */
     private String historicVariable(String processInstanceId, String variableName) {
         var variable = historyService.createHistoricVariableInstanceQuery()
                 .processInstanceId(processInstanceId)

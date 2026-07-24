@@ -20,6 +20,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * 知会发送箱服务。
+ *
+ * <p>将知会记录按通知渠道写入发送箱（Outbox），并通过定时任务异步分发到对应渠道。
+ * 采用幂等入队与重试机制，保证知会消息可靠送达或进入死信状态。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -27,8 +33,15 @@ public class ProcessCcOutboxService {
     private final ProcessCcOutboxMapper outboxMapper;
     private final ProcessCcRecordMapper recordMapper;
     private final ObjectMapper objectMapper;
+    /** 已注册的通知渠道列表 */
     private final List<CcNotificationChannel> channels;
 
+    /**
+     * 将一条知会记录按请求的渠道入队（默认 IN_APP）。
+     *
+     * @param record           知会记录
+     * @param requestedChannels 期望的渠道列表，为空时使用 IN_APP
+     */
     @Transactional(rollbackFor = Exception.class)
     public void enqueue(ProcessCcRecord record, List<String> requestedChannels) {
         List<String> normalized = requestedChannels == null || requestedChannels.isEmpty()
@@ -50,11 +63,19 @@ public class ProcessCcOutboxService {
         }
     }
 
+    /**
+     * 定时分发已就绪的发送箱记录。按固定延迟执行。
+     */
     @Scheduled(fixedDelayString = "${workflow.cc.outbox-delay-ms:5000}")
     public void dispatchReady() {
         outboxMapper.findReady().forEach(this::dispatchOne);
     }
 
+    /**
+     * 分发单条发送箱记录：抢占后路由到对应渠道发送，失败则计入重试。
+     *
+     * @param outbox 发送箱记录
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void dispatchOne(ProcessCcOutbox outbox) {
         if (outboxMapper.claim(outbox.getId()) == 0) {
@@ -85,6 +106,7 @@ public class ProcessCcOutboxService {
         }
     }
 
+    /** 标记发送失败：累计重试次数，达到上限则进入死信，并计算下次重试时间 */
     private void markFailed(ProcessCcOutbox outbox, String message) {
         int retries = outbox.getRetryCount() == null ? 1 : outbox.getRetryCount() + 1;
         outbox.setRetryCount(retries);
@@ -96,6 +118,7 @@ public class ProcessCcOutboxService {
                 outbox.getId(), outbox.getChannel(), retries, message);
     }
 
+    /** 组装知会消息载荷JSON */
     private String payload(ProcessCcRecord record) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("processInstanceId", record.getProcessInstanceId());

@@ -11,9 +11,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * 列表字段条件求值器
+ * 
+ * 用于在内存中对实体数据列表进行二次过滤：依据列表字段配置中标记为可查询的字段，
+ * 结合前端传入的查询条件（含 _op/_start/_end 后缀约定的操作符），逐条匹配并筛选记录。
+ * 支持 EQ、NE、LIKE、GT/GE/LT/LE、BETWEEN、IN、EMPTY 等多种操作符。
+ */
 @Component
 public class ListFieldConditionEvaluator {
 
+    /**
+     * 按可查询字段及其查询条件对记录进行内存过滤。
+     *
+     * @param records   待过滤的实体数据记录列表
+     * @param fields    列表字段配置列表（仅处理 isQuery 为 true 的字段）
+     * @param condition 查询条件，key 可为字段编码、字段编码_op、字段编码_start/_end
+     * @return 过滤后的记录列表（无字段或无条件时原样返回）
+     */
     public List<EntityDataDTO> filter(
             List<EntityDataDTO> records,
             List<EntityListField> fields,
@@ -25,6 +40,7 @@ public class ListFieldConditionEvaluator {
 
         List<EntityDataDTO> result = new ArrayList<>(records);
         for (EntityListField field : fields) {
+            // 跳过未开启查询功能的字段
             if (!Boolean.TRUE.equals(field.getIsQuery())) {
                 continue;
             }
@@ -32,17 +48,25 @@ public class ListFieldConditionEvaluator {
             if (fieldCode == null || fieldCode.isBlank() || !hasCondition(condition, fieldCode)) {
                 continue;
             }
+            // 移除不匹配当前字段条件的记录
             result.removeIf(record -> !matches(record, field, condition));
         }
         return result;
     }
 
+    /**
+     * 判断指定字段在条件中是否存在有效值（普通值或 _start/_end 范围值）。
+     */
     private boolean hasCondition(Map<String, Object> condition, String fieldCode) {
         return hasValue(condition.get(fieldCode))
                 || hasValue(condition.get(fieldCode + "_start"))
                 || hasValue(condition.get(fieldCode + "_end"));
     }
 
+    /**
+     * 判断单条记录是否匹配指定字段的查询条件。
+     * 操作符优先取条件中的 {fieldCode}_op，否则使用字段配置的 queryType，默认 EQ。
+     */
     private boolean matches(EntityDataDTO record, EntityListField field, Map<String, Object> condition) {
         String fieldCode = field.getFieldCode();
         Object actual = getValue(record, fieldCode);
@@ -50,6 +74,7 @@ public class ListFieldConditionEvaluator {
                 fieldCode + "_op",
                 field.getQueryType() == null ? "EQ" : field.getQueryType())).toUpperCase();
 
+        // BETWEEN 操作符单独处理，使用 _start/_end 范围值
         if ("BETWEEN".equals(operator)) {
             Object start = condition.get(fieldCode + "_start");
             Object end = condition.get(fieldCode + "_end");
@@ -75,6 +100,9 @@ public class ListFieldConditionEvaluator {
         };
     }
 
+    /**
+     * 按优先级从记录中取字段值：扩展数据 > 业务数据 > 系统基础字段。
+     */
     private Object getValue(EntityDataDTO record, String fieldCode) {
         if (record.getExtData() != null && record.getExtData().containsKey(fieldCode)) {
             return record.getExtData().get(fieldCode);
@@ -82,6 +110,7 @@ public class ListFieldConditionEvaluator {
         if (record.getData() != null && record.getData().containsKey(fieldCode)) {
             return record.getData().get(fieldCode);
         }
+        // 系统基础字段映射
         return switch (fieldCode) {
             case "id" -> record.getId();
             case "dataNo" -> record.getDataNo();
@@ -106,6 +135,9 @@ public class ListFieldConditionEvaluator {
         };
     }
 
+    /**
+     * 判断 actual 是否包含 expected（支持集合递归匹配，比较时忽略大小写）。
+     */
     private boolean contains(Object actual, Object expected) {
         if (!hasValue(actual) || !hasValue(expected)) {
             return false;
@@ -117,6 +149,9 @@ public class ListFieldConditionEvaluator {
                 .contains(String.valueOf(expected).toLowerCase());
     }
 
+    /**
+     * 判断 actual 是否在 expected 集合/数组/逗号分隔字符串中。
+     */
     private boolean in(Object actual, Object expected) {
         if (expected instanceof Collection<?> collection) {
             return collection.stream().anyMatch(item -> equalsValue(actual, item));
@@ -140,6 +175,9 @@ public class ListFieldConditionEvaluator {
         return equalsValue(actual, expected);
     }
 
+    /**
+     * 比较 actual 与 expected 的大小。数值按 BigDecimal 比较，其余按字符串比较；任一为空返回 -1。
+     */
     private int compare(Object actual, Object expected) {
         if (!hasValue(actual) || !hasValue(expected)) {
             return -1;
@@ -152,6 +190,9 @@ public class ListFieldConditionEvaluator {
         return String.valueOf(actual).compareTo(String.valueOf(expected));
     }
 
+    /**
+     * 将值转换为 BigDecimal，转换失败返回 null。
+     */
     private BigDecimal number(Object value) {
         try {
             return new BigDecimal(String.valueOf(value));
@@ -160,6 +201,9 @@ public class ListFieldConditionEvaluator {
         }
     }
 
+    /**
+     * 判断两个值是否相等，数值按 BigDecimal 比较，其余按字符串比较。
+     */
     private boolean equalsValue(Object actual, Object expected) {
         BigDecimal actualNumber = number(actual);
         BigDecimal expectedNumber = number(expected);
@@ -171,6 +215,9 @@ public class ListFieldConditionEvaluator {
                 expected == null ? null : String.valueOf(expected));
     }
 
+    /**
+     * 判断值是否有效（非 null、非空白字符串、非空集合）。
+     */
     private boolean hasValue(Object value) {
         if (value == null) {
             return false;

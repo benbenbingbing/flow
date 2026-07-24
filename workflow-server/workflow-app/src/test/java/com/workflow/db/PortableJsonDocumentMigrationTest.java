@@ -9,11 +9,23 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 可移植 JSON 文档存储迁移脚本单元测试。
+ *
+ * <p>验证 V025 迁移创建关系化配置表、将原生 JSON 列转为 LONGTEXT(排除 Flowable 表)，
+ * 以及动态表运行时不再创建原生 JSON 列。</p>
+ */
 class PortableJsonDocumentMigrationTest {
 
+    /** V025 迁移脚本路径 */
     private static final Path MIGRATION = Path.of(
             "src/main/resources/db/migration/V025__portable_json_document_storage.sql");
 
+    /**
+     * 迁移应创建全部关系化配置表。
+     *
+     * <p>断言 SQL 含 8 张关系化配置表的 CREATE TABLE 语句。</p>
+     */
     @Test
     void migrationShouldCreateRelationalConfigurationTables() throws Exception {
         String sql = Files.readString(MIGRATION);
@@ -33,6 +45,12 @@ class PortableJsonDocumentMigrationTest {
         }
     }
 
+    /**
+     * 迁移应将原生 JSON 列转为 LONGTEXT 且排除 Flowable 表。
+     *
+     * <p>断言 SQL 含 data_type='json' 条件、排除 act_% 表、MODIFY COLUMN LONGTEXT，
+     * 以及剩余原生 JSON 检查。</p>
+     */
     @Test
     void migrationShouldConvertNativeJsonAndExcludeFlowableTables() throws Exception {
         String sql = Files.readString(MIGRATION);
@@ -45,6 +63,12 @@ class PortableJsonDocumentMigrationTest {
         assertTrue(normalizedSql.contains("remaining_native_json"));
     }
 
+    /**
+     * 动态表运行时应创建 LONGTEXT 而非原生 JSON 列。
+     *
+     * <p>断言 DynamicTableService 源码不含 return "JSON"，
+     * 含 isMultiValueField 判断与 return "LONGTEXT" 及多值表保障逻辑。</p>
+     */
     @Test
     void dynamicTableRuntimeShouldNotCreateNativeJsonColumns() throws Exception {
         String source = Files.readString(Path.of(

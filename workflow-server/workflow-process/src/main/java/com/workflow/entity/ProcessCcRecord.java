@@ -73,18 +73,25 @@ public class ProcessCcRecord {
      */
     private String ccTiming;
 
+    /** 操作人ID */
     private String operatorId;
 
+    /** 操作人姓名 */
     private String operatorName;
 
+    /** 操作备注/审批意见 */
     private String comment;
 
+    /** 触发抄送的源任务ID */
     private String sourceTaskId;
 
+    /** 抄送来源类型（如节点自动抄送、手动加抄） */
     private String sourceType;
 
+    /** 抄送接收规则快照（JSON，记录本次抄送使用的接收人规则） */
     private String recipientRuleSnapshot;
 
+    /** 唯一键，用于幂等去重 */
     private String uniqueKey;
     
     /**

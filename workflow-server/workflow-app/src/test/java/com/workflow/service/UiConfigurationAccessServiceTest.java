@@ -25,14 +25,22 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * UI 配置访问控制服务测试。
+ *
+ * <p>被测对象：{@link UiConfigurationAccessService}，覆盖普通用户与管理员对全局配置、表单、列表配置的写权限校验，
+ * 以及系统实体受保护、缺失资源拒绝等场景。
+ */
 class UiConfigurationAccessServiceTest {
 
     private SysRoleMapper roleMapper;
     private EntityDefinitionMapper definitionMapper;
     private EntityFormMapper formMapper;
     private EntityListConfigMapper listConfigMapper;
+    /** 被测访问控制服务 */
     private UiConfigurationAccessService accessService;
 
+    /** 装配被测服务及其真实依赖组件，并设置当前用户上下文 */
     @BeforeEach
     void setUp() {
         roleMapper = mock(SysRoleMapper.class);
@@ -47,11 +55,13 @@ class UiConfigurationAccessServiceTest {
         UserContext.setCurrentUser("user-1", "tester");
     }
 
+    /** 清理用户上下文，避免用例间污染 */
     @AfterEach
     void tearDown() {
         UserContext.clear();
     }
 
+    /** 测试普通用户不能写全局配置：验证抛出 ForbiddenException */
     @Test
     void ordinaryUserCannotWriteGlobalConfiguration() {
         when(roleMapper.selectRolesByUserId("user-1"))
@@ -62,6 +72,7 @@ class UiConfigurationAccessServiceTest {
                 accessService::requireGlobalConfigurationAccess);
     }
 
+    /** 测试普通用户在查询表单/列表前即被拒绝：验证权限不足时不触发表单与列表查询 */
     @Test
     void ordinaryUserIsRejectedBeforeFormOrListLookup() {
         when(roleMapper.selectRolesByUserId("user-1"))
@@ -78,6 +89,7 @@ class UiConfigurationAccessServiceTest {
         verify(listConfigMapper, never()).selectById("list-1");
     }
 
+    /** 测试管理员可写全局配置与动态实体配置：验证全局、表单、列表访问校验均通过 */
     @Test
     void administratorCanWriteGlobalAndDynamicEntityConfiguration() {
         when(roleMapper.selectRolesByUserId("user-1"))
@@ -96,6 +108,7 @@ class UiConfigurationAccessServiceTest {
         assertDoesNotThrow(() -> accessService.requireListAccess("list-1"));
     }
 
+    /** 测试表单/列表不存在时对管理员拒绝：验证抛出 IllegalArgumentException 且消息包含资源标识 */
     @Test
     void missingFormOrListIsRejectedForAdministrator() {
         when(roleMapper.selectRolesByUserId("user-1"))
@@ -112,6 +125,7 @@ class UiConfigurationAccessServiceTest {
         assertEquals("列表配置不存在: missing-list", listError.getMessage());
     }
 
+    /** 测试系统实体表单对管理员拒绝：验证抛出业务冲突异常且错误码为 ENTITY_SYSTEM_DEFINITION_PROTECTED */
     @Test
     void systemEntityFormIsRejectedForAdministrator() {
         when(roleMapper.selectRolesByUserId("user-1"))
@@ -129,6 +143,7 @@ class UiConfigurationAccessServiceTest {
         assertEquals("ENTITY_SYSTEM_DEFINITION_PROTECTED", exception.getErrorCode());
     }
 
+    /** 测试系统实体列表对超级管理员拒绝：验证抛出业务冲突异常且错误码为 ENTITY_SYSTEM_DEFINITION_PROTECTED */
     @Test
     void systemEntityListIsRejectedForAdministrator() {
         when(roleMapper.selectRolesByUserId("user-1"))
@@ -146,12 +161,14 @@ class UiConfigurationAccessServiceTest {
         assertEquals("ENTITY_SYSTEM_DEFINITION_PROTECTED", exception.getErrorCode());
     }
 
+    /** 构造指定角色编码的角色对象 */
     private SysRole role(String roleCode) {
         SysRole role = new SysRole();
         role.setRoleCode(roleCode);
         return role;
     }
 
+    /** 构造动态存储模式的实体定义 */
     private EntityDefinition dynamicEntity(String id) {
         EntityDefinition entity = new EntityDefinition();
         entity.setId(id);
@@ -159,6 +176,7 @@ class UiConfigurationAccessServiceTest {
         return entity;
     }
 
+    /** 构造系统存储模式的实体定义（受保护） */
     private EntityDefinition systemEntity(String id) {
         EntityDefinition entity = new EntityDefinition();
         entity.setId(id);

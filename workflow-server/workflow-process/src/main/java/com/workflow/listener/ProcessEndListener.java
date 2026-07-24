@@ -29,12 +29,22 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProcessEndListener implements FlowableEventListener {
 
+    /** Flowable 运行时服务，已运行时变量被清理后改用历史变量 */
     private final RuntimeService runtimeService;
+    /** Flowable 历史服务，查询历史实例与变量 */
     private final HistoryService historyService;
+    /** 动态实体数据 Mapper，更新实体结束状态 */
     private final EntityDataDynamicMapper dynamicMapper;
+    /** 动态表服务，获取实体对应动态表名 */
     private final DynamicTableService dynamicTableService;
+    /** 实体状态 Mapper，查询结束状态码 */
     private final EntityStatusMapper entityStatusMapper;
 
+    /**
+     * 流程结束事件处理：根据结束类型（完成/撤回/终止）更新实体结束时间与状态，并清空当前任务。
+     *
+     * @param event Flowable 引擎事件，仅处理 PROCESS_COMPLETED 与 PROCESS_CANCELLED
+     */
     @Override
     public void onEvent(FlowableEvent event) {
         if (!(event instanceof FlowableEntityEventImpl)) {
@@ -125,6 +135,16 @@ public class ProcessEndListener implements FlowableEventListener {
         return "TERMINATED".equals(category) ? "TERMINATED" : "APPROVED";
     }
 
+    /**
+     * 解析流程结束应写入的状态码。
+     * <p>
+     * 若实体当前状态与结束分类一致则保留当前状态，否则取该分类下的状态码。
+     *
+     * @param entityCode    实体编码
+     * @param category       结束分类（WITHDRAWN/TERMINATED/COMPLETED）
+     * @param currentStatus  实体当前状态码，可为空
+     * @return 最终写入的状态码
+     */
     private String resolveEndStatusCode(String entityCode, String category, String currentStatus) {
         if (currentStatus != null && !currentStatus.isBlank()) {
             EntityStatus currentStatusDefinition = entityStatusMapper.findByEntityAndCode(entityCode, currentStatus);
@@ -135,6 +155,13 @@ public class ProcessEndListener implements FlowableEventListener {
         return getEntityStatusCode(entityCode, category);
     }
 
+    /**
+     * 判断是否保留当前状态：当前状态定义的分类与结束分类一致时保留。
+     *
+     * @param status       实体状态定义，可为 null
+     * @param endCategory  结束分类
+     * @return true 表示保留当前状态不变
+     */
     static boolean shouldPreserveStatus(EntityStatus status, String endCategory) {
         return status != null && endCategory != null && endCategory.equals(status.getStatusCategory());
     }

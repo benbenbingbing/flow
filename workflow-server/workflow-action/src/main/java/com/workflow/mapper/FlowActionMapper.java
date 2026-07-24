@@ -9,6 +9,11 @@ import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
+/**
+ * 流程动作 Mapper。
+ *
+ * <p>提供草稿/已发布动作的多维查询与逻辑删除能力。</p>
+ */
 @Mapper
 public interface FlowActionMapper extends BaseMapper<FlowAction> {
     
@@ -24,6 +29,14 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'DRAFT' AND (deleted = 0 OR deleted IS NULL) ORDER BY sort_order")
     List<FlowAction> findDraftActionsBySequenceFlowId(@Param("processConfigId") String processConfigId, @Param("sequenceFlowId") String sequenceFlowId);
 
+    /**
+     * 按作用域与元素绑定查询草稿动作。
+     *
+     * @param processConfigId 流程配置 ID
+     * @param scopeType       作用域类型
+     * @param elementId       BPMN 元素 ID；流程级传 null
+     * @return 草稿动作列表
+     */
     @Select("SELECT * FROM process_action " +
             "WHERE process_config_id = #{processConfigId} " +
             "  AND scope_type = #{scopeType} " +
@@ -48,6 +61,15 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'PUBLISHED' AND (deleted = 0 OR deleted IS NULL) ORDER BY sort_order")
     List<FlowAction> findPublishedActionsBySequenceFlowId(@Param("versionId") String versionId, @Param("sequenceFlowId") String sequenceFlowId);
 
+    /**
+     * 按版本、作用域、元素与触发时机查询已发布动作。
+     *
+     * @param versionId     流程发布版本 ID
+     * @param scopeType     作用域类型
+     * @param elementId     BPMN 元素 ID；流程级传 null
+     * @param triggerTiming 触发时机编码
+     * @return 已发布动作列表
+     */
     @Select("SELECT * FROM process_action " +
             "WHERE version_id = #{versionId} " +
             "  AND scope_type = #{scopeType} " +

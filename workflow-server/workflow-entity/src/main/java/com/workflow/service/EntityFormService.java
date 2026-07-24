@@ -301,6 +301,12 @@ public class EntityFormService {
         throw new IllegalArgumentException("expectedRevision 不能为空");
     }
 
+    /**
+     * 系统导入入口：整包保存字段，锁定父表单后按当前版本覆盖。
+     *
+     * @param formId 表单ID
+     * @param fields 字段列表
+     */
     @Transactional(rollbackFor = Exception.class)
     public void saveFormFieldsForImport(
             String formId,

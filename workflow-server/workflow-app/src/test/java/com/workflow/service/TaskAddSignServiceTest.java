@@ -30,6 +30,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 任务加签服务测试。
+ *
+ * <p>被测对象：{@link TaskAddSignService}，覆盖前加签/后加签/并行加签的子任务创建与激活、
+ * 并行源任务完成等待子任务、最后一个并行子任务终结源任务、加签前锁定源任务镜像等场景。
+ */
 @ExtendWith(MockitoExtension.class)
 class TaskAddSignServiceTest {
     @Mock TaskService taskService;
@@ -42,8 +48,10 @@ class TaskAddSignServiceTest {
     @Mock SysUserMapper userMapper;
     @Mock TaskActionService taskActionService;
 
+    /** 被测加签服务 */
     TaskAddSignService service;
 
+    /** 装配被测服务并预置源任务、加签记录与用户的 Mock 返回值 */
     @BeforeEach
     void setUp() {
         service = new TaskAddSignService(
@@ -75,11 +83,13 @@ class TaskAddSignServiceTest {
         lenient().when(userMapper.selectByUsername("reviewer")).thenReturn(enabledUser());
     }
 
+    /** 清理用户上下文，避免用例间污染 */
     @AfterEach
     void tearDown() {
         UserContext.clear();
     }
 
+    /** 测试前加签创建可见子任务：验证插入的子任务状态为 TODO、节点类型为 ADD_SIGN */
     @Test
     void beforeAddSignCreatesVisibleChild() {
         service.addSign("source-task", request("BEFORE"));
@@ -90,6 +100,7 @@ class TaskAddSignServiceTest {
         assertEquals("ADD_SIGN", taskCaptor.getValue().getNodeType());
     }
 
+    /** 测试后加签创建挂起子任务并在源任务提交后激活：验证子任务初始 HOLD，源任务完成时激活挂起用户 */
     @Test
     void afterAddSignCreatesHeldChildAndActivatesAfterSourceSubmission() {
         service.addSign("source-task", request("AFTER"));
@@ -107,6 +118,7 @@ class TaskAddSignServiceTest {
         verify(taskActionService, never()).completeDeferredTask(any(), any(), any(), any(), any(), any(), any());
     }
 
+    /** 测试并行源任务提交时等待子任务完成：验证不终结延迟任务且源任务更新为 WAITING */
     @Test
     void parallelSourceSubmissionWaitsForChildren() {
         ProcessTaskAddSign open = addSign("PARALLEL", false);
@@ -122,6 +134,7 @@ class TaskAddSignServiceTest {
         assertEquals(ProcessTask.STATUS_WAITING, sourceCaptor.getValue().getStatus());
     }
 
+    /** 测试最后一个并行子任务终结延迟的源任务：验证子任务完成后触发 completeDeferredTask */
     @Test
     void lastParallelChildFinalizesDeferredSource() {
         ProcessTaskAddSign open = addSign("PARALLEL", true);
@@ -145,6 +158,7 @@ class TaskAddSignServiceTest {
                 "source-task", "admin", "approve", "原任务已提交", null, "通过", null);
     }
 
+    /** 测试加签前先锁定源任务镜像再创建子任务：验证锁定与查询顺序，并写入操作日志 */
     @Test
     void addSignLocksSourceMirrorBeforeCreatingChildren() {
         service.addSign("source-task", request("PARALLEL"));
@@ -155,6 +169,7 @@ class TaskAddSignServiceTest {
         verify(operationLogMapper).insert(any(ProcessOperationLog.class));
     }
 
+    /** 构造指定加签类型的加签请求 */
     private TaskAddSignRequest request(String type) {
         TaskAddSignRequest request = new TaskAddSignRequest();
         request.setType(type);
@@ -163,6 +178,7 @@ class TaskAddSignServiceTest {
         return request;
     }
 
+    /** 构造指定类型与源任务完成状态的加签记录 */
     private ProcessTaskAddSign addSign(String type, boolean sourceCompleted) {
         ProcessTaskAddSign value = new ProcessTaskAddSign();
         value.setId("add-sign-1");
@@ -177,6 +193,7 @@ class TaskAddSignServiceTest {
         return value;
     }
 
+    /** 构造源任务的本地镜像记录 */
     private ProcessTask sourceMirror() {
         ProcessTask value = new ProcessTask();
         value.setId(1L);
@@ -192,6 +209,7 @@ class TaskAddSignServiceTest {
         return value;
     }
 
+    /** 构造启用的测试用户 */
     private SysUser enabledUser() {
         SysUser value = new SysUser();
         value.setId("reviewer-id");

@@ -199,6 +199,12 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+/**
+     * 分页查询（不带条件），按创建时间倒序。
+     *
+     * @param params 参数 Map，需含 tableName、offset、limit
+     * @return 拼接后的分页查询 SQL
+     */
     public String selectPage(Map<String, Object> params) {
         String tableName = tableName(params);
         return "SELECT * FROM " + tableName
@@ -207,6 +213,12 @@ public class EntityDataSqlProvider {
                 + " LIMIT #{offset}, #{limit}";
     }
 
+    /**
+     * 分页查询（带数据权限过滤），按创建时间倒序。
+     *
+     * @param params 参数 Map，需含 tableName、permissionSql、offset、limit
+     * @return 拼接后的分页查询 SQL
+     */
     public String selectPageWithPermission(Map<String, Object> params) {
         String tableName = tableName(params);
         String permissionSql = (String) params.get("permissionSql");
@@ -246,6 +258,12 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+    /**
+     * 分页条件查询（不带权限过滤），按创建时间倒序。
+     *
+     * @param params 参数 Map，需含 tableName、condition、offset、limit
+     * @return 拼接后的分页条件查询 SQL
+     */
     public String selectPageByCondition(Map<String, Object> params) {
         String tableName = tableName(params);
         @SuppressWarnings("unchecked")
@@ -259,6 +277,12 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+    /**
+     * 分页条件查询（带数据权限过滤），按创建时间倒序。
+     *
+     * @param params 参数 Map，需含 tableName、condition、permissionSql、offset、limit
+     * @return 拼接后的分页条件查询 SQL
+     */
     public String selectPageByConditionWithPermission(Map<String, Object> params) {
         String tableName = tableName(params);
         @SuppressWarnings("unchecked")
@@ -322,6 +346,12 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+    /**
+     * 统计查询（根据条件并带数据权限过滤）。
+     *
+     * @param params 参数 Map，需含 tableName、condition、permissionSql
+     * @return 拼接后的统计 SQL
+     */
     public String countByConditionWithPermission(Map<String, Object> params) {
         String tableName = tableName(params);
         @SuppressWarnings("unchecked")
@@ -337,6 +367,12 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+    /**
+     * 统计已关联流程实例（process_instance_id 非空）的记录数量。
+     *
+     * @param params 参数 Map，需含 tableName
+     * @return 拼接后的统计 SQL
+     */
     public String countProcessInstances(Map<String, Object> params) {
         String tableName = tableName(params);
         return "SELECT COUNT(*) FROM " + tableName
@@ -431,14 +467,17 @@ public class EntityDataSqlProvider {
         }
     }
 
+    /** 从参数中取出并校验表名 */
     private String tableName(Map<String, Object> params) {
         return requireIdentifier((String) params.get("tableName"), "表名");
     }
 
+    /** 将驼峰字段 key 转为下划线列名并校验合法性 */
     private String columnName(String fieldKey) {
         return requireIdentifier(camelToUnderscore(fieldKey), "字段名");
     }
 
+    /** 校验标识符是否符合 SQL 标识符规范，不合法抛出 IllegalArgumentException */
     private String requireIdentifier(String value, String label) {
         if (value == null || !SQL_IDENTIFIER.matcher(value).matches()) {
             throw new IllegalArgumentException(label + "不合法");

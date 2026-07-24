@@ -45,9 +45,15 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 应用启动入口：遍历动态实体，逐字段迁移旧内嵌选项为代码表、迁移旧多值列为多值表。
+     *
+     * @param args 启动参数（本 Runner 未使用）
+     */
     @Override
     public void run(ApplicationArguments args) {
         for (EntityDefinition definition : definitionMapper.selectList(null)) {
+            // 仅处理动态实体，系统实体选项由其自身维护
             if (definition.getStorageMode() != EntityDefinition.StorageMode.DYNAMIC) {
                 continue;
             }
@@ -66,6 +72,13 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
         }
     }
 
+    /**
+     * 迁移旧内嵌选项为代码表：将字段 optionsJson 落库为选项并生成字典，回写字段 dictType。
+     *
+     * @param definition 所属实体定义
+     * @param field      待迁移字段
+     * @throws Exception 解析或持久化异常
+     */
     private void migrateOptionDefinition(EntityDefinition definition, EntityField field) throws Exception {
         if (!isOptionField(field)
                 || StringUtils.hasText(field.getDictType())
@@ -115,6 +128,13 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
                 dictCode);
     }
 
+    /**
+     * 迁移旧主表多值列到每实体多值表：读取历史列数据写入多值表并校验数量后删除原列。
+     * <p>无法识别目标实体时保留原列并告警，等待管理员修复。
+     *
+     * @param definition 所属实体定义（需为已发布且主表存在）
+     * @param field      待迁移字段
+     */
     private void migrateMultiValues(EntityDefinition definition, EntityField field) {
         if (!isPotentialMultiField(field)
                 || definition.getStatus() != EntityDefinition.Status.PUBLISHED
@@ -199,6 +219,7 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
                 columnName);
     }
 
+    /** 判断字段是否为需要选项字典的选项类字段（单选/多选/单选框/复选框）。 */
     private boolean isOptionField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SELECT
                 || field.getFieldType() == EntityField.FieldType.RADIO
@@ -206,6 +227,7 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
                 || field.getFieldType() == EntityField.FieldType.CHECKBOX;
     }
 
+    /** 判断字段是否可能承载多值数据（多引用，或多选/复选框且已绑定字典）。 */
     private boolean isPotentialMultiField(EntityField field) {
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE) {
             return true;
@@ -215,6 +237,14 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
                 && StringUtils.hasText(field.getDictType());
     }
 
+    /**
+     * 识别缺失多值目标的字段：若已配置字典或引用实体则直接放行；
+     * 否则根据历史值是否全部命中系统用户来推断是否为用户多选引用。
+     *
+     * @param field 待识别字段
+     * @param rows  历史列数据
+     * @return 已能确定目标返回 true，无法识别返回 false
+     */
     private boolean resolveMissingTarget(
             EntityField field,
             List<Map<String, Object>> rows) {
@@ -252,6 +282,13 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
         return false;
     }
 
+    /**
+     * 将历史多值原始数据规范化为去重的字符串列表。
+     * <p>支持集合、JSON 数组字符串、逗号分隔字符串三种来源。
+     *
+     * @param raw 原始多值数据
+     * @return 去重后的值列表，空输入返回空列表
+     */
     private List<String> normalizeValues(Object raw) {
         if (raw == null) {
             return List.of();
@@ -277,6 +314,7 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
         return new ArrayList<>(values.keySet());
     }
 
+    /** 将字符串规范化为合法的小写字典编码（仅保留 a-z0-9_，并截断到 100 字符以内）。 */
     private String normalizedDictCode(String value) {
         String normalized = value.toLowerCase()
                 .replaceAll("[^a-z0-9_]", "_")
@@ -284,10 +322,12 @@ public class LegacyEntityOptionMigrationRunner implements ApplicationRunner {
         return normalized.length() <= 100 ? normalized : normalized.substring(0, 100);
     }
 
+    /** 将驼峰命名转换为下蛇形命名。 */
     private String toSnakeCase(String value) {
         return value.replaceAll("([a-z])([A-Z]+)", "$1_$2").toLowerCase();
     }
 
+    /** 将任意值安全转为去除首尾空白的字符串，null 返回 null。 */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }

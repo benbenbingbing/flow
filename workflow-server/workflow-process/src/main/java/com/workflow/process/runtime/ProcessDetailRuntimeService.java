@@ -30,21 +30,38 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 流程详情运行时。
+ * 流程详情运行时服务
+ * 负责组装流程实例详情视图，包含流程状态、当前节点、已完成节点、审批历史、
+ * 节点处理人映射、表单数据与 BPMN XML，供前端流程详情页展示。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessDetailRuntimeService {
 
+    /** Flowable 运行时服务，查询运行中流程实例与执行 */
     private final RuntimeService runtimeService;
+    /** Flowable 历史服务，查询历史实例、活动与变量 */
     private final HistoryService historyService;
+    /** Flowable 仓库服务，查询流程定义与 BPMN 模型 */
     private final RepositoryService repositoryService;
+    /** Flowable 任务服务，查询当前任务 */
     private final TaskService taskService;
+    /** 流程定义配置 Mapper，补充流程名称 */
     private final ProcessDefinitionConfigMapper processConfigMapper;
+    /** 用户服务，转换用户ID为显示名 */
     private final SysUserService sysUserService;
+    /** 用户组 Mapper，查询候选组名称 */
     private final SysGroupMapper sysGroupMapper;
 
+    /**
+     * 获取流程实例详情。
+     * <p>
+     * 聚合流程状态、定义信息、发起人、当前节点、已完成节点、审批历史、节点处理人、表单数据与 BPMN XML。
+     *
+     * @param instanceId 流程实例ID
+     * @return 流程详情视图对象
+     */
     public ProcessDetailVO getProcessDetail(String instanceId) {
         ProcessDetailVO detail = new ProcessDetailVO();
         detail.setInstanceId(instanceId);

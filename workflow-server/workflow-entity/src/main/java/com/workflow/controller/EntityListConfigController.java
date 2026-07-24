@@ -37,13 +37,21 @@ public class EntityListConfigController {
     private final ListFieldDataProviderRegistry dataProviderRegistry;
     private final UiConfigurationAccessService accessService;
 
+    /**
+     * 查询列表字段数据源扩展选项（可用数据源提供方）。GET /api/entity-list-config/extension-options
+     *
+     * @return 扩展选项列表
+     */
     @GetMapping("/extension-options")
     public Result<List<ListFieldDataSourceOptionDTO>> extensionOptions() {
         return Result.success(dataProviderRegistry.getOptions());
     }
 
     /**
-     * 查询实体的所有列表配置
+     * 查询实体的所有列表配置。GET /api/entity-list-config/entity/{entityId}
+     *
+     * @param entityId 实体ID
+     * @return 列表配置列表
      */
     @GetMapping("/entity/{entityId}")
     public Result<List<EntityListConfigDTO>> listByEntityId(@PathVariable String entityId) {
@@ -82,6 +90,13 @@ public class EntityListConfigController {
         return Result.success(listConfigService.saveConfig(dto));
     }
 
+    /**
+     * 增量更新列表配置元数据。POST /api/entity-list-config/{id}
+     *
+     * @param id      列表配置ID
+     * @param request 元数据补丁请求
+     * @return 更新后的列表配置
+     */
     @PostMapping("/{id}")
     public Result<EntityListConfigDTO> patchMetadata(
             @PathVariable String id,
@@ -90,6 +105,13 @@ public class EntityListConfigController {
         return Result.success(metadataService.patchList(id, request));
     }
 
+    /**
+     * 新增列表字段。POST /api/entity-list-config/{id}/fields
+     *
+     * @param id      列表配置ID
+     * @param request 字段保存请求
+     * @return 创建后的列表字段
+     */
     @PostMapping("/{id}/fields")
     public Result<EntityListField> createField(
             @PathVariable String id,
@@ -98,6 +120,14 @@ public class EntityListConfigController {
         return Result.success(listConfigService.createField(id, request));
     }
 
+    /**
+     * 增量更新列表字段。POST /api/entity-list-config/{id}/fields/{fieldId}/patch
+     *
+     * @param id       列表配置ID
+     * @param fieldId  字段ID
+     * @param request  字段保存请求
+     * @return 更新后的列表字段
+     */
     @PostMapping("/{id}/fields/{fieldId}/patch")
     public Result<EntityListField> patchField(
             @PathVariable String id,
@@ -108,6 +138,14 @@ public class EntityListConfigController {
                 listConfigService.patchField(id, fieldId, request));
     }
 
+    /**
+     * 调整列表字段排序。POST /api/entity-list-config/{id}/fields/{fieldId}/order
+     *
+     * @param id       列表配置ID
+     * @param fieldId  字段ID
+     * @param request  排序请求
+     * @return 排序后的列表字段
+     */
     @PostMapping("/{id}/fields/{fieldId}/order")
     public Result<EntityListField> reorderField(
             @PathVariable String id,
@@ -118,6 +156,14 @@ public class EntityListConfigController {
                 listConfigService.reorderField(id, fieldId, request));
     }
 
+    /**
+     * 删除列表字段（乐观锁校验）。POST /api/entity-list-config/{id}/fields/{fieldId}/delete
+     *
+     * @param id       列表配置ID
+     * @param fieldId  字段ID
+     * @param request  删除请求，携带期望版本号
+     * @return 无数据返回
+     */
     @PostMapping("/{id}/fields/{fieldId}/delete")
     public Result<Void> deleteField(
             @PathVariable String id,
@@ -128,6 +174,13 @@ public class EntityListConfigController {
         return Result.success();
     }
 
+    /**
+     * 预览行级动作规则在指定数据行上的求值结果。POST /api/entity-list-config/{id}/action-rule/preview
+     *
+     * @param id      列表配置ID
+     * @param request 含 buttonKey 与 entityDataId 的预览请求
+     * @return 动作能力求值结果
+     */
     @PostMapping("/{id}/action-rule/preview")
     public Result<EntityActionCapabilityDTO> previewActionRule(
             @PathVariable String id,

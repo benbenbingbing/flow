@@ -193,6 +193,13 @@ public class EntityDataController {
         return ApiResponse.success();
     }
 
+    /**
+     * 批量删除实体数据。POST /api/entity-data/entity/{entityCode}/batch-delete
+     *
+     * @param entityCode 实体编码
+     * @param request   批量删除请求（含ID列表与列表标识）
+     * @return 无数据返回
+     */
     @PostMapping("/entity/{entityCode}/batch-delete")
     public ApiResponse<Void> batchDelete(
             @PathVariable String entityCode,
@@ -236,6 +243,7 @@ public class EntityDataController {
         entityDataExportService.export(entityCode, request, response);
     }
 
+    /** 判断查询参数是否包含分页参数（pageNum/page/pageSize/size）。 */
     private boolean hasPaging(Map<String, String> params) {
         return params != null && (
                 params.containsKey("pageNum")
@@ -244,6 +252,10 @@ public class EntityDataController {
                         || params.containsKey("size"));
     }
 
+    /**
+     * 从参数中读取分页数值，优先取 primaryKey，缺失时取 fallbackKey，均为空时返回默认值。
+     * 非法或非正整数抛 IllegalArgumentException。
+     */
     private long positiveLong(
             Map<String, String> params,
             String primaryKey,

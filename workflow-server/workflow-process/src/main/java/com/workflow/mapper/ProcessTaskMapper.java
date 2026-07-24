@@ -66,6 +66,12 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     @Select("SELECT * FROM process_task WHERE task_id = #{taskId} AND deleted = 0 LIMIT 1")
     ProcessTask selectByTaskId(@Param("taskId") String taskId);
 
+    /**
+     * 根据Flowable任务ID加锁查询待办（FOR UPDATE）。
+     *
+     * @param taskId Flowable任务ID
+     * @return 待办记录，无则返回 null
+     */
     @Select("SELECT * FROM process_task WHERE task_id = #{taskId} AND deleted = 0 LIMIT 1 FOR UPDATE")
     ProcessTask selectByTaskIdForUpdate(@Param("taskId") String taskId);
     

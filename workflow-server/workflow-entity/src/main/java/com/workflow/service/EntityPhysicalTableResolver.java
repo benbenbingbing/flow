@@ -13,6 +13,9 @@ import java.util.List;
 
 /**
  * 实体物理业务表统一解析入口。
+ *
+ * <p>根据实体定义解析实际存储数据的物理表名，并校验迁移状态是否正常，
+ * 阻止系统实体和存在迁移冲突的实体被运行时访问。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -22,12 +25,28 @@ public class EntityPhysicalTableResolver {
     private final EntityPhysicalTableNaming naming;
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * 根据实体编码解析物理业务表名。
+     *
+     * @param entityCode 实体编码
+     * @return 物理业务表名
+     * @throws IllegalArgumentException 实体不存在时抛出
+     */
     public String resolve(String entityCode) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
                 .orElseThrow(() -> new IllegalArgumentException("实体不存在: " + entityCode));
         return resolve(definition);
     }
 
+    /**
+     * 根据实体定义解析物理业务表名，并校验系统实体和迁移状态。
+     *
+     * @param definition 实体定义
+     * @return 物理业务表名
+     * @throws IllegalArgumentException     实体定义或编码为空时抛出
+     * @throws BusinessConflictException    系统实体不允许通过通用接口访问时抛出
+     * @throws IllegalStateException         迁移状态异常或未登记表名时抛出
+     */
     public String resolve(EntityDefinition definition) {
         if (definition == null || !StringUtils.hasText(definition.getEntityCode())) {
             throw new IllegalArgumentException("实体定义或实体编码不能为空");
@@ -46,10 +65,22 @@ public class EntityPhysicalTableResolver {
                         + definition.getEntityCode());
     }
 
+    /**
+     * 根据实体编码生成（不落库的）候选物理业务表名。
+     *
+     * @param entityCode 实体编码
+     * @return 候选物理业务表名
+     */
     public String generate(String entityCode) {
         return naming.generate(entityCode);
     }
 
+    /**
+     * 判断指定表名的物理表是否存在于当前数据库。
+     *
+     * @param tableName 物理表名，须使用 biz_ 前缀
+     * @return 表存在返回 true
+     */
     public boolean tableExistsByName(String tableName) {
         return tableExists(naming.validateStoredName(tableName));
     }

@@ -22,8 +22,15 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 节点表单提交服务测试。
+ *
+ * <p>被测对象：{@link NodeFormSubmissionService}，覆盖仅保存发布节点表单中可编辑字段、
+ * 全局只读节点拒绝所有提交变更、无法解析确切流程快照时 fail-closed 等场景。
+ */
 class NodeFormSubmissionServiceTest {
 
+    /** 测试仅保存发布节点表单中可编辑的字段：验证只读字段被剔除，更新仅含可编辑字段并触发表单提交 */
     @Test
     void savesOnlyFieldsEditableInPublishedNodeForm() {
         RuntimeService runtimeService = mock(RuntimeService.class);
@@ -93,6 +100,7 @@ class NodeFormSubmissionServiceTest {
                         eq(executionContext));
     }
 
+    /** 测试全局只读节点拒绝所有提交变更：验证不触发数据更新、变量设置与表单提交 */
     @Test
     void globallyReadonlyNodeRejectsAllSubmittedChanges() {
         RuntimeService runtimeService = mock(RuntimeService.class);
@@ -136,6 +144,7 @@ class NodeFormSubmissionServiceTest {
                 org.mockito.ArgumentMatchers.any());
     }
 
+    /** 测试无法解析确切流程快照时 fail-closed：验证抛出 IllegalStateException 且不静默放行 */
     @Test
     void failsClosedWhenExactProcessSnapshotCannotBeResolved() {
         RuntimeService runtimeService = mock(RuntimeService.class);
@@ -174,6 +183,7 @@ class NodeFormSubmissionServiceTest {
                 exception.getMessage());
     }
 
+    /** 构造测试 Flowable 任务 Mock，含 id、流程实例与定义 ID */
     private Task task() {
         Task task = mock(Task.class);
         when(task.getId()).thenReturn("task-1");
@@ -183,6 +193,7 @@ class NodeFormSubmissionServiceTest {
         return task;
     }
 
+    /** 构造带只读标志的表单字段 */
     private EntityFormField field(String fieldCode, int readonly) {
         EntityFormField field = new EntityFormField();
         field.setFieldCode(fieldCode);
@@ -191,6 +202,7 @@ class NodeFormSubmissionServiceTest {
         return field;
     }
 
+    /** 构造任务提交的表单执行上下文 */
     private FormSubmissionExecutionContext executionContext() {
         return new FormSubmissionExecutionContext(
                 "task-submit-trace",

@@ -22,6 +22,12 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * UI 配置草稿元数据补丁服务，支持表单与列表元数据的乐观锁增量更新。
+ *
+ * <p>通过 expectedRevision 防止并发覆盖，支持字段级补丁与清除，
+ * 更新成功后递增版本号并清空草稿哈希，强制重新计算。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UiConfigDraftMetadataService {
@@ -35,6 +41,15 @@ public class UiConfigDraftMetadataService {
     private final EntityListRelationalConfigService relationalConfigService;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 按补丁请求更新表单元数据，基于乐观锁更新并维护默认表单唯一性。
+     *
+     * @param formId  表单ID
+     * @param request 元数据补丁请求
+     * @return 更新后的表单
+     * @throws IllegalArgumentException    表单不存在或缺少 expectedRevision 时抛出
+     * @throws RevisionConflictException   版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityForm patchForm(
             String formId,
@@ -132,6 +147,15 @@ public class UiConfigDraftMetadataService {
         return formService.getById(formId);
     }
 
+    /**
+     * 按补丁请求更新列表元数据，基于乐观锁更新并同步允许场景到关系型存储。
+     *
+     * @param listId  列表配置ID
+     * @param request 元数据补丁请求
+     * @return 更新后的列表配置 DTO
+     * @throws IllegalArgumentException    列表不存在或缺少 expectedRevision 时抛出
+     * @throws RevisionConflictException   版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListConfigDTO patchList(
             String listId,

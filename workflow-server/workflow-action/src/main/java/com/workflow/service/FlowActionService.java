@@ -43,6 +43,14 @@ public class FlowActionService {
         return flowActionMapper.findDraftActionsBySequenceFlowId(processConfigId, sequenceFlowId);
     }
 
+    /**
+     * 按作用域与元素绑定查询草稿动作。
+     *
+     * @param processConfigId 流程配置 ID
+     * @param scopeType       作用域类型
+     * @param elementId       BPMN 元素 ID；流程级可空
+     * @return 草稿动作列表
+     */
     public List<FlowAction> findDraftActionsByBinding(String processConfigId, String scopeType, String elementId) {
         return flowActionMapper.findDraftActionsByBinding(
                 processConfigId,
@@ -160,6 +168,15 @@ public class FlowActionService {
         return flowActionMapper.findPublishedActionsBySequenceFlowId(versionId, sequenceFlowId);
     }
 
+    /**
+     * 按版本、作用域、元素与触发时机查询已发布动作。
+     *
+     * @param versionId     流程发布版本 ID
+     * @param scopeType     作用域类型
+     * @param elementId     BPMN 元素 ID；流程级可空
+     * @param triggerTiming 触发时机编码
+     * @return 已发布动作列表
+     */
     public List<FlowAction> findPublishedActionsByBinding(
             String versionId,
             String scopeType,
@@ -216,6 +233,7 @@ public class FlowActionService {
         log.info("Logic deleted actions for version {}", versionId);
     }
 
+    /** 将保存请求转换为动作实体 */
     private FlowAction toEntity(FlowActionSaveRequest request) {
         FlowAction action = new FlowAction();
         action.setId(request.getId());
@@ -238,6 +256,7 @@ public class FlowActionService {
         return action;
     }
 
+    /** 归一化动作配置：补全作用域、元素 ID、触发时机、执行方式、失败策略等缺省值 */
     private void normalizeAction(FlowAction action) {
         String scopeType = normalizeScope(action.getScopeType(), action.getSequenceFlowId());
         action.setScopeType(scopeType);
@@ -275,6 +294,7 @@ public class FlowActionService {
         action.setDeleted(0);
     }
 
+    /** 归一化作用域：显式值优先，否则按元素 ID 是否存在推断 PROCESS 或 SEQUENCE_FLOW */
     private String normalizeScope(String scopeType, String legacyElementId) {
         if (org.springframework.util.StringUtils.hasText(scopeType)) {
             return scopeType.trim().toUpperCase(java.util.Locale.ROOT);
@@ -284,10 +304,12 @@ public class FlowActionService {
                 : FlowActionScopeType.PROCESS.name();
     }
 
+    /** 流程级作用域返回 null，其他作用域返回原元素 ID */
     private String normalizeElementId(String scopeType, String elementId) {
         return FlowActionScopeType.PROCESS.name().equalsIgnoreCase(scopeType) ? null : elementId;
     }
 
+    /** 按触发时机取默认执行方式；解析失败回退为事务内执行 */
     private String defaultExecutionMode(String triggerTiming) {
         try {
             return FlowActionTriggerTiming.valueOf(triggerTiming).getDefaultExecutionMode().name();
@@ -296,6 +318,7 @@ public class FlowActionService {
         }
     }
 
+    /** 按触发时机取默认失败策略；解析失败回退为 ROLLBACK */
     private String defaultFailurePolicy(String triggerTiming) {
         try {
             return FlowActionTriggerTiming.valueOf(triggerTiming).getDefaultFailurePolicy().name();

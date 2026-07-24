@@ -42,18 +42,29 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * UI 数据源服务测试。
+ *
+ * <p>被测对象：{@link UiDataSourceService}，覆盖数据源保存的 URL/schema 校验、执行前的必填输入与类型校验、
+ * provider 输出类型校验、权限计划不可构建/拒绝时不触达数据层、实体查询分页 JSON 校验、
+ * 缓存按权限计划/发布版本/表单发布/列表发布隔离、集成连接器仅接收服务端可信安全上下文、
+ * 预览走草稿授权而非发布授权等场景。
+ */
 class UiDataSourceServiceTest {
 
+    /** 设置当前用户上下文 */
     @BeforeEach
     void setCurrentUser() {
         UserContext.setCurrentUser("user-1", "tester");
     }
 
+    /** 清理当前用户上下文，避免用例间污染 */
     @AfterEach
     void clearCurrentUser() {
         UserContext.clear();
     }
 
+    /** 测试拒绝任意 URL 配置：验证配置含 url 字段时保存抛出 IllegalArgumentException */
     @Test
     void rejectsArbitraryUrlConfiguration() {
         UiDataSourceSaveRequest request = saveRequest();
@@ -66,6 +77,7 @@ class UiDataSourceServiceTest {
                 () -> context(List.of()).service().save(request));
     }
 
+    /** 测试保存时拒绝畸形 schema：验证 required 非字符串数组时抛出 IllegalArgumentException */
     @Test
     void rejectsMalformedSchemaWhenSaving() {
         UiDataSourceSaveRequest request = saveRequest();
@@ -83,6 +95,7 @@ class UiDataSourceServiceTest {
                 "required 必须为字符串数组"));
     }
 
+    /** 测试执行前拒绝缺失必填映射输入：验证缺少 customerId 时抛出 IllegalArgumentException */
     @Test
     void rejectsMissingRequiredMappedInputBeforeExecution() {
         TestContext context = context(List.of());
@@ -111,6 +124,7 @@ class UiDataSourceServiceTest {
                 "$.customerId 为必填字段"));
     }
 
+    /** 测试拒绝嵌套输入类型不匹配：验证数组元素字段类型不符时抛出 IllegalArgumentException */
     @Test
     void rejectsNestedInputTypeMismatch() {
         TestContext context = context(List.of());
@@ -150,6 +164,7 @@ class UiDataSourceServiceTest {
                 "$.rows[0].quantity 类型应为 integer"));
     }
 
+    /** 测试拒绝 provider 输出类型不匹配：验证 total 字段类型不符时抛出 IllegalArgumentException */
     @Test
     void rejectsProviderOutputTypeMismatch() {
         UiDataSourceProvider provider = provider(
@@ -182,6 +197,7 @@ class UiDataSourceServiceTest {
                 "$.total 类型应为 number"));
     }
 
+    /** 测试权限计划无法构建时拒绝执行：验证抛出业务冲突异常且不触达动态数据服务 */
     @Test
     void rejectsExecutionWhenPermissionPlanCannotBeBuilt() {
         TestContext context = context(List.of());
@@ -215,6 +231,7 @@ class UiDataSourceServiceTest {
         verifyNoInteractions(context.dynamicService());
     }
 
+    /** 测试拒绝的实体查询不触达数据库：验证权限拒绝时返回空分页且不与动态数据服务交互 */
     @Test
     void deniedEntityQueryDoesNotReachDatabase() {
         TestContext context = context(List.of());
@@ -242,6 +259,7 @@ class UiDataSourceServiceTest {
         verifyNoInteractions(context.dynamicService());
     }
 
+    /** 测试校验实体查询分页为 JSON 对象：验证按权限计划查询并返回分页结果 */
     @Test
     void validatesEntityQueryPageAsJsonObject() {
         TestContext context = context(List.of());
@@ -288,6 +306,7 @@ class UiDataSourceServiceTest {
         assertEquals(page, result);
     }
 
+    /** 测试拒绝的 provider 不执行：验证权限拒绝时抛出业务禁止异常且 provider 未被调用 */
     @Test
     void deniedProviderDoesNotExecute() {
         AtomicInteger calls = new AtomicInteger();
@@ -323,6 +342,7 @@ class UiDataSourceServiceTest {
                 anyMap());
     }
 
+    /** 测试权限计划变化时缓存隔离：验证两次不同计划各执行一次 provider */
     @Test
     void isolatesCacheWhenPermissionPlanChanges() {
         AtomicInteger calls = new AtomicInteger();
@@ -354,6 +374,7 @@ class UiDataSourceServiceTest {
         assertEquals(2, calls.get());
     }
 
+    /** 测试权限发布版本变化时缓存隔离：验证发布版本不同时各执行一次 provider */
     @Test
     void isolatesCacheWhenPermissionReleaseVersionChanges() {
         AtomicInteger calls = new AtomicInteger();
@@ -383,6 +404,7 @@ class UiDataSourceServiceTest {
         assertEquals(2, calls.get());
     }
 
+    /** 测试表单发布变化时缓存隔离：验证表单 releaseId 不同时各执行一次 provider */
     @Test
     void isolatesCacheWhenFormReleaseChanges() {
         AtomicInteger calls = new AtomicInteger();
@@ -414,6 +436,7 @@ class UiDataSourceServiceTest {
         assertEquals(2, calls.get());
     }
 
+    /** 测试列表发布变化时缓存隔离：验证列表 releaseId 不同时各执行一次 provider */
     @Test
     void isolatesCacheWhenListReleaseChanges() {
         AtomicInteger calls = new AtomicInteger();
@@ -443,6 +466,7 @@ class UiDataSourceServiceTest {
         assertEquals(2, calls.get());
     }
 
+    /** 测试集成连接器仅接收服务端可信安全上下文：验证幂等键、参数、用户、租户、release、权限摘要符合预期且不含 SQL 片段 */
     @Test
     void connectorReceivesOnlyServerTrustedSecurityContext() {
         IntegrationConnector connector =
@@ -510,6 +534,7 @@ class UiDataSourceServiceTest {
                 .containsKey("sqlFragment"));
     }
 
+    /** 测试预览走草稿授权而非发布授权：验证调用 authorizePreview 且不调用 authorizePublished */
     @Test
     void previewUsesDraftAuthorizationInsteadOfPublishedAuthorization() {
         TestContext context = context(List.of());
@@ -555,6 +580,7 @@ class UiDataSourceServiceTest {
                 .authorizePublished(any(), any());
     }
 
+    /** 构造基础数据源保存请求 */
     private UiDataSourceSaveRequest saveRequest() {
         UiDataSourceSaveRequest request = new UiDataSourceSaveRequest();
         request.setSourceCode("safe_source");
@@ -564,6 +590,7 @@ class UiDataSourceServiceTest {
         return request;
     }
 
+    /** 构造带输入与上下文的数据源执行请求 */
     private UiDataSourceExecuteRequest request(
             Map<String, Object> input,
             Map<String, Object> context) {
@@ -579,6 +606,7 @@ class UiDataSourceServiceTest {
         return request;
     }
 
+    /** 构造启用缓存策略的注册 provider 数据源定义 */
     private UiDataSourceDefinition cachedProvider(
             JsonDocumentCodec codec) {
         return definition(
@@ -594,6 +622,7 @@ class UiDataSourceServiceTest {
                         "failurePolicy", "FAIL"));
     }
 
+    /** 构造不含执行策略的数据源定义（重载，默认空执行策略） */
     private UiDataSourceDefinition definition(
             JsonDocumentCodec codec,
             String sourceType,
@@ -611,6 +640,7 @@ class UiDataSourceServiceTest {
                 Map.of());
     }
 
+    /** 构造含执行策略的完整数据源定义 */
     private UiDataSourceDefinition definition(
             JsonDocumentCodec codec,
             String sourceType,
@@ -646,6 +676,7 @@ class UiDataSourceServiceTest {
         return definition;
     }
 
+    /** 将 Map 序列化为 JSON 文档，空值返回 null */
     private String document(
             JsonDocumentCodec codec,
             Map<String, Object> value,
@@ -654,6 +685,7 @@ class UiDataSourceServiceTest {
                 ? null : codec.write(value, label);
     }
 
+    /** 构造带调用计数与固定返回值的 Mock provider */
     private UiDataSourceProvider provider(
             AtomicInteger calls,
             Object result) {
@@ -672,6 +704,7 @@ class UiDataSourceServiceTest {
         return provider;
     }
 
+    /** 构造指定 SQL 与发布版本的权限计划 */
     private DataScopePlan plan(
             String sql,
             int releaseVersion) {
@@ -685,6 +718,7 @@ class UiDataSourceServiceTest {
                 releaseVersion);
     }
 
+    /** 构造拒绝访问的权限计划 */
     private DataScopePlan denyPlan() {
         return new DataScopePlan(
                 false,
@@ -696,6 +730,7 @@ class UiDataSourceServiceTest {
                 7);
     }
 
+    /** 预置发布授权 Mock，返回带指定计划的授权对象 */
     private void authorize(
             TestContext context,
             DataScopePlan plan) {
@@ -708,6 +743,7 @@ class UiDataSourceServiceTest {
                         "release-1"));
     }
 
+    /** 构造数据源执行授权对象，含用户、权限计划与 releaseId */
     private static UiDataSourceExecutionAuthorization authorization(
             SysUser user,
             DataScopePlan plan,
@@ -729,11 +765,13 @@ class UiDataSourceServiceTest {
                 null);
     }
 
+    /** 装配不含集成连接器的测试上下文（重载） */
     private TestContext context(
             List<UiDataSourceProvider> providers) {
         return context(providers, List.of());
     }
 
+    /** 装配含 provider 与集成连接器的完整测试上下文 */
     private TestContext context(
             List<UiDataSourceProvider> providers,
             List<IntegrationConnector> connectors) {
@@ -776,6 +814,7 @@ class UiDataSourceServiceTest {
                 user);
     }
 
+    /** 测试上下文记录，聚合被测服务与各 Mock 依赖 */
     private record TestContext(
             UiDataSourceService service,
             UiDataSourceDefinitionMapper mapper,

@@ -24,6 +24,15 @@ public class EntityActionRuleEvaluator {
 
     private final List<EntityActionRuleConditionProvider> conditionProviders;
 
+    /**
+     * 评估按钮可用性规则是否满足。
+     *
+     * @param rule           规则定义，为空或无根节点时视为始终满足
+     * @param row            当前数据行，可为 null
+     * @param user           当前用户
+     * @param statusCategory 数据所属状态分类，可为 null
+     * @return 规则满足返回 true
+     */
     public boolean evaluate(
             EntityActionRuleDTO rule,
             EntityDataDTO row,

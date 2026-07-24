@@ -21,6 +21,9 @@ public class TaskVO {
      */
     private String taskName;
 
+    /**
+     * 节点类型（如 USER_TASK、ADD_SIGN 等）
+     */
     private String nodeType;
     
     /**

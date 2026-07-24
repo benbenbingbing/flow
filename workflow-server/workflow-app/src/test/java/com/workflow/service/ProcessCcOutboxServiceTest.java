@@ -12,7 +12,15 @@ import java.util.List;
 
 import static org.mockito.Mockito.*;
 
+/**
+ * 流程知会 Outbox 服务测试。
+ *
+ * <p>被测对象：{@link ProcessCcOutboxService}，覆盖知会消息出箱派发时已被其他节点抢占认领的场景。
+ */
 class ProcessCcOutboxServiceTest {
+    /**
+     * 测试派发时若消息已被其他节点抢占认领则跳过：验证 claim 返回 0 后不触发记录与通知渠道。
+     */
     @Test
     void skipsMessageAlreadyClaimedByAnotherNode() {
         ProcessCcOutboxMapper outboxMapper = mock(ProcessCcOutboxMapper.class);

@@ -27,12 +27,19 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * UI 配置启动迁移 Runner。
+ * <p>应用启动时将历史表单字段迁移为表单节点结构、修复孤立 TAB 节点，
+ * 并为缺失发布版本的表单/列表自动生成初始发布版本，保障升级后 UI 配置可用。
+ * 迁移与发布均在新事务中执行，失败收集后统一输出报告。
+ */
 @Slf4j
 @Order(50)
 @Component
 @RequiredArgsConstructor
 public class UiConfigurationBootstrapRunner implements ApplicationRunner {
 
+    /** 历史组件属性中需要识别为显式属性（而非遗留属性）的键集合 */
     private static final Set<String> EXPLICIT_COMPONENT_KEYS = Set.of(
             "options", "optionSource", "referenceConfig", "refConfig",
             "subFormConfig", "relationConfig", "events", "eventBindings",
@@ -48,6 +55,11 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
     private final JsonDocumentCodec codec;
     private final UiConfigurationBootstrapTransactionExecutor transactionExecutor;
 
+    /**
+     * 应用启动入口：逐表单迁移节点并按需发布表单/列表初始版本，最后汇总迁移结果与失败报告。
+     *
+     * @param args 启动参数（本 Runner 未使用）
+     */
     @Override
     public void run(ApplicationArguments args) {
         int migratedForms = 0;
@@ -74,8 +86,10 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
             }
             var activeRelease =
                     releaseService.active(UiConfigReleaseService.FORM, form.getId());
+            // 仅在无活跃发布或存在孤立 TAB 修复时尝试发布
             if (activeRelease == null || !count.repairedNodeIds().isEmpty()) {
                 try {
+                    // 孤立 TAB 修复场景需通过安全校验，确保未发布草稿不包含其他差异
                     if (activeRelease != null
                             && !isSafeTabRepairRelease(
                                     form.getId(),
@@ -99,6 +113,7 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
             }
         }
         for (EntityListConfig list : listMapper.selectList(null)) {
+            // 列表仅需在缺失活跃发布时补发初始版本
             if (releaseService.active(UiConfigReleaseService.LIST, list.getId()) == null) {
                 try {
                     transactionExecutor.execute(() -> releaseService.publish(
@@ -136,6 +151,12 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
         }
     }
 
+    /**
+     * 迁移单个表单：修复孤立 TAB、将历史字段转为节点，并按差异落库或校验树结构。
+     *
+     * @param form 待迁移表单
+     * @return 本次迁移的节点数、未识别属性数及修复的 TAB 节点ID集合
+     */
     private MigrationCount migrateForm(EntityForm form) {
         List<EntityFormNode> nodes = new ArrayList<>(nodeMapper.findByFormId(form.getId()));
         Set<String> repairedNodeIds = repairLegacyTabParents(form.getId(), nodes);
@@ -220,6 +241,13 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
                 repairedNodeIds);
     }
 
+    /**
+     * 修复历史孤立 TAB 节点：将缺少 TAB_SET 父级的 TAB 重新挂到 orderKey 最接近的 TAB_SET 下。
+     *
+     * @param formId 表单ID
+     * @param nodes  表单全部节点
+     * @return 已修复的 TAB 节点ID集合
+     */
     private Set<String> repairLegacyTabParents(
             String formId,
             List<EntityFormNode> nodes) {
@@ -269,6 +297,14 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
         return node.getOrderKey() == null ? 0L : node.getOrderKey();
     }
 
+    /**
+     * 判断当前草稿相对活跃发布的差异是否仅来自孤立 TAB 修复（即除修复节点 parentId 外无其他差异）。
+     * <p>用于决定是否可安全自动发布迁移版本。
+     *
+     * @param formId         表单ID
+     * @param repairedNodeIds 已修复的 TAB 节点ID集合
+     * @return 仅当差异局限于修复节点的 parentId 时返回 true
+     */
     private boolean isSafeTabRepairRelease(
             String formId,
             Set<String> repairedNodeIds) {
@@ -378,6 +414,7 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
         return result;
     }
 
+    /** 根据字段类型/组件类型推断表单节点类型（REPEATER/SUB_FORM/SECTION/TEXT/FIELD）。 */
     private String resolveNodeType(EntityFormField field) {
         String type = StringUtils.hasText(field.getFieldType())
                 ? field.getFieldType().toUpperCase(Locale.ROOT)
@@ -400,6 +437,7 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
         return "FIELD";
     }
 
+    /** 推断节点绑定类型：关联字段为 RELATION，普通实体字段为 ENTITY_FIELD，无字段为 NONE。 */
     private String resolveBindingType(EntityFormField field) {
         if (StringUtils.hasText(field.getRelationCode())
                 || Set.of("SUB_FORM", "SUB_FORM_LIST").contains(
@@ -413,6 +451,7 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
                 : "NONE";
     }
 
+    /** 合并历史校验规则与扩展配置，扩展配置以 extension 键并入规则文档。 */
     private Map<String, Object> mergeRules(EntityFormField field) {
         Map<String, Object> rules =
                 read(field.getValidationRules(), "历史校验规则");
@@ -424,12 +463,14 @@ public class UiConfigurationBootstrapRunner implements ApplicationRunner {
         return rules;
     }
 
+    /** 读取 JSON 文本为 Map；空串或 null 返回空 Map。 */
     private Map<String, Object> read(String value, String label) {
         return StringUtils.hasText(value)
                 ? new LinkedHashMap<>(codec.readObject(value, label))
                 : new LinkedHashMap<>();
     }
 
+    /** 单次表单迁移结果统计：迁移节点数、未识别属性数、已修复的 TAB 节点ID集合。 */
     private record MigrationCount(
             int nodes,
             int unknownProperties,

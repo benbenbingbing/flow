@@ -27,8 +27,20 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体状态更新监听器单元测试。
+ *
+ * <p>被测对象为 {@link EntityStatusUpdateListener}，验证任务完成事件触发时
+ * 根据流程节点状态映射更新动态实体表，以及任务创建事件不触发状态更新。</p>
+ */
 class EntityStatusUpdateListenerTest {
 
+    /**
+     * 任务完成事件应根据节点状态映射更新动态实体表。
+     *
+     * <p>场景：mock 任务完成事件、流程实例、实体状态映射，
+     * 断言 dynamicMapper.update 收到的 Map 含正确 ID 与映射后的状态码。</p>
+     */
     @Test
     void taskCompletionUpdatesDynamicEntityTable() {
         RuntimeService runtimeService = mock(RuntimeService.class);
@@ -75,6 +87,11 @@ class EntityStatusUpdateListenerTest {
         assertEquals("FINANCE_REVIEW", captor.getValue().get("status"));
     }
 
+    /**
+     * 任务创建事件不应触发实体状态更新。
+     *
+     * <p>场景：事件类型为 TASK_CREATED，断言所有依赖均未被交互。</p>
+     */
     @Test
     void taskCreationDoesNotUpdateEntityStatus() {
         RuntimeService runtimeService = mock(RuntimeService.class);

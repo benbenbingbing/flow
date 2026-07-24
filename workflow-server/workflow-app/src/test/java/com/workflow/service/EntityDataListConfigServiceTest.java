@@ -24,8 +24,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体数据列表配置服务测试。
+ *
+ * <p>被测对象：{@link EntityDataListConfigService}，覆盖虚拟字段条件不下发动态 SQL 而在增强后过滤、
+ * 基础条件使用权限感知的服务端分页等场景。
+ */
 class EntityDataListConfigServiceTest {
 
+    /** 测试虚拟字段条件不下发动态 SQL 并在增强后过滤：验证仅基础条件下发查询，虚拟字段在增强后按 LIKE 过滤 */
     @Test
     void virtualConditionsAreNotSentToDynamicSqlAndAreFilteredAfterEnrichment() {
         EntityDataDynamicService dynamicService = mock(EntityDataDynamicService.class);
@@ -101,6 +108,7 @@ class EntityDataListConfigServiceTest {
         verify(dynamicService).findByCondition("expense", "default", baseCondition);
     }
 
+    /** 测试基础条件使用权限感知的服务端分页：验证分页查询走 findPage 且对结果做权限增强 */
     @Test
     void baseConditionsUsePermissionAwareServerPagination() {
         EntityDataDynamicService dynamicService = mock(EntityDataDynamicService.class);
@@ -162,6 +170,7 @@ class EntityDataListConfigServiceTest {
         verify(capabilityService).enrichRows("expense", config, List.of(row));
     }
 
+    /** 构造带 id 与提交人名的实体数据 DTO */
     private EntityDataDTO row(String id, String submitterName) {
         EntityDataDTO row = new EntityDataDTO();
         row.setId(id);

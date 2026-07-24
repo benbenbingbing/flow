@@ -44,6 +44,12 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
     @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND is_default = 1 AND deleted = 0 LIMIT 1")
     EntityForm selectDefaultByEntityId(@Param("entityId") String entityId);
 
+    /**
+     * 根据主键 ID 加锁查询表单（FOR UPDATE），用于并发更新场景。
+     *
+     * @param id 主键 ID
+     * @return 表单对象，无则返回 null
+     */
     @Select("SELECT * FROM entity_form WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     EntityForm selectByIdForUpdate(@Param("id") String id);
 }

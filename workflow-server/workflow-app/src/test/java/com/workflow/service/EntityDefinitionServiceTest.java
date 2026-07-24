@@ -35,7 +35,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 实体定义服务单元测试
+ * 实体定义服务单元测试。
+ *
+ * <p>被测对象：{@link EntityDefinitionService}，覆盖实体定义的增删改查、子表单关系同步、发布、
+ * 流程绑定、生命周期模式校验等核心场景。
  */
 @ExtendWith(MockitoExtension.class)
 public class EntityDefinitionServiceTest {
@@ -91,9 +94,12 @@ public class EntityDefinitionServiceTest {
     @InjectMocks
     private EntityDefinitionService entityService;
 
+    /** 测试实体定义（含已绑定流程） */
     private EntityDefinition testEntity;
+    /** 测试字段 */
     private EntityField testField;
 
+    /** 初始化测试实体与字段，并预置流程目录、表名生成、字段选项等 Mock 返回值 */
     @BeforeEach
     void setUp() {
         testEntity = new EntityDefinition();
@@ -146,6 +152,7 @@ public class EntityDefinitionServiceTest {
                 .thenReturn(history);
     }
 
+    /** 测试查询全部实体：验证返回数量与流程名映射正确 */
     @Test
     void testFindAll() {
         when(entityMapper.selectList(null)).thenReturn(Arrays.asList(testEntity));
@@ -158,6 +165,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).selectList(null);
     }
 
+    /** 测试查询无流程绑定的实体：验证 processName 为 null */
     @Test
     void testFindAllWithoutProcess() {
         testEntity.setProcessDefinitionId(null);
@@ -170,6 +178,7 @@ public class EntityDefinitionServiceTest {
         assertNull(result.get(0).getProcessName());
     }
 
+    /** 测试按 ID 查询实体：验证返回的实体编码与字段列表符合预期 */
     @Test
     void testFindById() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
@@ -187,6 +196,7 @@ public class EntityDefinitionServiceTest {
         verify(fieldMapper, times(1)).findByEntityId("1");
     }
 
+    /** 测试按 ID 查询返回子表单关系元数据：验证字段上的子实体、引用字段、关系类型等映射正确 */
     @Test
     void testFindByIdReturnsRelationMetadata() {
         EntityField subField = new EntityField();
@@ -223,6 +233,7 @@ public class EntityDefinitionServiceTest {
         assertEquals(true, field.getCascadeDelete());
     }
 
+    /** 测试按 ID 查询不存在实体：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testFindByIdNotFound() {
         when(entityMapper.selectById("999")).thenReturn(null);
@@ -234,6 +245,7 @@ public class EntityDefinitionServiceTest {
         assertEquals("实体不存在: 999", exception.getMessage());
     }
 
+    /** 测试按实体编码查询实体：验证返回结果与字段装配正确 */
     @Test
     void testFindByCode() {
         when(entityMapper.findByEntityCode("test_entity")).thenReturn(Optional.of(testEntity));
@@ -246,6 +258,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).findByEntityCode("test_entity");
     }
 
+    /** 测试按不存在的编码查询实体：验证抛出 RuntimeException 且消息包含对应编码 */
     @Test
     void testFindByCodeNotFound() {
         when(entityMapper.findByEntityCode("not_exist")).thenReturn(Optional.empty());
@@ -257,6 +270,7 @@ public class EntityDefinitionServiceTest {
         assertEquals("实体不存在: not_exist", exception.getMessage());
     }
 
+    /** 测试新增实体：验证返回的实体编码正确并触发 insert */
     @Test
     void testSave() {
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
@@ -274,6 +288,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).insert(any(EntityDefinition.class));
     }
 
+    /** 测试更新实体：验证更新成功并触发 selectById 与 updateById */
     @Test
     void testUpdate() {
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
@@ -290,6 +305,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
     }
 
+    /** 测试更新时同步子表单关系：验证旧关系被删除并按 DTO 重新插入正确的关系记录 */
     @Test
     void testUpdateSyncsSubFormRelation() {
         EntityDefinition child = new EntityDefinition();
@@ -340,6 +356,7 @@ public class EntityDefinitionServiceTest {
         assertEquals(true, relation.getCascadeDelete());
     }
 
+    /** 测试更新不存在的实体：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testUpdateNotFound() {
         when(entityMapper.selectById("999")).thenReturn(null);
@@ -354,6 +371,7 @@ public class EntityDefinitionServiceTest {
         assertEquals("实体不存在: 999", exception.getMessage());
     }
 
+    /** 测试删除实体：验证触发 deleteById */
     @Test
     void testDelete() {
         when(entityMapper.deleteById("1")).thenReturn(1);
@@ -363,6 +381,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).deleteById("1");
     }
 
+    /** 测试发布实体：验证发布后状态变为 PUBLISHED 并触发表结构同步与更新 */
     @Test
     void testPublish() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
@@ -377,6 +396,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
     }
 
+    /** 测试发布不存在的实体：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testPublishNotFound() {
         when(entityMapper.selectById("999")).thenReturn(null);
@@ -388,6 +408,7 @@ public class EntityDefinitionServiceTest {
         assertEquals("实体不存在: 999", exception.getMessage());
     }
 
+    /** 测试绑定流程：验证生命周期切换为 WORKFLOW，绑定状态为草稿且记录新流程 ID */
     @Test
     void testBindWorkflow() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
@@ -403,6 +424,7 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
     }
 
+    /** 测试绑定流程时实体不存在：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testBindWorkflowEntityNotFound() {
         when(entityMapper.selectById("999")).thenReturn(null);
@@ -414,6 +436,7 @@ public class EntityDefinitionServiceTest {
         assertEquals("实体不存在: 999", exception.getMessage());
     }
 
+    /** 测试绑定流程设置流程 ID：验证返回的 processDefinitionId 与生命周期模式符合预期 */
     @Test
     void testBindWorkflowSetsProcessId() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
@@ -426,6 +449,7 @@ public class EntityDefinitionServiceTest {
         assertEquals(EntityDefinition.LifecycleMode.WORKFLOW, result.getLifecycleMode());
     }
 
+    /** 测试绑定流程时同步更新最新发布快照的流程 ID：验证发布历史的 processDefinitionId 被改写为新流程 */
     @Test
     void testBindWorkflowUpdatesLatestPublishedSnapshot() {
         EntityPublishHistory history = new EntityPublishHistory();
@@ -443,6 +467,7 @@ public class EntityDefinitionServiceTest {
         assertEquals("proc-2", captor.getValue().getProcessDefinitionId());
     }
 
+    /** 测试新建实体默认为独立生命周期与动态存储：验证生命周期、存储模式与流程绑定状态默认值 */
     @Test
     void standaloneIsDefaultForNewEntity() {
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
@@ -457,6 +482,7 @@ public class EntityDefinitionServiceTest {
         assertEquals(EntityDefinitionDTO.WorkflowBindingStatus.NOT_APPLICABLE, result.getWorkflowBindingStatus());
     }
 
+    /** 测试工作流实体不能降级为独立模式：验证抛出业务冲突异常且错误码为 ENTITY_LIFECYCLE_DOWNGRADE_FORBIDDEN */
     @Test
     void workflowEntityCannotDowngrade() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);

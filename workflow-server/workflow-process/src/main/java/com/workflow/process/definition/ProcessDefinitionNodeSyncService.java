@@ -40,24 +40,42 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 流程节点配置同步。
+ * 流程节点配置同步服务
+ * 负责在流程保存/发布时解析 BPMN XML，将节点、执行人、表单、审批、多实例、
+ * 状态映射等配置同步到对应映射表，保持 BPMN 与业务配置表的一致性。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessDefinitionNodeSyncService {
 
+    /** 节点配置 Mapper */
     private final NodeConfigMapper nodeMapper;
+    /** 审批人配置 Mapper */
     private final AssigneeConfigMapper assigneeMapper;
+    /** 表单配置 Mapper */
     private final FormConfigMapper formMapper;
+    /** JSON 序列化工具 */
     private final ObjectMapper objectMapper;
+    /** 实体流程状态服务，保存状态映射 */
     private final EntityFlowStatusService entityFlowStatusService;
+    /** 实体定义 Mapper，查询流程关联实体 */
     private final EntityDefinitionMapper entityDefinitionMapper;
+    /** 节点表单绑定 Mapper */
     private final ProcessNodeFormMapper nodeFormMapper;
+    /** 节点审批配置 Mapper */
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
+    /** 节点审批选项服务，同步审批选项 */
     private final ProcessNodeApprovalOptionService approvalOptionService;
+    /** JDBC 模板，用于合并节点配置 JSON */
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * 同步草稿节点配置（先清空后插入）。
+     *
+     * @param processConfigId 流程定义配置ID
+     * @param nodes           节点配置DTO列表
+     */
     public void syncDraftNodes(String processConfigId, List<NodeConfigDTO> nodes) {
         nodeMapper.deleteByProcessConfigId(processConfigId);
         for (NodeConfigDTO nodeDTO : nodes) {
@@ -67,11 +85,25 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 从 BPMN XML 同步节点表单绑定与节点审批配置。
+     *
+     * @param processConfigId 流程定义配置ID
+     * @param bpmnXml         BPMN XML 内容
+     */
     public void syncBpmnNodeBindings(String processConfigId, String bpmnXml) {
         syncNodeFormsFromBpmn(processConfigId, bpmnXml);
         syncNodeApprovalsFromBpmn(processConfigId, bpmnXml);
     }
 
+    /**
+     * 从 BPMN XML 同步用户任务的节点表单绑定。
+     * <p>
+     * 解析 userTask 扩展属性中的表单ID与只读设置，重建节点表单绑定。
+     *
+     * @param processConfigId 流程定义配置ID
+     * @param bpmnXml         BPMN XML 内容
+     */
     public void syncNodeFormsFromBpmn(String processConfigId, String bpmnXml) {
         try {
             Document doc = parseDocument(bpmnXml);
@@ -111,6 +143,15 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 从 BPMN XML 同步用户任务的节点审批配置。
+     * <p>
+     * 解析 userTask 扩展属性中的 approvalConfig，新增或更新审批配置及审批选项；
+     * 无审批配置时清除既有配置。
+     *
+     * @param processConfigId 流程定义配置ID
+     * @param bpmnXml         BPMN XML 内容
+     */
     public void syncNodeApprovalsFromBpmn(String processConfigId, String bpmnXml) {
         try {
             Document doc = parseDocument(bpmnXml);
@@ -169,6 +210,16 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 从 BPMN XML 提取连线上的实体状态映射并保存。
+     * <p>
+     * 解析 sequenceFlow 中 name="entityStatusCode" 的扩展属性，构造状态映射列表保存。
+     * 流程未绑定实体时跳过。
+     *
+     * @param processConfigId 流程定义配置ID
+     * @param processKey      流程标识
+     * @param bpmnXml         BPMN XML 内容
+     */
     public void syncStatusMappingsFromBpmn(String processConfigId, String processKey, String bpmnXml) {
         String entityCode = getEntityCodeByProcessId(processConfigId);
         if (entityCode == null || entityCode.isEmpty()) {
@@ -217,6 +268,14 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 解析 BPMN XML 全量节点配置并保存（先清空后插入）。
+     * <p>
+     * 按开始/结束事件、用户任务、各类任务、网关、调用活动、子流程等类型逐一解析。
+     *
+     * @param processConfigId 流程定义配置ID
+     * @param bpmnXml         BPMN XML 内容
+     */
     public void parseAndSaveNodeConfigs(String processConfigId, String bpmnXml) {
         try {
             nodeMapper.deleteByProcessConfigId(processConfigId);

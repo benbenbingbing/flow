@@ -29,8 +29,14 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
     private final JdbcTemplate jdbcTemplate;
     private final EntityPhysicalTableNaming naming;
 
+    /**
+     * 应用启动入口：校验所需表存在后迁移历史动态实体表命名，并处理孤立旧表。
+     *
+     * @param args 启动参数（本 Runner 未使用）
+     */
     @Override
     public void run(ApplicationArguments args) {
+        // 所需元数据表不存在时说明为全新环境，直接跳过
         if (!tableExists("entity_definition")
                 || !tableExists("entity_table_migration_log")) {
             log.debug("实体物理表命名迁移所需表不存在，跳过");
@@ -50,6 +56,11 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
         migrateOrphanLegacyTables(activeLegacyTables);
     }
 
+    /**
+     * 迁移单个实体表：根据源表/目标表存在情况选择重命名、直接更新或记录冲突/缺失。
+     *
+     * @param entity 实体定义行数据（id/entity_code/table_name/status/storage_mode）
+     */
     private void migrate(Map<String, Object> entity) {
         String entityId = text(entity.get("id"));
         String entityCode = text(entity.get("entity_code"));
@@ -125,10 +136,16 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
         }
     }
 
+    /** 执行表重命名 SQL。 */
     private void renameTable(String sourceName, String targetName) {
         jdbcTemplate.execute("RENAME TABLE `" + sourceName + "` TO `" + targetName + "`");
     }
 
+    /**
+     * 迁移孤立旧表：将不再被任何实体定义引用的 entity_data_* 旧表重命名为业务表，完成命名隔离。
+     *
+     * @param activeLegacyTables 当前仍被活跃实体引用的旧表名集合（跳过这些）
+     */
     private void migrateOrphanLegacyTables(Set<String> activeLegacyTables) {
         List<String> legacyTables = jdbcTemplate.query(
                 "SELECT table_name FROM information_schema.tables "
@@ -170,6 +187,7 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
         }
     }
 
+    /** 重命名目标表上仍保留旧表名的非主键索引。 */
     private void renameIndexes(String sourceName, String targetName) {
         List<String> indexNames = jdbcTemplate.query(
                 "SELECT DISTINCT index_name FROM information_schema.statistics "
@@ -188,6 +206,7 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
         }
     }
 
+    /** 更新实体定义记录中的物理表名字段为新表名。 */
     private void updatePhysicalName(String entityId, String tableName) {
         jdbcTemplate.update(
                 "UPDATE entity_definition SET table_name = ? WHERE id = ?",
@@ -195,6 +214,7 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
                 entityId);
     }
 
+    /** 统计指定表行数（表名经迁移名校验后查询）。 */
     private long countRows(String tableName) {
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM `" + naming.validateMigrationName(tableName) + "`",
@@ -202,6 +222,7 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
         return count == null ? 0L : count;
     }
 
+    /** 判断指定表在当前数据库中是否存在（查询异常视为不存在）。 */
     private boolean tableExists(String tableName) {
         try {
             Integer count = jdbcTemplate.queryForObject(
@@ -215,6 +236,17 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
         }
     }
 
+    /**
+     * 记录一条迁移日志，已存在同键记录则更新并自增重试次数。
+     *
+     * @param entityCode   实体编码（或孤立表迁移键）
+     * @param sourceTable  源表名
+     * @param targetTable  目标表名
+     * @param status       迁移状态（SUCCESS/FAILED/CONFLICT/MISSING/PENDING）
+     * @param sourceCount  源表行数（可空）
+     * @param targetCount  目标表行数（可空）
+     * @param errorMessage 错误信息（成功时为 null）
+     */
     private void record(
             String entityCode,
             String sourceTable,
@@ -251,6 +283,7 @@ public class EntityTableNamingMigrationRunner implements ApplicationRunner {
                 LocalDateTime.now());
     }
 
+    /** 将行值安全转为字符串，null 返回 null。 */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }

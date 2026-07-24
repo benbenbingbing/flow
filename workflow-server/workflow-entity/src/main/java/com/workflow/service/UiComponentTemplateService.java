@@ -29,10 +29,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * UI 组件模板服务，负责模板的创建、版本管理、完整性校验和三向合并升级。
+ *
+ * <p>模板以 key 唯一标识，每次保存生成不可变快照版本并计算内容哈希，
+ * 升级时对基线、本地与目标版本执行三向合并，输出冲突列表供人工确认。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UiComponentTemplateService {
 
+    /** 允许的模板类型。 */
     private static final Set<String> TEMPLATE_TYPES = Set.of(
             "FIELD_GROUP", "FORM_SECTION", "SUB_FORM",
             "LIST_COLUMN_GROUP", "BUTTON_GROUP");
@@ -41,6 +48,12 @@ public class UiComponentTemplateService {
     private final UiComponentTemplateVersionMapper versionMapper;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 按类型查询模板列表。
+     *
+     * @param templateType 模板类型，为空查询全部
+     * @return 模板列表
+     */
     public List<UiComponentTemplate> list(String templateType) {
         LambdaQueryWrapper<UiComponentTemplate> query = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(templateType)) {
@@ -52,6 +65,12 @@ public class UiComponentTemplateService {
         return templateMapper.selectList(query);
     }
 
+    /**
+     * 查询模板的所有版本并校验每个版本的完整性。
+     *
+     * @param templateId 模板ID
+     * @return 版本列表
+     */
     public List<UiComponentTemplateVersion> versions(String templateId) {
         requireTemplate(templateId);
         List<UiComponentTemplateVersion> versions =
@@ -60,6 +79,13 @@ public class UiComponentTemplateService {
         return versions;
     }
 
+    /**
+     * 新增或更新模板并创建一个新版本快照。
+     *
+     * @param request 保存请求
+     * @return 保存后的模板
+     * @throws IllegalArgumentException 模板编码、名称、类型或快照不合法时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiComponentTemplate save(UiComponentTemplateSaveRequest request) {
         validate(request);
@@ -84,6 +110,16 @@ public class UiComponentTemplateService {
         return templateMapper.selectById(template.getId());
     }
 
+    /**
+     * 为已存在的模板创建新版本快照，内容未变化时返回当前版本。
+     *
+     * @param templateId  模板ID
+     * @param snapshot    模板快照
+     * @param description 版本描述
+     * @return 新创建或复用的版本
+     * @throws IllegalArgumentException     快照为空时抛出
+     * @throws RevisionConflictException    版本被并发更新时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiComponentTemplateVersion createVersion(
             String templateId,
@@ -95,6 +131,13 @@ public class UiComponentTemplateService {
                 description);
     }
 
+    /**
+     * 执行模板版本升级的三向合并，输出合并快照和冲突列表。
+     *
+     * @param templateId 模板ID
+     * @param request    升级请求，指定来源和目标版本及本地覆盖
+     * @return 合并结果，包含 mergedSnapshot、conflicts 和 requiresConfirmation
+     */
     public Map<String, Object> upgrade(
             String templateId,
             UiComponentTemplateUpgradeRequest request) {

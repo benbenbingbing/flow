@@ -16,29 +16,41 @@ import java.time.LocalDateTime;
 @TableName("entity_list_scope_policy")
 public class EntityListScopePolicy {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
+    /** 实体编码 */
     private String entityCode;
 
+    /** 方案唯一标识 */
     private String policyKey;
 
+    /** 方案名称 */
     private String policyName;
 
+    /** 方案描述 */
     private String description;
 
+    /** 预设编码（内置的快捷范围模板） */
     private String presetCode;
 
+    /** 过滤条件配置（JSON，描述可见数据范围） */
     private String filterConfig;
 
+    /** 状态（如 DRAFT/PUBLISHED/DISABLED） */
     private String status;
 
+    /** 是否启用（0-否 1-是） */
     private Integer enabled;
 
+    /** 版本号 */
     private Integer version;
 
+    /** 是否需要审批生效（0-否 1-是） */
     private Integer reviewRequired;
 
+    /** 创建人ID */
     private String createdBy;
 
     @TableField("create_time")

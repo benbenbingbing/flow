@@ -71,20 +71,35 @@ public class FlowActionContext {
      */
     private String targetNodeName;
 
+    /** 触发时机编码，对应 {@link FlowActionTriggerTiming} */
     private String triggerTiming;
+    /** 作用域类型：PROCESS、NODE、SEQUENCE_FLOW */
     private String scopeType;
+    /** 绑定的 BPMN 元素 ID；流程级为空 */
     private String elementId;
+    /** BPMN 元素名称 */
     private String elementName;
+    /** BPMN 元素类型，如 userTask、sequenceFlow */
     private String elementType;
+    /** Flowable 流程定义 ID */
     private String processDefinitionId;
+    /** Flowable 执行实例 ID */
     private String executionId;
+    /** 任务 ID（任务级事件携带） */
     private String taskId;
+    /** 任务名称 */
     private String taskName;
+    /** 任务办理人 */
     private String taskAssignee;
+    /** 操作人 ID */
     private String operatorId;
+    /** 审批动作，如同意/拒绝 */
     private String approvalAction;
+    /** 流程结束原因（撤回、终止等） */
     private String endReason;
+    /** 幂等键，防止同一动作重复执行 */
     private String idempotencyKey;
+    /** 触发时的流程变量快照 */
     private Map<String, Object> variablesSnapshot;
 
     /**
@@ -107,6 +122,11 @@ public class FlowActionContext {
      */
     private transient FlowActionHelper helper;
 
+    /**
+     * 获取流程变量快照；快照为空时回退到运行时查询。
+     *
+     * @return 流程变量 map
+     */
     public Map<String, Object> getVariables() {
         if (variablesSnapshot != null && !variablesSnapshot.isEmpty()) {
             return variablesSnapshot;
@@ -114,6 +134,12 @@ public class FlowActionContext {
         return helper.getVariables(processInstanceId);
     }
 
+    /**
+     * 获取单个流程变量值，优先读快照。
+     *
+     * @param name 变量名
+     * @return 变量值；不存在返回 null
+     */
     public Object getVariable(String name) {
         if (variablesSnapshot != null && variablesSnapshot.containsKey(name)) {
             return variablesSnapshot.get(name);
@@ -121,34 +147,73 @@ public class FlowActionContext {
         return helper.getVariable(processInstanceId, name);
     }
 
+    /**
+     * 获取运行中的流程实例。
+     *
+     * @return 运行中的流程实例；不存在返回 null
+     */
     public ProcessInstance getProcessInstance() {
         return helper.getProcessInstance(processInstanceId);
     }
 
+    /**
+     * 获取历史流程实例（含已结束的流程）。
+     *
+     * @return 历史流程实例；不存在返回 null
+     */
     public HistoricProcessInstance getHistoricProcessInstance() {
         return helper.getHistoricProcessInstance(processInstanceId);
     }
 
+    /**
+     * 获取流程实例当前活动中的第一个待办任务。
+     *
+     * @return 当前待办任务；无则返回 null
+     */
     public Task getCurrentTask() {
         return helper.getCurrentTask(processInstanceId);
     }
 
+    /**
+     * 获取触发该动作的任务（按 taskId 查询）。
+     *
+     * @return 触发任务；无则返回 null
+     */
     public Task getTriggerTask() {
         return helper.getTask(taskId);
     }
 
+    /**
+     * 获取当前实体数据。
+     *
+     * @return 实体数据 DTO
+     */
     public EntityDataDTO getEntityData() {
         return helper.getEntityData(entityCode, entityDataId);
     }
 
+    /** 获取内部查询辅助器 */
     public FlowActionHelper getHelper() {
         return helper;
     }
 
+    /**
+     * 追加一条执行轨迹（无详情）。
+     *
+     * @param stage   阶段标识
+     * @param message 阶段说明
+     */
     public void addExecutionTrace(String stage, String message) {
         addExecutionTrace(stage, message, null);
     }
 
+    /**
+     * 追加一条执行轨迹（含详情）。
+     *
+     * @param stage   阶段标识
+     * @param message 阶段说明
+     * @param details 阶段详情；可为 null
+     */
     public void addExecutionTrace(String stage, String message, Object details) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("stage", stage);

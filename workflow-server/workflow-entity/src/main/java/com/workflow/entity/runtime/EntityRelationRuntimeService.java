@@ -46,6 +46,12 @@ public class EntityRelationRuntimeService {
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityCodeGeneratorService codeGeneratorService;
 
+    /**
+     * 加载实体配置的所有关系定义。
+     *
+     * @param definition 实体定义
+     * @return 关系定义列表（无则返回空列表）
+     */
     public List<EntityRelation> loadRelations(EntityDefinition definition) {
         if (definition == null || definition.getId() == null) {
             return List.of();
@@ -54,6 +60,13 @@ public class EntityRelationRuntimeService {
         return relations != null ? relations : List.of();
     }
 
+    /**
+     * 从数据中剔除关系字段，返回仅含父表字段的数据副本。
+     *
+     * @param data       实体数据
+     * @param relations 关系定义列表
+     * @return 剔除关系字段后的数据副本
+     */
     public Map<String, Object> withoutRelationData(Map<String, Object> data, List<EntityRelation> relations) {
         if (data == null || data.isEmpty() || relations == null || relations.isEmpty()) {
             return data;
@@ -67,6 +80,13 @@ public class EntityRelationRuntimeService {
         return parentData;
     }
 
+    /**
+     * 从表单提交数据中剔除关系字段，兼容 data 子对象嵌套结构。
+     *
+     * @param formData 表单提交数据
+     * @param relations 关系定义列表
+     * @return 剔除关系字段后的表单数据副本
+     */
     public Map<String, Object> withoutRelationDataFromRequest(Map<String, Object> formData, List<EntityRelation> relations) {
         if (formData == null || formData.isEmpty()) {
             return formData;
@@ -83,6 +103,13 @@ public class EntityRelationRuntimeService {
         return parentFormData;
     }
 
+    /**
+     * 从数据中抽取关系字段取值。
+     *
+     * @param data       实体数据
+     * @param relations 关系定义列表
+     * @return 关系字段编码到取值的映射
+     */
     public Map<String, Object> extractRelationData(Map<String, Object> data, List<EntityRelation> relations) {
         Map<String, Object> result = new HashMap<>();
         if (data == null || data.isEmpty() || relations == null || relations.isEmpty()) {
@@ -97,6 +124,13 @@ public class EntityRelationRuntimeService {
         return result;
     }
 
+    /**
+     * 从表单提交数据中抽取关系字段取值，兼容 data 子对象嵌套结构。
+     *
+     * @param formData 表单提交数据
+     * @param relations 关系定义列表
+     * @return 关系字段编码到取值的映射
+     */
     public Map<String, Object> extractRelationDataFromRequest(Map<String, Object> formData, List<EntityRelation> relations) {
         if (formData == null) {
             return Map.of();
@@ -110,10 +144,23 @@ public class EntityRelationRuntimeService {
         return extractRelationData(formData, relations);
     }
 
+    /**
+     * 递归保存父记录下所有关系子数据：新增/更新传入行，删除未传入的旧行。
+     *
+     * @param parentId      父记录ID
+     * @param relations      关系定义列表
+     * @param relationData   关系字段取值（可含多级嵌套子数据）
+     */
     public void saveRelationData(String parentId, List<EntityRelation> relations, Map<String, Object> relationData) {
         saveRelationData(parentId, relations, relationData, 1, new HashSet<>());
     }
 
+    /**
+     * 递归加载实体数据 DTO 的所有关系子数据并回填到 data 中。
+     * 一对一关系填充单个对象，一对多关系填充列表。
+     *
+     * @param dto 实体数据 DTO
+     */
     public void loadRelationData(EntityDataDTO dto) {
         if (dto == null || dto.getId() == null || dto.getEntityCode() == null) {
             return;
@@ -128,6 +175,13 @@ public class EntityRelationRuntimeService {
         loadRelationData(definition, dto.getId(), dto.getData(), 1, new HashSet<>());
     }
 
+    /**
+     * 级联删除父记录下所有标记为级联删除的子记录（递归向下）。
+     *
+     * @param parentDefinition 父实体定义
+     * @param parentId          父记录ID
+     * @param physical          true-物理删除 false-逻辑删除
+     */
     public void cascadeDeleteRelations(EntityDefinition parentDefinition, String parentId, boolean physical) {
         cascadeDeleteRelations(parentDefinition, parentId, physical, 1, new HashSet<>());
     }

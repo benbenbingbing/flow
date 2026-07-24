@@ -12,8 +12,19 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 数据库 Schema 必需表与迁移版本守护测试。
+ *
+ * <p>验证基线迁移创建关键表、Flyway 版本号唯一且覆盖关键里程碑，
+ * 以及增量迁移(UI 配置、实体生命周期、配置迁移包等)创建所需的表与字段。</p>
+ */
 class SchemaRequiredTablesTest {
 
+    /**
+     * 基线迁移应创建角色菜单关联与节点表单表。
+     *
+     * <p>断言 V001 SQL 含 sys_role_menu 与 process_node_form 建表语句。</p>
+     */
     @Test
     void baselineMigrationCreatesTablesUsedByRoleMenuAndNodeFormMappers() throws Exception {
         Path migration = Path.of("src/main/resources/db/migration/V001__business_schema.sql");
@@ -28,6 +39,7 @@ class SchemaRequiredTablesTest {
                 "baseline migration must create process_node_form");
     }
 
+    /** 基线迁移应创建节点审批与知会记录表 */
     @Test
     void baselineMigrationCreatesTablesUsedByApprovalAndCcMappers() throws Exception {
         Path migration = Path.of("src/main/resources/db/migration/V001__business_schema.sql");
@@ -42,6 +54,7 @@ class SchemaRequiredTablesTest {
                 "baseline migration must create process_cc_record");
     }
 
+    /** 基线迁移应创建实体关系表 */
     @Test
     void baselineMigrationCreatesEntityRelationTable() throws Exception {
         Path migration = Path.of("src/main/resources/db/migration/V001__business_schema.sql");
@@ -54,6 +67,12 @@ class SchemaRequiredTablesTest {
                 "baseline migration must create entity_relation");
     }
 
+    /**
+     * 命名隔离迁移应创建最终的运行时表名。
+     *
+     * <p>断言 V001 创建 process_definition_config 表，
+     * V017 将 entity_data 重命名为 runtime_entity_record、flow_action 重命名为 process_action。</p>
+     */
     @Test
     void namingIsolationMigrationCreatesFinalRuntimeTableNames() throws Exception {
         Path v001 = Path.of("src/main/resources/db/migration/V001__business_schema.sql");
@@ -72,6 +91,11 @@ class SchemaRequiredTablesTest {
                 "V017 must rename flow_action to process_action");
     }
 
+    /**
+     * Flyway 迁移版本号应唯一且覆盖关键里程碑。
+     *
+     * <p>扫描迁移目录提取版本号，断言无重复且含 001-031 等关键版本。</p>
+     */
     @Test
     void flywayMigrationVersionsAreUnique() throws Exception {
         Pattern versionPattern = Pattern.compile("^V(\\d{3})__.+\\.sql$");
@@ -103,6 +127,11 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("031"), "UI extension registry migration must be V031");
     }
 
+    /**
+     * V018 迁移应创建作用域表与规范化菜单字段。
+     *
+     * <p>断言 SQL 含 5 张作用域表建表语句、sys_menu 字段规范化与删除旧权限表。</p>
+     */
     @Test
     void entityListRuntimeMigrationCreatesScopeTablesAndCanonicalMenuFields() throws Exception {
         Path migration = Path.of(
@@ -123,6 +152,12 @@ class SchemaRequiredTablesTest {
         assertTrue(sql.contains("DROP TABLE IF EXISTS entity_list_permission"));
     }
 
+    /**
+     * V011 配置迁移 Schema 应创建包与基线表并初始化权限。
+     *
+     * <p>断言 SQL 含 7 张配置迁移表建表语句与 7 项权限种子数据，
+     * 且 V012 补充迁移含 list 权限资源与授权语句。</p>
+     */
     @Test
     void configMigrationSchemaCreatesPackageAndBaselineTables() throws Exception {
         Path migration = Path.of("src/main/resources/db/migration/V011__add_config_migration.sql");
@@ -161,6 +196,12 @@ class SchemaRequiredTablesTest {
                 "V012 must grant config-migration:list");
     }
 
+    /**
+     * 实体生命周期与系统目录迁移应存在且含关键字段。
+     *
+     * <p>断言 V019 含 lifecycle_mode、删除 enable_process 列与 entity_publish_history 表，
+     * V020 含 storage_mode、系统表匹配与 information_schema 查询。</p>
+     */
     @Test
     void entityLifecycleAndSystemCatalogMigrationsExist() throws Exception {
         String lifecycleSql = Files.readString(Path.of(
@@ -177,6 +218,12 @@ class SchemaRequiredTablesTest {
         assertTrue(storageSql.contains("information_schema.COLUMNS"));
     }
 
+    /**
+     * V030 增量 UI 配置迁移应创建必需表与字段。
+     *
+     * <p>断言 SQL 含 5 张 UI 配置表建表语句、revision 等关键列、
+     * 以及 snapshot_document LONGTEXT 与 content_hash 列。</p>
+     */
     @Test
     void incrementalUiConfigurationMigrationCreatesRequiredTables() throws Exception {
         Path migration = Path.of(
@@ -204,6 +251,12 @@ class SchemaRequiredTablesTest {
         assertTrue(sql.contains("content_hash varchar(64) NOT NULL"));
     }
 
+    /**
+     * V031 UI 扩展注册表迁移应创建清单表与版本绑定。
+     *
+     * <p>断言 SQL 含 ui_extension_definition 建表语句、5 个版本相关列，
+     * 以及唯一键约束(extension_type, extension_key, version, deleted)。</p>
+     */
     @Test
     void uiExtensionRegistryMigrationCreatesManifestAndVersionBindings()
             throws Exception {

@@ -12,8 +12,14 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * 模板列表字段数据提供者测试。
+ *
+ * <p>被测对象：{@link TemplateListFieldDataProvider}，覆盖纯模板字段组合而不执行脚本的场景。
+ */
 class TemplateListFieldDataProviderTest {
 
+    /** 测试纯模板字段组合不执行脚本：验证按模板渲染出 summary 扩展字段值 */
     @Test
     void composesFieldsWithoutExecutingScripts() {
         TemplateListFieldDataProvider provider = new TemplateListFieldDataProvider(new ObjectMapper());

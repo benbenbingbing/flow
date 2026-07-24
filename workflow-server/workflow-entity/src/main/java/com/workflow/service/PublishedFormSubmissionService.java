@@ -16,6 +16,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 已发布表单提交处理服务，在提交前应用表单默认值与 BEFORE_SUBMIT 数据源绑定。
+ *
+ * <p>解析实体默认表单或指定发布版本，执行字段默认值、计算和前置数据源绑定，
+ * 确保提交数据符合发布版本约束，并通过执行上下文保证绑定幂等。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class PublishedFormSubmissionService {
@@ -28,6 +34,15 @@ public class PublishedFormSubmissionService {
     private final UiDataSourceService dataSourceService;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 应用实体默认表单的默认值与前置数据源（使用独立执行上下文）。
+     *
+     * @param entityCode    实体编码
+     * @param recordId      数据记录ID，新增时为 null
+     * @param mode          提交模式，如 create、edit
+     * @param submittedData 提交的表单数据
+     * @return 处理后的表单数据
+     */
     public Map<String, Object> applyDefaultForm(
             String entityCode,
             String recordId,
@@ -42,6 +57,17 @@ public class PublishedFormSubmissionService {
                         "ENTITY_" + normalizeOperation(mode)));
     }
 
+    /**
+     * 应用实体默认表单的默认值与前置数据源（使用指定执行上下文）。
+     *
+     * @param entityCode       实体编码
+     * @param recordId         数据记录ID，新增时为 null
+     * @param mode             提交模式
+     * @param submittedData    提交的表单数据
+     * @param executionContext 提交执行上下文，用于幂等键生成
+     * @return 处理后的表单数据
+     * @throws IllegalArgumentException 实体不存在时抛出
+     */
     public Map<String, Object> applyDefaultForm(
             String entityCode,
             String recordId,
@@ -68,6 +94,16 @@ public class PublishedFormSubmissionService {
                         executionContext);
     }
 
+    /**
+     * 应用指定表单的默认值与前置数据源（使用独立执行上下文，取当前激活发布版本）。
+     *
+     * @param formId       表单ID
+     * @param entityCode   实体编码
+     * @param recordId     数据记录ID
+     * @param mode         提交模式
+     * @param submittedData 提交的表单数据
+     * @return 处理后的表单数据
+     */
     public Map<String, Object> applyForm(
             String formId,
             String entityCode,
@@ -84,6 +120,17 @@ public class PublishedFormSubmissionService {
                         "FORM_" + normalizeOperation(mode)));
     }
 
+    /**
+     * 应用指定表单的默认值与前置数据源（使用指定执行上下文，取当前激活发布版本）。
+     *
+     * @param formId           表单ID
+     * @param entityCode       实体编码
+     * @param recordId         数据记录ID
+     * @param mode             提交模式
+     * @param submittedData    提交的表单数据
+     * @param executionContext 提交执行上下文
+     * @return 处理后的表单数据
+     */
     public Map<String, Object> applyForm(
             String formId,
             String entityCode,
@@ -102,6 +149,20 @@ public class PublishedFormSubmissionService {
                 executionContext);
     }
 
+    /**
+     * 应用指定发布版本表单的默认值与前置数据源（支持版本号一致性校验）。
+     *
+     * @param formId           表单ID
+     * @param releaseId       发布记录ID，为空取当前激活版本
+     * @param releaseVersion  发布版本号，为空跳过校验
+     * @param entityCode      实体编码
+     * @param recordId        数据记录ID
+     * @param mode            提交模式
+     * @param submittedData   提交的表单数据
+     * @param executionContext 提交执行上下文
+     * @return 处理后的表单数据
+     * @throws IllegalArgumentException 表单或发布版本不存在时抛出
+     */
     public Map<String, Object> applyForm(
             String formId,
             String releaseId,

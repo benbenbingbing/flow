@@ -4,8 +4,20 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 流程动作 BPMN 注入器单元测试。
+ *
+ * <p>被测对象为 {@link ProcessFlowActionBpmnInjector}，验证注入时移除遗留的
+ * 连线执行监听器(sequenceFlowExecutionListener)，以及无动作时不改动 BPMN。</p>
+ */
 class ProcessFlowActionBpmnInjectorTest {
 
+    /**
+     * 注入时应移除遗留的 sequenceFlowExecutionListener 但保留自定义监听器。
+     *
+     * <p>场景：连线含两个执行监听器，断言输出不含 sequenceFlowExecutionListener，
+     * 仍包含 customListener。</p>
+     */
     @Test
     void shouldRemoveLegacyExecutionListener() {
         ProcessFlowActionBpmnInjector injector = new ProcessFlowActionBpmnInjector();
@@ -32,6 +44,7 @@ class ProcessFlowActionBpmnInjectorTest {
         assertTrue(result.contains("delegateExpression=\"${customListener}\""));
     }
 
+    /** 无动作时注入应原样返回 BPMN XML，不做任何改动 */
     @Test
     void shouldSkipInjectionWhenNoActions() {
         ProcessFlowActionBpmnInjector injector = new ProcessFlowActionBpmnInjector();

@@ -138,6 +138,12 @@ public class SysMenuController {
         return Result.success(menuMapper.selectPermsByEntityCode(entityCode));
     }
 
+    /**
+     * 查询实体可用的按钮权限选项列表。GET /api/system/menu/entity-permission-options
+     *
+     * @param entityCode 实体编码
+     * @return 权限选项列表
+     */
     @GetMapping("/entity-permission-options")
     public Result<List<EntityPermissionOptionDTO>> getEntityPermissionOptions(@RequestParam String entityCode) {
         return Result.success(entityPermissionCatalogService.getOptions(entityCode));

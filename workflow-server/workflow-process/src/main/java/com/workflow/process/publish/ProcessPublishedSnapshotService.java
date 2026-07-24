@@ -16,16 +16,31 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 流程发布快照读取。
+ * 流程发布快照读取服务
+ * 负责从流程版本历史中读取发布时固化的节点表单绑定快照，
+ * 用于运行时按流程定义或流程Key获取节点对应的表单配置。
  */
 @Service
 @RequiredArgsConstructor
 public class ProcessPublishedSnapshotService {
 
+    /** 流程版本历史 Mapper */
     private final ProcessVersionHistoryMapper versionHistoryMapper;
+    /** JSON 序列化工具 */
     private final ObjectMapper objectMapper;
+    /** Flowable 仓库服务，用于查询流程定义 */
     private final RepositoryService repositoryService;
 
+    /**
+     * 根据流程Key获取指定节点的表单绑定列表。
+     * <p>
+     * 取该流程Key的最新发布版本，从快照中过滤出目标节点的表单绑定。
+     *
+     * @param processKey 流程标识
+     * @param nodeId     节点ID
+     * @return 节点表单绑定列表（按排序号升序）
+     * @throws RuntimeException 当流程未发布时抛出
+     */
     @Transactional(readOnly = true)
     public List<ProcessNodeForm> getNodeForms(String processKey, String nodeId) {
         ProcessVersionHistory history = versionHistoryMapper.findLatestByProcessKey(processKey);
@@ -35,6 +50,17 @@ public class ProcessPublishedSnapshotService {
         return nodeForms(history, nodeId);
     }
 
+    /**
+     * 根据Flowable流程定义ID获取指定节点的表单绑定列表。
+     * <p>
+     * 通过流程定义ID定位部署ID，再由部署ID查找发布历史快照。
+     *
+     * @param processDefinitionId Flowable 流程定义ID
+     * @param nodeId              节点ID
+     * @return 节点表单绑定列表（按排序号升序）
+     * @throws IllegalArgumentException 当流程定义ID为空时抛出
+     * @throws RuntimeException         当 Flowable 流程定义或发布快照不存在时抛出
+     */
     @Transactional(readOnly = true)
     public List<ProcessNodeForm> getNodeFormsByProcessDefinitionId(
             String processDefinitionId,

@@ -3,8 +3,15 @@ package com.workflow.service;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * BPMN XML 清理测试。
+ *
+ * <p>被测逻辑：流程发布时对 BPMN XML 中重复 camunda/flowable 属性的清理与转换，
+ * 以本地复现方法模拟实际清理逻辑。
+ */
 public class BpmnXmlCleanupTest {
 
+    /** 测试清理重复的 assignee 属性：验证 camunda:assignee 被移除且 flowable:assignee 仅保留每任务一个 */
     @Test
     public void testDuplicateAssigneeCleanup() {
         // 测试数据：同时有 camunda:assignee 和 flowable:assignee
@@ -41,6 +48,7 @@ public class BpmnXmlCleanupTest {
         System.out.println(result);
     }
     
+    /** 测试仅有 camunda:assignee 时转换为 flowable:assignee：验证转换后含 flowable:assignee 且无 camunda:assignee */
     @Test
     public void testOnlyCamundaAssignee() {
         // 测试数据：只有 camunda:assignee，没有 flowable:assignee

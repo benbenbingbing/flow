@@ -11,8 +11,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 动态表多值表服务测试。
+ *
+ * <p>被测对象：{@link DynamicTableService}，覆盖每个业务实体创建一张中性多值表的场景。
+ */
 class DynamicTableServiceMultiValueTest {
 
+    /** 测试每个业务实体创建一张中性多值表：验证建表 SQL 含目标实体/记录字段与 unicode 校对，且不含 value_type/dict_code */
     @Test
     void createsOneNeutralMultiTablePerBusinessEntity() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);

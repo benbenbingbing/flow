@@ -79,6 +79,14 @@ public class ProcessInstanceService {
         return getBpmnXmlByInstanceId(processInstanceId);
     }
 
+    /**
+     * 触发流程中处于等待状态的接收任务（ReceiveTask）继续向下流转。
+     *
+     * @param processInstanceId 流程实例ID
+     * @param request           触发请求（executionId/activityId 二选一定位，可校验消息标识）
+     * @return 被触发的执行实例ID
+     * @throws IllegalArgumentException 流程实例不存在、未处于接收任务节点或消息标识不匹配时抛出
+     */
     public String triggerReceiveTask(
             String processInstanceId,
             ReceiveTaskTriggerRequest request) {
@@ -107,6 +115,16 @@ public class ProcessInstanceService {
         return execution.getId();
     }
 
+    /**
+     * 解析接收任务对应的执行实例。
+     *
+     * <p>优先使用 executionId；未提供时按 activityId 定位，存在多个时要求显式指定 executionId。</p>
+     *
+     * @param processInstanceId 流程实例ID
+     * @param request          触发请求
+     * @return 命中的执行实例
+     * @throws IllegalArgumentException 执行实例不存在、不属于当前流程或存在多个时抛出
+     */
     private Execution resolveReceiveExecution(
             String processInstanceId,
             ReceiveTaskTriggerRequest request) {
@@ -135,6 +153,15 @@ public class ProcessInstanceService {
         return executions.get(0);
     }
 
+    /**
+     * 校验接收任务配置的期望消息标识与请求携带的是否一致。
+     *
+     * <p>读取节点扩展属性 receiveConfig 中的 messageRef；未配置或为空时不校验。</p>
+     *
+     * @param flowElement 接收任务节点
+     * @param messageRef  请求携带的消息标识
+     * @throws IllegalArgumentException 消息标识不匹配或配置无效时抛出
+     */
     private void validateReceiveMessage(
             org.flowable.bpmn.model.FlowElement flowElement,
             String messageRef) {

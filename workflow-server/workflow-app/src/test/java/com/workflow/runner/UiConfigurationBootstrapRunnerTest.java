@@ -30,8 +30,20 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * UI 配置引导启动 Runner 单元测试。
+ *
+ * <p>被测对象为 {@link UiConfigurationBootstrapRunner}，验证启动时补全缺失的历史表单节点、
+ * 初始发布失败不中断启动、孤立 TAB 节点自动修复并发布，以及含用户草稿变更时拒绝自动发布。</p>
+ */
 class UiConfigurationBootstrapRunnerTest {
 
+    /**
+     * 部分迁移后应仅补全缺失的历史表单节点，不重新发布。
+     *
+     * <p>场景：表单已有 amount 节点，旧字段含 amount 与 remark，
+     * 断言 replaceByDiff 被调用且 publish 未被调用。</p>
+     */
     @Test
     void fillsOnlyMissingLegacyNodesWhenMigrationWasPartial() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -77,6 +89,11 @@ class UiConfigurationBootstrapRunnerTest {
                 org.mockito.ArgumentMatchers.anyString());
     }
 
+    /**
+     * 初始发布创建失败时启动应继续进行，不中断应用。
+     *
+     * <p>场景：无活动发布版本且 publish 抛出异常，断言 publish 被调用但 run 不抛异常。</p>
+     */
     @Test
     void continuesStartupWhenInitialReleaseCannotBeCreated() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -117,6 +134,13 @@ class UiConfigurationBootstrapRunnerTest {
                 org.mockito.ArgumentMatchers.anyString());
     }
 
+    /**
+     * 孤立 TAB 节点修复后应发布新版本(仅含允许的修复差异)。
+     *
+     * <p>场景：孤立 tab-1 的 parentId 缺失，草稿快照已修正 parentId 为 tab-set-1，
+     * 断言 updateById 被调用且修复后 parentId、revision、updatedAt 正确，
+     * validateTree 与 publish 被调用。</p>
+     */
     @Test
     void repairsOrphanTabAndPublishesWhenDraftOnlyContainsAllowedRepairDifferences() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -204,6 +228,12 @@ class UiConfigurationBootstrapRunnerTest {
                 "升级自动修复历史孤立TAB节点");
     }
 
+    /**
+     * 孤立 TAB 修复涉及用户未发布的草稿变更时应失败且不发布。
+     *
+     * <p>场景：草稿快照中 tab-1 的内容与活动快照不同(用户有新变更)，
+     * 断言 validateTree 被调用但 publish 未被调用。</p>
+     */
     @Test
     void failsStartupWithoutPublishingWhenOrphanTabRepairWouldIncludeUserDraftChanges() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -283,6 +313,11 @@ class UiConfigurationBootstrapRunnerTest {
                 org.mockito.ArgumentMatchers.anyString());
     }
 
+    /**
+     * 构造直接执行的事务执行器 mock，不启动真实事务。
+     *
+     * @return 同步执行 Supplier 的事务执行器
+     */
     @SuppressWarnings("unchecked")
     private static UiConfigurationBootstrapTransactionExecutor
     directTransactionExecutor() {
@@ -293,6 +328,13 @@ class UiConfigurationBootstrapRunnerTest {
         return executor;
     }
 
+    /**
+     * 构造测试用旧版表单字段对象。
+     *
+     * @param id 字段 ID
+     * @param fieldCode 字段编码
+     * @return 已填充基础字段的 EntityFormField 实例
+     */
     private static EntityFormField legacyField(String id, String fieldCode) {
         EntityFormField field = new EntityFormField();
         field.setId(id);
@@ -304,6 +346,16 @@ class UiConfigurationBootstrapRunnerTest {
         return field;
     }
 
+    /**
+     * 构造测试用表单节点对象。
+     *
+     * @param id 节点 ID
+     * @param parentId 父节点 ID
+     * @param nodeType 节点类型
+     * @param orderKey 排序键
+     * @param revision 版本号
+     * @return 已填充字段的 EntityFormNode 实例
+     */
     private static EntityFormNode formNode(
             String id,
             String parentId,
@@ -321,6 +373,12 @@ class UiConfigurationBootstrapRunnerTest {
         return node;
     }
 
+    /**
+     * 构造表单快照文档，含 schemaVersion、configType、form、nodes 与 legacyFields。
+     *
+     * @param nodes 节点列表
+     * @return 快照文档 Map
+     */
     private static Map<String, Object> formSnapshot(
             List<Map<String, Object>> nodes) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
@@ -332,6 +390,18 @@ class UiConfigurationBootstrapRunnerTest {
         return snapshot;
     }
 
+    /**
+     * 构造快照中的单个节点 Map。
+     *
+     * @param id 节点 ID
+     * @param parentId 父节点 ID
+     * @param nodeType 节点类型
+     * @param orderKey 排序键
+     * @param revision 版本号
+     * @param updateTime 更新时间
+     * @param propsDocument 属性文档 JSON
+     * @return 节点属性 Map
+     */
     private static Map<String, Object> snapshotNode(
             String id,
             String parentId,

@@ -14,10 +14,15 @@ import com.workflow.dto.permission.EntityActionCapabilityDTO;
  */
 @Data
 public class EntityDataDTO {
+    /** 数据 ID */
     private String id;
+    /** 实体编码 */
     private String entityCode;
+    /** 实体名称 */
     private String entityName;
+    /** 数据编号（业务编号） */
     private String dataNo;
+    /** 数据标题 */
     private String title;
     private String name;                    // 数据名称（系统标准字段）
     private String code;                    // 数据编码（系统标准字段）

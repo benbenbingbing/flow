@@ -12,11 +12,16 @@ import java.util.List;
 
 /**
  * 用户实体
+ * <p>
+ * 对应 sys_user 表，存储用户名、昵称、密码、状态及组织/部门归属等，
+ * 用户名唯一。非数据库字段（roles、roleIds、orgName、deptName）用于回显。
+ * </p>
  */
 @Data
 @TableName("sys_user")
 public class SysUser {
     
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

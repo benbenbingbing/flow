@@ -25,8 +25,16 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 已发布表单提交服务测试。
+ *
+ * <p>被测对象：{@link PublishedFormSubmissionService}，覆盖节点级 beforeSubmit 执行与响应合并、
+ * 缺失发布节点时回退到遗留字段、同一业务提交复用绑定幂等键、数据源失败保持 fail-closed、
+ * 钉版发布精确执行、表单级 beforeSubmit 绑定等场景。
+ */
 class PublishedFormSubmissionServiceTest {
 
+    /** 测试节点 beforeSubmit 恰好执行一次并合并响应：验证输入映射、输出映射、幂等键与绑定 owner 符合预期 */
     @Test
     void executesNodeBeforeSubmitOnceAndMergesResponse() {
         UiConfigReleaseService releaseService =
@@ -129,6 +137,7 @@ class PublishedFormSubmissionServiceTest {
                         "bindingOwner"));
     }
 
+    /** 测试发布节点缺失时回退到遗留字段绑定：验证按字段级 sourceId 执行并合并结果 */
     @Test
     void fallsBackToLegacyFieldsWhenPublishedNodesAreAbsent() {
         UiConfigReleaseService releaseService =
@@ -180,6 +189,7 @@ class PublishedFormSubmissionServiceTest {
                         org.mockito.ArgumentMatchers.any());
     }
 
+    /** 测试同一业务提交复用绑定幂等键：验证重试时两节点的幂等键与首次一致且节点间互不相同 */
     @Test
     void reusesBindingIdempotencyKeyForSameBusinessSubmission() {
         UiConfigReleaseService releaseService =
@@ -259,6 +269,7 @@ class PublishedFormSubmissionServiceTest {
                 firstAttemptSecondBinding);
     }
 
+    /** 测试数据源失败保持 fail-closed：验证执行抛异常时整体抛出且不吞掉异常 */
     @Test
     void preservesFailClosedDataSourceFailure() {
         UiConfigReleaseService releaseService =
@@ -309,6 +320,7 @@ class PublishedFormSubmissionServiceTest {
                 exception.getMessage());
     }
 
+    /** 测试解析并执行确切的钉版发布：验证执行的 releaseId/version 与 serverPinnedRelease 标志正确 */
     @Test
     void resolvesAndExecutesTheExactPinnedRelease() {
         UiConfigReleaseService releaseService =
@@ -369,6 +381,7 @@ class PublishedFormSubmissionServiceTest {
         assertTrue(captor.getValue().isServerPinnedRelease());
     }
 
+    /** 测试执行表单级 beforeSubmit 绑定：验证表单级数据源被触发且绑定 owner 为 form:form-1 */
     @Test
     void executesFormLevelBeforeSubmitBinding() {
         UiConfigReleaseService releaseService =
@@ -431,6 +444,7 @@ class PublishedFormSubmissionServiceTest {
                         "bindingOwner"));
     }
 
+    /** 构造带 beforeSubmit 数据源绑定的节点 */
     private EntityFormNode node(
             String id,
             String sourceId) {
@@ -442,6 +456,7 @@ class PublishedFormSubmissionServiceTest {
         return node;
     }
 
+    /** 构造携带 traceKey 的表单提交执行上下文 */
     private FormSubmissionExecutionContext executionContext(
             String traceKey) {
         return new FormSubmissionExecutionContext(
@@ -452,6 +467,7 @@ class PublishedFormSubmissionServiceTest {
                         "record-1"));
     }
 
+    /** 构造非钉版的已解析表单发布 */
     private ResolvedEntityFormRelease resolution(
             EntityForm form,
             String releaseId,
@@ -462,6 +478,7 @@ class PublishedFormSubmissionServiceTest {
                 releaseVersion);
     }
 
+    /** 构造指定钉版标志的已解析表单发布 */
     private ResolvedEntityFormRelease resolution(
             EntityForm form,
             String releaseId,
@@ -474,6 +491,7 @@ class PublishedFormSubmissionServiceTest {
                 pinned);
     }
 
+    /** 从数据源执行请求中提取幂等键 */
     private String idempotencyKey(
             UiDataSourceExecuteRequest request) {
         return String.valueOf(

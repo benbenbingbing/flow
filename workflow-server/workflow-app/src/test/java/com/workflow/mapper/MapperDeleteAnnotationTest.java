@@ -8,8 +8,19 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mapper DELETE 语句注解守护测试。
+ *
+ * <p>扫描全部 Mapper 接口，验证 DELETE SQL 使用 @Delete 注解而非 @Select，
+ * 防止误用查询注解执行删除操作。</p>
+ */
 class MapperDeleteAnnotationTest {
 
+    /**
+     * 所有 Mapper 中的 DELETE 语句应使用 @Delete 注解。
+     *
+     * <p>遍历 mapper 目录下所有 *Mapper.java 文件，断言无文件含 @Select("DELETE ...")。</p>
+     */
     @Test
     void deleteStatementsUseDeleteAnnotation() throws Exception {
         String offenders;

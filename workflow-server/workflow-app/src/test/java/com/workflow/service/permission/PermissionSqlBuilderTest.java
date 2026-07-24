@@ -21,13 +21,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 权限 SQL 构建器测试。
+ *
+ * <p>被测对象：{@link PermissionSqlBuilder}，覆盖非法字段名拒绝、遗留个人规则转义与状态限制、
+ * 嵌套结构化条件编译、流程状态与部门关系编译、自定义过滤提供者扩展、遗留自定义 SQL 拒绝、
+ * 缺失/未知结构化值拒绝、未知状态码与标量 IN 操作拒绝等场景。
+ */
 class PermissionSqlBuilderTest {
 
     private final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
     private final EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
     private final EntityStatusMapper statusMapper = mock(EntityStatusMapper.class);
+    /** 被测 SQL 构建器 */
     private PermissionSqlBuilder builder;
 
+    /** 装配构建器并预置实体定义与字段的 Mock 返回值 */
     @BeforeEach
     void setUp() {
         builder = new PermissionSqlBuilder(
@@ -45,6 +54,7 @@ class PermissionSqlBuilderTest {
         when(fieldMapper.findByEntityId("entity-1")).thenReturn(List.of(amount));
     }
 
+    /** 测试构建过滤 SQL 拒绝非法字段名：验证含 SQL 注入的字段映射被拒绝并返回 1=0 */
     @Test
     void buildFilterSqlRejectsInvalidFieldName() {
         SysUser user = user("u'1", "alice", "dept-1");
@@ -59,6 +69,7 @@ class PermissionSqlBuilderTest {
         assertEquals("1=0", sql);
     }
 
+    /** 测试遗留个人规则转义值并追加状态限制：验证 SQL 中值被转义且含状态 IN 条件 */
     @Test
     void buildLegacyPersonalRuleEscapesValuesAndAddsStatusLimit() {
         SysUser user = user("u'1", null, "dept-1");
@@ -76,6 +87,7 @@ class PermissionSqlBuilderTest {
                 sql);
     }
 
+    /** 测试编译跨用户、状态与自定义字段的嵌套结构化条件：验证 SQL 含 create_by、amount、status 条件并用 AND 连接 */
     @Test
     void compilesNestedStructuredConditionsAcrossUserStatusAndCustomFields() {
         EntityStatus processing = status("PENDING_REVIEW", "PROCESSING");
@@ -100,6 +112,7 @@ class PermissionSqlBuilderTest {
         assertTrue(sql.contains(" AND "));
     }
 
+    /** 测试编译流程状态与部门关系：验证 SQL 含 dept_id、process_end_time 与状态 IN 条件 */
     @Test
     void compilesProcessStateAndDepartmentRelations() {
         EntityStatus withdrawn = status("WITHDRAWN", "WITHDRAWN");
@@ -125,6 +138,7 @@ class PermissionSqlBuilderTest {
         assertTrue(sql.contains("status IN ('WITHDRAWN','TERMINATED')"));
     }
 
+    /** 测试自定义过滤提供者扩展校验与编译：验证自定义类型经提供者转为 SQL 且通过校验 */
     @Test
     void validatesCustomFilterProviderExtension() {
         EntityDataPermissionFilterProvider provider = new EntityDataPermissionFilterProvider() {
@@ -161,6 +175,7 @@ class PermissionSqlBuilderTest {
                         user("u1", "alice", "dept-1")));
     }
 
+    /** 测试拒绝遗留自定义 SQL 与表达式：验证 CUSTOM_SQL 类型抛出 IllegalArgumentException */
     @Test
     void rejectsLegacyCustomSqlAndExpression() {
         FilterConfigDTO filter = new FilterConfigDTO();
@@ -172,6 +187,7 @@ class PermissionSqlBuilderTest {
                 () -> builder.validateFilter("expense", filter));
     }
 
+    /** 测试拒绝缺失与未知结构化值：验证缺少比较值与未知流程状态值均抛出 IllegalArgumentException */
     @Test
     void rejectsMissingAndUnknownStructuredValues() {
         FilterConfigDTO missingValue = new FilterConfigDTO();
@@ -197,6 +213,7 @@ class PermissionSqlBuilderTest {
         assertTrue(unknown.getMessage().contains("不支持的值"));
     }
 
+    /** 测试拒绝未知状态码与标量 IN 操作：验证未知状态码抛"状态编码不存在"，标量 IN 抛"必须提供多个值" */
     @Test
     void rejectsUnknownStatusCodeAndScalarInOperator() {
         when(statusMapper.findByEntityAndCode("expense", "MISSING"))
@@ -228,6 +245,7 @@ class PermissionSqlBuilderTest {
         assertTrue(invalidIn.getMessage().contains("必须提供多个值"));
     }
 
+    /** 构造测试用户 */
     private SysUser user(String id, String username, String deptId) {
         SysUser user = new SysUser();
         user.setId(id);
@@ -236,6 +254,7 @@ class PermissionSqlBuilderTest {
         return user;
     }
 
+    /** 构造带状态码与分类的实体状态对象 */
     private EntityStatus status(String code, String category) {
         EntityStatus status = new EntityStatus();
         status.setStatusCode(code);
@@ -243,6 +262,7 @@ class PermissionSqlBuilderTest {
         return status;
     }
 
+    /** 构造逻辑分组节点（AND/OR），含子节点 */
     private EntityActionRuleDTO.RuleNode group(
             String logic,
             EntityActionRuleDTO.RuleNode... children) {
@@ -253,6 +273,7 @@ class PermissionSqlBuilderTest {
         return node;
     }
 
+    /** 构造关系节点（如 CURRENT_USER_IS_CREATOR） */
     private EntityActionRuleDTO.RuleNode relation(String relation) {
         EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
         node.setType("RELATION");
@@ -260,6 +281,7 @@ class PermissionSqlBuilderTest {
         return node;
     }
 
+    /** 构造带字段、操作符与值的比较条件节点 */
     private EntityActionRuleDTO.RuleNode condition(
             String type,
             String field,

@@ -14,6 +14,7 @@ import java.util.List;
 @TableName("entity_definition")
 public class EntityDefinition {
     
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
@@ -60,9 +61,11 @@ public class EntityDefinition {
     @TableField("storage_mode")
     private StorageMode storageMode;
 
+    /** 是否启用团队可见性 */
     @TableField("team_visibility_enabled")
     private Boolean teamVisibilityEnabled;
 
+    /** 团队可见性级别 */
     @TableField("team_visibility_level")
     private TeamVisibilityLevel teamVisibilityLevel;
     
@@ -84,6 +87,7 @@ public class EntityDefinition {
     @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
     
+    /** 创建人ID */
     @TableField("created_by")
     private String createdBy;
     
@@ -94,22 +98,34 @@ public class EntityDefinition {
     private List<EntityField> fields;
     
     public enum Status {
-        DRAFT, PUBLISHED, DISABLED
+        /** 草稿 */
+        DRAFT,
+        /** 已发布 */
+        PUBLISHED,
+        /** 已停用 */
+        DISABLED
     }
 
     public enum LifecycleMode {
+        /** 独立模式，不绑定流程 */
         STANDALONE,
+        /** 工作流模式，绑定流程驱动 */
         WORKFLOW
     }
 
     public enum StorageMode {
+        /** 动态表存储（运行时按实体生成业务表） */
         DYNAMIC,
+        /** 系统表存储（使用固定系统表） */
         SYSTEM
     }
 
     public enum TeamVisibilityLevel {
+        /** 叠加：团队范围与其它范围结果取并集 */
         ADDITIVE,
+        /** 覆盖范围：用团队范围覆盖默认范围 */
         OVERRIDE_SCOPE,
+        /** 绝对：仅以团队范围为准 */
         ABSOLUTE
     }
 }

@@ -23,8 +23,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DeptIdDataFixRunner implements CommandLineRunner {
 
+    /** 数据源，用于直连执行 SQL 进行数据修复 */
     private final DataSource dataSource;
 
+    /**
+     * 应用启动时执行入口
+     *
+     * @param args 启动参数
+     * @throws Exception 执行过程中发生异常时抛出
+     */
     @Override
     public void run(String... args) throws Exception {
         try (Connection connection = dataSource.getConnection()) {
@@ -32,6 +39,15 @@ public class DeptIdDataFixRunner implements CommandLineRunner {
         }
     }
 
+    /**
+     * 为各实体数据表补充 dept_id 列并回填数据
+     * <p>
+     * 流程：读取实体定义 -> 逐表检查并新增 dept_id 列 -> 通过 submitter_id 关联 sys_user 回填 dept_id。
+     * </p>
+     *
+     * @param connection 数据库连接
+     * @throws SQLException 执行 SQL 发生异常时抛出
+     */
     private void fixDeptId(Connection connection) throws SQLException {
         // 1. 获取所有有效实体编码
         List<EntityTableRef> entities = new ArrayList<>();
@@ -96,9 +112,23 @@ public class DeptIdDataFixRunner implements CommandLineRunner {
         log.info("[DeptIdFix] 处理完成，共更新 {} 条记录", totalUpdated);
     }
 
+    /**
+     * 实体表引用记录（实体编码 + 物理表名）
+     *
+     * @param entityCode 实体编码
+     * @param tableName  物理表名
+     */
     private record EntityTableRef(String entityCode, String tableName) {
     }
 
+    /**
+     * 检查数据表是否存在
+     *
+     * @param connection 数据库连接
+     * @param tableName  物理表名
+     * @return 表存在返回 true，否则 false
+     * @throws SQLException 执行 SQL 发生异常时抛出
+     */
     private boolean tableExists(Connection connection, String tableName) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?")) {
@@ -108,6 +138,15 @@ public class DeptIdDataFixRunner implements CommandLineRunner {
         }
     }
 
+    /**
+     * 检查表中指定列是否存在
+     *
+     * @param connection  数据库连接
+     * @param tableName   物理表名
+     * @param columnName  列名
+     * @return 列存在返回 true，否则 false
+     * @throws SQLException 执行 SQL 发生异常时抛出
+     */
     private boolean columnExists(Connection connection, String tableName, String columnName) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?")) {
@@ -118,6 +157,14 @@ public class DeptIdDataFixRunner implements CommandLineRunner {
         }
     }
 
+    /**
+     * 通过 submitter_id = sys_user.username 回填 dept_id
+     *
+     * @param connection 数据库连接
+     * @param tableName  物理表名
+     * @return 回填的记录数
+     * @throws SQLException 执行 SQL 发生异常时抛出
+     */
     private int updateDeptIdByUsername(Connection connection, String tableName) throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(
@@ -130,6 +177,14 @@ public class DeptIdDataFixRunner implements CommandLineRunner {
         }
     }
 
+    /**
+     * 通过 submitter_id = sys_user.id 回填 dept_id（username 关联未命中的兜底）
+     *
+     * @param connection 数据库连接
+     * @param tableName  物理表名
+     * @return 回填的记录数
+     * @throws SQLException 执行 SQL 发生异常时抛出
+     */
     private int updateDeptIdByUserId(Connection connection, String tableName) throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(

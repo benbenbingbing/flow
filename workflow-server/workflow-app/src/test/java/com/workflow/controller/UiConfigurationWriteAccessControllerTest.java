@@ -21,8 +21,18 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+/**
+ * UI 配置写操作权限控制器单元测试。
+ *
+ * <p>被测对象为 {@link EntityFormController}、{@link EntityListConfigController}、
+ * {@link UiExtensionDefinitionController}，验证写操作在权限拒绝时不会触达业务服务，
+ * 以及权限通过时访问校验先于业务调用执行。</p>
+ */
 class UiConfigurationWriteAccessControllerTest {
 
+    /**
+     * 表单写操作在权限拒绝时应抛出异常且不调用表单/元数据服务。
+     */
     @Test
     void formWriteStopsBeforeBusinessServiceWhenAccessIsDenied() {
         EntityFormService formService = mock(EntityFormService.class);
@@ -41,6 +51,9 @@ class UiConfigurationWriteAccessControllerTest {
         verifyNoInteractions(formService, metadataService);
     }
 
+    /**
+     * 表单写操作应先执行权限校验再调用业务保存，两者顺序固定。
+     */
     @Test
     void formWriteChecksAccessBeforeCallingBusinessService() {
         EntityFormService formService = mock(EntityFormService.class);
@@ -59,6 +72,9 @@ class UiConfigurationWriteAccessControllerTest {
         order.verify(formService).saveForm(form);
     }
 
+    /**
+     * 列表配置写操作在权限拒绝时应抛出异常且不调用列表服务。
+     */
     @Test
     void listWriteStopsBeforeBusinessServiceWhenAccessIsDenied() {
         EntityListConfigService listService =
@@ -76,6 +92,9 @@ class UiConfigurationWriteAccessControllerTest {
         verifyNoInteractions(listService);
     }
 
+    /**
+     * 列表配置写操作应先执行权限校验再调用业务保存，两者顺序固定。
+     */
     @Test
     void listWriteChecksAccessBeforeCallingBusinessService() {
         EntityListConfigService listService =
@@ -93,6 +112,9 @@ class UiConfigurationWriteAccessControllerTest {
         order.verify(listService).saveConfig(dto);
     }
 
+    /**
+     * 全局扩展写操作应先执行权限校验再调用扩展保存，两者顺序固定。
+     */
     @Test
     void globalExtensionWriteChecksAccessBeforeCallingBusinessService() {
         UiExtensionDefinitionService extensionService =
@@ -112,6 +134,9 @@ class UiConfigurationWriteAccessControllerTest {
         order.verify(extensionService).save(request);
     }
 
+    /**
+     * 全局扩展写操作在权限拒绝时应抛出异常且不调用扩展服务。
+     */
     @Test
     void globalExtensionWriteStopsBeforeBusinessServiceWhenAccessIsDenied() {
         UiExtensionDefinitionService extensionService =
@@ -131,6 +156,13 @@ class UiConfigurationWriteAccessControllerTest {
         verifyNoInteractions(extensionService);
     }
 
+    /**
+     * 构造列表配置控制器实例，注入列表服务与访问服务，其余依赖使用 mock。
+     *
+     * @param listService 列表配置业务服务
+     * @param accessService UI 配置访问权限服务
+     * @return 已组装的列表配置控制器
+     */
     private EntityListConfigController listController(
             EntityListConfigService listService,
             UiConfigurationAccessService accessService) {

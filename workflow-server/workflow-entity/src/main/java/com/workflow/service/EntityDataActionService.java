@@ -30,6 +30,15 @@ public class EntityDataActionService {
     private final PublishedFormSubmissionService formSubmissionService;
     private final FormSubmissionTraceService formSubmissionTraceService;
 
+    /**
+     * 查询实体数据详情，前置校验列表查看按钮权限。
+     *
+     * @param entityCode 实体编码
+     * @param id         数据ID
+     * @param listKey    列表编码
+     * @return 可访问的实体数据 DTO
+     * @throws ForbiddenException 数据不可访问或缺少查看权限时抛出
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(String entityCode, String id, String listKey) {
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
@@ -37,6 +46,14 @@ public class EntityDataActionService {
         return row;
     }
 
+    /**
+     * 按流程实例ID查询可访问的实体数据详情。
+     *
+     * @param entityCode         实体编码
+     * @param processInstanceId 流程实例ID
+     * @param listKey           列表编码
+     * @return 实体数据 DTO
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetailByProcessInstance(
             String entityCode,
@@ -49,6 +66,14 @@ public class EntityDataActionService {
                 config == null ? null : config.getListKey());
     }
 
+    /**
+     * 新增实体数据，前置校验新增按钮权限并应用表单默认值。
+     *
+     * @param dto 实体数据 DTO，须携带实体编码
+     * @return 保存后的实体数据 DTO
+     * @throws IllegalArgumentException 实体编码为空时抛出
+     * @throws ForbiddenException        缺少新增权限时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO create(EntityDataDTO dto) {
         if (dto == null || !StringUtils.hasText(dto.getEntityCode())) {
@@ -73,6 +98,16 @@ public class EntityDataActionService {
         return dynamicService.save(dto);
     }
 
+    /**
+     * 修改实体数据，前置校验编辑按钮权限并应用表单默认值。
+     *
+     * @param entityCode 实体编码
+     * @param id         数据ID
+     * @param listKey    列表编码
+     * @param formData   表单数据
+     * @return 更新后的实体数据 DTO
+     * @throws ForbiddenException 数据不可访问或缺少编辑权限时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO update(
             String entityCode,
@@ -105,6 +140,14 @@ public class EntityDataActionService {
                 Map.of("data", safeData));
     }
 
+    /**
+     * 删除单条实体数据，前置校验删除按钮权限。
+     *
+     * @param entityCode 实体编码
+     * @param id         数据ID
+     * @param listKey    列表编码
+     * @throws ForbiddenException 数据不可访问或缺少删除权限时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String entityCode, String id, String listKey) {
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
@@ -112,6 +155,15 @@ public class EntityDataActionService {
         dynamicService.delete(entityCode, id);
     }
 
+    /**
+     * 批量删除实体数据，逐条校验批量删除按钮权限，任一不可用则整体拒绝。
+     *
+     * @param entityCode 实体编码
+     * @param ids        待删除数据ID列表
+     * @param listKey    列表编码
+     * @throws IllegalArgumentException 未选择数据时抛出
+     * @throws ForbiddenException       存在不可删除数据时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void batchDelete(String entityCode, List<String> ids, String listKey) {
         if (ids == null || ids.isEmpty()) {

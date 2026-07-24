@@ -32,8 +32,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程详情运行时服务单元测试。
+ *
+ * <p>被测对象为 {@link ProcessDetailRuntimeService}，验证运行中流程的详情构建：
+ * 含状态、流程名、当前节点、历史任务列表与节点处理人映射。</p>
+ */
 class ProcessDetailRuntimeServiceTest {
 
+    /**
+     * 查询运行中流程详情应包含运行状态、流程名、当前节点与历史记录。
+     *
+     * <p>场景：mock 运行实例、流程定义、活动执行、已完成与活动任务，
+     * 断言详情含状态 RUNNING、流程名、当前节点 task-1，
+     * 历史含"流程发起"与"审批"两条记录，处理人映射含管理员。</p>
+     */
     @Test
     void getProcessDetailBuildsRunningDetailAndHistory() {
         Fixture fixture = new Fixture();
@@ -60,6 +73,7 @@ class ProcessDetailRuntimeServiceTest {
         assertEquals("processing", detail.getNodeAssigneeMap().get("task-1").getStatus());
     }
 
+    /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
     private static class Fixture {
         final RuntimeService runtimeService = mock(RuntimeService.class);
         final HistoryService historyService = mock(HistoryService.class);
@@ -78,6 +92,7 @@ class ProcessDetailRuntimeServiceTest {
         final HistoricVariableInstanceQuery variableQuery = mock(HistoricVariableInstanceQuery.class);
         final TaskQuery taskQuery = mock(TaskQuery.class);
 
+        /** 构造夹具，设置各查询链路的 mock 返回值 */
         Fixture() {
             when(runtimeService.createProcessInstanceQuery()).thenReturn(processInstanceQuery);
             when(processInstanceQuery.processInstanceId("pi-1")).thenReturn(processInstanceQuery);
@@ -105,6 +120,7 @@ class ProcessDetailRuntimeServiceTest {
             when(taskQuery.processInstanceId("pi-1")).thenReturn(taskQuery);
         }
 
+        /** 设置运行中流程实例桩数据，含流程定义 ID 与发起人 */
         void runningInstance() {
             ProcessInstance processInstance = mock(ProcessInstance.class);
             when(processInstance.getProcessDefinitionId()).thenReturn("pd-1");
@@ -118,6 +134,7 @@ class ProcessDetailRuntimeServiceTest {
             when(historicProcessQuery.singleResult()).thenReturn(historicInstance);
         }
 
+        /** 设置流程定义桩数据，含流程 Key 与名称 */
         void processDefinition() {
             ProcessDefinition processDefinition = mock(ProcessDefinition.class);
             when(processDefinition.getName()).thenReturn("expense_flow");
@@ -125,12 +142,14 @@ class ProcessDetailRuntimeServiceTest {
             when(processDefinitionQuery.singleResult()).thenReturn(processDefinition);
         }
 
+        /** 设置活动执行桩数据，活动 ID 为 task-1 */
         void activeExecution() {
             Execution execution = mock(Execution.class);
             when(execution.getActivityId()).thenReturn("task-1");
             when(executionQuery.list()).thenReturn(List.of(execution));
         }
 
+        /** 设置已完成的历史任务桩数据，含审批名称、处理人与时间区间 */
         void finishedTask() {
             HistoricTaskInstance task = mock(HistoricTaskInstance.class);
             when(task.getId()).thenReturn("hist-task-1");
@@ -144,6 +163,7 @@ class ProcessDetailRuntimeServiceTest {
             when(historicTaskQuery.list()).thenReturn(List.of(task));
         }
 
+        /** 设置当前活动任务桩数据，含任务定义 Key 与处理人 */
         void activeTask() {
             Task task = mock(Task.class);
             when(task.getId()).thenReturn("task-1-runtime");
@@ -153,6 +173,7 @@ class ProcessDetailRuntimeServiceTest {
             when(taskQuery.list()).thenReturn(List.of(task));
         }
 
+        /** 组装并返回被测服务实例 */
         ProcessDetailRuntimeService service() {
             return new ProcessDetailRuntimeService(
                     runtimeService, historyService, repositoryService, taskService,

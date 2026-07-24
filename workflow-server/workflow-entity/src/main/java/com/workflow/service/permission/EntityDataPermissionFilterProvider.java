@@ -13,6 +13,12 @@ public interface EntityDataPermissionFilterProvider {
      */
     String getType();
 
+    /**
+     * 校验节点配置的合法性，默认空实现。
+     *
+     * @param entityCode 实体编码
+     * @param node       待校验的规则节点
+     */
     default void validate(String entityCode, EntityActionRuleDTO.RuleNode node) {
     }
 

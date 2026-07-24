@@ -38,8 +38,16 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体表单节点服务测试。
+ *
+ * <p>被测对象：{@link EntityFormNodeService}，覆盖节点补丁的乐观锁修订冲突、绑定节点身份/绑定变更拒绝、
+ * 节点类型属性适用性校验、重排序、差量替换、节点树层级与循环校验、TAB/TAB_SET 结构校验、
+ * 跨表单引用循环与层级校验、遗留子表单钉版、节点键冲突的稳定修订冲突等场景。
+ */
 class EntityFormNodeServiceTest {
 
+    /** 测试过期修订号返回带当前节点的修订冲突：验证抛出 RevisionConflictException */
     @Test
     void staleRevisionReturnsConflictWithCurrentNode() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -56,6 +64,7 @@ class EntityFormNodeServiceTest {
                 () -> service.patch("form-1", "n1", request));
     }
 
+    /** 测试补丁拒绝修改已绑定节点的身份与绑定信息：验证 nodeKey、nodeType、bindingRef 变更均被拒绝 */
     @Test
     void patchRejectsBoundNodeIdentityAndBindingChanges() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -92,6 +101,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper, never()).update(isNull(), any());
     }
 
+    /** 测试补丁拒绝不适配节点类型的属性：验证 SECTION 不接受 componentName、TEXT 不接受 dataSourceBindings、FIELD 不接受 childFormId */
     @Test
     void patchRejectsPropertiesThatDoNotApplyToNodeType() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -131,6 +141,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper, never()).update(isNull(), any());
     }
 
+    /** 测试重排序允许变更已绑定节点的放置位置：验证 parentId 变更被接受并触发 update */
     @Test
     void reorderAllowsBoundNodePlacementChange() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -152,6 +163,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper).update(isNull(), any());
     }
 
+    /** 测试差量替换保留已绑定节点的导入变更：验证对绑定关系节点的导入替换不抛异常并触发 update */
     @Test
     void replaceByDiffPreservesBoundNodeImportChanges() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -176,6 +188,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper).update(isNull(), any());
     }
 
+    /** 测试拒绝第 9 层嵌套：验证 9 层 SECTION 嵌套时校验抛出 IllegalArgumentException */
     @Test
     void rejectsNinthLevelNesting() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -195,6 +208,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝父引用成环：验证两个节点互为父节点时校验抛出异常 */
     @Test
     void rejectsCircularParentReference() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -211,6 +225,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试恰好 8 层嵌套被允许：验证 8 层 SECTION 嵌套校验通过 */
     @Test
     void allowsExactlyEightLevels() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -220,6 +235,7 @@ class EntityFormNodeServiceTest {
         assertDoesNotThrow(() -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试补丁拒绝将子树移动到超过 8 层：验证移动后层级超限被拒绝且不触发 update */
     @Test
     void patchRejectsMovingSubtreeBeyondEightLevels() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -245,6 +261,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper, never()).update(isNull(), any());
     }
 
+    /** 测试补丁允许将子树移动到恰好 8 层：验证移动到 n5 下后校验通过并触发 update */
     @Test
     void patchAllowsMovingSubtreeToExactlyEightLevels() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -270,6 +287,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper).update(isNull(), any());
     }
 
+    /** 测试拒绝 TAB 节点不在 TAB_SET 内：验证 TAB 直接位于 SECTION 下时校验抛出异常 */
     @Test
     void rejectsTabOutsideTabSet() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -283,6 +301,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝 TAB_SET 直接子节点非 TAB：验证 FIELD 直接位于 TAB_SET 下时校验抛出异常 */
     @Test
     void rejectsNonTabDirectChildOfTabSet() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -296,6 +315,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试允许 TAB_SET 下嵌套 TAB 与字段：验证三层结构校验通过 */
     @Test
     void allowsTabSetWithTabAndNestedField() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -309,6 +329,7 @@ class EntityFormNodeServiceTest {
         assertDoesNotThrow(() -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝叶子节点包含子节点：验证 FIELD 节点作为 TEXT 节点的子节点时校验抛出异常 */
     @Test
     void rejectsChildUnderLeafNode() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -322,6 +343,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝多层已发布表单引用成环：验证 form-1 -> form-2 -> form-3 -> form-1 的循环引用校验抛出异常 */
     @Test
     void rejectsMultiLevelPublishedFormCycle() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -354,6 +376,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝引用未发布的表单：验证引用的 release 不存在时校验抛出异常 */
     @Test
     void rejectsReferenceToUnpublishedForm() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -370,6 +393,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝第 9 层已发布表单引用：验证跨表单引用 8 层后再引用一层（共 9 层）校验抛出异常 */
     @Test
     void rejectsNinthPublishedFormLevel() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -396,6 +420,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试恰好 8 层已发布表单引用被允许：验证 7 层引用加上自身共 8 层校验通过 */
     @Test
     void allowsExactlyEightPublishedFormLevels() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -426,6 +451,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试遗留设计器 refFormId 钉到激活发布并保留遗留属性：验证创建节点时 childFormRelease 等字段被填充且遗留属性被保留 */
     @Test
     void pinsLegacyDesignerRefFormIdToActiveReleaseAndPreservesLegacyProps() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -471,6 +497,7 @@ class EntityFormNodeServiceTest {
                 "测试历史属性").containsKey("unknownLegacyFlag"));
     }
 
+    /** 测试为 Repeater 节点钉住遗留 publishedFormId：验证创建后 refFormReleaseId/Version 被填充 */
     @Test
     void pinsLegacyPublishedFormIdForRepeater() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -499,6 +526,7 @@ class EntityFormNodeServiceTest {
         assertEquals(3, props.get("refFormReleaseVersion"));
     }
 
+    /** 测试接受显式子发布字段且不依赖嵌套 props：验证直接传入 childFormReleaseId/Version 时被正确持久化 */
     @Test
     void acceptsExplicitChildReleaseFieldsWithoutNestedProps() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -529,6 +557,7 @@ class EntityFormNodeServiceTest {
         assertEquals(5, props.get("childFormReleaseVersion"));
     }
 
+    /** 测试拒绝设计器 release 版本不匹配：验证引用 release-2 的版本号与实际不一致时校验抛出异常 */
     @Test
     void rejectsDesignerReleaseVersionMismatch() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -550,6 +579,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝 release 属于其他表单：验证引用的 release 配置 ID 与预期表单不一致时校验抛出异常 */
     @Test
     void rejectsReleaseBelongingToAnotherForm() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -571,6 +601,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试拒绝已发布子快照仍使用未钉版的遗留引用：验证引用的 release 仍含旧 refFormId 时校验抛出异常 */
     @Test
     void rejectsPublishedChildSnapshotThatStillUsesUnpinnedLegacyReference() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -593,6 +624,7 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
+    /** 测试重复的激活节点 key 返回稳定的修订冲突：验证冲突节点作为 currentData 返回 */
     @Test
     void duplicateActiveNodeKeyReturnsStableRevisionConflict() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -629,6 +661,7 @@ class EntityFormNodeServiceTest {
         assertSame(conflicting, exception.getCurrentData());
     }
 
+    /** 测试创建时数据库节点键竞态返回稳定修订冲突：验证唯一键冲突被翻译为 RevisionConflictException */
     @Test
     void databaseNodeKeyRaceReturnsStableRevisionConflict() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -658,6 +691,7 @@ class EntityFormNodeServiceTest {
         assertSame(conflicting, exception.getCurrentData());
     }
 
+    /** 测试补丁时数据库节点键竞态返回稳定修订冲突：验证 update 唯一键冲突被翻译为 RevisionConflictException */
     @Test
     void databaseNodeKeyRaceOnPatchReturnsStableRevisionConflict() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -688,6 +722,7 @@ class EntityFormNodeServiceTest {
         assertSame(conflicting, exception.getCurrentData());
     }
 
+    /** 测试无关的数据库完整性失败不被翻译：验证外键约束失败原样抛出而非转为修订冲突 */
     @Test
     void unrelatedDatabaseIntegrityFailureIsNotTranslated() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -713,6 +748,7 @@ class EntityFormNodeServiceTest {
         assertSame(databaseFailure, thrown);
     }
 
+    /** 测试差量替换按最深层优先删除缺失节点：验证删除顺序为 leaf -> child -> root */
     @Test
     void replaceByDiffDeletesMissingNodesDeepestFirst() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -735,6 +771,7 @@ class EntityFormNodeServiceTest {
         deletionOrder.verify(nodeMapper).selectById("root");
     }
 
+    /** 测试差量替换在树校验前钉住未变更的遗留子表单：验证遗留 refFormId 被钉版后替换不抛异常 */
     @Test
     void replaceByDiffPinsUnchangedLegacySubFormBeforeTreeValidation() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -780,6 +817,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper).update(isNull(), any());
     }
 
+    /** 测试差量替换在写入前拒绝成环的删除图：验证互为父子的节点在替换为空时抛出异常 */
     @Test
     void replaceByDiffRejectsCircularDeletionGraphBeforeWriting() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -794,10 +832,12 @@ class EntityFormNodeServiceTest {
                         .replaceByDiff("form-1", List.of()));
     }
 
+    /** 装配带节点 Mapper 与默认 release Mapper 的被测服务 */
     private EntityFormNodeService service(EntityFormNodeMapper nodeMapper) {
         return service(nodeMapper, mock(UiConfigReleaseMapper.class));
     }
 
+    /** 装配带节点 Mapper 与 release Mapper 的完整被测服务，预置表单与关系 Mock */
     private EntityFormNodeService service(
             EntityFormNodeMapper nodeMapper,
             UiConfigReleaseMapper releaseMapper) {
@@ -835,6 +875,7 @@ class EntityFormNodeServiceTest {
                 new JsonDocumentCodec(new ObjectMapper()));
     }
 
+    /** 构造指定层数的嵌套 SECTION 节点列表，并注册 selectById 返回 */
     private List<EntityFormNode> nestedSections(
             EntityFormNodeMapper nodeMapper,
             int levels) {
@@ -849,6 +890,7 @@ class EntityFormNodeServiceTest {
         return nodes;
     }
 
+    /** 构造指定节点类型的节点对象 */
     private EntityFormNode typedNode(
             String id,
             String parentId,
@@ -858,6 +900,7 @@ class EntityFormNodeServiceTest {
         return node;
     }
 
+    /** 构造引用指定已发布表单的 SUB_FORM 节点，含钉版 release 字段 */
     private EntityFormNode referenceNode(
             String id,
             String childFormId,
@@ -876,6 +919,7 @@ class EntityFormNodeServiceTest {
         return node;
     }
 
+    /** 构造含子表单引用节点的发布快照对象 */
     private UiConfigRelease release(
             String releaseId,
             String formId,
@@ -910,6 +954,7 @@ class EntityFormNodeServiceTest {
         return release;
     }
 
+    /** 构造含遗留 refFormId 子表单引用的发布快照对象 */
     private UiConfigRelease legacyRelease(
             String releaseId,
             String formId,
@@ -935,6 +980,7 @@ class EntityFormNodeServiceTest {
         return release;
     }
 
+    /** 构造不含子表单引用的发布快照对象 */
     private UiConfigRelease releaseWithoutReferences(
             String releaseId,
             String formId,
@@ -952,15 +998,18 @@ class EntityFormNodeServiceTest {
         return release;
     }
 
+    /** 将对象强转为 Map，抑制未检查转换警告 */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         return (Map<String, Object>) value;
     }
 
+    /** 获取测试用 JSON 文档编解码器 */
     private JsonDocumentCodec codec() {
         return new JsonDocumentCodec(new ObjectMapper());
     }
 
+    /** 构造带指定 id、父节点与修订号的测试节点对象 */
     private EntityFormNode node(String id, String parentId, int revision) {
         EntityFormNode node = new EntityFormNode();
         node.setId(id);

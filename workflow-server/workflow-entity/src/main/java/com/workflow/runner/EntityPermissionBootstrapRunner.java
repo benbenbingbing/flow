@@ -18,6 +18,11 @@ public class EntityPermissionBootstrapRunner implements ApplicationRunner {
 
     private final EntityPermissionCatalogService catalogService;
 
+    /**
+     * 应用启动入口：同步全部实体的标准权限目录与历史按钮配置。
+     *
+     * @param args 启动参数（本 Runner 未使用）
+     */
     @Override
     public void run(ApplicationArguments args) {
         catalogService.synchronizeAll();

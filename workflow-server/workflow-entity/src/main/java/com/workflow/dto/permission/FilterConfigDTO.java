@@ -49,9 +49,11 @@ public class FilterConfigDTO {
      */
     @Data
     public static class FieldMappingDTO {
+        /** 部门字段名 */
         private String deptField = "dept_id";
         // 实体数据表使用 create_by 作为创建人字段
         private String userField = "create_by";
+        /** 状态字段名 */
         private String statusField = "status";
     }
 
@@ -60,9 +62,11 @@ public class FilterConfigDTO {
      */
     @Data
     public static class StatusLimitDTO {
+        /** 是否启用状态限制 */
         private Boolean enabled = false;
         /** IN / NOT_IN */
         private String mode = "IN";
+        /** 状态值列表 */
         private List<String> values;
     }
 }

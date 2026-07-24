@@ -24,8 +24,16 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 表单节点服务属性策略单元测试。
+ * <p>被测对象：{@link EntityFormNodeService}。验证通过 patch 命令时，折叠面板节点的规则清洗与历史污染清理、
+ * 技术标识/排序/历史属性的写保护、绑定字段身份锁定及组件兼容性强制校验。
+ */
 class EntityFormNodeServicePropertyPolicyTest {
 
+    /**
+     * 验证折叠面板编辑接受空规则并清理历史污染字段属性，最终成功落库更新。
+     */
     @Test
     void collapseEditAcceptsEmptyRulesAndCleansHistoricalPollution() {
         Fixture fixture = fixture(collapseWithHistoricalRules());
@@ -56,6 +64,9 @@ class EntityFormNodeServicePropertyPolicyTest {
         verify(fixture.nodeMapper()).update(isNull(), any());
     }
 
+    /**
+     * 验证折叠面板编辑拒绝含语义的字段校验规则（minLength），且不触发写库。
+     */
     @Test
     void collapseEditRejectsMeaningfulFieldRules() {
         Fixture fixture = fixture(collapseWithHistoricalRules());
@@ -71,6 +82,10 @@ class EntityFormNodeServicePropertyPolicyTest {
         verify(fixture.nodeMapper(), never()).update(isNull(), any());
     }
 
+    /**
+     * 验证技术标识（nodeKey）、排序（orderKey）、历史属性（legacyProps）不能通过通用 patch 修改，
+     * 三类请求均抛 IllegalArgumentException。
+     */
     @Test
     void technicalIdentityOrderingAndLegacyPropsCannotUseGenericPatch() {
         EntityFormNode current = collapseWithHistoricalRules();
@@ -103,6 +118,10 @@ class EntityFormNodeServicePropertyPolicyTest {
                         "form-1", current.getId(), legacyRequest));
     }
 
+    /**
+     * 验证已绑定字段身份锁定：修改 fieldCode 被拒、不兼容组件被拒；
+     * 仅展示属性（label/required/readonly/hidden）的修改被接受并成功落库。
+     */
     @Test
     void boundFieldIdentityIsLockedAndComponentCompatibilityIsEnforced() {
         EntityFormNode current = boundAmountField();
@@ -162,6 +181,7 @@ class EntityFormNodeServicePropertyPolicyTest {
         verify(fixture.nodeMapper()).update(isNull(), any());
     }
 
+    /** 构造测试桩 Fixture：mock mapper 与访问策略，预置当前节点及 form-1 数据。 */
     private Fixture fixture(EntityFormNode current) {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -195,6 +215,7 @@ class EntityFormNodeServicePropertyPolicyTest {
                 nodeMapper);
     }
 
+    /** 构造携带历史污染属性与规则的折叠面板节点。 */
     private EntityFormNode collapseWithHistoricalRules() {
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
@@ -223,6 +244,7 @@ class EntityFormNodeServicePropertyPolicyTest {
         return node;
     }
 
+    /** 构造绑定金额字段的 DECIMAL 节点，用于字段身份锁定与组件兼容性验证。 */
     private EntityFormNode boundAmountField() {
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
@@ -252,6 +274,7 @@ class EntityFormNodeServicePropertyPolicyTest {
         return node;
     }
 
+    /** 测试夹具：聚合被测 service 与节点 mapper 桩。 */
     private record Fixture(
             EntityFormNodeService service,
             EntityFormNodeMapper nodeMapper) {

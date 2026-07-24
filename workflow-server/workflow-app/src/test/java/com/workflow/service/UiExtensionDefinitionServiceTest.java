@@ -14,8 +14,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * UI 扩展定义服务测试。
+ *
+ * <p>被测对象：{@link UiExtensionDefinitionService}，覆盖扩展激活需显式注册版本、
+ * 节点类型兼容性、快照版本与注册协议一致性、运行态模式校验、缺失激活清单拒绝等场景。
+ */
 class UiExtensionDefinitionServiceTest {
 
+    /** 测试激活扩展需显式注册版本：验证版本为 null 时抛出 IllegalArgumentException */
     @Test
     void requiresExplicitRegisteredVersion() {
         assertThrows(
@@ -24,6 +31,7 @@ class UiExtensionDefinitionServiceTest {
                         .requireActive("NODE", "risk-matrix", null));
     }
 
+    /** 测试拒绝不支持的节点类型：验证 SECTION 节点对仅支持 FIELD 的扩展抛出异常 */
     @Test
     void rejectsUnsupportedNodeType() {
         UiExtensionDefinition definition = new UiExtensionDefinition();
@@ -42,6 +50,7 @@ class UiExtensionDefinitionServiceTest {
                                 1));
     }
 
+    /** 测试拒绝快照版本新于已注册协议版本：验证快照版本小于注册协议版本时抛出异常 */
     @Test
     void rejectsSnapshotNewerThanRegisteredProtocol() {
         UiExtensionDefinition definition = new UiExtensionDefinition();
@@ -59,6 +68,7 @@ class UiExtensionDefinitionServiceTest {
                                 3));
     }
 
+    /** 测试注册时拒绝非法运行态模式：验证 supportedModes 含非法值时抛出异常 */
     @Test
     void rejectsInvalidRuntimeModeDuringRegistration() {
         UiExtensionDefinitionSaveRequest request =
@@ -75,6 +85,7 @@ class UiExtensionDefinitionServiceTest {
                         .save(request));
     }
 
+    /** 测试缺失激活清单时拒绝：验证查不到激活清单时抛出 IllegalArgumentException */
     @Test
     void rejectsMissingActiveManifest() {
         UiExtensionDefinitionMapper mapper =
@@ -87,6 +98,7 @@ class UiExtensionDefinitionServiceTest {
                         "FORM", "project-form", 1));
     }
 
+    /** 装配带 Mock Mapper 的被测服务 */
     private UiExtensionDefinitionService service(
             UiExtensionDefinitionMapper mapper) {
         return new UiExtensionDefinitionService(

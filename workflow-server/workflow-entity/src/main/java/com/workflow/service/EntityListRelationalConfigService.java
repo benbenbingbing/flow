@@ -26,11 +26,19 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * 实体列表关系型配置服务，管理按钮和场景的关系型存储与差异同步。
+ *
+ * <p>将列表工具栏、行内按钮和允许场景以关系型表存储，支持按 key 增量同步、
+ * 乐观锁补丁更新和基于 orderKey 的稀疏排序，便于发布快照与草稿差异比对。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class EntityListRelationalConfigService {
 
+    /** 工具栏按钮位置。 */
     public static final String TOOLBAR = "TOOLBAR";
+    /** 行内按钮位置。 */
     public static final String ROW = "ROW";
 
     private static final TypeReference<List<Map<String, Object>>> BUTTON_LIST_TYPE =
@@ -45,6 +53,13 @@ public class EntityListRelationalConfigService {
     private final EntityListConfigMapper configMapper;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 查询指定位置的按钮配置 Map 列表。
+     *
+     * @param listConfigId 列表配置ID
+     * @param position     按钮位置（TOOLBAR 或 ROW）
+     * @return 按钮 Map 列表，listConfigId 为空返回空列表
+     */
     public List<Map<String, Object>> findActions(String listConfigId, String position) {
         if (!StringUtils.hasText(listConfigId)) {
             return List.of();
@@ -54,6 +69,12 @@ public class EntityListRelationalConfigService {
                 .toList();
     }
 
+    /**
+     * 查询列表允许的场景编码列表。
+     *
+     * @param listConfigId 列表配置ID
+     * @return 场景编码列表
+     */
     public List<String> findScenes(String listConfigId) {
         if (!StringUtils.hasText(listConfigId)) {
             return List.of();
@@ -63,6 +84,12 @@ public class EntityListRelationalConfigService {
                 .toList();
     }
 
+    /**
+     * 查询列表的场景配置项列表。
+     *
+     * @param listConfigId 列表配置ID
+     * @return 场景配置项列表
+     */
     public List<EntityListScene> findSceneItems(String listConfigId) {
         if (!StringUtils.hasText(listConfigId)) {
             return List.of();
@@ -71,6 +98,14 @@ public class EntityListRelationalConfigService {
         return sceneMapper.findByListConfigId(listConfigId);
     }
 
+    /**
+     * 全量替换指定位置的按钮配置，按 key 增量同步并删除多余项。
+     *
+     * @param listConfigId 列表配置ID
+     * @param position     按钮位置
+     * @param buttons      按钮 Map 列表
+     * @throws IllegalArgumentException listConfigId 为空时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replaceActions(
             String listConfigId,
@@ -120,6 +155,12 @@ public class EntityListRelationalConfigService {
                 .forEach(actionMapper::deleteById);
     }
 
+    /**
+     * 全量替换列表允许的场景编码，按编码增量同步并删除多余项。
+     *
+     * @param listConfigId 列表配置ID
+     * @param scenes       场景编码列表
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replaceScenes(String listConfigId, List<String> scenes) {
         List<EntityListScene> existing = sceneMapper.findByListConfigId(listConfigId);
@@ -158,12 +199,24 @@ public class EntityListRelationalConfigService {
                 .forEach(sceneMapper::deleteById);
     }
 
+    /**
+     * 删除指定列表的所有按钮和场景关系型配置。
+     *
+     * @param listConfigId 列表配置ID
+     */
     @Transactional(rollbackFor = Exception.class)
     public void deleteByListConfigId(String listConfigId) {
         actionMapper.deleteByListConfigId(listConfigId);
         sceneMapper.deleteByListConfigId(listConfigId);
     }
 
+    /**
+     * 创建单个列表按钮。
+     *
+     * @param listConfigId 列表配置ID
+     * @param request      按钮保存请求
+     * @return 创建的按钮
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListAction createAction(
             String listConfigId,
@@ -189,6 +242,15 @@ public class EntityListRelationalConfigService {
         return action;
     }
 
+    /**
+     * 按补丁请求更新单个按钮，基于乐观锁更新。
+     *
+     * @param listConfigId 列表配置ID
+     * @param actionId     按钮ID
+     * @param request      按钮保存请求
+     * @return 更新后的按钮
+     * @throws RevisionConflictException 版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListAction patchAction(
             String listConfigId,
@@ -239,6 +301,14 @@ public class EntityListRelationalConfigService {
         return requireAction(listConfigId, actionId);
     }
 
+    /**
+     * 调整按钮在同位置中的排序，基于前后边界计算中值 orderKey。
+     *
+     * @param listConfigId 列表配置ID
+     * @param actionId     按钮ID
+     * @param request      排序请求
+     * @return 更新后的按钮
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListAction reorderAction(
             String listConfigId,
@@ -259,6 +329,14 @@ public class EntityListRelationalConfigService {
         return patchAction(listConfigId, actionId, patch);
     }
 
+    /**
+     * 删除单个按钮（软删除），基于乐观锁更新。
+     *
+     * @param listConfigId     列表配置ID
+     * @param actionId         按钮ID
+     * @param expectedRevision 期望版本号
+     * @throws RevisionConflictException 版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void deleteAction(
             String listConfigId,
@@ -282,6 +360,13 @@ public class EntityListRelationalConfigService {
         touchList(listConfigId);
     }
 
+    /**
+     * 创建单个列表场景配置。
+     *
+     * @param listConfigId 列表配置ID
+     * @param request      场景保存请求
+     * @return 创建的场景
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListScene createScene(
             String listConfigId,
@@ -300,6 +385,15 @@ public class EntityListRelationalConfigService {
         return scene;
     }
 
+    /**
+     * 按补丁请求更新单个场景，基于乐观锁更新。
+     *
+     * @param listConfigId 列表配置ID
+     * @param sceneId      场景ID
+     * @param request      场景保存请求
+     * @return 更新后的场景
+     * @throws RevisionConflictException 版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListScene patchScene(
             String listConfigId,
@@ -330,6 +424,14 @@ public class EntityListRelationalConfigService {
         return requireScene(listConfigId, sceneId);
     }
 
+    /**
+     * 删除单个场景，基于乐观锁校验。
+     *
+     * @param listConfigId     列表配置ID
+     * @param sceneId          场景ID
+     * @param expectedRevision 期望版本号
+     * @throws RevisionConflictException 版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void deleteScene(
             String listConfigId,
@@ -343,6 +445,13 @@ public class EntityListRelationalConfigService {
         touchList(listConfigId);
     }
 
+    /**
+     * 解析按钮 JSON 文档为 Map 列表。
+     *
+     * @param document 按钮 JSON 文档
+     * @param label    文档用途说明，用于错误提示
+     * @return 按钮 Map 列表，文档为空返回空列表
+     */
     public List<Map<String, Object>> parseButtons(String document, String label) {
         if (!StringUtils.hasText(document)) {
             return new ArrayList<>();

@@ -22,8 +22,14 @@ import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体表单服务元数据测试。
+ *
+ * <p>被测对象：{@link EntityFormService}，覆盖表单字段加载时携带来自实体字段的子表单关联元数据场景。
+ */
 class EntityFormServiceMetadataTest {
 
+    /** 测试 getFormFields 从实体字段携带子表单关联元数据：验证解析后字段的 displayMode、refFieldCode、关系类型等元数据正确 */
     @Test
     void getFormFieldsCarriesSubFormAssociationMetadataFromEntityField() throws Exception {
         EntityFormFieldMapper formFieldMapper = mock(EntityFormFieldMapper.class);
@@ -79,6 +85,7 @@ class EntityFormServiceMetadataTest {
         assertEquals(true, readBeanProperty(resolved, "cascadeDelete"));
     }
 
+    /** 通过 Java Bean 内省读取目标对象指定属性的值，用于校验动态装配的元数据字段 */
     private static Object readBeanProperty(Object target, String propertyName) throws Exception {
         for (var descriptor : Introspector.getBeanInfo(target.getClass()).getPropertyDescriptors()) {
             if (propertyName.equals(descriptor.getName()) && descriptor.getReadMethod() != null) {

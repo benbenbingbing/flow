@@ -22,6 +22,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class EntityRuntimeRecordMapper {
 
+    /** DTO 层系统字段集合（含驼峰与下划线形式），这些字段不视为自定义业务字段 */
     private static final Set<String> DTO_SYSTEM_FIELDS = new HashSet<>(Arrays.asList(
             "id", "dataNo", "data_no", "title", "name", "code", "status",
             "processInstanceId", "process_instance_id",
@@ -38,6 +39,7 @@ public class EntityRuntimeRecordMapper {
             "createdBy", "createBy", "create_by", "updatedBy", "updateBy", "update_by",
             "deleted", "entityCode", "entity_code", "startProcess", "start_process"));
 
+    /** 存储层（动态表）系统列集合，提取自定义字段时需排除这些列 */
     private static final Set<String> STORAGE_SYSTEM_COLUMNS = new HashSet<>(Arrays.asList(
             "id", "data_no", "title", "name", "code", "status",
             "process_instance_id", "process_start_time", "process_end_time",
@@ -47,6 +49,14 @@ public class EntityRuntimeRecordMapper {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * 将动态表存储行映射为实体数据 DTO。
+     * 系统列直接填充 DTO 标准字段，其余列转为自定义字段数据。
+     *
+     * @param data       动态表行数据（列名 -> 值）
+     * @param entityCode 实体编码
+     * @return 实体数据 DTO
+     */
     public EntityDataDTO toDto(Map<String, Object> data, String entityCode) {
         EntityDataDTO dto = new EntityDataDTO();
         dto.setId(getString(data, "id"));
@@ -75,6 +85,13 @@ public class EntityRuntimeRecordMapper {
         return dto;
     }
 
+    /**
+     * 将实体数据 DTO 转换为可写入动态表的存储 Map。
+     * 系统字段写入固定列，自定义字段按驼峰转下划线后写入对应列。
+     *
+     * @param dto 实体数据 DTO
+     * @return 动态表存储 Map（列名 -> 值）
+     */
     public Map<String, Object> toStorageMap(EntityDataDTO dto) {
         Map<String, Object> data = new HashMap<>();
 
@@ -108,6 +125,12 @@ public class EntityRuntimeRecordMapper {
         return data;
     }
 
+    /**
+     * 从表单提交数据中抽取自定义业务字段（剔除系统字段）。
+     *
+     * @param formData 表单提交数据（可能包含 data 子对象）
+     * @return 自定义字段 Map（下划线列名 -> 值）
+     */
     public Map<String, Object> extractRequestCustomData(Map<String, Object> formData) {
         Map<String, Object> result = new HashMap<>();
         if (formData == null) {
@@ -133,6 +156,12 @@ public class EntityRuntimeRecordMapper {
         return result;
     }
 
+    /**
+     * 判断给定字段名是否为自定义业务字段（非空且不属于系统字段）。
+     *
+     * @param fieldName 字段名
+     * @return true 表示自定义业务字段
+     */
     public boolean isCustomField(String fieldName) {
         return fieldName != null
                 && !fieldName.isEmpty()
@@ -141,6 +170,12 @@ public class EntityRuntimeRecordMapper {
                 && !DTO_SYSTEM_FIELDS.contains(fieldName);
     }
 
+    /**
+     * 将驼峰命名字段名转换为下划线数据库列名（如 userName -> user_name）。
+     *
+     * @param fieldName 字段名
+     * @return 下划线列名
+     */
     public String toColumnName(String fieldName) {
         if (fieldName == null || fieldName.isEmpty()) {
             return fieldName;

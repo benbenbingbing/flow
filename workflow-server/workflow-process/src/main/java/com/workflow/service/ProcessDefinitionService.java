@@ -25,6 +25,12 @@ import com.workflow.common.PageResult;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 流程定义服务。
+ *
+ * <p>负责流程定义的增删改查、分页查询、发布（部署到 Flowable 并记录版本历史）、
+ * 回滚、禁用及版本管理等核心能力。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -39,6 +45,11 @@ public class ProcessDefinitionService {
     private final FlowActionDesignPort flowActionDesignPort;
     private final MigrationAssetRecorder migrationAssetRecorder;
     
+    /**
+     * 查询所有启用的流程定义。
+     *
+     * @return 流程定义列表
+     */
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAll() {
         return processMapper.findAllActive().stream()
@@ -46,6 +57,12 @@ public class ProcessDefinitionService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 分页查询流程定义（支持按状态、分类、关键词筛选）。
+     *
+     * @param query 查询条件（含分页与筛选参数）
+     * @return 流程定义分页结果
+     */
     @Transactional(readOnly = true)
     public PageResult<ProcessDefinitionDTO> findPage(ProcessDefinitionQueryDTO query) {
         Page<ProcessDefinitionConfig> page = new Page<>(
@@ -77,6 +94,12 @@ public class ProcessDefinitionService {
         return new PageResult<>(records, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
     
+    /**
+     * 按状态查询流程定义。
+     *
+     * @param status 流程状态
+     * @return 流程定义列表
+     */
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findByStatus(ProcessDefinitionConfig.ProcessStatus status) {
         return processMapper.findByStatus(status.name()).stream()
@@ -133,6 +156,13 @@ public class ProcessDefinitionService {
                 .collect(Collectors.toList());
     }
     
+    /**
+     * 根据流程定义ID查询详情。
+     *
+     * @param id 流程定义ID
+     * @return 流程定义详情
+     * @throws RuntimeException 流程不存在时抛出
+     */
     @Transactional(readOnly = true)
     public ProcessDefinitionDTO findById(String id) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
@@ -142,6 +172,13 @@ public class ProcessDefinitionService {
         return convertToDTO(config);
     }
     
+    /**
+     * 根据流程标识查询详情。
+     *
+     * @param processKey 流程标识
+     * @return 流程定义详情
+     * @throws RuntimeException 流程不存在时抛出
+     */
     @Transactional(readOnly = true)
     public ProcessDefinitionDTO findByProcessKey(String processKey) {
         ProcessDefinitionConfig config = processMapper.findByProcessKey(processKey)
@@ -172,6 +209,12 @@ public class ProcessDefinitionService {
         return convertVersionToDTO(version);
     }
     
+    /**
+     * 新建流程定义（初始版本为0，状态为草稿）。
+     *
+     * @param dto 流程定义数据
+     * @return 创建后的流程定义
+     */
     @Transactional
     public ProcessDefinitionDTO save(ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig config = convertToEntity(dto);
@@ -181,6 +224,14 @@ public class ProcessDefinitionService {
         return convertToDTO(config);
     }
     
+    /**
+     * 更新流程定义信息及BPMN XML，并同步节点配置与节点表单绑定。
+     *
+     * @param id  流程定义ID
+     * @param dto 更新的流程定义数据
+     * @return 更新后的流程定义
+     * @throws RuntimeException 流程不存在时抛出
+     */
     @Transactional
     public ProcessDefinitionDTO update(String id, ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig existing = processMapper.selectById(id);
@@ -218,6 +269,12 @@ public class ProcessDefinitionService {
         return convertToDTO(existing);
     }
     
+    /**
+     * 逻辑删除流程定义（置为已禁用并标记删除）。
+     *
+     * @param id 流程定义ID
+     * @throws RuntimeException 流程不存在时抛出
+     */
     @Transactional
     public void delete(String id) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
@@ -244,6 +301,17 @@ public class ProcessDefinitionService {
         return publish(id, request);
     }
 
+    /**
+     * 发布流程定义（带完整发布请求）。
+     *
+     * <p>校验动作配置 -> 生成新版本号 -> 净化BPMN -> 部署到Flowable -> 记录版本历史 ->
+     * 解析保存节点配置 -> 更新主配置状态为已发布。</p>
+     *
+     * @param id      流程定义ID
+     * @param request 发布请求（含版本说明等）
+     * @return 发布后的流程定义
+     * @throws RuntimeException 流程不存在或缺少BPMN XML时抛出
+     */
     @Transactional
     public ProcessDefinitionDTO publish(String id, ConfigMigrationPublishRequest request) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
@@ -317,6 +385,12 @@ public class ProcessDefinitionService {
         return convertToDTO(config);
     }
     
+    /**
+     * 禁用流程定义（禁用后不能发起新实例）。
+     *
+     * @param id 流程定义ID
+     * @return 禁用后的流程定义
+     */
     @Transactional
     public ProcessDefinitionDTO disable(String id) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
@@ -328,6 +402,12 @@ public class ProcessDefinitionService {
         return convertToDTO(config);
     }
     
+    /**
+     * 逻辑删除指定版本（同时逻辑删除版本关联的流程动作）。
+     *
+     * @param versionId 版本历史记录ID
+     * @throws RuntimeException 版本不存在时抛出
+     */
     @Transactional
     public void deleteVersion(String versionId) {
         ProcessVersionHistory version = versionHistoryMapper.selectById(versionId);
@@ -346,6 +426,7 @@ public class ProcessDefinitionService {
     }
     
     // Convert methods
+    /** 将流程定义配置实体转换为DTO */
     private ProcessDefinitionDTO convertToDTO(ProcessDefinitionConfig config) {
         ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
         dto.setId(config.getId());
@@ -363,6 +444,7 @@ public class ProcessDefinitionService {
         return dto;
     }
     
+    /** 将版本历史实体转换为DTO */
     private ProcessVersionHistoryDTO convertVersionToDTO(ProcessVersionHistory version) {
         ProcessVersionHistoryDTO dto = new ProcessVersionHistoryDTO();
         dto.setId(version.getId());
@@ -379,6 +461,7 @@ public class ProcessDefinitionService {
         return dto;
     }
     
+    /** 将流程定义DTO转换为配置实体 */
     private ProcessDefinitionConfig convertToEntity(ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig config = new ProcessDefinitionConfig();
         config.setId(dto.getId());

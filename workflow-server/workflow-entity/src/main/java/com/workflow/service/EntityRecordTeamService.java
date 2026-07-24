@@ -14,6 +14,12 @@ import org.springframework.util.StringUtils;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+/**
+ * 实体数据参与团队服务，负责维护记录级参与事件表与团队可见性权限范围。
+ *
+ * <p>为每个动态实体维护 _team 事件表，记录创建、提交、流程操作等参与动作，
+ * 并根据发布快照的团队可见性级别生成 SQL 条件，叠加到数据范围权限计算中。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -25,14 +31,31 @@ public class EntityRecordTeamService {
     private final EntityPhysicalTableResolver tableResolver;
     private final EntityPublishedSnapshotService snapshotService;
 
+    /**
+     * 解析实体定义对应的参与团队表名。
+     *
+     * @param definition 实体定义
+     * @return 参与团队表名
+     */
     public String teamTableName(EntityDefinition definition) {
         return checkedIdentifier(tableResolver.resolve(definition) + "_team");
     }
 
+    /**
+     * 解析实体编码对应的参与团队表名。
+     *
+     * @param entityCode 实体编码
+     * @return 参与团队表名
+     */
     public String teamTableName(String entityCode) {
         return checkedIdentifier(tableResolver.resolve(entityCode) + "_team");
     }
 
+    /**
+     * 确保实体的参与团队表存在，不存在则创建。
+     *
+     * @param definition 实体定义
+     */
     @Transactional(rollbackFor = Exception.class)
     public void ensureTeamTable(EntityDefinition definition) {
         String tableName = teamTableName(definition);
@@ -55,6 +78,11 @@ public class EntityRecordTeamService {
                 """.formatted(tableName));
     }
 
+    /**
+     * 当参与团队表为空时，从业务表和流程操作日志回填历史参与事件。
+     *
+     * @param definition 实体定义
+     */
     @Transactional(rollbackFor = Exception.class)
     public void backfillIfEmpty(EntityDefinition definition) {
         String teamTable = teamTableName(definition);
@@ -114,6 +142,16 @@ public class EntityRecordTeamService {
                 """.formatted(teamTable, entityTable));
     }
 
+    /**
+     * 记录一条参与团队事件，系统用户与空记录ID被忽略。
+     *
+     * @param entityCode        实体编码
+     * @param recordId          业务记录ID
+     * @param actionType        参与动作类型
+     * @param actionDescription  参与动作说明
+     * @param processInstanceId 流程实例ID
+     * @param processTaskId     流程任务ID
+     */
     @Transactional(rollbackFor = Exception.class)
     public void record(
             String entityCode,
@@ -148,6 +186,13 @@ public class EntityRecordTeamService {
                 blankToNull(processTaskId));
     }
 
+    /**
+     * 计算用户对实体的团队可见性权限，返回是否启用、级别和 SQL 条件。
+     *
+     * @param entityCode 实体编码
+     * @param userId     用户ID
+     * @return 团队权限结果，未启用或表不存在时返回 disabled
+     */
     public TeamPermission teamPermission(String entityCode, String userId) {
         if (!StringUtils.hasText(userId)) {
             return TeamPermission.disabled();
@@ -206,6 +251,13 @@ public class EntityRecordTeamService {
         return StringUtils.hasText(value) ? value : null;
     }
 
+    /**
+     * 团队可见性权限结果，包含是否启用、可见性级别和生成的 SQL 条件。
+     *
+     * @param enabled       是否启用团队可见性
+     * @param level          可见性级别
+     * @param sqlCondition  叠加到数据范围的 SQL 条件，未启用时为 null
+     */
     public record TeamPermission(
             boolean enabled,
             EntityDefinition.TeamVisibilityLevel level,

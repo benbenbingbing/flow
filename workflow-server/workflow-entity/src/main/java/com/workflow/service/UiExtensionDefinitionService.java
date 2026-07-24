@@ -19,14 +19,23 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+/**
+ * UI 扩展组件定义服务，负责扩展注册、查询、版本管理和兼容性校验。
+ *
+ * <p>扩展类型包括 FORM、NODE、FIELD、LIST，每个扩展以 key+version 唯一标识，
+ * 支持运行模式、节点类型和绑定类型的兼容范围声明。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UiExtensionDefinitionService {
 
+    /** 允许的扩展类型。 */
     private static final Set<String> TYPES =
             Set.of("FORM", "NODE", "FIELD", "LIST");
+    /** 允许的扩展状态。 */
     private static final Set<String> STATUSES =
             Set.of("ACTIVE", "DISABLED");
+    /** 允许的运行模式。 */
     private static final Set<String> MODES =
             Set.of("CREATE", "EDIT", "APPROVE", "VIEW");
     private static final Pattern KEY =
@@ -35,6 +44,14 @@ public class UiExtensionDefinitionService {
     private final UiExtensionDefinitionMapper mapper;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 按类型、key 和状态查询扩展定义列表。
+     *
+     * @param extensionType 扩展类型，为空忽略
+     * @param extensionKey  扩展 key，为空忽略
+     * @param status        状态，为空忽略
+     * @return 扩展定义列表
+     */
     public List<UiExtensionDefinition> list(
             String extensionType,
             String extensionKey,
@@ -63,6 +80,15 @@ public class UiExtensionDefinitionService {
                 .orderByDesc(UiExtensionDefinition::getVersion));
     }
 
+    /**
+     * 校验并返回指定版本的活跃扩展定义。
+     *
+     * @param extensionType 扩展类型
+     * @param extensionKey  扩展 key
+     * @param version       扩展版本，必须大于 0
+     * @return 扩展定义，key 为空返回 null
+     * @throws IllegalArgumentException 版本未指定或扩展不存在、已禁用时抛出
+     */
     public UiExtensionDefinition requireActive(
             String extensionType,
             String extensionKey,
@@ -93,6 +119,14 @@ public class UiExtensionDefinitionService {
         return definition;
     }
 
+    /**
+     * 新增或更新扩展定义，基于乐观锁更新。
+     *
+     * @param request 保存请求
+     * @return 保存后的扩展定义
+     * @throws IllegalArgumentException   类型、key、名称或版本等不合法时抛出
+     * @throws RevisionConflictException  版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiExtensionDefinition save(
             UiExtensionDefinitionSaveRequest request) {
@@ -166,6 +200,16 @@ public class UiExtensionDefinitionService {
         return mapper.selectById(value.getId());
     }
 
+    /**
+     * 校验扩展与运行模式、节点类型、绑定类型和快照版本的兼容性。
+     *
+     * @param definition     扩展定义
+     * @param mode           运行模式
+     * @param nodeType       节点类型
+     * @param bindingType    绑定类型
+     * @param snapshotVersion 配置快照版本
+     * @throws IllegalArgumentException 任一维度不兼容时抛出
+     */
     public void validateCompatibility(
             UiExtensionDefinition definition,
             String mode,

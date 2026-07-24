@@ -28,6 +28,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程任务服务测试。
+ *
+ * <p>被测对象：{@link ProcessTaskService}，覆盖 Flowable 任务与本地任务同步、
+ * 任务完成时动作标签持久化、签收任务后本地与实体当前任务更新等场景。
+ */
 @ExtendWith(MockitoExtension.class)
 class ProcessTaskServiceTest {
 
@@ -94,6 +100,9 @@ class ProcessTaskServiceTest {
         );
     }
 
+    /**
+     * 测试同步任务：当流程无活跃任务时，清除实体的当前任务（更新为 null）。
+     */
     @Test
     void syncTasksClearsEntityCurrentTaskWhenProcessHasNoActiveTask() {
         when(flowableTaskService.createTaskQuery()).thenReturn(taskQuery);
@@ -116,6 +125,9 @@ class ProcessTaskServiceTest {
         );
     }
 
+    /**
+     * 测试同步任务：当运行时变量不可用时，回退使用本地任务记录推导实体编码与数据 ID。
+     */
     @Test
     void syncTasksUsesLocalTaskWhenRuntimeVariablesAreUnavailable() {
         ProcessTask localTask = new ProcessTask();
@@ -140,6 +152,9 @@ class ProcessTaskServiceTest {
         );
     }
 
+    /**
+     * 测试完成任务：验证动作标签（actionLabel）、动作、评论、状态被正确持久化到本地任务。
+     */
     @Test
     void completeTaskPersistsActionLabel() {
         ProcessTask task = new ProcessTask();
@@ -159,6 +174,9 @@ class ProcessTaskServiceTest {
         Assertions.assertEquals(ProcessTask.STATUS_DONE, updated.getStatus());
     }
 
+    /**
+     * 测试完成任务时未传动作标签不覆盖已有标签：验证 actionLabel 保持原值不变。
+     */
     @Test
     void completeTaskWithoutActionLabelDoesNotOverrideExistingLabel() {
         ProcessTask task = new ProcessTask();
@@ -176,6 +194,10 @@ class ProcessTaskServiceTest {
         Assertions.assertEquals("已有标签", updated.getActionLabel());
     }
 
+    /**
+     * 测试签收任务同步：验证本地任务的处理人/处理人名/处理人类型被更新，
+     * 且实体当前任务被刷新为对应 Flowable 任务信息。
+     */
     @Test
     void synchronizeClaimedTaskUpdatesLocalTaskAndEntityAssignee() {
         ProcessTask localTask = new ProcessTask();

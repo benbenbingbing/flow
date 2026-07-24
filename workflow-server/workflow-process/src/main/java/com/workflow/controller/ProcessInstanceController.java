@@ -107,6 +107,13 @@ public class ProcessInstanceController {
         return Result.success(xml);
     }
 
+    /**
+     * 触发流程实例中处于等待状态的接收任务（ReceiveTask）继续流转。
+     *
+     * @param processInstanceId 流程实例ID
+     * @param request          触发请求（executionId/activityId 定位，可校验消息标识）
+     * @return 包含流程实例ID与被执行实例ID的响应
+     */
     @PostMapping("/{processInstanceId}/receive")
     public ApiResponse<Map<String, String>> triggerReceiveTask(
             @PathVariable String processInstanceId,

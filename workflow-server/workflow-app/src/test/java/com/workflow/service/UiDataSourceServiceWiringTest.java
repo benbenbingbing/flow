@@ -13,8 +13,15 @@ import org.springframework.core.task.TaskExecutor;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 
+/**
+ * UI 数据源服务装配测试。
+ *
+ * <p>被测对象：{@link UiDataSourceService} 的 Spring Bean 装配，验证当容器存在多个 TaskExecutor 时
+ * 能正确选择 applicationTaskExecutor 完成服务初始化。
+ */
 class UiDataSourceServiceWiringTest {
 
+    /** 测试存在多个 TaskExecutor 时选用 applicationTaskExecutor 完成装配：验证 Bean 可正常获取 */
     @Test
     void selectsApplicationTaskExecutorWhenMultipleExecutorsExist() {
         try (AnnotationConfigApplicationContext context =

@@ -13,8 +13,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体发布快照服务单元测试。
+ *
+ * <p>被测对象为 {@link EntityPublishedSnapshotService}，验证按实体 ID/编码
+ * 读取最新发布快照(含字段快照 JSON 解析)，以及无快照时的报错逻辑。</p>
+ */
 class EntityPublishedSnapshotServiceTest {
 
+    /**
+     * 按实体 ID 读取最新快照应解析字段快照 JSON。
+     *
+     * <p>场景：快照含一个 amount 字段，断言解析后快照含历史 ID、实体 ID、
+     * 编码、流程定义 ID、版本与字段列表。</p>
+     */
     @Test
     void getLatestByEntityIdParsesFieldsSnapshot() throws Exception {
         EntityPublishHistoryMapper historyMapper = mock(EntityPublishHistoryMapper.class);
@@ -42,6 +54,11 @@ class EntityPublishedSnapshotServiceTest {
         assertEquals(true, snapshot.getFields().get(0).getIsRequired());
     }
 
+    /**
+     * 按实体编码读取最新发布快照应直接返回快照信息。
+     *
+     * <p>场景：快照字段为空数组，断言返回的实体 ID、编码与流程定义 ID 正确。</p>
+     */
     @Test
     void getLatestByEntityCodeReadsPublishedSnapshotDirectly() {
         EntityPublishHistoryMapper historyMapper = mock(EntityPublishHistoryMapper.class);
@@ -58,6 +75,11 @@ class EntityPublishedSnapshotServiceTest {
         assertEquals("process-config-1", snapshot.getProcessDefinitionId());
     }
 
+    /**
+     * 实体无发布快照时读取应抛出异常。
+     *
+     * <p>场景：mapper 无记录，断言抛出 RuntimeException 且消息含"实体未发布"。</p>
+     */
     @Test
     void getLatestByEntityIdFailsWhenNoSnapshotExists() {
         EntityPublishHistoryMapper historyMapper = mock(EntityPublishHistoryMapper.class);
@@ -70,6 +92,16 @@ class EntityPublishedSnapshotServiceTest {
         assertEquals("实体未发布: entity-1", exception.getMessage());
     }
 
+    /**
+     * 构造测试用发布历史对象。
+     *
+     * @param id 历史 ID
+     * @param entityId 实体 ID
+     * @param entityCode 实体编码
+     * @param version 版本号
+     * @param fieldsSnapshot 字段快照 JSON 字符串
+     * @return 已填充字段的 EntityPublishHistory 实例
+     */
     private static EntityPublishHistory history(String id,
                                                 String entityId,
                                                 String entityCode,

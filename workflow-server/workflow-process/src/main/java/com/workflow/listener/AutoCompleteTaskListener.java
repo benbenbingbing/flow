@@ -15,6 +15,13 @@ import org.flowable.task.service.delegate.DelegateTask;
 @Slf4j
 public class AutoCompleteTaskListener implements TaskListener {
 
+    /**
+     * 任务创建回调：标记当前节点为自动跳过，并设置 approved 变量为 approve。
+     * <p>
+     * 受事务限制不在此直接 complete，实际完成交由应用层或 skipExpression 处理。
+     *
+     * @param delegateTask Flowable 委托任务
+     */
     @Override
     public void notify(DelegateTask delegateTask) {
         String taskId = delegateTask.getId();

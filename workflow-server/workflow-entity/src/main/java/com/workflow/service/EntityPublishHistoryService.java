@@ -53,6 +53,19 @@ public class EntityPublishHistoryService {
         return createVersion(entity, fields, tableDdl, publishType, changesDesc, userId, userName, null);
     }
 
+    /**
+     * 创建发布版本记录（带版本描述）。
+     *
+     * @param entity            实体定义
+     * @param fields            字段列表
+     * @param tableDdl          表结构DDL
+     * @param publishType       发布类型
+     * @param changesDesc       变更描述
+     * @param userId            发布人ID
+     * @param userName          发布人姓名
+     * @param versionDescription 版本描述
+     * @return 创建的版本记录
+     */
     @Transactional
     public EntityPublishHistory createVersion(
             EntityDefinition entity,

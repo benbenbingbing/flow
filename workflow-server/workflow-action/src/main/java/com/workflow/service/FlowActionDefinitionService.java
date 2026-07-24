@@ -27,6 +27,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 流程动作定义服务。
+ *
+ * <p>管理动作处理器目录：扫描容器内所有 {@link FlowActionHandler} Bean，与持久化的动作定义
+ * 配置合并，提供前端可见的处理器选项列表；并负责处理器中文名称、可见范围、实体绑定的
+ * 增删改与校验。仅超级管理员可维护目录配置。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class FlowActionDefinitionService {
@@ -38,6 +45,12 @@ public class FlowActionDefinitionService {
     private final EntityCodeCatalogPort entityCodeCatalogPort;
     private final CurrentUserRoleService currentUserRoleService;
 
+    /**
+     * 列出指定流程配置下可见、启用、且对当前实体可见的处理器选项。
+     *
+     * @param processConfigId 流程配置 ID
+     * @return 可选处理器选项列表
+     */
     public List<FlowActionHandlerOptionDTO> listVisible(String processConfigId) {
         String entityCode = entityCodeCatalogPort.findEntityCodeByProcessDefinitionId(processConfigId);
         return buildOptions(false).stream()
@@ -47,11 +60,25 @@ public class FlowActionDefinitionService {
                 .toList();
     }
 
+    /**
+     * 列出全部处理器配置（含未启用的），仅超级管理员可调用。
+     *
+     * @return 全部处理器选项列表
+     * @throws RuntimeException 非超级管理员调用时抛出
+     */
     public List<FlowActionHandlerOptionDTO> listAllForAdmin() {
         currentUserRoleService.requireSuperAdmin();
         return buildOptions(true);
     }
 
+    /**
+     * 保存处理器配置：更新中文名称、描述、可见范围与实体绑定。
+     *
+     * @param beanName 处理器 Bean 名称
+     * @param request   配置请求
+     * @return 保存后的处理器选项
+     * @throws RuntimeException 非超管、处理器不存在或实体编码无效时抛出
+     */
     @Transactional
     public FlowActionHandlerOptionDTO save(String beanName, FlowActionDefinitionRequest request) {
         currentUserRoleService.requireSuperAdmin();
@@ -93,6 +120,18 @@ public class FlowActionDefinitionService {
         return toOption(definition, beanName, handler, true);
     }
 
+    /**
+     * 校验并返回动作可在指定流程配置下选用的定义。
+     *
+     * <p>优先按 definitionId 查找，其次按 handlerName 查找；并校验定义已启用、
+     * Bean 已注册、对当前实体可见。</p>
+     *
+     * @param processConfigId 流程配置 ID
+     * @param definitionId    动作定义 ID；可为空
+     * @param handlerName     处理器 Bean 名称；definitionId 为空时使用
+     * @return 可用的动作定义
+     * @throws RuntimeException 定义不存在、被禁用、未注册或对实体不可见时抛出
+     */
     public FlowActionDefinition requireSelectable(
             String processConfigId,
             String definitionId,
@@ -126,6 +165,12 @@ public class FlowActionDefinitionService {
         return definition;
     }
 
+    /**
+     * 获取处理器在动作目录中的中文展示名；未配置则返回 handlerName 本身。
+     *
+     * @param handlerName 处理器 Bean 名称
+     * @return 中文展示名
+     */
     public String displayName(String handlerName) {
         if (!StringUtils.hasText(handlerName)) {
             return null;
@@ -135,6 +180,12 @@ public class FlowActionDefinitionService {
                 .orElse(handlerName);
     }
 
+    /**
+     * 合并容器内全部处理器 Bean 与已持久化定义，组装处理器选项列表。
+     *
+     * @param includeUnconfigured 是否包含未在目录中配置的处理器
+     * @return 处理器选项列表
+     */
     private List<FlowActionHandlerOptionDTO> buildOptions(boolean includeUnconfigured) {
         Map<String, FlowActionHandler> handlers = applicationContext.getBeansOfType(FlowActionHandler.class);
         Map<String, FlowActionDefinition> definitions = new LinkedHashMap<>();
@@ -157,6 +208,15 @@ public class FlowActionDefinitionService {
         return result;
     }
 
+    /**
+     * 将动作定义与处理器 Bean 组装为前端选项 DTO。
+     *
+     * @param definition 动作定义；为 null 表示未配置
+     * @param beanName   处理器 Bean 名称
+     * @param handler    处理器实例；为 null 表示 Bean 已失效
+     * @param configured 是否已在目录中配置
+     * @return 处理器选项 DTO
+     */
     private FlowActionHandlerOptionDTO toOption(
             FlowActionDefinition definition,
             String beanName,
@@ -190,6 +250,7 @@ public class FlowActionDefinitionService {
         return option;
     }
 
+    /** 判断处理器选项对指定实体是否可见：全局可见直接通过，实体可见需实体编码匹配 */
     private boolean isVisible(FlowActionHandlerOptionDTO option, String entityCode) {
         if (FlowActionVisibilityScope.GLOBAL.name().equals(option.getVisibilityScope())) {
             return true;
@@ -200,6 +261,7 @@ public class FlowActionDefinitionService {
         return option.getEntityCodes().stream().anyMatch(code -> code.equalsIgnoreCase(entityCode));
     }
 
+    /** 解析可见范围字符串为枚举，非法值抛出异常 */
     private FlowActionVisibilityScope parseScope(String value) {
         try {
             return FlowActionVisibilityScope.valueOf(value.trim().toUpperCase(Locale.ROOT));
@@ -208,6 +270,7 @@ public class FlowActionDefinitionService {
         }
     }
 
+/** 归一化实体编码列表：去空白、转小写、去重 */
     private List<String> normalizeEntityCodes(List<String> values) {
         if (values == null) {
             return List.of();
@@ -220,6 +283,7 @@ public class FlowActionDefinitionService {
                 .toList();
     }
 
+    /** 校验实体编码是否全部存在于实体目录中，存在未知编码时抛出异常 */
     private void validateEntityCodes(List<String> entityCodes) {
         Set<String> available = entityCodeCatalogPort.findAllEntityCodes().stream()
                 .map(code -> code.toLowerCase(Locale.ROOT))
@@ -232,6 +296,7 @@ public class FlowActionDefinitionService {
         }
     }
 
+    /** 序列化实体编码列表为 JSON */
     private String writeEntityCodes(List<String> entityCodes) {
         try {
             return objectMapper.writeValueAsString(entityCodes);
@@ -240,6 +305,7 @@ public class FlowActionDefinitionService {
         }
     }
 
+    /** 读取定义可见实体编码：优先查关系表，回退到 JSON 字段 */
     private List<String> readEntityCodes(FlowActionDefinition definition) {
         List<String> relational = definitionEntityMapper.findEntityCodes(definition.getId());
         if (!relational.isEmpty()) {
@@ -256,6 +322,7 @@ public class FlowActionDefinitionService {
         }
     }
 
+    /** 重置定义的可见实体绑定：先删除旧关系，再逐条插入新关系 */
     private void replaceVisibleEntities(String definitionId, List<String> entityCodes) {
         definitionEntityMapper.deleteByDefinitionId(definitionId);
         for (String entityCode : entityCodes) {

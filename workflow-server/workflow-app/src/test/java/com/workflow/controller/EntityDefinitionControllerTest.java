@@ -40,8 +40,10 @@ public class EntityDefinitionControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    /** 每个测试前初始化的实体定义测试 DTO */
     private EntityDefinitionDTO testEntity;
 
+    /** 初始化测试用实体定义 DTO，含实体编码、名称与状态 */
     @BeforeEach
     void setUp() {
         testEntity = new EntityDefinitionDTO();
@@ -52,6 +54,7 @@ public class EntityDefinitionControllerTest {
         testEntity.setStatus(EntityDefinition.Status.DRAFT);
     }
 
+    /** 测试分页查询实体定义接口，断言返回 200 且分页数据包含预期实体 */
     @Test
     void testList() throws Exception {
         // 准备数据
@@ -69,6 +72,7 @@ public class EntityDefinitionControllerTest {
         verify(entityService, times(1)).findPage(any(EntityDefinitionQueryDTO.class));
     }
 
+    /** 测试按 ID 查询实体定义接口，断言返回 200 且实体编码正确 */
     @Test
     void testGetById() throws Exception {
         when(entityService.findById("1")).thenReturn(testEntity);
@@ -82,6 +86,7 @@ public class EntityDefinitionControllerTest {
         verify(entityService, times(1)).findById("1");
     }
 
+    /** 测试按编码查询实体定义接口，断言返回 200 且实体编码正确 */
     @Test
     void testGetByCode() throws Exception {
         when(entityService.findByCode("test_entity")).thenReturn(testEntity);
@@ -94,6 +99,7 @@ public class EntityDefinitionControllerTest {
         verify(entityService, times(1)).findByCode("test_entity");
     }
 
+    /** 测试新增实体定义接口，断言返回 200 且实体编码正确 */
     @Test
     void testCreate() throws Exception {
         when(entityService.save(any(EntityDefinitionDTO.class))).thenReturn(testEntity);
@@ -108,6 +114,7 @@ public class EntityDefinitionControllerTest {
         verify(entityService, times(1)).save(any(EntityDefinitionDTO.class));
     }
 
+    /** 测试更新实体定义接口，断言返回 200 且 update 方法被正确调用 */
     @Test
     void testUpdate() throws Exception {
         when(entityService.update(eq("1"), any(EntityDefinitionDTO.class))).thenReturn(testEntity);
@@ -122,6 +129,7 @@ public class EntityDefinitionControllerTest {
         verify(entityService, times(1)).update(eq("1"), any(EntityDefinitionDTO.class));
     }
 
+    /** 测试删除实体定义接口，断言返回 200 且 delete 方法被正确调用 */
     @Test
     void testDelete() throws Exception {
         doNothing().when(entityService).delete("1");
@@ -133,6 +141,7 @@ public class EntityDefinitionControllerTest {
         verify(entityService, times(1)).delete("1");
     }
 
+    /** 测试发布实体定义接口，断言返回 200 且 publish 方法被正确调用 */
     @Test
     void testPublish() throws Exception {
         when(entityService.publish(
@@ -153,6 +162,7 @@ public class EntityDefinitionControllerTest {
                 nullable(ConfigMigrationPublishRequest.class));
     }
 
+    /** 测试绑定工作流接口，断言返回 200 且 bindWorkflow 方法被正确调用 */
     @Test
     void testBindWorkflow() throws Exception {
         when(entityService.bindWorkflow("1", "2")).thenReturn(testEntity);

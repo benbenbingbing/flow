@@ -12,11 +12,16 @@ import java.util.List;
 
 /**
  * 用户组实体
+ * <p>
+ * 对应 sys_group 表，存储用户组编码、名称、状态等，组编码唯一。
+ * 非数据库字段（users、userIds）用于回显组内成员。
+ * </p>
  */
 @Data
 @TableName("sys_group")
 public class SysGroup {
     
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

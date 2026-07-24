@@ -11,15 +11,29 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 发布前 BPMN 归一化。
+ * 发布前 BPMN 归一化处理器
+ * 负责在流程发布前对 BPMN XML 进行清洗、转换与补全：
+ * 包括 Camunda 属性转 Flowable 属性、多实例配置修正、跳过节点表达式注入、
+ * 配置化任务（服务/发送/业务规则/调用活动/脚本）改写、ID 冲突消解等，确保 XML 可被 Flowable 正确部署执行。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessBpmnPublishSanitizer {
 
+    /** JSON 序列化工具，用于解析节点配置 JSON */
     private final ObjectMapper objectMapper;
 
+    /**
+     * 对 BPMN XML 进行发布前的归一化处理。
+     * <p>
+     * 按顺序执行多步清洗与改写，最终返回可被 Flowable 部署的合规 XML。
+     *
+     * @param bpmnXml    原始 BPMN XML
+     * @param processKey 流程标识，用于消解 ID 冲突与统一流程ID
+     * @return 归一化后的 BPMN XML
+     * @throws IllegalArgumentException 当配置化任务缺少必要配置（如发送任务缺少渠道、业务规则任务缺少决策表Key）时抛出
+     */
     public String sanitize(String bpmnXml, String processKey) {
         String result = bpmnXml;
 
@@ -49,6 +63,10 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 改写配置化的服务任务：将扩展属性 restConfig 解析后，
+     * 设置为统一的服务任务代理表达式，并按需注入结果变量名。
+     */
     private String fixConfiguredServiceTasks(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "serviceTask", "restConfig", (element, config) -> {
             String startTag = removeAttributes(
@@ -63,6 +81,11 @@ public class ProcessBpmnPublishSanitizer {
         });
     }
 
+    /**
+     * 改写配置化的发送任务：校验渠道与接收人，并将 sendTask 转为 serviceTask 绑定发送代理。
+     *
+     * @throws IllegalArgumentException 当缺少发送渠道或接收人时抛出
+     */
     private String fixConfiguredSendTasks(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "sendTask", "sendConfig", (element, config) -> {
             if (!config.path("channels").isArray() || config.path("channels").isEmpty()) {
@@ -79,6 +102,11 @@ public class ProcessBpmnPublishSanitizer {
         });
     }
 
+    /**
+     * 改写配置化的业务规则任务：校验决策表Key，并将 businessRuleTask 转为 serviceTask 绑定 DMN 代理。
+     *
+     * @throws IllegalArgumentException 当缺少决策表Key时抛出
+     */
     private String fixConfiguredBusinessRuleTasks(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "businessRuleTask", "ruleConfig", (element, config) -> {
             String decisionRef = config.path("decisionRef").asText("");
@@ -93,6 +121,9 @@ public class ProcessBpmnPublishSanitizer {
         });
     }
 
+    /**
+     * 改写配置化的调用活动：设置子流程Key、调用类型、业务Key及输入输出参数映射。
+     */
     private String fixConfiguredCallActivities(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "callActivity", "callConfig", (element, config) -> {
             String calledElement = config.path("calledElement").asText("");
@@ -119,6 +150,18 @@ public class ProcessBpmnPublishSanitizer {
         });
     }
 
+    /**
+     * 通用配置化元素改写器。
+     * <p>
+     * 按标签名匹配所有元素，读取其扩展属性中的配置 JSON，交由 rewriter 改写后回填。
+     * 无配置或解析异常时保留原元素；配置非法（IllegalArgumentException）则向上抛出。
+     *
+     * @param bpmnXml     BPMN XML
+     * @param tagName     目标标签名（如 serviceTask）
+     * @param propertyName 配置属性名（如 restConfig）
+     * @param rewriter    元素改写回调
+     * @return 改写后的 BPMN XML
+     */
     private String rewriteConfiguredElements(
             String bpmnXml,
             String tagName,

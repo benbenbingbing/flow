@@ -18,19 +18,33 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * 实体列表配置校验器
+ * 
+ * 对列表配置 DTO 进行保存前的合法性校验：列表标识、自定义组件/查询提供者标识、
+ * 数据范围模式（INHERIT/NARROW/OVERRIDE）、访问权限码、各类结构化配置 JSON、
+ * 字段数量上限、字段编码唯一性、数据源类型与虚拟字段/查询能力、查询方式、列对齐方式等。
+ */
 @Component
 @RequiredArgsConstructor
 public class EntityListConfigurationValidator {
 
+    /** 列表标识正则：字母开头，字母数字下划线短横线，长度 1~100 */
     private static final Pattern LIST_KEY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
+    /** 字段编码正则：字母开头，字母数字下划线，长度 1~100 */
     private static final Pattern FIELD_CODE = Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,99}");
+    /** 扩展组件标识正则 */
     private static final Pattern EXTENSION_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
+    /** 支持的查询方式 */
     private static final Set<String> QUERY_TYPES = Set.of(
             "EQ", "NE", "LIKE", "NOT_LIKE", "GT", "GE", "LT", "LE",
             "BETWEEN", "IN", "NOT_IN", "EMPTY", "NOT_EMPTY");
+    /** 支持的列对齐方式 */
     private static final Set<String> ALIGNMENTS = Set.of("left", "center", "right");
+    /** 支持的数据范围模式 */
     private static final Set<String> DATA_SCOPE_MODES =
             Set.of("INHERIT", "NARROW", "OVERRIDE");
+    /** 访问权限码格式正则 */
     private static final Pattern PERMISSION_CODE =
             Pattern.compile("[A-Za-z0-9:_-]{1,200}");
 
@@ -39,6 +53,12 @@ public class EntityListConfigurationValidator {
     private final ListFieldDataProviderRegistry providerRegistry;
     private final EntityFieldMapper entityFieldMapper;
 
+    /**
+     * 校验列表配置整体。
+     *
+     * @param dto 列表配置 DTO
+     * @throws IllegalArgumentException 配置为空、实体信息缺失、标识不合法、数据范围模式错误等时抛出
+     */
     public void validate(EntityListConfigDTO dto) {
         if (dto == null) {
             throw new IllegalArgumentException("列表配置不能为空");
@@ -88,6 +108,13 @@ public class EntityListConfigurationValidator {
         }
     }
 
+    /**
+     * 校验单个列表字段：编码格式与唯一性、数据源类型与提供者能力、查询方式、列对齐、各类配置 JSON。
+     *
+     * @param field           列表字段配置
+     * @param entityFieldIds  实体已有的字段 ID 集合（用于校验实体字段来源）
+     * @param fieldCodes      已收集的字段编码集合（用于去重，会被本方法修改）
+     */
     private void validateField(
             EntityListField field,
             Set<String> entityFieldIds,
@@ -144,16 +171,19 @@ public class EntityListConfigurationValidator {
         field.setRenderConfig(blankToNull(field.getRenderConfig()));
     }
 
+    /** 校验扩展组件/提供者标识格式 */
     private void validateExtensionName(String name, String label) {
         if (StringUtils.hasText(name) && !EXTENSION_NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(label + "标识不合法");
         }
     }
 
+    /** 空白字符串转 null */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }
 
+    /** 校验结构化配置：非空时通过 JsonDocumentCodec 序列化校验其合法性 */
     private void validateStructured(Object value, String label) {
         if (value != null) {
             jsonDocumentCodec.write(value, label);

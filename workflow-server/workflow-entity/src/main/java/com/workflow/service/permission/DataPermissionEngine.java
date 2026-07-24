@@ -33,10 +33,25 @@ public class DataPermissionEngine {
     private final EntityListScopeAuditService auditService;
     private final EntityRecordTeamService entityRecordTeamService;
 
+    /**
+     * 计算实体级数据权限结果（不区分列表）。
+     *
+     * @param entityCode 实体编码
+     * @param user       当前用户
+     * @return 数据权限结果，包含是否授权、SQL 条件等
+     */
     public DataPermissionResult calculatePermission(String entityCode, SysUser user) {
         return calculatePermission(entityCode, null, user);
     }
 
+    /**
+     * 计算指定列表的数据权限结果。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码，为空按实体默认范围处理
+     * @param user       当前用户
+     * @return 数据权限结果
+     */
     public DataPermissionResult calculatePermission(
             String entityCode,
             String listKey,
@@ -45,6 +60,14 @@ public class DataPermissionEngine {
         return calculation.result();
     }
 
+    /**
+     * 预览数据权限计算详情，包含匹配到的规则、SQL 条件和说明。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码
+     * @param user       当前用户
+     * @return 权限预览 DTO
+     */
     public PermissionPreviewDTO previewPermissionDetail(
             String entityCode,
             String listKey,
@@ -64,6 +87,10 @@ public class DataPermissionEngine {
         return preview;
     }
 
+    /**
+     * 核心权限计算逻辑：依次处理绕过权限、发布快照绑定匹配、团队权限叠加、
+     * 数据范围委托，最终合成 allow/deny SQL 条件。
+     */
     private CalculationResult calculate(
             String entityCode,
             String listKey,
@@ -72,6 +99,7 @@ public class DataPermissionEngine {
             return denied("当前用户不存在", null, List.of());
         }
 
+        // 检查是否拥有绕过数据范围的显式权限
         String bypassPermission = "entity:"
                 + EntityPermissionAction.normalizeEntityCode(entityCode)
                 + ":scope:bypass";
@@ -166,6 +194,7 @@ public class DataPermissionEngine {
             }
         }
 
+        // 叠加记录团队权限范围（叠加模式时直接加入允许集合）
         EntityRecordTeamService.TeamPermission teamPermission =
                 entityRecordTeamService.teamPermission(entityCode, user.getId());
         if (teamPermission.enabled()

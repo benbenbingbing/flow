@@ -13,8 +13,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 配置迁移包编解码器测试。
+ *
+ * <p>被测对象：{@link ConfigMigrationPackageCodec}，覆盖签名迁移包的编解码往返、
+ * 不同环境签名密钥下迁移包被拒绝等场景。
+ */
 class ConfigMigrationPackageCodecTest {
 
+    /** 测试签名迁移包编解码往返：验证解码后的包号、迁移标签、资产快照与校验和与编码一致 */
     @Test
     void signedPackageRoundTripsSelectedSnapshot() {
         ConfigMigrationPackageCodec codec = codec("test-signing-key");
@@ -40,6 +47,7 @@ class ConfigMigrationPackageCodecTest {
         assertEquals(encoded.checksum(), decoded.checksum());
     }
 
+    /** 测试不同环境签名的迁移包被拒绝：验证目标环境用不同密钥解码时抛出 IllegalArgumentException */
     @Test
     void packageSignedByDifferentEnvironmentIsRejected() {
         ConfigMigrationPackageCodec source = codec("source-key");
@@ -53,6 +61,7 @@ class ConfigMigrationPackageCodecTest {
         assertThrows(IllegalArgumentException.class, () -> target.decode(data));
     }
 
+    /** 构造指定签名密钥的编解码器，通过反射注入密钥与环境名 */
     private ConfigMigrationPackageCodec codec(String signingKey) {
         ConfigMigrationPackageCodec codec = new ConfigMigrationPackageCodec(
                 new ObjectMapper().findAndRegisterModules());
@@ -61,6 +70,7 @@ class ConfigMigrationPackageCodecTest {
         return codec;
     }
 
+    /** 构造实体资产测试对象，含定义、字段、表单等快照 JSON */
     private ConfigMigrationAsset entityAsset() {
         ConfigMigrationAsset asset = new ConfigMigrationAsset();
         asset.setId("asset-1");

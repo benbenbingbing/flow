@@ -12,11 +12,15 @@ import java.util.List;
 
 /**
  * 角色实体
+ * <p>
+ * 对应 sys_role 表，存储角色编码、名称、状态等，角色编码唯一（如 super_admin、admin）。
+ * </p>
  */
 @Data
 @TableName("sys_role")
 public class SysRole {
     
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

@@ -31,8 +31,23 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体工作流运行时服务单元测试。
+ *
+ * <p>被测对象为 {@link EntityWorkflowRuntimeService}，验证发起流程时
+ * 设置身份、启动 Flowable 实例、写入运行时字段(状态、当前任务)与任务同步，
+     * 以及更新当前任务使用专用 Mapper 方法。</p>
+ */
 class EntityWorkflowRuntimeServiceTest {
 
+    /**
+     * 发起流程应启动 Flowable 实例并写入运行时字段。
+     *
+     * <p>场景：mock 快照、流程定义、实体状态与任务查询，
+     * 断言 startProcessInstanceByKey 收到正确变量(entityCode、initiator、amount)，
+     * 身份服务设置鉴权用户，动态表 update 写入状态 PENDING 与当前任务，
+     * 且任务同步被调用，DTO 回填流程实例 ID 与状态。</p>
+     */
     @Test
     void startProcessStartsFlowableAndWritesRuntimeFields() {
         Fixture fixture = new Fixture();
@@ -76,6 +91,7 @@ class EntityWorkflowRuntimeServiceTest {
         assertEquals("task-1", dto.getCurrentTaskId());
     }
 
+    /** 更新当前任务应调用专用 Mapper 的 updateCurrentTask 方法 */
     @Test
     void updateCurrentTaskUsesDedicatedMapperUpdate() {
         Fixture fixture = new Fixture();
@@ -86,6 +102,7 @@ class EntityWorkflowRuntimeServiceTest {
         verify(fixture.dynamicMapper).updateCurrentTask("wf_expense", "data-1", null, null, null);
     }
 
+    /** 测试夹具：封装 mock 依赖与场景构造方法 */
     private static class Fixture {
         final EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);
         final EntityStatusMapper entityStatusMapper = mock(EntityStatusMapper.class);
@@ -99,6 +116,7 @@ class EntityWorkflowRuntimeServiceTest {
         final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(MultiInstanceCollectionListener.class);
         final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
 
+        /** 构造夹具，设置发布快照、流程定义、实体状态与任务查询的 mock 链路 */
         Fixture() {
             EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
             snapshot.setEntityId("entity-1");
@@ -134,6 +152,7 @@ class EntityWorkflowRuntimeServiceTest {
             when(taskQuery.singleResult()).thenReturn(task);
         }
 
+        /** 组装并返回被测服务实例 */
         EntityWorkflowRuntimeService service() {
             return new EntityWorkflowRuntimeService(
                     dynamicMapper, entityStatusMapper, processDefinitionConfigMapper,

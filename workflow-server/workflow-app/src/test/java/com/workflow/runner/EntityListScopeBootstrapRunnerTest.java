@@ -16,8 +16,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 
+/**
+ * 实体列表作用域引导启动 Runner 单元测试。
+ *
+ * <p>被测对象为 {@link EntityListScopeBootstrapRunner}，验证当作用域初始化
+ * 需要人工复核时不应中断应用启动。</p>
+ */
 class EntityListScopeBootstrapRunnerTest {
 
+    /**
+     * 作用域初始化抛出人工复核异常时启动不应中断。
+     *
+     * <p>场景：ensureDefaultAndRelease 抛出 EntityListScopeManualReviewRequiredException，
+     * 断言 run 不抛异常且服务方法被调用。</p>
+     */
     @Test
     void manualReviewRequirementDoesNotAbortBootstrap() {
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);

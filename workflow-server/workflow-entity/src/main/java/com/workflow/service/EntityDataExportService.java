@@ -44,7 +44,15 @@ public class EntityDataExportService {
     private final EntityActionCapabilityService actionCapabilityService;
 
     /**
-     * 导出实体数据
+     * 导出实体数据为 CSV。
+     *
+     * <p>根据导出类型（SELECTED 或全部）服务端决定所需权限，禁止信任客户端传入的权限码，
+     * 选中导出时逐条校验行内按钮权限，任一不可导出则整体拒绝。</p>
+     *
+     * @param entityCode 实体编码
+     * @param request    导出请求
+     * @param response   HTTP 响应，用于写入 CSV 流
+     * @throws ForbiddenException 缺少导出权限或存在不可导出数据时抛出
      */
     public void export(String entityCode, EntityDataExportRequest request, HttpServletResponse response) {
         // 1. 服务端根据导出类型决定权限，禁止信任客户端传入的权限码

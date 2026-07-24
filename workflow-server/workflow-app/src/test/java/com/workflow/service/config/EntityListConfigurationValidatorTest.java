@@ -17,8 +17,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体列表配置校验器测试。
+ *
+ * <p>被测对象：{@link EntityListConfigurationValidator}，覆盖将空白 JSON 列配置归一化为 null 的场景。
+ */
 class EntityListConfigurationValidatorTest {
 
+    /** 测试将空白 JSON 列配置归一化为 null：验证 columnConfig/queryConfig/renderConfig 空白值被置为 null */
     @Test
     void normalizesBlankJsonColumnsToNull() {
         EntityFieldMapper entityFieldMapper = mock(EntityFieldMapper.class);

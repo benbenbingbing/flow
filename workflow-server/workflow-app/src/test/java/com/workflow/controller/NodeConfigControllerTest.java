@@ -35,8 +35,10 @@ public class NodeConfigControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    /** 每个测试前初始化的节点配置测试数据 */
     private NodeConfigDTO testNode;
 
+    /** 初始化测试用节点配置 DTO */
     @BeforeEach
     void setUp() {
         testNode = new NodeConfigDTO();
@@ -46,6 +48,7 @@ public class NodeConfigControllerTest {
         testNode.setNodeType(NodeConfig.NodeType.USER_TASK);
     }
 
+    /** 测试按流程 ID 查询节点列表接口，断言返回 200 且包含预期节点数据 */
     @Test
     void testList() throws Exception {
         List<NodeConfigDTO> nodeList = Arrays.asList(testNode);
@@ -60,6 +63,7 @@ public class NodeConfigControllerTest {
         verify(nodeService, times(1)).findByProcessId("proc-1");
     }
 
+    /** 测试按 ID 查询单个节点接口，断言返回 200 且节点字段正确 */
     @Test
     void testGetById() throws Exception {
         when(nodeService.findById("1")).thenReturn(testNode);
@@ -73,6 +77,7 @@ public class NodeConfigControllerTest {
         verify(nodeService, times(1)).findById("1");
     }
 
+    /** 测试新增节点接口，断言返回 200 且保存的节点 ID 正确 */
     @Test
     void testCreate() throws Exception {
         when(nodeService.save(eq("proc-1"), any(NodeConfigDTO.class))).thenReturn(testNode);
@@ -87,6 +92,7 @@ public class NodeConfigControllerTest {
         verify(nodeService, times(1)).save(eq("proc-1"), any(NodeConfigDTO.class));
     }
 
+    /** 测试删除节点接口，断言返回 200 且 delete 方法被调用 */
     @Test
     void testDelete() throws Exception {
         doNothing().when(nodeService).delete("1");

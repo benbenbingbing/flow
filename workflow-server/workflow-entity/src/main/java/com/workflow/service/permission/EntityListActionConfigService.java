@@ -35,6 +35,13 @@ public class EntityListActionConfigService {
     private final List<EntityActionRuleConditionProvider> conditionProviders;
     private final List<EntityPermissionOptionProvider> permissionOptionProviders;
 
+    /**
+     * 根据实体编码和列表编码解析列表配置。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码，为空时返回默认列表
+     * @return 列表配置，实体或列表不存在返回 null
+     */
     public EntityListConfig resolveListConfig(String entityCode, String listKey) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         if (definition == null) {
@@ -50,11 +57,25 @@ public class EntityListActionConfigService {
                 .orElse(configs.isEmpty() ? null : configs.get(0));
     }
 
+    /**
+     * 解析列表配置ID，列表不存在返回 null。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码
+     * @return 列表配置ID
+     */
     public String resolveListConfigId(String entityCode, String listKey) {
         EntityListConfig config = resolveListConfig(entityCode, listKey);
         return config == null ? null : config.getId();
     }
 
+    /**
+     * 解析列表的行内按钮配置，优先取关系型配置，否则回退到 JSON 字段。
+     *
+     * @param config      列表配置，已发布快照时忽略关系型配置
+     * @param entityCode  实体编码，用于权限码补全
+     * @return 规范化后的行内按钮列表
+     */
     public List<Map<String, Object>> resolveRowButtons(EntityListConfig config, String entityCode) {
         List<Map<String, Object>> relational = config == null
                 || Boolean.TRUE.equals(config.getPublishedSnapshot())
@@ -71,6 +92,13 @@ public class EntityListActionConfigService {
                 false);
     }
 
+    /**
+     * 解析列表的工具栏按钮配置，优先取关系型配置，否则回退到 JSON 字段。
+     *
+     * @param config      列表配置，已发布快照时忽略关系型配置
+     * @param entityCode  实体编码，用于权限码补全
+     * @return 规范化后的工具栏按钮列表
+     */
     public List<Map<String, Object>> resolveToolbarButtons(EntityListConfig config, String entityCode) {
         List<Map<String, Object>> relational = config == null
                 || Boolean.TRUE.equals(config.getPublishedSnapshot())
@@ -87,6 +115,14 @@ public class EntityListActionConfigService {
                 false);
     }
 
+    /**
+     * 根据按钮 key 解析单个按钮配置，自动判断属于工具栏还是行内。
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表编码
+     * @param buttonKey  按钮 key
+     * @return 按钮配置，不存在返回 null
+     */
     public Map<String, Object> resolveButton(String entityCode, String listKey, String buttonKey) {
         EntityListConfig config = resolveListConfig(entityCode, listKey);
         List<Map<String, Object>> buttons = isToolbarKey(buttonKey)
@@ -98,6 +134,11 @@ public class EntityListActionConfigService {
                 .orElse(null);
     }
 
+    /**
+     * 在保存前规范化工具栏和行内按钮配置（严格模式校验自定义权限码）。
+     *
+     * @param config 列表配置
+     */
     public void normalizeForSave(EntityListConfig config) {
         config.setToolbarConfig(writeButtons(parseAndNormalize(
                 config.getToolbarConfig(), true, config.getEntityCode(), true)));
@@ -105,6 +146,11 @@ public class EntityListActionConfigService {
                 config.getRowActionConfig(), false, config.getEntityCode(), true)));
     }
 
+    /**
+     * 将按钮和场景配置同步到关系型存储表。
+     *
+     * @param config 列表配置
+     */
     public void synchronizeRelationalConfig(EntityListConfig config) {
         List<Map<String, Object>> toolbar = parseAndNormalize(
                 config.getToolbarConfig(), true, config.getEntityCode(), true);
@@ -118,10 +164,21 @@ public class EntityListActionConfigService {
                 config.getId(), parseScenes(config.getAllowedScenes()));
     }
 
+    /**
+     * 删除指定列表配置的关系型按钮和场景配置。
+     *
+     * @param listConfigId 列表配置ID
+     */
     public void deleteRelationalConfig(String listConfigId) {
         relationalConfigService.deleteByListConfigId(listConfigId);
     }
 
+    /**
+     * 迁移规范化按钮配置，返回是否有变化（非严格模式，不抛出自定义权限校验异常）。
+     *
+     * @param config 列表配置
+     * @return 配置发生变化返回 true
+     */
     public boolean normalizeForMigration(EntityListConfig config) {
         String normalizedToolbar = writeButtons(parseAndNormalize(
                 config.getToolbarConfig(), true, config.getEntityCode(), false));
@@ -134,6 +191,12 @@ public class EntityListActionConfigService {
         return changed;
     }
 
+    /**
+     * 从按钮配置读取可用性规则对象。
+     *
+     * @param button 按钮配置，可为 null
+     * @return 规则对象，不存在返回 null
+     */
     public EntityActionRuleDTO readRule(Map<String, Object> button) {
         Object rawRule = button == null ? null : button.get("availabilityRule");
         if (rawRule == null) {
@@ -142,6 +205,13 @@ public class EntityListActionConfigService {
         return objectMapper.convertValue(rawRule, EntityActionRuleDTO.class);
     }
 
+    /**
+     * 解析按钮对应的权限码，优先取显式配置，否则按标准动作推导。
+     *
+     * @param entityCode 实体编码
+     * @param button     按钮配置
+     * @return 权限码，无法识别返回 null
+     */
     public String permissionFor(String entityCode, Map<String, Object> button) {
         if (button == null) {
             return null;
@@ -154,6 +224,12 @@ public class EntityListActionConfigService {
         return action == null ? null : action.permissionCode(entityCode);
     }
 
+    /**
+     * 解析按钮不可用时的展示行为：HIDE 隐藏或 DISABLE 禁用。
+     *
+     * @param button 按钮配置
+     * @return HIDE 或 DISABLE，工具栏按钮默认 DISABLE
+     */
     public String unavailableBehavior(Map<String, Object> button) {
         EntityActionRuleDTO rule = readRule(button);
         if (rule != null && StringUtils.hasText(rule.getUnavailableBehavior())) {

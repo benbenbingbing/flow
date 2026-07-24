@@ -39,8 +39,16 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体整包保存 CAS（Compare-And-Swap）服务测试。
+ *
+ * <p>被测对象：{@link EntityFormService} 与 {@link EntityListConfigService} 的整包保存链路，
+ * 覆盖乐观锁修订号必填、过期修订返回服务端当前配置、可变列白名单与修订条件更新、
+ * 遗留数据源绑定保留、字段快照冲突不静默覆盖、系统导入的非 API 保存路径等场景。
+ */
 class EntityWholePackageCasServiceTest {
 
+    /** 测试表单整包保存要求传入 expectedRevision：验证为空时抛出 IllegalArgumentException 且不更新 */
     @Test
     void existingFormWholeSaveRequiresExpectedRevision() {
         FormContext context = formContext();
@@ -57,6 +65,7 @@ class EntityWholePackageCasServiceTest {
         verify(context.formFieldMapper(), never()).selectByFormId(any());
     }
 
+    /** 测试表单整包保存修订过期时返回服务端当前配置：验证抛出 RevisionConflictException 且 currentData 为服务端最新 */
     @Test
     void staleFormWholeSaveReturnsServerCurrentConfiguration() {
         FormContext context = formContext();
@@ -76,6 +85,7 @@ class EntityWholePackageCasServiceTest {
                 .insert(any(EntityFormField.class));
     }
 
+    /** 测试表单整包保存使用修订条件与可变列白名单：验证 SQL 仅更新允许列且 WHERE 含 revision */
     @Test
     void formWholeSaveUsesRevisionConditionAndMutableColumnWhitelist() {
         FormContext context = formContext();
@@ -115,6 +125,7 @@ class EntityWholePackageCasServiceTest {
         assertTrue(where.contains("revision"));
     }
 
+    /** 测试遗留表单整包保存保留被省略的表单级数据源绑定：验证更新语句包含原数据源绑定文档 */
     @Test
     void legacyFormWholeSavePreservesOmittedFormDataSourceBindings() {
         FormContext context = formContext();
@@ -142,6 +153,7 @@ class EntityWholePackageCasServiceTest {
                 current.getDataSourceBindingsDocument()));
     }
 
+    /** 测试表单字段快照冲突不静默覆盖：验证字段更新返回 0 时抛出修订冲突且 WHERE 含 form_id 与 update_time */
     @Test
     void formFieldSnapshotConflictDoesNotSilentlyOverwrite() {
         FormContext context = formContext();
@@ -175,6 +187,7 @@ class EntityWholePackageCasServiceTest {
         assertTrue(where.contains("update_time"));
     }
 
+    /** 测试表单系统导入走显式非 API 保存路径：验证导入保存后修订号自增 */
     @Test
     void formSystemImportHasExplicitNonApiSavePath() {
         FormContext context = formContext();
@@ -192,6 +205,7 @@ class EntityWholePackageCasServiceTest {
         assertEquals(5, saved.getRevision());
     }
 
+    /** 测试列表整包保存要求传入 expectedRevision：验证为空时抛出 IllegalArgumentException 且不更新 */
     @Test
     void existingListWholeSaveRequiresExpectedRevision() {
         ListContext context = listContext();
@@ -210,6 +224,7 @@ class EntityWholePackageCasServiceTest {
         verify(context.fieldMapper(), never()).findByListConfigId(any());
     }
 
+    /** 测试列表整包保存修订过期时返回服务端当前配置：验证抛出 RevisionConflictException 且 currentData 为服务端最新 */
     @Test
     void staleListWholeSaveReturnsServerCurrentConfiguration() {
         ListContext context = listContext();
@@ -232,6 +247,7 @@ class EntityWholePackageCasServiceTest {
                 .insert(any(EntityListField.class));
     }
 
+    /** 测试列表整包保存使用修订条件与可变列白名单：验证 SQL 仅更新允许列且 WHERE 含 revision */
     @Test
     void listWholeSaveUsesRevisionConditionAndMutableColumnWhitelist() {
         ListContext context = listContext();
@@ -275,6 +291,7 @@ class EntityWholePackageCasServiceTest {
         assertTrue(where.contains("revision"));
     }
 
+    /** 测试列表字段修订不匹配在字段更新前停止：验证抛出修订冲突且字段 update 未被调用 */
     @Test
     void listFieldRevisionMismatchStopsBeforeFieldUpdate() {
         ListContext context = listContext();
@@ -301,6 +318,7 @@ class EntityWholePackageCasServiceTest {
         verify(context.fieldMapper(), never()).update(any(), any());
     }
 
+    /** 测试列表字段条件更新失败返回整包服务端配置：验证抛出修订冲突且 WHERE 含 list_config_id 与 revision */
     @Test
     void listFieldConditionalUpdateFailureReturnsWholeServerConfiguration() {
         ListContext context = listContext();
@@ -334,6 +352,7 @@ class EntityWholePackageCasServiceTest {
         assertTrue(where.contains("revision"));
     }
 
+    /** 测试列表系统导入走显式非 API 保存路径：验证导入保存后修订号自增 */
     @Test
     void listSystemImportHasExplicitNonApiSavePath() {
         ListContext context = listContext();
@@ -352,6 +371,7 @@ class EntityWholePackageCasServiceTest {
         assertEquals(10, saved.getRevision());
     }
 
+    /** 装配表单服务及其 Mock 依赖，返回表单测试上下文 */
     private FormContext formContext() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         EntityFormFieldMapper formFieldMapper =
@@ -379,6 +399,7 @@ class EntityWholePackageCasServiceTest {
                 formNodeMapper);
     }
 
+    /** 装配列表服务及其 Mock 依赖，返回列表测试上下文 */
     private ListContext listContext() {
         EntityListConfigMapper configMapper =
                 mock(EntityListConfigMapper.class);
@@ -409,6 +430,7 @@ class EntityWholePackageCasServiceTest {
                 fieldMapper);
     }
 
+    /** 预置表单当前快照的 Mock 返回值（表单、字段、节点） */
     private void stubCurrentForm(
             FormContext context,
             EntityForm form,
@@ -420,6 +442,7 @@ class EntityWholePackageCasServiceTest {
                 .thenReturn(List.of());
     }
 
+    /** 预置列表当前快照的 Mock 返回值（配置与字段） */
     private void stubCurrentList(
             ListContext context,
             EntityListConfig config,
@@ -430,6 +453,7 @@ class EntityWholePackageCasServiceTest {
                 .thenReturn(fields);
     }
 
+    /** 构造带 id 与修订号的表单对象 */
     private EntityForm form(String id, Integer revision) {
         EntityForm form = new EntityForm();
         form.setId(id);
@@ -443,6 +467,7 @@ class EntityWholePackageCasServiceTest {
         return form;
     }
 
+    /** 构造带字段编码与标签的表单字段对象 */
     private EntityFormField formField(
             String id,
             String fieldCode,
@@ -458,6 +483,7 @@ class EntityWholePackageCasServiceTest {
         return field;
     }
 
+    /** 构造带 id 与修订号的列表配置对象 */
     private EntityListConfig listConfig(String id, Integer revision) {
         EntityListConfig config = new EntityListConfig();
         config.setId(id);
@@ -471,6 +497,7 @@ class EntityWholePackageCasServiceTest {
         return config;
     }
 
+    /** 构造带字段的列表保存请求 DTO */
     private EntityListConfigDTO listRequest(
             String id,
             List<EntityListField> fields) {
@@ -485,6 +512,7 @@ class EntityWholePackageCasServiceTest {
         return dto;
     }
 
+    /** 构造带修订号与宽度的列表字段对象 */
     private EntityListField listField(
             String id,
             String fieldCode,
@@ -504,11 +532,13 @@ class EntityWholePackageCasServiceTest {
         return field;
     }
 
+    /** 创建 UpdateWrapper 的参数捕获器，抑制原始类型警告 */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private <T> ArgumentCaptor<UpdateWrapper<T>> updateWrapperCaptor() {
         return (ArgumentCaptor) ArgumentCaptor.forClass(UpdateWrapper.class);
     }
 
+    /** 表单测试上下文记录，聚合表单服务与各 Mapper */
     private record FormContext(
             EntityFormService service,
             EntityFormMapper formMapper,
@@ -516,6 +546,7 @@ class EntityWholePackageCasServiceTest {
             EntityFormNodeMapper formNodeMapper) {
     }
 
+    /** 列表测试上下文记录，聚合列表服务与各 Mapper */
     private record ListContext(
             EntityListConfigService service,
             EntityListConfigMapper configMapper,

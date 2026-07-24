@@ -41,6 +41,14 @@ public class FlowActionController {
         return ApiResponse.success(flowActionService.findDraftActionsBySequenceFlow(processConfigId, sequenceFlowId));
     }
 
+    /**
+     * 按作用域与元素绑定查询草稿动作。
+     *
+     * @param processConfigId 流程配置 ID
+     * @param scopeType       作用域类型
+     * @param elementId       BPMN 元素 ID；流程级可传空
+     * @return 草稿动作列表
+     */
     @GetMapping("/process/{processConfigId}/binding")
     public ApiResponse<List<FlowAction>> findDraftActionsByBinding(
             @PathVariable String processConfigId,
@@ -50,6 +58,13 @@ public class FlowActionController {
                 flowActionService.findDraftActionsByBinding(processConfigId, scopeType, elementId));
     }
 
+    /**
+     * 查询可用触发时机选项，支持按作用域与 BPMN 元素类型过滤。
+     *
+     * @param scopeType 作用域类型；为空不限
+     * @param bpmnType   BPMN 元素类型；用于判断是否用户任务
+     * @return 触发时机选项列表
+     */
     @GetMapping("/timing-options")
     public ApiResponse<List<FlowActionTimingOptionDTO>> timingOptions(
             @RequestParam(required = false) String scopeType,

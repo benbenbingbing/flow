@@ -41,8 +41,10 @@ public class ProcessDefinitionControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    /** 每个测试前初始化的流程定义测试 DTO */
     private ProcessDefinitionDTO testProcess;
 
+    /** 初始化测试用流程定义 DTO，含流程 Key、名称、版本与状态 */
     @BeforeEach
     void setUp() {
         testProcess = new ProcessDefinitionDTO();
@@ -54,6 +56,7 @@ public class ProcessDefinitionControllerTest {
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
     }
 
+    /** 测试分页查询流程定义接口，断言返回 200 且分页数据包含预期流程 */
     @Test
     void testList() throws Exception {
         PageResult<ProcessDefinitionDTO> pageResult = new PageResult<>(
@@ -69,6 +72,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).findPage(any(ProcessDefinitionQueryDTO.class));
     }
 
+    /** 测试查询已发布流程定义接口，断言返回 200 且状态为 PUBLISHED */
     @Test
     void testListPublished() throws Exception {
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
@@ -83,6 +87,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).findByStatus(any(ProcessDefinitionConfig.ProcessStatus.class));
     }
 
+    /** 测试按 ID 查询流程定义接口，断言返回 200 且流程 Key 正确 */
     @Test
     void testGetById() throws Exception {
         when(processService.findById("1")).thenReturn(testProcess);
@@ -96,6 +101,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).findById("1");
     }
 
+    /** 测试按流程 Key 查询流程定义接口，断言返回 200 且流程 Key 正确 */
     @Test
     void testGetByKey() throws Exception {
         when(processService.findByProcessKey("leave_process")).thenReturn(testProcess);
@@ -108,6 +114,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).findByProcessKey("leave_process");
     }
 
+    /** 测试新增流程定义接口，断言返回 200 且流程 Key 正确 */
     @Test
     void testCreate() throws Exception {
         when(processService.save(any(ProcessDefinitionDTO.class))).thenReturn(testProcess);
@@ -122,6 +129,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).save(any(ProcessDefinitionDTO.class));
     }
 
+    /** 测试更新流程定义接口，断言返回 200 且 update 方法被正确调用 */
     @Test
     void testUpdate() throws Exception {
         when(processService.update(eq("1"), any(ProcessDefinitionDTO.class))).thenReturn(testProcess);
@@ -136,6 +144,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).update(eq("1"), any(ProcessDefinitionDTO.class));
     }
 
+    /** 测试删除流程定义接口，断言返回 200 且 delete 方法被正确调用 */
     @Test
     void testDelete() throws Exception {
         doNothing().when(processService).delete("1");
@@ -147,6 +156,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).delete("1");
     }
 
+    /** 测试发布流程定义接口，断言返回 200 且状态变为 PUBLISHED */
     @Test
     void testPublish() throws Exception {
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
@@ -165,6 +175,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).publish(eq("1"), any(ConfigMigrationPublishRequest.class));
     }
 
+    /** 测试停用流程定义接口，断言返回 200 且状态变为 DISABLED */
     @Test
     void testDisable() throws Exception {
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.DISABLED);
@@ -178,6 +189,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).disable("1");
     }
 
+    /** 测试查询流程版本历史接口，断言返回 200 且版本号正确 */
     @Test
     void testGetVersions() throws Exception {
         ProcessVersionHistoryDTO version = new ProcessVersionHistoryDTO();
@@ -196,6 +208,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).findVersionsByProcessId("1");
     }
 
+    /** 测试按版本 ID 查询版本详情接口，断言返回 200 且版本 ID 正确 */
     @Test
     void testGetVersionById() throws Exception {
         ProcessVersionHistoryDTO version = new ProcessVersionHistoryDTO();
@@ -212,6 +225,7 @@ public class ProcessDefinitionControllerTest {
         verify(processService, times(1)).findVersionById("v1");
     }
 
+    /** 测试回滚到指定版本接口，断言返回 200 且 rollbackToVersion 方法被正确调用 */
     @Test
     void testRollbackToVersion() throws Exception {
         when(processService.rollbackToVersion(eq("1"), eq("v1"), any())).thenReturn(testProcess);

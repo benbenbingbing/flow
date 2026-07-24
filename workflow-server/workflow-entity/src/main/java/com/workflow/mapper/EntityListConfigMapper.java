@@ -26,6 +26,13 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
     @Select("SELECT * FROM entity_list_config WHERE entity_id = #{entityId} AND list_key = #{listKey} AND deleted = 0 LIMIT 1")
     EntityListConfig findByEntityIdAndListKey(@Param("entityId") String entityId, @Param("listKey") String listKey);
 
+    /**
+     * 根据实体编码和列表标识查询列表配置
+     *
+     * @param entityCode 实体编码
+     * @param listKey    列表标识
+     * @return 列表配置，无则返回 null
+     */
     @Select("SELECT * FROM entity_list_config "
             + "WHERE entity_code = #{entityCode} AND list_key = #{listKey} "
             + "AND deleted = 0 LIMIT 1")
@@ -33,11 +40,23 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
             @Param("entityCode") String entityCode,
             @Param("listKey") String listKey);
 
+    /**
+     * 根据实体编码查询全部列表配置，默认列表优先，按创建时间升序排列。
+     *
+     * @param entityCode 实体编码
+     * @return 列表配置列表
+     */
     @Select("SELECT * FROM entity_list_config "
             + "WHERE entity_code = #{entityCode} AND deleted = 0 "
             + "ORDER BY is_default DESC, create_time ASC")
     List<EntityListConfig> findByEntityCode(@Param("entityCode") String entityCode);
 
+    /**
+     * 根据主键 ID 加锁查询列表配置（FOR UPDATE），用于并发更新场景。
+     *
+     * @param id 主键 ID
+     * @return 列表配置，无则返回 null
+     */
     @Select("SELECT * FROM entity_list_config WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     EntityListConfig selectByIdForUpdate(@Param("id") String id);
 }

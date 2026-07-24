@@ -10,11 +10,15 @@ import java.time.LocalDateTime;
 
 /**
  * 用户组关联实体
+ * <p>
+ * 对应 sys_user_group 表，维护用户与用户组的多对多关联关系。
+ * </p>
  */
 @Data
 @TableName("sys_user_group")
 public class SysUserGroup {
     
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

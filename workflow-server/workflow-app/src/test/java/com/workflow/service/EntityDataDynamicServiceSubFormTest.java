@@ -34,8 +34,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 实体数据动态服务-子表单测试。
+ *
+ * <p>被测对象：{@link EntityDataDynamicService}，覆盖子表单数据写入引用实体表、
+ * 嵌套关系递归写入、必填字段校验、独立实体拒绝伪造流程启动、按引用字段加载子表单行等场景。
+ */
 class EntityDataDynamicServiceSubFormTest {
 
+    /**
+     * 测试保存时子表单行写入被引用实体表而非父表：
+     * 验证父表数据不含子表单字段，子表行写入引用表并自动回填 parentId、deleted、code。
+     */
     @Test
     void saveWritesSubFormRowsToReferencedEntityTableInsteadOfParentTable() {
         Fixture fixture = new Fixture();
@@ -66,6 +76,9 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals("C001", childData.get("code"));
     }
 
+    /**
+     * 测试保存时嵌套关系行被递归写入：验证孙表（tax）行写入并自动回填 childId 与 code。
+     */
     @Test
     void saveWritesNestedRelationRowsRecursively() {
         Fixture fixture = new Fixture();
@@ -98,6 +111,9 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals("T001", taxData.get("code"));
     }
 
+    /**
+     * 测试保存时基于发布快照校验必填字段：验证缺少必填字段时抛出异常且不写入数据表。
+     */
     @Test
     void saveValidatesRequiredFieldsFromPublishedSnapshot() {
         Fixture fixture = new Fixture();
@@ -125,6 +141,9 @@ class EntityDataDynamicServiceSubFormTest {
         verify(fixture.dynamicMapper, never()).insert(eq("wf_parent"), org.mockito.ArgumentMatchers.anyMap());
     }
 
+    /**
+     * 测试独立实体拒绝伪造的流程启动请求：验证抛出业务冲突异常且不写入数据表。
+     */
     @Test
     void standaloneEntityRejectsForgedProcessStart() {
         Fixture fixture = new Fixture();
@@ -145,6 +164,10 @@ class EntityDataDynamicServiceSubFormTest {
                 org.mockito.ArgumentMatchers.anyMap());
     }
 
+    /**
+     * 测试按 ID 查询时通过引用字段递归加载子表单行：
+     * 验证子表与孙表行被正确装配，且查询条件使用 parentId/childId 的 EQ 过滤。
+     */
     @Test
     void findByIdLoadsSubFormRowsByReferenceField() {
         Fixture fixture = new Fixture();
@@ -188,6 +211,7 @@ class EntityDataDynamicServiceSubFormTest {
                 "child-1".equals(condition.get("childId")) && "EQ".equals(condition.get("childId_op"))));
     }
 
+    /** 测试夹具：装配被测服务与各 Mock 依赖，并预置父/子/孙实体的定义与关系数据 */
     private static class Fixture {
         final EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);
         final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
@@ -235,6 +259,7 @@ class EntityDataDynamicServiceSubFormTest {
             when(snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot("parent"));
         }
 
+        /** 构造被测的 EntityDataDynamicService 及其关系运行时依赖 */
         EntityDataDynamicService service() {
             ObjectMapper objectMapper = new ObjectMapper();
             EntityRuntimeRecordMapper recordMapper = new EntityRuntimeRecordMapper(objectMapper);
@@ -248,6 +273,7 @@ class EntityDataDynamicServiceSubFormTest {
                     mock(EntityRecordTeamService.class));
         }
 
+        /** 构造指定实体编码的空字段发布快照 */
         private static EntityPublishedSnapshot snapshot(String entityCode) {
             EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
             snapshot.setEntityCode(entityCode);
@@ -255,6 +281,7 @@ class EntityDataDynamicServiceSubFormTest {
             return snapshot;
         }
 
+        /** 构造独立生命周期+动态存储模式的实体定义 */
         private static EntityDefinition entity(String id, String code) {
             EntityDefinition entity = new EntityDefinition();
             entity.setId(id);
@@ -264,6 +291,7 @@ class EntityDataDynamicServiceSubFormTest {
             return entity;
         }
 
+        /** 构造指向 child 实体、引用字段 parentId 的子表单字段 */
         private static EntityField subFormField() {
             EntityField field = new EntityField();
             field.setFieldCode("detailList");
@@ -274,6 +302,7 @@ class EntityDataDynamicServiceSubFormTest {
             return field;
         }
 
+        /** 构造一对多、级联删除的实体关系对象 */
         private static EntityRelation relation(String parentId, String parentCode, String parentFieldCode,
                                                String childId, String childCode, String childRefFieldCode,
                                                EntityRelation.RelationType relationType, int sortOrder) {

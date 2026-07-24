@@ -36,11 +36,19 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+/**
+ * 实体表单节点服务，负责表单节点的创建、补丁、排序、删除、差异替换与树校验。
+ *
+ * <p>支持基于乐观锁的节点变更、父子关系与嵌套深度校验、子表单发布版本引用锁定、
+ * 组件模板与扩展引用校验，以及通过差异比对批量重建表单节点树。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class EntityFormNodeService {
 
+    /** 节点排序步长，用于 orderKey 的稀疏分布以支持插入。 */
     public static final long ORDER_STEP = 1_000_000L;
+    /** 表单节点最大嵌套深度。 */
     public static final int MAX_DEPTH = 8;
 
     private static final String ACTIVE_NODE_KEY_UNIQUE_INDEX =
@@ -101,11 +109,26 @@ public class EntityFormNodeService {
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 查询表单的所有节点。
+     *
+     * @param formId 表单ID
+     * @return 节点列表
+     */
     public List<EntityFormNode> findByFormId(String formId) {
         requireForm(formId);
         return nodeMapper.findByFormId(formId);
     }
 
+    /**
+     * 创建表单节点，校验配置合法性并落库。
+     *
+     * @param formId  表单ID
+     * @param request 节点创建请求
+     * @return 创建的节点
+     * @throws IllegalArgumentException 配置非法或校验失败时抛出
+     * @throws RevisionConflictException 节点 key 唯一冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityFormNode create(String formId, EntityFormNodeCreateRequest request) {
         return createInternal(formId, request, false);
@@ -168,6 +191,16 @@ public class EntityFormNodeService {
         return node;
     }
 
+    /**
+     * 按补丁请求更新节点属性，基于乐观锁更新并校验绑定状态。
+     *
+     * @param formId   表单ID
+     * @param nodeId   节点ID
+     * @param request  节点补丁请求
+     * @return 更新后的节点
+     * @throws IllegalArgumentException 节点不存在、绑定不完整或配置非法时抛出
+     * @throws RevisionConflictException  版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityFormNode patch(
             String formId,
@@ -241,6 +274,14 @@ public class EntityFormNodeService {
         return requireNode(formId, nodeId);
     }
 
+    /**
+     * 调整节点在同级中的排序位置，必要时自动重平衡 orderKey。
+     *
+     * @param formId   表单ID
+     * @param nodeId   节点ID
+     * @param request  排序请求，指定前后相邻节点
+     * @return 更新后的节点
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityFormNode reorder(
             String formId,
@@ -273,6 +314,15 @@ public class EntityFormNodeService {
                 formId, nodeId, patch, PatchMode.USER_REORDER);
     }
 
+    /**
+     * 删除表单节点，存在子节点时拒绝删除。
+     *
+     * @param formId          表单ID
+     * @param nodeId          节点ID
+     * @param expectedRevision 期望版本号
+     * @throws IllegalArgumentException 存在子节点或版本冲突时抛出
+     * @throws RevisionConflictException  版本冲突时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String formId, String nodeId, Integer expectedRevision) {
         EntityFormNode current = requireNode(formId, nodeId);
@@ -299,6 +349,12 @@ public class EntityFormNodeService {
         touchForm(formId);
     }
 
+    /**
+     * 按差异批量替换表单节点（系统导入模式，不校验表单版本号）。
+     *
+     * @param formId   表单ID
+     * @param incoming 目标节点列表
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replaceByDiff(String formId, List<EntityFormNode> incoming) {
         replaceByDiffInternal(
@@ -308,6 +364,13 @@ public class EntityFormNodeService {
                 PatchMode.SYSTEM_IMPORT);
     }
 
+    /**
+     * 按差异批量替换表单节点（用户模式，校验表单版本号）。
+     *
+     * @param formId           表单ID
+     * @param incoming         目标节点列表
+     * @param expectedRevision 期望的表单版本号
+     */
     @Transactional(rollbackFor = Exception.class)
     public void replaceByDiff(
             String formId,
@@ -424,6 +487,12 @@ public class EntityFormNodeService {
         return depthById.get(node.getId());
     }
 
+    /**
+     * 校验表单节点树结构：父子类型兼容、循环引用、嵌套深度和子表单发布引用图。
+     *
+     * @param formId 表单ID
+     * @throws IllegalArgumentException 树结构非法时抛出
+     */
     public void validateTree(String formId) {
         requireForm(formId);
         List<EntityFormNode> nodes = nodeMapper.findByFormId(formId);

@@ -20,18 +20,30 @@ import java.util.Set;
 
 /**
  * 字典类型服务
+ * <p>
+ * 提供字典类型的分页查询、增删改、状态切换，以及字典编码变更时同步更新字典项冗余字段等能力。
+ * </p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SysDictService {
 
+    /** 字典类型 Mapper */
     private final SysDictMapper dictMapper;
+    /** 字典项 Mapper，用于级联删除字典项及同步冗余编码 */
     private final SysDictItemMapper dictItemMapper;
+    /** 字典缓存服务，字典变更后触发缓存重载 */
     private final DictCacheService dictCacheService;
 
     /**
      * 分页查询字典类型
+     *
+     * @param pageNum   页码
+     * @param pageSize  每页条数
+     * @param dictName  字典名称（模糊匹配，可空）
+     * @param dictCode  字典编码（模糊匹配，可空）
+     * @return 分页结果
      */
     public PageResult<SysDict> getDictPage(int pageNum, int pageSize, String dictName, String dictCode) {
         Page<SysDict> page = new Page<>(pageNum, pageSize);
@@ -50,6 +62,8 @@ public class SysDictService {
 
     /**
      * 查询所有启用的字典
+     *
+     * @return 启用状态的字典列表，按排序升序
      */
     public List<SysDict> getEnabledDictList() {
         return dictMapper.selectList(
@@ -61,6 +75,9 @@ public class SysDictService {
 
     /**
      * 根据ID查询字典
+     *
+     * @param id 字典ID
+     * @return 字典对象，不存在返回 null
      */
     public SysDict getById(String id) {
         return dictMapper.selectById(id);
@@ -68,6 +85,9 @@ public class SysDictService {
 
     /**
      * 根据编码查询字典
+     *
+     * @param dictCode 字典编码
+     * @return 字典对象，不存在返回 null
      */
     public SysDict getByCode(String dictCode) {
         return dictMapper.selectOne(
@@ -77,7 +97,11 @@ public class SysDictService {
     }
 
     /**
-     * 保存字典类型
+     * 保存字典类型（新增或更新）
+     *
+     * @param dict 字典对象
+     * @return 保存后的字典对象
+     * @throws RuntimeException 字典编码已存在或字典类型不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public SysDict saveDict(SysDict dict) {
@@ -120,6 +144,18 @@ public class SysDictService {
         return dict;
     }
 
+    /**
+     * 创建字典类型并批量写入字典项
+     * <p>
+     * 校验代码项编码/名称非空且不重复，字典项缺少 itemValue 时以 itemCode 充当，
+     * 缺少 parentId 时默认 "0"，缺少 status 时默认启用，sort 为空时按 (index+1)*10 计算。
+     * </p>
+     *
+     * @param dict  字典类型对象
+     * @param items 字典项列表
+     * @return 保存后的字典类型对象
+     * @throws IllegalArgumentException 代码项为空、编码/名称为空或编码重复时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public SysDict createWithItems(SysDict dict, List<SysDictItem> items) {
         if (items == null || items.isEmpty()) {
@@ -160,6 +196,9 @@ public class SysDictService {
 
     /**
      * 删除字典类型（逻辑删除，级联删除字典项）
+     *
+     * @param id 字典ID
+     * @throws RuntimeException 字典类型不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteDict(String id) {
@@ -179,6 +218,9 @@ public class SysDictService {
 
     /**
      * 更新字典类型状态
+     *
+     * @param id     字典ID
+     * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(String id, String status) {
@@ -191,6 +233,9 @@ public class SysDictService {
 
     /**
      * 同步更新字典项中的冗余字典编码
+     *
+     * @param dictId      字典ID
+     * @param newDictCode 新字典编码
      */
     private void updateDictCodeInItems(String dictId, String newDictCode) {
         List<SysDictItem> items = dictItemMapper.selectList(

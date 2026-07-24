@@ -87,6 +87,13 @@ public class EntityDefinitionController {
         return ApiResponse.success(entityService.publish(id, userId, userName, request));
     }
     
+    /**
+     * 绑定工作流到实体。POST /api/entity/{entityId}/workflow-binding/update
+     *
+     * @param entityId 实体ID
+     * @param request  工作流绑定请求（含流程定义ID）
+     * @return 更新后的实体定义
+     */
     @PostMapping("/{entityId}/workflow-binding/update")
     public ApiResponse<EntityDefinitionDTO> bindWorkflow(
             @PathVariable String entityId,
@@ -96,11 +103,24 @@ public class EntityDefinitionController {
                 request.getProcessDefinitionId()));
     }
 
+    /**
+     * 解除实体绑定的工作流。POST /api/entity/{entityId}/workflow-binding/delete
+     *
+     * @param entityId 实体ID
+     * @return 更新后的实体定义
+     */
     @PostMapping("/{entityId}/workflow-binding/delete")
     public ApiResponse<EntityDefinitionDTO> unbindWorkflow(@PathVariable String entityId) {
         return ApiResponse.success(entityService.unbindWorkflow(entityId));
     }
 
+    /**
+     * 更新实体生命周期模式。POST /api/entity/{entityId}/lifecycle-mode
+     *
+     * @param entityId 实体ID
+     * @param request  生命周期模式请求
+     * @return 更新后的实体定义
+     */
     @PostMapping("/{entityId}/lifecycle-mode")
     public ApiResponse<EntityDefinitionDTO> updateLifecycleMode(
             @PathVariable String entityId,

@@ -12,11 +12,15 @@ import java.util.List;
 
 /**
  * 字典明细实体
+ * <p>
+ * 对应 sys_dict_item 表，存储字典项的编码、标签、值及树形结构（parentId），支持状态启用/禁用。
+ * </p>
  */
 @Data
 @TableName("sys_dict_item")
 public class SysDictItem {
 
+    /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 

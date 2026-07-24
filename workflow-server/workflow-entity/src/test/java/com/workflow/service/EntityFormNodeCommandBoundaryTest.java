@@ -33,8 +33,17 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 表单节点命令边界单元测试。
+ * <p>被测对象：{@link EntityFormNodeService}。使用 Mockito 构造桩 fixture，
+ * 验证关系未完成节点的编辑/排序保护、根节点排序的显式清空、属性补丁禁止跨父改序、
+ * 关系子表单的规范化语义、子表单发布归属校验、整包替换的技术锁与历史绑定迁移。
+ */
 class EntityFormNodeCommandBoundaryTest {
 
+    /**
+     * 验证未完成的关系子表单节点禁止编辑（patch）与排序（reorder），且不会触发任何写库。
+     */
     @Test
     void incompleteLegacyRelationCannotBeEditedOrReordered() {
         Fixture fixture = fixture();
@@ -68,6 +77,9 @@ class EntityFormNodeCommandBoundaryTest {
         verify(fixture.nodeMapper(), never()).update(isNull(), any());
     }
 
+    /**
+     * 验证排序到根节点时使用显式 parent_id=NULL 清空（而非忽略父级），并通过 ArgumentCaptor 断言 SQL。
+     */
     @Test
     void reorderToRootUsesExplicitParentClear() {
         Fixture fixture = fixture();
@@ -106,6 +118,9 @@ class EntityFormNodeCommandBoundaryTest {
         assertNull(update.getParamNameValuePairs().get("MPGENVAL1"));
     }
 
+    /**
+     * 验证属性补丁在移动父级时禁止同时设置 orderKey（避免隐式排序副作用），违规抛 IllegalArgumentException 且不写库。
+     */
     @Test
     void propertyPatchCannotSetOrderWhileMovingParents() {
         Fixture fixture = fixture();
@@ -132,6 +147,10 @@ class EntityFormNodeCommandBoundaryTest {
         verify(fixture.nodeMapper(), never()).update(isNull(), any());
     }
 
+    /**
+     * 验证关系绑定子表单按规范化实体语义填充 subFormConfig（childEntityId/refEntityId/relationType/childRefFieldCode），
+     * 伪造 childEntityId 的请求被拒绝。
+     */
     @Test
     void relationBoundSubFormUsesCanonicalEntitySemantics() {
         Fixture fixture = fixture();
@@ -171,6 +190,9 @@ class EntityFormNodeCommandBoundaryTest {
                 () -> fixture.service().create("form-1", forged));
     }
 
+    /**
+     * 验证子表单引用的发布版本必须属于关系所指向的子实体，跨实体发布被拒绝且不落库节点。
+     */
     @Test
     void childReleaseMustBelongToRelationChildEntity() {
         Fixture fixture = fixture();
@@ -207,6 +229,10 @@ class EntityFormNodeCommandBoundaryTest {
                 .insert(any(EntityFormNode.class));
     }
 
+    /**
+     * 验证整包替换（replaceByDiff）需校验表单 CAS 期望版本：
+     * 缺失期望版本、版本不匹配（RevisionConflictException）及伪造 nodeKey 均被拒绝，不写库。
+     */
     @Test
     void userWholePackageRequiresFormCasAndKeepsTechnicalLocks() {
         Fixture fixture = fixture();
@@ -250,6 +276,10 @@ class EntityFormNodeCommandBoundaryTest {
         verify(fixture.nodeMapper(), never()).update(isNull(), any());
     }
 
+    /**
+     * 验证系统导入（replaceByDiff 不带期望版本）会迁移不支持的旧绑定：
+     * 旧 RELATION 绑定被改写为 NONE，原始属性归档到 legacyPropsDocument 的 inactiveNodeProperties 中。
+     */
     @Test
     void systemImportMigratesUnsupportedLegacyBinding() {
         Fixture fixture = fixture();
@@ -283,6 +313,7 @@ class EntityFormNodeCommandBoundaryTest {
         assertTrue(legacyProps.containsKey("inactiveNodeProperties"));
     }
 
+    /** 构造关系子表单创建请求，subFormConfig 为可定制属性。 */
     private EntityFormNodeCreateRequest relationCreateRequest(
             Map<String, Object> subFormConfig) {
         EntityFormNodeCreateRequest request =
@@ -300,6 +331,7 @@ class EntityFormNodeCommandBoundaryTest {
         return request;
     }
 
+    /** 构造测试桩 Fixture：mock 全部 mapper 与访问策略，预置 form-1 基础数据。 */
     private Fixture fixture() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         EntityFormNodeMapper nodeMapper =
@@ -403,6 +435,7 @@ class EntityFormNodeCommandBoundaryTest {
         return (Map<String, Object>) value;
     }
 
+    /** 测试夹具：聚合被测 service 及其 mock 依赖与编解码器，便于测试内访问。 */
     private record Fixture(
             EntityFormNodeService service,
             EntityFormMapper formMapper,

@@ -6,11 +6,26 @@ import com.workflow.entity.EntityFormField;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 表单字段运行时映射工具类
+ * 
+ * 将持久化的 {@link EntityFormField} 转换为前端运行时所需的扁平 Map 结构，
+ * 处理组件类型回退、只读覆盖、JSON 配置解析以及关联关系对象组装等逻辑。
+ * 不可实例化，仅提供静态方法。
+ */
 public final class EntityFormFieldRuntimeMapper {
 
     private EntityFormFieldRuntimeMapper() {
     }
 
+    /**
+     * 将表单字段转换为前端运行时所需的 Map。
+     *
+     * @param field             表单字段实体
+     * @param readonlyOverride  只读覆盖标记，为 true 时强制只读
+     * @param objectMapper      用于解析 validationRules/extensionConfig/componentProps 等 JSON 配置
+     * @return 包含字段运行时信息的 Map
+     */
     public static Map<String, Object> toMap(EntityFormField field, Boolean readonlyOverride, ObjectMapper objectMapper) {
         Map<String, Object> result = new HashMap<>();
         result.put("id", field.getId());
@@ -81,6 +96,7 @@ public final class EntityFormFieldRuntimeMapper {
         return result;
     }
 
+    /** 解析组件类型：优先 componentType，回退到 fieldType 的小写形式 */
     private static String resolveComponentType(EntityFormField field) {
         if (field.getComponentType() != null && !field.getComponentType().isEmpty()) {
             return field.getComponentType();
@@ -91,6 +107,7 @@ public final class EntityFormFieldRuntimeMapper {
         return null;
     }
 
+    /** 当存在子实体配置时，组装关联关系对象并放入 result.relation */
     private static void putRelationObject(Map<String, Object> result, EntityFormField field) {
         if (field.getChildEntityId() == null && field.getChildEntityCode() == null && field.getChildRefFieldCode() == null) {
             return;
@@ -107,10 +124,12 @@ public final class EntityFormFieldRuntimeMapper {
         result.put("relation", relation);
     }
 
+    /** 解析组件属性 JSON */
     private static Object parseComponentProps(String componentProps, ObjectMapper objectMapper) {
         return parseJsonObject(componentProps, objectMapper);
     }
 
+    /** 解析 JSON 字符串为 Map，解析失败返回空 Map */
     private static Object parseJsonObject(String json, ObjectMapper objectMapper) {
         try {
             return objectMapper.readValue(json, Map.class);

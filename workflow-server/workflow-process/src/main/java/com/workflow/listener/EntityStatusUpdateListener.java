@@ -30,12 +30,24 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EntityStatusUpdateListener implements FlowableEventListener {
     
+    /** Flowable 运行时服务，查询流程实例与变量 */
     private final RuntimeService runtimeService;
+    /** 动态实体数据 Mapper，读取/更新实体状态 */
     private final EntityDataDynamicMapper entityDataDynamicMapper;
+    /** 动态表服务，获取实体对应动态表名 */
     private final DynamicTableService dynamicTableService;
+    /** 流程状态映射 Mapper，查询节点到实体状态的映射 */
     private final EntityFlowStatusMappingMapper statusMappingMapper;
+    /** 流程定义配置 Mapper，查询流程配置 */
     private final ProcessDefinitionConfigMapper processConfigMapper;
-    
+
+    /**
+     * 任务完成事件处理：根据节点状态映射更新关联实体数据的状态。
+     * <p>
+     * 仅处理 TASK_COMPLETED 事件；流程未关联实体或无状态映射时跳过。
+     *
+     * @param event Flowable 引擎事件
+     */
     @Override
     public void onEvent(FlowableEvent event) {
         if (event == null
@@ -156,7 +168,12 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
         // 直接返回配置的状态值，支持自定义
         return statusCode.trim();
     }
-    
+
+    /**
+     * 是否在事件处理抛出异常时失败回滚流程。
+     *
+     * @return 固定 false，状态更新失败不应影响流程执行
+     */
     @Override
     public boolean isFailOnException() {
         return false; // 状态更新失败不应影响流程执行

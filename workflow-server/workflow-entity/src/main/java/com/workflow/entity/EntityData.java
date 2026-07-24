@@ -34,6 +34,7 @@ import java.time.LocalDateTime;
 @TableName("runtime_entity_record")
 public class EntityData {
     
+    /** 主键ID（系统自动生成，不可编辑） */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

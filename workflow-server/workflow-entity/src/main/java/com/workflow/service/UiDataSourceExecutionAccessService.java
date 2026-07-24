@@ -39,6 +39,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * UI 数据源执行访问控制服务，负责数据源预览与发布执行链路的来源校验、
+ * 权限计算和可信上下文清洗。
+ *
+ * <p>预览链路校验当前管理员可维护的 FORM/LIST 草稿绑定；
+ * 发布链路校验 ACTIVE 发布快照绑定并叠加数据范围权限计划，
+ * 同时拦截 Connector 请求中伪造的服务端保留字段。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UiDataSourceExecutionAccessService {
@@ -77,6 +85,15 @@ public class UiDataSourceExecutionAccessService {
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 授权草稿预览执行，要求来源为当前管理员可维护的 FORM/LIST 草稿绑定。
+     *
+     * @param definition 数据源定义
+     * @param request    执行请求
+     * @return 执行授权凭证
+     * @throws BusinessForbiddenException 缺少预览权限或来源伪造时抛出
+     * @throws BusinessConflictException  来源配置不存在或数据源作用域不匹配时抛出
+     */
     public UiDataSourceExecutionAuthorization authorizePreview(
             UiDataSourceDefinition definition,
             UiDataSourceExecuteRequest request) {
@@ -104,6 +121,15 @@ public class UiDataSourceExecutionAccessService {
                 request);
     }
 
+    /**
+     * 授权发布版本执行，要求来源为 ACTIVE 发布快照绑定且用户具备列表运行时访问权限。
+     *
+     * @param definition 数据源定义
+     * @param request    执行请求
+     * @return 执行授权凭证
+     * @throws BusinessForbiddenException 列表访问权限不足或来源伪造时抛出
+     * @throws BusinessConflictException  发布版本不存在、过期或数据源作用域不匹配时抛出
+     */
     public UiDataSourceExecutionAuthorization authorizePublished(
             UiDataSourceDefinition definition,
             UiDataSourceExecuteRequest request) {

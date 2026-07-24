@@ -17,6 +17,7 @@ import java.util.List;
 @TableName("entity_form")
 public class EntityForm {
     
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
@@ -71,7 +72,9 @@ public class EntityForm {
      * 自定义表单组件注册名
      */
     private String customComponent;
+    /** 自定义表单组件版本号 */
     private Integer customComponentVersion;
+    /** 当前激活的自定义组件发布快照版本号 */
     private Integer customComponentSnapshotVersion;
 
     /**

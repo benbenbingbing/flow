@@ -49,6 +49,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * UI 数据源定义与执行服务，负责数据源配置的校验、保存、查询与可信执行。
+ *
+ * <p>支持实体查询、字典、静态选项、注册提供器、集成连接器、运行时上下文和结构化计算
+ * 等数据源类型，配置中禁止 SQL/脚本/URL 等危险字段；执行链路经
+ * {@link UiDataSourceExecutionAccessService} 授权后按数据源类型分派，
+ * 并提供带 TTL 的结果缓存。</p>
+ */
 @Service
 public class UiDataSourceService {
 
@@ -61,6 +69,7 @@ public class UiDataSourceService {
     private static final Set<String> USAGES = Set.of(
             "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
             "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
+    /** 配置中禁止的危险字段名，防止注入任意 SQL/脚本/URL。 */
     private static final Set<String> FORBIDDEN_KEYS =
             Set.of("sql", "script", "url", "jdbcUrl", "command", "expression");
     private static final Set<String> SCHEMA_TYPES =
@@ -77,8 +86,24 @@ public class UiDataSourceService {
     private final JsonDocumentCodec codec;
     private final TaskExecutor taskExecutor;
 
+    /** 数据源执行结果缓存，按 key+版本+内容哈希索引。 */
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
+    /**
+     * 构造数据源服务，注入数据源提供器、集成连接器和异步执行器。
+     *
+     * @param mapper                   数据源定义 Mapper
+     * @param formMapper               表单 Mapper
+     * @param listMapper               列表配置 Mapper
+     * @param entityAccessPolicy       实体访问策略
+     * @param dynamicService           实体数据动态服务
+     * @param dictItemService          字典项服务
+     * @param executionAccessService   数据源执行访问控制服务
+     * @param providers                注册的数据源提供器集合
+     * @param connectors               集成连接器集合
+     * @param codec                    JSON 文档编解码器
+     * @param taskExecutor             应用异步任务执行器
+     */
     public UiDataSourceService(
             UiDataSourceDefinitionMapper mapper,
             EntityFormMapper formMapper,
@@ -104,6 +129,14 @@ public class UiDataSourceService {
         this.taskExecutor = taskExecutor;
     }
 
+    /**
+     * 按作用域类型、作用域ID和数据源类型查询数据源定义列表。
+     *
+     * @param scopeType  作用域类型，为空忽略
+     * @param scopeId    作用域ID，为空忽略
+     * @param sourceType 数据源类型，为空忽略
+     * @return 数据源定义列表
+     */
     public List<UiDataSourceDefinition> list(
             String scopeType,
             String scopeId,

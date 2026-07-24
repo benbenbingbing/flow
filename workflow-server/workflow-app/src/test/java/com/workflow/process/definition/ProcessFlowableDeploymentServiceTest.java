@@ -11,8 +11,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程 Flowable 部署服务单元测试。
+ *
+ * <p>被测对象为 {@link ProcessFlowableDeploymentService}，验证部署时
+ * BPMN 资源名使用流程 Key、部署名使用流程名加版本号。</p>
+ */
 class ProcessFlowableDeploymentServiceTest {
 
+    /**
+     * 部署时应使用流程 Key 作为资源名、流程名加版本号作为部署名。
+     *
+     * <p>场景：流程 Key 为 expense_flow、名称为费用流程、版本 3，
+     * 断言资源名为 expense_flow.bpmn20.xml、部署名为"费用流程 - v3"。</p>
+     */
     @Test
     void deployUsesProcessKeyAndVersionedName() {
         RepositoryService repositoryService = mock(RepositoryService.class);

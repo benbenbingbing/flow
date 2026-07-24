@@ -12,8 +12,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 列表字段数据提供者注册表测试。
+ *
+ * <p>被测对象：{@link ListFieldDataProviderRegistry}，覆盖暴露提供者元数据与必填配置校验、
+ * 拒绝重复提供者键等场景。
+ */
 class ListFieldDataProviderRegistryTest {
 
+    /** 测试暴露提供者元数据并校验必填配置：验证 supports/options 正确，缺失必填配置抛异常而补全后通过 */
     @Test
     void exposesProviderMetadataAndValidatesRequiredConfig() {
         ListFieldDataProvider provider = provider("CUSTOM_SCORE");
@@ -33,6 +40,7 @@ class ListFieldDataProviderRegistryTest {
         registry.validate(field);
     }
 
+    /** 测试拒绝重复的提供者键：验证大小写归一化后键重复时抛出 IllegalStateException */
     @Test
     void rejectsDuplicateProviderKeys() {
         assertThrows(
@@ -42,6 +50,7 @@ class ListFieldDataProviderRegistryTest {
                         new ObjectMapper()));
     }
 
+    /** 构造指定键的测试数据提供者，含 sourceField 必填配置 schema */
     private ListFieldDataProvider provider(String key) {
         return new ListFieldDataProvider() {
             @Override

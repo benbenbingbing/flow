@@ -20,18 +20,26 @@ import java.util.stream.Collectors;
 
 /**
  * 角色管理服务
+ * <p>
+ * 提供角色的增删改查、状态切换、菜单权限分配及角色菜单权限树查询等能力。
+ * </p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SysRoleService {
     
+    /** 角色 Mapper */
     private final SysRoleMapper roleMapper;
+    /** 菜单 Mapper，用于构建角色菜单权限树 */
     private final SysMenuMapper menuMapper;
+    /** 角色菜单关联 Mapper，维护角色与菜单权限的关系 */
     private final SysRoleMenuMapper roleMenuMapper;
     
     /**
-     * 查询角色列表
+     * 查询角色列表（已填充菜单权限ID）
+     *
+     * @return 角色列表，按排序升序
      */
     public List<SysRole> getRoleList() {
         List<SysRole> roles = roleMapper.selectList(
@@ -45,6 +53,8 @@ public class SysRoleService {
     
     /**
      * 查询所有启用的角色
+     *
+     * @return 启用状态的角色列表，按排序升序
      */
     public List<SysRole> getEnabledRoles() {
         return roleMapper.selectList(
@@ -56,6 +66,9 @@ public class SysRoleService {
     
     /**
      * 根据ID查询角色
+     *
+     * @param id 角色ID
+     * @return 角色对象（已填充菜单权限ID），不存在返回 null
      */
     public SysRole getById(String id) {
         SysRole role = roleMapper.selectById(id);
@@ -66,7 +79,11 @@ public class SysRoleService {
     }
     
     /**
-     * 保存角色
+     * 保存角色（新增或更新），并同步角色菜单权限
+     *
+     * @param role 角色对象，menuIds 为关联的菜单ID列表
+     * @return 保存后的角色对象
+     * @throws RuntimeException 角色编码已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public SysRole saveRole(SysRole role) {
@@ -108,7 +125,10 @@ public class SysRoleService {
     }
     
     /**
-     * 删除角色
+     * 删除角色（先删除菜单权限关联，再逻辑删除角色）
+     *
+     * @param id 角色ID
+     * @throws RuntimeException 角色不存在或为超级管理员角色时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteRole(String id) {
@@ -132,6 +152,10 @@ public class SysRoleService {
     
     /**
      * 更新角色状态
+     *
+     * @param id     角色ID
+     * @param status 状态值：0-启用 1-禁用
+     * @throws RuntimeException 禁用超级管理员角色时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(String id, String status) {
@@ -151,7 +175,10 @@ public class SysRoleService {
     }
     
     /**
-     * 保存角色菜单权限
+     * 保存角色菜单权限（先删除原有权限，再批量插入新权限）
+     *
+     * @param roleId  角色ID
+     * @param menuIds 菜单ID列表
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveRoleMenus(String roleId, List<String> menuIds) {
@@ -172,6 +199,9 @@ public class SysRoleService {
     
     /**
      * 获取角色的菜单权限树
+     *
+     * @param roleId 角色ID
+     * @return 角色拥有的菜单权限树，无权限返回空列表
      */
     public List<SysMenu> getRoleMenuTree(String roleId) {
         List<String> menuIds = roleMenuMapper.selectMenuIdsByRoleId(roleId);
@@ -191,7 +221,9 @@ public class SysRoleService {
     }
     
     /**
-     * 填充角色菜单信息
+     * 填充角色菜单信息（回填 menuIds 字段）
+     *
+     * @param role 待填充的角色对象
      */
     private void fillRoleMenus(SysRole role) {
         List<String> menuIds = roleMenuMapper.selectMenuIdsByRoleId(role.getId());
@@ -200,6 +232,9 @@ public class SysRoleService {
     
     /**
      * 构建菜单树
+     *
+     * @param menus 平铺的菜单列表
+     * @return 树形结构的菜单列表
      */
     private List<SysMenu> buildMenuTree(List<SysMenu> menus) {
         java.util.Map<String, SysMenu> menuMap = menus.stream()

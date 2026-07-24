@@ -10,16 +10,33 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 流程节点配置服务。
+ *
+ * <p>管理流程节点的基础配置、审批人配置与表单配置，提供节点配置的查询、
+ * 新增（含级联保存审批人、表单及表单字段）与删除能力。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class NodeConfigService {
     
+    /** 节点配置 Mapper */
     private final NodeConfigMapper nodeMapper;
+    /** 流程定义配置 Mapper */
     private final ProcessDefinitionConfigMapper processMapper;
+    /** 审批人配置 Mapper */
     private final AssigneeConfigMapper assigneeMapper;
+    /** 表单配置 Mapper */
     private final FormConfigMapper formMapper;
+    /** 表单字段配置 Mapper */
     private final FormFieldConfigMapper fieldMapper;
     
+    /**
+     * 查询指定流程下的所有节点配置（含审批人、表单及字段）。
+     *
+     * @param processId 流程配置ID
+     * @return 节点配置列表
+     */
     @Transactional(readOnly = true)
     public List<NodeConfigDTO> findByProcessId(String processId) {
         return nodeMapper.findByProcessConfigId(processId).stream()
@@ -27,6 +44,13 @@ public class NodeConfigService {
                 .collect(Collectors.toList());
     }
     
+    /**
+     * 根据节点配置ID查询详情（含审批人、表单及字段）。
+     *
+     * @param id 节点配置ID
+     * @return 节点配置详情
+     * @throws RuntimeException 节点不存在时抛出
+     */
     @Transactional(readOnly = true)
     public NodeConfigDTO findById(String id) {
         NodeConfig node = nodeMapper.selectById(id);
@@ -36,6 +60,14 @@ public class NodeConfigService {
         return convertToDTO(node);
     }
     
+    /**
+     * 保存节点配置，并级联保存审批人、表单及表单字段。
+     *
+     * @param processId 所属流程配置ID
+     * @param dto       节点配置数据
+     * @return 保存后的节点配置
+     * @throws RuntimeException 所属流程不存在时抛出
+     */
     @Transactional
     public NodeConfigDTO save(String processId, NodeConfigDTO dto) {
         ProcessDefinitionConfig process = processMapper.selectById(processId);
@@ -77,11 +109,17 @@ public class NodeConfigService {
         return convertToDTO(node);
     }
     
+    /**
+     * 删除指定节点配置。
+     *
+     * @param id 节点配置ID
+     */
     @Transactional
     public void delete(String id) {
         nodeMapper.deleteById(id);
     }
     
+    /** 将节点配置实体转换为DTO，并加载关联的审批人、表单及字段 */
     private NodeConfigDTO convertToDTO(NodeConfig node) {
         NodeConfigDTO dto = new NodeConfigDTO();
         dto.setId(node.getId());

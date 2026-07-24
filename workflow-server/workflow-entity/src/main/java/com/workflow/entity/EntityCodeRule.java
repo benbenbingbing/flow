@@ -16,8 +16,10 @@ import java.util.zip.CRC32;
 @TableName("entity_code_rule")
 public class EntityCodeRule {
 
+    /** 编码前缀最大长度 */
     public static final int MAX_PREFIX_LENGTH = 20;
-    
+
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     
@@ -107,6 +109,13 @@ public class EntityCodeRule {
         return rule;
     }
 
+    /**
+     * 根据实体编码生成默认前缀。
+     * 超过最大长度时截取并追加 CRC32 校验后缀以保证唯一性。
+     *
+     * @param entityCode 实体编码
+     * @return 生成的默认前缀
+     */
     public static String defaultPrefix(String entityCode) {
         if (entityCode == null || entityCode.isBlank()) {
             return "";

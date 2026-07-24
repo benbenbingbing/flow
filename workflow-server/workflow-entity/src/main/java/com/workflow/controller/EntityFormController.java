@@ -82,6 +82,13 @@ public class EntityFormController {
                 request.getExpectedRevision()));
     }
 
+    /**
+     * 增量更新表单元数据。POST /api/entity-form/{id}/patch
+     *
+     * @param id      表单ID
+     * @param request 元数据补丁请求
+     * @return 更新后的表单
+     */
     @PostMapping("/{id}/patch")
     public Result<EntityForm> patch(
             @PathVariable String id,

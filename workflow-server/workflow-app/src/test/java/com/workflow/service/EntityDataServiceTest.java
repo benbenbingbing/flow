@@ -26,7 +26,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 实体数据服务单元测试
+ * 实体数据服务单元测试。
+ *
+ * <p>被测对象：{@link EntityDataService}，覆盖实体数据的增删改查、按流程实例查询、
+ * 不启动流程的保存、实体不存在校验等场景。
  */
 @ExtendWith(MockitoExtension.class)
 public class EntityDataServiceTest {
@@ -55,10 +58,14 @@ public class EntityDataServiceTest {
     @InjectMocks
     private EntityDataService entityDataService;
 
+    /** 测试数据 */
     private EntityData testData;
+    /** 测试实体定义 */
     private EntityDefinition testDefinition;
+    /** 测试流程定义 */
     private ProcessDefinitionConfig testProcess;
 
+    /** 初始化测试数据、实体定义与流程定义 */
     @BeforeEach
     void setUp() {
         testDefinition = new EntityDefinition();
@@ -86,6 +93,7 @@ public class EntityDataServiceTest {
         testData.setDataJson("{\"name\":\"测试\",\"amount\":100}");
     }
 
+    /** 测试按实体编码查询数据：验证返回数量与 dataNo 正确 */
     @Test
     void testFindByEntityCode() {
         when(dataMapper.findByEntityCode("test_entity")).thenReturn(Arrays.asList(testData));
@@ -98,6 +106,7 @@ public class EntityDataServiceTest {
         verify(dataMapper, times(1)).findByEntityCode("test_entity");
     }
 
+    /** 测试按 ID 查询数据：验证返回的 id 与 dataNo 正确 */
     @Test
     void testFindById() {
         when(dataMapper.selectById("data-1")).thenReturn(testData);
@@ -110,6 +119,7 @@ public class EntityDataServiceTest {
         verify(dataMapper, times(1)).selectById("data-1");
     }
 
+    /** 测试按 ID 查询不存在数据：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testFindByIdNotFound() {
         when(dataMapper.selectById("999")).thenReturn(null);
@@ -121,6 +131,7 @@ public class EntityDataServiceTest {
         assertEquals("数据不存在: 999", exception.getMessage());
     }
 
+    /** 测试按流程实例 ID 查询数据：验证返回的 id 正确 */
     @Test
     void testFindByProcessInstanceId() {
         when(dataMapper.findByProcessInstanceId("proc-inst-1")).thenReturn(Optional.of(testData));
@@ -132,6 +143,7 @@ public class EntityDataServiceTest {
         verify(dataMapper, times(1)).findByProcessInstanceId("proc-inst-1");
     }
 
+    /** 测试按不存在的流程实例 ID 查询：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testFindByProcessInstanceIdNotFound() {
         when(dataMapper.findByProcessInstanceId("999")).thenReturn(Optional.empty());
@@ -143,6 +155,7 @@ public class EntityDataServiceTest {
         assertEquals("数据不存在: 999", exception.getMessage());
     }
 
+    /** 测试不启动流程的保存：验证插入数据且不启动流程实例 */
     @Test
     void testSaveWithoutProcess() throws Exception {
         EntityDataDTO dto = new EntityDataDTO();
@@ -169,6 +182,7 @@ public class EntityDataServiceTest {
         verify(runtimeService, never()).startProcessInstanceById(any(), anyMap());
     }
 
+    /** 测试保存时实体不存在：验证抛出 RuntimeException 且消息包含"实体不存在" */
     @Test
     void testSaveEntityNotFound() {
         EntityDataDTO dto = new EntityDataDTO();
@@ -183,6 +197,7 @@ public class EntityDataServiceTest {
         assertTrue(exception.getMessage().contains("实体不存在"));
     }
 
+    /** 测试更新数据：验证更新成功并触发 selectById 与 updateById */
     @Test
     void testUpdate() throws Exception {
         EntityDataDTO dto = new EntityDataDTO();
@@ -200,6 +215,7 @@ public class EntityDataServiceTest {
         verify(dataMapper, times(1)).updateById(any(EntityData.class));
     }
 
+    /** 测试更新不存在数据：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testUpdateNotFound() {
         EntityDataDTO dto = new EntityDataDTO();
@@ -214,6 +230,7 @@ public class EntityDataServiceTest {
         assertEquals("数据不存在: 999", exception.getMessage());
     }
 
+    /** 测试删除数据：验证触发 deleteById */
     @Test
     void testDelete() {
         when(dataMapper.deleteById("data-1")).thenReturn(1);
@@ -223,6 +240,7 @@ public class EntityDataServiceTest {
         verify(dataMapper, times(1)).deleteById("data-1");
     }
 
+    /** 测试数据编号生成格式：使用雪花算法验证多次生成的编号应互不相同（实际生成在集成测试中验证） */
     @Test
     void testGenerateDataNo() {
         // 测试数据编号生成，由于使用了雪花算法，只能验证格式

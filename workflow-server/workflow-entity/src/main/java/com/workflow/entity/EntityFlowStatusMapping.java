@@ -15,6 +15,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 @TableName("process_entity_status_mapping")
 public class EntityFlowStatusMapping {
     
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     

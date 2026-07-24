@@ -11,9 +11,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
+    /** 文件上传存储的物理路径，默认为当前目录下的 uploads */
     @Value("${file.upload.path:./uploads}")
     private String uploadPath;
 
+    /** 对外暴露的文件访问 URL 前缀，默认为 /uploads */
     @Value("${file.access.url:/uploads}")
     private String accessUrl;
 

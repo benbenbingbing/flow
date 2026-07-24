@@ -112,6 +112,16 @@ public class EntityDataDynamicService {
         }
     }
 
+    /**
+     * 分页查询实体数据，基于当前用户上下文计算数据权限。
+     *
+     * @param entityCode        实体编码
+     * @param listKey          列表编码
+     * @param condition        查询条件
+     * @param requestedPageNum 请求页码
+     * @param requestedPageSize 请求每页数量
+     * @return 分页结果
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPage(
             String entityCode,
@@ -127,6 +137,17 @@ public class EntityDataDynamicService {
                 getDataPermission(entityCode, listKey));
     }
 
+    /**
+     * 分页查询实体数据，基于指定用户计算数据权限。
+     *
+     * @param entityCode        实体编码
+     * @param listKey          列表编码
+     * @param condition        查询条件
+     * @param requestedPageNum 请求页码
+     * @param requestedPageSize 请求每页数量
+     * @param user             用于权限计算的用户
+     * @return 分页结果
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPageForUser(
             String entityCode,
@@ -143,6 +164,17 @@ public class EntityDataDynamicService {
                 dataPermissionEngine.calculatePermission(entityCode, listKey, user));
     }
 
+    /**
+     * 分页查询实体数据，使用外部传入的数据范围计划（用于可信服务端链路）。
+     *
+     * @param entityCode        实体编码
+     * @param condition        查询条件
+     * @param requestedPageNum 请求页码
+     * @param requestedPageSize 请求每页数量
+     * @param plan             数据范围权限计划
+     * @return 分页结果
+     * @throws IllegalArgumentException 数据权限计划为空时抛出
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPageWithDataScopePlan(
             String entityCode,

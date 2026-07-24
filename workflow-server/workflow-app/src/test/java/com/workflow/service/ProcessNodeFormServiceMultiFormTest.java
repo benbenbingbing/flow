@@ -12,8 +12,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 流程节点表单服务-多表单测试。
+ *
+ * <p>被测对象：{@link ProcessNodeFormService}，覆盖按节点查询多表单绑定并装配表单信息的场景。
+ */
 class ProcessNodeFormServiceMultiFormTest {
 
+    /**
+     * 测试按节点 ID 查询返回全部节点表单及表单信息：
+     * 验证返回数量正确且每个节点表单已装配对应表单名称。
+     */
     @Test
     void getListByNodeIdReturnsAllNodeFormsWithFormInfo() {
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
@@ -37,6 +46,7 @@ class ProcessNodeFormServiceMultiFormTest {
         assertEquals("明细表单", result.get(1).getForm().getFormName());
     }
 
+    /** 构造一个绑定指定表单的节点表单对象 */
     private static ProcessNodeForm nodeForm(String id, String formId) {
         ProcessNodeForm nodeForm = new ProcessNodeForm();
         nodeForm.setId(id);
@@ -46,6 +56,7 @@ class ProcessNodeFormServiceMultiFormTest {
         return nodeForm;
     }
 
+    /** 构造一个带 id 与名称的实体表单 */
     private static EntityForm entityForm(String id, String name) {
         EntityForm form = new EntityForm();
         form.setId(id);

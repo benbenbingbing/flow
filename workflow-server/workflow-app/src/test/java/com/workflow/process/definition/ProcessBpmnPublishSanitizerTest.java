@@ -15,8 +15,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 流程 BPMN 发布清洗器单元测试。
+ *
+ * <p>被测对象为 {@link ProcessBpmnPublishSanitizer}，验证发布时将 Camunda 命名空间
+ * 转换为 Flowable、将草稿流程 Key 替换为运行时 Key、将配置化节点转换为可执行运行时节点，
+ * 以及对不完整配置节点的拒绝逻辑。</p>
+ */
 class ProcessBpmnPublishSanitizerTest {
 
+    /**
+     * 清洗时应将 Camunda 属性转换为 Flowable 属性并使用运行时流程 Key。
+     *
+     * <p>场景：输入含 camunda:assignee 的草稿 BPMN，断言输出含 flowable:assignee、
+     * 流程 ID 替换为 expense_flow，且不再包含 camunda: 命名空间。</p>
+     */
     @Test
     void sanitizeConvertsCamundaAttributesAndUsesProcessKey() {
         ProcessBpmnPublishSanitizer sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
@@ -39,6 +52,13 @@ class ProcessBpmnPublishSanitizerTest {
         assertFalse(result.contains("camunda:"));
     }
 
+    /**
+     * 清洗时应将配置化节点转换为可执行运行时 BPMN 节点。
+     *
+     * <p>场景：REST 服务任务、发送任务、业务规则任务、调用子流程均携带配置 JSON，
+     * 断言输出中 send/rule 被转为 serviceTask，callActivity 含输入输出参数与 businessKey，
+     * 且解析后的 BpmnModel 类型正确。</p>
+     */
     @Test
     void sanitizeTurnsConfiguredNodesIntoExecutableRuntimeBpmn() {
         ProcessBpmnPublishSanitizer sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
@@ -98,6 +118,12 @@ class ProcessBpmnPublishSanitizerTest {
         assertEquals("child_process", ((CallActivity) model.getFlowElement("call")).getCalledElement());
     }
 
+    /**
+     * 清洗时应在部署前拒绝配置不完整的节点。
+     *
+     * <p>场景：发送任务缺少接收人、调用子流程缺少 calledElement，
+     * 断言分别抛出 IllegalArgumentException 且消息含"接收人"和"子流程Key"。</p>
+     */
     @Test
     void sanitizeRejectsIncompleteConfiguredNodesBeforeDeployment() {
         ProcessBpmnPublishSanitizer sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
@@ -121,6 +147,7 @@ class ProcessBpmnPublishSanitizerTest {
         assertTrue(callError.getMessage().contains("子流程Key"));
     }
 
+    /** 将流程元素片段包装为完整的 BPMN definitions 文档 */
     private static String wrap(String elements) {
         return """
                 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -133,16 +160,19 @@ class ProcessBpmnPublishSanitizerTest {
                 """.formatted(elements);
     }
 
+    /** 拼接多个 flowable:property 元素并包裹在 extensionElements 中 */
     private static String properties(String... values) {
         return "<bpmn:extensionElements><flowable:properties>"
                 + String.join("", values)
                 + "</flowable:properties></bpmn:extensionElements>";
     }
 
+    /** 构造单个 flowable:property 元素字符串 */
     private static String property(String name, String value) {
         return "<flowable:property name=\"" + name + "\" value=\"" + escape(value.trim()) + "\" />";
     }
 
+    /** 对 XML 属性值进行实体转义，避免破坏 BPMn 文档结构 */
     private static String escape(String value) {
         return value
                 .replace("&", "&amp;")

@@ -19,7 +19,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 节点配置服务单元测试
+ * 节点配置服务单元测试。
+ *
+ * <p>被测对象：{@link NodeConfigService}，覆盖节点配置的查询、新增（含处理人）、删除，
+ * 以及按流程查询时处理人、表单的装配等场景。
  */
 @ExtendWith(MockitoExtension.class)
 public class NodeConfigServiceTest {
@@ -42,9 +45,12 @@ public class NodeConfigServiceTest {
     @InjectMocks
     private NodeConfigService nodeService;
 
+    /** 测试节点配置 */
     private NodeConfig testNode;
+    /** 测试流程定义 */
     private ProcessDefinitionConfig testProcess;
 
+    /** 初始化测试流程与测试节点 */
     @BeforeEach
     void setUp() {
         testProcess = new ProcessDefinitionConfig();
@@ -60,6 +66,7 @@ public class NodeConfigServiceTest {
         testNode.setProcessConfigId("proc-1");
     }
 
+    /** 测试按流程 ID 查询节点：验证返回数量与节点关键字段正确 */
     @Test
     void testFindByProcessId() {
         when(nodeMapper.findByProcessConfigId("proc-1")).thenReturn(Arrays.asList(testNode));
@@ -74,6 +81,7 @@ public class NodeConfigServiceTest {
         assertEquals("审批节点", result.get(0).getNodeName());
     }
 
+    /** 测试按 ID 查询节点：验证返回的 id 与 nodeId 正确 */
     @Test
     void testFindById() {
         when(nodeMapper.selectById("node-1")).thenReturn(testNode);
@@ -87,6 +95,7 @@ public class NodeConfigServiceTest {
         assertEquals("Task_1", result.getNodeId());
     }
 
+    /** 测试按 ID 查询不存在节点：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testFindByIdNotFound() {
         when(nodeMapper.selectById("999")).thenReturn(null);
@@ -98,6 +107,7 @@ public class NodeConfigServiceTest {
         assertEquals("Node not found: 999", exception.getMessage());
     }
 
+    /** 测试新增节点：验证返回 nodeId 正确并触发 insert */
     @Test
     void testSave() {
         NodeConfigDTO dto = new NodeConfigDTO();
@@ -119,6 +129,7 @@ public class NodeConfigServiceTest {
         verify(nodeMapper, times(1)).insert(any(NodeConfig.class));
     }
 
+    /** 测试新增节点时流程不存在：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testSaveProcessNotFound() {
         NodeConfigDTO dto = new NodeConfigDTO();
@@ -134,6 +145,7 @@ public class NodeConfigServiceTest {
         assertEquals("Process not found: 999", exception.getMessage());
     }
 
+    /** 测试新增带处理人的节点：验证节点与处理人各触发一次 insert */
     @Test
     void testSaveWithAssignees() {
         NodeConfigDTO dto = new NodeConfigDTO();
@@ -162,6 +174,7 @@ public class NodeConfigServiceTest {
         verify(assigneeMapper, times(1)).insert(any(AssigneeConfig.class));
     }
 
+    /** 测试删除节点：验证触发 deleteById */
     @Test
     void testDelete() {
         when(nodeMapper.deleteById("node-1")).thenReturn(1);
@@ -171,6 +184,7 @@ public class NodeConfigServiceTest {
         verify(nodeMapper, times(1)).deleteById("node-1");
     }
 
+    /** 测试按流程查询节点时装配处理人：验证处理人列表数量与名称正确 */
     @Test
     void testFindByProcessIdWithAssignees() {
         AssigneeConfig assignee = new AssigneeConfig();
@@ -193,6 +207,7 @@ public class NodeConfigServiceTest {
         assertEquals("张三", result.get(0).getAssignees().get(0).getAssigneeName());
     }
 
+    /** 测试按流程查询节点时装配表单：验证表单列表数量与名称正确 */
     @Test
     void testFindByProcessIdWithForms() {
         FormConfig form = new FormConfig();

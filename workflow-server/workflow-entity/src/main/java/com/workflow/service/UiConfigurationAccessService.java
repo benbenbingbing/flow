@@ -9,6 +9,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/**
+ * UI 配置访问控制服务，统一校验当前用户对表单、列表及全局 UI 扩展的维护权限。
+ *
+ * <p>所有维护操作均要求管理员角色，并校验目标配置归属的实体为动态实体，
+ * 系统实体的配置不允许通过通用入口修改。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UiConfigurationAccessService {
@@ -18,11 +24,21 @@ public class UiConfigurationAccessService {
     private final EntityFormMapper formMapper;
     private final EntityListConfigMapper listConfigMapper;
 
+    /**
+     * 要求当前用户为管理员，用于全局 UI 扩展、数据源和组件模板维护。
+     */
     public void requireGlobalConfigurationAccess() {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护全局 UI 扩展、数据源和组件模板");
     }
 
+    /**
+     * 校验当前用户可维护指定表单配置。
+     *
+     * @param formId 表单ID
+     * @throws IllegalArgumentException 表单不存在时抛出
+     * @throws BusinessConflictException 表单归属实体为系统实体时抛出
+     */
     public void requireFormAccess(String formId) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护实体表单配置");
@@ -33,6 +49,13 @@ public class UiConfigurationAccessService {
         entityAccessPolicy.requireDynamicById(form.getEntityId());
     }
 
+    /**
+     * 校验当前用户可查看或维护指定实体的表单配置。
+     *
+     * @param entityId 实体ID
+     * @throws IllegalArgumentException 实体ID为空时抛出
+     * @throws BusinessConflictException 实体为系统实体时抛出
+     */
     public void requireEntityFormAccess(String entityId) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以查看或维护实体表单配置");
@@ -42,6 +65,13 @@ public class UiConfigurationAccessService {
         entityAccessPolicy.requireDynamicById(entityId);
     }
 
+    /**
+     * 校验当前用户可创建新的表单配置（尚未落库的表单）。
+     *
+     * @param form 待创建的表单，须携带实体ID
+     * @throws IllegalArgumentException 表单或实体ID为空时抛出
+     * @throws BusinessConflictException 实体为系统实体时抛出
+     */
     public void requireNewFormAccess(EntityForm form) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护实体表单配置");
@@ -51,6 +81,13 @@ public class UiConfigurationAccessService {
         entityAccessPolicy.requireDynamicById(form.getEntityId());
     }
 
+    /**
+     * 校验当前用户可维护指定列表配置。
+     *
+     * @param listId 列表配置ID
+     * @throws IllegalArgumentException 列表不存在时抛出
+     * @throws BusinessConflictException 列表归属实体为系统实体时抛出
+     */
     public void requireListAccess(String listId) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护实体列表配置");
@@ -61,6 +98,13 @@ public class UiConfigurationAccessService {
         entityAccessPolicy.requireDynamicById(config.getEntityId());
     }
 
+    /**
+     * 校验当前用户可创建新的列表配置（尚未落库的列表实体对象）。
+     *
+     * @param config 待创建的列表配置，按实体ID或实体编码校验
+     * @throws IllegalArgumentException 配置为空时抛出
+     * @throws BusinessConflictException 实体为系统实体时抛出
+     */
     public void requireNewListAccess(EntityListConfig config) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护实体列表配置");
@@ -74,6 +118,13 @@ public class UiConfigurationAccessService {
         entityAccessPolicy.requireDynamicByCode(config.getEntityCode());
     }
 
+    /**
+     * 校验当前用户可创建新的列表配置（尚未落库的列表 DTO）。
+     *
+     * @param config 待创建的列表配置 DTO，按实体ID或实体编码校验
+     * @throws IllegalArgumentException 配置为空时抛出
+     * @throws BusinessConflictException 实体为系统实体时抛出
+     */
     public void requireNewListAccess(EntityListConfigDTO config) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护实体列表配置");

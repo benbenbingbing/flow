@@ -32,9 +32,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 任务加签服务。
+ *
+ * <p>支持三种加签模式：并行（PARALLEL）、前加签（BEFORE）、后加签（AFTER）。
+ * 通过本地任务镜像 + 加签记录表管理加签子任务的生命周期，并在加签完成后延迟提交原任务。
+ * 提供加签预览、新增、撤销、加签任务办理与原任务提交处理等能力。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class TaskAddSignService {
+    /** 支持的加签类型 */
     private static final List<String> TYPES = List.of("PARALLEL", "BEFORE", "AFTER");
 
     private final TaskService taskService;
@@ -44,9 +52,16 @@ public class TaskAddSignService {
     private final ProcessOperationLogMapper operationLogMapper;
     private final SysUserMapper userMapper;
     private final ObjectMapper objectMapper;
+    /** 任务动作服务（用于加签完成后延迟提交原任务），延迟加载避免循环依赖 */
     @Lazy
     private final TaskActionService taskActionService;
 
+    /**
+     * 查询任务当前可执行的操作集合及进行中的加签信息。
+     *
+     * @param taskId 任务ID
+     * @return 操作集合（含审批、转办、加签是否可用及加签类型）
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> operations(String taskId) {
         Task task = requireSourceTask(taskId);
@@ -62,6 +77,14 @@ public class TaskAddSignService {
                 "activeAddSign", current == null ? Map.of() : addSignView(current));
     }
 
+    /**
+     * 加签预览：解析加签人员并返回去重、禁用、无效等校验结果。
+     *
+     * @param taskId            任务ID
+     * @param requestedUserIds  加签人员标识列表
+     * @param requestedType     加签类型
+     * @return 预览结果（含人员、重复/禁用/无效列表及结构说明）
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> preview(String taskId, List<String> requestedUserIds, String requestedType) {
         Task task = requireSourceTask(taskId);
@@ -78,6 +101,17 @@ public class TaskAddSignService {
                 "structure", structureSummary(type));
     }
 
+    /**
+     * 新增加签。
+     *
+     * <p>创建加签记录，为每个加签人生成镜像任务（后加签时先挂起），并记录操作日志。</p>
+     *
+     * @param taskId  任务ID
+     * @param request 加签请求
+     * @return 加签结果（含加签ID、生成的任务ID及结构说明）
+     * @throws IllegalArgumentException 完成策略不支持或无可用加签人员时抛出
+     * @throws IllegalStateException    任务镜像不存在或已存在进行中加签时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> addSign(String taskId, TaskAddSignRequest request) {
         Task sourceTask = requireSourceTask(taskId);
@@ -148,11 +182,31 @@ public class TaskAddSignService {
                 "summary", structureSummary(type));
     }
 
+    /**
+     * 判断指定任务是否为加签生成的子任务。
+     *
+     * @param taskId 任务ID
+     * @return true 表示是加签子任务
+     */
     @Transactional(readOnly = true)
     public boolean isAddSignTask(String taskId) {
         return addSignUserMapper.findByGeneratedTaskId(taskId) != null;
     }
 
+    /**
+     * 处理原任务的提交（在加签场景下拦截原任务办理）。
+     *
+     * <p>暂存原任务提交动作：驳回则直接结束加签并提交；后加签则激活挂起的子任务；
+     * 否则等待所有加签子任务完成后再提交原任务。</p>
+     *
+     * @param taskId      原任务ID
+     * @param userId     操作人
+     * @param action     操作类型
+     * @param comment    审批意见
+     * @param actionLabel 操作显示文本
+     * @param formData   表单数据
+     * @return true 表示已作为加签场景处理，false 表示非加签原任务
+     */
     @Transactional(rollbackFor = Exception.class)
     public boolean handleSourceCompletion(
             String taskId,
@@ -198,6 +252,18 @@ public class TaskAddSignService {
         return true;
     }
 
+    /**
+     * 办理加签子任务（仅支持通过/驳回）。
+     *
+     * <p>完成本地镜像任务 -> 更新加签用户任务状态 -> 记录操作日志。
+     * 驳回则结束其余加签任务并提交原任务（驳回）；全部通过则按加签类型推进（前加签完成、后加签等待/提交原任务）。</p>
+     *
+     * @param taskId  加签子任务ID
+     * @param action  操作类型（approve/reject）
+     * @param comment 审批意见
+     * @throws IllegalArgumentException 加签任务不存在或状态异常时抛出
+     * @throws ForbiddenException       当前用户非加签任务办理人时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void completeAddSignTask(String taskId, String action, String comment) {
         ProcessTaskAddSignUser taskLookup = addSignUserMapper.findByGeneratedTaskId(taskId);
@@ -249,6 +315,16 @@ public class TaskAddSignService {
         }
     }
 
+    /**
+     * 撤销加签。
+     *
+     * <p>仅加签发起人可撤销，且原任务未提交、无加签子任务被处理时才允许。</p>
+     *
+     * @param addSignId 加签记录ID
+     * @throws IllegalArgumentException 加签记录不存在时抛出
+     * @throws ForbiddenException       非加签发起人操作时抛出
+     * @throws IllegalStateException    原任务已提交或已有加签任务被处理时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void cancel(String addSignId) {
         ProcessTaskAddSign addSign = addSignMapper.selectByIdForUpdate(addSignId);
@@ -277,6 +353,7 @@ public class TaskAddSignService {
                 Map.of("addSignId", addSignId, "type", addSign.getOperationType()));
     }
 
+    /** 加签全部完成或驳回后，延迟提交原任务（执行暂存的提交动作与表单数据） */
     private void finalizeSource(ProcessTaskAddSign addSign) {
         Task sourceTask = taskService.createTaskQuery().taskId(addSign.getSourceTaskId()).singleResult();
         if (sourceTask == null) {
@@ -298,6 +375,7 @@ public class TaskAddSignService {
                 readFormData(addSign.getSourceFormData()));
     }
 
+    /** 记录原任务被驳回的提交动作（加签人驳回后用于回填原任务提交） */
     private void saveRejectedSource(ProcessTaskAddSign addSign, String comment) {
         addSign.setSourceCompleted(true);
         addSign.setSourceAction("reject");
@@ -306,6 +384,7 @@ public class TaskAddSignService {
         addSignMapper.updateById(addSign);
     }
 
+    /** 暂存原任务的提交动作、意见与表单数据，供加签完成后延迟提交使用 */
     private void saveSourceSubmission(
             ProcessTaskAddSign addSign,
             String action,
@@ -320,6 +399,7 @@ public class TaskAddSignService {
         addSignMapper.updateById(addSign);
     }
 
+    /** 激活后加签中挂起的子任务（将 HOLD 状态改为待办） */
     private void activateHeldChildren(String addSignId) {
         addSignUserMapper.activateHeld(addSignId);
         for (ProcessTaskAddSignUser user : listUsers(addSignId)) {
@@ -335,6 +415,7 @@ public class TaskAddSignService {
         }
     }
 
+    /** 结束剩余未办理的加签子任务（撤销/驳回时将待办与挂起任务置为跳过并取消） */
     private void finishRemainingChildren(String addSignId, String reason) {
         for (ProcessTaskAddSignUser user : listUsers(addSignId)) {
             if (!List.of("TODO", "HOLD").contains(user.getStatus())) {
@@ -350,6 +431,7 @@ public class TaskAddSignService {
         }
     }
 
+    /** 完成本地加签子任务镜像（计算处理时长并标记完成） */
     private void completeLocalChild(String taskId, String action, String comment) {
         ProcessTask mirror = processTaskMapper.selectByTaskId(taskId);
         if (mirror == null || !ProcessTask.STATUS_TODO.equals(mirror.getStatus())) {
@@ -361,6 +443,7 @@ public class TaskAddSignService {
         processTaskMapper.completeTask(mirror.getId(), ProcessTask.STATUS_DONE, action, comment, duration);
     }
 
+    /** 将原任务镜像置为等待状态（加签完成前原任务暂存） */
     private void markSourceWaiting(String taskId, String action, String comment, String actionLabel) {
         ProcessTask source = processTaskMapper.selectByTaskId(taskId);
         if (source == null) {
@@ -388,6 +471,7 @@ public class TaskAddSignService {
                 .orderByAsc(ProcessTaskAddSignUser::getSortOrder));
     }
 
+    /** 校验并返回指定任务（任务不存在时抛出异常） */
     private Task requireSourceTask(String taskId) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
@@ -396,6 +480,7 @@ public class TaskAddSignService {
         return task;
     }
 
+    /** 校验当前用户是否为任务办理人或候选办理人，返回用户名，否则抛出禁止异常 */
     private String requireTaskOperator(Task task) {
         String username = currentUsername();
         String userId = UserContext.getUserId();
@@ -416,6 +501,7 @@ public class TaskAddSignService {
         return username;
     }
 
+    /** 解析加签人员：去重、过滤禁用/无效/与原办理人重复，并返回分类结果 */
     private Resolution resolveUsers(List<String> values, String sourceAssignee) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         List<String> duplicates = new ArrayList<>();
@@ -451,6 +537,7 @@ public class TaskAddSignService {
         return new Resolution(new ArrayList<>(users.values()), duplicates, disabled, invalid);
     }
 
+    /** 根据原任务镜像复制生成加签子任务镜像（后加签时为挂起状态） */
     private ProcessTask copyAsAddSignTask(ProcessTask source, String taskId, SysUser user, boolean held) {
         ProcessTask child = new ProcessTask();
         child.setProcessInstanceId(source.getProcessInstanceId());
@@ -520,6 +607,7 @@ public class TaskAddSignService {
         return StringUtils.hasText(user.getNickname()) ? user.getNickname() + "(" + user.getUsername() + ")" : user.getUsername();
     }
 
+    /** 获取当前登录用户名，未登录时抛出禁止异常 */
     private String currentUsername() {
         String username = UserContext.getUsername();
         if (!StringUtils.hasText(username)) {
@@ -528,6 +616,7 @@ public class TaskAddSignService {
         return username;
     }
 
+    /** 将表单数据序列化为JSON，空数据返回 null */
     private String writeFormData(Map<String, Object> formData) {
         if (formData == null || formData.isEmpty()) {
             return null;
@@ -539,6 +628,7 @@ public class TaskAddSignService {
         }
     }
 
+    /** 写入流程操作日志（记录加签相关操作及详情） */
     private void writeOperationLog(
             ProcessTaskAddSign addSign,
             String taskId,
@@ -560,6 +650,7 @@ public class TaskAddSignService {
         operationLogMapper.insert(log);
     }
 
+    /** 从JSON反序列化暂存的表单数据 */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readFormData(String json) {
         if (!StringUtils.hasText(json)) {
@@ -572,6 +663,7 @@ public class TaskAddSignService {
         }
     }
 
+    /** 加签人员解析结果：可用人员、重复、禁用、无效列表 */
     private record Resolution(List<SysUser> users, List<String> duplicates, List<String> disabled, List<String> invalid) {
     }
 }

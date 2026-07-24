@@ -3,8 +3,18 @@ package com.workflow.service;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 流程发布 BPMN 清理与执行人解析测试。
+ *
+ * <p>被测逻辑：流程发布时对 BPMN XML 的 camunda 命名空间清理、flowable 属性转换，
+ * 以及从 BPMN 中提取执行人配置的链路。以本地复现的方法模拟实际发布逻辑。
+ */
 public class PublishProcessTest {
 
+    /**
+     * 测试完整的发布清理与执行人提取流程：
+     * 验证清理后无重复 flowable:assignee、无残留 camunda:assignee，并能正确提取两个 admin 执行人。
+     */
     @Test
     public void testFullPublishFlow() {
         // 模拟前端保存的 BPMN XML（包含 camunda:assignee）
@@ -121,6 +131,7 @@ public class PublishProcessTest {
         return assignees;
     }
     
+    /** 统计子串在字符串中出现的次数 */
     private int countOccurrences(String str, String subStr) {
         int count = 0;
         int index = 0;

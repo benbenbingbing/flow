@@ -242,6 +242,9 @@ public class SysMenuService {
     
     /**
      * 更新菜单显示状态
+     *
+     * @param id      菜单ID
+     * @param visible 显示状态：0-显示 1-隐藏
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateVisible(String id, String visible) {
@@ -253,7 +256,9 @@ public class SysMenuService {
     }
     
     /**
-     * 更新菜单排序
+     * 更新菜单排序（按列表顺序设置 sort 为索引值）
+     *
+     * @param menuIds 按目标顺序排列的菜单ID列表
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateSort(List<String> menuIds) {
@@ -268,6 +273,9 @@ public class SysMenuService {
     
     /**
      * 构建菜单树
+     *
+     * @param menus 平铺的菜单列表
+     * @return 树形结构的菜单列表
      */
     private List<SysMenu> buildTree(List<SysMenu> menus) {
         Map<String, SysMenu> menuMap = menus.stream()
@@ -297,11 +305,27 @@ public class SysMenuService {
         return tree;
     }
 
+    /**
+     * 判断菜单是否为指向不存在实体的动态数据列表菜单
+     *
+     * @param menu        菜单对象
+     * @param entityCodes 当前有效的实体编码集合
+     * @return 是缺失实体的列表菜单返回 true，否则 false
+     */
     private boolean isMissingEntityListMenu(SysMenu menu, Set<String> entityCodes) {
         String entityCode = resolveEntityListCode(menu);
         return StringUtils.hasText(entityCode) && !entityCodes.contains(entityCode);
     }
 
+    /**
+     * 解析动态数据列表菜单所引用的实体编码
+     * <p>
+     * 优先取 menu.entityCode；否则从 path 的 /entity-list/ 前缀中提取首段作为实体编码。
+     * </p>
+     *
+     * @param menu 菜单对象
+     * @return 实体编码，无法解析返回 null
+     */
     private String resolveEntityListCode(SysMenu menu) {
         if (menu == null) {
             return null;
@@ -321,6 +345,8 @@ public class SysMenuService {
     
     /**
      * 导出菜单数据
+     *
+     * @return 按排序升序的全部菜单列表
      */
     public List<SysMenu> exportMenus() {
         return menuMapper.selectList(
@@ -330,7 +356,9 @@ public class SysMenuService {
     }
     
     /**
-     * 导入菜单数据
+     * 导入菜单数据（权限标识已存在的菜单会被跳过）
+     *
+     * @param menus 待导入的菜单列表
      */
     @Transactional(rollbackFor = Exception.class)
     public void importMenus(List<SysMenu> menus) {
@@ -350,6 +378,8 @@ public class SysMenuService {
     
     /**
      * 获取菜单类型列表
+     *
+     * @return 菜单类型选项列表（value-label 键值对）
      */
     public List<Map<String, String>> getMenuTypeOptions() {
         List<Map<String, String>> options = new ArrayList<>();

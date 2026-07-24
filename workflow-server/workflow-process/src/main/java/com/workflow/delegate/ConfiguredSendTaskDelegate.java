@@ -20,16 +20,33 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 配置化发送任务代理
+ * 从节点 sendConfig 配置中读取接收人、渠道、主题、内容模板，解析后通过抄送运行时
+ * 向指定接收人投递通知消息，并把发送数量回写到流程变量。
+ */
 @Component("configuredSendTaskDelegate")
 @RequiredArgsConstructor
 public class ConfiguredSendTaskDelegate implements JavaDelegate {
 
+    /** 流程变量占位符正则，形如 ${var} */
     private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
 
+    /** 抄送运行时服务，触发消息投递 */
     private final ProcessCcRuntimeService ccRuntimeService;
+    /** Flowable 仓库服务，查询流程定义 */
     private final RepositoryService repositoryService;
+    /** JSON 序列化工具 */
     private final ObjectMapper objectMapper;
 
+    /**
+     * 节点执行回调：执行配置化的发送任务。
+     * <p>
+     * 受检异常包装为 IllegalStateException，运行时异常原样抛出。
+     *
+     * @param execution Flowable 执行上下文
+     * @throws IllegalStateException 当配置缺失或接收人解析为空时抛出
+     */
     @Override
     public void execute(DelegateExecution execution) {
         try {
@@ -41,6 +58,12 @@ public class ConfiguredSendTaskDelegate implements JavaDelegate {
         }
     }
 
+    /**
+     * 执行配置化的发送任务：读取配置、解析接收人与模板、组装抄送配置并触发投递。
+     *
+     * @param execution Flowable 执行上下文
+     * @throws Exception 配置缺失或接收人解析为空时抛出
+     */
     private void executeConfigured(DelegateExecution execution) throws Exception {
         String configDocument = ConfiguredTaskPropertyReader.read(
                 execution.getCurrentFlowElement(),
@@ -89,6 +112,12 @@ public class ConfiguredSendTaskDelegate implements JavaDelegate {
         execution.setVariable(execution.getCurrentActivityId() + "_sendCount", created);
     }
 
+    /**
+     * 将渠道名称归一化为大写标准码（站内信/邮件/短信等）。
+     *
+     * @param value 渠道名称
+     * @return 标准渠道码
+     */
     private String channelCode(String value) {
         return switch (value.toLowerCase(Locale.ROOT)) {
             case "message", "in_app" -> "IN_APP";
@@ -98,6 +127,12 @@ public class ConfiguredSendTaskDelegate implements JavaDelegate {
         };
     }
 
+    /**
+     * 按逗号、分号或空白符拆分接收人字符串。
+     *
+     * @param value 接收人字符串
+     * @return 接收人列表
+     */
     private List<String> splitRecipients(String value) {
         List<String> recipients = new ArrayList<>();
         for (String item : value.split("[,;\\s]+")) {
@@ -108,6 +143,13 @@ public class ConfiguredSendTaskDelegate implements JavaDelegate {
         return recipients;
     }
 
+    /**
+     * 解析模板字符串：将形如 {@code ${var}} 的占位符替换为对应流程变量值。
+     *
+     * @param template  模板字符串
+     * @param execution Flowable 执行上下文
+     * @return 解析后的字符串
+     */
     private String resolveTemplate(String template, DelegateExecution execution) {
         Matcher matcher = VARIABLE_PATTERN.matcher(template);
         StringBuffer result = new StringBuffer();
@@ -119,6 +161,14 @@ public class ConfiguredSendTaskDelegate implements JavaDelegate {
         return result.toString();
     }
 
+    /**
+     * 根据主题、内容与模板Key拼装发送摘要。
+     *
+     * @param subject     主题
+     * @param content     内容
+     * @param templateKey 模板Key
+     * @return 摘要字符串
+     */
     private String buildSummary(String subject, String content, String templateKey) {
         StringBuilder summary = new StringBuilder();
         if (!subject.isBlank()) {

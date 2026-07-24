@@ -14,11 +14,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 权限规则匹配器测试。
+ *
+ * <p>被测对象：{@link PermissionRuleMatcher}，覆盖角色、用户组、子部门路径、组织子树匹配、
+ * 嵌套条件组求值、自定义作用域提供者委托、移除的表达式作用域拒绝等场景。
+ */
 class PermissionRuleMatcherTest {
 
     private final SysOrganizationMapper orgMapper = mock(SysOrganizationMapper.class);
     private final SysUserGroupMapper userGroupMapper = mock(SysUserGroupMapper.class);
 
+    /** 测试匹配任意角色：验证用户含目标角色时匹配为真 */
     @Test
     void matchesAnyRole() {
         PermissionRuleMatcher matcher = matcher();
@@ -29,6 +36,7 @@ class PermissionRuleMatcherTest {
         assertTrue(matcher.matches(match, user));
     }
 
+    /** 测试匹配用户组：验证用户属于目标用户组时匹配为真 */
     @Test
     void matchesUserGroup() {
         PermissionRuleMatcher matcher = matcher();
@@ -40,6 +48,7 @@ class PermissionRuleMatcherTest {
         assertTrue(matcher.matches(match, user));
     }
 
+    /** 测试按路径匹配子部门：验证用户部门路径包含目标父部门时匹配为真 */
     @Test
     void matchesSubDepartmentByPath() {
         PermissionRuleMatcher matcher = matcher();
@@ -53,6 +62,7 @@ class PermissionRuleMatcherTest {
         assertTrue(matcher.matches(match, user));
     }
 
+    /** 测试匹配组织子树：验证用户组织路径包含目标父组织时匹配为真 */
     @Test
     void matchesOrganizationSubtree() {
         PermissionRuleMatcher matcher = matcher();
@@ -66,6 +76,7 @@ class PermissionRuleMatcherTest {
         assertTrue(matcher.matches(match, user));
     }
 
+    /** 测试求值嵌套条件组：验证 AND/OR 嵌套结构按预期求值为真 */
     @Test
     void evaluatesNestedConditionGroups() {
         PermissionRuleMatcher matcher = matcher();
@@ -84,6 +95,7 @@ class PermissionRuleMatcherTest {
         assertTrue(matcher.matches(config, user));
     }
 
+    /** 测试自定义作用域委托给提供者：验证自定义类型经提供者匹配为真 */
     @Test
     void delegatesCustomScopeToProvider() {
         EntityDataPermissionMatchProvider provider = new EntityDataPermissionMatchProvider() {
@@ -110,6 +122,7 @@ class PermissionRuleMatcherTest {
         assertTrue(matcher.matches(match, user));
     }
 
+    /** 测试拒绝已移除的表达式作用域：验证 EXPRESSION 类型匹配为假 */
     @Test
     void rejectsRemovedExpressionScope() {
         PermissionRuleMatcher matcher = matcher();
@@ -122,10 +135,12 @@ class PermissionRuleMatcherTest {
         assertFalse(matcher.matches(match, user));
     }
 
+    /** 构造无扩展提供者的匹配器 */
     private PermissionRuleMatcher matcher() {
         return new PermissionRuleMatcher(orgMapper, userGroupMapper, List.of());
     }
 
+    /** 构造指定逻辑与条件列表的匹配配置 */
     private MatchConfigDTO match(
             String logic,
             MatchConfigDTO.MatchConditionDTO... conditions) {
@@ -135,6 +150,7 @@ class PermissionRuleMatcherTest {
         return match;
     }
 
+    /** 构造匹配条件（作用域类型、目标 ID、操作符、是否含子部门） */
     private MatchConfigDTO.MatchConditionDTO condition(
             String scopeType,
             List<String> targetIds,
@@ -148,6 +164,7 @@ class PermissionRuleMatcherTest {
         return condition;
     }
 
+    /** 构造逻辑分组节点（AND/OR），含子节点 */
     private MatchConfigDTO.MatchNodeDTO group(
             String logic,
             MatchConfigDTO.MatchNodeDTO... children) {
@@ -158,6 +175,7 @@ class PermissionRuleMatcherTest {
         return node;
     }
 
+    /** 构造包装单个条件的叶子节点 */
     private MatchConfigDTO.MatchNodeDTO leaf(MatchConfigDTO.MatchConditionDTO condition) {
         MatchConfigDTO.MatchNodeDTO node = new MatchConfigDTO.MatchNodeDTO();
         node.setType("CONDITION");
