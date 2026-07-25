@@ -8,8 +8,8 @@
       </el-form-item>
       <el-form-item label="不满足时">
         <el-radio-group v-model="rule.unavailableBehavior">
-          <el-radio-button label="HIDE">隐藏按钮</el-radio-button>
-          <el-radio-button label="DISABLE">禁用并说明</el-radio-button>
+          <el-radio-button value="HIDE">隐藏按钮</el-radio-button>
+          <el-radio-button value="DISABLE">禁用并说明</el-radio-button>
         </el-radio-group>
       </el-form-item>
       <el-form-item label="提示原因">
@@ -38,7 +38,7 @@
 
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" @click="save">确定</el-button>
+      <el-button type="primary" @click="save">保存适用条件</el-button>
     </template>
   </el-dialog>
 </template>

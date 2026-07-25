@@ -14,4 +14,50 @@ html, body, #app {
   font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
 }
+
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible,
+.el-input__wrapper:has(input:focus-visible),
+.el-select__wrapper:has(input:focus-visible) {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+
+.migration-steps .el-step.is-simple .el-step__title {
+  max-width: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 1366px) {
+  .el-table .el-table-fixed-column--right,
+  .el-table .el-table-fixed-column--left {
+    position: static !important;
+    right: auto !important;
+    left: auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .el-card {
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .el-table {
+    width: 100%;
+  }
+
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: flex-start !important;
+    gap: 8px 0;
+  }
+
+  .el-pagination .el-pagination__sizes,
+  .el-pagination .el-pagination__jump {
+    display: none;
+  }
+}
 </style>

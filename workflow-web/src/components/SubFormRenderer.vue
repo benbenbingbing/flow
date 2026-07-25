@@ -160,7 +160,14 @@
 
         <el-table-column v-if="isRepeatable && !disabled && !readonly" label="" width="64" align="center" fixed="right">
           <template #default="{ $index }">
-            <el-button type="danger" size="small" text @click="removeRow($index)">
+            <el-button
+              type="danger"
+              size="small"
+              text
+              aria-label="删除子表行"
+              title="删除子表行"
+              @click="removeRow($index)"
+            >
               <el-icon><Delete /></el-icon>
             </el-button>
           </template>

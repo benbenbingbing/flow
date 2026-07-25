@@ -10,8 +10,10 @@ import com.workflow.service.ProcessInstanceService;
 import com.workflow.vo.MyStartedProcessVO;
 import com.workflow.vo.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -55,13 +57,17 @@ public class ProcessInstanceController {
      * @param pageNum 页码
      * @param pageSize 每页大小
      * @param processName 流程名称（可选）
+     * @param startDate 发起日期下限（可选）
+     * @param endDate 发起日期上限（可选，包含当天）
      * @return 我发起的流程列表
      */
     @GetMapping("/my-started")
     public Result<PageResult<MyStartedProcessVO>> getMyStartedList(
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String processName) {
+            @RequestParam(required = false) String processName,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         String userId = UserContext.getUserId();
         if (userId == null || userId.isEmpty()) {
             userId = UserContext.getUsername();
@@ -69,7 +75,8 @@ public class ProcessInstanceController {
         if (userId == null || userId.isEmpty()) {
             userId = "admin"; // 默认用户，用于测试
         }
-        return Result.success(processInstanceService.getMyStartedList(userId, pageNum, pageSize, processName));
+        return Result.success(processInstanceService.getMyStartedList(
+                userId, pageNum, pageSize, processName, startDate, endDate));
     }
     
     /**

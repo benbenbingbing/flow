@@ -1,5 +1,6 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.common.Result;
 import com.workflow.common.UserContext;
 import com.workflow.common.ForbiddenException;
@@ -9,6 +10,8 @@ import com.workflow.service.CurrentUserRoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -43,12 +46,21 @@ public class ProcessCcController {
      * @return 抄送记录列表
      */
     @GetMapping("/my-cc")
-    public Result<List<ProcessCcRecord>> getMyCcList(
+    public Result<PageResult<ProcessCcRecord>> getMyCcList(
             @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String startUserName,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
         String userId = UserContext.getUsername();
         userId = requireCurrentUser(userId);
-        return Result.success(ccService.getUserCcList(userId, pageNum, pageSize));
+        LocalDateTime startTime = startDate == null || startDate.isBlank()
+                ? null : LocalDate.parse(startDate).atStartOfDay();
+        LocalDateTime endTime = endDate == null || endDate.isBlank()
+                ? null : LocalDate.parse(endDate).plusDays(1).atStartOfDay();
+        return Result.success(ccService.getUserCcPage(
+                userId, pageNum, pageSize, keyword, startUserName, startTime, endTime));
     }
     
     /**

@@ -7,9 +7,72 @@
         新增用户
       </el-button>
     </div>
+
+    <el-form :model="queryParams" inline class="user-filters">
+      <el-form-item label="关键词">
+        <el-input
+          v-model="queryParams.keyword"
+          placeholder="账号、姓名、邮箱或手机号"
+          clearable
+          @keyup.enter="handleSearch"
+        />
+      </el-form-item>
+      <el-form-item label="组织">
+        <el-select v-model="queryParams.orgId" clearable filterable placeholder="全部组织">
+          <el-option v-for="item in orgOptions" :key="item.id" :label="item.orgName" :value="item.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="部门">
+        <el-select v-model="queryParams.deptId" clearable filterable placeholder="全部部门">
+          <el-option v-for="item in deptOptions" :key="item.id" :label="item.orgName" :value="item.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="角色">
+        <el-select v-model="queryParams.roleId" clearable filterable placeholder="全部角色">
+          <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="状态">
+        <el-select v-model="queryParams.status" clearable placeholder="全部状态">
+          <el-option label="启用" value="0" />
+          <el-option label="禁用" value="1" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="handleSearch">查询</el-button>
+        <el-button @click="handleReset">重置</el-button>
+      </el-form-item>
+    </el-form>
+
+    <div class="batch-toolbar">
+      <span>已选择 {{ selectedUsers.length }} 人</span>
+      <el-button :disabled="!selectedUsers.length" @click="openBatchRoleDialog">批量分配角色</el-button>
+      <el-button :disabled="!selectedUsers.length" @click="handleBatchStatus('0')">批量启用</el-button>
+      <el-button type="danger" plain :disabled="!selectedUsers.length" @click="handleBatchStatus('1')">
+        批量禁用
+      </el-button>
+    </div>
+
+    <PageState
+      v-if="loadError"
+      type="error"
+      title="用户列表加载失败"
+      :description="loadError"
+      retryable
+      @retry="fetchUserList"
+    />
     
     <!-- 用户表格 -->
-    <el-table v-loading="loading" :data="userList" border stripe>
+    <el-table
+      v-else
+      v-loading="loading"
+      :data="userList"
+      border
+      stripe
+      empty-text="当前条件下没有用户"
+      @selection-change="selectedUsers = $event"
+    >
+      <el-table-column type="selection" width="44" :selectable="row => row.username !== 'admin'" />
       <el-table-column type="index" label="#" width="60" align="center" />
       
       <el-table-column prop="username" label="用户名" min-width="120" />
@@ -52,7 +115,7 @@
         </template>
       </el-table-column>
       
-      <el-table-column prop="createTime" label="创建时间" width="160" />
+      <el-table-column prop="createTime" label="创建时间" width="170" :formatter="formatDateColumn" />
       
       <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
@@ -74,6 +137,17 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <el-pagination
+      v-model:current-page="queryParams.pageNum"
+      v-model:page-size="queryParams.pageSize"
+      :total="total"
+      :page-sizes="[10, 20, 50, 100]"
+      layout="total, sizes, prev, pager, next, jumper"
+      class="pagination"
+      @size-change="handlePageSizeChange"
+      @current-change="fetchUserList"
+    />
     
     <!-- 用户编辑对话框 -->
     <el-dialog
@@ -82,6 +156,7 @@
       width="600px"
       :close-on-click-modal="false"
     >
+      <TemporaryPasswordNotice v-if="!formData.id" />
       <el-form
         ref="formRef"
         :model="formData"
@@ -122,8 +197,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="formData.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -177,9 +252,38 @@
       
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          {{ formData.id ? '保存用户' : '创建用户' }}
+        </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="batchRoleDialogVisible" title="批量分配角色" width="520px">
+      <el-alert
+        :title="`将覆盖 ${selectedUsers.length} 个用户当前的角色配置`"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+      <el-form label-width="90px" class="batch-role-form">
+        <el-form-item label="新角色">
+          <el-select v-model="batchRoleIds" multiple filterable style="width: 100%" placeholder="请选择角色">
+            <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchRoleDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchLoading" @click="submitBatchRoles">确认分配</el-button>
+      </template>
+    </el-dialog>
+
+    <TemporaryPasswordDialog
+      v-model="temporaryPasswordDialog.visible"
+      :username="temporaryPasswordDialog.username"
+      :temporary-password="temporaryPasswordDialog.password"
+      @closed="clearTemporaryPassword"
+    />
   </div>
 </template>
 
@@ -187,14 +291,48 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getUserList, createUser, updateUser, deleteUser, updateUserStatus, resetPassword, getRoles } from '@/api/system/user'
+import {
+  getUserPage,
+  createUser,
+  updateUser,
+  deleteUser,
+  updateUserStatus,
+  batchUpdateUserStatus,
+  batchAssignUserRoles,
+  resetPassword,
+  getRoles
+} from '@/api/system/user'
 import request from '@/utils/request'
+import PageState from '@/components/PageState.vue'
+import TemporaryPasswordDialog from '@/components/TemporaryPasswordDialog.vue'
+import TemporaryPasswordNotice from '@/components/TemporaryPasswordNotice.vue'
+import { formatDateColumn } from '@/shared/list-runtime'
 
 const loading = ref(false)
+const loadError = ref('')
 const userList = ref<any[]>([])
+const selectedUsers = ref<any[]>([])
+const total = ref(0)
 const roleOptions = ref<any[]>([])
 const orgOptions = ref<any[]>([])
 const deptOptions = ref<any[]>([])
+const queryParams = reactive({
+  keyword: '',
+  orgId: '',
+  deptId: '',
+  roleId: '',
+  status: '',
+  pageNum: 1,
+  pageSize: 20
+})
+const batchRoleDialogVisible = ref(false)
+const batchRoleIds = ref<string[]>([])
+const batchLoading = ref(false)
+const temporaryPasswordDialog = reactive({
+  visible: false,
+  username: '',
+  password: ''
+})
 
 // 对话框
 const dialogVisible = ref(false)
@@ -222,11 +360,48 @@ const formRules = {
 // 获取用户列表
 const fetchUserList = async () => {
   loading.value = true
+  loadError.value = ''
   try {
-    userList.value = await getUserList() || []
+    const res = await getUserPage({
+      ...queryParams,
+      keyword: queryParams.keyword.trim() || undefined,
+      orgId: queryParams.orgId || undefined,
+      deptId: queryParams.deptId || undefined,
+      roleId: queryParams.roleId || undefined,
+      status: queryParams.status || undefined
+    })
+    userList.value = res?.records || []
+    total.value = Number(res?.total || 0)
+    queryParams.pageNum = Number(res?.pageNum || queryParams.pageNum)
+    queryParams.pageSize = Number(res?.pageSize || queryParams.pageSize)
+    selectedUsers.value = []
+  } catch (error: any) {
+    loadError.value = error?.message || '无法读取用户，请重试。'
   } finally {
     loading.value = false
   }
+}
+
+const handleSearch = () => {
+  queryParams.pageNum = 1
+  fetchUserList()
+}
+
+const handleReset = () => {
+  Object.assign(queryParams, {
+    keyword: '',
+    orgId: '',
+    deptId: '',
+    roleId: '',
+    status: '',
+    pageNum: 1
+  })
+  fetchUserList()
+}
+
+const handlePageSizeChange = () => {
+  queryParams.pageNum = 1
+  fetchUserList()
 }
 
 // 获取角色选项
@@ -296,16 +471,21 @@ const handleSubmit = async () => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
+    const isCreating = !formData.id
+    let savedUser: any
     if (formData.id) {
       // 更新用户
-      await updateUser(formData.id, formData)
+      savedUser = await updateUser(formData.id, formData)
     } else {
       // 创建用户（只传 data，不传 id）
-      await createUser(formData)
+      savedUser = await createUser(formData)
     }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
     fetchUserList()
+    if (isCreating && savedUser?.temporaryPassword) {
+      showTemporaryPassword(savedUser.username || formData.username, savedUser.temporaryPassword)
+    }
   } finally {
     submitLoading.value = false
   }
@@ -314,9 +494,17 @@ const handleSubmit = async () => {
 // 删除用户
 const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除用户 "${row.username}" 吗？`, '提示', {
-      type: 'warning'
-    })
+    await ElMessageBox.prompt(
+      `删除后账号将无法登录，角色和组织关系也会解除。请输入用户名「${row.username}」确认。`,
+      '删除用户',
+      {
+        type: 'warning',
+        inputPlaceholder: row.username,
+        inputValidator: value => value === row.username || '输入的用户名不一致',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     await deleteUser(row.id)
     ElMessage.success('删除成功')
     fetchUserList()
@@ -327,26 +515,106 @@ const handleDelete = async (row: any) => {
 
 // 状态变更
 const handleStatusChange = async (row: any) => {
+  const nextStatus = row.status
+  const previousStatus = nextStatus === '0' ? '1' : '0'
   try {
-    await updateUserStatus(row.id, row.status)
-    ElMessage.success('状态更新成功')
+    await ElMessageBox.confirm(
+      nextStatus === '1'
+        ? `禁用后，用户「${row.nickname || row.username}」将无法登录，正在处理的任务不会自动转交。`
+        : `启用后，用户「${row.nickname || row.username}」将恢复登录和现有角色权限。`,
+      nextStatus === '1' ? '禁用用户' : '启用用户',
+      {
+        type: nextStatus === '1' ? 'warning' : 'info',
+        confirmButtonText: nextStatus === '1' ? '确认禁用' : '确认启用',
+        cancelButtonText: '取消'
+      }
+    )
+    await updateUserStatus(row.id, nextStatus)
+    ElMessage.success(nextStatus === '0' ? '用户已启用' : '用户已禁用')
   } catch {
-    row.status = row.status === '0' ? '1' : '0'
+    row.status = previousStatus
+  }
+}
+
+const handleBatchStatus = async (status: string) => {
+  if (!selectedUsers.value.length) return
+  const action = status === '0' ? '启用' : '禁用'
+  try {
+    await ElMessageBox.confirm(
+      status === '1'
+        ? `将禁用 ${selectedUsers.value.length} 个用户。他们会立即失去登录能力，待办不会自动转交。`
+        : `将启用 ${selectedUsers.value.length} 个用户，并恢复其现有角色权限。`,
+      `批量${action}用户`,
+      {
+        type: status === '1' ? 'warning' : 'info',
+        confirmButtonText: `确认${action}`,
+        cancelButtonText: '取消'
+      }
+    )
+    batchLoading.value = true
+    await batchUpdateUserStatus(selectedUsers.value.map(user => user.id), status)
+    ElMessage.success(`已${action} ${selectedUsers.value.length} 个用户`)
+    await fetchUserList()
+  } catch (error) {
+    if (error !== 'cancel') console.error(`批量${action}失败`, error)
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+const openBatchRoleDialog = () => {
+  batchRoleIds.value = []
+  batchRoleDialogVisible.value = true
+}
+
+const submitBatchRoles = async () => {
+  if (!selectedUsers.value.length) return
+  if (!batchRoleIds.value.length) {
+    ElMessage.warning('请至少选择一个角色')
+    return
+  }
+  batchLoading.value = true
+  try {
+    await batchAssignUserRoles(
+      selectedUsers.value.map(user => user.id),
+      batchRoleIds.value
+    )
+    ElMessage.success(`已更新 ${selectedUsers.value.length} 个用户的角色`)
+    batchRoleDialogVisible.value = false
+    await fetchUserList()
+  } finally {
+    batchLoading.value = false
   }
 }
 
 // 重置密码
 const handleResetPassword = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定重置用户 "${row.username}" 的密码吗？<br>重置后密码为：<b>123456</b>`, '提示', {
-      type: 'warning',
-      dangerouslyUseHTMLString: true
-    })
-    await resetPassword(row.id)
-    ElMessage.success('密码重置成功')
+    await ElMessageBox.confirm(
+      `将重置用户「${row.username}」的登录密码。请通过安全渠道通知用户，并要求其尽快修改。`,
+      '重置密码',
+      {
+        type: 'warning',
+        confirmButtonText: '确认重置',
+        cancelButtonText: '取消'
+      }
+    )
+    const result = await resetPassword(row.id)
+    showTemporaryPassword(row.username, result.temporaryPassword)
   } catch {
     // 取消
   }
+}
+
+const showTemporaryPassword = (username: string, password: string) => {
+  temporaryPasswordDialog.username = username
+  temporaryPasswordDialog.password = password
+  temporaryPasswordDialog.visible = true
+}
+
+const clearTemporaryPassword = () => {
+  temporaryPasswordDialog.username = ''
+  temporaryPasswordDialog.password = ''
 }
 
 onMounted(() => {
@@ -371,6 +639,44 @@ onMounted(() => {
       font-size: 20px;
       font-weight: 500;
     }
+  }
+}
+
+.user-filters {
+  margin-bottom: 8px;
+}
+
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-bottom: 12px;
+  color: #606266;
+}
+
+.pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.batch-role-form {
+  margin-top: 18px;
+}
+
+@media (max-width: 760px) {
+  .user-management {
+    padding: 12px;
+  }
+
+  .batch-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .user-filters :deep(.el-form-item),
+  .user-filters :deep(.el-input),
+  .user-filters :deep(.el-select) {
+    width: 100%;
   }
 }
 </style>

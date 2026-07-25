@@ -4,12 +4,12 @@ import com.workflow.common.JwtUtil;
 import com.workflow.common.PermissionUtil;
 import com.workflow.common.Result;
 import com.workflow.common.UserContext;
+import com.workflow.dto.ChangePasswordDTO;
 import com.workflow.dto.LoginDTO;
 import com.workflow.entity.SysUser;
 import com.workflow.service.SysUserService;
 import com.workflow.vo.LoginUserVO;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,9 +30,6 @@ public class AuthController {
     
     /** 用户服务，用于登录校验与用户信息查询 */
     private final SysUserService userService;
-    /** BCrypt 密码编码器，用于登录密码校验 */
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-    
     /**
      * 用户登录
      *
@@ -52,22 +49,11 @@ public class AuthController {
             return Result.error("用户已被禁用");
         }
         
-        // 验证密码
-        // admin用户密码是admin，其他用户使用数据库存储的加密密码
-        boolean passwordValid;
-        if ("admin".equals(loginDTO.getUsername()) && "admin".equals(loginDTO.getPassword())) {
-            passwordValid = true;
-            // 更新admin用户的密码为加密后的
-            if (!user.getPassword().startsWith("$2a$")) {
-                user.setPassword(passwordEncoder.encode("admin"));
-                userService.updatePassword(user.getId(), user.getPassword());
-            }
-        } else {
-            passwordValid = passwordEncoder.matches(loginDTO.getPassword(), user.getPassword());
-        }
-        
-        if (!passwordValid) {
+        if (!userService.passwordMatches(loginDTO.getPassword(), user.getPassword())) {
             return Result.error("用户名或密码错误");
+        }
+        if (!user.getPassword().startsWith("$2")) {
+            userService.migrateLegacyPassword(user.getId(), loginDTO.getPassword());
         }
         
         // 生成JWT Token
@@ -82,6 +68,7 @@ public class AuthController {
         vo.setEmail(user.getEmail());
         vo.setPhone(user.getPhone());
         vo.setToken(token);
+        vo.setPasswordResetRequired(Boolean.TRUE.equals(user.getPasswordResetRequired()));
         
         // 设置角色
         if (user.getRoles() != null) {
@@ -117,6 +104,7 @@ public class AuthController {
         vo.setAvatar(user.getAvatar());
         vo.setEmail(user.getEmail());
         vo.setPhone(user.getPhone());
+        vo.setPasswordResetRequired(Boolean.TRUE.equals(user.getPasswordResetRequired()));
         
         if (user.getRoles() != null) {
             vo.setRoles(user.getRoles().stream()
@@ -125,6 +113,19 @@ public class AuthController {
         }
         
         return Result.success(vo);
+    }
+
+    /**
+     * 修改当前登录用户密码。
+     */
+    @PostMapping("/change-password")
+    public Result<Void> changePassword(@Validated @RequestBody ChangePasswordDTO request) {
+        String userId = UserContext.getUserId();
+        if (userId == null) {
+            return Result.error("未登录");
+        }
+        userService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword());
+        return Result.success();
     }
     
     /**

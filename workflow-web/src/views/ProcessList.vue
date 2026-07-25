@@ -33,10 +33,24 @@
         </el-form-item>
       </el-form>
       
-      <el-table :data="processList" v-loading="loading" stripe>
-        <el-table-column prop="processName" label="流程名称" min-width="150" />
-        <el-table-column prop="processKey" label="流程标识" min-width="120" />
-        <el-table-column prop="category" label="分类" min-width="100" />
+      <PageState
+        v-if="fetchError"
+        type="error"
+        title="流程列表加载失败"
+        :description="fetchError"
+        retryable
+        @retry="fetchData"
+      />
+      <PageState
+        v-else-if="!loading && processList.length === 0"
+        type="empty"
+        title="没有找到流程"
+        description="可调整筛选条件，或创建一个新的流程草稿。"
+      />
+      <el-table v-else :data="processList" v-loading="loading" stripe>
+        <el-table-column prop="processName" label="流程名称" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="processKey" label="流程标识" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="category" label="分类" min-width="120" show-overflow-tooltip />
         <el-table-column prop="version" label="当前版本" width="90">
           <template #default="{ row }">
             <el-tag v-if="row.version > 0" type="info">v{{ row.version }}</el-tag>
@@ -55,28 +69,31 @@
             {{ formatDate(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="350" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-            <el-button link type="info" @click="handleViewVersions(row)">版本</el-button>
-            <el-button 
-              v-if="row.status === 'DRAFT' || row.status === 'DISABLED'" 
-              link 
-              type="success" 
-              @click="handlePublish(row)"
-            >
-              发布
-            </el-button>
-            <el-button 
-              v-if="row.status === 'PUBLISHED' || row.status === 'DRAFT'" 
-              link 
-              type="warning" 
-              @click="handleDisable(row)"
-            >
-              禁用
-            </el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="primary" @click="handleDesign(row)">打开设计器</el-button>
+            <el-dropdown>
+              <el-button link type="info" aria-label="更多流程操作">更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="handleEdit(row)">编辑基本信息</el-dropdown-item>
+                  <el-dropdown-item @click="handleViewVersions(row)">版本历史</el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="row.status === 'DRAFT' || row.status === 'DISABLED'"
+                    @click="handlePublish(row)"
+                  >
+                    {{ row.status === 'DISABLED' ? '发布新版本并启用' : '发布流程' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="row.status === 'PUBLISHED'"
+                    @click="handleDisable(row)"
+                  >
+                    禁用新发起
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="handleDelete(row)">删除流程</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -115,6 +132,9 @@
             placeholder="请输入流程标识"
             :disabled="isEdit"
           />
+          <div class="field-help">
+            用于流程定义、实体绑定和系统集成；创建后不可修改。建议使用字母开头的英文标识。
+          </div>
         </el-form-item>
         <el-form-item label="分类" prop="category">
           <el-input v-model="formData.category" placeholder="请输入分类" />
@@ -131,7 +151,7 @@
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit" :loading="submitting">
-          确定
+          {{ isEdit ? '保存基本信息' : '创建流程草稿' }}
         </el-button>
       </template>
     </el-dialog>
@@ -296,9 +316,11 @@ import { processActionApi } from '@/api/processAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import { generateMigrationTag } from '@/utils/migrationTag'
+import PageState from '@/components/PageState.vue'
 
 const router = useRouter()
 const loading = ref(false)
+const fetchError = ref('')
 const processList = ref([])
 const total = ref(0)
 const queryParams = ref({
@@ -357,12 +379,14 @@ const formRules = {
 
 const fetchData = async () => {
   loading.value = true
+  fetchError.value = ''
   try {
     const res = await processApi.getList(queryParams.value)
     processList.value = res.records || []
     total.value = res.total || 0
   } catch (error) {
     console.error(error)
+    fetchError.value = error?.message || '无法读取流程列表，请检查网络后重试'
   } finally {
     loading.value = false
   }
@@ -460,7 +484,18 @@ const handleSubmit = async () => {
 
 const handleDelete = async (row) => {
   try {
-    await ElMessageBox.confirm('确定要删除该流程吗？', '提示', { type: 'warning' })
+    const { value } = await ElMessageBox.prompt(
+      `删除前系统会校验已发布版本、运行实例、实体绑定和迁移资产。该操作不可恢复；如只需阻止新发起，请使用“禁用新发起”。请输入流程名称“${row.processName}”确认。`,
+      '删除流程',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        inputPlaceholder: row.processName,
+        inputValidator: value => value === row.processName || '输入的流程名称不一致'
+      }
+    )
+    if (value !== row.processName) return
     await processApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchData()
@@ -502,7 +537,15 @@ const handleConfirmPublish = async () => {
 
 const handleDisable = async (row) => {
   try {
-    await ElMessageBox.confirm('确定要禁用该流程吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '禁用后将阻止新流程发起；已在运行的实例仍按原发布版本继续处理。确定继续？',
+      '禁用新发起',
+      {
+        type: 'warning',
+        confirmButtonText: '确认禁用',
+        cancelButtonText: '取消'
+      }
+    )
     await processApi.disable(row.id)
     ElMessage.success('禁用成功')
     fetchData()
@@ -559,9 +602,9 @@ const handleViewVersionActions = async (row) => {
 // 删除版本
 const handleDeleteVersion = async (row) => {
   try {
-    await ElMessageBox.confirm('确定删除该版本吗？删除后不可恢复！', '警告', {
+    await ElMessageBox.confirm('删除后该版本的流程图和版本动作不可恢复；运行中实例不会被自动迁移。确定继续？', '删除流程版本', {
       type: 'warning',
-      confirmButtonText: '确定删除',
+      confirmButtonText: '确认删除',
       cancelButtonText: '取消'
     })
     
@@ -593,6 +636,13 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.field-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .bpmn-preview {

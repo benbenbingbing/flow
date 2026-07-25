@@ -22,7 +22,7 @@ export default {
     {
       title: '两层保存',
       type: 'warning',
-      text: '右侧节点面板的“保存”把配置写入设计器内存中的 BPMN；顶部“保存流程”才把完整 XML 落库。离开页面前必须执行顶部保存。'
+      text: '右侧节点面板的“应用到画布”把配置写入设计器内存中的 BPMN；顶部“保存草稿”才把完整 XML 落库。离开页面前必须执行顶部保存。'
     },
     {
       title: '发布才进入运行时',
@@ -79,7 +79,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '初始状态',
-              text: '新流程版本为 0、状态为 DRAFT。创建后必须进入“设计”完成 BPMN，并点击顶部“保存流程”后才能发布。'
+              text: '新流程版本为 0、状态为 DRAFT。创建后必须进入“设计”完成 BPMN，并点击顶部“保存草稿”后才能发布。'
             }
           ]
         },
@@ -91,7 +91,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '设计', meaning: '打开 BPMN 设计器，编辑图形、节点配置、连线条件、表单和动作。', notes: '节点面板保存后还要点击顶部“保存流程”。' },
+                { option: '设计', meaning: '打开 BPMN 设计器，编辑图形、节点配置、连线条件、表单和动作。', notes: '节点面板应用到画布后还要点击顶部“保存草稿”。' },
                 { option: '编辑', meaning: '修改名称、分类和描述；流程标识不可改。', notes: '已发布流程也允许保存新的 BPMN 草稿，状态仍显示 PUBLISHED，需再次发布。' },
                 { option: '版本', meaning: '查看历史版本、只读流程图和版本流程动作。', notes: '删除版本会逻辑删除版本动作和版本记录，不会回滚现有运行实例。' },
                 { option: '发布', meaning: '草稿或禁用流程创建新版本并部署。', notes: '每次发布版本号 +1；动作和 BPMN 必须通过校验。' },
@@ -120,14 +120,14 @@ export default {
                 { option: '撤销 / 重做', meaning: '撤销或重做 bpmn-js 命令栈中的图形与属性修改。支持 Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+Shift+Z。', notes: '接口保存、动作独立保存等服务端操作不一定进入同一命令栈。' },
                 { option: '全局动作', meaning: '配置作用于整个流程实例的流程动作；徽标显示动作数。', notes: '动作保存后仍需发布流程才进入版本。' },
                 { option: '查看 XML', meaning: '全屏只读显示格式化 BPMN XML，可复制。', notes: '用于排查属性和版本，不提供直接编辑；敏感接口参数复制后注意保密。' },
-                { option: '保存流程', meaning: '获取完整 XML，确保 isExecutable=true 和 flowable 命名空间，然后更新流程配置。', notes: '这是节点和连线配置真正落库的唯一顶部操作。' }
+                { option: '保存草稿', meaning: '获取完整 XML，确保 isExecutable=true 和 flowable 命名空间，然后更新流程配置。', notes: '这是节点和连线配置真正落库的唯一顶部操作。' }
               ]
             },
             {
               type: 'callout',
               tone: 'warning',
               title: '离开页面前',
-              text: '右侧每个 Tab 的“保存”只更新当前设计器模型并触发未保存标记，不会单独提交数据库。完成任何节点、条件、表单、审批、状态或高级配置后，都要再次点击顶部“保存流程”。'
+              text: '右侧每个 Tab 的“应用到画布”只更新当前设计器模型并触发未保存标记，不会单独提交数据库。完成任何节点、条件、表单、审批、状态或高级配置后，都要再次点击顶部“保存草稿”。'
             }
           ]
         },
@@ -732,7 +732,7 @@ export default {
               type: 'bullets',
               items: [
                 '状态配置依赖流程已绑定实体并已维护状态列表。',
-                '保存状态配置会同时更新 BPMN 扩展属性和后端状态映射；顶部仍需保存流程 XML。',
+                '保存状态配置会同时更新 BPMN 扩展属性和后端状态映射；顶部仍需保存草稿 XML。',
                 '发布时服务端会从 BPMN 再同步状态映射，最终以发布 XML 为准。'
               ]
             }
@@ -970,7 +970,7 @@ export default {
               type: 'callout',
               tone: 'warning',
               title: '发布前必须保存',
-              text: '发布读取数据库中的 bpmnXml。右侧节点面板和画布中未点击顶部“保存流程”的修改不会进入发布版本。'
+              text: '发布读取数据库中的 bpmnXml。右侧节点面板和画布中未点击顶部“保存草稿”的修改不会进入发布版本。'
             }
           ]
         },
@@ -1068,7 +1068,7 @@ export default {
                 '审批选项 label/value、备注显示与必填、所有出线条件保持一致。',
                 '每条状态连线选择正确实体状态，撤回和终止状态有独立运行策略。',
                 '流程动作处理器、参数、时机、执行方式、失败策略、幂等和重试均通过校验。',
-                '节点面板保存后已点击顶部“保存流程”，查看 XML 能看到最新配置。',
+                '节点面板应用到画布后已点击顶部“保存草稿”，查看 XML 能看到最新配置。',
                 '版本说明、迁移标记、依赖实体和配置包批次一致。'
               ]
             }
@@ -1085,7 +1085,7 @@ export default {
                 { key: 'checks', label: '优先检查' }
               ],
               rows: [
-                { symptom: '发布后节点配置未生效', checks: '是否只点了节点 Tab 保存而未点顶部保存流程；查看 XML 是否含最新扩展属性；发布版本时间是否最新。' },
+                { symptom: '发布后节点配置未生效', checks: '是否只点了节点 Tab“应用到画布”而未点顶部“保存草稿”；查看 XML 是否含最新扩展属性；发布版本时间是否最新。' },
                 { symptom: '普通表单发布后发起返回 409', checks: '检查 errorCode 是否 PROCESS_FORM_RELEASE_STALE；这是流程仍钉定旧 release 的保护，需重新发布流程，不能在客户端绕过。' },
                 { symptom: '热修复发布返回 409', checks: 'HOTFIX_PREVIEW_REQUIRED 表示未先预检；HOTFIX_IMPACT_CHANGED 表示草稿、ACTIVE release 或目标实例集合变化；重新预检并使用新的 impactToken。' },
                 { symptom: '热修复无法撤回', checks: '检查是否存在发布时间更晚的 HOTFIX；必须先撤回最新版本。HOTFIX_ROLLBACK_ORDER_CONFLICT 不允许跳序恢复。' },

@@ -96,6 +96,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         if (!StringUtils.hasText(org.getParentId())) {
             org.setParentId("0");
         }
+        validateHierarchy(org);
         if (org.getSortOrder() == null) {
             org.setSortOrder(0);
         }
@@ -109,6 +110,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         if (!StringUtils.hasText(org.getId())) {
             org.setCreateTime(LocalDateTime.now());
             orgMapper.insert(org);
+            calcLevelAndPath(org);
+            orgMapper.updateById(org);
             log.info("新增组织部门：{} ({})", org.getOrgName(), org.getOrgCode());
         } else {
             SysOrganization oldOrg = orgMapper.selectById(org.getId());
@@ -240,6 +243,40 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             org.setLevel(parent.getLevel() + 1);
             String idPart = StringUtils.hasText(org.getId()) ? org.getId() : "temp";
             org.setPath(parent.getPath() + idPart + "/");
+        }
+    }
+
+    private void validateHierarchy(SysOrganization org) {
+        if (!List.of(
+                SysOrganization.Type.ORG.getValue(),
+                SysOrganization.Type.DEPT.getValue()).contains(org.getType())) {
+            throw new IllegalArgumentException("类型只能是组织或部门");
+        }
+        boolean topLevel = "0".equals(org.getParentId());
+        if (SysOrganization.Type.DEPT.getValue().equals(org.getType()) && topLevel) {
+            throw new IllegalArgumentException("部门必须隶属于一个组织或上级部门");
+        }
+        if (topLevel) {
+            return;
+        }
+        SysOrganization parent = orgMapper.selectById(org.getParentId());
+        if (parent == null) {
+            throw new IllegalArgumentException("上级组织部门不存在");
+        }
+        if (SysOrganization.Type.ORG.getValue().equals(org.getType())
+                && !SysOrganization.Type.ORG.getValue().equals(parent.getType())) {
+            throw new IllegalArgumentException("组织只能放在顶级或其他组织下，不能放在部门下");
+        }
+        if (StringUtils.hasText(org.getId())) {
+            if (org.getId().equals(parent.getId())) {
+                throw new IllegalArgumentException("不能选择自身作为上级");
+            }
+            SysOrganization existing = orgMapper.selectById(org.getId());
+            if (existing != null && StringUtils.hasText(existing.getPath())
+                    && StringUtils.hasText(parent.getPath())
+                    && parent.getPath().startsWith(existing.getPath())) {
+                throw new IllegalArgumentException("不能移动到自己的下级节点");
+            }
         }
     }
     

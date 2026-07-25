@@ -2,41 +2,39 @@
   <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog" top="3vh">
     <div class="approval-dialog-body">
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
-        <!-- 无 tab 子表单时：基本信息 tab -->
-        <el-tab-pane v-if="!approvalHasTabSubForms" label="基本信息" name="approval">
+        <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
           <EntityApprovalBasicInfo
             ref="basicInfoRef"
             v-model:entityData="entityData"
             :approvalNormalForm="approvalNormalForm"
-            :effectiveApprovalConfig="effectiveApprovalConfig"
-            :isViewMode="isViewMode"
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
-            :approveForm="approveForm"
             :entityCode="entityCode"
             :context="approvalRuntimeContext"
             :dataSourceRuntime="dataSourceRuntime"
+            :excludedNodeIds="approvalLiftedRootNodeIds"
           />
         </el-tab-pane>
 
-        <!-- 有 tab 子表单时：基本信息 tab（普通字段） -->
-        <el-tab-pane v-if="approvalHasTabSubForms" label="基本信息" name="basic">
+        <el-tab-pane
+          v-for="tab in approvalNodeTabs"
+          :key="tab.name"
+          :label="tab.label"
+          :name="tab.name"
+        >
           <EntityApprovalBasicInfo
-            ref="basicInfoRef"
+            :ref="(instance) => setNodeTabRef(tab.name, instance)"
             v-model:entityData="entityData"
             :approvalNormalForm="approvalNormalForm"
-            :effectiveApprovalConfig="effectiveApprovalConfig"
-            :isViewMode="isViewMode"
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
-            :approveForm="approveForm"
             :entityCode="entityCode"
             :context="approvalRuntimeContext"
             :dataSourceRuntime="dataSourceRuntime"
+            :nodeRootParentId="tab.rootParentId"
           />
         </el-tab-pane>
 
-        <!-- 子表单 tabs（有 tab 子表单时） -->
         <el-tab-pane
           v-for="(field, idx) in approvalTabSubForms"
           :key="'approval-subform-' + idx"
@@ -77,11 +75,43 @@
           />
         </el-tab-pane>
       </el-tabs>
+
+      <div
+        v-if="!isViewMode && effectiveApprovalConfig.enabled !== false && isApprovalFormTab"
+        class="approval-opinion-section"
+      >
+        <el-divider />
+        <div class="section-title">审批意见</div>
+        <el-form :model="approveForm" label-width="80px">
+          <el-form-item label="审批操作" required>
+            <el-radio-group v-model="approveForm.action">
+              <el-radio-button
+                v-for="option in effectiveApprovalConfig.options"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item
+            v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
+            :label="effectiveApprovalConfig.commentLabel || '审批备注'"
+          >
+            <el-input
+              v-model="approveForm.comment"
+              type="textarea"
+              :rows="3"
+              :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
     </div>
 
     <template #footer>
       <el-button @click="processDialogVisible = false">关闭</el-button>
-      <el-button v-if="!isViewMode && (activeDialogTab === 'approval' || activeDialogTab === 'basic')" type="primary" @click="submitApprove" :loading="approveSubmitLoading">确认</el-button>
+      <el-button v-if="!isViewMode && isApprovalFormTab" type="primary" @click="submitApprove" :loading="approveSubmitLoading">确认</el-button>
     </template>
   </el-dialog>
 </template>
@@ -97,7 +127,8 @@ import {
   isRuntimeFieldReadonly,
   isRuntimeFieldVisible,
   isRuntimeFormReadonly,
-  createFormDataSourceRuntime
+  createFormDataSourceRuntime,
+  resolveRuntimeFormTabLayout
 } from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
 import { useUserStore } from '@/stores/user'
@@ -122,11 +153,12 @@ const emit = defineEmits<{
 const userStore = useUserStore()
 
 const processDialogVisible = ref(false)
-const activeDialogTab = ref('approval')
+const activeDialogTab = ref('basic')
 const approveSubmitLoading = ref(false)
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
 const basicInfoRef = ref<any>()
+const nodeTabRefs = ref<Record<string, any>>({})
 
 const approveForm = reactive({
   action: 'approve',
@@ -184,12 +216,6 @@ const dataSourceRuntime = createFormDataSourceRuntime({
   getForm: () => approvalNormalForm.value
 })
 
-// 审批弹窗中是否有 Tab 子表单
-const approvalHasTabSubForms = computed(() => {
-  const fields = formConfig.value?.fields || []
-  return fields.some((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value) && isTabSubForm(f))
-})
-
 // 审批弹窗中的 Tab 子表单字段
 const approvalTabSubForms = computed(() => {
   const fields = formConfig.value?.fields || []
@@ -206,6 +232,38 @@ const approvalNormalForm = computed(() => {
     fields
   }
 })
+const approvalTabLayout = computed(() =>
+  resolveRuntimeFormTabLayout(approvalNormalForm.value)
+)
+const approvalNodeTabs = computed(() => approvalTabLayout.value.tabs)
+const approvalLiftedRootNodeIds = computed(() =>
+  approvalTabLayout.value.liftedRootNodeIds
+)
+const approvalHasFormTabs = computed(() =>
+  approvalNodeTabs.value.length > 0 || approvalTabSubForms.value.length > 0
+)
+const approvalShowBasicTab = computed(() =>
+  approvalTabLayout.value.hasBaseContent || !approvalHasFormTabs.value
+)
+const approvalFormTabNames = computed(() => [
+  ...(approvalShowBasicTab.value ? ['basic'] : []),
+  ...approvalNodeTabs.value.map(tab => tab.name),
+  ...approvalTabSubForms.value.map((_, idx) => `subform_${idx}`)
+])
+const firstApprovalFormTabName = computed(() =>
+  approvalFormTabNames.value[0] || 'basic'
+)
+const isApprovalFormTab = computed(() =>
+  approvalFormTabNames.value.includes(activeDialogTab.value)
+)
+
+function setNodeTabRef(tabName: string, instance: any) {
+  if (instance) {
+    nodeTabRefs.value[tabName] = instance
+  } else {
+    delete nodeTabRefs.value[tabName]
+  }
+}
 
 watch(
   () => [
@@ -253,7 +311,7 @@ const openApprove = async (row: any) => {
   }
   approveForm.action = 'approve'
   approveForm.comment = ''
-  activeDialogTab.value = 'approval'
+  activeDialogTab.value = 'basic'
   await loadProcessDetail(row.processInstanceId, {
     startUserName: currentTask.value?.startUserName,
     onLoad: (progressRes: any) => {
@@ -270,8 +328,7 @@ const openApprove = async (row: any) => {
           approveForm.action = firstOption.value
         }
       }
-      const hasTabs = (formConfig.value?.fields || []).some((f: any) => isTabSubForm(f))
-      activeDialogTab.value = hasTabs ? 'basic' : 'approval'
+      activeDialogTab.value = firstApprovalFormTabName.value
     }
   })
   processDialogVisible.value = true
@@ -292,7 +349,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
     startUserName: startUserName || row.startUserName,
     processName: row.processName
   }
-  activeDialogTab.value = defaultTab || 'approval'
+  activeDialogTab.value = defaultTab || 'basic'
   if (row.processInstanceId) {
     await loadProcessDetail(row.processInstanceId, {
       startUserName: currentTask.value?.startUserName,
@@ -303,9 +360,8 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
             currentTask.value.processName = progressRes.processName
           }
         }
-        const hasTabs = (formConfig.value?.fields || []).some((f: any) => isTabSubForm(f))
         if (!defaultTab) {
-          activeDialogTab.value = hasTabs ? 'basic' : 'approval'
+          activeDialogTab.value = firstApprovalFormTabName.value
         }
       }
     })
@@ -330,12 +386,11 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
       if (props.defaultForm && props.defaultForm.fields && props.defaultForm.fields.length > 0) {
         formConfig.value = props.defaultForm
         formConfigs.value = [props.defaultForm]
-        const hasTabs = props.defaultForm.fields.some((f: any) => isTabSubForm(f))
-        activeDialogTab.value = hasTabs ? 'basic' : 'approval'
+        activeDialogTab.value = firstApprovalFormTabName.value
       } else {
         formConfig.value = null
         formConfigs.value = []
-        activeDialogTab.value = 'approval'
+        activeDialogTab.value = 'basic'
       }
     } catch (e) {
       console.error('加载数据详情失败:', e)
@@ -345,12 +400,25 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
   processDialogVisible.value = true
 }
 
+async function validateApprovalForms() {
+  const refs = [
+    ...(approvalShowBasicTab.value && basicInfoRef.value ? [basicInfoRef.value] : []),
+    ...approvalNodeTabs.value
+      .map(tab => nodeTabRefs.value[tab.name])
+      .filter(Boolean)
+  ]
+  for (const formRef of refs) {
+    if ((await formRef.validate?.()) === false) return false
+  }
+  return true
+}
+
 // 提交审批
 const submitApprove = async () => {
   if (!currentTask.value?.taskId || approveSubmitLoading.value) return
   approveSubmitLoading.value = true
   try {
-    const valid = await basicInfoRef.value?.validate?.()
+    const valid = await validateApprovalForms()
     if (valid === false) {
       ElMessage.warning('请先完成表单必填项')
       return
@@ -425,5 +493,21 @@ defineExpose({
 }
 .approval-tabs :deep(.el-tab-pane) {
   height: 100%;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 16px;
+  padding-left: 8px;
+  border-left: 4px solid #409eff;
+}
+
+.approval-opinion-section {
+  flex-shrink: 0;
+  background: #ffffff;
+  padding: 0 0 8px;
+  border-top: 1px solid #e4e7ed;
 }
 </style>

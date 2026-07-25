@@ -3,7 +3,7 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-left">
-        <el-button link @click="goBack">
+        <el-button link aria-label="返回列表配置" title="返回列表配置" @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
         <span>列表配置设计：{{ configInfo.listName }}</span>
@@ -11,15 +11,45 @@
         <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
           {{ diffInfo.changed ? '草稿有未发布修改' : '已发布' }}
         </el-tag>
+        <el-tag v-if="isDirty" type="danger" effect="plain">
+          {{ unsavedSummary }}
+        </el-tag>
       </div>
       <div class="header-actions">
+        <el-radio-group v-model="configMode" size="small" class="config-mode-switch">
+          <el-radio-button value="basic">基础</el-radio-button>
+          <el-radio-button value="advanced">高级</el-radio-button>
+          <el-radio-button value="developer">开发者</el-radio-button>
+        </el-radio-group>
+        <el-button :loading="savingAll" type="primary" @click="saveAll">
+          保存全部
+        </el-button>
+        <el-button @click="previewExpanded = !previewExpanded">
+          {{ previewExpanded ? '返回配置' : '全宽预览' }}
+        </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
-        <el-button type="success" plain @click="handlePublish">发布</el-button>
-        <el-tag type="info" effect="plain">当前项独立保存</el-tag>
+        <el-button type="success" plain @click="handlePublish">发布生效</el-button>
       </div>
     </div>
 
-    <div class="design-container">
+    <el-alert
+      v-if="loadError"
+      :title="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="page-error"
+    >
+      <template #default>
+        <el-button size="small" type="danger" plain @click="loadData">重新加载</el-button>
+      </template>
+    </el-alert>
+
+    <div
+      v-loading="pageLoading"
+      class="design-container"
+      :class="{ 'preview-expanded': previewExpanded }"
+    >
       <!-- 左侧：配置区 -->
       <div class="config-panel">
         <el-card shadow="never">
@@ -97,7 +127,7 @@
                       <el-option label="使用列表独立范围（高风险）" value="OVERRIDE" />
                     </el-select>
                   </el-form-item>
-                  <el-form-item label="访问权限码">
+                  <el-form-item v-if="configMode === 'developer'" label="访问权限码">
                     <el-input
                       v-model="configInfo.accessPermissionCode"
                       placeholder="留空继承 entity:{code}:list"
@@ -146,7 +176,7 @@
                       />
                     </el-select>
                   </el-form-item>
-                  <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
+                  <el-form-item v-if="configMode === 'developer' && configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
                     <el-input
                       v-model="configInfo.selectionReturnMappingsText"
                       type="textarea"
@@ -157,6 +187,7 @@
                 </SettingsSection>
 
                 <SettingsSection
+                  v-if="configMode === 'developer'"
                   title="查询实现"
                   description="面向扩展开发的固定条件、可信上下文、Provider 和统一数据源"
                   :default-expanded="false"
@@ -206,6 +237,7 @@
                 </SettingsSection>
 
                 <SettingsSection
+                  v-if="configMode === 'developer'"
                   title="扩展渲染"
                   description="仅在默认动态列表无法满足展示需求时配置"
                 >
@@ -249,7 +281,7 @@
                   :closable="false"
                   show-icon
                 />
-                <el-button type="primary" plain @click="addVirtualField">
+                <el-button v-if="configMode === 'developer'" type="primary" plain @click="addVirtualField">
                   <el-icon><Plus /></el-icon>添加虚拟列
                 </el-button>
               </div>
@@ -270,7 +302,7 @@
                     <el-input v-model="row.fieldName" size="small" />
                   </template>
                 </el-table-column>
-                <el-table-column label="字段编码" width="105">
+                <el-table-column v-if="configMode !== 'basic'" label="字段编码" width="105">
                   <template #default="{ row }">
                     <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
                   </template>
@@ -344,12 +376,34 @@
       <div class="preview-panel">
         <el-card shadow="never">
           <template #header>
-            <span>预览</span>
-            <el-text type="info" size="small">实时预览列表效果</el-text>
+            <div class="preview-header">
+              <div>
+                <span>草稿预览</span>
+                <el-text type="info" size="small">包含本页尚未保存的显示配置</el-text>
+              </div>
+              <el-radio-group v-model="previewViewport" size="small">
+                <el-radio-button value="desktop">桌面</el-radio-button>
+                <el-radio-button value="tablet">平板</el-radio-button>
+              </el-radio-group>
+            </div>
           </template>
 
-          <!-- 查询条件 -->
-          <div class="preview-query" v-if="previewQueryFields.length > 0">
+          <div class="preview-viewport" :class="`is-${previewViewport}`">
+            <el-alert
+              v-if="previewError"
+              :title="previewError"
+              type="error"
+              :closable="false"
+              show-icon
+              class="preview-error"
+            >
+              <template #default>
+                <el-button size="small" type="danger" plain @click="loadPreviewData">重试预览</el-button>
+              </template>
+            </el-alert>
+
+            <!-- 查询条件 -->
+            <div class="preview-query" v-if="previewQueryFields.length > 0">
             <el-form :model="previewQueryForm" inline size="small">
               <el-form-item
                 v-for="field in previewQueryFields"
@@ -428,10 +482,10 @@
                 <el-button @click="handlePreviewReset">重置</el-button>
               </el-form-item>
             </el-form>
-          </div>
+            </div>
 
-          <!-- 数据表格 -->
-          <el-table
+            <!-- 数据表格 -->
+            <el-table
             :data="previewDataList"
             v-loading="previewLoading"
             :stripe="viewConfig.table.stripe !== false"
@@ -458,10 +512,10 @@
                 <span v-else>{{ row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-' }}</span>
               </template>
             </el-table-column>
-          </el-table>
+            </el-table>
 
-          <!-- 分页 -->
-          <div class="preview-pagination" v-if="previewTotal > 0">
+            <!-- 分页 -->
+            <div class="preview-pagination" v-if="previewTotal > 0">
             <el-pagination
               v-model:current-page="previewPageNum"
               v-model:page-size="previewPageSize"
@@ -472,9 +526,13 @@
               @current-change="loadPreviewData"
               small
             />
-          </div>
+            </div>
 
-          <el-empty v-if="!previewLoading && previewDataList.length === 0" description="暂无数据" />
+            <el-empty
+              v-if="!previewLoading && !previewError && previewDataList.length === 0"
+              description="当前条件下暂无预览数据"
+            />
+          </div>
         </el-card>
       </div>
     </div>
@@ -564,6 +622,7 @@
           </SettingsSection>
 
           <SettingsSection
+            v-if="configMode !== 'basic'"
             title="高级列布局"
             description="仅在需要冻结列或精细控制宽度时配置"
             :default-expanded="false"
@@ -585,7 +644,7 @@
           </SettingsSection>
         </el-tab-pane>
 
-        <el-tab-pane label="数据与显示" name="data-render">
+        <el-tab-pane v-if="configMode === 'developer'" label="数据与显示" name="data-render">
           <SettingsSection
             title="数据与显示"
             description="集中配置字段取值来源、单元格组件和显示参数"
@@ -719,6 +778,14 @@
 
     <el-dialog v-model="releaseDialogVisible" title="列表发布版本" width="920px">
       <el-table :data="releases" size="small">
+        <el-table-column v-if="configMode === 'developer'" type="expand">
+          <template #default="{ row }">
+            <el-descriptions :column="2" border size="small" class="release-technical-details">
+              <el-descriptions-item label="内容校验值">{{ row.contentHash || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="热修复状态">{{ row.rolloutStatus || '-' }}</el-descriptions-item>
+            </el-descriptions>
+          </template>
+        </el-table-column>
         <el-table-column prop="version" label="版本" width="80" />
         <el-table-column prop="releaseMode" label="方式" width="100">
           <template #default="{ row }">
@@ -726,12 +793,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="riskLevel" label="风险" width="90" />
-        <el-table-column prop="rolloutStatus" label="Rollout" width="110">
-          <template #default="{ row }">
-            {{ row.releaseMode === 'HOTFIX' ? (row.rolloutStatus || '-') : '-' }}
-          </template>
+        <el-table-column prop="description" label="版本说明" min-width="180">
+          <template #default="{ row }">{{ row.description || '未填写' }}</template>
         </el-table-column>
-        <el-table-column prop="contentHash" label="内容哈希" min-width="220" show-overflow-tooltip />
         <el-table-column prop="publishedBy" label="发布人" width="120" />
         <el-table-column prop="publishedAt" label="发布时间" width="180" />
         <el-table-column prop="status" label="状态" width="100" />
@@ -759,7 +823,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Rank, Plus } from '@element-plus/icons-vue'
@@ -782,12 +846,15 @@ import {
 } from '@/shared/config-runtime'
 import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
 import { uiDataSourceApi, uiComponentTemplateApi } from '@/api/uiConfig'
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { parseJsonConfig } from '@/utils/jsonConfig'
 
 const route = useRoute()
 const router = useRouter()
 const configId = route.params.id
 
 // 配置信息
+const configMode = ref('basic')
 const configInfo = ref({})
 const entityName = ref('')
 const entityCode = ref('')
@@ -798,6 +865,12 @@ const publishDialogVisible = ref(false)
 const releaseDialogVisible = ref(false)
 const releases = ref([])
 const diffInfo = ref({ changed: true, changedSections: [] })
+const pageLoading = ref(false)
+const loadError = ref('')
+const previewError = ref('')
+const previewExpanded = ref(false)
+const previewViewport = ref('desktop')
+const savingAll = ref(false)
 const unifiedDataSources = ref([])
 const listTemplates = ref([])
 const buttonTemplates = ref([])
@@ -854,6 +927,12 @@ const editingRenderConfig = ref({})
 const editingQueryConfig = ref({})
 const editingColumnConfig = ref({})
 
+watch(configMode, (mode) => {
+  if (mode !== 'developer' && activeFieldConfigTab.value === 'data-render') {
+    activeFieldConfigTab.value = 'common'
+  }
+})
+
 const selectedDataSourceOption = computed(() =>
   dataSourceOptions.value.find(option => option.value === editingField.value?.dataSourceType)
 )
@@ -878,6 +957,10 @@ const rowActionButtons = ref([])
 const sceneItems = ref([])
 const sceneSavingCodes = ref(new Set())
 const sceneSortCache = new Map()
+const baselinesReady = ref(false)
+const metadataBaseline = ref('')
+const fieldBaselines = ref(new Map())
+const actionBaselines = ref(new Map())
 const sceneOptions = [
   { value: 'MENU', label: '菜单' },
   { value: 'PAGE', label: '页面' },
@@ -917,11 +1000,102 @@ const previewListFields = computed(() => {
   return fieldConfigList.value.filter(f => f.showInList)
 })
 
+function metadataFingerprint() {
+  return JSON.stringify({
+    listName: configInfo.value.listName || '',
+    description: configInfo.value.description || '',
+    isDefault: Boolean(configInfo.value.isDefault),
+    customComponent: configInfo.value.customComponent || '',
+    dataScopeMode: configInfo.value.dataScopeMode || 'INHERIT',
+    accessPermissionCode: configInfo.value.accessPermissionCode || '',
+    selectionMode: configInfo.value.selectionMode || 'NONE',
+    selectionValueField: configInfo.value.selectionValueField || 'id',
+    selectionReturnMappingsText: configInfo.value.selectionReturnMappingsText || '',
+    fixedFilterConfig: configInfo.value.fixedFilterConfig || '',
+    contextBindingConfig: configInfo.value.contextBindingConfig || '',
+    viewConfig: viewConfig.value,
+    queryProviderCode: configInfo.value.queryProviderCode || '',
+    queryDataSourceId: configInfo.value.queryDataSourceId || null
+  })
+}
+
+function fieldFingerprint(field) {
+  return JSON.stringify(normalizeFieldForSave(field))
+}
+
+function actionFingerprint(button, position) {
+  const normalized = normalizeActionForSave(button, position)
+  delete normalized.expectedRevision
+  return JSON.stringify(normalized)
+}
+
+function actionBaselineKey(button, position) {
+  return `${position}:${button.id || button.key || button.buttonKey || 'new'}`
+}
+
+function rememberFieldBaseline(field) {
+  fieldBaselines.value.set(field.fieldId, fieldFingerprint(field))
+}
+
+function rememberActionBaseline(button, position) {
+  actionBaselines.value.set(
+    actionBaselineKey(button, position),
+    actionFingerprint(button, position)
+  )
+}
+
+function rememberAllBaselines() {
+  metadataBaseline.value = metadataFingerprint()
+  fieldBaselines.value = new Map()
+  fieldConfigList.value.forEach(rememberFieldBaseline)
+  actionBaselines.value = new Map()
+  toolbarButtons.value.forEach(button => rememberActionBaseline(button, 'TOOLBAR'))
+  rowActionButtons.value.forEach(button => rememberActionBaseline(button, 'ROW'))
+  baselinesReady.value = true
+}
+
+const metadataDirty = computed(() =>
+  baselinesReady.value && metadataBaseline.value !== metadataFingerprint()
+)
+const dirtyFields = computed(() =>
+  baselinesReady.value
+    ? fieldConfigList.value.filter(field =>
+        fieldBaselines.value.get(field.fieldId) !== fieldFingerprint(field)
+      )
+    : []
+)
+const dirtyActions = computed(() => {
+  if (!baselinesReady.value) return []
+  return [
+    ...toolbarButtons.value.map(button => ({ button, position: 'TOOLBAR' })),
+    ...rowActionButtons.value.map(button => ({ button, position: 'ROW' }))
+  ].filter(({ button, position }) =>
+    actionBaselines.value.get(actionBaselineKey(button, position))
+      !== actionFingerprint(button, position)
+  )
+})
+const isDirty = computed(() =>
+  metadataDirty.value || dirtyFields.value.length > 0 || dirtyActions.value.length > 0
+)
+const unsavedSummary = computed(() => {
+  const count = Number(metadataDirty.value)
+    + dirtyFields.value.length
+    + dirtyActions.value.length
+  return `${count} 项未保存`
+})
+
+useUnsavedChangesGuard(isDirty, {
+  message: '列表设置、字段或按钮有未保存修改，离开后这些修改将丢失。'
+})
+
 onMounted(() => {
   loadData()
 })
 
 async function loadData() {
+  pageLoading.value = true
+  loadError.value = ''
+  baselinesReady.value = false
   try {
     const [extensionOptions, sourceCatalog, templates, buttons] = await Promise.all([
       entityListConfigApi.getExtensionOptions().catch(() => []),
@@ -996,6 +1170,8 @@ async function loadData() {
 
     // 解析按钮配置
     parseButtonConfig(configRes)
+    await nextTick()
+    rememberAllBaselines()
 
     // 初始化拖拽
     nextTick(() => {
@@ -1003,10 +1179,12 @@ async function loadData() {
     })
 
     // 加载预览数据
-    loadPreviewData()
+    await loadPreviewData()
   } catch (e) {
     console.error('加载数据失败:', e)
-    ElMessage.error('加载数据失败')
+    loadError.value = e?.message || '列表配置加载失败，请重试'
+  } finally {
+    pageLoading.value = false
   }
 }
 
@@ -1125,6 +1303,19 @@ function addVirtualField() {
 }
 
 async function removeVirtualField(field) {
+  try {
+    await ElMessageBox.confirm(
+      `删除虚拟列“${field.fieldName || field.fieldCode}”后，它会从列表草稿中移除；发布后运行时不再展示。`,
+      '删除虚拟列',
+      {
+        type: 'warning',
+        confirmButtonText: '删除虚拟列',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
   if (field.id && field.revision > 0) {
     try {
       await entityListConfigApi.deleteField(
@@ -1138,6 +1329,7 @@ async function removeVirtualField(field) {
     }
   }
   fieldConfigList.value = fieldConfigList.value.filter(item => item !== field)
+  fieldBaselines.value.delete(field.fieldId)
   await refreshConfigRevision()
   await loadDiff()
 }
@@ -1409,23 +1601,57 @@ async function refreshListActions() {
   configInfo.value.activeReleaseId = latest.activeReleaseId
   configInfo.value.publishedVersion = latest.publishedVersion
   parseButtonConfig(latest)
+  toolbarButtons.value.forEach(button => rememberActionBaseline(button, 'TOOLBAR'))
+  rowActionButtons.value.forEach(button => rememberActionBaseline(button, 'ROW'))
 }
 
-async function saveListAction(button, position) {
+function applySavedAction(button, saved) {
+  const params = safeJsonParse(saved?.actionParamsDocument) || {}
+  const availabilityRule = safeJsonParse(saved?.availabilityRuleDocument)
+  Object.assign(button, params, {
+    id: saved.id,
+    revision: saved.revision,
+    orderKey: saved.orderKey,
+    key: saved.buttonKey,
+    type: saved.buttonType,
+    label: saved.buttonLabel,
+    icon: saved.icon || '',
+    buttonType: saved.styleType || 'default',
+    link: saved.linkMode === true,
+    customMode: saved.customMode || '',
+    customHandler: saved.handlerCode || '',
+    perm: saved.permissionCode || '',
+    sort: saved.sortOrder ?? 0,
+    enabled: saved.enabled !== false,
+    availabilityRule: availabilityRule || button.availabilityRule || {},
+    templateId: saved.templateId || null,
+    templateVersion: saved.templateVersion || null,
+    localOverridesDocument: saved.localOverridesDocument || null
+  })
+}
+
+async function saveListAction(button, position, options = {}) {
   button._saving = true
   try {
     const payload = normalizeActionForSave(button, position)
+    let saved
     if (button.id && button.revision > 0) {
-      await entityListConfigApi.patchAction(configId, button.id, payload)
+      saved = await entityListConfigApi.patchAction(configId, button.id, payload)
     } else {
-      await entityListConfigApi.createAction(configId, payload)
+      saved = await entityListConfigApi.createAction(configId, payload)
     }
-    await refreshListActions()
+    applySavedAction(button, saved)
+    await refreshConfigRevision()
+    rememberActionBaseline(button, position)
     await loadDiff()
-    ElMessage.success('当前按钮已保存，尚未发布')
+    if (!options.silent) {
+      ElMessage.success('当前按钮已保存，尚未发布')
+    }
+    return true
   } catch (error) {
     handleRevisionConflict(error)
     await refreshListActions().catch(() => {})
+    return false
   } finally {
     button._saving = false
   }
@@ -1433,13 +1659,26 @@ async function saveListAction(button, position) {
 
 async function removeListAction(button, position) {
   try {
+    await ElMessageBox.confirm(
+      `删除按钮“${button.label || button.key}”后，它会从列表草稿中移除；发布后用户将不能再使用该操作。`,
+      '删除列表按钮',
+      {
+        type: 'warning',
+        confirmButtonText: '删除按钮',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+  try {
     if (button.id && button.revision > 0) {
       await entityListConfigApi.deleteAction(configId, button.id, button.revision)
-      await refreshListActions()
-    } else {
-      const target = position === 'TOOLBAR' ? toolbarButtons : rowActionButtons
-      target.value = target.value.filter(item => item !== button)
+      await refreshConfigRevision()
     }
+    const target = position === 'TOOLBAR' ? toolbarButtons : rowActionButtons
+    target.value = target.value.filter(item => item !== button)
+    actionBaselines.value.delete(actionBaselineKey(button, position))
     await loadDiff()
     ElMessage.success('当前按钮已删除，尚未发布')
   } catch (error) {
@@ -1545,7 +1784,7 @@ function fieldConfigSummary(field) {
     }
   }
   if (isVirtualField(field)) {
-    const source = dataSourceOptions.find(option => option.value === field.dataSourceType)?.label
+    const source = dataSourceOptions.value.find(option => option.value === field.dataSourceType)?.label
     if (source) parts.push(source)
   }
   return parts.join(' · ') || '未启用'
@@ -1563,7 +1802,7 @@ function handleRevisionConflict(error, target) {
   return false
 }
 
-async function saveCurrentField(field) {
+async function saveCurrentField(field, options = {}) {
   if (!field) return
   field._saving = true
   try {
@@ -1578,10 +1817,15 @@ async function saveCurrentField(field) {
       : await entityListConfigApi.createField(configId, payload)
     Object.assign(field, saved)
     await refreshConfigRevision()
+    rememberFieldBaseline(field)
     await loadDiff()
-    ElMessage.success('当前列已保存，尚未发布')
+    if (!options.silent) {
+      ElMessage.success('当前列已保存，尚未发布')
+    }
+    return true
   } catch (error) {
     handleRevisionConflict(error, field)
+    return false
   } finally {
     field._saving = false
   }
@@ -1596,7 +1840,7 @@ async function refreshConfigRevision() {
   }
 }
 
-async function saveListMetadata() {
+async function saveListMetadata(options = {}) {
   try {
     const saved = await entityListConfigApi.patchMetadata(configId, {
       expectedRevision: configInfo.value.revision,
@@ -1609,21 +1853,61 @@ async function saveListMetadata() {
       selectionConfig: {
         selectionMode: configInfo.value.selectionMode || 'NONE',
         valueField: configInfo.value.selectionValueField || 'id',
-        returnMappings: safeJsonParse(
-          configInfo.value.selectionReturnMappingsText
-        ) || []
+        returnMappings: parseJsonConfig(
+          configInfo.value.selectionReturnMappingsText,
+          {
+            fieldName: '返回映射',
+            expectedType: 'array',
+            emptyValue: []
+          }
+        )
       },
-      fixedFilterConfig: safeJsonParse(configInfo.value.fixedFilterConfig) || {},
-      contextBindingConfig: safeJsonParse(configInfo.value.contextBindingConfig) || {},
+      fixedFilterConfig: parseJsonConfig(configInfo.value.fixedFilterConfig, {
+        fieldName: '固定条件'
+      }),
+      contextBindingConfig: parseJsonConfig(configInfo.value.contextBindingConfig, {
+        fieldName: '上下文绑定'
+      }),
       viewConfig: viewConfig.value,
       queryProviderCode: configInfo.value.queryProviderCode || '',
       queryDataSourceId: configInfo.value.queryDataSourceId || null
     })
     configInfo.value.revision = saved.revision
+    metadataBaseline.value = metadataFingerprint()
     await loadDiff()
-    ElMessage.success('列表设置已保存，尚未发布')
+    if (!options.silent) {
+      ElMessage.success('列表设置已保存，尚未发布')
+    }
+    return true
   } catch (error) {
     handleRevisionConflict(error, configInfo.value)
+    return false
+  }
+}
+
+async function saveAll() {
+  if (!isDirty.value) {
+    ElMessage.info('当前没有未保存修改')
+    return
+  }
+  savingAll.value = true
+  let savedCount = 0
+  try {
+    if (metadataDirty.value) {
+      if (!await saveListMetadata({ silent: true })) return
+      savedCount += 1
+    }
+    for (const field of [...dirtyFields.value]) {
+      if (!await saveCurrentField(field, { silent: true })) return
+      savedCount += 1
+    }
+    for (const { button, position } of [...dirtyActions.value]) {
+      if (!await saveListAction(button, position, { silent: true })) return
+      savedCount += 1
+    }
+    ElMessage.success(`列表草稿保存完成，共保存 ${savedCount} 项`)
+  } finally {
+    savingAll.value = false
   }
 }
 
@@ -1636,6 +1920,10 @@ async function loadDiff() {
 }
 
 async function handlePublish() {
+  if (isDirty.value) {
+    ElMessage.warning('页面仍有未保存修改，请先保存全部后再发布')
+    return
+  }
   const diff = await entityListConfigApi.getDiff(configId)
   if (!diff.changed) {
     ElMessage.info('当前草稿与已发布版本一致')
@@ -1714,6 +2002,7 @@ async function rollbackHotfixRelease(release) {
 async function loadPreviewData() {
   if (!entityCode.value) return
   previewLoading.value = true
+  previewError.value = ''
   try {
     // 只传查询条件，不传分页参数（后端不分页，返回全部数据）
     const params = { ...previewQueryForm.value }
@@ -1742,6 +2031,7 @@ async function loadPreviewData() {
     previewAllData.value = []
     previewDataList.value = []
     previewTotal.value = 0
+    previewError.value = e?.message || '预览数据加载失败，请重试'
   } finally {
     previewLoading.value = false
   }
@@ -1785,6 +2075,19 @@ function goBack() {
   padding: 12px 20px;
   border-bottom: 1px solid #e4e7ed;
   background-color: #fff;
+}
+
+.page-error {
+  margin: 12px 12px 0;
+}
+
+.page-error :deep(.el-alert__content),
+.preview-error :deep(.el-alert__content) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 
 .view-config-form {
@@ -1890,6 +2193,10 @@ function goBack() {
   align-items: center;
   gap: 8px;
 }
+
+.config-mode-switch {
+  margin-right: 4px;
+}
 .design-container {
   display: flex;
   flex: 1;
@@ -1906,6 +2213,45 @@ function goBack() {
   flex: 0.7;
   min-width: 0;
   overflow-y: auto;
+}
+
+.preview-expanded .config-panel {
+  display: none;
+}
+
+.preview-expanded .preview-panel {
+  flex: 1;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preview-viewport {
+  width: 100%;
+  margin: 0 auto;
+  transition: max-width 0.2s ease;
+}
+
+.preview-viewport.is-tablet {
+  max-width: 820px;
+}
+
+.preview-error {
+  margin-bottom: 12px;
+}
+
+.release-technical-details {
+  margin: 8px 16px;
 }
 .drag-handle {
   cursor: move;

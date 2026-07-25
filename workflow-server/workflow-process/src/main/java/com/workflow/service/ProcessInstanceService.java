@@ -26,6 +26,8 @@ import org.flowable.engine.runtime.Execution;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 /**
@@ -315,21 +317,35 @@ public class ProcessInstanceService {
      * @param pageNum 页码
      * @param pageSize 每页大小
      * @param processName 流程名称（可选筛选）
+     * @param startDate 发起日期下限（可选）
+     * @param endDate 发起日期上限（可选，包含当天）
      * @return 流程列表
      */
-    public PageResult<MyStartedProcessVO> getMyStartedList(String userId, Integer pageNum, Integer pageSize, String processName) {
+    public PageResult<MyStartedProcessVO> getMyStartedList(
+            String userId,
+            Integer pageNum,
+            Integer pageSize,
+            String processName,
+            LocalDate startDate,
+            LocalDate endDate) {
+        int safePageNum = pageNum == null || pageNum < 1 ? 1 : pageNum;
+        int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
         // 查询历史流程实例（包含运行中和已结束的）
         HistoricProcessInstanceQuery query = historyService.createHistoricProcessInstanceQuery()
                 .startedBy(userId)
                 .orderByProcessInstanceStartTime()
                 .desc();
-        
-        // 获取总数
-        long total = query.count();
-        
-        // 分页查询
-        int firstResult = (pageNum - 1) * pageSize;
-        List<HistoricProcessInstance> historicInstances = query.listPage(firstResult, pageSize);
+
+        ZoneId zoneId = ZoneId.systemDefault();
+        if (startDate != null) {
+            query.startedAfter(Date.from(startDate.atStartOfDay(zoneId).toInstant()));
+        }
+        if (endDate != null) {
+            query.startedBefore(Date.from(endDate.plusDays(1).atStartOfDay(zoneId).toInstant()));
+        }
+
+        // 流程名称可能来自流程配置回退值，因此先完成业务名称映射和筛选，再做准确分页。
+        List<HistoricProcessInstance> historicInstances = query.list();
         
         // 转换为VO
         List<MyStartedProcessVO> list = new ArrayList<>();
@@ -463,9 +479,14 @@ public class ProcessInstanceService {
             list.add(vo);
         }
         
-        // 由于可能在循环中过滤，需要重新计算分页
-        // 为了简化，这里不做精确分页，如果需要精确分页需要在外层查询后统一过滤
-        return new PageResult<>(list, total, pageNum, pageSize);
+        long total = list.size();
+        int firstResult = Math.min((safePageNum - 1) * safePageSize, list.size());
+        int toIndex = Math.min(firstResult + safePageSize, list.size());
+        return new PageResult<>(
+                new ArrayList<>(list.subList(firstResult, toIndex)),
+                total,
+                safePageNum,
+                safePageSize);
     }
     
     /**

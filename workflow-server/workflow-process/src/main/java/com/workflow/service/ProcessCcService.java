@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.workflow.common.PageResult;
 import com.workflow.entity.ProcessCcRecord;
 import com.workflow.mapper.ProcessCcRecordMapper;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,24 @@ public class ProcessCcService {
     public List<ProcessCcRecord> getUserCcList(String userId, int pageNum, int pageSize) {
         int offset = (pageNum - 1) * pageSize;
         return ccRecordMapper.findByCcUserId(userId, offset, pageSize);
+    }
+
+    public PageResult<ProcessCcRecord> getUserCcPage(
+            String userId,
+            int requestedPage,
+            int requestedSize,
+            String keyword,
+            String operatorName,
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
+        int pageNum = Math.max(1, requestedPage);
+        int pageSize = Math.min(100, Math.max(1, requestedSize));
+        int offset = (pageNum - 1) * pageSize;
+        List<ProcessCcRecord> records = ccRecordMapper.findByCcUserIdFiltered(
+                userId, keyword, operatorName, startTime, endTime, offset, pageSize);
+        long total = ccRecordMapper.countByCcUserIdFiltered(
+                userId, keyword, operatorName, startTime, endTime);
+        return new PageResult<>(records, total, pageNum, pageSize);
     }
     
     /**

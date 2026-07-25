@@ -1,6 +1,6 @@
 <template>
   <el-container class="layout-container">
-    <el-aside width="200px" class="sidebar">
+    <el-aside width="200px" class="sidebar desktop-sidebar">
       <div class="logo">
         <el-icon size="24"><Connection /></el-icon>
         <span>流程配置系统</span>
@@ -24,6 +24,15 @@
     <el-container>
       <el-header class="header">
         <div class="header-left">
+          <el-button
+            class="mobile-menu-button"
+            text
+            circle
+            aria-label="打开导航菜单"
+            @click="mobileMenuVisible = true"
+          >
+            <el-icon size="22"><Menu /></el-icon>
+          </el-button>
           <el-breadcrumb separator="/" class="breadcrumb" v-if="breadcrumb.length > 0">
             <el-breadcrumb-item
               v-for="item in breadcrumb"
@@ -47,8 +56,7 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人设置</el-dropdown-item>
-                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -58,11 +66,39 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <el-drawer
+      v-model="mobileMenuVisible"
+      class="mobile-nav-drawer"
+      direction="ltr"
+      size="min(82vw, 300px)"
+      :with-header="false"
+    >
+      <div class="logo mobile-logo">
+        <el-icon size="24"><Connection /></el-icon>
+        <span>流程配置系统</span>
+      </div>
+      <el-menu
+        :default-active="$route.path"
+        router
+        class="menu mobile-menu"
+        background-color="#304156"
+        text-color="#bfcbd9"
+        active-text-color="#409EFF"
+      >
+        <sidebar-menu-item
+          v-for="menu in menuTree"
+          :key="menu.id"
+          :menu="menu"
+          :icon-map="iconMap"
+        />
+      </el-menu>
+    </el-drawer>
   </el-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document, Notebook } from '@element-plus/icons-vue'
@@ -74,6 +110,7 @@ import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const mobileMenuVisible = ref(false)
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
@@ -170,11 +207,17 @@ onMounted(() => {
   loadMenus()
 })
 
+watch(() => route.fullPath, () => {
+  mobileMenuVisible.value = false
+})
+
 async function handleCommand(command) {
   if (command === 'logout') {
     try {
-      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-        type: 'warning'
+      await ElMessageBox.confirm('退出后需要重新输入账号和密码才能进入系统。', '退出登录', {
+        type: 'warning',
+        confirmButtonText: '确认退出',
+        cancelButtonText: '取消'
       })
       
       // 调用退出登录接口
@@ -190,8 +233,6 @@ async function handleCommand(command) {
     } catch (error) {
       // 用户取消
     }
-  } else if (command === 'profile') {
-    ElMessage.info('个人设置功能开发中...')
   }
 }
 </script>
@@ -222,6 +263,10 @@ async function handleCommand(command) {
 
 .menu {
   border-right: none;
+}
+
+.mobile-menu-button {
+  display: none;
 }
 
 .header {
@@ -263,5 +308,67 @@ async function handleCommand(command) {
   background-color: #f0f2f5;
   padding: 10px;
   overflow-y: auto;
+}
+
+:deep(.mobile-nav-drawer .el-drawer__body) {
+  padding: 0;
+  background: #304156;
+}
+
+.mobile-logo {
+  justify-content: flex-start;
+  padding: 0 20px;
+}
+
+.mobile-menu {
+  min-height: calc(100vh - 60px);
+}
+
+@media (max-width: 760px) {
+  .desktop-sidebar {
+    display: none;
+  }
+
+  .header {
+    height: 52px;
+    padding: 0 12px;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex;
+    margin-right: 4px;
+  }
+
+  .breadcrumb {
+    margin-left: 0;
+  }
+
+  .breadcrumb :deep(.el-breadcrumb__item:not(:last-child)) {
+    display: none;
+  }
+
+  .breadcrumb :deep(.el-breadcrumb__inner) {
+    max-width: 52vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-info {
+    gap: 4px;
+    font-size: 0;
+  }
+
+  .user-info .el-icon {
+    font-size: 14px;
+  }
+
+  .user-avatar {
+    margin-right: 0;
+  }
+
+  .main-content {
+    padding: 0;
+  }
 }
 </style>

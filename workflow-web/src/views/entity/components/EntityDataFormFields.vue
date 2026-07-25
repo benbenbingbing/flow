@@ -46,6 +46,8 @@
       v-model="formData.data"
       :show-header="false"
       :no-internal-tabs="noInternalTabs"
+      :node-root-parent-id="nodeRootParentId"
+      :excluded-node-ids="excludedNodeIds"
       :mode="isEdit ? 'edit' : 'create'"
       :entity-code="entityCode"
       :entity-definition="entityDefinition"
@@ -130,6 +132,10 @@ const props = defineProps<{
   isEdit: boolean
   showStartProcess?: boolean
   noInternalTabs?: boolean
+  nodeRootParentId?: string | number
+  excludedNodeIds?: Array<string | number>
+  dataSourceRuntime?: any
+  skipDataSourcePrevalidation?: boolean
 }>()
 
 const formData = defineModel<any>('formData', { required: true })
@@ -301,7 +307,7 @@ async function executeFieldDataSource(field: any, usage: string) {
   return result ?? null
 }
 
-const dataSourceRuntime = createFormDataSourceRuntime({
+const internalDataSourceRuntime = createFormDataSourceRuntime({
   entityCode: props.entityCode,
   getRecord: () => formData.value?.data || {},
   getRecordId: () => formData.value?.id,
@@ -310,6 +316,7 @@ const dataSourceRuntime = createFormDataSourceRuntime({
   getForm: () => props.defaultForm,
   getEntityDefinition: () => props.entityDefinition
 })
+const dataSourceRuntime = props.dataSourceRuntime || internalDataSourceRuntime
 
 async function loadRuntimeDataSources(fields: any[]) {
   await dataSourceRuntime.initialize({
@@ -458,11 +465,13 @@ async function validate() {
       return false
     }
   }
-  await dataSourceRuntime.prevalidateBeforeSubmit({
-    form: props.defaultForm,
-    fields: props.defaultForm?.fields || [],
-    nodes: props.defaultForm?.nodes || []
-  })
+  if (!props.skipDataSourcePrevalidation) {
+    await dataSourceRuntime.prevalidateBeforeSubmit({
+      form: props.defaultForm,
+      fields: props.defaultForm?.fields || [],
+      nodes: props.defaultForm?.nodes || []
+    })
+  }
   return true
 }
 

@@ -2,13 +2,29 @@
   <div class="entity-selector">
     <!-- 单选模式 -->
     <template v-if="!multiple">
-      <div class="selector-input" @click="openSelector">
+      <div
+        class="selector-input"
+        role="button"
+        :tabindex="disabled ? -1 : 0"
+        :aria-disabled="disabled"
+        @click="openSelector"
+        @keydown.enter="openSelector"
+        @keydown.space.prevent="openSelector"
+      >
         <div v-if="selectedData" class="selected-item">
           <el-tag size="small" :type="getEntityTypeTag(selectedData.entityType)">
             {{ getEntityTypeLabel(selectedData.entityType) }}
           </el-tag>
-          <span class="item-name">{{ selectedData.name || selectedData.code || selectedData.id }}</span>
-          <el-icon class="clear-icon" @click.stop="clearSelection"><Close /></el-icon>
+          <span class="item-name">{{ getItemLabel(selectedData) }}</span>
+          <el-button
+            class="clear-icon"
+            link
+            aria-label="清除当前选择"
+            title="清除当前选择"
+            @click.stop="clearSelection"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
         </div>
         <div v-else class="placeholder">{{ placeholder }}</div>
         <el-icon class="arrow-icon"><ArrowDown /></el-icon>
@@ -17,7 +33,15 @@
     
     <!-- 多选模式 -->
     <template v-else>
-      <div class="selector-input multiple" @click="openSelector">
+      <div
+        class="selector-input multiple"
+        role="button"
+        :tabindex="disabled ? -1 : 0"
+        :aria-disabled="disabled"
+        @click="openSelector"
+        @keydown.enter="openSelector"
+        @keydown.space.prevent="openSelector"
+      >
         <div v-if="selectedList.length > 0" class="selected-list">
           <el-tag
             v-for="item in selectedList"
@@ -27,7 +51,7 @@
             :type="getEntityTypeTag(item.entityType)"
             @close="removeSelection(item)"
           >
-            {{ item.name || item.code || item.id }}
+            {{ getItemLabel(item) }}
           </el-tag>
         </div>
         <div v-else class="placeholder">{{ placeholder }}</div>
@@ -66,12 +90,16 @@
         <div class="search-bar">
           <el-input
             v-model="searchKeyword"
-            placeholder="搜索名称或编码"
+            placeholder="搜索名称或标识"
             clearable
             @keyup.enter="handleSearch"
           >
             <template #append>
-              <el-button @click="handleSearch">
+              <el-button
+                aria-label="搜索可选记录"
+                title="搜索可选记录"
+                @click="handleSearch"
+              >
                 <el-icon><Search /></el-icon>
               </el-button>
             </template>
@@ -89,7 +117,7 @@
         >
           <el-table-column v-if="multiple" type="selection" width="55" />
           <el-table-column prop="name" label="名称" min-width="150" />
-          <el-table-column prop="code" label="编码" width="120" />
+          <el-table-column prop="code" label="标识" width="120" />
           <el-table-column label="类型" width="100">
             <template #default="{ row }">
               <el-tag size="small" :type="getEntityTypeTag(row.entityType)">
@@ -100,7 +128,7 @@
           <el-table-column prop="status" label="状态" width="80">
             <template #default="{ row }">
               <el-tag v-if="row.status" size="small" :type="getStatusType(row.status)">
-                {{ row.status }}
+                {{ getStatusLabel(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -131,7 +159,7 @@
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button v-if="multiple" type="primary" @click="confirmSelection">
-            确定 ({{ selectedRows.length }})
+            确认选择 ({{ selectedRows.length }})
           </el-button>
         </div>
       </template>
@@ -500,11 +528,28 @@ function getEntityTypeDesc(type) {
   return map[type] || ''
 }
 
+function getItemLabel(item) {
+  return item?.name || item?.code || '未命名记录'
+}
+
+function getStatusLabel(status) {
+  const map = {
+    '0': '启用',
+    '1': '禁用',
+    DRAFT: '草稿',
+    PENDING: '审批中',
+    APPROVED: '已通过',
+    REJECTED: '已驳回',
+    COMPLETED: '已完成'
+  }
+  return map[String(status)] || '未知状态'
+}
+
 // 获取状态样式
 function getStatusType(status) {
   const map = {
-    '0': 'info',
-    '1': 'success',
+    '0': 'success',
+    '1': 'info',
     'DRAFT': 'info',
     'PENDING': 'warning',
     'APPROVED': 'success',
@@ -563,7 +608,9 @@ function getStatusType(status) {
 
 .clear-icon {
   color: #a8abb2;
-  cursor: pointer;
+  flex: none;
+  margin-left: 2px;
+  padding: 2px;
 }
 
 .clear-icon:hover {

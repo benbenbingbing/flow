@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class EntityDefinitionService {
+
+    private static final String ORGANIZATION_ENTITY_CODE = "sys_organization";
     
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
@@ -289,6 +291,14 @@ public class EntityDefinitionService {
         EntityField deptIdField = createSystemField(entityId, "deptId", "所属部门",
                 EntityField.FieldType.REFERENCE, "varchar(64)", 64, true, ++sortOrder);
         deptIdField.setRefEntityType(EntityField.RefEntityType.DEPT);
+        entityMapper.findByEntityCode(ORGANIZATION_ENTITY_CODE)
+                .map(EntityDefinition::getId)
+                .ifPresentOrElse(
+                        deptIdField::setRefEntityId,
+                        () -> log.warn(
+                                "系统组织实体 [{}] 尚未注册，实体 [{}] 的所属部门字段暂未绑定 refEntityId",
+                                ORGANIZATION_ENTITY_CODE,
+                                entityId));
         fieldMapper.insert(deptIdField);
 
         fieldMapper.insert(createSystemField(entityId, "dataNo", "业务单号",

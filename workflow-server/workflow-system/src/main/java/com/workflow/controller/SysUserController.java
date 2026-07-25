@@ -1,5 +1,6 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.common.Result;
 import com.workflow.entity.SysRole;
 import com.workflow.entity.SysUser;
@@ -10,6 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 用户管理控制器
@@ -35,6 +37,19 @@ public class SysUserController {
     @GetMapping("/list")
     public Result<List<SysUser>> list() {
         return Result.success(userService.getUserList());
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<SysUser>> page(
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "20") Integer pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String orgId,
+            @RequestParam(required = false) String deptId,
+            @RequestParam(required = false) String roleId) {
+        return Result.success(userService.getUserPage(
+                pageNum, pageSize, keyword, status, orgId, deptId, roleId));
     }
     
     /**
@@ -103,6 +118,22 @@ public class SysUserController {
         userService.updateStatus(id, finalStatus);
         return Result.success();
     }
+
+    @PostMapping("/batch/status")
+    public Result<Void> batchUpdateStatus(@RequestBody Map<String, Object> body) {
+        Object requestedStatus = body.get("status");
+        if (requestedStatus == null) {
+            throw new IllegalArgumentException("status参数不能为空");
+        }
+        userService.batchUpdateStatus(stringList(body.get("userIds")), String.valueOf(requestedStatus));
+        return Result.success();
+    }
+
+    @PostMapping("/batch/roles")
+    public Result<Void> batchAssignRoles(@RequestBody Map<String, Object> body) {
+        userService.batchAssignRoles(stringList(body.get("userIds")), stringList(body.get("roleIds")));
+        return Result.success();
+    }
     
     /**
      * 重置密码
@@ -111,9 +142,10 @@ public class SysUserController {
      * @return 操作结果
      */
     @PostMapping("/{id}/reset-password")
-    public Result<Void> resetPassword(@PathVariable String id) {
-        userService.resetPassword(id);
-        return Result.success();
+    public Result<Map<String, Object>> resetPassword(@PathVariable String id) {
+        return Result.success(Map.of(
+                "temporaryPassword", userService.resetPassword(id),
+                "passwordResetRequired", true));
     }
     
     /**
@@ -124,5 +156,16 @@ public class SysUserController {
     @GetMapping("/roles")
     public Result<List<SysRole>> getRoles() {
         return Result.success(roleService.getEnabledRoles());
+    }
+
+    private List<String> stringList(Object value) {
+        if (!(value instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::valueOf)
+                .filter(item -> !item.isBlank())
+                .toList();
     }
 }

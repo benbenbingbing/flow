@@ -46,6 +46,8 @@
       :label-width="labelWidth"
       :label-position="labelPosition"
       :layout-type="form?.layoutType || 'vertical'"
+      :root-parent-id="nodeRootParentId"
+      :excluded-node-ids="excludedNodeIds"
       @update:model-value="handleCustomFormUpdate"
     />
     <el-form
@@ -218,6 +220,14 @@ const props = defineProps({
   dataSourceRuntime: {
     type: Object,
     default: null
+  },
+  nodeRootParentId: {
+    type: [String, Number],
+    default: ''
+  },
+  excludedNodeIds: {
+    type: Array,
+    default: () => []
   }
 })
 

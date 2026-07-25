@@ -9,6 +9,7 @@ const translations = {
   'Append end event': '追加结束事件',
   'Append gateway': '追加网关',
   'Append task': '追加任务',
+  'Append user task': '追加用户任务',
   'Append intermediate/boundary event': '追加中间/边界事件',
   'Change type': '更改类型',
   'Remove': '删除',
@@ -18,6 +19,7 @@ const translations = {
   // 左侧工具栏
   'Create start event': '创建开始事件',
   'Create end event': '创建结束事件',
+  'Create intermediate event': '创建中间事件',
   'Create task': '创建任务',
   'Create user task': '创建用户任务',
   'Create service task': '创建服务任务',
@@ -28,11 +30,15 @@ const translations = {
   'Create expanded sub-process': '创建子流程',
   'Create data object reference': '创建数据对象',
   'Create data store reference': '创建数据存储',
+  'Create group': '创建分组',
+  'Create text annotation': '创建文本注释',
+  'Change element': '更改元素类型',
   
   // 工具栏提示
   'Activate hand tool': '手型工具 (H)',
   'Activate lasso tool': '套索工具 (L)',
   'Activate create/remove space tool': '空间工具',
+  'Activate global connect tool': '启用全局连接工具',
   'Global connect tool': '全局连接',
   
   // 元素类型
@@ -41,9 +47,16 @@ const translations = {
   'Task': '任务',
   'User task': '用户任务',
   'Service task': '服务任务',
+  'Send task': '发送任务',
+  'Receive task': '接收任务',
+  'Manual task': '手动任务',
+  'Business rule task': '业务规则任务',
+  'Script task': '脚本任务',
   'Gateway': '网关',
   'Exclusive gateway': '排他网关',
   'Parallel gateway': '并行网关',
+  'Inclusive gateway': '包容网关',
+  'Event-based gateway': '基于事件的网关',
   'Intermediate throw event': '中间抛出事件',
   'Intermediate catch event': '中间捕获事件',
   
@@ -64,6 +77,17 @@ const translations = {
   'Sequence flow': '顺序流',
   'Message flow': '消息流',
   'Association': '关联',
+  'Default flow': '默认流',
+  'Conditional flow': '条件流',
+  'Timer': '定时器',
+  'Message': '消息',
+  'Signal': '信号',
+  'Error': '错误',
+  'Escalation': '升级',
+  'Compensation': '补偿',
+  'Link': '链接',
+  'Condition': '条件',
+  'Cancel': '取消',
   'Data input association': '数据输入关联',
   'Data output association': '数据输出关联'
 }

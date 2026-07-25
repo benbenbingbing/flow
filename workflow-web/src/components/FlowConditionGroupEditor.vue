@@ -7,8 +7,8 @@
       </div>
       <div class="group-actions">
         <el-radio-group v-model="group.logic" size="small" @change="emitChange">
-          <el-radio-button label="AND">全部满足 (AND)</el-radio-button>
-          <el-radio-button label="OR">任一满足 (OR)</el-radio-button>
+          <el-radio-button value="AND">全部满足 (AND)</el-radio-button>
+          <el-radio-button value="OR">任一满足 (OR)</el-radio-button>
         </el-radio-group>
         <el-button size="small" link type="primary" @click="addCondition">添加条件</el-button>
         <el-button v-if="depth < maxDepth" size="small" link type="primary" @click="addGroup">
@@ -108,7 +108,13 @@
             @input="emitChange"
           />
 
-          <el-button type="danger" link @click="removeChild(index)">
+          <el-button
+            type="danger"
+            link
+            aria-label="删除条件"
+            title="删除条件"
+            @click="removeChild(index)"
+          >
             <el-icon><Delete /></el-icon>
           </el-button>
         </div>

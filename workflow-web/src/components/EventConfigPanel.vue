@@ -89,7 +89,7 @@
     </el-form>
     <template #footer>
       <el-button @click="showAddEvent = false">取消</el-button>
-      <el-button type="primary" @click="confirmAddEvent">确定</el-button>
+      <el-button type="primary" @click="confirmAddEvent">添加事件</el-button>
     </template>
   </el-dialog>
 </template>

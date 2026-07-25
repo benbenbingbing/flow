@@ -51,4 +51,7 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
      */
     @Select("SELECT * FROM sys_role WHERE role_code IN ('super_admin', 'admin') AND deleted = 0")
     List<SysRole> selectAdministratorRoles();
+
+    @Select("SELECT COUNT(*) FROM sys_user_role WHERE role_id = #{roleId}")
+    long countUsersByRoleId(@Param("roleId") String roleId);
 }

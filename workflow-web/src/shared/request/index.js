@@ -159,6 +159,9 @@ request.interceptors.response.use(
       redirectToLogin(getApiErrorMessage(response.data, '登录已过期，请重新登录'))
       return Promise.reject(error)
     }
+    if (response?.status === 428 && window.location.pathname !== '/change-password') {
+      window.location.href = '/change-password'
+    }
 
     const message = response
       ? getApiErrorMessage(response.data)

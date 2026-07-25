@@ -1,7 +1,7 @@
 <template>
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="75%" class="entity-form-dialog" top="3vh">
-    <el-tabs v-if="hasTabSubForms" v-model="activeTab" type="border-card" class="form-dialog-tabs">
-      <el-tab-pane label="基本信息" name="basic">
+    <el-tabs v-if="showOuterTabs" v-model="activeTab" type="border-card" class="form-dialog-tabs">
+      <el-tab-pane v-if="showBasicTab" label="基本信息" name="basic">
         <EntityDataFormFields
           ref="basicFormFieldsRef"
           v-model:formData="formData"
@@ -10,8 +10,32 @@
           :entityFields="entityFields"
           :defaultForm="defaultForm"
           :isEdit="isEdit"
-          :showStartProcess="!isEdit"
+          :showStartProcess="canStartProcess"
           :noInternalTabs="true"
+          :excludedNodeIds="liftedRootNodeIds"
+          :dataSourceRuntime="dataSourceRuntime"
+          :skipDataSourcePrevalidation="true"
+        />
+      </el-tab-pane>
+      <el-tab-pane
+        v-for="(tab, idx) in runtimeNodeTabs"
+        :key="tab.name"
+        :label="tab.label"
+        :name="tab.name"
+      >
+        <EntityDataFormFields
+          :ref="(instance) => setNodeFormFieldsRef(tab.name, instance)"
+          v-model:formData="formData"
+          :entityCode="entityCode"
+          :entityDefinition="entityDefinition"
+          :entityFields="entityFields"
+          :defaultForm="defaultForm"
+          :isEdit="isEdit"
+          :showStartProcess="canStartProcess && !showBasicTab && idx === 0"
+          :noInternalTabs="true"
+          :nodeRootParentId="tab.rootParentId"
+          :dataSourceRuntime="dataSourceRuntime"
+          :skipDataSourcePrevalidation="true"
         />
       </el-tab-pane>
       <el-tab-pane
@@ -56,12 +80,16 @@
       :entityFields="entityFields"
       :defaultForm="defaultForm"
       :isEdit="isEdit"
-      :showStartProcess="!isEdit"
+      :showStartProcess="canStartProcess"
+      :dataSourceRuntime="dataSourceRuntime"
+      :skipDataSourcePrevalidation="true"
     />
 
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+      <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+        {{ isEdit ? '保存修改' : '创建数据' }}
+      </el-button>
     </template>
   </el-dialog>
 </template>
@@ -74,7 +102,12 @@ import { entityDataApi } from '@/api/entity'
 import { useUserStore } from '@/stores/user'
 import { executeFormInitializer } from '@/utils/formInitializer'
 import { useProcessDetail } from '@/composables/useProcessDetail'
-import { getFieldKey, isRuntimeFieldVisible } from '@/shared/form-runtime'
+import {
+  createFormDataSourceRuntime,
+  getFieldKey,
+  isRuntimeFieldVisible,
+  resolveRuntimeFormTabLayout
+} from '@/shared/form-runtime'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import EntityDataFormFields from './EntityDataFormFields.vue'
 import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
@@ -101,6 +134,7 @@ const dialogTitle = ref('')
 const submitLoading = ref(false)
 const formFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const basicFormFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
+const nodeFormFieldsRefs = ref<Record<string, InstanceType<typeof EntityDataFormFields>>>({})
 const isEdit = ref(false)
 const activeTab = ref('form')
 const processInstanceId = ref('')
@@ -115,6 +149,16 @@ const formData = reactive({
 })
 
 const hasProcessInfo = computed(() => !!processInstanceId.value)
+const canStartProcess = computed(() => !hasProcessInfo.value)
+const dataSourceRuntime = createFormDataSourceRuntime({
+  entityCode: props.entityCode,
+  getRecord: () => formData.data || {},
+  getRecordId: () => formData.id,
+  getListKey: () => props.listKey,
+  getMode: () => isEdit.value ? 'edit' : 'create',
+  getForm: () => props.defaultForm,
+  getEntityDefinition: () => props.entityDefinition
+})
 
 const {
   bpmnXml,
@@ -131,6 +175,47 @@ const tabSubForms = computed(() => {
   return fields.filter((f: any) => isRuntimeFieldVisible(f, mode) && isTabSubForm(f))
 })
 const hasTabSubForms = computed(() => tabSubForms.value.length > 0)
+const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(props.defaultForm))
+const runtimeNodeTabs = computed(() => runtimeTabLayout.value.tabs)
+const liftedRootNodeIds = computed(() => runtimeTabLayout.value.liftedRootNodeIds)
+const hasRuntimeFormTabs = computed(() =>
+  runtimeNodeTabs.value.length > 0 || hasTabSubForms.value
+)
+const showOuterTabs = computed(() => hasProcessInfo.value || hasRuntimeFormTabs.value)
+const showBasicTab = computed(() =>
+  runtimeTabLayout.value.hasBaseContent
+  || !hasRuntimeFormTabs.value
+  || (canStartProcess.value && runtimeNodeTabs.value.length === 0)
+)
+const firstFormTabName = computed(() => {
+  if (showBasicTab.value) return 'basic'
+  if (runtimeNodeTabs.value.length > 0) return runtimeNodeTabs.value[0].name
+  if (tabSubForms.value.length > 0) return 'subform_0'
+  return 'form'
+})
+
+function setNodeFormFieldsRef(
+  tabName: string,
+  instance: InstanceType<typeof EntityDataFormFields> | null
+) {
+  if (instance) {
+    nodeFormFieldsRefs.value[tabName] = instance
+  } else {
+    delete nodeFormFieldsRefs.value[tabName]
+  }
+}
+
+function refreshFormLinkage() {
+  if (!showOuterTabs.value) {
+    formFieldsRef.value?.refreshLinkage()
+    return
+  }
+  if (showBasicTab.value) {
+    basicFormFieldsRef.value?.refreshLinkage()
+    return
+  }
+  nodeFormFieldsRefs.value[firstFormTabName.value]?.refreshLinkage()
+}
 
 // 切换到流程图 tab 时重新触发 BPMN 渲染，避免隐藏 tab 中画布尺寸为 0
 watch(activeTab, (newVal) => {
@@ -172,7 +257,7 @@ const openCreate = async () => {
   processInstanceId.value = ''
   currentProcessStatus.value = ''
   currentProcessName.value = ''
-  activeTab.value = hasTabSubForms.value ? 'basic' : 'form'
+  activeTab.value = firstFormTabName.value
   resetForm()
   dialogTitle.value = props.defaultForm?.formName
     ? `新增数据 - ${props.defaultForm.formName}${props.defaultForm.formKey ? `（${props.defaultForm.formKey}）` : ''}`
@@ -198,13 +283,14 @@ const openCreate = async () => {
 
   dialogVisible.value = true
   nextTick(() => {
-    formFieldsRef.value?.refreshLinkage()
+    refreshFormLinkage()
   })
 }
 
 // 编辑
 const openEdit = async (row: any) => {
   isEdit.value = true
+  formData.startProcess = false
   const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey).catch(() => row)
   formData.id = detail.id
   formData.name = detail.name
@@ -235,24 +321,44 @@ const openEdit = async (row: any) => {
     currentProcessName.value = ''
   }
 
-  activeTab.value = hasTabSubForms.value ? 'basic' : 'form'
+  activeTab.value = firstFormTabName.value
 
   dialogTitle.value = '编辑数据'
   dialogVisible.value = true
   nextTick(() => {
-    if (hasTabSubForms.value) {
-      basicFormFieldsRef.value?.refreshLinkage()
-    } else {
-      formFieldsRef.value?.refreshLinkage()
-    }
+    refreshFormLinkage()
   })
+}
+
+async function validateRuntimeForms() {
+  const formRefs: Array<InstanceType<typeof EntityDataFormFields>> = []
+  if (!showOuterTabs.value) {
+    if (formFieldsRef.value) formRefs.push(formFieldsRef.value)
+  } else {
+    if (showBasicTab.value && basicFormFieldsRef.value) {
+      formRefs.push(basicFormFieldsRef.value)
+    }
+    runtimeNodeTabs.value.forEach(tab => {
+      const formRef = nodeFormFieldsRefs.value[tab.name]
+      if (formRef) formRefs.push(formRef)
+    })
+  }
+
+  for (const formRef of formRefs) {
+    if ((await formRef.validate()) === false) return false
+  }
+
+  await dataSourceRuntime.prevalidateBeforeSubmit({
+    form: props.defaultForm,
+    fields: props.defaultForm?.fields || [],
+    nodes: props.defaultForm?.nodes || []
+  })
+  return true
 }
 
 // 提交
 const handleSubmit = async () => {
-  const valid = await (hasTabSubForms.value
-    ? basicFormFieldsRef.value?.validate()
-    : formFieldsRef.value?.validate())
+  const valid = await validateRuntimeForms()
   if (!valid) return
 
   submitLoading.value = true

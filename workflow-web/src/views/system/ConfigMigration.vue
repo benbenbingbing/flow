@@ -12,11 +12,18 @@
           <div><strong>{{ importStats.blocked }}</strong><span>待处理冲突</span></div>
         </div>
       </div>
+      <el-steps :active="migrationStep" finish-status="success" simple class="migration-steps">
+        <el-step title="1. 选择配置" description="确认发布快照" @click="goToStage('assets')" />
+        <el-step title="2. 校验依赖" description="补齐硬依赖" @click="goToStage('assets')" />
+        <el-step title="3. 生成发布包" description="下载并交付" @click="goToStage('exports')" />
+        <el-step title="4. 上传并对比" description="处理环境差异" @click="goToStage('imports')" />
+        <el-step title="5. 发布结果" description="发布或回滚" @click="goToStage('imports')" />
+      </el-steps>
     </el-card>
 
     <el-card shadow="never">
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-        <el-tab-pane label="待导出" name="assets">
+        <el-tab-pane label="选择与校验" name="assets">
           <div class="toolbar">
             <el-form :model="assetFilters" inline>
               <el-form-item label="类型">
@@ -52,7 +59,17 @@
             </el-button>
           </div>
 
+          <PageState
+            v-if="assetError"
+            type="error"
+            title="配置清单加载失败"
+            :description="assetError"
+            retryable
+            compact
+            @retry="loadAssets"
+          />
           <el-table
+            v-else
             v-loading="assetLoading"
             :data="assets"
             border
@@ -120,16 +137,33 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="导出记录" name="exports">
+        <el-tab-pane label="发布包" name="exports">
           <div class="table-actions">
             <el-button @click="loadExports">刷新</el-button>
           </div>
-          <el-table v-loading="exportLoading" :data="exportPackages" border stripe>
+          <PageState
+            v-if="exportError"
+            type="error"
+            title="发布包记录加载失败"
+            :description="exportError"
+            retryable
+            compact
+            @retry="loadExports"
+          />
+          <el-table v-else v-loading="exportLoading" :data="exportPackages" border stripe>
             <el-table-column label="发布包信息" min-width="350">
               <template #default="{ row }">
                 <div class="primary-line">{{ row.packageNo }}</div>
                 <div class="meta-line">{{ row.fileName }}</div>
-                <div class="hash-line" :title="row.checksum">SHA-256: {{ row.checksum }}</div>
+                <el-popover placement="bottom-start" :width="420" trigger="click">
+                  <template #reference>
+                    <el-button link type="info" class="technical-detail-button">查看技术详情</el-button>
+                  </template>
+                  <div class="technical-detail">
+                    <div><strong>文件名</strong>{{ row.fileName || '-' }}</div>
+                    <div><strong>SHA-256</strong><code>{{ row.checksum || '-' }}</code></div>
+                  </div>
+                </el-popover>
               </template>
             </el-table-column>
             <el-table-column prop="migrationTag" label="迁移标记" min-width="190" />
@@ -149,7 +183,7 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="导入管理" name="imports">
+        <el-tab-pane label="导入与发布" name="imports">
           <div class="import-panel">
             <el-input v-model="sourceEnvironment" placeholder="来源环境，如 TEST" style="width: 220px" />
             <el-upload
@@ -168,7 +202,16 @@
             <el-button @click="loadImports">刷新</el-button>
           </div>
 
-          <el-table v-loading="importLoading" :data="imports" border stripe>
+          <PageState
+            v-if="importError"
+            type="error"
+            title="导入记录加载失败"
+            :description="importError"
+            retryable
+            compact
+            @retry="loadImports"
+          />
+          <el-table v-else v-loading="importLoading" :data="imports" border stripe>
             <el-table-column label="发布包" min-width="310">
               <template #default="{ row }">
                 <div class="primary-line">{{ row.packageNo }}</div>
@@ -206,7 +249,7 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="版本对比" name="compare">
+        <el-tab-pane label="影响对比" name="compare">
           <div class="compare-toolbar">
             <el-select
               v-model="compareImportId"
@@ -225,15 +268,30 @@
             </el-select>
             <el-button type="primary" :disabled="!compareImportId" @click="loadCompare">刷新对比</el-button>
           </div>
+          <PageState
+            v-if="compareError"
+            type="error"
+            title="影响对比加载失败"
+            :description="compareError"
+            retryable
+            compact
+            @retry="loadCompare"
+          />
           <el-alert
-            v-if="compareData?.validationReport"
+            v-else-if="compareData?.validationReport"
             :title="compareData.validationReport.blocked ? '存在阻断项，不能发布' : '分析通过，可以发布'"
             :type="compareData.validationReport.blocked ? 'error' : 'success'"
             :closable="false"
             show-icon
             class="compare-alert"
           />
-          <el-table :data="compareData?.items || []" border stripe v-loading="compareLoading">
+          <el-table
+            v-if="!compareError"
+            :data="compareData?.items || []"
+            border
+            stripe
+            v-loading="compareLoading"
+          >
             <el-table-column label="资产" min-width="330">
               <template #default="{ row }">
                 <div class="asset-title-line">
@@ -300,8 +358,8 @@
         </el-form-item>
         <el-form-item v-if="exportTargets.length === 1" label="导出范围">
           <el-radio-group v-model="exportForm.full">
-            <el-radio :label="true">完整配置</el-radio>
-            <el-radio :label="false">细粒度选择</el-radio>
+            <el-radio :value="true">完整配置</el-radio>
+            <el-radio :value="false">细粒度选择</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="exportTargets.length === 1 && !exportForm.full" label="配置部分">
@@ -383,10 +441,12 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { configMigrationApi } from '@/api/configMigration'
 import { generateMigrationTag } from '@/utils/migrationTag'
+import PageState from '@/components/PageState.vue'
 
 const activeTab = ref('assets')
 const assets = ref([])
 const assetLoading = ref(false)
+const assetError = ref('')
 const selectedAssets = ref([])
 const assetFilters = reactive({
   assetType: '',
@@ -397,9 +457,11 @@ const assetFilters = reactive({
 
 const exportPackages = ref([])
 const exportLoading = ref(false)
+const exportError = ref('')
 const exporting = ref(false)
 const imports = ref([])
 const importLoading = ref(false)
+const importError = ref('')
 const uploading = ref(false)
 const pendingFile = ref(null)
 const sourceEnvironment = ref('TEST')
@@ -431,6 +493,7 @@ const mappingRows = ref([])
 const compareImportId = ref('')
 const compareData = ref(null)
 const compareLoading = ref(false)
+const compareError = ref('')
 
 const assetStats = computed(() => ({
   pending: assets.value.filter(item => item.markForExport && item.exportStatus !== 'EXPORTED').length,
@@ -439,6 +502,15 @@ const assetStats = computed(() => ({
 const importStats = computed(() => ({
   blocked: imports.value.filter(item => item.status === 'BLOCKED').length
 }))
+const migrationStep = computed(() => {
+  if (activeTab.value === 'assets') {
+    return selectedAssets.value.length > 0 ? 1 : 0
+  }
+  if (activeTab.value === 'exports') return 2
+  if (activeTab.value === 'compare') return 3
+  const selectedImport = imports.value.find(item => String(item.id) === String(compareImportId.value))
+  return selectedImport?.status === 'PUBLISHED' || selectedImport?.status === 'ROLLED_BACK' ? 5 : 4
+})
 
 const sectionOptions = computed(() => {
   const asset = exportTargets.value[0]
@@ -464,11 +536,14 @@ const sectionOptions = computed(() => {
 
 const loadAssets = async () => {
   assetLoading.value = true
+  assetError.value = ''
   try {
     const params = Object.fromEntries(
       Object.entries(assetFilters).filter(([, value]) => value !== '' && value !== null && value !== undefined)
     )
     assets.value = await configMigrationApi.getAssets(params) || []
+  } catch (error) {
+    assetError.value = error?.message || '无法读取可迁移配置，请检查权限或稍后重试。'
   } finally {
     assetLoading.value = false
   }
@@ -476,8 +551,11 @@ const loadAssets = async () => {
 
 const loadExports = async () => {
   exportLoading.value = true
+  exportError.value = ''
   try {
     exportPackages.value = await configMigrationApi.getExportPackages() || []
+  } catch (error) {
+    exportError.value = error?.message || '无法读取发布包记录，请稍后重试。'
   } finally {
     exportLoading.value = false
   }
@@ -485,8 +563,11 @@ const loadExports = async () => {
 
 const loadImports = async () => {
   importLoading.value = true
+  importError.value = ''
   try {
     imports.value = await configMigrationApi.getImports() || []
+  } catch (error) {
+    importError.value = error?.message || '无法读取导入记录，请检查权限或稍后重试。'
   } finally {
     importLoading.value = false
   }
@@ -506,6 +587,11 @@ const handleTabChange = (name) => {
   if (name === 'assets') loadAssets()
   if (name === 'exports') loadExports()
   if (name === 'imports' || name === 'compare') loadImports()
+}
+
+const goToStage = (tab) => {
+  activeTab.value = tab
+  handleTabChange(tab)
 }
 
 const openMarkDialog = (row) => {
@@ -604,6 +690,10 @@ const handleFileRemove = () => {
 }
 
 const uploadPackage = async () => {
+  if (!sourceEnvironment.value.trim()) {
+    ElMessage.warning('请填写来源环境，便于后续识别配置来源')
+    return
+  }
   uploading.value = true
   try {
     await configMigrationApi.uploadPackage(pendingFile.value, sourceEnvironment.value)
@@ -642,11 +732,15 @@ const openCompare = async (row) => {
 const loadCompare = async () => {
   if (!compareImportId.value) {
     compareData.value = null
+    compareError.value = ''
     return
   }
   compareLoading.value = true
+  compareError.value = ''
   try {
     compareData.value = await configMigrationApi.compareImport(compareImportId.value)
+  } catch (error) {
+    compareError.value = error?.message || '无法生成影响对比，请重新分析后再试。'
   } finally {
     compareLoading.value = false
   }
@@ -681,22 +775,34 @@ const saveMappings = async () => {
 }
 
 const publishImport = async (row) => {
-  await ElMessageBox.confirm(
-    '发布将按实体基础、表单列表、流程部署、实体绑定顺序执行。确认继续？',
-    '发布配置',
-    { type: 'warning' }
+  const confirmation = await ElMessageBox.prompt(
+    `发布会更新目标环境的实体、表单、列表和流程配置。请输入迁移标记「${row.migrationTag}」确认。`,
+    '确认发布配置',
+    {
+      type: 'warning',
+      inputPlaceholder: row.migrationTag,
+      confirmButtonText: '确认发布',
+      inputValidator: value => value === row.migrationTag || '迁移标记不匹配'
+    }
   )
+  if (confirmation.value !== row.migrationTag) return
   await configMigrationApi.publishImport(row.id)
   ElMessage.success('配置发布成功')
   loadImports()
 }
 
 const rollbackImport = async (row) => {
-  await ElMessageBox.confirm(
-    '流程会重新发布上一版本；实体新增物理列不会删除，只恢复旧配置。确认回滚？',
-    '回滚配置',
-    { type: 'warning', confirmButtonText: '确认回滚' }
+  const confirmation = await ElMessageBox.prompt(
+    `回滚会重新发布上一版本，但不会删除已新增的物理列。请输入发布包编号「${row.packageNo}」确认。`,
+    '确认回滚配置',
+    {
+      type: 'warning',
+      inputPlaceholder: row.packageNo,
+      confirmButtonText: '确认回滚',
+      inputValidator: value => value === row.packageNo || '发布包编号不匹配'
+    }
   )
+  if (confirmation.value !== row.packageNo) return
   await configMigrationApi.rollbackImport(row.id)
   ElMessage.success('配置已回滚')
   loadImports()
@@ -716,7 +822,7 @@ const statusText = (status) => ({
   BLOCKED: '已阻断',
   PUBLISHED: '已发布',
   ROLLED_BACK: '已回滚'
-}[status] || status)
+}[status] || '未知状态')
 
 const compareStatusType = (status) => ({
   NEW: 'success',
@@ -736,7 +842,7 @@ const compareStatusText = (status) => ({
   CONFLICT: '双向冲突',
   MISSING: '生产缺失',
   FAILED: '失败'
-}[status] || status)
+}[status] || '未知状态')
 
 const publishStatusText = (status) => ({
   PENDING: '待发布',
@@ -744,7 +850,7 @@ const publishStatusText = (status) => ({
   SUCCESS: '发布成功',
   FAILED: '发布失败',
   ROLLED_BACK: '已回滚'
-}[status] || status)
+}[status] || '未知状态')
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback
@@ -773,7 +879,15 @@ onMounted(async () => {
 }
 
 .overview-card {
-  background: linear-gradient(135deg, #f6f9ff, #eef7ff);
+  border-top: 3px solid #409eff;
+}
+
+.migration-steps {
+  margin-top: 20px;
+
+  :deep(.el-step) {
+    cursor: pointer;
+  }
 }
 
 .overview {
@@ -858,23 +972,36 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.meta-line,
-.hash-line {
+.meta-line {
   margin-top: 4px;
   color: #909399;
   font-size: 12px;
 }
 
-.hash-line,
 .error-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.hash-line {
-  max-width: 320px;
-  font-family: monospace;
+.technical-detail-button {
+  margin-top: 2px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.technical-detail {
+  display: grid;
+  gap: 10px;
+
+  div {
+    display: grid;
+    gap: 4px;
+  }
+
+  code {
+    overflow-wrap: anywhere;
+  }
 }
 
 .migration-tag-line {
@@ -890,5 +1017,50 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 20px;
+}
+
+@media (max-width: 760px) {
+  .config-migration-page {
+    padding: 12px;
+  }
+
+  .overview {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .overview-stats {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .migration-steps {
+    overflow-x: auto;
+  }
+
+  .migration-steps :deep(.el-steps--simple) {
+    min-width: 760px;
+  }
+
+  .toolbar,
+  .import-panel,
+  .compare-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar :deep(.el-form) {
+    display: grid;
+  }
+
+  .import-panel :deep(.el-input),
+  .compare-toolbar :deep(.el-select) {
+    width: 100% !important;
+  }
+
+  :deep(.el-checkbox-group) {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <div class="header-left">
-            <el-button link @click="goBack">
+            <el-button link aria-label="返回实体列表" title="返回实体列表" @click="goBack">
               <el-icon><ArrowLeft /></el-icon>
             </el-button>
             <span>实体列表配置：{{ entityName }}</span>
@@ -56,7 +56,9 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitting">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitting">
+          {{ isEdit ? '保存列表配置' : '创建列表配置' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -198,7 +200,15 @@ async function handleSubmit() {
 
 async function handleDelete(row) {
   try {
-    await ElMessageBox.confirm(`确定删除列表配置「${row.listName}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `删除后，使用该标识打开的列表将不可用。确认删除「${row.listName}」吗？`,
+      '删除列表配置',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     await entityListConfigApi.delete(row.id)
     ElMessage.success('删除成功')
     loadConfigList()

@@ -7,12 +7,15 @@ import com.workflow.common.Result;
 import com.workflow.dto.TaskDetailDTO;
 import com.workflow.entity.ProcessTask;
 import com.workflow.service.ProcessTaskService;
+import com.workflow.service.TaskListFilter;
 import com.workflow.service.TaskDetailService;
 import com.workflow.service.TaskActionService;
 import com.workflow.vo.TaskVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
@@ -43,23 +46,21 @@ public class ProcessTaskController {
     @GetMapping("/todo")
     public Result<PageResult<TaskVO>> getTodoList(
             @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String startUserName,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         String currentUser = UserContext.getUsername();
         currentUser = requireCurrentUser(currentUser);
         List<ProcessTask> tasks = processTaskService.getTodoList(currentUser);
 
-        // 转换为TaskVO格式
-        List<TaskVO> voList = tasks.stream()
+        List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
                 .map(this::convertToTaskVO)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()), keyword, startUserName, priority, startDate, endDate);
 
-        // 手动分页
-        int total = voList.size();
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, total);
-        List<TaskVO> pageList = start < total ? voList.subList(start, end) : List.of();
-
-        return Result.success(new PageResult<>(pageList, total, pageNum, pageSize));
+        return Result.success(page(voList, pageNum, pageSize));
     }
 
     /**
@@ -68,23 +69,21 @@ public class ProcessTaskController {
     @GetMapping("/done")
     public Result<PageResult<TaskVO>> getDoneList(
             @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String startUserName,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         String currentUser = UserContext.getUsername();
         currentUser = requireCurrentUser(currentUser);
         List<ProcessTask> tasks = processTaskService.getDoneList(currentUser);
 
-        // 转换为TaskVO格式
-        List<TaskVO> voList = tasks.stream()
+        List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
                 .map(this::convertToTaskVO)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()), keyword, startUserName, priority, startDate, endDate);
 
-        // 手动分页
-        int total = voList.size();
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, total);
-        List<TaskVO> pageList = start < total ? voList.subList(start, end) : List.of();
-
-        return Result.success(new PageResult<>(pageList, total, pageNum, pageSize));
+        return Result.success(page(voList, pageNum, pageSize));
     }
 
     /**
@@ -272,6 +271,7 @@ public class ProcessTaskController {
         }
 
         vo.setDuration(task.getDuration());
+        vo.setPriority(task.getPriority());
         vo.setResult(task.getAction());
         vo.setComment(task.getComment());
 
@@ -310,6 +310,15 @@ public class ProcessTaskController {
         }
 
         return vo;
+    }
+
+    private PageResult<TaskVO> page(List<TaskVO> tasks, Integer requestedPage, Integer requestedSize) {
+        int pageNum = requestedPage == null ? 1 : Math.max(1, requestedPage);
+        int pageSize = requestedSize == null ? 10 : Math.min(100, Math.max(1, requestedSize));
+        int total = tasks.size();
+        int start = Math.min((pageNum - 1) * pageSize, total);
+        int end = Math.min(start + pageSize, total);
+        return new PageResult<>(tasks.subList(start, end), total, pageNum, pageSize);
     }
 
     private String requireCurrentUser(String username) {

@@ -83,6 +83,9 @@ public class ProcessTask {
     
     /** 截止时间 */
     private LocalDateTime dueTime;
+
+    /** Flowable 任务优先级 */
+    private Integer priority;
     
     /** 处理耗时(毫秒) */
     private Long duration;

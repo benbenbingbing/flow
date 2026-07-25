@@ -1,14 +1,29 @@
 <template>
   <div class="menu-management">
     <div class="page-header">
+      <el-switch
+        v-model="showTechnicalColumns"
+        inline-prompt
+        active-text="技术列"
+        inactive-text="业务列"
+      />
       <el-button type="primary" @click="handleAddTopLevel">
         <el-icon><Plus /></el-icon>
-        新增顶级菜单
+        创建顶级菜单
       </el-button>
     </div>
-    
+    <PageState
+      v-if="loadError"
+      type="error"
+      title="菜单列表加载失败"
+      :description="loadError"
+      retryable
+      @retry="fetchTopMenus(topPageNum)"
+    />
+
     <!-- 菜单表格 -->
     <el-table
+      v-else
       v-loading="loading"
       :data="flattenMenuTree"
       :key="'table-' + expandedKeys.join(',')"
@@ -48,11 +63,11 @@
         </template>
       </el-table-column>
       
-      <el-table-column prop="perm" label="权限标识" min-width="160" show-overflow-tooltip />
+      <el-table-column v-if="showTechnicalColumns" prop="perm" label="权限标识" min-width="160" show-overflow-tooltip />
       
-      <el-table-column prop="path" label="路由路径" min-width="140" show-overflow-tooltip />
+      <el-table-column v-if="showTechnicalColumns" prop="path" label="路由路径" min-width="140" show-overflow-tooltip />
       
-      <el-table-column prop="component" label="组件路径" min-width="160" show-overflow-tooltip />
+      <el-table-column v-if="showTechnicalColumns" prop="component" label="组件路径" min-width="160" show-overflow-tooltip />
       
       <el-table-column prop="sort" label="排序" width="70" align="center">
         <template #default="{ row }">
@@ -109,7 +124,7 @@
     </el-table>
 
     <!-- 顶层分页 -->
-    <div class="pagination-wrapper">
+    <div v-if="!loadError" class="pagination-wrapper">
       <el-pagination
         v-model:current-page="topPageNum"
         v-model:page-size="topPageSize"
@@ -134,6 +149,18 @@
         :rules="formRules"
         label-width="100px"
       >
+        <el-alert
+          title="日常配置只需名称、类型、上级和状态。路由、组件与权限码属于技术配置，建议由开发或平台负责人维护。"
+          type="info"
+          :closable="false"
+          show-icon
+          class="menu-form-alert"
+        />
+        <div class="advanced-toggle">
+          <span>技术配置</span>
+          <el-switch v-model="showAdvancedFields" />
+        </div>
+
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="上级菜单">
@@ -151,9 +178,9 @@
           <el-col :span="12">
             <el-form-item label="菜单类型" prop="menuType">
               <el-radio-group v-model="formData.menuType">
-                <el-radio label="M">目录</el-radio>
-                <el-radio label="C">菜单</el-radio>
-                <el-radio label="F">按钮</el-radio>
+                <el-radio value="M">目录</el-radio>
+                <el-radio value="C">菜单</el-radio>
+                <el-radio value="F">按钮</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -178,7 +205,7 @@
           </el-col>
         </el-row>
         
-        <el-row :gutter="20" v-if="formData.menuType !== 'F'">
+        <el-row :gutter="20" v-if="formData.menuType !== 'F' && showAdvancedFields">
           <el-col :span="12">
             <el-form-item label="菜单图标" prop="icon">
               <icon-picker v-model="formData.icon" />
@@ -191,8 +218,8 @@
           </el-col>
         </el-row>
         
-        <el-row :gutter="20" v-if="formData.menuType === 'C'">
-          <el-col :span="12">
+        <el-row :gutter="20" v-if="formData.menuType === 'C' && showAdvancedFields">
+          <el-col v-if="showAdvancedFields" :span="12">
             <el-form-item label="组件路径" prop="component">
               <el-input v-model="formData.component" placeholder="如: system/menu/index" />
             </el-form-item>
@@ -205,7 +232,7 @@
         </el-row>
         
         <el-row :gutter="20">
-          <el-col :span="12">
+          <el-col v-if="showAdvancedFields" :span="12">
             <el-form-item label="权限标识" prop="perm">
               <el-input
                 v-model="formData.perm"
@@ -220,38 +247,38 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="formData.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
         
-        <el-row :gutter="20" v-if="formData.menuType !== 'F'">
+        <el-row :gutter="20" v-if="formData.menuType !== 'F' && showAdvancedFields">
           <el-col :span="12">
             <el-form-item label="显示状态" prop="visible">
               <el-radio-group v-model="formData.visible">
-                <el-radio label="0">显示</el-radio>
-                <el-radio label="1">隐藏</el-radio>
+                <el-radio value="0">显示</el-radio>
+                <el-radio value="1">隐藏</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="是否外链" prop="isFrame">
               <el-radio-group v-model="formData.isFrame">
-                <el-radio label="1">是</el-radio>
-                <el-radio label="0">否</el-radio>
+                <el-radio value="1">是</el-radio>
+                <el-radio value="0">否</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
         
-        <el-row :gutter="20" v-if="formData.menuType !== 'F'">
+        <el-row :gutter="20" v-if="formData.menuType !== 'F' && showAdvancedFields">
           <el-col :span="12">
             <el-form-item label="是否缓存" prop="isCache">
               <el-radio-group v-model="formData.isCache">
-                <el-radio label="0">缓存</el-radio>
-                <el-radio label="1">不缓存</el-radio>
+                <el-radio value="0">缓存</el-radio>
+                <el-radio value="1">不缓存</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -312,7 +339,9 @@
       
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          {{ formData.id ? '保存菜单' : '创建菜单' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -324,13 +353,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import IconPicker from '@/components/IconPicker.vue'
+import PageState from '@/components/PageState.vue'
 import { getMenuTree, getMenuChildren, getMenuSubtree, createMenu, updateMenu, deleteMenu, updateStatus, updateVisible } from '@/api/system/menu'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 
 const loading = ref(false)
+const loadError = ref('')
 const menuTree = ref<any[]>([])
 const expandedKeys = ref<string[]>([])
+const showTechnicalColumns = ref(false)
+const showAdvancedFields = ref(false)
 
 // 顶层分页
 const topPageNum = ref(1)
@@ -452,6 +485,7 @@ const formRules = {
 // 加载顶层菜单（分页）
 const fetchTopMenus = async (pageNum = 1) => {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await getMenuChildren('0', pageNum, topPageSize.value)
     const records = res.records || []
@@ -460,6 +494,8 @@ const fetchTopMenus = async (pageNum = 1) => {
     topPageNum.value = res.pageNum || pageNum
     topTotal.value = res.total || 0
     expandedKeys.value = []
+  } catch (error: any) {
+    loadError.value = error?.message || '无法读取菜单，请重试。'
   } finally {
     loading.value = false
   }
@@ -595,6 +631,7 @@ const resetForm = () => {
 // 新增顶级菜单
 const handleAddTopLevel = async () => {
   resetForm()
+  showAdvancedFields.value = false
   isTopLevelMenu.value = false
   dialogTitle.value = '新增顶级菜单'
   await fetchMenuTreeOptions()
@@ -604,6 +641,7 @@ const handleAddTopLevel = async () => {
 // 新增子菜单
 const handleAddChild = async (row: any) => {
   resetForm()
+  showAdvancedFields.value = false
   isTopLevelMenu.value = true
   formData.parentId = row.id
   dialogTitle.value = `新增子菜单 - ${row.menuName}`
@@ -614,6 +652,7 @@ const handleAddChild = async (row: any) => {
 // 编辑菜单
 const handleEdit = async (row: any) => {
   Object.assign(formData, { ...row })
+  showAdvancedFields.value = false
   if (formData.entityCode) {
     const entity = entityList.value.find(item => item.entityCode === formData.entityCode)
     if (entity) {
@@ -638,6 +677,11 @@ const handleSubmit = async () => {
   if (isEntityListMenu.value) {
     autoSetEntityPath(false)
   }
+  if (formData.menuType === 'C' && !formData.path) {
+    showAdvancedFields.value = true
+    ElMessage.warning('页面菜单需要配置路由地址；已展开技术配置。')
+    return
+  }
   await formRef.value.validate()
   submitLoading.value = true
   try {
@@ -659,9 +703,17 @@ const handleSubmit = async () => {
 // 删除菜单
 const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除菜单 "${row.menuName}" 吗？将同时删除其子菜单。`, '提示', {
-      type: 'warning'
-    })
+    await ElMessageBox.prompt(
+      `删除后该入口、子菜单及相关角色授权都会失效。请输入菜单名称「${row.menuName}」确认。`,
+      '删除菜单',
+      {
+        type: 'warning',
+        inputPlaceholder: row.menuName,
+        inputValidator: value => value === row.menuName || '输入的菜单名称不一致',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     await deleteMenu(row.id)
     ElMessage.success('删除成功')
     fetchTopMenus(topPageNum.value)
@@ -673,7 +725,19 @@ const handleDelete = async (row: any) => {
 // 状态变更
 const handleStatusChange = async (row: any) => {
   const isEnable = row.status === '0'
+  const previousStatus = isEnable ? '1' : '0'
   try {
+    await ElMessageBox.confirm(
+      isEnable
+        ? `启用后，拥有授权的用户将可访问菜单「${row.menuName}」。`
+        : `禁用后，菜单「${row.menuName}」及其下级入口将无法访问。`,
+      isEnable ? '启用菜单' : '禁用菜单',
+      {
+        type: isEnable ? 'info' : 'warning',
+        confirmButtonText: isEnable ? '确认启用' : '确认禁用',
+        cancelButtonText: '取消'
+      }
+    )
     await updateStatus(row.id, row.status)
     if (isEnable) {
       ElMessage.success(`菜单「${row.menuName}」已启用，将恢复显示在导航栏且可正常访问`)
@@ -681,14 +745,26 @@ const handleStatusChange = async (row: any) => {
       ElMessage.warning(`菜单「${row.menuName}」已禁用，将从导航栏移除且无法通过URL访问`)
     }
   } catch {
-    row.status = row.status === '0' ? '1' : '0'
+    row.status = previousStatus
   }
 }
 
 // 显示状态变更
 const handleVisibleChange = async (row: any) => {
   const isShow = row.visible === '0'
+  const previousVisible = isShow ? '1' : '0'
   try {
+    await ElMessageBox.confirm(
+      isShow
+        ? `菜单「${row.menuName}」将重新出现在导航中。`
+        : `菜单「${row.menuName}」会从导航隐藏，但已知地址仍可能直接访问。`,
+      isShow ? '显示菜单' : '隐藏菜单',
+      {
+        type: 'info',
+        confirmButtonText: isShow ? '确认显示' : '确认隐藏',
+        cancelButtonText: '取消'
+      }
+    )
     await updateVisible(row.id, row.visible)
     if (isShow) {
       ElMessage.success(`菜单「${row.menuName}」已显示，将重新出现在导航栏`)
@@ -696,13 +772,19 @@ const handleVisibleChange = async (row: any) => {
       ElMessage.info(`菜单「${row.menuName}」已隐藏，不会显示在导航栏但可通过URL直接访问`)
     }
   } catch {
-    row.visible = row.visible === '0' ? '1' : '0'
+    row.visible = previousVisible
   }
 }
 
 // 排序变更
 const handleSortChange = async (row: any) => {
-  // 可以批量更新排序，或者防抖处理
+  try {
+    await updateMenu(row.id, { ...row, children: undefined })
+    ElMessage.success(`菜单「${row.menuName}」排序已保存`)
+  } catch (error) {
+    ElMessage.error(error?.message || '排序保存失败，正在重新加载')
+    fetchTopMenus(topPageNum.value)
+  }
 }
 
 onMounted(() => {
@@ -717,6 +799,7 @@ onMounted(() => {
   
   .page-header {
     display: flex;
+    gap: 12px;
     justify-content: flex-end;
     align-items: center;
     margin-bottom: 20px;
@@ -768,6 +851,20 @@ onMounted(() => {
       color: #409eff;
     }
   }
+}
+
+.menu-form-alert {
+  margin-bottom: 12px;
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
 }
 
 // 隐藏 el-table 内置的树形展开图标（使用自定义展开图标代替）

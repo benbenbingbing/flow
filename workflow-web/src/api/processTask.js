@@ -93,7 +93,7 @@ export function getProcessHistory(processInstanceId) {
 
 /**
  * 获取我发起的流程列表
- * @param {Object} params - 查询参数 {pageNum, pageSize, processName}
+ * @param {Object} params - 查询参数 {pageNum, pageSize, processName, startDate, endDate}
  */
 export function getMyStartedList(params) {
   return request.get('/process-instance/my-started', { params, silentError: true })

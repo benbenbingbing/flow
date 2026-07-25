@@ -198,7 +198,6 @@ function getRoutes() {
     .map((routePath) => routePath
       .replace(':id?', 'e2e-process')
       .replace(':id', routePath.includes('entity-form') ? 'e2e-form' : routePath.includes('entity-list-config') ? 'e2e-list' : routePath.includes('entity') ? 'e2e-entity' : 'e2e-process')
-      .replace(':nodeId', 'StartEvent_1')
       .replace(':code', 'project')
       .replace(':entityCode', 'project')
       .replace(':entityId', 'e2e-entity')
@@ -206,14 +205,13 @@ function getRoutes() {
 }
 
 const expectedRouteText = new Map([
-  ['/login', ['流程配置系统', '默认账号']],
+  ['/login', ['流程配置系统']],
   ['/home', ['首页']],
   ['/process', ['流程管理']],
   ['/process/design/e2e-process', ['新建流程', '节点配置']],
-  ['/process/form/StartEvent_1', ['表单设计']],
   ['/entity', ['实体管理']],
   ['/entity/design/e2e-entity', ['项目立项', '字段列表']],
-  ['/entity/data/project', ['数据管理']],
+  ['/entity/data/project', ['项目立项', '新增数据']],
   ['/entity/list/project', ['演示数据', '优先级']],
   ['/entity-list-config/e2e-entity', ['实体列表配置']],
   ['/entity-list-config/design/e2e-list', ['列表配置设计']],
@@ -239,11 +237,11 @@ const interactionPlans = new Map([
     { click: '工具栏按钮', expect: ['工具栏按钮'] },
     { click: '操作列按钮', expect: ['操作列按钮'] }
   ]],
-  ['/system/menu', [{ click: '新增顶级菜单', expect: ['菜单名称'] }]],
+  ['/system/menu', [{ click: '创建顶级菜单', expect: ['菜单名称'] }]],
   ['/system/user', [{ click: '新增用户', expect: ['用户名'] }]],
   ['/system/role', [{ click: '新增角色', expect: ['角色名称'] }]],
   ['/system/group', [{ click: '新增用户组', expect: ['组名称'] }]],
-  ['/system/dict', [{ click: '新增', expect: ['字典名称'] }]]
+  ['/system/dict', [{ click: '新增字典', expect: ['字典名称'] }]]
 ])
 
 async function runInteractionPlan(client, routePath) {

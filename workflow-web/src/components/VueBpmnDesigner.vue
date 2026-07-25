@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import BpmnModeler from 'bpmn-js/lib/Modeler'
 import flowableModdle from '@/assets/flowable.json'
+import { translate as customTranslate } from '@/utils/bpmn-i18n'
 
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
@@ -17,80 +18,36 @@ const emit = defineEmits(['imported', 'element-click', 'command-stack-changed'])
 const canvasRef = ref()
 const modeler = ref(null)
 let commandStack = null
+const commandTokens = new WeakMap()
+let nextCommandToken = 1
 let actionOverlayIds = []
 let actionOverlayElementIds = []
 let currentActionCounts = {}
 let actionOverlayRefreshFrame = null
 
-const translations = {
-  'Append end event': '追加结束事件',
-  'Append gateway': '追加网关',
-  'Append task': '追加用户任务',
-  'Append user task': '追加用户任务',
-  'Append intermediate/boundary event': '追加中间/边界事件',
-  'Change type': '更改类型',
-  'Remove': '删除',
-  'Connect using sequence/message flow or association': '连接',
-  'Activate the global connect tool': '全局连接工具',
-  'Create start event': '创建开始事件',
-  'Create intermediate event': '创建中间事件',
-  'Create end event': '创建结束事件',
-  'Create task': '创建用户任务',
-  'Create user task': '创建用户任务',
-  'Create gateway': '创建网关',
-  'Create pool/participant': '创建泳道',
-  'Create expanded sub-process': '创建子流程',
-  'Create data object reference': '创建数据对象',
-  'Create data store reference': '创建数据存储',
-  'Change element': '更改元素类型',
-  'Start event': '开始事件',
-  'Intermediate throw event': '中间抛出事件',
-  'Intermediate catch event': '中间捕获事件',
-  'End event': '结束事件',
-  'Task': '任务',
-  'User task': '用户任务',
-  'Service task': '服务任务',
-  'Send task': '发送任务',
-  'Receive task': '接收任务',
-  'Manual task': '手动任务',
-  'Business rule task': '业务规则任务',
-  'Script task': '脚本任务',
-  'Call activity': '调用活动',
-  'Sub-process (collapsed)': '子流程（折叠）',
-  'Sub-process (expanded)': '子流程（展开）',
-  'Gateway': '网关',
-  'Exclusive gateway': '排他网关',
-  'Parallel gateway': '并行网关',
-  'Inclusive gateway': '包容网关',
-  'Event-based gateway': '基于事件的网关',
-  'Timer': '定时器',
-  'Message': '消息',
-  'Signal': '信号',
-  'Error': '错误',
-  'Escalation': '升级',
-  'Compensation': '补偿',
-  'Link': '链接',
-  'Condition': '条件',
-  'Cancel': '取消',
-  'Activate hand tool': '手型工具',
-  'Activate lasso tool': '套索工具',
-  'Activate create/remove space tool': '空间工具',
-  'Global connect tool': '全局连接',
-  'Sequence flow': '顺序流',
-  'Default flow': '默认流',
-  'Conditional flow': '条件流'
-}
-
-const customTranslate = (template, replacements = {}) => {
-  let result = translations[template] || template
-  Object.keys(replacements).forEach(key => {
-    result = result.replace(new RegExp('{' + key + '}', 'g'), replacements[key])
-  })
-  return result
-}
-
 const customTranslateModule = {
   translate: ['value', customTranslate]
+}
+
+const getCommandStackState = () => {
+  if (!commandStack) {
+    return { canUndo: false, canRedo: false, stackIndex: -1, historyToken: 'root' }
+  }
+  const stackIndex = Number.isInteger(commandStack._stackIdx) ? commandStack._stackIdx : -1
+  const entry = stackIndex >= 0 ? commandStack._stack?.[stackIndex] : null
+  if (entry && !commandTokens.has(entry)) {
+    commandTokens.set(entry, nextCommandToken++)
+  }
+  return {
+    canUndo: commandStack.canUndo(),
+    canRedo: commandStack.canRedo(),
+    stackIndex,
+    historyToken: entry ? `command-${commandTokens.get(entry)}` : 'root'
+  }
+}
+
+const emitCommandStackChanged = () => {
+  emit('command-stack-changed', getCommandStackState())
 }
 
 const activateElement = (element) => {
@@ -119,12 +76,7 @@ const initModeler = () => {
   try {
     commandStack = modeler.value.get('commandStack')
     if (commandStack) {
-      commandStack.on('changed', () => {
-        emit('command-stack-changed', {
-          canUndo: commandStack.canUndo(),
-          canRedo: commandStack.canRedo()
-        })
-      })
+      commandStack.on('changed', emitCommandStackChanged)
     }
   } catch (e) {}
 
@@ -200,10 +152,7 @@ const initModeler = () => {
 
   modeler.value.on('elements.changed', () => {
     if (commandStack) {
-      emit('command-stack-changed', {
-        canUndo: commandStack.canUndo(),
-        canRedo: commandStack.canRedo()
-      })
+      emitCommandStackChanged()
     }
     scheduleActionOverlayRefresh()
   })
@@ -222,12 +171,9 @@ const importXML = async (xml) => {
       canvas.zoom(0.7)
     }
     if (commandStack) {
-      emit('command-stack-changed', {
-        canUndo: commandStack.canUndo(),
-        canRedo: commandStack.canRedo()
-      })
+      emitCommandStackChanged()
     }
-    emit('imported', { modeler: modeler.value })
+    emit('imported', { modeler: modeler.value, ...getCommandStackState() })
   } catch (error) {
     console.error('导入XML失败:', error)
   }
@@ -250,20 +196,14 @@ const getXml = async () => {
 const undo = () => {
   if (commandStack && commandStack.canUndo()) {
     commandStack.undo()
-    emit('command-stack-changed', {
-      canUndo: commandStack.canUndo(),
-      canRedo: commandStack.canRedo()
-    })
+    emitCommandStackChanged()
   }
 }
 
 const redo = () => {
   if (commandStack && commandStack.canRedo()) {
     commandStack.redo()
-    emit('command-stack-changed', {
-      canUndo: commandStack.canUndo(),
-      canRedo: commandStack.canRedo()
-    })
+    emitCommandStackChanged()
   }
 }
 
@@ -484,6 +424,18 @@ const setActionCounts = (counts = {}) => {
   renderActionOverlays()
 }
 
+const resizeAndFocus = async (elementId) => {
+  if (!modeler.value) return
+  await nextTick()
+  const canvas = modeler.value.get('canvas')
+  canvas.resized()
+  if (!elementId) return
+  const element = modeler.value.get('elementRegistry').get(elementId)
+  if (element) {
+    canvas.scrollToElement(element, 80)
+  }
+}
+
 watch(() => props.xml, (newXml) => {
   if (newXml) loadXml(newXml)
 }, { immediate: false })
@@ -508,6 +460,7 @@ defineExpose({
   undo,
   redo,
   setActionCounts,
+  resizeAndFocus,
   getModeler: () => modeler.value
 })
 </script>

@@ -182,7 +182,7 @@ public class PublishedFormSubmissionService {
                 mode,
                 submittedData,
                 executionContext,
-                UiRuntimeResolutionContext.historical(null, null));
+                null);
     }
 
     /**
@@ -198,8 +198,12 @@ public class PublishedFormSubmissionService {
             Map<String, Object> submittedData,
             FormSubmissionExecutionContext executionContext,
             UiRuntimeResolutionContext resolutionContext) {
-        ResolvedEntityFormRelease resolved =
-                releaseService.resolveRuntimeFormRelease(
+        ResolvedEntityFormRelease resolved = resolutionContext == null
+                ? releaseService.resolveRuntimeFormRelease(
+                        formId,
+                        releaseId,
+                        releaseVersion)
+                : releaseService.resolveRuntimeFormRelease(
                         formId,
                         releaseId,
                         releaseVersion,

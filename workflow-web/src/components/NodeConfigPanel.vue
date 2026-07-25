@@ -82,7 +82,7 @@
           </SettingsSection>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -302,8 +302,8 @@
           <template v-if="assigneeForm.assigneeType === 'interface'">
             <el-form-item label="接口类型">
               <el-radio-group v-model="assigneeForm.interfaceType">
-                <el-radio-button label="spring">Spring Bean</el-radio-button>
-                <el-radio-button label="rest">REST接口</el-radio-button>
+                <el-radio-button value="spring">Spring Bean</el-radio-button>
+                <el-radio-button value="rest">REST接口</el-radio-button>
               </el-radio-group>
             </el-form-item>
             
@@ -326,8 +326,8 @@
             
             <el-form-item label="请求方式" v-if="assigneeForm.interfaceType === 'rest'">
               <el-radio-group v-model="assigneeForm.restMethod">
-                <el-radio-button label="GET">GET</el-radio-button>
-                <el-radio-button label="POST">POST</el-radio-button>
+                <el-radio-button value="GET">GET</el-radio-button>
+                <el-radio-button value="POST">POST</el-radio-button>
               </el-radio-group>
             </el-form-item>
             
@@ -377,16 +377,16 @@
               >
                 <el-form-item label="执行方式">
                   <el-radio-group v-model="assigneeForm.multiInstanceType">
-                    <el-radio-button label="parallel">并行多实例</el-radio-button>
-                    <el-radio-button label="sequential">串行多实例</el-radio-button>
+                    <el-radio-button value="parallel">并行多实例</el-radio-button>
+                    <el-radio-button value="sequential">串行多实例</el-radio-button>
                   </el-radio-group>
                   <div class="form-tip">并行：多人同时审批；串行：按顺序审批</div>
                 </el-form-item>
 
                 <el-form-item label="人员来源">
                   <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
-                    <el-radio-button label="variable">直接选择</el-radio-button>
-                    <el-radio-button label="interface">接口动态</el-radio-button>
+                    <el-radio-button value="variable">直接选择</el-radio-button>
+                    <el-radio-button value="interface">接口动态</el-radio-button>
                   </el-radio-group>
                 </el-form-item>
               </SettingsSection>
@@ -525,7 +525,7 @@
           </SettingsSection>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -539,10 +539,10 @@
         <el-form :model="serviceForm" label-width="100px" size="small">
           <el-form-item label="实现类型">
             <el-radio-group v-model="serviceForm.implementationType" @change="onServiceTypeChange">
-              <el-radio-button label="class">Java类</el-radio-button>
-              <el-radio-button label="expression">表达式</el-radio-button>
-              <el-radio-button label="delegateExpression">Spring Bean</el-radio-button>
-              <el-radio-button label="rest">REST接口</el-radio-button>
+              <el-radio-button value="class">Java类</el-radio-button>
+              <el-radio-button value="expression">表达式</el-radio-button>
+              <el-radio-button value="delegateExpression">Spring Bean</el-radio-button>
+              <el-radio-button value="rest">REST接口</el-radio-button>
             </el-radio-group>
           </el-form-item>
           
@@ -561,10 +561,10 @@
           <template v-else>
             <el-form-item label="请求方式">
               <el-radio-group v-model="restForm.method">
-                <el-radio-button label="GET">GET</el-radio-button>
-                <el-radio-button label="POST">POST</el-radio-button>
-                <el-radio-button label="PUT">PUT</el-radio-button>
-                <el-radio-button label="DELETE">DELETE</el-radio-button>
+                <el-radio-button value="GET">GET</el-radio-button>
+                <el-radio-button value="POST">POST</el-radio-button>
+                <el-radio-button value="PUT">PUT</el-radio-button>
+                <el-radio-button value="DELETE">DELETE</el-radio-button>
               </el-radio-group>
             </el-form-item>
             
@@ -646,9 +646,9 @@
 
               <el-form-item label="错误处理">
                 <el-radio-group v-model="restForm.errorHandling" @change="updateRestConfig">
-                  <el-radio label="throw">抛出异常终止流程</el-radio>
-                  <el-radio label="continue">记录错误继续流程</el-radio>
-                  <el-radio label="ignore">忽略错误</el-radio>
+                  <el-radio value="throw">抛出异常终止流程</el-radio>
+                  <el-radio value="continue">记录错误继续流程</el-radio>
+                  <el-radio value="ignore">忽略错误</el-radio>
                 </el-radio-group>
               </el-form-item>
 
@@ -674,7 +674,7 @@
           </el-form-item>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -726,7 +726,7 @@
           </el-form-item>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -762,14 +762,14 @@
             
             <el-form-item label="超时处理">
               <el-radio-group v-model="receiveForm.timeoutAction">
-                <el-radio label="error">抛出异常</el-radio>
-                <el-radio label="continue">继续执行</el-radio>
+                <el-radio value="error">抛出异常</el-radio>
+                <el-radio value="continue">继续执行</el-radio>
               </el-radio-group>
             </el-form-item>
           </template>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -813,7 +813,7 @@
           </el-form-item>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -857,7 +857,7 @@
           </el-form-item>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -871,9 +871,9 @@
         <el-form :model="scriptForm" label-width="100px" size="small">
           <el-form-item label="脚本类型">
             <el-radio-group v-model="scriptForm.scriptFormat">
-              <el-radio-button label="javascript">JavaScript</el-radio-button>
-              <el-radio-button label="groovy">Groovy</el-radio-button>
-              <el-radio-button label="python">Python</el-radio-button>
+              <el-radio-button value="javascript">JavaScript</el-radio-button>
+              <el-radio-button value="groovy">Groovy</el-radio-button>
+              <el-radio-button value="python">Python</el-radio-button>
             </el-radio-group>
           </el-form-item>
           
@@ -942,7 +942,7 @@
           </el-form-item>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -973,8 +973,8 @@
           
           <el-form-item label="调用方式">
             <el-radio-group v-model="callForm.callActivityType">
-              <el-radio label="bpmn">BPMN子流程</el-radio>
-              <el-radio label="cmmn">CMMN案例</el-radio>
+              <el-radio value="bpmn">BPMN子流程</el-radio>
+              <el-radio value="cmmn">CMMN案例</el-radio>
             </el-radio-group>
           </el-form-item>
           
@@ -1018,7 +1018,7 @@
           </SettingsSection>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -1032,9 +1032,9 @@
         <el-form :model="conditionForm" label-width="100px" size="small">
           <el-form-item label="条件类型">
             <el-radio-group v-model="conditionForm.type" @change="onConditionTypeChange">
-              <el-radio-button label="">无条件</el-radio-button>
-              <el-radio-button label="expression">表达式</el-radio-button>
-              <el-radio-button label="default">默认流</el-radio-button>
+              <el-radio-button value="">无条件</el-radio-button>
+              <el-radio-button value="expression">表达式</el-radio-button>
+              <el-radio-button value="default">默认流</el-radio-button>
             </el-radio-group>
           </el-form-item>
           
@@ -1104,7 +1104,7 @@
           </el-alert>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -1187,7 +1187,7 @@
           </template>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -1232,7 +1232,7 @@
                       <el-button
                         :type="option.showComment ? 'primary' : ''"
                         link
-                        size="small"
+                        size="small" aria-label="切换备注显示" title="切换备注显示"
                         @click="option.showComment = !option.showComment"
                       >
                         <el-icon><View /></el-icon>
@@ -1242,7 +1242,7 @@
                       <el-button
                         :type="option.remarkRequired ? 'danger' : ''"
                         link
-                        size="small"
+                        size="small" aria-label="切换备注必填" title="切换备注必填"
                         @click="option.remarkRequired = !option.remarkRequired"
                       >
                         <el-icon><WarningFilled /></el-icon>
@@ -1252,7 +1252,7 @@
                       <el-button
                         type="danger"
                         link
-                        size="small"
+                        size="small" aria-label="删除审批选项" title="删除审批选项"
                         @click="removeApprovalOption(index)"
                         :disabled="approvalForm.options.length <= 1"
                       >
@@ -1269,7 +1269,7 @@
           </template>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
       
@@ -1338,7 +1338,7 @@
                 <el-input v-else-if="rule.type === 'RESOLVER'" v-model="rule.resolverCode" style="flex:1" placeholder="已注册解析器编码" />
                 <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
                 <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
-                <el-button type="danger" link @click="removeCcRule(index)" :disabled="ccForm.recipientRules.length <= 1">
+                <el-button type="danger" link aria-label="删除收件人规则" title="删除收件人规则" :disabled="ccForm.recipientRules.length <= 1" @click="removeCcRule(index)">
                   <el-icon><Delete /></el-icon>
                 </el-button>
               </div>
@@ -1351,7 +1351,7 @@
           </template>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
 
@@ -1429,7 +1429,7 @@
           </SettingsSection>
         </el-form>
         <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">保存</el-button>
+          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -1771,7 +1771,15 @@ function addApprovalOption() {
 async function removeApprovalOption(index) {
   if (approvalForm.value.options.length <= 1) return
   try {
-    await ElMessageBox.confirm('确定删除该审批选项吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '删除后，运行时审批人将不能再选择该结果。确认删除吗？',
+      '删除审批选项',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     approvalForm.value.options.splice(index, 1)
   } catch {
     // 用户取消
@@ -3334,9 +3342,9 @@ function saveCurrentTab() {
         return
     }
 
-    // 节点配置仅写入 bpmn-js 内存模型，尚未落库；落库由顶部"保存流程"统一完成。
-    // 这里只弹一次"暂存成功"，并通知父组件标记脏状态（父组件不再弹提示，避免叠加）。
-    ElMessage.success('暂存成功，请点击「保存流程」落库')
+    // 节点配置仅写入 bpmn-js 内存模型，尚未落库；落库由顶部“保存草稿”统一完成。
+    // 这里只提示画布状态，并通知父组件标记脏状态。
+    ElMessage.success('已应用到画布，请点击「保存草稿」完成保存')
     emit('save')
   } catch (error) {
     console.error('保存失败:', error)

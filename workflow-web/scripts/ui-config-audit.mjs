@@ -95,6 +95,14 @@ function auditNode(node, file) {
     if (tag === 'el-button' && !hasAny(attrMap, ['on:click', 'nativeOn:click', 'type', 'native-type']) && text === '') {
       recordIssue(file, tag, '缺少点击/类型/可见内容')
     }
+
+    if (
+      tag === 'el-button'
+      && text === ''
+      && !hasAny(attrMap, ['aria-label', 'bind:aria-label', 'title', 'bind:title'])
+    ) {
+      recordIssue(file, tag, '仅图标按钮缺少 aria-label 或 title')
+    }
   }
 
   for (const child of node.children || []) auditNode(child, file)

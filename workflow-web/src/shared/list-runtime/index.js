@@ -39,6 +39,10 @@ export function formatDateValue(date) {
   return parsedDate.toLocaleString('zh-CN')
 }
 
+export function formatDateColumn(_row, _column, value) {
+  return formatDateValue(value)
+}
+
 function normalizeMultipleValue(value) {
   if (Array.isArray(value)) return value
   if (typeof value !== 'string') return value

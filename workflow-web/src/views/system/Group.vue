@@ -8,8 +8,16 @@
       </el-button>
     </div>
     
+    <PageState
+      v-if="loadError"
+      type="error"
+      title="用户组加载失败"
+      :description="loadError"
+      retryable
+      @retry="fetchGroupList"
+    />
     <!-- 组表格 -->
-    <el-table v-loading="loading" :data="groupList" border stripe>
+    <el-table v-else v-loading="loading" :data="groupList" border stripe>
       <el-table-column type="index" label="#" width="60" align="center" />
       
       <el-table-column prop="groupName" label="组名称" min-width="150" />
@@ -17,6 +25,10 @@
       <el-table-column prop="groupCode" label="组编码" min-width="150" />
       
       <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+
+      <el-table-column label="成员数" width="90" align="center">
+        <template #default="{ row }">{{ row.userIds?.length || 0 }}</template>
+      </el-table-column>
       
       <el-table-column prop="sort" label="排序" width="80" align="center" />
       
@@ -74,6 +86,7 @@
             placeholder="请输入组编码，如：dept_manager"
             :disabled="!!formData.id"
           />
+          <div class="field-help">创建后不可修改，可用于审批规则和外部集成引用。</div>
         </el-form-item>
         
         <el-form-item label="描述" prop="description">
@@ -100,8 +113,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="formData.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -110,7 +123,9 @@
       
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          {{ formData.id ? '保存用户组' : '创建用户组' }}
+        </el-button>
       </template>
     </el-dialog>
     
@@ -140,7 +155,9 @@
       
       <template #footer>
         <el-button @click="userDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSaveUsers" :loading="userSubmitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSaveUsers" :loading="userSubmitLoading">
+          保存成员（{{ selectedUserIds.length }}）
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -151,8 +168,10 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { getGroupList, createGroup, updateGroup, deleteGroup, updateGroupStatus, saveGroupUsers, getUsers } from '@/api/system/group'
+import PageState from '@/components/PageState.vue'
 
 const loading = ref(false)
+const loadError = ref('')
 const groupList = ref<any[]>([])
 const userOptions = ref<any[]>([])
 
@@ -185,8 +204,11 @@ const currentGroupId = ref('')
 // 获取组列表
 const fetchGroupList = async () => {
   loading.value = true
+  loadError.value = ''
   try {
     groupList.value = await getGroupList() || []
+  } catch (error: any) {
+    loadError.value = error?.message || '无法读取用户组，请检查权限或稍后重试。'
   } finally {
     loading.value = false
   }
@@ -258,9 +280,17 @@ const handleSubmit = async () => {
 // 删除组
 const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除用户组 "${row.groupName}" 吗？`, '提示', {
-      type: 'warning'
-    })
+    const confirmation = await ElMessageBox.prompt(
+      `删除后，${row.userIds?.length || 0} 名成员将失去通过该组获得的流程候选资格。请输入组名称「${row.groupName}」确认。`,
+      '删除用户组',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        inputPlaceholder: row.groupName,
+        inputValidator: value => value === row.groupName || '组名称不匹配'
+      }
+    )
+    if (confirmation.value !== row.groupName) return
     await deleteGroup(row.id)
     ElMessage.success('删除成功')
     fetchGroupList()
@@ -271,11 +301,23 @@ const handleDelete = async (row: any) => {
 
 // 状态变更
 const handleStatusChange = async (row: any) => {
+  const previousStatus = row.status === '0' ? '1' : '0'
   try {
+    const memberCount = row.userIds?.length || 0
+    const action = row.status === '0' ? '启用' : '禁用'
+    await ElMessageBox.confirm(
+      `${action}用户组「${row.groupName}」将影响 ${memberCount} 名成员后续通过该组参与流程审批。历史任务不会自动改派。`,
+      `${action}用户组`,
+      {
+        type: row.status === '0' ? 'info' : 'warning',
+        confirmButtonText: `确认${action}`,
+        cancelButtonText: '取消'
+      }
+    )
     await updateGroupStatus(row.id, row.status)
-    ElMessage.success('状态更新成功')
+    ElMessage.success(`用户组已${action}`)
   } catch {
-    row.status = row.status === '0' ? '1' : '0'
+    row.status = previousStatus
   }
 }
 
@@ -289,7 +331,18 @@ const handleAssignUsers = async (row: any) => {
 // 保存组成员
 const handleSaveUsers = async () => {
   if (!currentGroupId.value) return
-  
+
+  const group = groupList.value.find(item => item.id === currentGroupId.value)
+  const beforeCount = group?.userIds?.length || 0
+  const afterCount = selectedUserIds.value.length
+  if (beforeCount !== afterCount) {
+    await ElMessageBox.confirm(
+      `成员数量将从 ${beforeCount} 人变为 ${afterCount} 人。变更会影响后续按用户组选人的流程节点。`,
+      '确认成员变更',
+      { type: 'warning', confirmButtonText: '保存成员' }
+    )
+  }
+
   userSubmitLoading.value = true
   try {
     await saveGroupUsers(currentGroupId.value, selectedUserIds.value)
@@ -340,6 +393,13 @@ onMounted(() => {
   }
 }
 
+.field-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 :deep(.el-transfer) {
   display: flex;
   justify-content: center;
@@ -347,6 +407,32 @@ onMounted(() => {
   
   .el-transfer-panel {
     width: 250px;
+  }
+}
+
+@media (max-width: 760px) {
+  .group-management {
+    padding: 12px;
+
+    .page-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
+  :deep(.el-transfer) {
+    align-items: stretch;
+    flex-direction: column;
+
+    .el-transfer-panel {
+      width: 100%;
+    }
+
+    .el-transfer__buttons {
+      display: flex;
+      justify-content: center;
+      padding: 8px 0;
+    }
   }
 }
 </style>

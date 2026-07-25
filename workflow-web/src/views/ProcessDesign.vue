@@ -15,6 +15,7 @@
             :disabled="!canUndo" 
             @click="handleUndo"
             title="撤销 (Ctrl+Z)"
+            aria-label="撤销"
           >
             <el-icon><Back /></el-icon>
           </el-button>
@@ -23,24 +24,35 @@
             :disabled="!canRedo" 
             @click="handleRedo"
             title="重做 (Ctrl+Y)"
+            aria-label="重做"
           >
             <el-icon><Right /></el-icon>
           </el-button>
         </el-button-group>
+        <el-tag v-if="isDirty" type="warning" effect="plain">未保存</el-tag>
+        <el-tag v-else type="success" effect="plain">草稿已保存</el-tag>
         
         <el-divider direction="vertical" />
 
-        <el-badge :value="globalActionCount" :hidden="globalActionCount === 0" class="global-action-badge">
-          <el-button @click="globalActionVisible = true">
-            <el-icon><Operation /></el-icon>全局动作
-          </el-button>
-        </el-badge>
-        
-        <el-button @click="handleSaveXML">
-          <el-icon><Document /></el-icon>查看XML
-        </el-button>
+        <el-dropdown trigger="click" @command="handleAdvancedCommand">
+          <el-badge :value="globalActionCount" :hidden="globalActionCount === 0" class="global-action-badge">
+            <el-button>
+              <el-icon><MoreFilled /></el-icon>高级
+            </el-button>
+          </el-badge>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="actions">
+                全局流程动作
+                <span v-if="globalActionCount" class="advanced-count">{{ globalActionCount }}</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="xml" divided>查看 BPMN XML</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
         <el-button type="primary" @click="handleSave">
-          <el-icon><Check /></el-icon>保存流程
+          <el-icon><Check /></el-icon>保存草稿
         </el-button>
       </div>
     </div>
@@ -90,7 +102,16 @@
     </el-dialog>
     
     <div class="design-container">
+      <PageState
+        v-if="loadError"
+        type="error"
+        title="流程设计加载失败"
+        :description="loadError"
+        retryable
+        @retry="loadProcess"
+      />
       <VueBpmnDesigner
+        v-else
         ref="designerRef"
         class="canvas"
         @element-click="onElementClick"
@@ -102,39 +123,36 @@
         class="node-config-trigger"
         type="primary"
         plain
-        @click="nodeConfigVisible = true"
+        @click="openNodeConfig"
       >
         <el-icon><Setting /></el-icon>
         节点配置
       </el-button>
+      <aside v-if="nodeConfigVisible && selectedElement" class="node-config-panel">
+        <div class="node-config-panel__header">
+          <strong>{{ nodeConfigDrawerTitle }}</strong>
+          <el-button text circle aria-label="关闭节点配置" title="关闭节点配置" @click="closeNodeConfig">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+        <div class="node-config-panel__body">
+          <NodeConfigPanel
+            :element="selectedElement"
+            :process-id="processId"
+            @save="handleNodeConfigSave"
+            @action-changed="refreshActionCounts"
+          />
+        </div>
+      </aside>
     </div>
-
-    <el-drawer
-      v-model="nodeConfigVisible"
-      :title="nodeConfigDrawerTitle"
-      size="min(440px, 96vw)"
-      class="process-node-config-drawer"
-      append-to-body
-      :modal="false"
-      :lock-scroll="false"
-      :destroy-on-close="false"
-    >
-      <NodeConfigPanel
-        v-if="selectedElement"
-        :element="selectedElement"
-        :process-id="processId"
-        @save="handleNodeConfigSave"
-        @action-changed="refreshActionCounts"
-      />
-    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Document, Check, Back, Right, Operation, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Check, Back, Right, Setting, MoreFilled, Close } from '@element-plus/icons-vue'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
 import formatXML from 'xml-formatter'
@@ -146,6 +164,8 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import { processActionApi } from '@/api/processAction'
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import PageState from '@/components/PageState.vue'
 
 /**
  * 检查并修复XML布局
@@ -181,6 +201,7 @@ const processId = route.params.id
 
 const designerRef = ref()
 const processData = ref({})
+const loadError = ref('')
 const selectedElement = ref(null)
 const nodeConfigVisible = ref(false)
 const globalActionVisible = ref(false)
@@ -189,6 +210,14 @@ const nodeConfigDrawerTitle = computed(() => {
   const name = selectedElement.value?.businessObject?.name?.trim()
   return `节点配置 · ${name || '未命名节点'}`
 })
+
+const handleAdvancedCommand = (command) => {
+  if (command === 'actions') {
+    globalActionVisible.value = true
+  } else if (command === 'xml') {
+    handleSaveXML()
+  }
+}
 
 // 撤销/重做状态
 const canUndo = ref(false)
@@ -200,8 +229,17 @@ const xmlContent = ref('')
 const xmlExtensions = [xml(), oneDark, EditorView.lineWrapping]
 const xmlEditorStyle = { height: '100%', fontSize: '14px' }
 
-// 节点配置是否有未落库的暂存变更（写入了 bpmn-js 内存但还没点"保存流程"）
+// 节点配置是否有未落库的暂存变更（写入了 bpmn-js 内存但还没点“保存草稿”）
 const hasUnsavedNodeChanges = ref(false)
+const currentHistoryToken = ref('root')
+const savedHistoryToken = ref('root')
+const isDirty = computed(() =>
+  hasUnsavedNodeChanges.value || currentHistoryToken.value !== savedHistoryToken.value
+)
+
+useUnsavedChangesGuard(isDirty, {
+  message: '流程画布或节点配置有未保存修改，离开后这些修改将丢失。'
+})
 
 // 默认空白流程（包含 flowable 命名空间）
 const defaultXML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -249,15 +287,32 @@ const handleKeydown = (e) => {
 
 const onElementClick = (element) => {
   selectedElement.value = element
+  openNodeConfig()
+}
+
+const openNodeConfig = () => {
   nodeConfigVisible.value = true
 }
 
-const onCommandStackChanged = ({ canUndo: undo, canRedo: redo }) => {
-  canUndo.value = undo
-  canRedo.value = redo
+const closeNodeConfig = () => {
+  nodeConfigVisible.value = false
 }
 
-const onImported = () => {
+watch(nodeConfigVisible, async () => {
+  await nextTick()
+  designerRef.value?.resizeAndFocus(selectedElement.value?.id)
+})
+
+const onCommandStackChanged = ({ canUndo: undo, canRedo: redo, historyToken }) => {
+  canUndo.value = undo
+  canRedo.value = redo
+  currentHistoryToken.value = historyToken || 'root'
+}
+
+const onImported = ({ historyToken } = {}) => {
+  currentHistoryToken.value = historyToken || 'root'
+  savedHistoryToken.value = currentHistoryToken.value
+  hasUnsavedNodeChanges.value = false
   refreshActionCounts()
 }
 
@@ -282,6 +337,7 @@ const refreshActionCounts = async () => {
 }
 
 const loadProcess = async () => {
+  loadError.value = ''
   if (!processId) {
     await designerRef.value?.loadXml(defaultXML)
     return
@@ -308,7 +364,7 @@ const loadProcess = async () => {
     await designerRef.value?.loadXml(xml)
   } catch (error) {
     console.error(error)
-    ElMessage.error('加载流程失败')
+    loadError.value = error?.message || '无法读取流程草稿，请检查权限或稍后重试。'
   }
 }
 
@@ -375,7 +431,8 @@ const handleSave = async () => {
     }
 
     hasUnsavedNodeChanges.value = false
-    ElMessage.success('保存成功')
+    savedHistoryToken.value = currentHistoryToken.value
+    ElMessage.success('草稿保存成功，发布后运行时生效')
   } catch (error) {
     console.error(error)
     ElMessage.error('保存失败')
@@ -385,7 +442,7 @@ const handleSave = async () => {
 const handleNodeConfigSave = () => {
   // 节点配置只写入了 bpmn-js 内存模型，未落库。
   // 仅标记脏状态，不弹提示，避免一次保存弹出多个 toast。
-  // 真正落库由顶部"保存流程"按钮完成，落库成功后才提示。
+  // 真正落库由顶部“保存草稿”按钮完成，落库成功后才提示。
   hasUnsavedNodeChanges.value = true
 }
 
@@ -438,6 +495,10 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.design-container > .page-state {
+  flex: 1;
+}
+
 .canvas {
   flex: 1;
   background: #f5f5f5;
@@ -452,6 +513,43 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
 }
 
+.node-config-panel {
+  width: min(440px, 42vw);
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid #e4e7ed;
+}
+
+.node-config-panel__header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.node-config-panel__header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-config-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.advanced-count {
+  margin-left: 10px;
+  color: #909399;
+}
+
 /* 历史操作按钮组 */
 .history-actions {
   margin-right: 8px;
@@ -460,17 +558,6 @@ onUnmounted(() => {
 /* 分割线 */
 .header-right .el-divider {
   margin: 0 12px;
-}
-
-:global(.process-node-config-drawer .el-drawer__header) {
-  margin-bottom: 0;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-:global(.process-node-config-drawer .el-drawer__body) {
-  padding: 0;
-  overflow: hidden;
 }
 
 /* XML 全屏弹窗样式：标题栏/底部固定，仅编辑器内容区域滚动 */
@@ -536,6 +623,30 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .design-header {
+    height: auto;
+    min-height: 50px;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .header-left,
+  .header-right {
+    flex-wrap: wrap;
+  }
+
+  .node-config-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    width: 100%;
+    min-width: 0;
+    border-left: 0;
+  }
 }
 </style>
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import {
   FORM_NODE_ALLOWED_CHILD_TYPES,
@@ -9,6 +9,12 @@ import {
 } from '../shared/form-node-hierarchy.js'
 
 const root = process.cwd()
+const collectFiles = (directory, extension) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  const fullPath = path.join(directory, entry.name)
+  return entry.isDirectory()
+    ? collectFiles(fullPath, extension)
+    : entry.name.endsWith(extension) ? [fullPath] : []
+})
 const routerSource = readFileSync(path.join(root, 'src/router/index.js'), 'utf8')
 const viewFiles = [...routerSource.matchAll(/import\('@\/views\/([^']+\.vue)'\)/g)].map((match) => match[1])
 
@@ -19,6 +25,37 @@ viewFiles.forEach((viewFile) => {
   const source = readFileSync(fullPath, 'utf8')
   assert.match(source, /<template>[\s\S]*<\/template>/, `页面缺少 template: ${viewFile}`)
   assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/, `页面缺少 script: ${viewFile}`)
+})
+
+collectFiles(path.join(root, 'src'), '.vue').forEach((vueFile) => {
+  const source = readFileSync(vueFile, 'utf8')
+  assert.doesNotMatch(
+    source,
+    /<el-radio(?:-button)?\b[^>]*\s:?label=/,
+    `Element Plus 单选控件应使用 value 传值，避免 3.x 废弃兼容问题: ${path.relative(root, vueFile)}`
+  )
+})
+
+const routedTopLevelViews = new Set([
+  ...viewFiles.filter(file => !file.includes('/')),
+  'Layout.vue'
+])
+const unroutedTopLevelViews = readdirSync(path.join(root, 'src/views'))
+  .filter(file => file.endsWith('.vue'))
+  .filter(file => !routedTopLevelViews.has(file))
+assert.deepEqual(
+  unroutedTopLevelViews,
+  [],
+  `src/views 顶层页面必须有正式路由或被移入组件目录，发现无入口页面: ${unroutedTopLevelViews.join(', ')}`
+)
+
+;[
+  'src/views/Workbench.vue',
+  'src/views/EntityFormManage.vue',
+  'src/components/ProcessDetail.vue',
+  'src/api/workbench.js'
+].forEach((retiredFile) => {
+  assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
 ;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/config-migration'].forEach((routePath) => {
@@ -54,9 +91,15 @@ assert.deepEqual(
     '/entity/design/:id',
     '/entity-list/:entityCode/:listKey',
     '/process/design/:id?',
-    '/process/form/:nodeId',
     '/process/progress/:instanceId'
   ].sort()
+)
+
+assert.doesNotMatch(routerSource, /FormDesign\.vue|\/process\/form\/:nodeId/, '不得保留会假装保存成功的旧流程表单设计入口')
+assert.match(
+  routerSource,
+  /path:\s*'\/:pathMatch\(\.\*\)\*'[\s\S]{0,250}NotFound\.vue/,
+  '未知地址应展示明确的 404 页面'
 )
 
 const dynamicRuntimeFiles = [
@@ -83,9 +126,24 @@ const settingsSectionSource = readFileSync(path.join(root, 'src/components/Setti
 })
 
 const entityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
-const entityDataManage = readFileSync(path.join(root, 'src/views/EntityDataManage.vue'), 'utf8')
+const legacyEntityDataRedirect = readFileSync(
+  path.join(root, 'src/views/entity/LegacyEntityDataRedirect.vue'),
+  'utf8'
+)
 const entityDataFormDialog = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataFormDialog.vue'),
+  'utf8'
+)
+const entityApprovalDialog = readFileSync(
+  path.join(root, 'src/views/entity/components/approval/EntityApprovalDialog.vue'),
+  'utf8'
+)
+const runtimeFormTabs = readFileSync(
+  path.join(root, 'src/shared/form-runtime/runtimeFormTabs.js'),
+  'utf8'
+)
+const entityDataTableSource = readFileSync(
+  path.join(root, 'src/views/entity/components/EntityDataTable.vue'),
   'utf8'
 )
 assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/, '动态实体列表应支持自定义列表组件')
@@ -106,11 +164,63 @@ assert.ok(
     && entityDataFormDialog.includes('props.defaultForm.formKey'),
   '新增实体数据弹窗应明确展示实际运行时表单名称和标识'
 )
-assert.match(
-  entityDataManage,
-  /const handleCreate = async[\s\S]*resolvedForm\.value = null[\s\S]*formLoadFailed = true[\s\S]*if \(formLoadFailed\) return/,
-  '旧版实体数据页加载最新表单失败时应清空旧表单并停止打开新增弹窗'
+assert.ok(
+  entityDataFormDialog.includes(':showStartProcess="canStartProcess"')
+    && entityDataFormDialog.includes('const canStartProcess = computed(() => !hasProcessInfo.value)')
+    && entityDataFormDialog.includes('formData.startProcess = false'),
+  '未发起流程的数据在编辑时仍应提供“发起审批”，并重置上一次的勾选状态'
 )
+assert.ok(
+  entityDataFormDialog.includes('canStartProcess.value && runtimeNodeTabs.value.length === 0')
+    && entityDataFormDialog.includes(':showStartProcess="canStartProcess && !showBasicTab && idx === 0"'),
+  '纯递归 Tab 表单新增时不应生成空白“基本信息”，发起流程开关应由首个自定义 Tab 承载'
+)
+assert.doesNotMatch(
+  entityDataFormDialog,
+  /:showStartProcess="!isEdit"/,
+  '编辑态不得无条件隐藏“发起审批”'
+)
+;[
+  'resolveRuntimeFormTabLayout',
+  'runtimeNodeTabs',
+  'liftedRootNodeIds',
+  'label="流程图"',
+  'label="审批历史"'
+].forEach((marker) => {
+  assert.ok(
+    entityDataFormDialog.includes(marker),
+    `实体查看编辑弹窗缺少同级表单与流程页签能力: ${marker}`
+  )
+})
+;[
+  'approvalNodeTabs',
+  'approvalLiftedRootNodeIds',
+  'label="流程图"',
+  'label="审批历史"',
+  'isApprovalFormTab'
+].forEach((marker) => {
+  assert.ok(
+    entityApprovalDialog.includes(marker),
+    `审批弹窗缺少统一表单、流程页签或审批操作能力: ${marker}`
+  )
+})
+;['parentId', 'TAB_SET', 'TAB', 'liftedRootNodeIds'].forEach((marker) => {
+  assert.ok(
+    runtimeFormTabs.includes(marker),
+    `运行时根级 Tab 提升逻辑缺少关键语义: ${marker}`
+  )
+})
+assert.match(
+  entityDataTableSource,
+  /<el-button[\s\S]{0,180}:type="btn\.buttonType \|\| 'primary'"[\s\S]{0,80}\blink(?:\s|>)/,
+  '列表操作列按钮应保持无底色的链接样式'
+)
+assert.match(
+  legacyEntityDataRedirect,
+  /getByCode[\s\S]*getByEntityId[\s\S]*EntityListRuntime/,
+  '旧版实体数据地址应定位默认列表并跳转到统一运行时'
+)
+assert.doesNotMatch(routerSource, /EntityDataManage\.vue/, '路由不得继续加载旧版实体数据运行时')
 const listButtonConfig = readFileSync(path.join(root, 'src/components/ListButtonConfigPanel.vue'), 'utf8')
 ;['open-list', 'targetEntityCode', 'targetListKey', 'relationKey'].forEach((marker) => {
   assert.ok(listButtonConfig.includes(marker), `列表按钮缺少打开列表配置: ${marker}`)
@@ -130,10 +240,14 @@ const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDes
 ;['dataScopeMode', 'allowedSceneValues', 'selectionMode', 'fixedFilterConfig', 'contextBindingConfig'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少统一运行时配置: ${marker}`)
 })
-;['getScenes', 'toggleScene', 'saveListAction', 'removeListAction', '当前项独立保存'].forEach((marker) => {
+;['getScenes', 'toggleScene', 'saveListAction', 'removeListAction', 'saveAll'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少单项增量保存能力: ${marker}`)
 })
 assert.equal(listDesigner.includes('@click="handleSave"'), false, '列表设计器不应继续暴露整包保存入口')
+assert.ok(
+  listDesigner.includes('@click="saveAll"') && listDesigner.includes('保存全部'),
+  '列表设计器应提供页面级保存全部，同时保留增量保存接口'
+)
 ;["'save'", "'remove'", "@click=\"$emit('save', row)\"", "@click=\"$emit('remove', row)\""].forEach((marker) => {
   assert.ok(listButtonConfig.includes(marker), `列表按钮缺少单项操作能力: ${marker}`)
 })
@@ -475,6 +589,11 @@ assert.ok(
 })
 
 const entityDesigner = readFileSync(path.join(root, 'src/views/EntityDesign.vue'), 'utf8')
+assert.match(
+  entityDesigner,
+  /const showSystemFields = ref\(true\)/,
+  '实体设计器应默认展示系统字段'
+)
 ;[
   'ActionRuleGroupEditor',
   'filterRoot',
@@ -565,27 +684,53 @@ const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActio
 })
 
 const processDesign = readFileSync(path.join(root, 'src/views/ProcessDesign.vue'), 'utf8')
-assert.match(processDesign, /全局动作[\s\S]*scope-type="PROCESS"/, '流程设计器应提供全局流程动作入口')
+assert.match(processDesign, /全局(?:流程)?动作[\s\S]*scope-type="PROCESS"/, '流程设计器应提供全局流程动作入口')
 ;[
-  '<el-drawer',
-  'v-model="nodeConfigVisible"',
-  ':destroy-on-close="false"',
+  'class="node-config-panel"',
+  'nodeConfigVisible && selectedElement',
   'class="node-config-trigger"',
-  'nodeConfigVisible.value = true'
+  'openNodeConfig()'
 ].forEach((marker) => {
-  assert.ok(processDesign.includes(marker), `流程节点配置缺少点击节点打开且保留状态的右侧抽屉: ${marker}`)
+  assert.ok(processDesign.includes(marker), `流程节点配置缺少点击节点打开且保留状态的停靠面板: ${marker}`)
 })
 assert.equal(processDesign.includes('class="config-panel"'), false, '流程设计器不应继续保留固定节点配置栏')
-assert.ok(processDesign.includes("name || '未命名节点'"), '流程节点抽屉不应使用技术 ID 作为未命名节点标题')
+assert.ok(processDesign.includes("name || '未命名节点'"), '流程节点面板不应使用技术 ID 作为未命名节点标题')
 
 const processListSource = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
 ;[
   'title="发布后迁移"',
   ':default-expanded="false"',
-  "import SettingsSection from '@/components/SettingsSection.vue'"
+  "import SettingsSection from '@/components/SettingsSection.vue'",
+  'prop="processName" label="流程名称" min-width="170" show-overflow-tooltip',
+  'prop="processKey" label="流程标识" min-width="170" show-overflow-tooltip'
 ].forEach((marker) => {
   assert.ok(processListSource.includes(marker), `流程发布弹窗缺少低频迁移折叠分组: ${marker}`)
 })
+
+const configMigrationSource = readFileSync(path.join(root, 'src/views/system/ConfigMigration.vue'), 'utf8')
+const appShell = readFileSync(path.join(root, 'src/App.vue'), 'utf8')
+assert.match(
+  appShell,
+  /\.el-step\.is-simple \.el-step__title[\s\S]{0,140}max-width:\s*none[\s\S]{0,140}white-space:\s*nowrap/,
+  '配置迁移的五阶段步骤标题应保持单行，避免桌面端被组件默认宽度压缩'
+)
+
+assert.match(
+  appShell,
+  /@media \(max-width: 1366px\)[\s\S]*\.el-table-fixed-column--right[\s\S]*position: static !important/,
+  '常见桌面与平板宽度下不应让固定列覆盖状态、时间等业务列'
+)
+
+const userManagement = readFileSync(path.join(root, 'src/views/system/User.vue'), 'utf8')
+const roleManagement = readFileSync(path.join(root, 'src/views/system/Role.vue'), 'utf8')
+const temporaryPasswordNotice = readFileSync(path.join(root, 'src/components/TemporaryPasswordNotice.vue'), 'utf8')
+for (const [name, source] of [['用户管理', userManagement], ['角色管理', roleManagement]]) {
+  assert.ok(source.includes(':formatter="formatDateColumn"'), `${name}应格式化创建时间`)
+  assert.ok(source.includes('<TemporaryPasswordNotice'), `${name}的新增用户流程应展示临时密码交付说明`)
+}
+assert.ok(temporaryPasswordNotice.includes('一次性临时密码'), '新增用户流程应解释临时密码交付方式')
+assert.ok(roleManagement.includes('<RoleTableActions'), '角色列表应收敛为主操作与更多菜单')
+assert.ok(roleManagement.includes('label="操作" width="160"'), '角色列表操作列应适配常见桌面宽度')
 
 const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigPanel.vue'), 'utf8')
 assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程节点 ID 不应重复占用属性抽屉首屏')
@@ -688,10 +833,12 @@ const flowActionExecutionLog = readFileSync(path.join(root, 'src/components/Flow
 
 const configMigration = readFileSync(path.join(root, 'src/views/system/ConfigMigration.vue'), 'utf8')
 ;[
-  '待导出',
-  '导出记录',
-  '导入管理',
-  '版本对比',
+  '选择与校验',
+  '发布包',
+  '导入与发布',
+  '影响对比',
+  '1. 选择配置',
+  '5. 发布结果',
   'exportPackage',
   'uploadPackage',
   'analyzeImport',
@@ -862,6 +1009,36 @@ for (const [file, markers] of Object.entries(demoExpectations)) {
     assert.ok(source.includes(marker), `${file} 缺少 Demo 验证能力: ${marker}`)
   })
 }
+
+const extensionEntry = readFileSync(path.join(root, 'src/extensions/index.js'), 'utf8')
+;[
+  'registerApplicationExtensions',
+  'getBundledExtensionManifest',
+  'validateBundledExtensionManifest'
+].forEach((marker) => {
+  assert.ok(extensionEntry.includes(marker), `统一扩展入口缺少公共能力: ${marker}`)
+})
+const extensionManifest = readFileSync(path.join(root, 'src/extensions/manifest.js'), 'utf8')
+;[
+  'permissions',
+  'migrationSupported',
+  'deprecatedAt'
+].forEach((marker) => {
+  assert.ok(extensionManifest.includes(marker), `扩展治理清单缺少字段: ${marker}`)
+})
+const extensionRegister = readFileSync(path.join(root, 'src/extensions/register.js'), 'utf8')
+assert.ok(
+  extensionRegister.includes('registerApplicationExtensions')
+    && extensionRegister.includes('registerDemoExtensions'),
+  '扩展启动入口必须集中控制演示扩展注册'
+)
+const mainSource = readFileSync(path.join(root, 'src/main.js'), 'utf8')
+assert.ok(
+  mainSource.includes('registerApplicationExtensions')
+    && mainSource.includes('./extensions/register')
+    && mainSource.includes('VITE_ENABLE_DEMO_EXTENSIONS'),
+  '应用启动必须通过轻量注册入口启动，并由环境开关控制演示扩展'
+)
 
 const pagedEntityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
 ;[

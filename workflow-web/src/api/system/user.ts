@@ -5,6 +5,10 @@ export const getUserList = () => {
   return request.get('/system/user/list')
 }
 
+export const getUserPage = (params: Record<string, any>) => {
+  return request.get('/system/user/page', { params })
+}
+
 // 根据ID获取用户
 export const getUserById = (id: string) => {
   return request.get(`/system/user/${id}`)
@@ -28,6 +32,14 @@ export const deleteUser = (id: string) => {
 // 更新用户状态
 export const updateUserStatus = (id: string, status: string) => {
   return request.post(`/system/user/${id}/status?status=${status}`)
+}
+
+export const batchUpdateUserStatus = (userIds: string[], status: string) => {
+  return request.post('/system/user/batch/status', { userIds, status })
+}
+
+export const batchAssignUserRoles = (userIds: string[], roleIds: string[]) => {
+  return request.post('/system/user/batch/roles', { userIds, roleIds })
 }
 
 // 重置密码

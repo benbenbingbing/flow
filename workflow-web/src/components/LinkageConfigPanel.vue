@@ -66,7 +66,7 @@
                       class="condition-value"
                     />
 
-                    <el-button type="danger" size="small" text @click="removeVisibilityCondition(index)">
+                    <el-button type="danger" size="small" text aria-label="删除显示条件" title="删除显示条件" @click="removeVisibilityCondition(index)">
                       <el-icon><Delete /></el-icon>
                     </el-button>
                   </div>
@@ -79,8 +79,8 @@
                 <div class="logic-selector">
                   <span>条件组合方式：</span>
                   <el-radio-group v-model="config.visibilityLogic" size="small">
-                    <el-radio-button label="and">全部满足</el-radio-button>
-                    <el-radio-button label="or">任一满足</el-radio-button>
+                    <el-radio-button value="and">全部满足</el-radio-button>
+                    <el-radio-button value="or">任一满足</el-radio-button>
                   </el-radio-group>
                 </div>
               </template>
@@ -140,9 +140,9 @@
                 <template v-if="config.valueLinkageEnabled">
                   <el-form-item label="数据来源">
                     <el-radio-group v-model="config.valueSourceType" class="source-type-group">
-                      <el-radio label="field">字段值</el-radio>
-                      <el-radio label="formula">计算公式</el-radio>
-                      <el-radio label="api">历史接口（高级）</el-radio>
+                      <el-radio value="field">字段值</el-radio>
+                      <el-radio value="formula">计算公式</el-radio>
+                      <el-radio value="api">历史接口（高级）</el-radio>
                     </el-radio-group>
                   </el-form-item>
 
@@ -170,7 +170,7 @@
                           <span class="arrow">→</span>
                           <el-input v-model="rule.targetValue" placeholder="当前字段显示的值" size="small" />
 
-                          <el-button type="danger" size="small" text @click="removeValueMapping(index)">
+                          <el-button type="danger" size="small" text aria-label="删除值映射" title="删除值映射" @click="removeValueMapping(index)">
                             <el-icon><Delete /></el-icon>
                           </el-button>
                         </div>
@@ -326,7 +326,7 @@
                           <el-input v-model="rule.dependValue" placeholder="值" size="small" class="filter-depend-value" />
                           <span>时显示：</span>
 
-                          <el-button type="danger" size="small" text @click="removeFilterRule(index)">
+                          <el-button type="danger" size="small" text aria-label="删除选项过滤规则" title="删除选项过滤规则" @click="removeFilterRule(index)">
                             <el-icon><Delete /></el-icon>
                           </el-button>
                         </div>

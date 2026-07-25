@@ -52,7 +52,8 @@ const props = defineProps({
   mode: { type: String, default: 'view' },
   context: { type: Object, default: () => ({}) },
   dataSourceRuntime: { type: Object, default: null },
-  rootParentId: { type: String, default: '' },
+  rootParentId: { type: [String, Number], default: '' },
+  excludedNodeIds: { type: Array, default: () => [] },
   labelWidth: { type: String, default: '100px' },
   labelPosition: { type: String, default: 'right' },
   layoutType: { type: String, default: 'vertical' }
@@ -88,7 +89,13 @@ const childrenMap = computed(() => {
   return result
 })
 
-const rootNodes = computed(() => childrenFor(props.rootParentId || ''))
+const excludedNodeIdSet = computed(() =>
+  new Set((props.excludedNodeIds || []).map(id => String(id)))
+)
+const rootNodes = computed(() =>
+  childrenFor(props.rootParentId || '')
+    .filter(node => !excludedNodeIdSet.value.has(String(node.id)))
+)
 
 function childrenFor(parentId) {
   return childrenMap.value.get(parentId || '') || []

@@ -8,14 +8,19 @@
         <span class="title">表单设计 - {{ form.formName || '新建表单' }}</span>
       </div>
       <div class="header-right">
+        <el-radio-group v-model="designMode" size="small" class="design-mode-switch">
+          <el-radio-button value="basic">基础</el-radio-button>
+          <el-radio-button value="advanced">高级</el-radio-button>
+          <el-radio-button value="developer">开发者</el-radio-button>
+        </el-radio-group>
         <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
           {{ diffInfo.changed ? '草稿有未发布修改' : '已与发布版本一致' }}
         </el-tag>
         <el-button @click="showPreview = true">
           <el-icon><View /></el-icon>预览
         </el-button>
-        <el-button @click="showReleaseHistory">版本</el-button>
-        <el-button @click="extensionManagerVisible = true">扩展清单</el-button>
+        <el-button v-if="designMode !== 'basic'" @click="showReleaseHistory">版本</el-button>
+        <el-button v-if="designMode === 'developer'" @click="extensionManagerVisible = true">扩展清单</el-button>
         <el-button type="success" plain @click="handlePublish" :disabled="!isEdit">
           发布
         </el-button>
@@ -45,7 +50,7 @@
             <el-icon><Document /></el-icon>
             <div class="field-info">
               <div class="field-name">{{ field.fieldName }}</div>
-              <div class="field-code">{{ field.fieldCode }}</div>
+              <div v-if="designMode !== 'basic'" class="field-code">{{ field.fieldCode }}</div>
             </div>
             <div class="field-tags">
               <el-tag v-if="isFieldInForm(field)" type="info" size="small" class="added-tag">已添加</el-tag>
@@ -61,9 +66,9 @@
           <span>表单设计（所见即所得）</span>
           <div class="layout-selector">
             <el-radio-group v-model="form.layoutType" size="small">
-              <el-radio-button label="vertical">垂直</el-radio-button>
-              <el-radio-button label="horizontal">水平</el-radio-button>
-              <el-radio-button label="grid">网格</el-radio-button>
+              <el-radio-button value="vertical">垂直</el-radio-button>
+              <el-radio-button value="horizontal">水平</el-radio-button>
+              <el-radio-button value="grid">网格</el-radio-button>
             </el-radio-group>
             <el-button type="primary" size="small" style="margin-left: 12px" @click="addSection">
               <el-icon><Plus /></el-icon>添加节
@@ -95,7 +100,7 @@
                 <el-input v-model="form.formName" placeholder="请输入表单名称" style="width: 220px" />
               </el-form-item>
             </el-form>
-            <div class="form-summary-meta">
+            <div v-if="designMode !== 'basic'" class="form-summary-meta">
               <el-tag
                 size="small"
                 effect="plain"
@@ -136,7 +141,7 @@
           <el-collapse-transition>
             <div v-show="formSettingsExpanded" class="form-settings-panel">
               <el-form inline size="small">
-                <el-form-item label="表单标识">
+                <el-form-item v-if="designMode !== 'basic'" label="表单标识">
                   <el-input
                     v-model="form.formKey"
                     placeholder="表单标识"
@@ -144,7 +149,7 @@
                     style="width: 180px"
                   />
                 </el-form-item>
-                <el-form-item label="自定义组件">
+                <el-form-item v-if="designMode === 'developer'" label="自定义组件">
                   <el-select
                     v-model="form.customComponent"
                     placeholder="留空使用默认动态表单"
@@ -161,19 +166,19 @@
                     />
                   </el-select>
                 </el-form-item>
-                <el-form-item v-if="form.customComponent" label="组件版本">
+                <el-form-item v-if="designMode === 'developer' && form.customComponent" label="组件版本">
                   <el-tag>
                     v{{ form.customComponentVersion || 1 }}
                     / 快照 v{{ form.customComponentSnapshotVersion || 1 }}
                   </el-tag>
                 </el-form-item>
-                <el-form-item label="标签宽度">
+                <el-form-item v-if="designMode !== 'basic'" label="标签宽度">
                   <el-input-number v-model="viewConfig.labelWidth" :min="60" :max="240" />
                 </el-form-item>
-                <el-form-item v-if="selectedCustomFormSchema.length" label="组件参数">
+                <el-form-item v-if="designMode === 'developer' && selectedCustomFormSchema.length" label="组件参数">
                   <el-button @click="showFormExtensionConfig = true">配置参数</el-button>
                 </el-form-item>
-                <el-form-item label="表单数据源">
+                <el-form-item v-if="designMode === 'developer'" label="表单数据源">
                   <el-button
                     :disabled="!form.id"
                     @click="openFormDataSourceConfig"
@@ -432,7 +437,7 @@
               </SettingsSection>
 
               <SettingsSection
-                v-if="canConfigureSelectedNodeDataSource"
+                v-if="designMode === 'developer' && canConfigureSelectedNodeDataSource"
                 title="数据源"
                 description="受控数据源、绑定位置和输入输出映射"
               >
@@ -495,7 +500,7 @@
               </SettingsSection>
 
               <SettingsSection
-                v-if="canConfigureSelectedNodeValidation"
+                v-if="designMode !== 'basic' && canConfigureSelectedNodeValidation"
                 title="校验"
                 description="仅显示当前字段数据类型支持的结构化规则"
               >
@@ -563,7 +568,7 @@
               </SettingsSection>
 
               <SettingsSection
-                v-if="canConfigureSelectedNodeModeAccess"
+                v-if="designMode !== 'basic' && canConfigureSelectedNodeModeAccess"
                 title="模式与权限"
                 description="分别控制新增、编辑、审批和查看模式下的显示与编辑"
               >
@@ -616,15 +621,15 @@
 
                   <el-form-item label="显示">
                     <el-radio-group v-model="selectedField.displayMode">
-                      <el-radio-button label="embedded">嵌入</el-radio-button>
-                      <el-radio-button label="tab">页签</el-radio-button>
+                      <el-radio-button value="embedded">嵌入</el-radio-button>
+                      <el-radio-button value="tab">页签</el-radio-button>
                     </el-radio-group>
                   </el-form-item>
 
                   <el-form-item label="布局">
                     <el-radio-group v-model="selectedField.layout">
-                      <el-radio-button label="form">分行</el-radio-button>
-                      <el-radio-button label="table">表格</el-radio-button>
+                      <el-radio-button value="form">分行</el-radio-button>
+                      <el-radio-button value="table">表格</el-radio-button>
                     </el-radio-group>
                   </el-form-item>
 
@@ -722,7 +727,7 @@
               </SettingsSection>
 
               <SettingsSection
-                v-if="canConfigureNodeExtension || isEditableFieldNode || isFieldNode"
+                v-if="designMode === 'developer' && (canConfigureNodeExtension || isEditableFieldNode || isFieldNode)"
                 title="复用与扩展"
                 description="节点扩展、组件模板、低频组件参数和字段事件"
                 :default-expanded="!!selectedField.componentName || !!selectedField.templateId || hasEventConfig"
@@ -856,7 +861,7 @@
         :schema="selectedCustomFormSchema"
       />
       <template #footer>
-        <el-button type="primary" @click="showFormExtensionConfig = false">确定</el-button>
+        <el-button type="primary" @click="showFormExtensionConfig = false">关闭扩展设置</el-button>
       </template>
     </el-dialog>
 
@@ -992,12 +997,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="riskLevel" label="风险" width="90" />
-        <el-table-column prop="rolloutStatus" label="Rollout" width="110">
+        <el-table-column v-if="designMode === 'developer'" prop="rolloutStatus" label="Rollout" width="110">
           <template #default="{ row }">
             {{ row.releaseMode === 'HOTFIX' ? (row.rolloutStatus || '-') : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="contentHash" label="内容哈希" min-width="220" show-overflow-tooltip />
+        <el-table-column v-if="designMode === 'developer'" prop="contentHash" label="内容哈希" min-width="220" show-overflow-tooltip />
         <el-table-column prop="publishedBy" label="发布人" width="120" />
         <el-table-column prop="publishedAt" label="发布时间" width="180" />
         <el-table-column prop="status" label="状态" width="100" />
@@ -1047,6 +1052,7 @@ import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import UiExtensionManager from '@/components/UiExtensionManager.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
   getFormFieldComponentDescriptor,
   getFormFieldComponentOptions
@@ -1114,6 +1120,7 @@ const route = useRoute()
 const router = useRouter()
 const formId = route.params.id
 const entityId = route.query.entityId || ''
+const designMode = ref('basic')
 
 const isEdit = ref(!!formId)
 const saving = ref(false)
@@ -2283,6 +2290,10 @@ function hasUnsavedLocalChanges() {
   )
 }
 
+useUnsavedChangesGuard(() => hasUnsavedLocalChanges(), {
+  message: '表单画布或属性有未保存修改，离开后这些修改将丢失。'
+})
+
 function fieldToNodeEntity(field, index) {
   const payload = fieldToNodePayload(field)
   return {
@@ -3409,6 +3420,10 @@ onMounted(async () => {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.design-mode-switch {
+  margin-right: 4px;
 }
 
 .title {

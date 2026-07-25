@@ -35,6 +35,7 @@
             <el-descriptions-item label="运行模式权限">分别配置新增、编辑、审批、查看时是否显示、是否可编辑。</el-descriptions-item>
             <el-descriptions-item label="字段联动">显隐、禁用、必填、计算、值映射、选项联动。</el-descriptions-item>
             <el-descriptions-item label="布局与嵌套">区块、栅格、Tab、折叠面板、子表与明细表可递归组合，最大深度 8 层。</el-descriptions-item>
+            <el-descriptions-item label="流程详情页签">根级 TAB_SET 在实体查看、编辑和审批时提升为外层页签，与流程图、审批历史和动作日志同级；嵌套 TAB_SET 保持原位置。</el-descriptions-item>
           </el-descriptions>
         </section>
 
@@ -98,6 +99,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
             <li>需要改字段或关系语义时，新建目标节点并绑定新字段/关系，迁移显示标签、布局、兼容组件、模板和该类型允许的数据源；草稿预览、发布验证通过后再删除旧节点。</li>
             <li>节点级扩展必须通过 `nodeTypes`、supportedBindings 与 configSchema 声明可配置范围。前端只显示允许属性，服务端 PATCH 仍须按类型白名单校验，不能相信前端隐藏。</li>
             <li>默认动态表单的画布、草稿预览和已发布运行时使用同一递归树：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先。SECTION、GRID、TAB_SET、TAB、COLLAPSE 等容器在预览中必须保持容器语义。</li>
+            <li>流程上下文仅提升根级 TAB_SET；嵌套在 SECTION、GRID、TAB 或其他容器中的 TAB_SET 仍由递归节点运行时原位渲染。扩展组件不能依赖外层页签 DOM 层级，应使用稳定 nodeId 和运行时 context。</li>
           </ul>
         </section>
 

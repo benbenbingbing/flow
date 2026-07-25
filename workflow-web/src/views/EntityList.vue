@@ -29,9 +29,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="存储类型">
-          <el-select v-model="queryParams.storageMode" placeholder="全部" clearable style="width: 150px">
-            <el-option label="动态业务表" value="DYNAMIC" />
-            <el-option label="平台系统表" value="SYSTEM" />
+          <el-select v-model="queryParams.storageMode" style="width: 170px">
+            <el-option label="业务实体（默认）" value="DYNAMIC" />
+            <el-option label="平台结构目录" value="SYSTEM" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -42,7 +42,21 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="entityList" v-loading="loading" stripe>
+      <PageState
+        v-if="fetchError"
+        type="error"
+        title="实体列表加载失败"
+        :description="fetchError"
+        retryable
+        @retry="fetchData"
+      />
+      <PageState
+        v-else-if="!loading && entityList.length === 0"
+        type="empty"
+        title="没有找到实体"
+        description="可调整筛选条件，或创建一个新的业务实体。"
+      />
+      <el-table v-else :data="entityList" v-loading="loading" stripe>
         <el-table-column prop="entityName" label="实体名称" min-width="150" />
         <el-table-column prop="entityCode" label="实体编码" min-width="120" />
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
@@ -73,33 +87,26 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDesign(row)">
-              {{ row.storageMode === 'SYSTEM' ? '查看结构' : '设计' }}
+              {{ row.storageMode === 'SYSTEM' ? '查看结构' : '打开设计器' }}
             </el-button>
-            <el-button
-              v-if="row.storageMode !== 'SYSTEM' && row.status !== 'PUBLISHED'"
-              link
-              type="success"
-              @click="handlePublish(row)"
-            >
-              发布
-            </el-button>
-            <el-button
-              v-else-if="row.storageMode !== 'SYSTEM'"
-              link
-              type="success"
-              @click="handleRepublish(row)"
-            >
-              重新发布
-            </el-button>
-            <el-button v-if="row.storageMode !== 'SYSTEM'" link type="primary" @click="handleListConfig(row)">列表</el-button>
-            <el-button v-if="row.storageMode !== 'SYSTEM'" link type="primary" @click="handleForm(row)">表单</el-button>
             <el-dropdown v-if="row.storageMode !== 'SYSTEM'">
-              <el-button link type="info">···</el-button>
+              <el-button link type="info" aria-label="更多实体操作">更多</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-if="row.status !== 'PUBLISHED'"
+                    @click="handlePublish(row)"
+                  >
+                    发布实体
+                  </el-dropdown-item>
+                  <el-dropdown-item v-else @click="handleRepublish(row)">
+                    重新发布实体
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleListConfig(row)">配置列表</el-dropdown-item>
+                  <el-dropdown-item @click="handleForm(row)">配置表单</el-dropdown-item>
                   <el-dropdown-item @click="handleStatusConfig(row)">
                     <el-icon><SetUp /></el-icon>状态配置
                   </el-dropdown-item>
@@ -155,6 +162,9 @@
         </el-form-item>
         <el-form-item label="实体编码" prop="entityCode">
           <el-input v-model="formData.entityCode" placeholder="请输入实体编码" :disabled="isEdit" />
+          <div class="field-help">
+            用于数据库表、接口和跨环境迁移；创建后不可修改。建议使用字母开头的英文标识，如 project_request。
+          </div>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述" />
@@ -174,7 +184,9 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitting">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitting">
+          {{ isEdit ? '保存基本信息' : '创建实体' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -222,11 +234,11 @@
         <el-table-column label="状态分类" width="150">
           <template #default="{ row }">
             <el-select v-model="row.statusCategory" placeholder="选择分类" size="small">
-              <el-option label="📋 初始" value="NEW" />
-              <el-option label="⏳ 处理中" value="PROCESSING" />
-              <el-option label="✅ 已完成" value="COMPLETED" />
-              <el-option label="❌ 已终止" value="TERMINATED" />
-              <el-option label="↩️ 已撤回" value="WITHDRAWN" />
+              <el-option label="初始" value="NEW" />
+              <el-option label="处理中" value="PROCESSING" />
+              <el-option label="已完成" value="COMPLETED" />
+              <el-option label="已终止" value="TERMINATED" />
+              <el-option label="已撤回" value="WITHDRAWN" />
             </el-select>
           </template>
         </el-table-column>
@@ -546,22 +558,25 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Rank, View, ArrowRight, ArrowDown, SetUp, Link, Clock, Delete, Search } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
+import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
 import { entityVersionDiffApi } from '@/api/entityVersionDiff'
 import { processApi } from '@/api/process'
 import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
 import { generateMigrationTag } from '@/utils/migrationTag'
 import Sortable from 'sortablejs'
+import PageState from '@/components/PageState.vue'
 
 const router = useRouter()
 const loading = ref(false)
+const fetchError = ref('')
 const entityList = ref([])
 const total = ref(0)
 const queryParams = ref({
   keyword: '',
   status: '',
   lifecycleMode: '',
-  storageMode: '',
+  storageMode: 'DYNAMIC',
   pageNum: 1,
   pageSize: 10
 })
@@ -594,6 +609,7 @@ const formRules = {
 
 const fetchData = async () => {
   loading.value = true
+  fetchError.value = ''
   try {
     const params = { ...queryParams.value }
     if (!params.lifecycleMode) delete params.lifecycleMode
@@ -604,6 +620,7 @@ const fetchData = async () => {
     total.value = res.total || 0
   } catch (error) {
     console.error(error)
+    fetchError.value = error?.message || '无法读取实体目录，请检查网络后重试'
   } finally {
     loading.value = false
   }
@@ -619,7 +636,7 @@ const handleReset = () => {
     keyword: '',
     status: '',
     lifecycleMode: '',
-    storageMode: '',
+    storageMode: 'DYNAMIC',
     pageNum: 1,
     pageSize: 10
   }
@@ -715,8 +732,32 @@ const handleForm = (row) => {
   router.push(`/entity-form/list-by-entity/${row.id}`)
 }
 
-const handleData = (row) => {
-  router.push(`/entity/data/${row.entityCode}`)
+const handleData = async (row) => {
+  try {
+    const configs = await entityListConfigApi.getByEntityId(row.id)
+    const available = (configs || []).filter(item => item?.listKey)
+    const target = available.find(item => item.isDefault) || available[0]
+    if (!target) {
+      await ElMessageBox.confirm(
+        `实体「${row.entityName}」还没有可用列表。是否前往列表配置？`,
+        '尚未配置业务列表',
+        {
+          type: 'info',
+          confirmButtonText: '配置列表',
+          cancelButtonText: '取消'
+        }
+      )
+      return handleListConfig(row)
+    }
+    router.push({
+      name: 'EntityListRuntime',
+      params: { entityCode: row.entityCode, listKey: target.listKey }
+    })
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error?.message || '打开业务数据失败')
+    }
+  }
 }
 
 const handleBindWorkflow = (row) => {
@@ -1088,7 +1129,18 @@ const saveStatusConfig = async () => {
 
 const handleDelete = async (row) => {
   try {
-    await ElMessageBox.confirm('确定要删除该实体吗？', '提示', { type: 'warning' })
+    const { value } = await ElMessageBox.prompt(
+      `删除前系统会校验表单、列表、流程绑定、实体引用和业务数据。该操作不可恢复；如只需停止使用，请优先禁用。请输入实体名称“${row.entityName}”确认。`,
+      '删除实体',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        inputPlaceholder: row.entityName,
+        inputValidator: value => value === row.entityName || '输入的实体名称不一致'
+      }
+    )
+    if (value !== row.entityName) return
     await entityApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchData()
@@ -1343,5 +1395,12 @@ onMounted(() => {
   color: #909399;
   font-size: 12px;
   white-space: normal;
+}
+
+.field-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

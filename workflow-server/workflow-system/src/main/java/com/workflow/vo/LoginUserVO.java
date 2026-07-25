@@ -49,4 +49,9 @@ public class LoginUserVO {
      * JWT Token
      */
     private String token;
+
+    /**
+     * 是否必须先修改临时密码
+     */
+    private Boolean passwordResetRequired;
 }

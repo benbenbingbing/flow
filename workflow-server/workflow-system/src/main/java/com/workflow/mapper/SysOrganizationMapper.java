@@ -86,7 +86,7 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      * @param orgId 组织部门ID
      * @return 关联用户数
      */
-    @Select("SELECT COUNT(*) FROM sys_user WHERE org_id = #{orgId} AND deleted = 0")
+    @Select("SELECT COUNT(*) FROM sys_user WHERE (org_id = #{orgId} OR dept_id = #{orgId}) AND deleted = 0")
     int countUsers(@Param("orgId") String orgId);
     
     /**

@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -26,6 +27,58 @@ public interface ProcessCcRecordMapper extends BaseMapper<ProcessCcRecord> {
      */
     @Select("SELECT * FROM process_cc_record WHERE cc_user_id = #{userId} AND deleted = 0 ORDER BY create_time DESC LIMIT #{offset}, #{limit}")
     List<ProcessCcRecord> findByCcUserId(@Param("userId") String userId, @Param("offset") int offset, @Param("limit") int limit);
+
+    @Select("""
+            <script>
+            SELECT * FROM process_cc_record
+            WHERE cc_user_id = #{userId} AND deleted = 0
+            <if test='keyword != null and keyword != ""'>
+              AND (process_name LIKE CONCAT('%', #{keyword}, '%')
+                OR node_name LIKE CONCAT('%', #{keyword}, '%')
+                OR business_key LIKE CONCAT('%', #{keyword}, '%')
+                OR comment LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test='operatorName != null and operatorName != ""'>
+              AND operator_name LIKE CONCAT('%', #{operatorName}, '%')
+            </if>
+            <if test='startTime != null'>AND create_time &gt;= #{startTime}</if>
+            <if test='endTime != null'>AND create_time &lt; #{endTime}</if>
+            ORDER BY create_time DESC
+            LIMIT #{offset}, #{limit}
+            </script>
+            """)
+    List<ProcessCcRecord> findByCcUserIdFiltered(
+            @Param("userId") String userId,
+            @Param("keyword") String keyword,
+            @Param("operatorName") String operatorName,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime,
+            @Param("offset") int offset,
+            @Param("limit") int limit);
+
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM process_cc_record
+            WHERE cc_user_id = #{userId} AND deleted = 0
+            <if test='keyword != null and keyword != ""'>
+              AND (process_name LIKE CONCAT('%', #{keyword}, '%')
+                OR node_name LIKE CONCAT('%', #{keyword}, '%')
+                OR business_key LIKE CONCAT('%', #{keyword}, '%')
+                OR comment LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test='operatorName != null and operatorName != ""'>
+              AND operator_name LIKE CONCAT('%', #{operatorName}, '%')
+            </if>
+            <if test='startTime != null'>AND create_time &gt;= #{startTime}</if>
+            <if test='endTime != null'>AND create_time &lt; #{endTime}</if>
+            </script>
+            """)
+    long countByCcUserIdFiltered(
+            @Param("userId") String userId,
+            @Param("keyword") String keyword,
+            @Param("operatorName") String operatorName,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
     
     /**
      * 统计抄送人的抄送记录数

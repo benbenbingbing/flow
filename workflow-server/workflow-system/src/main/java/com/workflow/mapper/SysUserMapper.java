@@ -60,6 +60,34 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             Page<SysUser> page,
             @Param("roleId") String roleId,
             @Param("keyword") String keyword);
+
+    @Select({
+            "<script>",
+            "SELECT DISTINCT u.* FROM sys_user u",
+            "<if test='roleId != null and roleId != \"\"'>",
+            "INNER JOIN sys_user_role ur ON ur.user_id = u.id",
+            "</if>",
+            "WHERE u.deleted = 0",
+            "<if test='keyword != null and keyword != \"\"'>",
+            "AND (u.username LIKE CONCAT('%', #{keyword}, '%')",
+            "OR u.nickname LIKE CONCAT('%', #{keyword}, '%')",
+            "OR u.email LIKE CONCAT('%', #{keyword}, '%')",
+            "OR u.phone LIKE CONCAT('%', #{keyword}, '%'))",
+            "</if>",
+            "<if test='status != null and status != \"\"'>AND u.status = #{status}</if>",
+            "<if test='orgId != null and orgId != \"\"'>AND u.org_id = #{orgId}</if>",
+            "<if test='deptId != null and deptId != \"\"'>AND u.dept_id = #{deptId}</if>",
+            "<if test='roleId != null and roleId != \"\"'>AND ur.role_id = #{roleId}</if>",
+            "ORDER BY u.create_time DESC",
+            "</script>"
+    })
+    Page<SysUser> selectUserPage(
+            Page<SysUser> page,
+            @Param("keyword") String keyword,
+            @Param("status") String status,
+            @Param("orgId") String orgId,
+            @Param("deptId") String deptId,
+            @Param("roleId") String roleId);
     
     /**
      * 查询用户的角色列表

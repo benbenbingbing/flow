@@ -13,7 +13,15 @@
     </div>
 
     <el-card shadow="never">
-      <el-table :data="formList" v-loading="loading" stripe>
+      <PageState
+        v-if="loadError"
+        type="error"
+        title="表单列表加载失败"
+        :description="loadError"
+        retryable
+        @retry="loadForms"
+      />
+      <el-table v-else :data="formList" v-loading="loading" stripe>
         <el-table-column type="index" width="50" />
         <el-table-column prop="formName" label="表单名称" min-width="150" />
         <el-table-column prop="formKey" label="表单标识" min-width="150" />
@@ -36,25 +44,28 @@
             <el-tag v-else type="danger">禁用</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="160" />
-        <el-table-column label="操作" width="380" fixed="right">
+        <el-table-column prop="createTime" label="创建时间" width="170">
+          <template #default="{ row }">{{ formatDateValue(row.createTime) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleDesign(row)">设计</el-button>
-            <el-button type="primary" link size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button 
-              v-if="!row.isDefault" 
-              type="warning" 
-              link 
-              size="small" 
-              @click="handleSetDefault(row)"
-            >
-              设为默认
-            </el-button>
-            <el-button v-else type="info" link size="small" disabled>已是默认</el-button>
-            <el-button type="info" link size="small" @click="handleCopy(row)">复制</el-button>
+            <el-button type="primary" link size="small" @click="handleDesign(row)">打开设计器</el-button>
             <el-button type="success" link size="small" @click="handlePreview(row)">预览</el-button>
-            <el-button type="primary" link size="small" @click="handleInitConfig(row)">初始化</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-dropdown>
+              <el-button type="info" link size="small" aria-label="更多表单操作">更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="handleEdit(row)">编辑基本信息</el-dropdown-item>
+                  <el-dropdown-item v-if="!row.isDefault" @click="handleSetDefault(row)">
+                    设为默认表单
+                  </el-dropdown-item>
+                  <el-dropdown-item disabled v-else>当前默认表单</el-dropdown-item>
+                  <el-dropdown-item @click="handleCopy(row)">复制表单</el-dropdown-item>
+                  <el-dropdown-item @click="handleInitConfig(row)">初始化配置</el-dropdown-item>
+                  <el-dropdown-item divided @click="handleDelete(row)">删除表单</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -69,19 +80,20 @@
           <el-input v-model="form.formName" placeholder="请输入表单名称" />
         </el-form-item>
         <el-form-item label="表单标识" prop="formKey">
-          <el-input v-model="form.formKey" placeholder="请输入表单标识" />
+          <el-input v-model="form.formKey" placeholder="请输入表单标识" :disabled="isEdit" />
+          <div class="field-help">用于流程节点绑定和发布版本识别，创建后不可修改。</div>
         </el-form-item>
         <el-form-item label="布局类型">
           <el-radio-group v-model="form.layoutType">
-            <el-radio label="vertical">垂直</el-radio>
-            <el-radio label="horizontal">水平</el-radio>
-            <el-radio label="grid">网格</el-radio>
+            <el-radio value="vertical">垂直</el-radio>
+            <el-radio value="horizontal">水平</el-radio>
+            <el-radio value="grid">网格</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">禁用</el-radio>
+            <el-radio :value="1">启用</el-radio>
+            <el-radio :value="0">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="描述">
@@ -90,7 +102,9 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          {{ isEdit ? '保存基本信息' : '创建表单' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -103,11 +117,11 @@
     <el-dialog v-model="initConfigVisible" title="表单初始化配置" width="700px">
       <div class="init-config-wrapper">
         <el-radio-group v-model="initConfigType" size="small" @change="onInitConfigTypeChange">
-          <el-radio-button label="">无</el-radio-button>
-          <el-radio-button label="api">API</el-radio-button>
-          <el-radio-button label="entity">实体</el-radio-button>
-          <el-radio-button label="static">静态</el-radio-button>
-          <el-radio-button label="custom">自定义</el-radio-button>
+          <el-radio-button value="">无</el-radio-button>
+          <el-radio-button value="api">API</el-radio-button>
+          <el-radio-button value="entity">实体</el-radio-button>
+          <el-radio-button value="static">静态</el-radio-button>
+          <el-radio-button value="custom">自定义</el-radio-button>
         </el-radio-group>
 
         <div v-if="initConfigType === 'api'" class="init-config-section">
@@ -179,7 +193,29 @@
         <div v-else-if="initConfigType === 'custom'" class="init-config-section">
           <el-form inline size="small">
             <el-form-item label="初始化器名称">
-              <el-input v-model="initConfigData.custom.name" placeholder="已注册的自定义初始化器名" style="width: 260px" />
+              <el-select
+                v-model="initConfigData.custom.name"
+                placeholder="选择已注册初始化器"
+                filterable
+                clearable
+                style="width: 320px"
+              >
+                <el-option
+                  v-for="name in registeredInitializers"
+                  :key="name"
+                  :label="name"
+                  :value="name"
+                />
+                <el-option
+                  v-if="initConfigData.custom.name && !registeredInitializers.includes(initConfigData.custom.name)"
+                  :label="`${initConfigData.custom.name}（当前未注册）`"
+                  :value="initConfigData.custom.name"
+                  disabled
+                />
+              </el-select>
+              <div v-if="registeredInitializers.length === 0" class="field-help">
+                当前环境没有已注册的自定义初始化器，请联系开发人员先完成扩展注册。
+              </div>
             </el-form-item>
           </el-form>
           <el-form inline size="small">
@@ -205,14 +241,20 @@ import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { entityApi } from '@/api/entity'
 import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm, copyForm, updateFormInitConfig } from '@/api/entityForm'
+import { parseJsonConfig } from '@/utils/jsonConfig'
+import { getRegisteredFormInitializerNames } from '@/utils/formInitializerRegistry'
+import { formatDateValue } from '@/shared/list-runtime'
+import PageState from '@/components/PageState.vue'
 
 const allEntityList = ref([])
+const registeredInitializers = getRegisteredFormInitializerNames()
 
 const route = useRoute()
 const router = useRouter()
 const entityId = route.params.entityId
 
 const loading = ref(false)
+const loadError = ref('')
 const submitLoading = ref(false)
 const dialogVisible = ref(false)
 const previewVisible = ref(false)
@@ -268,11 +310,12 @@ async function loadEntityInfo() {
 // 加载表单列表
 async function loadForms() {
   loading.value = true
+  loadError.value = ''
   try {
     formList.value = await getFormsByEntity(entityId)
   } catch (e) {
     console.error('加载表单列表失败:', e)
-    ElMessage.error('加载表单列表失败')
+    loadError.value = e?.message || '无法读取表单列表，请重试'
   } finally {
     loading.value = false
   }
@@ -359,12 +402,20 @@ async function handleCopy(row) {
   }
 }
 
-function handleDelete(row) {
-  ElMessageBox.confirm(`确定删除表单 "${row.formName}" 吗？`, '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(async () => {
+async function handleDelete(row) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `删除前系统会校验流程节点、子表单引用和发布版本。该操作不可恢复，请输入表单名称“${row.formName}”确认。`,
+      '删除表单',
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        inputPlaceholder: row.formName,
+        inputValidator: value => value === row.formName || '输入的表单名称不一致'
+      }
+    )
+    if (value !== row.formName) return
     try {
       await deleteForm(row.id)
       ElMessage.success('删除成功')
@@ -373,7 +424,7 @@ function handleDelete(row) {
       console.error('删除失败:', e)
       ElMessage.error(e.message || '删除失败')
     }
-  }).catch(() => {})
+  } catch {}
 }
 
 function resetForm() {
@@ -398,15 +449,6 @@ async function loadAllEntities() {
   } catch (e) {
     console.error('加载实体列表失败:', e)
     allEntityList.value = []
-  }
-}
-
-function safeJsonParse(text) {
-  if (!text) return {}
-  try {
-    return JSON.parse(text)
-  } catch (e) {
-    return {}
   }
 }
 
@@ -461,23 +503,23 @@ function buildInitConfigFromUI() {
       url: initConfigData.api.url,
       method: initConfigData.api.method || 'GET',
       responsePath: initConfigData.api.responsePath,
-      params: safeJsonParse(initConfigData.api.paramsText),
-      data: safeJsonParse(initConfigData.api.dataText),
-      mapping: safeJsonParse(initConfigData.api.mappingText)
+      params: parseJsonConfig(initConfigData.api.paramsText, { fieldName: 'Query 参数' }),
+      data: parseJsonConfig(initConfigData.api.dataText, { fieldName: '请求体' }),
+      mapping: parseJsonConfig(initConfigData.api.mappingText, { fieldName: '字段映射' })
     }
   } else if (type === 'entity') {
     config.entity = {
       entityCode: initConfigData.entity.entityCode,
       index: initConfigData.entity.index,
-      params: safeJsonParse(initConfigData.entity.paramsText),
-      mapping: safeJsonParse(initConfigData.entity.mappingText)
+      params: parseJsonConfig(initConfigData.entity.paramsText, { fieldName: '过滤参数' }),
+      mapping: parseJsonConfig(initConfigData.entity.mappingText, { fieldName: '字段映射' })
     }
   } else if (type === 'static') {
-    config.static = safeJsonParse(initConfigData.staticText)
+    config.static = parseJsonConfig(initConfigData.staticText, { fieldName: '静态值' })
   } else if (type === 'custom') {
     config.custom = {
       name: initConfigData.custom.name,
-      params: safeJsonParse(initConfigData.custom.paramsText)
+      params: parseJsonConfig(initConfigData.custom.paramsText, { fieldName: '自定义参数' })
     }
   }
   return config
@@ -495,6 +537,11 @@ function handleInitConfig(row) {
 
 async function handleSaveInitConfig() {
   if (!currentInitFormId.value) return
+  if (initConfigType.value === 'custom'
+      && !registeredInitializers.includes(initConfigData.custom.name)) {
+    ElMessage.error('请选择当前环境已注册的自定义初始化器')
+    return
+  }
   initConfigLoading.value = true
   try {
     const initConfig = buildInitConfigFromUI()
@@ -527,6 +574,13 @@ async function handleSaveInitConfig() {
   display: flex;
   align-items: center;
   gap: 15px;
+}
+
+.field-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .title {

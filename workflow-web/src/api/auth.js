@@ -23,6 +23,13 @@ export function logout() {
 }
 
 /**
+ * 修改当前登录用户密码
+ */
+export function changePassword(data) {
+  return request.post('/auth/change-password', data)
+}
+
+/**
  * 获取当前登录用户权限码集合
  */
 export function getPermissions() {

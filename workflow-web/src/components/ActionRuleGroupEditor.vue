@@ -2,8 +2,8 @@
   <div class="rule-group">
     <div class="group-header">
       <el-radio-group v-model="node.logic" size="small">
-        <el-radio-button label="AND">全部满足</el-radio-button>
-        <el-radio-button label="OR">任一满足</el-radio-button>
+        <el-radio-button value="AND">全部满足</el-radio-button>
+        <el-radio-button value="OR">任一满足</el-radio-button>
       </el-radio-group>
       <div>
         <el-button size="small" text type="primary" @click="addCondition">添加条件</el-button>

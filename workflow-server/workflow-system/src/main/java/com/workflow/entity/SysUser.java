@@ -1,5 +1,6 @@
 package com.workflow.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -38,7 +39,13 @@ public class SysUser {
     /**
      * 密码
      */
+    @JsonIgnore
     private String password;
+
+    /**
+     * 是否必须在继续使用系统前修改密码
+     */
+    private Boolean passwordResetRequired;
     
     /**
      * 邮箱
@@ -109,6 +116,12 @@ public class SysUser {
      */
     @TableField(exist = false)
     private List<String> roleIds;
+
+    /**
+     * 创建或重置密码时仅在本次响应中返回的临时密码
+     */
+    @TableField(exist = false)
+    private String temporaryPassword;
     
     public enum Status {
         /** 启用 */

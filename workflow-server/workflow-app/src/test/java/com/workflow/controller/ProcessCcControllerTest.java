@@ -7,6 +7,7 @@ import com.workflow.service.ProcessCcService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -56,5 +57,21 @@ class ProcessCcControllerTest {
     void processCcRecordsRejectAnonymousUser() {
         assertThrows(ForbiddenException.class, () -> controller.getProcessCcRecords("process-1"));
         verifyNoInteractions(roleService, ccService);
+    }
+
+    @Test
+    void myCcPassesFiltersAndUsesExclusiveEndDate() {
+        UserContext.setCurrentUser("user-id", "zhangsan");
+
+        controller.getMyCcList(2, 20, "采购", "李四", "2026-07-01", "2026-07-25");
+
+        verify(ccService).getUserCcPage(
+                "zhangsan",
+                2,
+                20,
+                "采购",
+                "李四",
+                LocalDateTime.of(2026, 7, 1, 0, 0),
+                LocalDateTime.of(2026, 7, 26, 0, 0));
     }
 }

@@ -157,6 +157,7 @@ public class ProcessTaskService {
         }
         
         task.setStatus(ProcessTask.STATUS_TODO);
+        task.setPriority(delegateTask.getPriority());
         task.setStartTime(LocalDateTime.now());
         task.setCreateTime(LocalDateTime.now());
         task.setUpdateTime(LocalDateTime.now());
@@ -289,6 +290,7 @@ public class ProcessTaskService {
         }
         
         task.setStatus(ProcessTask.STATUS_TODO);
+        task.setPriority(flowableTask.getPriority());
         task.setStartTime(LocalDateTime.now());
         task.setCreateTime(LocalDateTime.now());
         task.setUpdateTime(LocalDateTime.now());

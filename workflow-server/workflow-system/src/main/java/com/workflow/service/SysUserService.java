@@ -18,7 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,6 +35,14 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SysUserService {
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final char[] LOWERCASE = "abcdefghjkmnpqrstuvwxyz".toCharArray();
+    private static final char[] UPPERCASE = "ABCDEFGHJKMNPQRSTUVWXYZ".toCharArray();
+    private static final char[] DIGITS = "23456789".toCharArray();
+    private static final char[] SYMBOLS = "!@#$%&*+-_".toCharArray();
+    private static final char[] TEMPORARY_PASSWORD_CHARS =
+            "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#$%&*+-_".toCharArray();
     
     /** 用户 Mapper */
     private final SysUserMapper userMapper;
@@ -60,6 +71,34 @@ public class SysUserService {
             fillUserOrgInfo(user);
         });
         return users;
+    }
+
+    public PageResult<SysUser> getUserPage(
+            int pageNum,
+            int pageSize,
+            String keyword,
+            String status,
+            String orgId,
+            String deptId,
+            String roleId) {
+        int safePageNum = Math.max(pageNum, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        Page<SysUser> page = userMapper.selectUserPage(
+                new Page<>(safePageNum, safePageSize),
+                trimToNull(keyword),
+                trimToNull(status),
+                trimToNull(orgId),
+                trimToNull(deptId),
+                trimToNull(roleId));
+        page.getRecords().forEach(user -> {
+            fillUserRoles(user);
+            fillUserOrgInfo(user);
+        });
+        return new PageResult<>(
+                page.getRecords(),
+                page.getTotal(),
+                page.getCurrent(),
+                page.getSize());
     }
 
     /**
@@ -213,13 +252,16 @@ public class SysUserService {
         if (!StringUtils.hasText(user.getId())) {
             // 新增
             user.setCreateTime(LocalDateTime.now());
-            // 默认密码 123456
-            user.setPassword("$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO");
+            String temporaryPassword = generateTemporaryPassword();
+            user.setPassword(passwordEncoder.encode(temporaryPassword));
+            user.setPasswordResetRequired(true);
             userMapper.insert(user);
+            user.setTemporaryPassword(temporaryPassword);
             log.info("新增用户：{}", user.getUsername());
         } else {
             // 更新 - 不更新密码
             user.setPassword(null);
+            user.setPasswordResetRequired(null);
             userMapper.updateById(user);
             log.info("更新用户：{}", user.getUsername());
         }
@@ -281,35 +323,115 @@ public class SysUserService {
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
     }
-    
-    /**
-     * 重置密码（重置为默认密码 123456 的加密值）
-     *
-     * @param id 用户ID
-     */
+
     @Transactional(rollbackFor = Exception.class)
-    public void resetPassword(String id) {
-        SysUser user = new SysUser();
-        user.setId(id);
-        // 默认密码 123456
-        user.setPassword(passwordEncoder.encode("123456"));
-        user.setUpdateTime(LocalDateTime.now());
-        userMapper.updateById(user);
+    public void batchUpdateStatus(List<String> userIds, String status) {
+        if (userIds == null || userIds.isEmpty()) {
+            throw new IllegalArgumentException("至少选择一个用户");
+        }
+        if (!SysUser.Status.ENABLED.getValue().equals(status)
+                && !SysUser.Status.DISABLED.getValue().equals(status)) {
+            throw new IllegalArgumentException("用户状态只能为启用或禁用");
+        }
+        for (String userId : userIds.stream().distinct().toList()) {
+            updateStatus(userId, status);
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void batchAssignRoles(List<String> userIds, List<String> roleIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            throw new IllegalArgumentException("至少选择一个用户");
+        }
+        List<String> normalizedRoles = roleIds == null ? List.of() : roleIds.stream().distinct().toList();
+        for (String userId : userIds.stream().distinct().toList()) {
+            if (userMapper.selectById(userId) == null) {
+                throw new IllegalArgumentException("用户不存在: " + userId);
+            }
+            saveUserRoles(userId, normalizedRoles);
+        }
     }
     
     /**
-     * 更新用户密码
+     * 重置为一次性随机临时密码。
      *
-     * @param id             用户ID
-     * @param encodedPassword 已加密的密码
+     * @param id 用户ID
+     * @return 只应在本次响应中展示的临时密码
      */
     @Transactional(rollbackFor = Exception.class)
-    public void updatePassword(String id, String encodedPassword) {
-        SysUser user = new SysUser();
-        user.setId(id);
-        user.setPassword(encodedPassword);
-        user.setUpdateTime(LocalDateTime.now());
-        userMapper.updateById(user);
+    public String resetPassword(String id) {
+        SysUser existing = userMapper.selectById(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        String temporaryPassword = generateTemporaryPassword();
+        SysUser update = new SysUser();
+        update.setId(id);
+        update.setPassword(passwordEncoder.encode(temporaryPassword));
+        update.setPasswordResetRequired(true);
+        update.setUpdateTime(LocalDateTime.now());
+        userMapper.updateById(update);
+        return temporaryPassword;
+    }
+    
+    /**
+     * 校验当前密码并完成改密，同时解除首次登录限制。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void changePassword(String id, String currentPassword, String newPassword) {
+        SysUser existing = userMapper.selectById(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        if (!passwordMatches(currentPassword, existing.getPassword())) {
+            throw new IllegalArgumentException("当前密码不正确");
+        }
+        validateNewPassword(newPassword);
+        if (passwordMatches(newPassword, existing.getPassword())) {
+            throw new IllegalArgumentException("新密码不能与当前密码相同");
+        }
+        SysUser update = new SysUser();
+        update.setId(id);
+        update.setPassword(passwordEncoder.encode(newPassword));
+        update.setPasswordResetRequired(false);
+        update.setUpdateTime(LocalDateTime.now());
+        userMapper.updateById(update);
+    }
+
+    /**
+     * 登录成功后迁移历史明文密码，避免继续保留明文。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void migrateLegacyPassword(String id, String rawPassword) {
+        SysUser update = new SysUser();
+        update.setId(id);
+        update.setPassword(passwordEncoder.encode(rawPassword));
+        update.setUpdateTime(LocalDateTime.now());
+        userMapper.updateById(update);
+    }
+
+    public boolean passwordMatches(String rawPassword, String storedPassword) {
+        if (!StringUtils.hasText(rawPassword) || !StringUtils.hasText(storedPassword)) {
+            return false;
+        }
+        if (isBcryptPassword(storedPassword)) {
+            return passwordEncoder.matches(rawPassword, storedPassword);
+        }
+        return java.security.MessageDigest.isEqual(
+                rawPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                storedPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private boolean isBcryptPassword(String password) {
+        return password != null
+                && (password.startsWith("$2a$")
+                || password.startsWith("$2b$")
+                || password.startsWith("$2y$"));
+    }
+
+    public boolean requiresPasswordReset(String id) {
+        SysUser user = userMapper.selectById(id);
+        return user != null && Boolean.TRUE.equals(user.getPasswordResetRequired());
     }
     
     /**
@@ -363,6 +485,40 @@ public class SysUserService {
             if (dept != null) {
                 user.setDeptName(dept.getOrgName());
             }
+        }
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String generateTemporaryPassword() {
+        List<Character> characters = new ArrayList<>();
+        characters.add(randomCharacter(LOWERCASE));
+        characters.add(randomCharacter(UPPERCASE));
+        characters.add(randomCharacter(DIGITS));
+        characters.add(randomCharacter(SYMBOLS));
+        while (characters.size() < 16) {
+            characters.add(randomCharacter(TEMPORARY_PASSWORD_CHARS));
+        }
+        Collections.shuffle(characters, SECURE_RANDOM);
+        StringBuilder password = new StringBuilder(characters.size());
+        characters.forEach(password::append);
+        return password.toString();
+    }
+
+    private char randomCharacter(char[] characters) {
+        return characters[SECURE_RANDOM.nextInt(characters.length)];
+    }
+
+    private void validateNewPassword(String password) {
+        if (password == null || password.length() < 10 || password.length() > 72) {
+            throw new IllegalArgumentException("新密码长度必须为10到72位");
+        }
+        if (!password.chars().anyMatch(Character::isLowerCase)
+                || !password.chars().anyMatch(Character::isUpperCase)
+                || !password.chars().anyMatch(Character::isDigit)) {
+            throw new IllegalArgumentException("新密码必须同时包含大写字母、小写字母和数字");
         }
     }
 }

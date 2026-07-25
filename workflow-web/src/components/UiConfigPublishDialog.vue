@@ -21,7 +21,7 @@
               表单需要重新发布流程后生效；运行中实例继续使用原始版本。
             </span>
             <span v-else>
-              列表发布后立即切换全局 ACTIVE 版本，所有列表页面同步生效。
+              列表发布后立即切换当前全局生效版本，所有列表页面同步生效。
             </span>
           </template>
           <template v-else>
@@ -48,7 +48,7 @@
 
     <el-alert
       v-if="configType === 'LIST'"
-      title="列表运行时始终读取全局 ACTIVE 版本，发布后所有列表页面立即生效。"
+      title="列表运行时始终读取当前全局生效版本，发布后所有列表页面立即生效。"
       type="warning"
       :closable="false"
       show-icon
@@ -59,7 +59,7 @@
       <template v-if="preview">
         <div class="publish-summary">
           <el-tag :type="riskTagType(preview.riskLevel)">
-            {{ preview.riskLevel || 'SAFE' }}
+            {{ riskLabel(preview.riskLevel) }}
           </el-tag>
           <span>变更 {{ preview.changedItems?.length || 0 }} 项</span>
           <span v-if="configType === 'FORM'">
@@ -92,7 +92,7 @@
               v-model="form.overrideRisk"
               :disabled="!canOverride"
             >
-              我已确认 REVIEW 变更会影响运行中任务
+              我已确认这项需复核的变更会影响运行中任务
             </el-checkbox>
           </el-form-item>
           <el-form-item label="覆盖原因">
@@ -117,7 +117,7 @@
           <el-table-column prop="riskLevel" label="风险" width="90">
             <template #default="{ row }">
               <el-tag :type="riskTagType(row.riskLevel)" size="small">
-                {{ row.riskLevel }}
+                {{ riskLabel(row.riskLevel) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -294,6 +294,14 @@ function riskTagType(risk) {
     REVIEW: 'warning',
     BLOCKED: 'danger'
   }[risk] || 'info'
+}
+
+function riskLabel(risk) {
+  return {
+    SAFE: '低风险',
+    REVIEW: '需复核',
+    BLOCKED: '已阻断'
+  }[risk] || '待评估'
 }
 </script>
 

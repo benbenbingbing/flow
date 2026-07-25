@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.JwtUtil;
 import com.workflow.common.UserContext;
+import com.workflow.service.SysUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -13,6 +14,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 认证拦截器单元测试。
@@ -24,6 +27,7 @@ class AuthInterceptorTest {
 
     /** JSON 序列化器，用于解析响应体 */
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final SysUserService userService = mock(SysUserService.class);
 
     /** 每个测试后清理用户上下文 */
     @AfterEach
@@ -36,7 +40,7 @@ class AuthInterceptorTest {
      */
     @Test
     void missingTokenReturnsHttp401AndUnauthorizedBody() throws Exception {
-        AuthInterceptor interceptor = new AuthInterceptor();
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/entity/data/test");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -52,7 +56,7 @@ class AuthInterceptorTest {
     /** 登录端点应放行，不需要 Token */
     @Test
     void loginEndpointDoesNotRequireToken() throws Exception {
-        AuthInterceptor interceptor = new AuthInterceptor();
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -65,7 +69,7 @@ class AuthInterceptorTest {
     /** current 端点应需要 Token，缺少时返回 401 */
     @Test
     void currentEndpointRequiresToken() throws Exception {
-        AuthInterceptor interceptor = new AuthInterceptor();
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/current");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -84,7 +88,7 @@ class AuthInterceptorTest {
     void validTokenSetsCurrentUserForProtectedEndpoint() throws Exception {
         initJwtUtil();
         String token = JwtUtil.generateToken("1", "admin");
-        AuthInterceptor interceptor = new AuthInterceptor();
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/current");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -96,6 +100,43 @@ class AuthInterceptorTest {
         assertEquals("admin", UserContext.getUsername());
         assertEquals("1", request.getAttribute("userId"));
         assertEquals("admin", request.getAttribute("userName"));
+    }
+
+    @Test
+    void temporaryPasswordOnlyAllowsPasswordRecoveryEndpoints() throws Exception {
+        initJwtUtil();
+        String token = JwtUtil.generateToken("1", "alice");
+        when(userService.requiresPasswordReset("1")).thenReturn(true);
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/process/task/todo");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertFalse(allowed);
+        assertEquals(428, response.getStatus());
+        assertEquals(
+                "首次登录或密码重置后，请先修改密码",
+                objectMapper.readTree(response.getContentAsString()).get("message").asText());
+    }
+
+    @Test
+    void missingPasswordPolicyServiceFailsClosed() throws Exception {
+        initJwtUtil();
+        String token = JwtUtil.generateToken("1", "alice");
+        AuthInterceptor interceptor = new AuthInterceptor((SysUserService) null);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/process/task/todo");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertFalse(allowed);
+        assertEquals(503, response.getStatus());
+        assertEquals(
+                "认证服务暂不可用",
+                objectMapper.readTree(response.getContentAsString()).get("message").asText());
     }
 
     /** 初始化 JwtUtil 实例，通过反射注入密钥与过期时间后调用 init */

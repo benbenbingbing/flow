@@ -8,19 +8,32 @@
       </el-button>
     </div>
     
+    <PageState
+      v-if="loadError"
+      type="error"
+      title="角色列表加载失败"
+      :description="loadError"
+      retryable
+      @retry="fetchRoleList"
+    />
+
     <!-- 角色表格 -->
-    <el-table v-loading="loading" :data="roleList" border stripe>
+    <el-table v-else v-loading="loading" :data="roleList" border stripe empty-text="暂无角色">
       <el-table-column type="index" label="#" width="60" align="center" />
       
-      <el-table-column prop="roleName" label="角色名称" min-width="150" />
+      <el-table-column prop="roleName" label="角色名称" min-width="130" show-overflow-tooltip />
       
-      <el-table-column prop="roleCode" label="角色编码" min-width="150" />
+      <el-table-column prop="roleCode" label="角色编码" min-width="130" show-overflow-tooltip />
       
-      <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="description" label="描述" min-width="140" show-overflow-tooltip />
       
-      <el-table-column prop="sort" label="排序" width="80" align="center" />
+      <el-table-column prop="sort" label="排序" width="60" align="center" />
+
+      <el-table-column prop="userCount" label="用户数" width="70" align="center">
+        <template #default="{ row }">{{ row.userCount ?? 0 }}</template>
+      </el-table-column>
       
-      <el-table-column prop="status" label="状态" width="90" align="center">
+      <el-table-column prop="status" label="状态" width="70" align="center">
         <template #default="{ row }">
           <el-switch
             v-model="row.status"
@@ -35,28 +48,17 @@
         </template>
       </el-table-column>
       
-      <el-table-column prop="createTime" label="创建时间" width="160" />
+      <el-table-column prop="createTime" label="创建时间" width="150" :formatter="formatDateColumn" />
       
-      <el-table-column label="操作" width="290" fixed="right">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link size="small" @click="handleEdit(row)">
-            编辑
-          </el-button>
-          <el-button type="primary" link size="small" @click="handleAssignMenu(row)">
-            分配权限
-          </el-button>
-          <el-button type="primary" link size="small" @click="handleRoleUsers(row)">
-            用户
-          </el-button>
-          <el-button 
-            type="danger" 
-            link 
-            size="small"
-            :disabled="row.roleCode === 'super_admin'"
-            @click="handleDelete(row)"
-          >
-            删除
-          </el-button>
+          <RoleTableActions
+            :role="row"
+            @edit="handleEdit"
+            @assign-menu="handleAssignMenu"
+            @users="handleRoleUsers"
+            @delete="handleDelete"
+          />
         </template>
       </el-table-column>
     </el-table>
@@ -110,8 +112,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="formData.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -120,7 +122,9 @@
       
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          {{ formData.id ? '保存角色' : '创建角色' }}
+        </el-button>
       </template>
     </el-dialog>
     
@@ -136,6 +140,35 @@
       @closed="resetPermissionTransferState"
     >
       <div v-loading="menuLoading" class="permission-transfer">
+        <div class="permission-filter-bar">
+          <el-select v-model="permissionDomain" placeholder="全部产品域" style="width: 190px">
+            <el-option label="全部产品域" value="" />
+            <el-option
+              v-for="domain in permissionDomainOptions"
+              :key="domain.id"
+              :label="domain.menuName"
+              :value="domain.id"
+            />
+          </el-select>
+          <el-checkbox-group v-model="permissionTypes" size="small">
+            <el-checkbox-button label="M">目录</el-checkbox-button>
+            <el-checkbox-button label="C">页面</el-checkbox-button>
+            <el-checkbox-button label="F">操作</el-checkbox-button>
+          </el-checkbox-group>
+          <el-button :disabled="visibleAvailableIds.length === 0" @click="assignVisiblePermissions">
+            分配当前筛选
+          </el-button>
+          <el-button :disabled="visibleAssignedIds.length === 0" @click="removeVisiblePermissions">
+            移除当前筛选
+          </el-button>
+          <span class="permission-filter-bar__spacer" />
+          <el-tag type="success" effect="plain">新增 {{ permissionDiff.added }}</el-tag>
+          <el-tag type="danger" effect="plain">移除 {{ permissionDiff.removed }}</el-tag>
+          <el-tag v-if="assignedHighRiskCount" type="warning" effect="plain">
+            高风险 {{ assignedHighRiskCount }}
+          </el-tag>
+        </div>
+
         <div class="permission-tree-transfer">
           <section class="permission-tree-panel">
             <header class="permission-tree-panel__header">
@@ -159,7 +192,8 @@
                 node-key="id"
                 show-checkbox
                 highlight-current
-                default-expand-all
+                :default-expanded-keys="permissionExpandedKeys"
+                :render-after-expand="false"
                 :expand-on-click-node="false"
                 :filter-node-method="filterPermissionTreeNode"
                 empty-text="暂无未分配权限"
@@ -179,6 +213,9 @@
                       :type="getMenuTypeTag(data.menuType)"
                     >
                       {{ data.menuTypeLabel }}
+                    </el-tag>
+                    <el-tag v-if="isHighRiskPermission(data)" size="small" type="danger" effect="plain">
+                      高风险
                     </el-tag>
                   </div>
                 </template>
@@ -242,7 +279,8 @@
                 node-key="id"
                 show-checkbox
                 highlight-current
-                default-expand-all
+                :default-expanded-keys="permissionExpandedKeys"
+                :render-after-expand="false"
                 :expand-on-click-node="false"
                 :filter-node-method="filterPermissionTreeNode"
                 empty-text="暂无已分配权限"
@@ -263,6 +301,9 @@
                     >
                       {{ data.menuTypeLabel }}
                     </el-tag>
+                    <el-tag v-if="isHighRiskPermission(data)" size="small" type="danger" effect="plain">
+                      高风险
+                    </el-tag>
                   </div>
                 </template>
               </el-tree>
@@ -278,11 +319,12 @@
       <template #footer>
         <div class="permission-dialog-footer">
           <span class="permission-dialog-footer__count">
-            已分配 {{ selectedMenuIds.length }} / {{ permissionOptions.length }} 项
+            已分配 {{ selectedMenuIds.length }} / {{ permissionOptions.length }} 项，
+            本次新增 {{ permissionDiff.added }} 项、移除 {{ permissionDiff.removed }} 项
           </span>
           <div class="permission-dialog-footer__actions">
             <el-button @click="menuDialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="handleSaveMenus" :loading="menuSubmitLoading">确定</el-button>
+            <el-button type="primary" @click="handleSaveMenus" :loading="menuSubmitLoading">保存权限</el-button>
           </div>
         </div>
       </template>
@@ -374,6 +416,7 @@
       append-to-body
       destroy-on-close
     >
+      <TemporaryPasswordNotice />
       <el-form
         ref="roleUserFormRef"
         :model="roleUserForm"
@@ -439,8 +482,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="roleUserForm.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -454,15 +497,18 @@
 
       <template #footer>
         <el-button @click="newRoleUserDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="roleUserSubmitLoading"
-          @click="handleCreateRoleUser"
-        >
-          确定
+        <el-button type="primary" :loading="roleUserSubmitLoading" @click="handleCreateRoleUser">
+          创建用户
         </el-button>
       </template>
     </el-dialog>
+
+    <TemporaryPasswordDialog
+      v-model="temporaryPasswordDialog.visible"
+      :username="temporaryPasswordDialog.username"
+      :temporary-password="temporaryPasswordDialog.password"
+      @closed="clearTemporaryPassword"
+    />
   </div>
 </template>
 
@@ -482,6 +528,11 @@ import {
 } from '@/api/system/role'
 import { createUser } from '@/api/system/user'
 import request from '@/utils/request'
+import TemporaryPasswordDialog from '@/components/TemporaryPasswordDialog.vue'
+import TemporaryPasswordNotice from '@/components/TemporaryPasswordNotice.vue'
+import RoleTableActions from '@/components/RoleTableActions.vue'
+import PageState from '@/components/PageState.vue'
+import { formatDateColumn } from '@/shared/list-runtime'
 import {
   applyPermissionTransferChange,
   buildPermissionTreeView,
@@ -490,6 +541,7 @@ import {
 } from '@/shared/role-permission-transfer'
 
 const loading = ref(false)
+const loadError = ref('')
 const roleList = ref<any[]>([])
 const menuTree = ref<any[]>([])
 const menuLoading = ref(false)
@@ -519,6 +571,7 @@ const formRules = {
 const menuDialogVisible = ref(false)
 const menuSubmitLoading = ref(false)
 const selectedMenuIds = ref<string[]>([])
+const originalSelectedMenuIds = ref<string[]>([])
 const currentRoleId = ref('')
 const currentRoleName = ref('')
 const availableTreeRef = ref<any>()
@@ -527,18 +580,76 @@ const availablePermissionQuery = ref('')
 const assignedPermissionQuery = ref('')
 const availableCheckedIds = ref<string[]>([])
 const assignedCheckedIds = ref<string[]>([])
+const permissionDomain = ref('')
+const permissionTypes = ref<string[]>(['M', 'C', 'F'])
 const selectedMenuIdSet = computed(() => new Set(selectedMenuIds.value))
-const availablePermissionCount = computed(() => permissionOptions.value.length - selectedMenuIds.value.length)
+const permissionDomainOptions = computed(() =>
+  menuTree.value.map((item: any) => ({
+    id: String(item.id),
+    menuName: item.menuName || item.title || '未命名产品域'
+  }))
+)
+const visiblePermissionOptions = computed(() =>
+  permissionOptions.value.filter((option: any) => {
+    const inDomain = !permissionDomain.value
+      || option.id === permissionDomain.value
+      || option.ancestorIds.includes(permissionDomain.value)
+    return inDomain && permissionTypes.value.includes(option.menuType)
+  })
+)
+const filteredPermissionMenuTree = computed(() => {
+  const domainRoots = permissionDomain.value
+    ? menuTree.value.filter((item: any) => String(item.id) === permissionDomain.value)
+    : menuTree.value
+  const filterNodes = (nodes: any[]): any[] => (nodes || []).flatMap((node: any) => {
+    const children = filterNodes(node.children || [])
+    if (!permissionTypes.value.includes(node.menuType) && children.length === 0) return []
+    return [{ ...node, children }]
+  })
+  return filterNodes(domainRoots)
+})
+const availablePermissionCount = computed(() =>
+  visiblePermissionOptions.value.filter((option: any) => !selectedMenuIdSet.value.has(option.id)).length
+)
 const availablePermissionTree = computed(() => buildPermissionTreeView(
-  menuTree.value,
+  filteredPermissionMenuTree.value,
   selectedMenuIds.value,
   'available'
 ))
 const assignedPermissionTree = computed(() => buildPermissionTreeView(
-  menuTree.value,
+  filteredPermissionMenuTree.value,
   selectedMenuIds.value,
   'assigned'
 ))
+const visibleAvailableIds = computed(() =>
+  visiblePermissionOptions.value
+    .map((option: any) => option.id)
+    .filter((id: string) => !selectedMenuIdSet.value.has(id))
+)
+const visibleAssignedIds = computed(() =>
+  visiblePermissionOptions.value
+    .map((option: any) => option.id)
+    .filter((id: string) => selectedMenuIdSet.value.has(id))
+)
+const permissionExpandedKeys = computed(() =>
+  filteredPermissionMenuTree.value.map((item: any) => String(item.id))
+)
+const permissionDiff = computed(() => {
+  const original = new Set(originalSelectedMenuIds.value)
+  const current = new Set(selectedMenuIds.value)
+  return {
+    added: selectedMenuIds.value.filter(id => !original.has(id)).length,
+    removed: originalSelectedMenuIds.value.filter(id => !current.has(id)).length
+  }
+})
+const isHighRiskPermission = (permission: any) =>
+  /(delete|remove|disable|publish|rollback|import|hotfix|override|admin)/i
+    .test(`${permission?.perm || ''} ${permission?.menuName || ''}`)
+const assignedHighRiskCount = computed(() =>
+  permissionOptions.value.filter((option: any) =>
+    selectedMenuIdSet.value.has(option.id) && isHighRiskPermission(option)
+  ).length
+)
 const permissionTreeProps = {
   children: 'children',
   label: 'menuName',
@@ -577,12 +688,20 @@ const roleUserForm = reactive({
 const roleUserFormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }]
 }
+const temporaryPasswordDialog = reactive({
+  visible: false,
+  username: '',
+  password: ''
+})
 
 // 获取角色列表
 const fetchRoleList = async () => {
   loading.value = true
+  loadError.value = ''
   try {
     roleList.value = await getRoleList() || []
+  } catch (error: any) {
+    loadError.value = error?.message || '无法读取角色，请重试。'
   } finally {
     loading.value = false
   }
@@ -652,9 +771,17 @@ const handleSubmit = async () => {
 // 删除角色
 const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除角色 "${row.roleName}" 吗？`, '提示', {
-      type: 'warning'
-    })
+    await ElMessageBox.prompt(
+      `删除后，${row.userCount || 0} 个已分配用户将失去该角色权限。请输入角色名称「${row.roleName}」确认。`,
+      '删除角色',
+      {
+        type: 'warning',
+        inputPlaceholder: row.roleName,
+        inputValidator: value => value === row.roleName || '输入的角色名称不一致',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     await deleteRole(row.id)
     ElMessage.success('删除成功')
     fetchRoleList()
@@ -665,11 +792,24 @@ const handleDelete = async (row: any) => {
 
 // 状态变更
 const handleStatusChange = async (row: any) => {
+  const nextStatus = row.status
+  const previousStatus = nextStatus === '0' ? '1' : '0'
   try {
-    await updateRoleStatus(row.id, row.status)
-    ElMessage.success('状态更新成功')
+    await ElMessageBox.confirm(
+      nextStatus === '1'
+        ? `禁用后，${row.userCount || 0} 个用户将立即失去角色「${row.roleName}」提供的权限。`
+        : `启用后，${row.userCount || 0} 个用户将恢复该角色权限。`,
+      nextStatus === '1' ? '禁用角色' : '启用角色',
+      {
+        type: nextStatus === '1' ? 'warning' : 'info',
+        confirmButtonText: nextStatus === '1' ? '确认禁用' : '确认启用',
+        cancelButtonText: '取消'
+      }
+    )
+    await updateRoleStatus(row.id, nextStatus)
+    ElMessage.success(nextStatus === '0' ? '角色已启用' : '角色已禁用')
   } catch {
-    row.status = row.status === '0' ? '1' : '0'
+    row.status = previousStatus
   }
 }
 
@@ -766,7 +906,7 @@ const handleCreateRoleUser = async () => {
 
   roleUserSubmitLoading.value = true
   try {
-    await createUser({
+    const createdUser = await createUser({
       ...roleUserForm,
       roleIds: [currentRoleId.value]
     })
@@ -775,9 +915,19 @@ const handleCreateRoleUser = async () => {
     roleUserSearch.keyword = ''
     roleUserPage.pageNum = 1
     fetchRoleUsers()
+    if (createdUser?.temporaryPassword) {
+      temporaryPasswordDialog.username = createdUser.username || roleUserForm.username
+      temporaryPasswordDialog.password = createdUser.temporaryPassword
+      temporaryPasswordDialog.visible = true
+    }
   } finally {
     roleUserSubmitLoading.value = false
   }
+}
+
+const clearTemporaryPassword = () => {
+  temporaryPasswordDialog.username = ''
+  temporaryPasswordDialog.password = ''
 }
 
 // 分配权限
@@ -790,6 +940,7 @@ const handleAssignMenu = async (row: any) => {
   }
 
   selectedMenuIds.value = sanitizePermissionKeys(row.menuIds || [], permissionOptions.value)
+  originalSelectedMenuIds.value = [...selectedMenuIds.value]
   menuDialogVisible.value = true
   await nextTick()
   refreshPermissionTrees()
@@ -847,16 +998,45 @@ const movePermissionsToAvailable = () => {
   movePermissions('left', assignedCheckedIds.value)
 }
 
+const assignVisiblePermissions = () => {
+  if (!visibleAvailableIds.value.length) return
+  movePermissions('right', visibleAvailableIds.value)
+}
+
+const removeVisiblePermissions = () => {
+  if (!visibleAssignedIds.value.length) return
+  movePermissions('left', visibleAssignedIds.value)
+}
+
 const resetPermissionTransferState = () => {
   availablePermissionQuery.value = ''
   assignedPermissionQuery.value = ''
   availableCheckedIds.value = []
   assignedCheckedIds.value = []
+  permissionDomain.value = ''
+  permissionTypes.value = ['M', 'C', 'F']
+  originalSelectedMenuIds.value = []
 }
 
 // 保存权限
 const handleSaveMenus = async () => {
   if (!currentRoleId.value) return
+  const newlyAssignedHighRisk = permissionOptions.value.filter((option: any) =>
+    selectedMenuIdSet.value.has(option.id)
+      && !originalSelectedMenuIds.value.includes(option.id)
+      && isHighRiskPermission(option)
+  )
+  if (newlyAssignedHighRisk.length) {
+    await ElMessageBox.confirm(
+      `本次将新增 ${newlyAssignedHighRisk.length} 项高风险权限，包括发布、删除、回滚或管理能力。确认继续保存？`,
+      '确认高风险权限',
+      {
+        type: 'warning',
+        confirmButtonText: '确认保存',
+        cancelButtonText: '返回检查'
+      }
+    )
+  }
   
   menuSubmitLoading.value = true
   try {
@@ -883,6 +1063,8 @@ watch(assignedPermissionQuery, async query => {
   await nextTick()
   assignedTreeRef.value?.filter(query)
 })
+
+watch([permissionDomain, permissionTypes], refreshPermissionTrees, { deep: true })
 </script>
 
 <style scoped lang="scss">
@@ -986,16 +1168,32 @@ watch(assignedPermissionQuery, async query => {
 }
 
 .permission-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   height: 100%;
   width: min(100%, 1500px);
   margin: 0 auto;
+}
+
+.permission-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.permission-filter-bar__spacer {
+  flex: 1 1 auto;
 }
 
 .permission-tree-transfer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr);
   align-items: stretch;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .permission-tree-panel {

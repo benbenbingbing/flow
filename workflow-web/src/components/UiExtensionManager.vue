@@ -1,5 +1,12 @@
 <template>
   <div class="ui-extension-manager">
+    <el-alert
+      :title="`当前构建已加载 ${localManifest.length} 个扩展实现；目录状态与本地实现会分别校验。`"
+      type="info"
+      :closable="false"
+      show-icon
+      class="catalog-summary"
+    />
     <div class="toolbar">
       <el-select v-model="filters.extensionType" clearable placeholder="全部类型" @change="load">
         <el-option v-for="type in extensionTypes" :key="type" :label="type" :value="type" />
@@ -14,13 +21,38 @@
       <el-button type="primary" @click="openCreate">新增扩展版本</el-button>
     </div>
 
-    <el-table :data="items" v-loading="loading" size="small">
-      <el-table-column prop="extensionType" label="类型" width="90" />
+    <PageState
+      v-if="loadError"
+      type="error"
+      title="扩展目录加载失败"
+      :description="loadError"
+      compact
+      retryable
+      @retry="load"
+    />
+
+    <el-table v-else :data="items" v-loading="loading" size="small" empty-text="当前条件下没有扩展定义">
+      <el-table-column prop="extensionType" label="类型" width="100">
+        <template #default="{ row }">{{ extensionTypeLabel(row.extensionType) }}</template>
+      </el-table-column>
       <el-table-column prop="extensionKey" label="注册名" min-width="160" />
       <el-table-column prop="displayName" label="名称" min-width="140" />
       <el-table-column prop="version" label="实现版本" width="90" />
       <el-table-column prop="snapshotVersion" label="快照版本" width="90" />
-      <el-table-column prop="status" label="状态" width="90" />
+      <el-table-column prop="status" label="目录状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
+            {{ row.status === 'ACTIVE' ? '启用' : '禁用' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="当前构建" width="120">
+        <template #default="{ row }">
+          <el-tag :type="findLocalImplementation(row) ? 'success' : 'warning'" size="small" effect="plain">
+            {{ findLocalImplementation(row) ? '已加载' : '未加载' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="revision" label="修订" width="70" />
       <el-table-column label="操作" width="90">
         <template #default="{ row }">
@@ -68,8 +100,8 @@
           <el-col :span="12">
             <el-form-item label="状态">
               <el-radio-group v-model="editor.status">
-                <el-radio-button label="ACTIVE">启用</el-radio-button>
-                <el-radio-button label="DISABLED">禁用</el-radio-button>
+                <el-radio-button value="ACTIVE">启用</el-radio-button>
+                <el-radio-button value="DISABLED">禁用</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -118,6 +150,11 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { uiExtensionApi } from '@/api/uiConfig'
+import PageState from '@/components/PageState.vue'
+import {
+  getBundledExtensionManifest,
+  validateBundledExtensionManifest
+} from '@/extensions/manifest'
 
 const emit = defineEmits(['changed'])
 const extensionTypes = ['FORM', 'NODE', 'FIELD', 'LIST']
@@ -130,9 +167,21 @@ const bindingTypes = ['ENTITY_FIELD', 'RELATION', 'COMPUTED', 'CONTEXT', 'NONE']
 const filters = reactive({ extensionType: '', extensionKey: '' })
 const items = ref([])
 const loading = ref(false)
+const loadError = ref('')
 const saving = ref(false)
 const editorVisible = ref(false)
 const editor = reactive(emptyEditor())
+const localManifest = getBundledExtensionManifest()
+const manifestIssues = validateBundledExtensionManifest(localManifest)
+if (manifestIssues.length) {
+  console.error('当前构建的扩展清单无效:', manifestIssues)
+}
+const extensionTypeLabels = {
+  FORM: '表单',
+  NODE: '表单节点',
+  FIELD: '表单字段',
+  LIST: '列表'
+}
 
 function emptyEditor() {
   return {
@@ -164,14 +213,29 @@ function resetEditor(value = emptyEditor()) {
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     items.value = await uiExtensionApi.list({
       extensionType: filters.extensionType || undefined,
       extensionKey: filters.extensionKey || undefined
     })
+  } catch (error) {
+    loadError.value = error?.message || '无法读取扩展目录，请重试。'
   } finally {
     loading.value = false
   }
+}
+
+function extensionTypeLabel(type) {
+  return extensionTypeLabels[type] || type || '-'
+}
+
+function findLocalImplementation(row) {
+  return localManifest.find(item =>
+    item.type === row.extensionType
+      && item.name === row.extensionKey
+      && item.version === Number(row.version)
+  )
 }
 
 function openCreate() {
@@ -239,6 +303,9 @@ onMounted(load)
 .toolbar {
   display: flex;
   gap: 8px;
+  margin-bottom: 12px;
+}
+.catalog-summary {
   margin-bottom: 12px;
 }
 .toolbar .el-select,

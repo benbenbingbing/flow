@@ -4,7 +4,10 @@ import com.workflow.common.JwtUtil;
 import com.workflow.common.UserContext;
 import com.workflow.common.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.service.SysUserService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -25,6 +28,20 @@ public class AuthInterceptor implements HandlerInterceptor {
     
     /** JSON 序列化器，用于写出错误响应 */
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final SysUserService userService;
+
+    /**
+     * MVC 切片测试不会加载系统服务，使用 Provider 可让认证拦截器正常创建；
+     * 完整应用中仍必须存在 SysUserService，否则受保护请求按不可用处理。
+     */
+    @Autowired
+    public AuthInterceptor(ObjectProvider<SysUserService> userServiceProvider) {
+        this.userService = userServiceProvider.getIfAvailable();
+    }
+
+    AuthInterceptor(SysUserService userService) {
+        this.userService = userService;
+    }
     
     /**
      * 请求前置处理：校验 Token 并设置当前用户上下文
@@ -59,6 +76,18 @@ public class AuthInterceptor implements HandlerInterceptor {
         String userId = JwtUtil.getUserIdFromToken(token);
         String username = JwtUtil.getUsernameFromToken(token);
         UserContext.setCurrentUser(userId, username);
+
+        if (userService == null) {
+            writeErrorResponse(response, 503, "认证服务暂不可用");
+            return false;
+        }
+        if (userService.requiresPasswordReset(userId)
+                && !uri.equals("/api/auth/current")
+                && !uri.equals("/api/auth/change-password")
+                && !uri.equals("/api/auth/logout")) {
+            writeErrorResponse(response, 428, "首次登录或密码重置后，请先修改密码");
+            return false;
+        }
         
         // 设置 request attribute，供控制器使用
         request.setAttribute("userId", userId);

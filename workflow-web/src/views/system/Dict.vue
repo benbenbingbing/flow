@@ -6,7 +6,7 @@
         <h3>字典类型</h3>
         <el-button type="primary" size="small" @click="handleAddDict">
           <el-icon><Plus /></el-icon>
-          新增
+          新增字典
         </el-button>
       </div>
 
@@ -30,8 +30,18 @@
         <el-button size="small" @click="handleResetSearch">重置</el-button>
       </div>
 
+      <PageState
+        v-if="dictLoadError"
+        type="error"
+        title="字典类型加载失败"
+        :description="dictLoadError"
+        retryable
+        compact
+        @retry="fetchDictPage"
+      />
       <!-- 字典类型表格 -->
       <el-table
+        v-else
         v-loading="dictLoading"
         :data="dictList"
         border
@@ -99,8 +109,17 @@
         </el-button>
       </div>
 
+      <PageState
+        v-if="itemLoadError"
+        type="error"
+        title="字典项加载失败"
+        :description="itemLoadError"
+        retryable
+        compact
+        @retry="fetchItemTree"
+      />
       <el-table
-        v-if="currentDict"
+        v-else-if="currentDict"
         v-loading="itemLoading"
         :data="itemTree"
         border
@@ -159,6 +178,7 @@
             placeholder="请输入字典编码，如：status"
             :disabled="!!dictForm.id"
           />
+          <div class="field-help">创建后不可修改；表单、列表和接口会长期引用此编码。</div>
         </el-form-item>
         <el-form-item label="字典名称" prop="dictName">
           <el-input v-model="dictForm.dictName" placeholder="请输入字典名称" />
@@ -186,8 +206,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="dictForm.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -195,7 +215,9 @@
       </el-form>
       <template #footer>
         <el-button @click="dictDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmitDict" :loading="dictSubmitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmitDict" :loading="dictSubmitLoading">
+          {{ dictForm.id ? '保存字典' : '创建字典' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -248,8 +270,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="itemForm.status">
-                <el-radio label="0">启用</el-radio>
-                <el-radio label="1">禁用</el-radio>
+                <el-radio value="0">启用</el-radio>
+                <el-radio value="1">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -265,7 +287,9 @@
       </el-form>
       <template #footer>
         <el-button @click="itemDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmitItem" :loading="itemSubmitLoading">确定</el-button>
+        <el-button type="primary" @click="handleSubmitItem" :loading="itemSubmitLoading">
+          {{ itemForm.id ? '保存字典项' : '创建字典项' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -275,6 +299,7 @@
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import PageState from '@/components/PageState.vue'
 import {
   getDictPage,
   createDict,
@@ -290,6 +315,7 @@ import {
 
 // ==================== 字典类型 ====================
 const dictLoading = ref(false)
+const dictLoadError = ref('')
 const dictList = ref<any[]>([])
 const currentDict = ref<any>(null)
 
@@ -327,6 +353,7 @@ const dictRules = {
 // 分页查询字典类型
 const fetchDictPage = async () => {
   dictLoading.value = true
+  dictLoadError.value = ''
   try {
     const res = await getDictPage({
       pageNum: pageInfo.pageNum,
@@ -336,6 +363,8 @@ const fetchDictPage = async () => {
     })
     dictList.value = res?.records || []
     pageInfo.total = res?.total || 0
+  } catch (error: any) {
+    dictLoadError.value = error?.message || '无法读取字典类型，请检查权限或稍后重试。'
   } finally {
     dictLoading.value = false
   }
@@ -399,9 +428,17 @@ const handleSubmitDict = async () => {
 
 const handleDeleteDict = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除字典 "${row.dictName}" 吗？该字典下的所有字典项也将被删除。`, '提示', {
-      type: 'warning'
-    })
+    const confirmation = await ElMessageBox.prompt(
+      `删除会同时删除该字典的全部字典项，已有业务数据中的历史值不会自动转换。请输入字典编码「${row.dictCode}」确认。`,
+      '删除字典',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        inputPlaceholder: row.dictCode,
+        inputValidator: value => value === row.dictCode || '字典编码不匹配'
+      }
+    )
+    if (confirmation.value !== row.dictCode) return
     await deleteDict(row.id)
     ElMessage.success('删除成功')
     if (currentDict.value?.id === row.id) {
@@ -415,16 +452,24 @@ const handleDeleteDict = async (row: any) => {
 }
 
 const handleDictStatusChange = async (row: any) => {
+  const previousStatus = row.status === '0' ? '1' : '0'
   try {
+    const action = row.status === '0' ? '启用' : '禁用'
+    await ElMessageBox.confirm(
+      `${action}字典「${row.dictName}」会影响表单和列表后续加载可选值，但不会自动修改已保存的历史数据。`,
+      `${action}字典`,
+      { type: row.status === '0' ? 'info' : 'warning', confirmButtonText: `确认${action}` }
+    )
     await updateDictStatus(row.id, row.status)
-    ElMessage.success('状态更新成功')
+    ElMessage.success(`字典已${action}`)
   } catch {
-    row.status = row.status === '0' ? '1' : '0'
+    row.status = previousStatus
   }
 }
 
 // ==================== 字典项 ====================
 const itemLoading = ref(false)
+const itemLoadError = ref('')
 const itemTree = ref<any[]>([])
 
 // 字典项对话框
@@ -464,9 +509,12 @@ const handleDictSelect = (row: any) => {
 const fetchItemTree = async () => {
   if (!currentDict.value) return
   itemLoading.value = true
+  itemLoadError.value = ''
   try {
     const res = await getItemTreeByDictId(currentDict.value.id)
     itemTree.value = res || []
+  } catch (error: any) {
+    itemLoadError.value = error?.message || '无法读取当前字典项，请稍后重试。'
   } finally {
     itemLoading.value = false
   }
@@ -544,9 +592,17 @@ const handleSubmitItem = async () => {
 
 const handleDeleteItem = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除字典项 "${row.itemLabel}" 吗？其所有子项也将被删除。`, '提示', {
-      type: 'warning'
-    })
+    const confirmation = await ElMessageBox.prompt(
+      `删除会同时删除其子项；历史数据中的值「${row.itemValue}」不会自动转换。请输入项编码「${row.itemCode}」确认。`,
+      '删除字典项',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        inputPlaceholder: row.itemCode,
+        inputValidator: value => value === row.itemCode || '项编码不匹配'
+      }
+    )
+    if (confirmation.value !== row.itemCode) return
     await deleteDictItem(row.id)
     ElMessage.success('删除成功')
     fetchItemTree()
@@ -556,11 +612,18 @@ const handleDeleteItem = async (row: any) => {
 }
 
 const handleItemStatusChange = async (row: any) => {
+  const previousStatus = row.status === '0' ? '1' : '0'
   try {
+    const action = row.status === '0' ? '启用' : '禁用'
+    await ElMessageBox.confirm(
+      `${action}字典项「${row.itemLabel}」会影响后续选择，但不会改写历史数据中的值。`,
+      `${action}字典项`,
+      { type: row.status === '0' ? 'info' : 'warning', confirmButtonText: `确认${action}` }
+    )
     await updateDictItemStatus(row.id, row.status)
-    ElMessage.success('状态更新成功')
+    ElMessage.success(`字典项已${action}`)
   } catch {
-    row.status = row.status === '0' ? '1' : '0'
+    row.status = previousStatus
   }
 }
 
@@ -615,6 +678,31 @@ onMounted(() => {
     gap: 8px;
     margin-bottom: 12px;
     flex-wrap: wrap;
+  }
+}
+
+.field-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 960px) {
+  .dict-management {
+    height: auto;
+    min-height: calc(100vh - 84px);
+    flex-direction: column;
+    padding: 12px;
+
+    .dict-type-panel {
+      flex: none;
+    }
+
+    .dict-type-panel,
+    .dict-item-panel {
+      min-height: 420px;
+    }
   }
 }
 </style>

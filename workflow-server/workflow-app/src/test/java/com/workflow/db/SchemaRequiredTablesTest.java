@@ -126,6 +126,21 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("030"), "incremental UI configuration migration must be V030");
         assertTrue(versions.contains("031"), "UI extension registry migration must be V031");
         assertTrue(versions.contains("037"), "UI hotfix rollout migration must be V037");
+        assertTrue(versions.contains("039"), "department system field binding migration must be V039");
+    }
+
+    /** 所属部门字段迁移应绑定系统组织实体且保持幂等更新 */
+    @Test
+    void departmentSystemFieldMigrationBindsOrganizationEntity() throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V039__bind_department_system_field_to_organization.sql");
+        assertTrue(Files.exists(migration), "V039 department binding migration must exist");
+
+        String sql = Files.readString(migration);
+        assertTrue(sql.contains("organization_definition.entity_code = 'sys_organization'"));
+        assertTrue(sql.contains("department_field.field_code = 'deptId'"));
+        assertTrue(sql.contains("department_field.ref_entity_type = 'DEPT'"));
+        assertTrue(sql.contains("department_field.ref_entity_id = organization_definition.id"));
     }
 
     /**

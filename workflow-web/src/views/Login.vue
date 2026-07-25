@@ -51,9 +51,6 @@
         </el-form-item>
       </el-form>
       
-      <div class="login-tips">
-        <p>默认账号: admin / admin</p>
-      </div>
     </div>
   </div>
 </template>
@@ -71,7 +68,6 @@ const userStore = useUserStore()
 
 const loginFormRef = ref(null)
 const loading = ref(false)
-
 const loginForm = reactive({
   username: '',
   password: ''
@@ -99,19 +95,21 @@ async function handleLogin() {
     userStore.setToken(res.token)
     userStore.setUserInfo(res)
     
-    // 加载权限码
-    try {
-      const perms = await getPermissions()
-      userStore.setPermissions(perms || [])
-    } catch (e) {
-      console.error('加载权限失败:', e)
+    if (res.passwordResetRequired) {
       userStore.setPermissions([])
+    } else {
+      try {
+        const perms = await getPermissions()
+        userStore.setPermissions(perms || [])
+      } catch (e) {
+        console.error('加载权限失败:', e)
+        userStore.setPermissions([])
+      }
     }
     
     ElMessage.success('登录成功')
     
-    // 跳转到首页
-    router.push('/')
+    router.push(res.passwordResetRequired ? '/change-password' : '/')
   } catch (error) {
     console.error('登录失败:', error)
     ElMessage.error(error.message || '登录失败')
@@ -127,7 +125,8 @@ async function handleLogin() {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 24px;
+  background: #eef1f4;
 }
 
 .login-box {
@@ -165,16 +164,22 @@ async function handleLogin() {
   width: 100%;
 }
 
-.login-tips {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #ebeef5;
-  text-align: center;
-  font-size: 13px;
-  color: #909399;
-}
-
 :deep(.el-input__inner) {
   height: 44px;
+}
+
+@media (max-width: 520px) {
+  .login-container {
+    align-items: flex-start;
+    padding: 0;
+    background: #fff;
+  }
+
+  .login-box {
+    width: 100%;
+    min-height: 100vh;
+    padding: 48px 20px;
+    box-shadow: none;
+  }
 }
 </style>

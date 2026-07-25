@@ -15,6 +15,12 @@ const routes = [
     component: () => import('@/views/Login.vue'),
     meta: { title: '登录', public: true }
   },
+  {
+    path: '/change-password',
+    name: 'ChangePassword',
+    component: () => import('@/views/ChangePassword.vue'),
+    meta: { title: '修改密码' }
+  },
   // 主布局
   {
     path: '/',
@@ -41,12 +47,6 @@ const routes = [
         component: () => import('@/views/ProcessDesign.vue'),
         meta: { title: '流程设计' }
       },
-      {
-        path: '/process/form/:nodeId',
-        name: 'FormDesign',
-        component: () => import('@/views/FormDesign.vue'),
-        meta: { title: '表单设计' }
-      },
       // 实体管理
       {
         path: '/entity',
@@ -62,9 +62,9 @@ const routes = [
       },
       {
         path: '/entity/data/:code',
-        name: 'EntityDataManage',
-        component: () => import('@/views/EntityDataManage.vue'),
-        meta: { title: '数据管理' }
+        name: 'LegacyEntityDataRedirect',
+        component: () => import('@/views/entity/LegacyEntityDataRedirect.vue'),
+        meta: { title: '打开业务数据', deprecated: true }
       },
       // entityCode + listKey 驱动的通用实体列表
       {
@@ -164,38 +164,44 @@ const routes = [
         path: '/system/config-migration',
         name: 'ConfigMigration',
         component: () => import('@/views/system/ConfigMigration.vue'),
-        meta: { title: '配置迁移' }
+        meta: {
+          title: '配置迁移',
+          developerOnly: true,
+          requiredPermissions: ['config-migration:list']
+        }
       },
       {
         path: '/system/dev-guide',
         name: 'DevGuide',
         component: () => import('@/views/system/DevGuide.vue'),
-        meta: { title: '列表字段扩展' }
+        meta: { title: '列表字段扩展', developerOnly: true }
       },
       {
         path: '/system/custom-list-guide',
         name: 'CustomListGuide',
         component: () => import('@/views/system/CustomListGuide.vue'),
-        meta: { title: '自定义列表组件' }
+        meta: { title: '自定义列表组件', developerOnly: true }
       },
       {
         path: '/system/custom-form-guide',
         name: 'CustomFormGuide',
         component: () => import('@/views/system/CustomFormGuide.vue'),
-        meta: { title: '自定义表单组件' }
+        meta: { title: '自定义表单组件', developerOnly: true }
       },
       {
         path: '/system/flow-action-guide',
         name: 'FlowActionGuide',
         component: () => import('@/views/system/FlowActionGuide.vue'),
-        meta: { title: '流程动作' }
+        meta: { title: '流程动作', developerOnly: true }
       }
     ]
   },
-  // 404 重定向
+  // 未知地址保留原路径并给出明确反馈，避免静默跳转造成误解。
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/'
+    name: 'NotFound',
+    component: () => import('@/views/NotFound.vue'),
+    meta: { title: '页面不存在' }
   }
 ]
 
@@ -225,8 +231,39 @@ router.beforeEach(async (to, from, next) => {
   
   if (to.path === '/login' && isLoggedIn) {
     // 已登录但访问登录页，跳转到首页
-    next('/')
+    next(userStore.userInfo?.passwordResetRequired ? '/change-password' : '/')
     return
+  }
+
+  if (isLoggedIn && userStore.userInfo?.passwordResetRequired && to.path !== '/change-password') {
+    next('/change-password')
+    return
+  }
+
+  if (!isPublic && userStore.permissions.length === 0) {
+    try {
+      const permissions = await getPermissions()
+      userStore.setPermissions(permissions || [])
+    } catch {
+      // 请求拦截器负责展示鉴权失败；这里按最小权限继续判断。
+    }
+  }
+
+  if (to.meta?.developerOnly) {
+    const roleCodes = userStore.roles.map(role => typeof role === 'string' ? role : role?.roleCode)
+    const requiredPermissions = to.meta.requiredPermissions || []
+    const hasRequiredPermission = requiredPermissions.some(permission =>
+      userStore.permissions.includes(permission)
+    )
+    const canAccessDeveloperArea = userStore.isSuperAdmin
+      || roleCodes.includes('admin')
+      || userStore.permissions.includes('*')
+      || hasRequiredPermission
+    if (!canAccessDeveloperArea) {
+      ElMessage.warning('该页面面向系统管理员和开发人员，当前账号无权访问')
+      next('/home')
+      return
+    }
   }
 
   // 拦截被禁用的菜单路径

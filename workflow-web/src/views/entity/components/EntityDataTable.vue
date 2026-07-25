@@ -107,7 +107,7 @@
             <el-button
               v-else
               :type="btn.buttonType || 'primary'"
-              :link="btn.link !== false"
+              link
               :disabled="!canAction(row, btn.key)"
               :title="getActionReason(row, btn.key)"
               @click="onRowActionClick(btn, row)"

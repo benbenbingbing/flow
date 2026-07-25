@@ -71,6 +71,10 @@ public class SysRole {
      */
     @TableField(exist = false)
     private List<String> menuIds;
+
+    /** 当前分配该角色的用户数 */
+    @TableField(exist = false)
+    private Long userCount;
     
     public enum Status {
         /** 启用 */

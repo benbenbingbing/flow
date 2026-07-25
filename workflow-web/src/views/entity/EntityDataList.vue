@@ -4,6 +4,15 @@
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
     </div>
+
+    <PageState
+      v-else-if="loadError"
+      type="error"
+      title="业务列表加载失败"
+      :description="loadError"
+      retryable
+      @retry="loadEntityDefinition"
+    />
     
     <!-- 实体未配置提示 -->
     <el-empty v-else-if="!entityCode" description="未配置实体编码" />
@@ -12,9 +21,19 @@
     <el-empty v-else-if="!entityDefinition.id" description="实体不存在或未发布" />
     
     <template v-else>
+      <PageState
+        v-if="dataError"
+        type="stale"
+        title="列表数据未能刷新"
+        :description="dataError"
+        retryable
+        compact
+        @retry="loadDataList"
+      />
+
       <!-- 自定义列表组件 -->
       <component
-        v-if="customListComponent && hasCustomListComponent(customListComponent)"
+        v-if="!dataError && customListComponent && hasCustomListComponent(customListComponent)"
         :is="getCustomListComponent(customListComponent)"
         :entityCode="entityCode"
         :entityDefinition="entityDefinition"
@@ -47,7 +66,7 @@
         :getStatusText="getStatusText"
         :formatDate="formatDate"
       />
-      <template v-else>
+      <template v-else-if="!dataError">
         <EntityDataSearchForm
           v-if="queryFields.length > 0"
           v-model:form="queryForm"
@@ -146,6 +165,7 @@ import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
 import EntityDataFormDialog from './components/EntityDataFormDialog.vue'
 import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue'
+import PageState from '@/components/PageState.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -197,6 +217,8 @@ const selectionScene = computed(() =>
 // 状态
 const loading = ref(false)
 const tableLoading = ref(false)
+const loadError = ref('')
+const dataError = ref('')
 
 // 实体定义
 const entityDefinition = ref<any>({})
@@ -484,7 +506,16 @@ const getStatusType = (status: string) => {
 // 获取状态文本（优先读取实体状态配置）
 const getStatusText = (status: string) => {
   if (!status) return ''
-  return entityStatusMap.value[status] || status
+  const builtIn: Record<string, string> = {
+    DRAFT: '草稿',
+    PENDING: '审批中',
+    APPROVED: '已通过',
+    REJECTED: '已驳回',
+    TERMINATED: '已终止',
+    WITHDRAWN: '已撤回',
+    COMPLETED: '已完成'
+  }
+  return entityStatusMap.value[status] || builtIn[status] || '未配置状态'
 }
 
 // 格式化日期
@@ -497,6 +528,8 @@ const loadEntityDefinition = async () => {
   if (!entityCode.value) return
   
   loading.value = true
+  loadError.value = ''
+  dataError.value = ''
   entityDefinition.value = {}
   entityFields.value = []
   listConfig.value = null
@@ -520,6 +553,7 @@ const loadEntityDefinition = async () => {
     await loadDataList()
   } catch (error) {
     console.error('加载实体定义失败:', error)
+    loadError.value = error?.message || '无法读取实体或列表配置，请检查发布状态后重试。'
   } finally {
     loading.value = false
   }
@@ -544,6 +578,7 @@ const loadListConfig = async () => {
     console.error('加载列表配置失败:', e)
     listConfig.value = null
     listConfigFields.value = []
+    throw new Error(e?.message || '列表不存在、尚未发布，或当前账号没有访问权限。')
   }
 }
 
@@ -569,6 +604,7 @@ const loadDataList = async () => {
   if (!entityCode.value) return
   
   tableLoading.value = true
+  dataError.value = ''
   try {
     const params: Record<string, any> = {}
     Object.entries(queryForm).forEach(([key, value]) => {
@@ -608,6 +644,7 @@ const loadDataList = async () => {
     await loadRefEntityNames()
   } catch (error) {
     console.error('加载数据列表失败:', error)
+    dataError.value = error?.message || '无法读取列表数据；当前页面不会把错误显示成空列表。'
   } finally {
     tableLoading.value = false
   }
@@ -644,7 +681,11 @@ const handlePageChange = (val: number) => {
 // 删除
 const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm('确定删除该数据吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '删除后该条业务数据将无法在列表中恢复，并可能影响关联表单、引用字段和流程记录。确定继续吗？',
+      '删除业务数据',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    )
     await entityDataApi.delete(entityCode.value, row.id, listConfig.value?.listKey)
     ElMessage.success('删除成功')
     loadDataList()
@@ -662,7 +703,11 @@ const handleBatchDelete = async () => {
     return
   }
   try {
-    await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 条数据吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `将删除选中的 ${selectedRows.value.length} 条业务数据，关联表单、引用字段和流程记录可能受影响。确定继续吗？`,
+      '批量删除业务数据',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    )
     await entityDataApi.batchDelete(
       entityCode.value,
       selectedRows.value.map(row => row.id),

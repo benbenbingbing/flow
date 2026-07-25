@@ -17,6 +17,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -75,4 +78,52 @@ class SysUserServiceTest {
         assertEquals(Collections.singletonList("role-1"), result.getRecords().get(0).getRoleIds());
         verify(roleMapper).selectRolesByUserId("user-1");
     }
+
+    @Test
+    void resetPasswordGeneratesOneTimePasswordAndRequiresChange() {
+        SysUser existing = new SysUser();
+        existing.setId("user-1");
+        when(userMapper.selectById("user-1")).thenReturn(existing);
+
+        String temporaryPassword = userService.resetPassword("user-1");
+
+        assertTrue(temporaryPassword.length() >= 10);
+        verify(userMapper).updateById(argThat((SysUser user) ->
+                Boolean.TRUE.equals(user.getPasswordResetRequired())
+                        && userService.passwordMatches(temporaryPassword, user.getPassword())));
+    }
+
+    @Test
+    void generatedTemporaryPasswordsAreNotFixedDefaults() {
+        SysUser first = new SysUser();
+        first.setId("user-1");
+        SysUser second = new SysUser();
+        second.setId("user-2");
+        when(userMapper.selectById("user-1")).thenReturn(first);
+        when(userMapper.selectById("user-2")).thenReturn(second);
+
+        String firstPassword = userService.resetPassword("user-1");
+        String secondPassword = userService.resetPassword("user-2");
+
+        assertNotEquals("123456", firstPassword);
+        assertNotEquals(firstPassword, secondPassword);
+    }
+
+    @Test
+    void changePasswordClearsRequiredFlag() {
+        SysUser existing = new SysUser();
+        existing.setId("user-1");
+        String currentPassword = "CurrentPass1";
+        existing.setPassword(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
+                .encode(currentPassword));
+        when(userMapper.selectById("user-1")).thenReturn(existing);
+
+        userService.changePassword("user-1", currentPassword, "NextPassword2");
+
+        verify(userMapper).updateById(argThat((SysUser user) ->
+                Boolean.FALSE.equals(user.getPasswordResetRequired())
+                        && userService.passwordMatches("NextPassword2", user.getPassword())));
+        assertFalse(userService.passwordMatches("NextPassword2", existing.getPassword()));
+    }
+
 }

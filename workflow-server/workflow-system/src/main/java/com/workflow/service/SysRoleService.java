@@ -47,7 +47,10 @@ public class SysRoleService {
                 .orderByAsc(SysRole::getSort)
         );
         // 填充菜单权限
-        roles.forEach(this::fillRoleMenus);
+        roles.forEach(role -> {
+            fillRoleMenus(role);
+            role.setUserCount(roleMapper.countUsersByRoleId(role.getId()));
+        });
         return roles;
     }
     
@@ -74,6 +77,7 @@ public class SysRoleService {
         SysRole role = roleMapper.selectById(id);
         if (role != null) {
             fillRoleMenus(role);
+            role.setUserCount(roleMapper.countUsersByRoleId(role.getId()));
         }
         return role;
     }

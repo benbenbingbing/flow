@@ -288,6 +288,36 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).insert(any(EntityDefinition.class));
     }
 
+    /** 新实体的所属部门系统字段应直接绑定系统组织实体 */
+    @Test
+    void testSaveBindsDepartmentSystemFieldToOrganizationEntity() {
+        EntityDefinition organization = new EntityDefinition();
+        organization.setId("organization-entity");
+        organization.setEntityCode("sys_organization");
+        organization.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
+
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityCode("new_entity");
+        dto.setEntityName("新实体");
+
+        when(entityMapper.findByEntityCode("sys_organization"))
+                .thenReturn(Optional.of(organization));
+
+        entityService.save(dto);
+
+        ArgumentCaptor<EntityField> fieldCaptor = ArgumentCaptor.forClass(EntityField.class);
+        verify(fieldMapper, times(14)).insert(fieldCaptor.capture());
+        EntityField departmentField = fieldCaptor.getAllValues().stream()
+                .filter(field -> "deptId".equals(field.getFieldCode()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(EntityField.FieldType.REFERENCE, departmentField.getFieldType());
+        assertEquals(EntityField.RefEntityType.DEPT, departmentField.getRefEntityType());
+        assertEquals("organization-entity", departmentField.getRefEntityId());
+        assertTrue(Boolean.TRUE.equals(departmentField.getEditable()));
+    }
+
     /** 测试更新实体：验证更新成功并触发 selectById 与 updateById */
     @Test
     void testUpdate() {

@@ -10,8 +10,15 @@
           {{ isWorkflowEntityMode ? '流程实体' : '独立业务实体' }}
         </el-tag>
         <el-tag v-if="isSystemEntity" type="warning" effect="plain">平台系统表</el-tag>
+        <el-tag v-else-if="isDirty" type="warning" effect="plain">未保存</el-tag>
+        <el-tag v-else type="success" effect="plain">已保存</el-tag>
       </div>
       <div class="header-right">
+        <el-radio-group v-if="!isSystemEntity" v-model="designMode" size="small" class="design-mode-switch">
+          <el-radio-button value="basic">基础</el-radio-button>
+          <el-radio-button value="advanced">高级</el-radio-button>
+          <el-radio-button value="developer">开发者</el-radio-button>
+        </el-radio-group>
         <el-button v-if="!isSystemEntity" @click="codeRuleVisible = true">
           <el-icon><Ticket /></el-icon>编码规则
         </el-button>
@@ -34,7 +41,16 @@
       class="system-entity-alert"
     />
 
-    <div class="design-body">
+    <PageState
+      v-if="loadError"
+      type="error"
+      title="实体设计加载失败"
+      :description="loadError"
+      retryable
+      @retry="loadEntity"
+    />
+
+    <div v-else class="design-body">
       <!-- 字段类型面板 -->
       <div v-if="!isSystemEntity" class="field-types-panel">
         <div class="panel-title">字段类型</div>
@@ -56,46 +72,74 @@
       <!-- 字段列表 -->
       <div class="fields-panel">
         <div class="panel-title">
-          字段列表
-          <el-button v-if="!isSystemEntity" type="primary" size="small" @click="handleAddField()">
-            <el-icon><Plus /></el-icon>添加
-          </el-button>
+          <div>
+            <span>业务字段</span>
+            <span class="panel-count">{{ businessFieldCount }}</span>
+          </div>
+          <div class="field-list-actions">
+            <el-checkbox
+              v-if="!isSystemEntity && systemFieldCount"
+              v-model="showSystemFields"
+              size="small"
+            >
+              系统字段 {{ systemFieldCount }}
+            </el-checkbox>
+            <el-button v-if="!isSystemEntity" type="primary" size="small" @click="handleAddField()">
+              <el-icon><Plus /></el-icon>添加
+            </el-button>
+          </div>
         </div>
         <div class="fields-list">
-          <div
+          <template
             v-for="(field, index) in displayFields"
             :key="field.id || index"
-            class="field-item"
-            :class="{ active: selectedField === field }"
-            @click="selectField(field)"
           >
-            <div class="field-info">
-              <span class="field-name">{{ field.fieldName || '未命名' }}</span>
-              <span class="field-code">{{ field.fieldCode || '-' }}</span>
-              <el-tag size="small" :type="getFieldTypeTag(field.fieldType)">
-                {{ getFieldTypeLabel(field.fieldType) }}
-              </el-tag>
-              <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain">必填</el-tag>
-              <el-tag v-if="field.isSystem" type="info" size="small" effect="plain">系统</el-tag>
-              <el-tag v-if="field.isPublished" type="success" size="small" effect="plain" title="该字段已发布到数据库">已发布</el-tag>
-              <el-tag v-else-if="!field.isSystem" type="warning" size="small" effect="plain">未发布</el-tag>
+            <div
+              v-if="field.isSystem && (index === 0 || !displayFields[index - 1]?.isSystem)"
+              class="field-section-label"
+            >
+              系统字段 · 只读
             </div>
-            <div v-if="!isSystemEntity" class="field-actions">
-              <el-icon class="action-btn" @click.stop="moveField(field, -1)"><ArrowUp /></el-icon>
-              <el-icon class="action-btn" @click.stop="moveField(field, 1)"><ArrowDown /></el-icon>
-              <el-icon 
-                v-if="!field.isSystem && !field.isPublished" 
-                class="action-btn delete" 
-                @click.stop="deleteField(field)"
-                title="删除字段"
-              ><Delete /></el-icon>
+            <div
+              class="field-item"
+              :class="{ active: selectedField === field }"
+              @click="selectField(field)"
+            >
+              <div class="field-info">
+                <span class="field-name">{{ field.fieldName || '未命名' }}</span>
+                <span v-if="designMode !== 'basic' || isSystemEntity" class="field-code">{{ field.fieldCode || '-' }}</span>
+                <el-tag size="small" :type="getFieldTypeTag(field.fieldType)">
+                  {{ getFieldTypeLabel(field.fieldType) }}
+                </el-tag>
+                <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain">必填</el-tag>
+                <el-tag v-if="field.isSystem" type="info" size="small" effect="plain">系统</el-tag>
+                <el-tag v-if="field.isPublished" type="success" size="small" effect="plain" title="该字段已发布到数据库">已发布</el-tag>
+                <el-tag v-else-if="!field.isSystem" type="warning" size="small" effect="plain">未发布</el-tag>
+              </div>
+              <div v-if="!isSystemEntity && !field.isSystem" class="field-actions">
+                <el-tooltip content="上移字段" placement="top">
+                  <el-button class="action-btn" text circle aria-label="上移字段" @click.stop="moveField(field, -1)">
+                    <el-icon><ArrowUp /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip content="下移字段" placement="top">
+                  <el-button class="action-btn" text circle aria-label="下移字段" @click.stop="moveField(field, 1)">
+                    <el-icon><ArrowDown /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip v-if="!field.isPublished" content="删除未发布字段" placement="top">
+                  <el-button class="action-btn delete" text circle aria-label="删除字段" @click.stop="deleteField(field)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </el-tooltip>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
       </div>
 
       <!-- 字段属性配置 -->
-      <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity }">
+      <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity || selectedField?.isSystem }">
         <div class="panel-title">属性配置</div>
         <div v-if="selectedField" class="selected-field-summary">
           <div class="selected-field-summary__main">
@@ -179,6 +223,7 @@
           </SettingsSection>
 
           <SettingsSection
+            v-if="designMode !== 'basic' || showOptions || selectedField.fieldType === 'DECIMAL'"
             :key="`data-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
             title="数据与约束"
             description="数据库映射、容量、选项来源和验证规则"
@@ -190,7 +235,7 @@
               <span v-else>按需配置</span>
             </template>
 
-            <el-form-item label="数据库列名">
+            <el-form-item v-if="designMode === 'developer'" label="数据库列名">
               <el-input
                 :model-value="formatDbColumnName(selectedField.fieldCode)"
                 disabled
@@ -198,7 +243,7 @@
             </el-form-item>
 
             <!-- 字段长度配置（文本等字符串类型） -->
-            <el-form-item v-if="showFieldLength" label="字段长度">
+            <el-form-item v-if="showFieldLength && designMode !== 'basic'" label="字段长度">
               <el-input-number
                 v-model="selectedField.fieldLength"
                 :min="1"
@@ -236,8 +281,8 @@
             <template v-if="showOptions">
               <el-form-item label="选项来源" required>
                 <el-radio-group v-model="selectedField.optionSource">
-                  <el-radio-button label="DICT">系统代码表</el-radio-button>
-                  <el-radio-button label="LEGACY_INLINE" disabled>旧内嵌选项</el-radio-button>
+                  <el-radio-button value="DICT">系统代码表</el-radio-button>
+                  <el-radio-button value="LEGACY_INLINE" disabled>旧内嵌选项</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="selectedField.optionSource === 'DICT'" label="代码表" required>
@@ -263,7 +308,7 @@
               </el-form-item>
             </template>
 
-            <el-form-item label="验证规则">
+            <el-form-item v-if="designMode === 'developer'" label="验证规则">
               <el-input
                 v-model="selectedField.validateRules"
                 type="textarea"
@@ -294,8 +339,8 @@
             <template v-if="isSubForm">
               <el-form-item label="类型" required>
                 <el-radio-group v-model="selectedField.relationType">
-                  <el-radio-button label="ONE_TO_ONE">一对一</el-radio-button>
-                  <el-radio-button label="ONE_TO_MANY">一对多</el-radio-button>
+                  <el-radio-button value="ONE_TO_ONE">一对一</el-radio-button>
+                  <el-radio-button value="ONE_TO_MANY">一对多</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item label="子实体" required>
@@ -423,7 +468,16 @@
             </template>
           </SettingsSection>
         </el-form>
-        <div v-else class="empty-tip">请选择字段进行配置</div>
+        <div v-else class="empty-guide">
+          <h3>{{ entityData.entityName || '实体结构' }}</h3>
+          <p>{{ businessFieldCount }} 个业务字段，{{ systemFieldCount }} 个系统字段</p>
+          <el-button v-if="!isSystemEntity" type="primary" @click="handleAddField()">
+            <el-icon><Plus /></el-icon>添加业务字段
+          </el-button>
+          <el-button v-if="!isSystemEntity" @click="permissionVisible = true">
+            <el-icon><Lock /></el-icon>配置数据权限
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -456,10 +510,10 @@
         
         <el-form-item label="重置周期">
           <el-radio-group v-model="codeRule.seqType">
-            <el-radio-button label="DAY">按天</el-radio-button>
-            <el-radio-button label="MONTH">按月</el-radio-button>
-            <el-radio-button label="YEAR">按年</el-radio-button>
-            <el-radio-button label="NEVER">不重置</el-radio-button>
+            <el-radio-button value="DAY">按天</el-radio-button>
+            <el-radio-button value="MONTH">按月</el-radio-button>
+            <el-radio-button value="YEAR">按年</el-radio-button>
+            <el-radio-button value="NEVER">不重置</el-radio-button>
           </el-radio-group>
           <div class="form-tip">
             <span v-if="codeRule.seqType === 'DAY'">每天从000001开始编号</span>
@@ -493,13 +547,18 @@
     <el-alert type="info" :closable="false" style="margin-bottom: 16px">
       配置“谁在什么列表能看到哪些数据”。保存只更新草稿，发布后才影响运行时；没有匹配的允许方案时默认拒绝全部数据。
     </el-alert>
+    <div class="permission-workflow-bar">
+      <div>
+        <strong>权限草稿</strong>
+        <span>实体参与设置与规则先保存为草稿，统一发布后影响运行时。</span>
+      </div>
+      <div class="permission-workflow-actions">
+        <el-button size="small" @click="savePermissionDraft">保存权限草稿</el-button>
+        <el-button type="success" size="small" @click="publishPermissions">校验并发布权限</el-button>
+      </div>
+    </div>
     <el-card shadow="never" style="margin-bottom: 16px">
-      <template #header>
-        <div style="display: flex; align-items: center; justify-content: space-between">
-          <span>数据参与团队</span>
-          <el-button size="small" type="primary" @click="handleSave">保存实体配置</el-button>
-        </div>
-      </template>
+      <template #header><span>数据参与团队</span></template>
       <el-form label-width="150px" size="small">
         <el-form-item label="参与后允许查看">
           <el-switch v-model="entityData.teamVisibilityEnabled" />
@@ -538,12 +597,19 @@
         <el-option v-for="opt in userOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
       <el-button size="small" @click="handlePreviewPermissionSql('')">
-        <el-icon><View /></el-icon>模拟默认列表
-      </el-button>
-      <el-button type="success" size="small" @click="publishPermissions">
-        发布数据范围
+        <el-icon><View /></el-icon>模拟可见范围
       </el-button>
     </div>
+    <PageState
+      v-if="permissionError"
+      type="error"
+      title="权限草稿加载失败"
+      :description="permissionError"
+      retryable
+      compact
+      @retry="loadPermissions"
+    />
+    <template v-else>
     <el-table
       v-if="availableListConfigs.length"
       :data="availableListConfigs"
@@ -552,7 +618,7 @@
       style="margin-top: 12px"
     >
       <el-table-column prop="listName" label="列表" min-width="140" />
-      <el-table-column prop="listKey" label="listKey" min-width="130" />
+      <el-table-column v-if="designMode === 'developer'" prop="listKey" label="列表 Key" min-width="130" />
       <el-table-column label="范围模式" width="130">
         <template #default="{ row }">
           <el-tag :type="row.dataScopeMode === 'OVERRIDE' ? 'danger' : row.dataScopeMode === 'NARROW' ? 'warning' : 'info'">
@@ -602,6 +668,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </template>
   </el-dialog>
 
   <!-- 规则编辑对话框 -->
@@ -624,8 +691,8 @@
         </el-form-item>
         <el-form-item label="规则效果">
           <el-radio-group v-model="permissionForm.ruleEffect">
-            <el-radio-button label="ALLOW">允许（放行并附加范围）</el-radio-button>
-            <el-radio-button label="DENY">拒绝（排除数据范围）</el-radio-button>
+            <el-radio-button value="ALLOW">允许（放行并附加范围）</el-radio-button>
+            <el-radio-button value="DENY">拒绝（排除数据范围）</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="是否启用">
@@ -644,8 +711,8 @@
 
         <el-form-item label="逻辑关系">
           <el-radio-group v-model="permissionForm.matchLogic">
-            <el-radio-button label="OR">满足任一条件</el-radio-button>
-            <el-radio-button label="AND">满足所有条件</el-radio-button>
+            <el-radio-button value="OR">满足任一条件</el-radio-button>
+            <el-radio-button value="AND">满足所有条件</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
@@ -702,8 +769,8 @@
           </el-form-item>
           <el-form-item v-if="['ROLE', 'GROUP'].includes(cond.scopeType)" label="匹配方式">
             <el-radio-group v-model="cond.operator">
-              <el-radio label="ANY">满足任一项</el-radio>
-              <el-radio label="ALL">满足全部项</el-radio>
+              <el-radio value="ANY">满足任一项</el-radio>
+              <el-radio value="ALL">满足全部项</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item v-if="cond.scopeType === 'GROUP'" label="选择用户组">
@@ -796,8 +863,8 @@
         <template v-if="permissionForm.statusLimit.enabled">
           <el-form-item label="限制模式">
             <el-radio-group v-model="permissionForm.statusLimit.mode">
-              <el-radio-button label="IN">允许以下状态</el-radio-button>
-              <el-radio-button label="NOT_IN">排除以下状态</el-radio-button>
+              <el-radio-button value="IN">允许以下状态</el-radio-button>
+              <el-radio-button value="NOT_IN">排除以下状态</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="状态值">
@@ -811,16 +878,16 @@
 
     <template #footer>
       <el-button @click="permissionEditVisible = false">取消</el-button>
-      <el-button type="primary" @click="savePermission">保存</el-button>
+      <el-button type="primary" @click="savePermission">保存规则草稿</el-button>
     </template>
   </el-dialog>
 
   <!-- 权限 SQL 预览对话框 -->
   <el-dialog v-model="permissionSqlPreviewVisible" :title="permissionSqlPreviewTitle" width="700px">
     <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-      {{ permissionSqlPreview.matchedRules?.length === 1 && permissionSqlPreviewTitle === '规则 SQL 预览'
-        ? '以下为该规则单独生效时的数据权限 SQL 片段（不含外层 deleted=0）。'
-        : '以下为当前用户在该列表下最终生效的数据权限 SQL 片段（不含外层 deleted=0）。' }}
+      {{ permissionSqlPreview.hasPermission === false
+        ? '当前模拟用户无法查看该列表中的数据。'
+        : '以下是当前模拟用户命中的规则与最终可见范围。' }}
     </el-alert>
     <el-alert v-if="permissionSqlPreview.remark" type="warning" :closable="false" style="margin-bottom: 12px">
       {{ permissionSqlPreview.remark }}
@@ -835,15 +902,15 @@
             <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="listKey" label="适用列表" width="120" align="center" />
-        <el-table-column prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
+        <el-table-column v-if="designMode === 'developer'" prop="listKey" label="适用列表 Key" width="140" align="center" />
+        <el-table-column v-if="designMode === 'developer'" prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
       </el-table>
     </div>
     <div v-else class="preview-section">
       <el-alert type="warning" :closable="false">没有命中任何允许方案，运行时将拒绝全部数据。</el-alert>
     </div>
 
-    <div class="preview-section">
+    <div v-if="designMode === 'developer'" class="preview-section">
       <div class="preview-section-title">最终生效 SQL</div>
       <el-input v-model="permissionSqlPreview.sql" type="textarea" :rows="4" readonly />
     </div>
@@ -876,9 +943,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi } from '@/api/entity'
 import { codeRuleApi } from '@/api/codeRule'
 import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
@@ -891,6 +958,8 @@ import { getEnabledGroups } from '@/api/system/group'
 import { getDictList, createDictWithItems } from '@/api/system/dict'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import PageState from '@/components/PageState.vue'
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
   ENTITY_FIELD_TYPES,
   WORKFLOW_SYSTEM_FIELD_CODES,
@@ -908,11 +977,39 @@ const fieldTypes = ENTITY_FIELD_TYPES
 
 const entityData = ref({})
 const fields = ref([])
+const loadError = ref('')
+const designMode = ref('basic')
+const showSystemFields = ref(true)
+const entityBaseline = ref('')
+const entityFingerprint = () => JSON.stringify({
+  entity: {
+    ...entityData.value,
+    fields: undefined
+  },
+  fields: fields.value
+})
+const isDirty = computed(() =>
+  Boolean(entityBaseline.value) && entityBaseline.value !== entityFingerprint()
+)
+
+useUnsavedChangesGuard(isDirty, {
+  message: '实体字段或属性有未保存修改，离开后这些修改将丢失。'
+})
+
 const isSystemEntity = computed(() => entityData.value?.storageMode === 'SYSTEM')
 const isWorkflowEntityMode = computed(() => entityData.value?.lifecycleMode === 'WORKFLOW')
-const displayFields = computed(() =>
+const lifecycleFields = computed(() =>
   filterEntityFieldsByLifecycle(entityData.value, fields.value)
 )
+const businessFieldCount = computed(() => lifecycleFields.value.filter(field => !field.isSystem).length)
+const systemFieldCount = computed(() => lifecycleFields.value.filter(field => field.isSystem).length)
+const displayFields = computed(() => {
+  const businessFields = lifecycleFields.value.filter(field => !field.isSystem)
+  const systemFields = lifecycleFields.value.filter(field => field.isSystem)
+  return isSystemEntity.value || showSystemFields.value
+    ? [...businessFields, ...systemFields]
+    : businessFields
+})
 const selectedField = ref(null)
 const isSelectedFieldStructureLocked = computed(() => Boolean(
   selectedField.value
@@ -940,6 +1037,7 @@ const codeRule = ref({
 // 数据权限配置
 const permissionVisible = ref(false)
 const permissionList = ref([])
+const permissionError = ref('')
 const permissionEditVisible = ref(false)
 const permissionForm = ref(createEmptyPermissionForm())
 const availableStatuses = ref([])
@@ -1115,6 +1213,7 @@ watch(optionsText, (val) => {
 
 // 加载实体数据
 const loadEntity = async () => {
+  loadError.value = ''
   try {
     const data = await entityApi.getById(entityId)
     entityData.value = data
@@ -1144,9 +1243,11 @@ const loadEntity = async () => {
     if (data.entityCode) {
       codeRule.value.entityCode = data.entityCode
     }
+    await nextTick()
+    entityBaseline.value = entityFingerprint()
   } catch (error) {
     console.error(error)
-    ElMessage.error('加载失败')
+    loadError.value = error?.message || '无法读取实体结构，请检查权限或稍后重试。'
   }
 }
 
@@ -1396,35 +1497,36 @@ const convertToFormField = (field) => {
 }
 
 // 保存
-const handleSave = async () => {
+const handleSave = async (options = {}) => {
+  const silent = options?.silent === true
   if (isSystemEntity.value) {
     ElMessage.warning('平台系统实体字段由数据库自动同步，不能在设计器中修改')
-    return
+    return false
   }
   // 验证字段
   for (const field of fields.value) {
     if (!field.fieldName || !field.fieldCode) {
       ElMessage.warning('请完善字段信息')
-      return
+      return false
     }
     if (['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType)) {
       if (!field.childEntityId && !field.refEntityId) {
         ElMessage.warning(`请选择子实体：${field.fieldName}`)
-        return
+        return false
       }
       if (!field.childRefFieldCode && !field.refFieldCode) {
         ElMessage.warning(`请选择子表外键：${field.fieldName}`)
-        return
+        return false
       }
     }
     if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)
         && !field.dictType) {
       ElMessage.warning(`请选择代码表：${field.fieldName}`)
-      return
+      return false
     }
     if (['REFERENCE', 'MULTI_REFERENCE'].includes(field.fieldType) && !field.refEntityId) {
       ElMessage.warning(`请选择关联实体：${field.fieldName}`)
-      return
+      return false
     }
   }
 
@@ -1450,17 +1552,20 @@ const handleSave = async () => {
         })) : []
       }))
     })
-    ElMessage.success('保存成功')
-    loadEntity()
+    await loadEntity()
+    if (!silent) ElMessage.success('实体配置保存成功')
+    return true
   } catch (error) {
     console.error(error)
     ElMessage.error('保存失败')
+    return false
   }
 }
 
 // ============ 数据权限方法 ============
 const loadPermissions = async () => {
   if (!entityData.value.entityCode) return
+  permissionError.value = ''
   try {
     const [permissionData, listConfigData] = await Promise.all([
       entityListScopeRuleApi.getByEntityCode(entityData.value.entityCode),
@@ -1491,6 +1596,7 @@ const loadPermissions = async () => {
     })
   } catch (error) {
     console.error('加载权限规则失败:', error)
+    permissionError.value = error?.message || '无法读取权限草稿，请检查权限或稍后重试。'
   }
 }
 
@@ -1533,8 +1639,13 @@ const handleEditPermission = (row) => {
 
 const handleDeletePermission = async (row) => {
   try {
+    await ElMessageBox.confirm(
+      `删除规则「${row.ruleName}」后，命中该规则的用户可能失去草稿中的可见范围。发布前仍可重新创建。`,
+      '删除权限规则草稿',
+      { type: 'warning', confirmButtonText: '确认删除' }
+    )
     await entityListScopeRuleApi.delete(row)
-    ElMessage.success('删除成功')
+    ElMessage.success('规则草稿已删除')
     loadPermissions()
   } catch (error) {
     console.error(error)
@@ -1543,13 +1654,18 @@ const handleDeletePermission = async (row) => {
 }
 
 const togglePermission = async (row) => {
+  const previousEnabled = row.enabled === 1 ? 0 : 1
   try {
+    const action = row.enabled === 1 ? '启用' : '停用'
+    await ElMessageBox.confirm(
+      `${action}规则「${row.ruleName}」会改变下一次发布的权限结果，当前已发布版本不受影响。`,
+      `${action}权限规则草稿`,
+      { type: row.enabled === 1 ? 'info' : 'warning', confirmButtonText: `确认${action}` }
+    )
     await entityListScopeRuleApi.updateEnabled(row)
-    ElMessage.success('状态更新成功')
+    ElMessage.success(`规则草稿已${action}`)
   } catch (error) {
-    console.error(error)
-    ElMessage.error('状态更新失败')
-    row.enabled = row.enabled === 1 ? 0 : 1
+    row.enabled = previousEnabled
   }
 }
 
@@ -1648,7 +1764,7 @@ const handlePreviewPermissionSql = async (requestedListKey) => {
       { userId: simulationUserId.value || undefined }
     )
     permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
-    permissionSqlPreviewTitle.value = `数据范围模拟：${getListConfigName(targetList)}`
+    permissionSqlPreviewTitle.value = `可见范围模拟：${getListConfigName(targetList)}`
     permissionSqlPreviewVisible.value = true
   } catch (error) {
     console.error('预览权限 SQL 失败:', error)
@@ -1656,10 +1772,31 @@ const handlePreviewPermissionSql = async (requestedListKey) => {
   }
 }
 
+const savePermissionDraft = async () => {
+  const saved = await handleSave({ silent: true })
+  if (!saved) return false
+  await loadPermissions()
+  ElMessage.success('权限草稿已保存，尚未影响运行时')
+  return true
+}
+
 const publishPermissions = async () => {
   try {
+    const saved = await handleSave({ silent: true })
+    if (!saved) return
+    const enabledRules = permissionList.value.filter(rule => Number(rule.enabled) === 1)
+    const allowRules = enabledRules.filter(rule => rule.ruleEffect !== 'DENY')
+    if (!allowRules.length) {
+      ElMessage.warning('至少需要一条已启用的允许规则，否则所有用户都会被拒绝')
+      return
+    }
+    await ElMessageBox.confirm(
+      `将发布 ${enabledRules.length} 条启用规则，其中 ${allowRules.length} 条允许规则、${enabledRules.length - allowRules.length} 条拒绝规则。发布后立即影响运行时数据可见范围。`,
+      '发布数据权限',
+      { type: 'warning', confirmButtonText: '确认发布' }
+    )
     await entityListScopeRuleApi.publish(entityData.value.entityCode, '实体设计器发布数据范围')
-    ElMessage.success('数据范围发布成功')
+    ElMessage.success('数据权限已发布并开始影响运行时')
     loadPermissions()
   } catch (error) {
     console.error('发布数据范围失败:', error)
@@ -1743,7 +1880,7 @@ const savePermission = async () => {
     } else {
       await entityListScopeRuleApi.create(payload)
     }
-    ElMessage.success('保存成功')
+    ElMessage.success('规则草稿已保存')
     permissionEditVisible.value = false
     loadPermissions()
   } catch (error) {
@@ -1785,6 +1922,12 @@ watch(permissionVisible, (val) => {
   }
 })
 
+watch(showSystemFields, (visible) => {
+  if (!visible && selectedField.value?.isSystem && !isSystemEntity.value) {
+    selectedField.value = null
+  }
+})
+
 onMounted(() => {
   loadEntity()
   loadAvailableEntities()
@@ -1804,12 +1947,13 @@ onMounted(() => {
 /* ===== 头部样式 ===== */
 .design-header {
   height: 60px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #fff;
+  border-bottom: 1px solid #dcdfe6;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   z-index: 10;
 }
 
@@ -1820,23 +1964,21 @@ onMounted(() => {
 }
 
 .header-left :deep(.el-button) {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: #fff;
-  backdrop-filter: blur(10px);
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  color: #606266;
   transition: all 0.3s;
 }
 
 .header-left :deep(.el-button:hover) {
-  background: rgba(255, 255, 255, 0.35);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: #ecf5ff;
+  border-color: #409eff;
 }
 
 .entity-name {
   font-size: 18px;
   font-weight: 600;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  color: #303133;
 }
 
 .header-right {
@@ -1873,7 +2015,7 @@ onMounted(() => {
 .field-types-panel {
   width: 200px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   padding: 20px;
   display: flex;
@@ -1916,7 +2058,7 @@ onMounted(() => {
   padding: 14px 8px;
   background: #fafbfc;
   border: 1px solid #ebeef5;
-  border-radius: 10px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.25s ease;
 }
@@ -1949,7 +2091,7 @@ onMounted(() => {
   flex: 1;
   min-width: 450px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
@@ -1978,7 +2120,7 @@ onMounted(() => {
   margin-bottom: 10px;
   background: #fff;
   border: 1px solid #e4e7ed;
-  border-radius: 10px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.25s ease;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
@@ -1992,7 +2134,7 @@ onMounted(() => {
 
 .field-item.active {
   border-color: #409eff;
-  background: linear-gradient(135deg, #ecf5ff 0%, #f5f7ff 100%);
+  background: #ecf5ff;
   box-shadow: 0 4px 16px rgba(64, 158, 255, 0.2);
 }
 
@@ -2039,7 +2181,7 @@ onMounted(() => {
   color: #409eff;
   font-size: 16px;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: 50%;
   transition: all 0.2s;
   background: #f5f7fa;
   border: 1px solid #e4e7ed;
@@ -2072,7 +2214,7 @@ onMounted(() => {
   width: 360px;
   flex-shrink: 0;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
@@ -2082,7 +2224,7 @@ onMounted(() => {
 .property-panel .panel-title {
   margin: 0;
   padding: 16px 20px;
-  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
+  background: #fafbfc;
   border-bottom: 1px solid #ebeef5;
 }
 
@@ -2170,25 +2312,51 @@ onMounted(() => {
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
 }
 
-.empty-tip {
+.empty-guide {
   flex: 1;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
   align-items: center;
   justify-content: center;
+  padding: 28px;
+  text-align: center;
   color: #909399;
   font-size: 14px;
-  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
+  background: #fafbfc;
 }
 
-.empty-tip::before {
-  content: '';
-  display: inline-block;
-  width: 60px;
-  height: 60px;
-  margin-bottom: 16px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23c0c4cc'%3E%3Cpath d='M9 2v2H7v2h2v2H7v2h2v2H7v2h2v2H7v2h2v2h6v-2h2v-2h-2v-2h2v-2h-2v-2h2V8h-2V6h2V4h-2V2H9zm2 2h2v2h-2V4zm0 4h2v2h-2V8zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z'/%3E%3C/svg%3E") no-repeat center;
-  background-size: contain;
-  opacity: 0.5;
+.empty-guide h3,
+.empty-guide p {
+  margin: 0;
+}
+
+.empty-guide h3 {
+  color: #303133;
+}
+
+.panel-count {
+  margin-left: 6px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.field-list-actions,
+.permission-workflow-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-section-label {
+  margin: 18px 0 10px;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.design-mode-switch {
+  margin-right: 4px;
 }
 
 /* ===== 滚动条美化 ===== */
@@ -2240,6 +2408,28 @@ onMounted(() => {
   margin-bottom: 8px;
 }
 
+.permission-workflow-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #dcdfe6;
+  border-left: 3px solid #409eff;
+  border-radius: 6px;
+}
+
+.permission-workflow-bar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.permission-workflow-bar span {
+  color: #909399;
+  font-size: 12px;
+}
+
 .sql-variable-tags {
   display: flex;
   flex-wrap: wrap;
@@ -2282,6 +2472,46 @@ onMounted(() => {
 @media (max-width: 1200px) {
   .property-panel {
     width: 320px;
+  }
+}
+
+@media (max-width: 900px) {
+  .design-header {
+    height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .header-left,
+  .header-right,
+  .permission-workflow-bar {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .design-body {
+    overflow: auto;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .field-types-panel,
+  .fields-panel,
+  .property-panel {
+    width: 100%;
+    min-width: 0;
+    flex-shrink: 0;
+  }
+
+  .field-types-panel {
+    max-height: 280px;
+  }
+
+  .fields-panel,
+  .property-panel {
+    min-height: 420px;
   }
 }
 </style>

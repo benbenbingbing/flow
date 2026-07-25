@@ -278,7 +278,7 @@
       </el-form>
       <template #footer>
         <el-button @click="openListDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveOpenListConfig">确定</el-button>
+        <el-button type="primary" @click="saveOpenListConfig">保存打开列表设置</el-button>
       </template>
     </el-dialog>
   </div>

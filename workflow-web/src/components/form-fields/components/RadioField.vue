@@ -9,7 +9,7 @@
       <el-radio
         v-for="opt in currentOptions"
         :key="opt.value"
-        :label="opt.value"
+        :value="opt.value"
       >
         {{ opt.label }}
       </el-radio>

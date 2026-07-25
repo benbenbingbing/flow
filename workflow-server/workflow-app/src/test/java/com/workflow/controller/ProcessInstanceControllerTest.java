@@ -1,7 +1,9 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.service.ProcessInstanceService;
+import com.workflow.vo.MyStartedProcessVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +12,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -96,6 +99,32 @@ public class ProcessInstanceControllerTest {
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"));
 
         verify(processInstanceService, times(1)).getProcessProgress("proc-inst-2");
+    }
+
+    @Test
+    void myStartedPassesInclusiveDateFiltersToService() throws Exception {
+        when(processInstanceService.getMyStartedList(
+                anyString(), eq(2), eq(20), eq("请假"), any(), any()))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0, 2, 20));
+
+        mockMvc.perform(get("/api/process-instance/my-started")
+                        .param("pageNum", "2")
+                        .param("pageSize", "20")
+                        .param("processName", "请假")
+                        .param("startDate", "2026-07-01")
+                        .param("endDate", "2026-07-25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.pageNum").value(2))
+                .andExpect(jsonPath("$.data.pageSize").value(20));
+
+        verify(processInstanceService).getMyStartedList(
+                anyString(),
+                eq(2),
+                eq(20),
+                eq("请假"),
+                eq(java.time.LocalDate.of(2026, 7, 1)),
+                eq(java.time.LocalDate.of(2026, 7, 25)));
     }
 
     /**

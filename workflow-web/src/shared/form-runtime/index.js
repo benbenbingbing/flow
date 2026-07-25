@@ -55,6 +55,7 @@ export {
   isClientPrevalidationBinding,
   getFormDataSourceBindings
 } from './dataSourceRuntime.js'
+export { resolveRuntimeFormTabLayout } from './runtimeFormTabs.js'
 
 export function normalizeRuntimeFormConfigs(progressRes) {
   if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {

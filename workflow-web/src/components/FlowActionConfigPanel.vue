@@ -32,11 +32,25 @@
         :class="{ disabled: !action.enabled }"
       >
         <div class="action-sort">
-          <el-button link size="small" :disabled="index === 0" @click="moveAction(index, -1)">
+          <el-button
+            link
+            size="small"
+            aria-label="上移动作"
+            title="上移动作"
+            :disabled="index === 0"
+            @click="moveAction(index, -1)"
+          >
             <el-icon><ArrowUp /></el-icon>
           </el-button>
           <span class="sort-number">{{ index + 1 }}</span>
-          <el-button link size="small" :disabled="index === sortedActions.length - 1" @click="moveAction(index, 1)">
+          <el-button
+            link
+            size="small"
+            aria-label="下移动作"
+            title="下移动作"
+            :disabled="index === sortedActions.length - 1"
+            @click="moveAction(index, 1)"
+          >
             <el-icon><ArrowDown /></el-icon>
           </el-button>
         </div>
@@ -132,13 +146,13 @@
           <el-form-item label="执行方式" required>
             <el-radio-group v-model="editingAction.executionMode" @change="onExecutionModeChange">
               <el-radio-button
-                label="IN_TRANSACTION"
+                value="IN_TRANSACTION"
                 :disabled="!handlerSupportsMode('IN_TRANSACTION')"
               >
                 事务内执行
               </el-radio-button>
               <el-radio-button
-                label="AFTER_COMMIT"
+                value="AFTER_COMMIT"
                 :disabled="!handlerSupportsMode('AFTER_COMMIT')"
               >
                 提交后执行
@@ -253,7 +267,13 @@
                 </el-col>
                 <el-col :span="8"><el-input v-model="param.value" placeholder="参数值" /></el-col>
                 <el-col :span="3">
-                  <el-button type="danger" link @click="removeActionParam(index)">
+                  <el-button
+                    type="danger"
+                    link
+                    aria-label="删除动作参数"
+                    title="删除动作参数"
+                    @click="removeActionParam(index)"
+                  >
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </el-col>
@@ -268,7 +288,9 @@
 
       <template #footer>
         <el-button @click="actionDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveAction">确定</el-button>
+        <el-button type="primary" :loading="saving" @click="saveAction">
+          {{ editingAction?.id ? '保存流程动作' : '创建流程动作' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -496,7 +518,15 @@ async function saveAction() {
 
 async function deleteAction(action) {
   try {
-    await ElMessageBox.confirm('确定删除该流程动作吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '删除后，该触发时机将不再执行此动作。确认删除吗？',
+      '删除流程动作',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     await processActionApi.deleteAction(action.id)
     hasDraftChanges.value = true
     await loadAll()
