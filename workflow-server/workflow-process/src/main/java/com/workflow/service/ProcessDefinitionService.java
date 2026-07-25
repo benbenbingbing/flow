@@ -339,13 +339,21 @@ public class ProcessDefinitionService {
         runtimeBpmnXml = flowActionDesignPort.prepareBpmnForPublish(id, runtimeBpmnXml);
 
         nodeSyncService.syncBpmnNodeBindings(id, designBpmnXml);
+
+        ProcessPublishHistoryService.PublishedNodeForms publishedNodeForms =
+                publishHistoryService.prepareNodeFormsSnapshot(id);
         
         Deployment deployment = flowableDeploymentService.deploy(config, runtimeBpmnXml, newVersion);
         
         ConfigMigrationPublishRequest publishRequest = request == null
                 ? new ConfigMigrationPublishRequest() : request;
         ProcessVersionHistory history = publishHistoryService.recordPublish(
-                config, runtimeBpmnXml, deployment.getId(), newVersion, publishRequest.getVersionDescription());
+                config,
+                runtimeBpmnXml,
+                deployment.getId(),
+                newVersion,
+                publishRequest.getVersionDescription(),
+                publishedNodeForms);
         
         nodeSyncService.parseAndSaveNodeConfigs(id, designBpmnXml);
         // 更新主流程配置

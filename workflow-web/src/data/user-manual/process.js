@@ -17,7 +17,7 @@ export default {
   title: '流程管理用户手册',
   subtitle: '覆盖流程列表、BPMN 设计器全部元素、办理人与多实例、任务配置、条件组、节点表单、审批项、实体状态、流程动作、事务失败策略、发布与版本管理。',
   version: '当前 UI 配置基线',
-  updatedAt: '2026-07-16',
+  updatedAt: '2026-07-25',
   intro: [
     {
       title: '两层保存',
@@ -173,16 +173,45 @@ export default {
           ]
         },
         {
+          id: 'process-node-config-navigation',
+          title: '节点配置页签与首屏原则',
+          lead: '点击流程节点会自动打开右侧属性抽屉。节点配置按办理任务顺序组织，常用信息先出现，技术信息和高级能力不占首屏；不适用于当前节点的页签不会显示。',
+          blocks: [
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '点击节点打开属性抽屉',
+              text: '流程画布默认保留完整宽度。点击节点、连线或动作数量徽标时，右侧约 440px 的节点配置抽屉自动打开；关闭抽屉不会取消当前选择，也不会销毁尚未保存的面板状态。关闭后可通过画布右上角“节点配置”按钮重新打开。'
+            },
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: '用户任务', meaning: '页签顺序为“常用、执行人、表单、审批、知会、流程动作、高级”。顶部摘要先展示办理方式、绑定表单、审批和知会状态。', notes: '多人办理属于执行人页签内的折叠设置；没有启用的低频配置无需展开。' },
+                { option: '开始事件', meaning: '先显示常用，再显示表单、流程动作和适用的高级能力。', notes: '只展示当前事件真正支持的页签，不为保持数量一致显示空页签。' },
+                { option: '自动任务、调用活动与连线', meaning: '常用之后依次显示当前类型专属配置、条件或状态、流程动作和高级能力。', notes: 'REST 可靠性、参数映射、自动跳过等低频配置使用折叠分组；流程动作保持在业务配置之后、高级配置之前。' },
+                { option: '技术信息与高级', meaning: '节点 ID、设计备注等技术信息位于常用页签的折叠区；异步、跳过表达式、自动跳过等进入最后的高级页签或折叠区。', notes: '节点 ID 始终只读；折叠仅改变编辑体验，不改变 BPMN 或发布语义。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '按节点适用',
+              text: '“常用、执行人、表单、审批、知会、流程动作、高级”是完整的信息架构顺序，不表示所有节点都必须显示全部页签。页面应隐藏不适用项，而不是显示空白配置。'
+            }
+          ]
+        },
+        {
           id: 'process-basic-config',
-          title: '所有可配置元素的基本信息',
+          title: '常用信息与技术信息',
           blocks: [
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
                 { field: '节点名称', meaning: '图上显示的业务名称。', defaultLimit: '可选但强烈建议填写；不同节点有示例占位。', effect: '显示在流程图、待办、动作上下文和版本节点。', publish: '同一流程内建议语义唯一，例如“部门经理审批”。' },
-                { field: '节点 ID', meaning: 'BPMN 元素技术标识。', defaultLimit: '只读，由设计器生成。', effect: '用于节点表单、审批配置、状态映射、动作绑定和日志。', publish: '发布后删除重建会产生新 ID，历史配置不会自动迁移。' },
-                { field: '说明文档', meaning: 'BPMN documentation。', defaultLimit: '可选多行。', effect: '写入 XML，供设计审计。', publish: '建议记录进入条件、处理要求、输出和异常路径。' }
+                { field: '节点 ID', meaning: 'BPMN 元素技术标识，位于“技术信息”折叠区。', defaultLimit: '只读，由设计器生成。', effect: '用于节点表单、审批配置、状态映射、动作绑定和日志。', publish: '发布后删除重建会产生新 ID，历史配置不会自动迁移。' },
+                { field: '说明文档', meaning: 'BPMN documentation，位于“技术信息”折叠区。', defaultLimit: '可选多行。', effect: '写入 XML，供设计审计。', publish: '建议记录进入条件、处理要求、输出和异常路径。' }
               ]
             }
           ]
@@ -340,6 +369,12 @@ export default {
           id: 'process-multi-instance',
           title: '多实例（会签 / 串行）',
           blocks: [
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '多人办理分组',
+              text: '启用后按“办理方式、参与人员、完成规则、技术参数”组织。执行方式与人员来源先配置；用户、用户组、角色或接口进入参与人员；提前结束条件单独折叠；集合变量和元素变量位于技术参数，集合变量只读。'
+            },
             {
               type: 'table',
               columns: fieldColumns,
@@ -604,8 +639,22 @@ export default {
             {
               type: 'callout',
               tone: 'warning',
-              title: '表单发布后需要重新发布流程',
-              text: '流程发布快照会固定节点表单的发布 ID 和版本。仅发布表单不会改变现有流程版本；新增流程数据时如果检测到表单版本更新，系统返回 409 并要求重新发布流程，不再继续展示旧表单。重新发布后，新打开的新增表单和新发起实例使用新版本，已启动实例继续使用原版本。'
+              title: '普通发布与兼容热修复',
+              text: '流程发布快照会固定节点表单的 release ID 和版本。STANDARD 普通发布仍要求重新发布流程：未重发时新增流程数据返回 409 PROCESS_FORM_RELEASE_STALE；重发后新实例使用新版本，运行中实例继续使用原版本。只有后端预检判定为 SAFE，或经授权确认的 REVIEW 修改，才可选择 HOTFIX 直接作用于当前可发起版本和运行中实例。'
+            },
+            {
+              type: 'table',
+              columns: [
+                { key: 'purpose', label: '运行目的' },
+                { key: 'release', label: '读取版本' },
+                { key: 'hotfix', label: '热修复行为' }
+              ],
+              rows: [
+                { purpose: 'NEW_INSTANCE 新增/发起', release: '当前流程版本钉定的表单 release。', hotfix: '存在该流程版本的有效 HOTFIX 时读取完整有效快照；否则仍执行普通发布过期检查。' },
+                { purpose: 'ACTIVE_TASK 运行中任务', release: '任务所属流程历史版本钉定的表单 release。', hotfix: '优先读取该流程版本的有效 HOTFIX，解析失败降级原钉定版本并记录告警。' },
+                { purpose: 'HISTORICAL 历史详情', release: '流程发布时的原始钉定 release。', hotfix: '已完成、已终止实例明确不应用 HOTFIX，保证审批回放可复现。' },
+                { purpose: 'STANDALONE 独立表单', release: '表单当前 ACTIVE release。', hotfix: '不携带流程版本目标上下文。' }
+              ]
             }
           ]
         },
@@ -725,6 +774,12 @@ export default {
           id: 'process-flow-action-fields',
           title: '流程动作字段',
           blocks: [
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '动作设置分组',
+              text: '动作弹窗把必填和高频项放在首屏“常用设置”：模板、名称、时机、执行方式、处理器和启用状态；失败策略、重试和风险提示进入“可靠性与失败策略”；可选描述和结构化参数进入“说明与参数”。后两组按当前值显示摘要并默认折叠，避免低频项挤占首屏。'
+            },
             {
               type: 'table',
               columns: fieldColumns,
@@ -876,6 +931,12 @@ export default {
           title: '发布字段',
           blocks: [
             {
+              type: 'callout',
+              tone: 'info',
+              title: '发布后迁移默认折叠',
+              text: '版本说明属于发布高频信息；“待导出清单”和“迁移标记”集中在默认折叠的“发布后迁移”分组。仅在需要跨环境迁移时展开，分组折叠不会改变默认加入导出清单的业务规则。'
+            },
+            {
               type: 'table',
               columns: fieldColumns,
               rows: [
@@ -910,6 +971,40 @@ export default {
               tone: 'warning',
               title: '发布前必须保存',
               text: '发布读取数据库中的 bpmnXml。右侧节点面板和画布中未点击顶部“保存流程”的修改不会进入发布版本。'
+            }
+          ]
+        },
+        {
+          id: 'process-form-hotfix',
+          title: '流程表单兼容热修复',
+          blocks: [
+            {
+              type: 'steps',
+              items: [
+                { title: '保存草稿', text: '只保存需要修复的节点或列表项，确认没有夹带字段绑定、权限、数据源或写操作变化。' },
+                { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW/BLOCKED、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。' },
+                { title: '处理风险', text: 'SAFE 可直接继续；REVIEW 需要覆盖权限、强制确认和原因；BLOCKED 立即停止并改用 STANDARD。' },
+                { title: '原子发布', text: '发布请求回传 expectedActiveReleaseId、expectedDraftHash 和 impactToken；任一目标不兼容或影响集合变化时整次失败。' },
+                { title: '验证与回滚', text: '分别验证当前发起入口、运行中任务和历史详情；只有 rolloutStatus=ACTIVE 的 HOTFIX 可撤回，并须从最新版本开始按发布时间逆序原子回滚。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '当前流程的范围',
+              text: '“当前流程”包括当前仍可发起的最新流程版本，以及仍有运行实例的历史流程版本。已完成或已终止实例只计入 skippedHistoricalInstanceCount，不进入 rollout 目标。'
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '权限与 rolloutStatus',
+              text: 'HOTFIX 发布和撤回都需要 entity:ui-config:hotfix；只有发布 REVIEW 风险时才额外需要超级管理员或 entity:ui-config:hotfix:override。发布历史中 ACTIVE 表示正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已撤回；只有 ACTIVE 提供撤回入口。'
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '嵌套表单上下文不能由前端伪造',
+              text: '父表单运行时会签发短期 releaseResolutionToken，子表单必须携带该令牌继承同一流程版本和运行目的。令牌绑定当前用户、父表单 release 和嵌套深度，最长递归 8 层；缺失、过期、签名错误或越层请求都会被拒绝。'
             }
           ]
         },
@@ -967,7 +1062,9 @@ export default {
                 '所有服务、发送、接收、规则、脚本和子流程目标在目标环境存在。',
                 '排他/包容网关条件覆盖所有情况，默认流唯一，approved 使用审批项 value。',
                 '节点表单已保存、启用、模式权限正确；只读与隐藏叠加符合预期。',
-                '节点表单有新发布版本时，依赖流程已重新发布并用全新流程实例验证。',
+                '节点表单使用 STANDARD 时依赖流程已重新发布；使用 HOTFIX 时 SAFE/REVIEW/BLOCKED、权限、原因、影响预检和原子生效均已验证。',
+                '当前可发起版本与运行中实例读取有效 HOTFIX，已完成和已终止实例仍读取原始钉定快照。',
+                '嵌套表单 releaseResolutionToken 不可伪造、会过期、绑定当前用户且超过 8 层被拒绝。',
                 '审批选项 label/value、备注显示与必填、所有出线条件保持一致。',
                 '每条状态连线选择正确实体状态，撤回和终止状态有独立运行策略。',
                 '流程动作处理器、参数、时机、执行方式、失败策略、幂等和重试均通过校验。',
@@ -989,6 +1086,9 @@ export default {
               ],
               rows: [
                 { symptom: '发布后节点配置未生效', checks: '是否只点了节点 Tab 保存而未点顶部保存流程；查看 XML 是否含最新扩展属性；发布版本时间是否最新。' },
+                { symptom: '普通表单发布后发起返回 409', checks: '检查 errorCode 是否 PROCESS_FORM_RELEASE_STALE；这是流程仍钉定旧 release 的保护，需重新发布流程，不能在客户端绕过。' },
+                { symptom: '热修复发布返回 409', checks: 'HOTFIX_PREVIEW_REQUIRED 表示未先预检；HOTFIX_IMPACT_CHANGED 表示草稿、ACTIVE release 或目标实例集合变化；重新预检并使用新的 impactToken。' },
+                { symptom: '热修复无法撤回', checks: '检查是否存在发布时间更晚的 HOTFIX；必须先撤回最新版本。HOTFIX_ROLLBACK_ORDER_CONFLICT 不允许跳序恢复。' },
                 { symptom: '任务无人办理', checks: '固定用户是否停用；组/角色是否有成员；表达式变量是否存在；接口返回是否为空或格式错误；多实例集合是否为空。' },
                 { symptom: '网关无路可走', checks: '条件组完整表达式；字段类型和值；approved value；是否有且仅有一条默认流。' },
                 { symptom: '表单为空或不可编辑', checks: '流程是否绑定实体；表单是否启用和保存字段；节点来源是否 entity；节点只读、字段只读、模式 editable、联动 disabled 是否叠加。' },

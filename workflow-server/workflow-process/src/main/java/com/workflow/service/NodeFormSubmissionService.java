@@ -1,5 +1,7 @@
 package com.workflow.service;
 
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import com.workflow.entity.ProcessNodeForm;
@@ -65,12 +67,15 @@ public class NodeFormSubmissionService {
             return;
         }
 
-        List<ProcessNodeForm> nodeForms = getPublishedNodeForms(task);
+        ProcessPublishedSnapshotService.PublishedNodeForms published =
+                getPublishedNodeForms(task);
+        List<ProcessNodeForm> nodeForms = published.nodeForms();
         Map<String, Object> submittedValues =
                 flattenSubmittedValues(submittedFormData);
         Set<String> editableFieldCodes =
                 resolveEditableFieldCodes(
                         nodeForms,
+                        published.history().getId(),
                         entityCode);
         if (editableFieldCodes.isEmpty()) {
             return;
@@ -86,6 +91,7 @@ public class NodeFormSubmissionService {
         Map<String, Object> processedValues =
                 applyBeforeSubmit(
                         nodeForms,
+                        published.history().getId(),
                         task,
                         entityCode,
                         entityDataId,
@@ -121,6 +127,7 @@ public class NodeFormSubmissionService {
      */
     private Set<String> resolveEditableFieldCodes(
             List<ProcessNodeForm> nodeForms,
+            String processVersionHistoryId,
             String entityCode) {
         Set<String> editableFieldCodes = new HashSet<>();
 
@@ -131,7 +138,9 @@ public class NodeFormSubmissionService {
                 }
                 collectEditableFields(
                         entityFormRuntimeService.getByBinding(
-                                nodeForm),
+                                nodeForm,
+                                processVersionHistoryId,
+                                UiRuntimePurpose.ACTIVE_TASK),
                         editableFieldCodes);
             }
             return editableFieldCodes;
@@ -162,6 +171,7 @@ public class NodeFormSubmissionService {
      */
     private Map<String, Object> applyBeforeSubmit(
             List<ProcessNodeForm> nodeForms,
+            String processVersionHistoryId,
             Task task,
             String entityCode,
             String entityDataId,
@@ -186,7 +196,11 @@ public class NodeFormSubmissionService {
                         entityDataId,
                         "approve",
                         result,
-                        executionContext);
+                        executionContext,
+                        new UiRuntimeResolutionContext(
+                                UiRuntimePurpose.ACTIVE_TASK,
+                                processVersionHistoryId,
+                                task.getTaskDefinitionKey()));
             }
             return result;
         }
@@ -230,9 +244,10 @@ public class NodeFormSubmissionService {
         return attributes;
     }
 
-    private List<ProcessNodeForm> getPublishedNodeForms(Task task) {
+    private ProcessPublishedSnapshotService.PublishedNodeForms
+            getPublishedNodeForms(Task task) {
         return processPublishedSnapshotService
-                .getNodeFormsByProcessDefinitionId(
+                .getNodeFormsContextByProcessDefinitionId(
                         task.getProcessDefinitionId(),
                         task.getTaskDefinitionKey());
     }

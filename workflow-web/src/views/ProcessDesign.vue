@@ -97,28 +97,44 @@
         @command-stack-changed="onCommandStackChanged"
         @imported="onImported"
       />
-      <div class="config-panel">
-        <div class="panel-title">节点配置</div>
-        <div class="panel-content">
-          <p class="tip">点击流程节点进行配置</p>
-          <NodeConfigPanel
-            v-if="selectedElement"
-            :element="selectedElement"
-            :process-id="processId"
-            @save="handleNodeConfigSave"
-            @action-changed="refreshActionCounts"
-          />
-        </div>
-      </div>
+      <el-button
+        v-if="selectedElement && !nodeConfigVisible"
+        class="node-config-trigger"
+        type="primary"
+        plain
+        @click="nodeConfigVisible = true"
+      >
+        <el-icon><Setting /></el-icon>
+        节点配置
+      </el-button>
     </div>
+
+    <el-drawer
+      v-model="nodeConfigVisible"
+      :title="nodeConfigDrawerTitle"
+      size="min(440px, 96vw)"
+      class="process-node-config-drawer"
+      append-to-body
+      :modal="false"
+      :lock-scroll="false"
+      :destroy-on-close="false"
+    >
+      <NodeConfigPanel
+        v-if="selectedElement"
+        :element="selectedElement"
+        :process-id="processId"
+        @save="handleNodeConfigSave"
+        @action-changed="refreshActionCounts"
+      />
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Document, Check, Back, Right, Operation } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Check, Back, Right, Operation, Setting } from '@element-plus/icons-vue'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
 import formatXML from 'xml-formatter'
@@ -166,8 +182,13 @@ const processId = route.params.id
 const designerRef = ref()
 const processData = ref({})
 const selectedElement = ref(null)
+const nodeConfigVisible = ref(false)
 const globalActionVisible = ref(false)
 const globalActionCount = ref(0)
+const nodeConfigDrawerTitle = computed(() => {
+  const name = selectedElement.value?.businessObject?.name?.trim()
+  return `节点配置 · ${name || '未命名节点'}`
+})
 
 // 撤销/重做状态
 const canUndo = ref(false)
@@ -228,6 +249,7 @@ const handleKeydown = (e) => {
 
 const onElementClick = (element) => {
   selectedElement.value = element
+  nodeConfigVisible.value = true
 }
 
 const onCommandStackChanged = ({ canUndo: undo, canRedo: redo }) => {
@@ -410,6 +432,7 @@ onUnmounted(() => {
 }
 
 .design-container {
+  position: relative;
   flex: 1;
   display: flex;
   overflow: hidden;
@@ -421,30 +444,12 @@ onUnmounted(() => {
   overflow: auto;
 }
 
-.config-panel {
-  width: 400px;
-  background: #fff;
-  border-left: 1px solid #dcdfe6;
-  display: flex;
-  flex-direction: column;
-}
-
-.panel-title {
-  padding: 15px;
-  font-weight: bold;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.panel-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 15px;
-}
-
-.tip {
-  color: #909399;
-  text-align: center;
-  padding: 20px;
+.node-config-trigger {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
 }
 
 /* 历史操作按钮组 */
@@ -455,6 +460,17 @@ onUnmounted(() => {
 /* 分割线 */
 .header-right .el-divider {
   margin: 0 12px;
+}
+
+:global(.process-node-config-drawer .el-drawer__header) {
+  margin-bottom: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+:global(.process-node-config-drawer .el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
 }
 
 /* XML 全屏弹窗样式：标题栏/底部固定，仅编辑器内容区域滚动 */

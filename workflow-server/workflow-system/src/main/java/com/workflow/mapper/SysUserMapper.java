@@ -1,6 +1,7 @@
 package com.workflow.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.entity.SysUser;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -32,6 +33,33 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      */
     @Select("SELECT COUNT(*) > 0 FROM sys_user WHERE username = #{username} AND deleted = 0 AND (#{excludeId} = '' OR id != #{excludeId})")
     boolean existsUsername(@Param("username") String username, @Param("excludeId") String excludeId);
+
+    /**
+     * 分页查询已分配指定角色的用户
+     *
+     * @param page    分页参数
+     * @param roleId  角色ID
+     * @param keyword 用户名、昵称、邮箱或手机号关键字
+     * @return 用户分页结果
+     */
+    @Select({
+            "<script>",
+            "SELECT u.* FROM sys_user u",
+            "INNER JOIN sys_user_role ur ON ur.user_id = u.id",
+            "WHERE u.deleted = 0 AND ur.role_id = #{roleId}",
+            "<if test='keyword != null and keyword != \"\"'>",
+            "AND (u.username LIKE CONCAT('%', #{keyword}, '%')",
+            "OR u.nickname LIKE CONCAT('%', #{keyword}, '%')",
+            "OR u.email LIKE CONCAT('%', #{keyword}, '%')",
+            "OR u.phone LIKE CONCAT('%', #{keyword}, '%'))",
+            "</if>",
+            "ORDER BY u.create_time DESC",
+            "</script>"
+    })
+    Page<SysUser> selectPageByRoleId(
+            Page<SysUser> page,
+            @Param("roleId") String roleId,
+            @Param("keyword") String keyword);
     
     /**
      * 查询用户的角色列表

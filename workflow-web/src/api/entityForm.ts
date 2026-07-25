@@ -125,8 +125,26 @@ export const getFormDiff = (id: string) => {
   return request.get(`/entity-forms/${id}/diff`)
 }
 
-export const publishForm = (id: string, description = '') => {
-  return request.post(`/entity-forms/${id}/publish`, { description })
+export const publishForm = (id: string, data: string | any = '') => {
+  return request.post(
+    `/entity-forms/${id}/publish`,
+    typeof data === 'string' ? { description: data } : data
+  )
+}
+
+export const previewFormPublish = (id: string, data: any) => {
+  return request.post(`/entity-forms/${id}/publish-preview`, data)
+}
+
+export const rollbackFormHotfix = (
+  id: string,
+  releaseId: string,
+  reason = ''
+) => {
+  return request.post(
+    `/entity-forms/${id}/releases/${releaseId}/rollback-hotfix`,
+    { reason }
+  )
 }
 
 export const getFormReleases = (id: string) => {
@@ -136,12 +154,14 @@ export const getFormReleases = (id: string) => {
 export const getFormRuntimeRelease = (
   id: string,
   releaseId?: string | null,
-  version?: number | null
+  version?: number | null,
+  releaseResolutionToken?: string | null
 ) => {
   return request.get(`/entity-forms/${id}/runtime-release`, {
     params: {
       releaseId: releaseId || undefined,
-      version: version ?? undefined
+      version: version ?? undefined,
+      releaseResolutionToken: releaseResolutionToken || undefined
     }
   })
 }

@@ -2,17 +2,24 @@ package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.common.BusinessConflictException;
+import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpactPort;
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.dto.UiConfigDiffDTO;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import com.workflow.entity.EntityFormNode;
 import com.workflow.entity.UiComponentTemplate;
+import com.workflow.entity.UiConfigHotfixTarget;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.EntityListConfigMapper;
 import com.workflow.mapper.UiComponentTemplateMapper;
 import com.workflow.mapper.UiComponentTemplateVersionMapper;
+import com.workflow.mapper.UiConfigHotfixTargetMapper;
+import com.workflow.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.mapper.UiConfigReleaseMapper;
 import com.workflow.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.service.config.EntityListConfigurationValidator;
@@ -58,6 +65,8 @@ class UiConfigReleaseServiceTest {
 
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
+                mock(UiConfigHotfixTargetMapper.class),
+                mock(UiConfigReleaseAuditMapper.class),
                 mock(UiDataSourceDefinitionMapper.class),
                 mock(UiComponentTemplateMapper.class),
                 mock(UiComponentTemplateVersionMapper.class),
@@ -68,6 +77,11 @@ class UiConfigReleaseServiceTest {
                 mock(UiExtensionDefinitionService.class),
                 mock(EntityListConfigService.class),
                 mock(EntityListConfigurationValidator.class),
+                new UiConfigSemanticPatchService(codec),
+                mock(UiHotfixProcessImpactPort.class),
+                mock(UiConfigurationAccessService.class),
+                mock(UiReleaseResolutionTokenService.class),
+                mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper);
 
@@ -110,6 +124,53 @@ class UiConfigReleaseServiceTest {
         assertEquals(
                 "{\"FORM_INIT\":{\"sourceId\":\"source-init\"}}",
                 draftForm.get("dataSourceBindingsDocument"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void ignoresMissingVersusEmptyComponentPropsInDiff() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setFields(List.of());
+        when(context.formService().getById("form-1")).thenReturn(form);
+
+        Map<String, Object> activeSnapshot = context.codec().readObject(
+                context.codec().write(
+                        context.service().draftSnapshot(
+                                UiConfigReleaseService.FORM,
+                                "form-1"),
+                        "测试空组件属性快照"),
+                "测试空组件属性快照");
+        Map<String, Object> activeNode =
+                (Map<String, Object>) ((List<?>) activeSnapshot.get(
+                        "nodes")).get(0);
+        Map<String, Object> activeProps = context.codec().readObject(
+                String.valueOf(activeNode.get("propsDocument")),
+                "测试节点属性");
+        activeProps.put("componentProps", new LinkedHashMap<>());
+        activeNode.put(
+                "propsDocument",
+                context.codec().write(activeProps, "测试节点属性"));
+        Map<String, Object> activeField =
+                (Map<String, Object>) ((List<?>) activeSnapshot.get(
+                        "legacyFields")).get(0);
+        activeField.put("componentProps", "{}");
+
+        UiConfigRelease release = new UiConfigRelease();
+        release.setSnapshotDocument(context.codec().write(
+                activeSnapshot,
+                "测试历史发布快照"));
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(release);
+
+        UiConfigDiffDTO diff = context.service().diff(
+                UiConfigReleaseService.FORM,
+                "form-1");
+
+        assertFalse(diff.isChanged(), diff.toString());
+        assertTrue(diff.getChangedSections().isEmpty());
+        assertTrue(diff.getChangedItems().isEmpty());
     }
 
     /**
@@ -176,6 +237,8 @@ class UiConfigReleaseServiceTest {
 
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
+                mock(UiConfigHotfixTargetMapper.class),
+                mock(UiConfigReleaseAuditMapper.class),
                 mock(UiDataSourceDefinitionMapper.class),
                 mock(UiComponentTemplateMapper.class),
                 mock(UiComponentTemplateVersionMapper.class),
@@ -186,6 +249,11 @@ class UiConfigReleaseServiceTest {
                 mock(UiExtensionDefinitionService.class),
                 listConfigService,
                 mock(EntityListConfigurationValidator.class),
+                new UiConfigSemanticPatchService(codec),
+                mock(UiHotfixProcessImpactPort.class),
+                mock(UiConfigurationAccessService.class),
+                mock(UiReleaseResolutionTokenService.class),
+                mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper);
 
@@ -275,6 +343,157 @@ class UiConfigReleaseServiceTest {
                         8));
 
         assertTrue(exception.getMessage().contains("版本号与流程快照不一致"));
+    }
+
+    @Test
+    void activeTaskUsesEffectiveHotfixSnapshot() {
+        TestContext context = context();
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-2",
+                formSnapshot(List.of(labelNode("旧标题"))));
+        pinned.setVersion(2);
+        when(context.releaseMapper().selectById("release-2"))
+                .thenReturn(pinned);
+        UiConfigHotfixTarget target = target(
+                context.codec(),
+                "target-1",
+                "hotfix-3",
+                "release-2",
+                2,
+                formSnapshot(List.of(labelNode("修复标题"))));
+        when(context.hotfixTargetMapper().findActiveTarget(
+                "FORM",
+                "form-1",
+                "history-1"))
+                .thenReturn(target);
+
+        ResolvedEntityFormRelease resolved =
+                context.service().resolveRuntimeFormRelease(
+                        "form-1",
+                        "release-2",
+                        2,
+                        new UiRuntimeResolutionContext(
+                                UiRuntimePurpose.ACTIVE_TASK,
+                                "history-1",
+                                "task-1"));
+
+        assertTrue(resolved.hotfixApplied());
+        assertEquals("hotfix-3", resolved.effectiveReleaseId());
+        assertEquals(
+                "修复标题",
+                context.codec().readObject(
+                        resolved.form().getNodes().get(0)
+                                .getPropsDocument(),
+                        "测试节点属性").get("label"));
+    }
+
+    @Test
+    void historicalPurposeAlwaysUsesOriginalPinnedSnapshot() {
+        TestContext context = context();
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-2",
+                formSnapshot(List.of(labelNode("历史标题"))));
+        pinned.setVersion(2);
+        when(context.releaseMapper().selectById("release-2"))
+                .thenReturn(pinned);
+
+        ResolvedEntityFormRelease resolved =
+                context.service().resolveRuntimeFormRelease(
+                        "form-1",
+                        "release-2",
+                        2,
+                        new UiRuntimeResolutionContext(
+                                UiRuntimePurpose.HISTORICAL,
+                                "history-1",
+                                "task-1"));
+
+        assertFalse(resolved.hotfixApplied());
+        assertEquals(
+                "历史标题",
+                context.codec().readObject(
+                        resolved.form().getNodes().get(0)
+                                .getPropsDocument(),
+                        "测试节点属性").get("label"));
+    }
+
+    @Test
+    void corruptHotfixTargetFallsBackToPinnedSnapshot() {
+        TestContext context = context();
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-2",
+                formSnapshot(List.of(labelNode("原始标题"))));
+        pinned.setVersion(2);
+        when(context.releaseMapper().selectById("release-2"))
+                .thenReturn(pinned);
+        UiConfigHotfixTarget target = target(
+                context.codec(),
+                "target-1",
+                "hotfix-3",
+                "release-2",
+                2,
+                formSnapshot(List.of(labelNode("修复标题"))));
+        target.setEffectiveContentHash("tampered");
+        when(context.hotfixTargetMapper().findActiveTarget(
+                "FORM",
+                "form-1",
+                "history-1"))
+                .thenReturn(target);
+
+        ResolvedEntityFormRelease resolved =
+                context.service().resolveRuntimeFormRelease(
+                        "form-1",
+                        "release-2",
+                        2,
+                        new UiRuntimeResolutionContext(
+                                UiRuntimePurpose.ACTIVE_TASK,
+                                "history-1",
+                                "task-1"));
+
+        assertFalse(resolved.hotfixApplied());
+        assertEquals(
+                "原始标题",
+                context.codec().readObject(
+                        resolved.form().getNodes().get(0)
+                                .getPropsDocument(),
+                        "测试节点属性").get("label"));
+    }
+
+    @Test
+    void rejectsTargetlessHotfixRollbackWhenReleaseIsNoLongerActive() {
+        TestContext context = context();
+        UiConfigRelease hotfix = release(
+                context.codec(),
+                "hotfix-2",
+                formSnapshot(List.of(labelNode("修复标题"))));
+        hotfix.setReleaseMode("HOTFIX");
+        hotfix.setBaseReleaseId("release-1");
+        UiConfigRelease current = release(
+                context.codec(),
+                "release-3",
+                formSnapshot(List.of(labelNode("后续标题"))));
+        current.setStatus("ACTIVE");
+        when(context.releaseMapper().selectById("hotfix-2"))
+                .thenReturn(hotfix);
+        when(context.hotfixTargetMapper().findByHotfixReleaseId(
+                "hotfix-2")).thenReturn(List.of());
+        when(context.releaseMapper().findActive(
+                "FORM",
+                "form-1")).thenReturn(current);
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> context.service().rollbackHotfix(
+                        "FORM",
+                        "form-1",
+                        "hotfix-2",
+                        "测试越序回滚"));
+
+        assertEquals(
+                "HOTFIX_ROLLBACK_ORDER_CONFLICT",
+                exception.getErrorCode());
     }
 
     /**
@@ -420,7 +639,10 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().publish("FORM", "form-1", null));
+                () -> context.service().publish(
+                        "FORM",
+                        "form-1",
+                        (String) null));
 
         assertTrue(exception.getMessage().contains("模板不存在或未启用"));
     }
@@ -491,6 +713,8 @@ class UiConfigReleaseServiceTest {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
+        UiConfigHotfixTargetMapper hotfixTargetMapper =
+                mock(UiConfigHotfixTargetMapper.class);
         UiComponentTemplateMapper templateMapper =
                 mock(UiComponentTemplateMapper.class);
         UiComponentTemplateVersionMapper templateVersionMapper =
@@ -501,6 +725,8 @@ class UiConfigReleaseServiceTest {
                 .thenReturn(form());
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
+                hotfixTargetMapper,
+                mock(UiConfigReleaseAuditMapper.class),
                 mock(UiDataSourceDefinitionMapper.class),
                 templateMapper,
                 templateVersionMapper,
@@ -511,11 +737,17 @@ class UiConfigReleaseServiceTest {
                 mock(UiExtensionDefinitionService.class),
                 mock(EntityListConfigService.class),
                 mock(EntityListConfigurationValidator.class),
+                new UiConfigSemanticPatchService(codec),
+                mock(UiHotfixProcessImpactPort.class),
+                mock(UiConfigurationAccessService.class),
+                mock(UiReleaseResolutionTokenService.class),
+                mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper);
         return new TestContext(
                 service,
                 releaseMapper,
+                hotfixTargetMapper,
                 templateMapper,
                 templateVersionMapper,
                 formService,
@@ -538,6 +770,28 @@ class UiConfigReleaseServiceTest {
         release.setSnapshotDocument(document);
         release.setContentHash(sha256(document));
         return release;
+    }
+
+    private UiConfigHotfixTarget target(
+            JsonDocumentCodec codec,
+            String targetId,
+            String hotfixReleaseId,
+            String pinnedReleaseId,
+            Integer pinnedReleaseVersion,
+            Map<String, Object> snapshot) {
+        String document = codec.canonicalize(
+                codec.write(snapshot, "测试热修复快照"),
+                "测试热修复快照");
+        UiConfigHotfixTarget target =
+                new UiConfigHotfixTarget();
+        target.setId(targetId);
+        target.setHotfixReleaseId(hotfixReleaseId);
+        target.setPinnedReleaseId(pinnedReleaseId);
+        target.setPinnedReleaseVersion(pinnedReleaseVersion);
+        target.setEffectiveSnapshotDocument(document);
+        target.setEffectiveContentHash(sha256(document));
+        target.setStatus("ACTIVE");
+        return target;
     }
 
     /** 构造一个包含表单与指定节点列表的发布快照 Map */
@@ -570,6 +824,15 @@ class UiConfigReleaseServiceTest {
         return node;
     }
 
+    private Map<String, Object> labelNode(String label) {
+        Map<String, Object> node =
+                node("field", null, "FIELD");
+        node.put(
+                "propsDocument",
+                "{\"label\":\"" + label + "\"}");
+        return node;
+    }
+
     /** 构造一个引用已发布表单的 SUB_FORM 节点 Map */
     private Map<String, Object> referenceNode(
             String id,
@@ -596,6 +859,7 @@ class UiConfigReleaseServiceTest {
     private record TestContext(
             UiConfigReleaseService service,
             UiConfigReleaseMapper releaseMapper,
+            UiConfigHotfixTargetMapper hotfixTargetMapper,
             UiComponentTemplateMapper templateMapper,
             UiComponentTemplateVersionMapper templateVersionMapper,
             EntityFormService formService,

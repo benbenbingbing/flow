@@ -21,7 +21,13 @@
       :readonly="false"
       :mode="isEdit ? 'edit' : 'create'"
       :config="formViewConfig.customComponentProps || {}"
-      :context="{ entityCode, entityDefinition, mode: isEdit ? 'edit' : 'create', record: formData }"
+      :context="{
+        entityCode,
+        entityDefinition,
+        mode: isEdit ? 'edit' : 'create',
+        record: formData,
+        releaseResolutionToken: defaultForm?.releaseResolutionToken
+      }"
       :data-source-runtime="dataSourceRuntime"
     />
     <el-form label-width="100px" v-if="canStartProcess && showStartProcess">
@@ -44,7 +50,13 @@
       :entity-code="entityCode"
       :entity-definition="entityDefinition"
       :entity-fields="entityFields"
-      :context="{ entityCode, entityDefinition, mode: isEdit ? 'edit' : 'create', record: formData }"
+      :context="{
+        entityCode,
+        entityDefinition,
+        mode: isEdit ? 'edit' : 'create',
+        record: formData,
+        releaseResolutionToken: defaultForm?.releaseResolutionToken
+      }"
       :data-source-runtime="dataSourceRuntime"
     />
     <el-form label-width="100px" v-if="canStartProcess && showStartProcess">
@@ -72,6 +84,13 @@
           :field="field"
           :disabled="isFieldDisabled(field)"
           :options="getFieldOptions(field)"
+          :context="{
+            entityCode,
+            entityDefinition,
+            mode: isEdit ? 'edit' : 'create',
+            record: formData,
+            releaseResolutionToken: defaultForm?.releaseResolutionToken
+          }"
         />
       </el-form-item>
     </template>

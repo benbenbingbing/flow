@@ -172,7 +172,8 @@ const approvalRuntimeContext = computed(() => ({
   mode: approvalRuntimeMode.value,
   record: entityData.value,
   task: currentTask.value,
-  processInstanceId: currentTask.value?.processInstanceId
+  processInstanceId: currentTask.value?.processInstanceId,
+  releaseResolutionToken: formConfig.value?.releaseResolutionToken
 }))
 const dataSourceRuntime = createFormDataSourceRuntime({
   entityCode: props.entityCode,

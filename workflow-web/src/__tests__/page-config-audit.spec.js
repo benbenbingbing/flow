@@ -77,7 +77,13 @@ dynamicRuntimeFiles.forEach((file) => {
   assert.equal(existsSync(path.join(root, file)), true, `动态配置运行时文件不存在: ${file}`)
 })
 
+const settingsSectionSource = readFileSync(path.join(root, 'src/components/SettingsSection.vue'), 'utf8')
+;['defaultExpanded', 'collapsible', 'primary', 'settings-section__summary', 'aria-expanded'].forEach((marker) => {
+  assert.ok(settingsSectionSource.includes(marker), `共享设置分组缺少折叠或首屏语义: ${marker}`)
+})
+
 const entityDataList = readFileSync(path.join(root, 'src/views/entity/EntityDataList.vue'), 'utf8')
+const entityDataManage = readFileSync(path.join(root, 'src/views/EntityDataManage.vue'), 'utf8')
 const entityDataFormDialog = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataFormDialog.vue'),
   'utf8'
@@ -99,6 +105,11 @@ assert.ok(
   entityDataFormDialog.includes('新增数据 - ${props.defaultForm.formName}')
     && entityDataFormDialog.includes('props.defaultForm.formKey'),
   '新增实体数据弹窗应明确展示实际运行时表单名称和标识'
+)
+assert.match(
+  entityDataManage,
+  /const handleCreate = async[\s\S]*resolvedForm\.value = null[\s\S]*formLoadFailed = true[\s\S]*if \(formLoadFailed\) return/,
+  '旧版实体数据页加载最新表单失败时应清空旧表单并停止打开新增弹窗'
 )
 const listButtonConfig = readFileSync(path.join(root, 'src/components/ListButtonConfigPanel.vue'), 'utf8')
 ;['open-list', 'targetEntityCode', 'targetListKey', 'relationKey'].forEach((marker) => {
@@ -126,6 +137,40 @@ assert.equal(listDesigner.includes('@click="handleSave"'), false, '列表设计�
 ;["'save'", "'remove'", "@click=\"$emit('save', row)\"", "@click=\"$emit('remove', row)\""].forEach((marker) => {
   assert.ok(listButtonConfig.includes(marker), `列表按钮缺少单项操作能力: ${marker}`)
 })
+const listButtonTableSource = listButtonConfig.match(/<el-table\b[\s\S]*?<\/el-table>/)?.[0] || ''
+assert.ok(
+  listButtonTableSource.includes('openAdvancedSettings(row)') && /更多(?:设置)?/.test(listButtonTableSource),
+  '列表按钮首屏应提供当前按钮的“更多设置”入口'
+)
+assert.ok(listButtonConfig.includes('title="按钮更多设置"'), '列表按钮低频属性应集中到“按钮更多设置”弹窗')
+const lowFrequencyButtonFieldPatterns = [
+  /label="(?:按钮)?图标"/,
+  /label="(?:按钮)?样式"/,
+  /label="(?:(?:行按钮)?Link\s*(?:样式)?|链接样式)"/,
+  /label="(?:按钮|组件)?模板"/
+]
+lowFrequencyButtonFieldPatterns.forEach((pattern) => {
+  assert.equal(pattern.test(listButtonTableSource), false, `列表按钮低频字段不应继续占用主表格: ${pattern}`)
+})
+const listButtonDetailsSource = listButtonConfig.slice(listButtonConfig.indexOf('</el-table>') + '</el-table>'.length)
+lowFrequencyButtonFieldPatterns.forEach((pattern) => {
+  assert.match(listButtonDetailsSource, pattern, `列表按钮“更多设置”应保留低频字段: ${pattern}`)
+})
+
+const entitySettingsDesigner = readFileSync(path.join(root, 'src/views/EntityDesign.vue'), 'utf8')
+;['title="常用属性"', 'title="数据与约束"', 'title="类型专属配置"'].forEach((marker) => {
+  assert.ok(entitySettingsDesigner.includes(marker), `实体字段设置缺少频率分组: ${marker}`)
+})
+const entityFieldGroupPositions = [
+  entitySettingsDesigner.indexOf('title="常用属性"'),
+  entitySettingsDesigner.indexOf('title="数据与约束"'),
+  entitySettingsDesigner.indexOf('title="类型专属配置"')
+]
+assert.deepEqual(
+  entityFieldGroupPositions,
+  [...entityFieldGroupPositions].sort((left, right) => left - right),
+  '实体字段设置应先显示常用属性，再显示约束和类型专属配置'
+)
 
 const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
 ;['getFormFieldComponentOptions', 'selectedComponentConfig', 'validationRules', 'extensionConfig', 'modeOptions'].forEach((marker) => {
@@ -148,6 +193,44 @@ assert.ok(
   'getFormReleases'
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `子表单设计器缺少固定发布版本能力: ${marker}`)
+})
+;[
+  'hasUnsavedLocalChanges',
+  '画布或属性仍有未保存修改，请先保存草稿后再发布',
+  '重新发布流程后再新增流程数据',
+  '历史实例继续使用原版本'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单发布缺少版本生效提示或本地草稿保护: ${marker}`)
+})
+const formPropertyGroupPatterns = [
+  ['常用属性', /title="常用属性"/],
+  ['布局与层级', /title="布局与层级"/],
+  ['数据源', /title="数据源"/],
+  ['校验', /title="校验"/],
+  ['模式与权限', /title="模式与权限"/],
+  ['关系与子表', /title="关系与子表"/],
+  ['复用与扩展', /title="复用与扩展"/]
+]
+const formPropertyGroupPositions = formPropertyGroupPatterns.map(([label, pattern]) => {
+  const position = pattern.exec(formDesigner)?.index ?? -1
+  assert.ok(position >= 0, `表单属性抽屉缺少分组: ${label}`)
+  return position
+})
+assert.deepEqual(
+  formPropertyGroupPositions,
+  [...formPropertyGroupPositions].sort((left, right) => left - right),
+  '表单属性抽屉应按常用、布局、数据源、校验、模式权限、关系子表、复用扩展排序'
+)
+;[
+  'formSettingsExpanded',
+  'class="form-summary-meta"',
+  '表单设置',
+  'canConfigureSelectedNodeDataSource',
+  'canConfigureSelectedNodeValidation',
+  'canConfigureSelectedNodeModeAccess',
+  'canConfigureSelectedNodeRelations'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单设计器缺少表单级摘要或节点类型动态分组: ${marker}`)
 })
 
 const formNodeDesignItem = readFileSync(path.join(root, 'src/components/FormNodeDesignItem.vue'), 'utf8')
@@ -418,6 +501,24 @@ const flowActionPanel = readFileSync(path.join(root, 'src/components/FlowActionC
 ;['triggerTiming', 'executionMode', 'failurePolicy', 'maxRetries'].forEach((field) => {
   assert.ok(flowActionPanel.includes(field), `流程动作配置缺少字段: ${field}`)
 })
+;[
+  'title="常用设置"',
+  'title="可靠性与失败策略"',
+  'title="说明与参数"',
+  "import SettingsSection from '@/components/SettingsSection.vue'"
+].forEach((marker) => {
+  assert.ok(flowActionPanel.includes(marker), `流程动作配置缺少常用优先或低频折叠分组: ${marker}`)
+})
+const flowActionGroupPositions = [
+  flowActionPanel.indexOf('title="常用设置"'),
+  flowActionPanel.indexOf('title="可靠性与失败策略"'),
+  flowActionPanel.indexOf('title="说明与参数"')
+]
+assert.deepEqual(
+  flowActionGroupPositions,
+  [...flowActionGroupPositions].sort((left, right) => left - right),
+  '流程动作应先显示常用设置，再显示可靠性和说明参数'
+)
 ;['TASK_COMPLETING', 'TASK_CREATED', 'TRANSITION_TAKEN', 'PROCESS_COMPLETED', 'PROCESS_WITHDRAWN'].forEach((timing) => {
   assert.ok(flowActionPanel.includes(timing), `流程动作配置缺少常用时机模板: ${timing}`)
 })
@@ -465,11 +566,118 @@ const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActio
 
 const processDesign = readFileSync(path.join(root, 'src/views/ProcessDesign.vue'), 'utf8')
 assert.match(processDesign, /全局动作[\s\S]*scope-type="PROCESS"/, '流程设计器应提供全局流程动作入口')
+;[
+  '<el-drawer',
+  'v-model="nodeConfigVisible"',
+  ':destroy-on-close="false"',
+  'class="node-config-trigger"',
+  'nodeConfigVisible.value = true'
+].forEach((marker) => {
+  assert.ok(processDesign.includes(marker), `流程节点配置缺少点击节点打开且保留状态的右侧抽屉: ${marker}`)
+})
+assert.equal(processDesign.includes('class="config-panel"'), false, '流程设计器不应继续保留固定节点配置栏')
+assert.ok(processDesign.includes("name || '未命名节点'"), '流程节点抽屉不应使用技术 ID 作为未命名节点标题')
+
+const processListSource = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
+;[
+  'title="发布后迁移"',
+  ':default-expanded="false"',
+  "import SettingsSection from '@/components/SettingsSection.vue'"
+].forEach((marker) => {
+  assert.ok(processListSource.includes(marker), `流程发布弹窗缺少低频迁移折叠分组: ${marker}`)
+})
 
 const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigPanel.vue'), 'utf8')
+assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程节点 ID 不应重复占用属性抽屉首屏')
 ;['FlowConditionGroupEditor', 'conditionGroupConfig', 'conditionRoot', 'buildFlowConditionExpression'].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `流程条件配置缺少条件组能力: ${marker}`)
 })
+;[
+  'node-config-summary',
+  'title="技术信息"',
+  "import SettingsSection from '@/components/SettingsSection.vue'"
+].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少常用摘要或折叠技术信息: ${marker}`)
+})
+const nodeTabPatterns = [
+  ['常用', /<span>常用<\/span>/],
+  ['执行人', /<span>执行人<\/span>/],
+  ['表单', /<span>表单<\/span>/],
+  ['审批', /<span>审批(?:配置)?<\/span>/],
+  ['知会', /<span>知会<\/span>/],
+  ['流程动作', /<span>流程动作<\/span>/],
+  ['高级', /<span>高级<\/span>/]
+]
+const nodeTabPositions = nodeTabPatterns.map(([label, pattern]) => {
+  const position = pattern.exec(nodeConfigPanel)?.index ?? -1
+  assert.ok(position >= 0, `流程节点配置缺少适用页签: ${label}`)
+  return position
+})
+assert.deepEqual(
+  nodeTabPositions,
+  [...nodeTabPositions].sort((left, right) => left - right),
+  '流程节点页签应按常用、执行人、表单、审批、知会、流程动作、高级排序'
+)
+;['title="办理方式"', 'title="参与人员"', 'title="完成规则"', 'title="技术参数"'].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `多人办理配置缺少任务分组: ${marker}`)
+})
+;['ENTITY_NOT_BOUND_MESSAGE', 'isEntityNotBoundError', 'entityFormsLoadingPromise', 'silentError: true'].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `流程未绑定实体时缺少预期状态去重或静默处理: ${marker}`)
+})
+
+;[
+  'title="常用体验"',
+  'title="访问范围"',
+  'title="选择行为"',
+  'title="查询实现"',
+  'title="扩展渲染"',
+  'title="查询项"',
+  'title="列展示"',
+  'title="高级列布局"',
+  'title="数据与显示"',
+  'title="高级模板"'
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表设置缺少常用优先或高级折叠分组: ${marker}`)
+})
+const listFieldTableSource = listDesigner.match(
+  /<el-table[\s\S]*?class="field-config-table"[\s\S]*?<\/el-table>/
+)?.[0] || ''
+;['label="查询方式"', 'label="数据源"', 'label="渲染组件"', 'label="宽度"', 'label="对齐"'].forEach((marker) => {
+  assert.equal(listFieldTableSource.includes(marker), false, `列表字段低频设置不应继续挤占主表格: ${marker}`)
+})
+;['field-purpose-controls', 'fieldConfigSummary(row)', 'openFieldConfig(row)'].forEach((marker) => {
+  assert.ok(listFieldTableSource.includes(marker), `列表字段主表缺少用途、摘要或单项设置入口: ${marker}`)
+})
+;['label="查询方式"', 'label="字段数据源"', 'label="渲染组件"', 'label="列宽"', 'label="对齐"'].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表字段设置弹窗缺少迁移后的配置项: ${marker}`)
+})
+assert.ok(listButtonConfig.includes('title="高级映射"'), '打开列表按钮应折叠可信上下文关系与选择回调')
+
+const configSchemaEditor = readFileSync(path.join(root, 'src/components/ConfigSchemaEditor.vue'), 'utf8')
+;[
+  'schemaGroups',
+  'visibleWhen',
+  'priorityValue',
+  'orderValue',
+  'title="',
+  "import SettingsSection from '@/components/SettingsSection.vue'"
+].forEach((marker) => {
+  assert.ok(configSchemaEditor.includes(marker), `扩展配置 Schema 缺少分组、排序或条件显示能力: ${marker}`)
+})
+const linkageConfigPanel = readFileSync(path.join(root, 'src/components/LinkageConfigPanel.vue'), 'utf8')
+;['label="显示与状态"', 'label="值与计算"', 'label="选项"', '受控 Provider / Connector'].forEach((marker) => {
+  assert.ok(linkageConfigPanel.includes(marker), `字段联动缺少合并页签或受控数据源提示: ${marker}`)
+})
+
+;['title="基本规则"', 'title="适用对象"', 'title="可见数据范围"', 'isSelectedFieldStructureLocked'].forEach((marker) => {
+  assert.ok(entitySettingsDesigner.includes(marker), `实体字段或权限规则缺少常用优先与锁定摘要: ${marker}`)
+})
+
+assert.match(
+  formDesigner,
+  /const selectedNodeHasLockedBinding = computed\(\(\) => \{[\s\S]*if \(!isEditableFieldNode\.value\) return false/,
+  '只有字段、子表和明细节点可以显示业务绑定锁定提示'
+)
 
 const processProgress = readFileSync(path.join(root, 'src/views/ProcessProgress.vue'), 'utf8')
 assert.match(processProgress, /userStore\.isSuperAdmin[\s\S]*FlowActionExecutionLog/, '流程进度页应仅为超级管理员展示动作执行记录')
@@ -507,7 +715,7 @@ const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fiel
 })
 
 const guideExpectations = {
-  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'DemoRiskProgressCell', 'test:demo:real'],
+  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'DemoRiskProgressCell', 'test:demo:real', 'SettingsSection'],
   'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
   'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerFormNodeComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }
@@ -543,7 +751,21 @@ const configurationArchitectureExpectations = {
     '三方合并',
     'legacyProps',
     '配置迁移幂等与兼容',
-    '运行时回退'
+    '运行时回退',
+    '常用配置优先',
+    '常用属性、布局与层级、数据源、校验、模式与权限、关系与子表、复用与扩展',
+    '访问范围、选择行为、查询实现',
+    '显示与状态、值与计算、选项',
+    '更多设置'
+  ],
+  'src/data/user-manual/process.js': [
+    '节点配置页签与首屏原则',
+    '点击节点打开属性抽屉',
+    '关闭抽屉不会取消当前选择',
+    '常用、执行人、表单、审批、知会、流程动作、高级',
+    '技术信息',
+    '按节点适用',
+    '发布后迁移默认折叠'
   ],
   'src/views/system/DevGuide.vue': [
     '表单节点拖拽必须走平台递归拖拽容器',
@@ -567,7 +789,14 @@ const configurationArchitectureExpectations = {
     '三方合并',
     'legacyProps',
     '迁移必须幂等',
-    '临时回退旧配置'
+    '临时回退旧配置',
+    "group: 'common'",
+    "group: 'advanced'",
+    'visibleWhen',
+    '`order`',
+    '`priority`',
+    'SettingsSection',
+    'defaultExpanded=false'
   ],
   'src/views/system/CustomListGuide.vue': [
     '稳定 `id`',

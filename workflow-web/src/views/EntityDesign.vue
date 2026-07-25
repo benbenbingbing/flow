@@ -97,269 +97,331 @@
       <!-- 字段属性配置 -->
       <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity }">
         <div class="panel-title">属性配置</div>
-        <el-form v-if="selectedField" :model="selectedField" label-width="90px" size="small">
-          <el-form-item label="字段名称" required>
-            <el-input v-model="selectedField.fieldName" placeholder="请输入字段名称" />
-          </el-form-item>
-          <el-form-item label="字段编码" required>
-            <el-input
-              v-model="selectedField.fieldCode"
-              placeholder="请输入字段编码"
-              :disabled="selectedField.isPublished || selectedField.isSystem"
-            />
-            <div v-if="selectedField.isPublished" class="form-tip text-warning">
-              已发布字段的编码不能修改
+        <div v-if="selectedField" class="selected-field-summary">
+          <div class="selected-field-summary__main">
+            <div class="selected-field-summary__identity">
+              <strong>{{ selectedField.fieldName || '未命名字段' }}</strong>
+              <span>{{ selectedField.fieldCode || '尚未设置字段编码' }}</span>
             </div>
-            <div v-else-if="selectedField.isSystem" class="form-tip text-warning">
-              系统字段的编码不能修改
-            </div>
-          </el-form-item>
-          <el-form-item label="数据库列名">
-            <el-input 
-              :model-value="formatDbColumnName(selectedField.fieldCode)" 
-              disabled
-            />
-          </el-form-item>
-          <el-form-item label="字段类型" required>
-            <el-select
-              v-model="selectedField.fieldType"
-              placeholder="选择类型"
-              style="width: 100%"
-              :disabled="selectedField.isPublished || selectedField.isSystem"
+            <el-tag size="small" :type="getFieldTypeTag(selectedField.fieldType)">
+              {{ getFieldTypeLabel(selectedField.fieldType) }}
+            </el-tag>
+          </div>
+          <div class="selected-field-summary__status">
+            <el-tag
+              v-if="isSystemEntity || selectedField.isSystem"
+              type="info"
+              size="small"
+              effect="plain"
             >
-              <el-option
-                v-for="type in fieldTypes"
-                :key="type.value"
-                :label="type.label"
-                :value="type.value"
-              />
-            </el-select>
-            <div v-if="selectedField.isPublished" class="form-tip text-warning">
-              已发布字段的类型不能修改
-            </div>
-            <div v-else-if="selectedField.isSystem" class="form-tip text-warning">
-              系统字段的类型不能修改
-            </div>
-          </el-form-item>
-          
-          <!-- 字段长度配置（文本等字符串类型） -->
-          <el-form-item label="字段长度" v-if="showFieldLength">
-            <el-input-number 
-              v-model="selectedField.fieldLength" 
-              :min="1" 
-              :max="4000" 
-              placeholder="默认200" 
-              style="width: 100%"
-            />
-            <div class="form-tip">对应数据库 VARCHAR 长度</div>
-          </el-form-item>
-          
-          <!-- 小数精度配置（DECIMAL 类型） -->
-          <template v-if="selectedField.fieldType === 'DECIMAL'">
-            <el-form-item label="总位数">
-              <el-input-number 
-                v-model="selectedField.fieldLength" 
-                :min="1" 
-                :max="65" 
-                placeholder="默认18" 
-                style="width: 100%"
-              />
-              <div class="form-tip">DECIMAL 总位数（precision）</div>
+              系统锁定
+            </el-tag>
+            <el-tag
+              v-else-if="selectedField.isPublished"
+              type="success"
+              size="small"
+              effect="plain"
+            >
+              已发布 · 编码与类型锁定
+            </el-tag>
+            <el-tag v-else type="warning" size="small" effect="plain">
+              未发布 · 结构可编辑
+            </el-tag>
+          </div>
+        </div>
+        <el-form v-if="selectedField" :model="selectedField" label-width="90px" size="small">
+          <SettingsSection
+            title="常用属性"
+            description="字段识别、类型和常用录入约束"
+            :collapsible="false"
+            primary
+          >
+            <el-form-item label="字段名称" required>
+              <el-input v-model="selectedField.fieldName" placeholder="请输入字段名称" />
             </el-form-item>
-            <el-form-item label="小数位数">
-              <el-input-number 
-                v-model="selectedField.fieldPrecision" 
-                :min="0" 
-                :max="30" 
-                placeholder="默认2" 
-                style="width: 100%"
-              />
-              <div class="form-tip">DECIMAL 小数位数（scale）</div>
-            </el-form-item>
-          </template>
-          
-          <el-form-item label="是否必填">
-            <el-switch v-model="selectedField.isRequired" />
-          </el-form-item>
-          <el-form-item label="是否唯一">
-            <el-switch v-model="selectedField.isUnique" />
-          </el-form-item>
-          <el-form-item label="默认值">
-            <el-input v-model="selectedField.defaultValue" :placeholder="showOptions ? '请输入选项的 value 值（如 1）' : '请输入默认值'" />
-            <div v-if="showOptions" class="form-tip">默认值应填写选项的 value（key），而非显示文本 label</div>
-          </el-form-item>
-          <template v-if="showOptions">
-            <el-form-item label="选项来源" required>
-              <el-radio-group v-model="selectedField.optionSource">
-                <el-radio-button label="DICT">系统代码表</el-radio-button>
-                <el-radio-button label="LEGACY_INLINE" disabled>旧内嵌选项</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item v-if="selectedField.optionSource === 'DICT'" label="代码表" required>
-              <el-select
-                v-model="selectedField.dictType"
-                filterable
-                placeholder="选择系统代码表"
-                style="width: calc(100% - 88px)"
-              >
-                <el-option
-                  v-for="dict in dictOptions"
-                  :key="dict.dictCode"
-                  :label="`${dict.dictName} (${dict.dictCode})`"
-                  :value="dict.dictCode"
+            <template v-if="!isSelectedFieldStructureLocked">
+              <el-form-item label="字段编码" required>
+                <el-input
+                  v-model="selectedField.fieldCode"
+                  placeholder="请输入字段编码"
                 />
-              </el-select>
-              <el-button style="margin-left: 8px" @click="openQuickDictDialog">新建</el-button>
-              <div class="form-tip">数据保存代码项编码，显示名称从代码表关联解析。</div>
-            </el-form-item>
-            <el-form-item v-else label="旧选项">
-              <el-input v-model="optionsText" type="textarea" rows="4" disabled />
-              <div class="form-tip text-warning">旧内嵌选项仅用于兼容，请迁移到系统代码表。</div>
-            </el-form-item>
-          </template>
-          <el-form-item label="验证规则">
-            <el-input
-              v-model="selectedField.validateRules"
-              type="textarea"
-              rows="2"
-              placeholder="JSON格式验证规则"
-            />
-          </el-form-item>
-          
-          <!-- 子表单配置 -->
-          <template v-if="isSubForm">
-            <el-divider>关系</el-divider>
-            <el-form-item label="类型" required>
-              <el-radio-group v-model="selectedField.relationType">
-                <el-radio-button label="ONE_TO_ONE">一对一</el-radio-button>
-                <el-radio-button label="ONE_TO_MANY">一对多</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="子实体" required>
-              <el-select 
-                v-model="selectedField.childEntityId"
-                placeholder="选择实体"
-                style="width: 100%"
-                @change="onChildEntityChange"
-              >
-                <el-option
-                  v-for="entity in availableEntities"
-                  :key="entity.id"
-                  :label="entity.entityName || entity.entityCode"
-                  :value="entity.id"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="子表外键" v-if="selectedField.childEntityId">
-              <el-select 
-                v-model="selectedField.childRefFieldCode"
-                placeholder="选择字段"
-                style="width: 100%"
-                @change="syncRelationRefs"
-              >
-                <el-option
-                  v-for="field in refEntityFields"
-                  :key="field.fieldCode"
-                  :label="`${field.fieldName || field.fieldCode} / ${field.fieldCode}`"
-                  :value="field.fieldCode"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="级联删除">
-              <el-switch v-model="selectedField.cascadeDelete" />
-            </el-form-item>
-          </template>
-          
-          <!-- 附件配置 -->
-          <template v-if="isAttachment">
-            <el-divider>附件配置</el-divider>
-            <div v-for="(item, index) in selectedField.fileItems" :key="index" class="file-item-config">
-              <div class="file-item-header">
-                <span class="file-item-title">附件项 {{ index + 1 }}</span>
-                <el-button type="danger" size="small" text @click="removeFileItem(index)">
-                  <el-icon><Delete /></el-icon> 删除
-                </el-button>
-              </div>
-              <el-form-item label="项名称">
-                <el-input v-model="item.itemName" placeholder="如：项目章程、需求文档" />
               </el-form-item>
-              <el-form-item label="文件类型">
-                <el-select 
-                  v-model="item.fileTypes" 
-                  multiple 
-                  placeholder="选择允许的文件类型"
+              <el-form-item label="字段类型" required>
+                <el-select
+                  v-model="selectedField.fieldType"
+                  placeholder="选择类型"
                   style="width: 100%"
                 >
-                  <el-option label="图片 (.jpg, .jpeg, .png, .gif)" value=".jpg,.jpeg,.png,.gif" />
-                  <el-option label="文档 (.pdf, .doc, .docx)" value=".pdf,.doc,.docx" />
-                  <el-option label="表格 (.xls, .xlsx)" value=".xls,.xlsx" />
-                  <el-option label="文本 (.txt)" value=".txt" />
-                  <el-option label="压缩包 (.zip, .rar)" value=".zip,.rar" />
+                  <el-option
+                    v-for="type in fieldTypes"
+                    :key="type.value"
+                    :label="type.label"
+                    :value="type.value"
+                  />
                 </el-select>
-                <div class="form-tip">不选则表示允许所有类型</div>
               </el-form-item>
-              <el-form-item label="单文件大小">
-                <el-input-number 
-                  v-model="item.maxSize" 
-                  :min="1" 
-                  :max="100" 
-                  placeholder="MB"
-                  style="width: 150px"
-                />
-                <span class="unit-text">MB</span>
-              </el-form-item>
-              <el-form-item label="数量限制">
-                <el-input-number 
-                  v-model="item.maxCount" 
-                  :min="1" 
-                  :max="20" 
-                  placeholder="个"
-                  style="width: 150px"
-                />
-                <span class="unit-text">个</span>
-              </el-form-item>
-            </div>
-            <el-button type="primary" size="small" text @click="addFileItem">
-              <el-icon><Plus /></el-icon> 添加附件项
-            </el-button>
-          </template>
-          
-          <!-- 实体引用配置 -->
-          <template v-if="isReference">
-            <el-divider>实体引用配置</el-divider>
-            <el-form-item label="关联实体" required>
-              <el-select 
-                v-model="selectedField.refEntityId" 
-                placeholder="选择关联实体"
-                style="width: 100%"
-                filterable
-                @change="onReferenceEntityChange"
-              >
-                <el-option
-                  v-for="entity in availableEntities"
-                  :key="entity.id"
-                  :label="`${entity.entityName} (${entity.entityCode})`"
-                  :value="entity.id"
-                />
-              </el-select>
-              <div class="form-tip">业务实体和平台系统实体使用同一套引用模型。</div>
+            </template>
+            <el-form-item label="是否必填">
+              <el-switch v-model="selectedField.isRequired" />
             </el-form-item>
-            <el-form-item label="显示字段" v-if="selectedField.refEntityId">
-              <el-select
-                v-model="selectedField.refFieldCode"
-                placeholder="默认使用 name"
-                style="width: 100%"
-                filterable
-              >
-                <el-option
-                  v-for="field in refEntityFields"
-                  :key="field.fieldCode"
-                  :label="`${field.fieldName || field.fieldCode} (${field.fieldCode})`"
-                  :value="field.fieldCode"
-                />
-              </el-select>
+            <el-form-item label="是否唯一">
+              <el-switch v-model="selectedField.isUnique" />
             </el-form-item>
-          </template>
+            <el-form-item label="默认值">
+              <el-input
+                v-model="selectedField.defaultValue"
+                :placeholder="showOptions ? '请输入选项的 value 值（如 1）' : '请输入默认值'"
+              />
+              <div v-if="showOptions" class="form-tip">
+                默认值应填写选项的 value（key），而非显示文本 label
+              </div>
+            </el-form-item>
+          </SettingsSection>
+
+          <SettingsSection
+            :key="`data-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
+            title="数据与约束"
+            description="数据库映射、容量、选项来源和验证规则"
+            :default-expanded="showOptions"
+          >
+            <template #summary>
+              <span v-if="showOptions">需配置选项</span>
+              <span v-else-if="selectedField.fieldType === 'DECIMAL'">精度约束</span>
+              <span v-else>按需配置</span>
+            </template>
+
+            <el-form-item label="数据库列名">
+              <el-input
+                :model-value="formatDbColumnName(selectedField.fieldCode)"
+                disabled
+              />
+            </el-form-item>
+
+            <!-- 字段长度配置（文本等字符串类型） -->
+            <el-form-item v-if="showFieldLength" label="字段长度">
+              <el-input-number
+                v-model="selectedField.fieldLength"
+                :min="1"
+                :max="4000"
+                placeholder="默认200"
+                style="width: 100%"
+              />
+              <div class="form-tip">对应数据库 VARCHAR 长度</div>
+            </el-form-item>
+
+            <!-- 小数精度配置（DECIMAL 类型） -->
+            <template v-if="selectedField.fieldType === 'DECIMAL'">
+              <el-form-item label="总位数">
+                <el-input-number
+                  v-model="selectedField.fieldLength"
+                  :min="1"
+                  :max="65"
+                  placeholder="默认18"
+                  style="width: 100%"
+                />
+                <div class="form-tip">DECIMAL 总位数（precision）</div>
+              </el-form-item>
+              <el-form-item label="小数位数">
+                <el-input-number
+                  v-model="selectedField.fieldPrecision"
+                  :min="0"
+                  :max="30"
+                  placeholder="默认2"
+                  style="width: 100%"
+                />
+                <div class="form-tip">DECIMAL 小数位数（scale）</div>
+              </el-form-item>
+            </template>
+
+            <template v-if="showOptions">
+              <el-form-item label="选项来源" required>
+                <el-radio-group v-model="selectedField.optionSource">
+                  <el-radio-button label="DICT">系统代码表</el-radio-button>
+                  <el-radio-button label="LEGACY_INLINE" disabled>旧内嵌选项</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item v-if="selectedField.optionSource === 'DICT'" label="代码表" required>
+                <el-select
+                  v-model="selectedField.dictType"
+                  filterable
+                  placeholder="选择系统代码表"
+                  style="width: calc(100% - 88px)"
+                >
+                  <el-option
+                    v-for="dict in dictOptions"
+                    :key="dict.dictCode"
+                    :label="`${dict.dictName} (${dict.dictCode})`"
+                    :value="dict.dictCode"
+                  />
+                </el-select>
+                <el-button style="margin-left: 8px" @click="openQuickDictDialog">新建</el-button>
+                <div class="form-tip">数据保存代码项编码，显示名称从代码表关联解析。</div>
+              </el-form-item>
+              <el-form-item v-else label="旧选项">
+                <el-input v-model="optionsText" type="textarea" rows="4" disabled />
+                <div class="form-tip text-warning">旧内嵌选项仅用于兼容，请迁移到系统代码表。</div>
+              </el-form-item>
+            </template>
+
+            <el-form-item label="验证规则">
+              <el-input
+                v-model="selectedField.validateRules"
+                type="textarea"
+                rows="2"
+                placeholder="JSON格式验证规则"
+              />
+            </el-form-item>
+          </SettingsSection>
+
+          <SettingsSection
+            v-if="isSubForm || isAttachment || isReference"
+            :key="`type-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
+            title="类型专属配置"
+            :description="isSubForm
+              ? '配置子实体关系与级联行为'
+              : isAttachment
+                ? '配置附件项、格式与数量限制'
+                : '配置关联实体与显示字段'"
+            :default-expanded="true"
+          >
+            <template #summary>
+              <span v-if="isSubForm">子表单关系</span>
+              <span v-else-if="isAttachment">附件规则</span>
+              <span v-else>实体引用</span>
+            </template>
+
+            <!-- 子表单配置 -->
+            <template v-if="isSubForm">
+              <el-form-item label="类型" required>
+                <el-radio-group v-model="selectedField.relationType">
+                  <el-radio-button label="ONE_TO_ONE">一对一</el-radio-button>
+                  <el-radio-button label="ONE_TO_MANY">一对多</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label="子实体" required>
+                <el-select
+                  v-model="selectedField.childEntityId"
+                  placeholder="选择实体"
+                  style="width: 100%"
+                  @change="onChildEntityChange"
+                >
+                  <el-option
+                    v-for="entity in availableEntities"
+                    :key="entity.id"
+                    :label="entity.entityName || entity.entityCode"
+                    :value="entity.id"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-if="selectedField.childEntityId" label="子表外键">
+                <el-select
+                  v-model="selectedField.childRefFieldCode"
+                  placeholder="选择字段"
+                  style="width: 100%"
+                  @change="syncRelationRefs"
+                >
+                  <el-option
+                    v-for="field in refEntityFields"
+                    :key="field.fieldCode"
+                    :label="`${field.fieldName || field.fieldCode} / ${field.fieldCode}`"
+                    :value="field.fieldCode"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="级联删除">
+                <el-switch v-model="selectedField.cascadeDelete" />
+              </el-form-item>
+            </template>
+
+            <!-- 附件配置 -->
+            <template v-if="isAttachment">
+              <div v-for="(item, index) in selectedField.fileItems" :key="index" class="file-item-config">
+                <div class="file-item-header">
+                  <span class="file-item-title">附件项 {{ index + 1 }}</span>
+                  <el-button type="danger" size="small" text @click="removeFileItem(index)">
+                    <el-icon><Delete /></el-icon> 删除
+                  </el-button>
+                </div>
+                <el-form-item label="项名称">
+                  <el-input v-model="item.itemName" placeholder="如：项目章程、需求文档" />
+                </el-form-item>
+                <el-form-item label="文件类型">
+                  <el-select
+                    v-model="item.fileTypes"
+                    multiple
+                    placeholder="选择允许的文件类型"
+                    style="width: 100%"
+                  >
+                    <el-option label="图片 (.jpg, .jpeg, .png, .gif)" value=".jpg,.jpeg,.png,.gif" />
+                    <el-option label="文档 (.pdf, .doc, .docx)" value=".pdf,.doc,.docx" />
+                    <el-option label="表格 (.xls, .xlsx)" value=".xls,.xlsx" />
+                    <el-option label="文本 (.txt)" value=".txt" />
+                    <el-option label="压缩包 (.zip, .rar)" value=".zip,.rar" />
+                  </el-select>
+                  <div class="form-tip">不选则表示允许所有类型</div>
+                </el-form-item>
+                <el-form-item label="单文件大小">
+                  <el-input-number
+                    v-model="item.maxSize"
+                    :min="1"
+                    :max="100"
+                    placeholder="MB"
+                    style="width: 150px"
+                  />
+                  <span class="unit-text">MB</span>
+                </el-form-item>
+                <el-form-item label="数量限制">
+                  <el-input-number
+                    v-model="item.maxCount"
+                    :min="1"
+                    :max="20"
+                    placeholder="个"
+                    style="width: 150px"
+                  />
+                  <span class="unit-text">个</span>
+                </el-form-item>
+              </div>
+              <el-button type="primary" size="small" text @click="addFileItem">
+                <el-icon><Plus /></el-icon> 添加附件项
+              </el-button>
+            </template>
+
+            <!-- 实体引用配置 -->
+            <template v-if="isReference">
+              <el-form-item label="关联实体" required>
+                <el-select
+                  v-model="selectedField.refEntityId"
+                  placeholder="选择关联实体"
+                  style="width: 100%"
+                  filterable
+                  @change="onReferenceEntityChange"
+                >
+                  <el-option
+                    v-for="entity in availableEntities"
+                    :key="entity.id"
+                    :label="`${entity.entityName} (${entity.entityCode})`"
+                    :value="entity.id"
+                  />
+                </el-select>
+                <div class="form-tip">业务实体和平台系统实体使用同一套引用模型。</div>
+              </el-form-item>
+              <el-form-item v-if="selectedField.refEntityId" label="显示字段">
+                <el-select
+                  v-model="selectedField.refFieldCode"
+                  placeholder="默认使用 name"
+                  style="width: 100%"
+                  filterable
+                >
+                  <el-option
+                    v-for="field in refEntityFields"
+                    :key="field.fieldCode"
+                    :label="`${field.fieldName || field.fieldCode} (${field.fieldCode})`"
+                    :value="field.fieldCode"
+                  />
+                </el-select>
+              </el-form-item>
+            </template>
+          </SettingsSection>
         </el-form>
         <div v-else class="empty-tip">请选择字段进行配置</div>
       </div>
@@ -544,182 +606,207 @@
 
   <!-- 规则编辑对话框 -->
   <el-dialog v-model="permissionEditVisible" :title="permissionForm.id ? '编辑规则' : '新增规则'" width="980px" :close-on-click-modal="false">
-    <el-form :model="permissionForm" label-width="100px" size="default">
-      <el-form-item label="规则名称" required>
-        <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
-      </el-form-item>
-      <el-form-item label="适用列表">
-        <el-select v-model="permissionForm.listKey" placeholder="留空表示实体默认范围" clearable style="width: 100%">
-          <el-option label="实体默认范围" value="" />
-          <el-option v-for="config in availableListConfigs" :key="config.listKey" :label="config.listName || config.listKey" :value="config.listKey" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="规则效果">
-        <el-radio-group v-model="permissionForm.ruleEffect">
-          <el-radio-button label="ALLOW">允许（放行并附加范围）</el-radio-button>
-          <el-radio-button label="DENY">拒绝（排除数据范围）</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="是否启用">
-        <el-switch v-model="permissionForm.enabled" :active-value="1" :inactive-value="0" />
-      </el-form-item>
-
-      <el-divider content-position="left">匹配配置（谁适用这条规则）</el-divider>
-      <el-form-item label="逻辑关系">
-        <el-radio-group v-model="permissionForm.matchLogic">
-          <el-radio-button label="OR">满足任一条件</el-radio-button>
-          <el-radio-button label="AND">满足所有条件</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-
-      <div v-for="(cond, index) in permissionForm.matchConditions" :key="index" class="condition-card">
-        <div class="condition-header">
-          <span>条件 {{ index + 1 }}</span>
-          <el-button type="danger" size="small" text @click="removeMatchCondition(index)">
-            <el-icon><Delete /></el-icon>删除
-          </el-button>
-        </div>
-        <el-form-item label="范围类型" required>
-          <el-select v-model="cond.scopeType" placeholder="选择范围类型" style="width: 100%">
-            <el-option label="全部用户" value="ALL_USERS" />
-            <el-option label="指定用户" value="USER" />
-            <el-option label="指定角色" value="ROLE" />
-            <el-option label="指定用户组" value="GROUP" />
-            <el-option label="指定部门" value="DEPT" />
-            <el-option label="指定组织" value="ORG" />
+    <el-form class="permission-edit-form" :model="permissionForm" label-width="100px" size="default">
+      <SettingsSection
+        title="基本规则"
+        description="配置规则名称、作用列表、允许或拒绝效果"
+        :collapsible="false"
+        primary
+      >
+        <el-form-item label="规则名称" required>
+          <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
+        </el-form-item>
+        <el-form-item label="适用列表">
+          <el-select v-model="permissionForm.listKey" placeholder="留空表示实体默认范围" clearable style="width: 100%">
+            <el-option label="实体默认范围" value="" />
+            <el-option v-for="config in availableListConfigs" :key="config.listKey" :label="config.listName || config.listKey" :value="config.listKey" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'USER'" label="选择用户">
-          <el-select
-            v-model="cond.targetIds"
-            multiple
-            filterable
-            clearable
-            placeholder="请选择用户"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="opt in userOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'ROLE'" label="选择角色">
-          <el-select
-            v-model="cond.targetIds"
-            multiple
-            filterable
-            clearable
-            placeholder="请选择角色"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="opt in roleOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="['ROLE', 'GROUP'].includes(cond.scopeType)" label="匹配方式">
-          <el-radio-group v-model="cond.operator">
-            <el-radio label="ANY">满足任一项</el-radio>
-            <el-radio label="ALL">满足全部项</el-radio>
+        <el-form-item label="规则效果">
+          <el-radio-group v-model="permissionForm.ruleEffect">
+            <el-radio-button label="ALLOW">允许（放行并附加范围）</el-radio-button>
+            <el-radio-button label="DENY">拒绝（排除数据范围）</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="cond.scopeType === 'GROUP'" label="选择用户组">
-          <el-select
-            v-model="cond.targetIds"
-            multiple
-            filterable
-            clearable
-            placeholder="请选择用户组"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="opt in groupOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
+        <el-form-item label="是否启用">
+          <el-switch v-model="permissionForm.enabled" :active-value="1" :inactive-value="0" />
         </el-form-item>
-        <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '选择部门' : '选择组织'">
-          <el-select
-            v-model="cond.targetIds"
-            multiple
-            filterable
-            clearable
-            :placeholder="cond.scopeType === 'DEPT' ? '请选择部门' : '请选择组织'"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="opt in cond.scopeType === 'DEPT' ? deptOptions : organizationOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '包含子部门' : '包含下级组织'">
-          <el-switch v-model="cond.includeSubDept" />
-        </el-form-item>
-      </div>
-      <el-button type="primary" size="small" text @click="addMatchCondition">
-        <el-icon><Plus /></el-icon>添加匹配条件
-      </el-button>
+      </SettingsSection>
 
-      <el-divider content-position="left">过滤配置（能看到什么数据）</el-divider>
-      <el-form-item label="数据范围" required>
-        <el-select v-model="permissionForm.filterType" placeholder="选择数据范围" style="width: 100%">
-          <el-option label="全部数据" value="ALL" />
-          <el-option label="当前用户是创建人" value="PERSONAL" />
-          <el-option label="当前用户是提交人" value="SUBMITTER" />
-          <el-option label="当前用户是当前办理人" value="CURRENT_ASSIGNEE" />
-          <el-option label="本部门" value="DEPT" />
-          <el-option label="本部门及子部门" value="DEPT_TREE" />
-          <el-option label="结构化条件组" value="RULE" />
-        </el-select>
-      </el-form-item>
+      <SettingsSection
+        title="适用对象"
+        description="定义哪些用户、角色、用户组或组织成员命中规则"
+      >
+        <template #summary>
+          {{ permissionForm.matchConditions?.length || 0 }} 个条件 ·
+          {{ permissionForm.matchLogic === 'AND' ? '全部满足' : '满足任一' }}
+        </template>
 
-      <el-form-item v-if="permissionForm.filterType === 'RULE'" label="条件规则">
-        <div style="width: 100%">
-          <el-alert
-            type="info"
-            :closable="false"
-            title="条件组由后端编译为安全 SQL；不支持自由脚本或自定义 SQL。"
-            style="margin-bottom: 10px"
-          />
-          <ActionRuleGroupEditor
-            v-if="permissionForm.filterRoot"
-            :node="permissionForm.filterRoot"
-            :fields="permissionRuleFieldOptions"
-            :statuses="availableStatuses"
-          />
-          <el-button v-else type="primary" text @click="createPermissionFilterRoot">添加条件组</el-button>
-          <el-button v-if="permissionForm.filterRoot" type="danger" text @click="permissionForm.filterRoot = null">清空条件</el-button>
-        </div>
-      </el-form-item>
-
-      <el-form-item label="状态限制">
-        <el-switch v-model="permissionForm.statusLimit.enabled" />
-        <span style="margin-left: 8px">启用状态过滤</span>
-      </el-form-item>
-      <template v-if="permissionForm.statusLimit.enabled">
-        <el-form-item label="限制模式">
-          <el-radio-group v-model="permissionForm.statusLimit.mode">
-            <el-radio-button label="IN">允许以下状态</el-radio-button>
-            <el-radio-button label="NOT_IN">排除以下状态</el-radio-button>
+        <el-form-item label="逻辑关系">
+          <el-radio-group v-model="permissionForm.matchLogic">
+            <el-radio-button label="OR">满足任一条件</el-radio-button>
+            <el-radio-button label="AND">满足所有条件</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="状态值">
-          <el-select v-model="permissionForm.statusLimit.values" multiple placeholder="选择状态" style="width: 100%">
-            <el-option v-for="status in availableStatuses" :key="status.statusCode" :label="status.statusName" :value="status.statusCode" />
+
+        <div v-for="(cond, index) in permissionForm.matchConditions" :key="index" class="condition-card">
+          <div class="condition-header">
+            <span>条件 {{ index + 1 }}</span>
+            <el-button type="danger" size="small" text @click="removeMatchCondition(index)">
+              <el-icon><Delete /></el-icon>删除
+            </el-button>
+          </div>
+          <el-form-item label="范围类型" required>
+            <el-select v-model="cond.scopeType" placeholder="选择范围类型" style="width: 100%">
+              <el-option label="全部用户" value="ALL_USERS" />
+              <el-option label="指定用户" value="USER" />
+              <el-option label="指定角色" value="ROLE" />
+              <el-option label="指定用户组" value="GROUP" />
+              <el-option label="指定部门" value="DEPT" />
+              <el-option label="指定组织" value="ORG" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="cond.scopeType === 'USER'" label="选择用户">
+            <el-select
+              v-model="cond.targetIds"
+              multiple
+              filterable
+              clearable
+              placeholder="请选择用户"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="opt in userOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="cond.scopeType === 'ROLE'" label="选择角色">
+            <el-select
+              v-model="cond.targetIds"
+              multiple
+              filterable
+              clearable
+              placeholder="请选择角色"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="opt in roleOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="['ROLE', 'GROUP'].includes(cond.scopeType)" label="匹配方式">
+            <el-radio-group v-model="cond.operator">
+              <el-radio label="ANY">满足任一项</el-radio>
+              <el-radio label="ALL">满足全部项</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="cond.scopeType === 'GROUP'" label="选择用户组">
+            <el-select
+              v-model="cond.targetIds"
+              multiple
+              filterable
+              clearable
+              placeholder="请选择用户组"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="opt in groupOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '选择部门' : '选择组织'">
+            <el-select
+              v-model="cond.targetIds"
+              multiple
+              filterable
+              clearable
+              :placeholder="cond.scopeType === 'DEPT' ? '请选择部门' : '请选择组织'"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="opt in cond.scopeType === 'DEPT' ? deptOptions : organizationOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '包含子部门' : '包含下级组织'">
+            <el-switch v-model="cond.includeSubDept" />
+          </el-form-item>
+        </div>
+        <el-button type="primary" size="small" text @click="addMatchCondition">
+          <el-icon><Plus /></el-icon>添加匹配条件
+        </el-button>
+      </SettingsSection>
+
+      <SettingsSection
+        title="可见数据范围"
+        description="配置命中规则后可查看的数据，并可附加状态限制"
+      >
+        <template #summary>
+          {{ getFilterTypeLabel(permissionForm.filterType) }}
+          <span v-if="permissionForm.statusLimit.enabled"> · 已限制状态</span>
+        </template>
+
+        <el-form-item label="数据范围" required>
+          <el-select v-model="permissionForm.filterType" placeholder="选择数据范围" style="width: 100%">
+            <el-option label="全部数据" value="ALL" />
+            <el-option label="当前用户是创建人" value="PERSONAL" />
+            <el-option label="当前用户是提交人" value="SUBMITTER" />
+            <el-option label="当前用户是当前办理人" value="CURRENT_ASSIGNEE" />
+            <el-option label="本部门" value="DEPT" />
+            <el-option label="本部门及子部门" value="DEPT_TREE" />
+            <el-option label="结构化条件组" value="RULE" />
           </el-select>
         </el-form-item>
-      </template>
+
+        <el-form-item v-if="permissionForm.filterType === 'RULE'" label="条件规则">
+          <div style="width: 100%">
+            <el-alert
+              type="info"
+              :closable="false"
+              title="条件组由后端编译为安全 SQL；不支持自由脚本或自定义 SQL。"
+              style="margin-bottom: 10px"
+            />
+            <ActionRuleGroupEditor
+              v-if="permissionForm.filterRoot"
+              :node="permissionForm.filterRoot"
+              :fields="permissionRuleFieldOptions"
+              :statuses="availableStatuses"
+            />
+            <el-button v-else type="primary" text @click="createPermissionFilterRoot">添加条件组</el-button>
+            <el-button v-if="permissionForm.filterRoot" type="danger" text @click="permissionForm.filterRoot = null">清空条件</el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="状态限制">
+          <el-switch v-model="permissionForm.statusLimit.enabled" />
+          <span style="margin-left: 8px">启用状态过滤</span>
+        </el-form-item>
+        <template v-if="permissionForm.statusLimit.enabled">
+          <el-form-item label="限制模式">
+            <el-radio-group v-model="permissionForm.statusLimit.mode">
+              <el-radio-button label="IN">允许以下状态</el-radio-button>
+              <el-radio-button label="NOT_IN">排除以下状态</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="状态值">
+            <el-select v-model="permissionForm.statusLimit.values" multiple placeholder="选择状态" style="width: 100%">
+              <el-option v-for="status in availableStatuses" :key="status.statusCode" :label="status.statusName" :value="status.statusCode" />
+            </el-select>
+          </el-form-item>
+        </template>
+      </SettingsSection>
     </el-form>
 
     <template #footer>
@@ -803,6 +890,7 @@ import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
 import { getDictList, createDictWithItems } from '@/api/system/dict'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
+import SettingsSection from '@/components/SettingsSection.vue'
 import {
   ENTITY_FIELD_TYPES,
   WORKFLOW_SYSTEM_FIELD_CODES,
@@ -826,6 +914,10 @@ const displayFields = computed(() =>
   filterEntityFieldsByLifecycle(entityData.value, fields.value)
 )
 const selectedField = ref(null)
+const isSelectedFieldStructureLocked = computed(() => Boolean(
+  selectedField.value
+  && (isSystemEntity.value || selectedField.value.isPublished || selectedField.value.isSystem)
+))
 const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
@@ -1994,14 +2086,63 @@ onMounted(() => {
   border-bottom: 1px solid #ebeef5;
 }
 
+.selected-field-summary {
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+  background: #fff;
+}
+
+.selected-field-summary__main,
+.selected-field-summary__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-field-summary__main {
+  justify-content: space-between;
+}
+
+.selected-field-summary__identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.selected-field-summary__identity strong,
+.selected-field-summary__identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-field-summary__identity strong {
+  color: #303133;
+  font-size: 14px;
+}
+
+.selected-field-summary__identity span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.selected-field-summary__status {
+  margin-top: 8px;
+}
+
 .property-panel :deep(.el-form) {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 12px;
 }
 
 .property-panel :deep(.el-form-item) {
   margin-bottom: 18px;
+}
+
+.property-panel :deep(.settings-section:last-child) {
+  margin-bottom: 0;
 }
 
 .property-panel :deep(.el-form-item__label) {

@@ -5,7 +5,6 @@
       <el-tag :type="getNodeTypeTag(element?.type)" size="large">
         {{ nodeTypeText }}
       </el-tag>
-      <span class="node-id">{{ element?.id }}</span>
       <el-popover placement="bottom" trigger="hover" :width="280">
         <template #reference>
           <el-icon class="node-info-icon"><InfoFilled /></el-icon>
@@ -24,14 +23,25 @@
     <div v-if="!element" class="no-selection">
       <el-empty description="请点击流程节点进行配置" />
     </div>
+
+    <div v-if="element && nodeCommonSummaryItems.length" class="node-config-summary">
+      <div
+        v-for="item in nodeCommonSummaryItems"
+        :key="item.label"
+        class="node-config-summary__item"
+      >
+        <span>{{ item.label }}</span>
+        <strong :title="item.value">{{ item.value }}</strong>
+      </div>
+    </div>
     
-    <el-tabs v-else v-model="activeTab" class="config-tabs">
+    <el-tabs v-if="element" v-model="activeTab" class="config-tabs">
       <!-- ========== 基本信息（所有节点都有） ========== -->
       <el-tab-pane name="basic">
         <template #label>
           <el-popover placement="top" trigger="hover" :width="280">
             <template #reference>
-              <span>基本信息</span>
+              <span>常用</span>
             </template>
             <div class="node-type-info">
               <div class="info-title">{{ nodeTypeDesc.title }}</div>
@@ -52,19 +62,24 @@
             />
           </el-form-item>
           
-          <el-form-item label="节点ID">
-            <el-input v-model="basicForm.id" disabled />
-          </el-form-item>
-          
-          <el-form-item label="说明文档" class="doc-item">
-            <el-input 
-              v-model="basicForm.documentation" 
-              type="textarea"
-              :rows="3"
-              placeholder="输入节点说明..."
-              @blur="updateDocumentation"
-            />
-          </el-form-item>
+          <SettingsSection
+            title="技术信息"
+            description="节点标识与设计备注，通常无需频繁修改"
+          >
+            <el-form-item label="节点ID">
+              <el-input v-model="basicForm.id" disabled />
+            </el-form-item>
+
+            <el-form-item label="设计备注" class="doc-item">
+              <el-input
+                v-model="basicForm.documentation"
+                type="textarea"
+                :rows="3"
+                placeholder="记录节点设计说明..."
+                @blur="updateDocumentation"
+              />
+            </el-form-item>
+          </SettingsSection>
         </el-form>
         <div class="tab-footer">
           <el-button type="primary" @click="saveCurrentTab">保存</el-button>
@@ -189,7 +204,7 @@
               </el-select-v2>
               <div class="form-tip">指定一个固定用户处理此任务</div>
             </el-form-item>
-            
+
             <el-form-item label="候选人">
               <el-select-v2
                 v-model="assigneeForm.candidateUserIds"
@@ -338,124 +353,176 @@
           </template>
           </template>
           
-          <el-divider>多实例配置（会签/或签）</el-divider>
-          
-          <el-form-item label="启用多实例">
-            <el-switch v-model="assigneeForm.isMultiInstance" @change="onMultiInstanceChange" />
-          </el-form-item>
-          
-          <template v-if="assigneeForm.isMultiInstance">
-            <el-form-item label="执行方式">
-              <el-radio-group v-model="assigneeForm.multiInstanceType">
-                <el-radio-button label="parallel">并行多实例</el-radio-button>
-                <el-radio-button label="sequential">串行多实例</el-radio-button>
-              </el-radio-group>
-              <div class="form-tip">并行：多人同时审批；串行：按顺序审批</div>
-            </el-form-item>
-            
-            <el-form-item label="集合来源">
-              <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
-                <el-radio-button label="variable">流程变量</el-radio-button>
-                <el-radio-button label="interface">接口动态</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            
-            <!-- 会签人员配置：仅集合来源为流程变量时显示 -->
-            <template v-if="assigneeForm.collectionSource === 'variable'">
-              <el-form-item label="会签人员">
-                <el-select-v2
-                  v-model="assigneeForm.multiInstanceUserIds"
-                  :options="userOptions"
-                  placeholder="选择会签用户"
-                  multiple
-                  filterable
-                  clearable
-                  style="width: 100%"
-                  @change="updateMultiInstanceUsers"
-                >
-                  <template #default="{ item }">
-                    <span>{{ item.label }}</span>
-                    <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
-                  </template>
-                </el-select-v2>
-                <div class="form-tip">所选用户每人都会生成一个会签任务</div>
-              </el-form-item>
-              
-              <el-form-item label="会签用户组">
-                <el-select-v2
-                  v-model="assigneeForm.multiInstanceGroupIds"
-                  :options="groupOptions"
-                  placeholder="选择会签用户组"
-                  multiple
-                  filterable
-                  clearable
-                  style="width: 100%"
-                  @change="updateMultiInstanceUsers"
-                >
-                  <template #default="{ item }">
-                    <span>{{ item.label }}</span>
-                    <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
-                  </template>
-                </el-select-v2>
-                <div class="form-tip">组内所有成员都会生成会签任务</div>
-              </el-form-item>
-              
-              <el-form-item label="会签角色">
-                <el-select-v2
-                  v-model="assigneeForm.multiInstanceRoleIds"
-                  :options="roleOptions"
-                  placeholder="选择会签角色"
-                  multiple
-                  filterable
-                  clearable
-                  style="width: 100%"
-                  @change="updateMultiInstanceUsers"
-                >
-                  <template #default="{ item }">
-                    <span>{{ item.label }}</span>
-                    <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
-                  </template>
-                </el-select-v2>
-                <div class="form-tip">拥有该角色的所有成员都会生成会签任务</div>
-              </el-form-item>
+          <SettingsSection
+            title="多人办理（会签/或签）"
+            description="仅在多人同时或顺序办理时配置"
+            :default-expanded="assigneeForm.isMultiInstance"
+          >
+            <template #summary>
+              <el-tag :type="assigneeForm.isMultiInstance ? 'success' : 'info'" size="small">
+                {{ assigneeForm.isMultiInstance ? '已启用' : '未启用' }}
+              </el-tag>
             </template>
-            
-            <el-form-item label="集合变量" v-if="assigneeForm.collectionSource === 'variable'">
-              <el-input 
-                v-model="assigneeForm.collection" 
-                placeholder="系统默认：${_wfMultiInstanceUsers_}" disabled
-                @blur="updateMultiInstance"
-              />
-              <div class="form-tip">返回用户ID列表的流程变量</div>
+
+            <el-form-item label="启用多实例">
+              <el-switch v-model="assigneeForm.isMultiInstance" @change="onMultiInstanceChange" />
             </el-form-item>
-            
-            <el-form-item label="接口配置" v-if="assigneeForm.collectionSource === 'interface'">
-              <el-input 
-                v-model="assigneeForm.collectionInterface" 
-                placeholder="如：approverSelector.getApprovers"
-                @blur="updateMultiInstance"
-              />
-              <div class="form-tip">返回用户ID列表的接口</div>
-            </el-form-item>
-            
-            <el-form-item label="元素变量">
-              <el-input 
-                v-model="assigneeForm.elementVariable" 
-                placeholder="如：approver"
-                @blur="updateMultiInstance"
-              />
-              <div class="form-tip">集合中每个元素的变量名</div>
-            </el-form-item>
-            
-            <el-form-item label="完成条件">
-              <el-input 
-                v-model="assigneeForm.completionCondition" 
-                placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
-                @blur="updateMultiInstance"
-              />
-              <div class="form-tip">满足此条件时任务完成，默认全部完成</div>
-            </el-form-item>
-          </template>
+
+            <template v-if="assigneeForm.isMultiInstance">
+              <SettingsSection
+                title="办理方式"
+                description="设置多人任务并行或串行执行，以及参与人员来源"
+                :collapsible="false"
+                primary
+              >
+                <el-form-item label="执行方式">
+                  <el-radio-group v-model="assigneeForm.multiInstanceType">
+                    <el-radio-button label="parallel">并行多实例</el-radio-button>
+                    <el-radio-button label="sequential">串行多实例</el-radio-button>
+                  </el-radio-group>
+                  <div class="form-tip">并行：多人同时审批；串行：按顺序审批</div>
+                </el-form-item>
+
+                <el-form-item label="人员来源">
+                  <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
+                    <el-radio-button label="variable">直接选择</el-radio-button>
+                    <el-radio-button label="interface">接口动态</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+              </SettingsSection>
+
+              <SettingsSection
+                title="参与人员"
+                description="选择生成多人任务的用户、用户组或角色"
+                :collapsible="false"
+              >
+                <template #summary>
+                  <el-tag size="small" type="info">
+                    {{ assigneeForm.collectionSource === 'interface' ? '动态获取' : '直接选择' }}
+                  </el-tag>
+                </template>
+
+                <template v-if="assigneeForm.collectionSource === 'variable'">
+                  <el-form-item label="会签人员">
+                    <el-select-v2
+                      v-model="assigneeForm.multiInstanceUserIds"
+                      :options="userOptions"
+                      placeholder="选择会签用户"
+                      multiple
+                      filterable
+                      clearable
+                      style="width: 100%"
+                      @change="updateMultiInstanceUsers"
+                    >
+                      <template #default="{ item }">
+                        <span>{{ item.label }}</span>
+                        <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
+                      </template>
+                    </el-select-v2>
+                    <div class="form-tip">所选用户每人都会生成一个会签任务</div>
+                  </el-form-item>
+
+                  <el-form-item label="会签用户组">
+                    <el-select-v2
+                      v-model="assigneeForm.multiInstanceGroupIds"
+                      :options="groupOptions"
+                      placeholder="选择会签用户组"
+                      multiple
+                      filterable
+                      clearable
+                      style="width: 100%"
+                      @change="updateMultiInstanceUsers"
+                    >
+                      <template #default="{ item }">
+                        <span>{{ item.label }}</span>
+                        <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
+                      </template>
+                    </el-select-v2>
+                    <div class="form-tip">组内所有成员都会生成会签任务</div>
+                  </el-form-item>
+
+                  <el-form-item label="会签角色">
+                    <el-select-v2
+                      v-model="assigneeForm.multiInstanceRoleIds"
+                      :options="roleOptions"
+                      placeholder="选择会签角色"
+                      multiple
+                      filterable
+                      clearable
+                      style="width: 100%"
+                      @change="updateMultiInstanceUsers"
+                    >
+                      <template #default="{ item }">
+                        <span>{{ item.label }}</span>
+                        <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
+                      </template>
+                    </el-select-v2>
+                    <div class="form-tip">拥有该角色的所有成员都会生成会签任务</div>
+                  </el-form-item>
+                </template>
+
+                <el-form-item v-else label="接口配置">
+                  <el-input
+                    v-model="assigneeForm.collectionInterface"
+                    placeholder="如：approverSelector.getApprovers"
+                    @blur="updateMultiInstance"
+                  />
+                  <div class="form-tip">返回用户ID列表的接口</div>
+                </el-form-item>
+              </SettingsSection>
+
+              <SettingsSection
+                title="完成规则"
+                description="默认等待全部实例完成；仅特殊会签规则需要修改"
+                :default-expanded="!!assigneeForm.completionCondition"
+              >
+                <template #summary>
+                  <el-tag size="small" :type="assigneeForm.completionCondition ? 'warning' : 'info'">
+                    {{ assigneeForm.completionCondition ? '自定义条件' : '全部完成' }}
+                  </el-tag>
+                </template>
+
+                <el-form-item label="完成条件">
+                  <el-input
+                    v-model="assigneeForm.completionCondition"
+                    placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
+                    @blur="updateMultiInstance"
+                  />
+                  <div class="form-tip">满足此条件时任务完成，留空表示全部实例完成</div>
+                </el-form-item>
+              </SettingsSection>
+
+              <SettingsSection
+                title="技术参数"
+                description="BPMN 多实例集合与单个办理人的变量名，通常保持默认"
+              >
+                <template #summary>
+                  <el-tag size="small" type="info">
+                    {{ assigneeForm.elementVariable || 'assignee' }}
+                  </el-tag>
+                </template>
+
+                <el-form-item v-if="assigneeForm.collectionSource === 'variable'" label="集合变量">
+                  <el-input
+                    v-model="assigneeForm.collection"
+                    placeholder="系统默认：${_wfMultiInstanceUsers_}"
+                    disabled
+                    @blur="updateMultiInstance"
+                  />
+                  <div class="form-tip">系统生成的用户ID集合变量，只读展示</div>
+                </el-form-item>
+
+                <el-form-item label="元素变量">
+                  <el-input
+                    v-model="assigneeForm.elementVariable"
+                    placeholder="如：approver"
+                    @blur="updateMultiInstance"
+                  />
+                  <div class="form-tip">集合中单个用户ID在任务内使用的变量名</div>
+                </el-form-item>
+              </SettingsSection>
+            </template>
+          </SettingsSection>
         </el-form>
         <div class="tab-footer">
           <el-button type="primary" @click="saveCurrentTab">保存</el-button>
@@ -553,39 +620,49 @@
               <div class="form-tip">URL查询参数，JSON格式，支持流程变量</div>
             </el-form-item>
             
-            <el-divider>高级配置</el-divider>
-            
-            <el-row :gutter="10">
-              <el-col :span="12">
-                <el-form-item label="超时时间(秒)">
-                  <el-input-number v-model="restForm.timeout" :min="1" :max="300" style="width: 100%" @change="updateRestConfig" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="重试次数">
-                  <el-input-number v-model="restForm.retryCount" :min="0" :max="5" style="width: 100%" @change="updateRestConfig" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-form-item label="错误处理">
-              <el-radio-group v-model="restForm.errorHandling" @change="updateRestConfig">
-                <el-radio label="throw">抛出异常终止流程</el-radio>
-                <el-radio label="continue">记录错误继续流程</el-radio>
-                <el-radio label="ignore">忽略错误</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            
-            <el-form-item label="结果映射">
-              <el-input 
-                v-model="restForm.resultMapping" 
-                type="textarea"
-                :rows="3"
-                placeholder='{"data.id": "userId", "data.status": "status", "code": "resultCode"}'
-                @blur="updateRestConfig"
-              />
-              <div class="form-tip">将响应结果映射到流程变量，JSON格式：响应路径 -> 变量名</div>
-            </el-form-item>
+            <SettingsSection
+              title="可靠性与结果"
+              description="超时、重试、错误策略和响应变量映射"
+              :default-expanded="restForm.retryCount > 0 || restForm.errorHandling !== 'throw' || !!restForm.resultMapping"
+            >
+              <template #summary>
+                <el-tag size="small" type="info">
+                  {{ restForm.timeout }} 秒 / {{ restForm.retryCount }} 次重试
+                </el-tag>
+              </template>
+
+              <el-row :gutter="10">
+                <el-col :span="12">
+                  <el-form-item label="超时时间(秒)">
+                    <el-input-number v-model="restForm.timeout" :min="1" :max="300" style="width: 100%" @change="updateRestConfig" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="重试次数">
+                    <el-input-number v-model="restForm.retryCount" :min="0" :max="5" style="width: 100%" @change="updateRestConfig" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-form-item label="错误处理">
+                <el-radio-group v-model="restForm.errorHandling" @change="updateRestConfig">
+                  <el-radio label="throw">抛出异常终止流程</el-radio>
+                  <el-radio label="continue">记录错误继续流程</el-radio>
+                  <el-radio label="ignore">忽略错误</el-radio>
+                </el-radio-group>
+              </el-form-item>
+
+              <el-form-item label="结果映射">
+                <el-input
+                  v-model="restForm.resultMapping"
+                  type="textarea"
+                  :rows="3"
+                  placeholder='{"data.id": "userId", "data.status": "status", "code": "resultCode"}'
+                  @blur="updateRestConfig"
+                />
+                <div class="form-tip">将响应结果映射到流程变量，JSON格式：响应路径 -> 变量名</div>
+              </el-form-item>
+            </SettingsSection>
           </template>
           
           <el-form-item label="结果变量" v-if="serviceForm.implementationType !== 'rest'">
@@ -901,34 +978,44 @@
             </el-radio-group>
           </el-form-item>
           
-          <el-divider>参数传递</el-divider>
-          
-          <el-form-item label="输入参数">
-            <el-input 
-              v-model="callForm.inputParameters" 
-              type="textarea"
-              :rows="3"
-              placeholder='{"subProcessVar": "${parentVar}"}'
-            />
-            <div class="form-tip">传递给子流程的变量映射</div>
-          </el-form-item>
-          
-          <el-form-item label="输出参数">
-            <el-input 
-              v-model="callForm.outputParameters" 
-              type="textarea"
-              :rows="3"
-              placeholder='{"parentResult": "${subProcessResult}"}'
-            />
-            <div class="form-tip">子流程返回后映射到主流程的变量</div>
-          </el-form-item>
-          
-          <el-form-item label="业务Key">
-            <el-input 
-              v-model="callForm.businessKey" 
-              placeholder="子流程的业务Key"
-            />
-          </el-form-item>
+          <SettingsSection
+            title="参数传递"
+            description="父流程与子流程之间的变量和业务键映射"
+            :default-expanded="!!callForm.inputParameters || !!callForm.outputParameters || !!callForm.businessKey"
+          >
+            <template #summary>
+              <el-tag size="small" type="info">
+                {{ callForm.inputParameters || callForm.outputParameters ? '已配置映射' : '未配置映射' }}
+              </el-tag>
+            </template>
+
+            <el-form-item label="输入参数">
+              <el-input
+                v-model="callForm.inputParameters"
+                type="textarea"
+                :rows="3"
+                placeholder='{"subProcessVar": "${parentVar}"}'
+              />
+              <div class="form-tip">传递给子流程的变量映射</div>
+            </el-form-item>
+
+            <el-form-item label="输出参数">
+              <el-input
+                v-model="callForm.outputParameters"
+                type="textarea"
+                :rows="3"
+                placeholder='{"parentResult": "${subProcessResult}"}'
+              />
+              <div class="form-tip">子流程返回后映射到主流程的变量</div>
+            </el-form-item>
+
+            <el-form-item label="业务Key">
+              <el-input
+                v-model="callForm.businessKey"
+                placeholder="子流程的业务Key"
+              />
+            </el-form-item>
+          </SettingsSection>
         </el-form>
         <div class="tab-footer">
           <el-button type="primary" @click="saveCurrentTab">保存</el-button>
@@ -1021,23 +1108,6 @@
         </div>
       </el-tab-pane>
       
-      <!-- ========== 流程动作 ========== -->
-      <el-tab-pane v-if="isActionConfigurable" name="actions">
-        <template #label>
-          <el-tooltip content="配置当前节点或连线在指定时机执行的自定义动作" placement="top">
-            <span>流程动作</span>
-          </el-tooltip>
-        </template>
-        <FlowActionConfigPanel
-          :process-id="processId"
-          :scope-type="isSequenceFlow ? 'SEQUENCE_FLOW' : 'NODE'"
-          :element-id="element?.id"
-          :element-name="element?.businessObject?.name || element?.id"
-          :bpmn-type="element?.type"
-          @changed="emit('action-changed')"
-        />
-      </el-tab-pane>
-      
       <!-- ========== 表单配置（仅用户任务/开始事件） ========== -->
       <el-tab-pane v-if="isUserTask || isStartEvent" name="form">
         <template #label>
@@ -1125,7 +1195,7 @@
       <el-tab-pane v-if="isUserTask" name="approval">
         <template #label>
           <el-tooltip content="自定义当前节点的审批操作选项和审批意见配置" placement="top">
-            <span>审批配置</span>
+            <span>审批</span>
           </el-tooltip>
         </template>
         <el-form :model="approvalForm" label-width="120px" size="small">
@@ -1231,49 +1301,75 @@
             <el-form-item label="包含当前办理人">
               <el-switch v-model="ccForm.includeOperator" />
             </el-form-item>
-            <el-divider>收件人规则</el-divider>
-            <div v-for="(rule, index) in ccForm.recipientRules" :key="index" class="cc-rule-row">
-              <el-select v-model="rule.type" style="width:150px" @change="rule.values = []">
-                <el-option label="固定用户" value="USER" />
-                <el-option label="角色成员" value="ROLE" />
-                <el-option label="用户组成员" value="GROUP" />
-                <el-option label="组织/部门成员" value="DEPARTMENT" />
-                <el-option label="流程发起人" value="STARTER" />
-                <el-option label="当前办理人" value="CURRENT_ASSIGNEE" />
-                <el-option label="历史办理人" value="HISTORY_APPROVERS" />
-                <el-option label="实体字段用户" value="ENTITY_FIELD" />
-                <el-option label="受控解析器" value="RESOLVER" />
-              </el-select>
-              <el-select v-if="rule.type === 'USER'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户">
-                <el-option v-for="item in userOptions" :key="item.value" :label="item.label" :value="item.value" />
-              </el-select>
-              <el-select v-else-if="rule.type === 'ROLE'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择角色">
-                <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
-              </el-select>
-              <el-select v-else-if="rule.type === 'GROUP'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户组">
-                <el-option v-for="item in groupOptions" :key="item.value" :label="item.label" :value="item.value" />
-              </el-select>
-              <el-select v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择组织或部门">
-                <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
-              </el-select>
-              <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
-              <el-input v-else-if="rule.type === 'RESOLVER'" v-model="rule.resolverCode" style="flex:1" placeholder="已注册解析器编码" />
-              <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
-              <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
-              <el-button type="danger" link @click="removeCcRule(index)" :disabled="ccForm.recipientRules.length <= 1">
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </div>
-            <el-button type="primary" link @click="addCcRule"><el-icon><Plus /></el-icon>添加收件人规则</el-button>
-            <el-form-item label="知会说明">
-              <el-input v-model="ccForm.summary" type="textarea" :rows="2" placeholder="展示在收件人的知会列表中" />
-            </el-form-item>
-            <el-alert type="info" :closable="false" show-icon :title="ccNaturalSummary" />
+            <SettingsSection
+              title="收件人与展示"
+              description="配置收件人规则及知会列表中的说明"
+              :default-expanded="ccForm.enabled"
+            >
+              <template #summary>
+                <el-tag size="small" type="info">{{ ccForm.recipientRules.length }} 条规则</el-tag>
+              </template>
+
+              <div v-for="(rule, index) in ccForm.recipientRules" :key="index" class="cc-rule-row">
+                <el-select v-model="rule.type" style="width:150px" @change="rule.values = []">
+                  <el-option label="固定用户" value="USER" />
+                  <el-option label="角色成员" value="ROLE" />
+                  <el-option label="用户组成员" value="GROUP" />
+                  <el-option label="组织/部门成员" value="DEPARTMENT" />
+                  <el-option label="流程发起人" value="STARTER" />
+                  <el-option label="当前办理人" value="CURRENT_ASSIGNEE" />
+                  <el-option label="历史办理人" value="HISTORY_APPROVERS" />
+                  <el-option label="实体字段用户" value="ENTITY_FIELD" />
+                  <el-option label="受控解析器" value="RESOLVER" />
+                </el-select>
+                <el-select v-if="rule.type === 'USER'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户">
+                  <el-option v-for="item in userOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+                <el-select v-else-if="rule.type === 'ROLE'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择角色">
+                  <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+                <el-select v-else-if="rule.type === 'GROUP'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户组">
+                  <el-option v-for="item in groupOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+                <el-select v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择组织或部门">
+                  <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+                <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
+                <el-input v-else-if="rule.type === 'RESOLVER'" v-model="rule.resolverCode" style="flex:1" placeholder="已注册解析器编码" />
+                <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
+                <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
+                <el-button type="danger" link @click="removeCcRule(index)" :disabled="ccForm.recipientRules.length <= 1">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+              <el-button type="primary" link @click="addCcRule"><el-icon><Plus /></el-icon>添加收件人规则</el-button>
+              <el-form-item label="知会说明">
+                <el-input v-model="ccForm.summary" type="textarea" :rows="2" placeholder="展示在收件人的知会列表中" />
+              </el-form-item>
+              <el-alert type="info" :closable="false" show-icon :title="ccNaturalSummary" />
+            </SettingsSection>
           </template>
         </el-form>
         <div class="tab-footer">
           <el-button type="primary" @click="saveCurrentTab">保存</el-button>
         </div>
+      </el-tab-pane>
+
+      <!-- ========== 流程动作 ========== -->
+      <el-tab-pane v-if="isActionConfigurable" name="actions">
+        <template #label>
+          <el-tooltip content="配置当前节点或连线在指定时机执行的自定义动作" placement="top">
+            <span>流程动作</span>
+          </el-tooltip>
+        </template>
+        <FlowActionConfigPanel
+          :process-id="processId"
+          :scope-type="isSequenceFlow ? 'SEQUENCE_FLOW' : 'NODE'"
+          :element-id="element?.id"
+          :element-name="element?.businessObject?.name || element?.id"
+          :bpmn-type="element?.type"
+          @changed="emit('action-changed')"
+        />
       </el-tab-pane>
 
       <!-- ========== 高级配置 ========== -->
@@ -1305,22 +1401,32 @@
             />
           </el-form-item>
           
-          <el-divider>自动跳过</el-divider>
-          
-          <el-form-item label="是否跳过">
-            <el-switch
-              v-model="advancedForm.skipNode"
-              @change="updateSkipNode"
-              active-text="是"
-              inactive-text="否"
-            />
-          </el-form-item>
-
-          <el-alert v-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
-            <template #title>
-              执行到此节点时直接流转
+          <SettingsSection
+            title="自动跳过"
+            description="节点到达后不生成停留，直接继续流转"
+            :default-expanded="advancedForm.skipNode"
+          >
+            <template #summary>
+              <el-tag :type="advancedForm.skipNode ? 'warning' : 'info'" size="small">
+                {{ advancedForm.skipNode ? '已启用' : '未启用' }}
+              </el-tag>
             </template>
-          </el-alert>
+
+            <el-form-item label="是否跳过">
+              <el-switch
+                v-model="advancedForm.skipNode"
+                @change="updateSkipNode"
+                active-text="是"
+                inactive-text="否"
+              />
+            </el-form-item>
+
+            <el-alert v-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
+              <template #title>
+                执行到此节点时直接流转
+              </template>
+            </el-alert>
+          </SettingsSection>
         </el-form>
         <div class="tab-footer">
           <el-button type="primary" @click="saveCurrentTab">保存</el-button>
@@ -1341,6 +1447,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildAssigneeConfig, getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
+import SettingsSection from '@/components/SettingsSection.vue'
 import {
   buildFlowConditionExpression,
   createFlowConditionGroup,
@@ -1726,6 +1833,113 @@ const selectedForm = computed(() => {
   return entityFormOptions.value.find(f => f.id === formId)
 })
 
+const assigneeTypeLabels = {
+  user: '固定人员',
+  group: '用户组',
+  role: '角色',
+  expression: '表达式',
+  interface: '接口动态'
+}
+
+function currentNodeFormSummary() {
+  if (formConfig.value.formSource === 'none') return '无表单'
+  if (formConfig.value.formSource === 'custom') {
+    return formConfig.value.formKey || '自定义表单未填写'
+  }
+  const selectedIds = getSelectedEntityFormIds()
+  if (!selectedIds.length) return '未选择'
+  const primaryName = selectedForm.value?.formName || selectedIds[0]
+  return selectedIds.length > 1
+    ? `${primaryName} +${selectedIds.length - 1}`
+    : primaryName
+}
+
+const nodeCommonSummaryItems = computed(() => {
+  const items = []
+  if (isUserTask.value) {
+    items.push({
+      label: '办理',
+      value: assigneeForm.value.isMultiInstance
+        ? (assigneeForm.value.multiInstanceType === 'sequential' ? '串行多人办理' : '并行多人办理')
+        : (assigneeTypeLabels[assigneeForm.value.assigneeType] || '未配置')
+    })
+    items.push({ label: '表单', value: currentNodeFormSummary() })
+    items.push({
+      label: '审批',
+      value: approvalForm.value.enabled
+        ? `${approvalForm.value.options?.length || 0} 个操作`
+        : '未启用'
+    })
+    items.push({
+      label: '知会',
+      value: ccForm.value.enabled
+        ? `${ccForm.value.recipientRules?.length || 0} 条规则`
+        : '未启用'
+    })
+  } else if (isStartEvent.value) {
+    items.push({ label: '表单', value: currentNodeFormSummary() })
+    items.push({ label: '节点', value: basicForm.value.name || '开始事件' })
+  } else if (isSequenceFlow.value) {
+    items.push({ label: '状态', value: selectedStatusName.value || '不变更' })
+    items.push({
+      label: '条件',
+      value: conditionForm.value.type === 'default'
+        ? '默认流'
+        : (conditionForm.value.type === 'expression' ? '条件流' : '无条件')
+    })
+  } else if (isServiceTask.value) {
+    const implementationLabels = {
+      class: 'Java 类',
+      expression: '表达式',
+      delegateExpression: 'Spring Bean',
+      rest: `${restForm.value.method || 'POST'} REST`
+    }
+    items.push({
+      label: '实现',
+      value: implementationLabels[serviceForm.value.implementationType] || '未配置'
+    })
+    items.push({
+      label: '结果',
+      value: serviceForm.value.implementationType === 'rest'
+        ? (restForm.value.resultMapping ? '已映射' : '未映射')
+        : (serviceForm.value.resultVariable || '未保存变量')
+    })
+    items.push({
+      label: '知会',
+      value: ccForm.value.enabled ? `${ccForm.value.recipientRules?.length || 0} 条规则` : '未启用'
+    })
+  } else if (isCallActivity.value) {
+    items.push({ label: '子流程', value: callForm.value.calledElement || '未选择' })
+    items.push({ label: '调用', value: callForm.value.callActivityType === 'cmmn' ? 'CMMN 案例' : 'BPMN 子流程' })
+    items.push({
+      label: '参数',
+      value: callForm.value.inputParameters || callForm.value.outputParameters ? '已配置' : '未配置'
+    })
+  } else if (isSendTask.value) {
+    items.push({ label: '渠道', value: sendForm.value.channels?.join('、') || '未选择' })
+    items.push({ label: '模板', value: sendForm.value.templateKey || '未选择' })
+    items.push({
+      label: '知会',
+      value: ccForm.value.enabled ? `${ccForm.value.recipientRules?.length || 0} 条规则` : '未启用'
+    })
+  } else if (isReceiveTask.value) {
+    items.push({ label: '消息', value: receiveForm.value.messageRef || '未填写' })
+    items.push({ label: '超时', value: receiveForm.value.hasTimeout ? `${receiveForm.value.timeout} ${receiveForm.value.timeoutUnit}` : '未启用' })
+  } else if (isManualTask.value) {
+    items.push({ label: '负责人', value: manualForm.value.responsible || '未填写' })
+    items.push({ label: '工时', value: manualForm.value.estimatedHours ? `${manualForm.value.estimatedHours} 小时` : '未填写' })
+  } else if (isBusinessRuleTask.value) {
+    items.push({ label: '决策表', value: ruleForm.value.decisionRef || '未填写' })
+    items.push({ label: '结果变量', value: ruleForm.value.resultVariable || '未填写' })
+  } else if (isScriptTask.value) {
+    items.push({ label: '语言', value: scriptForm.value.scriptFormat || 'javascript' })
+    items.push({ label: '结果变量', value: scriptForm.value.resultVariable || '未填写' })
+  } else {
+    items.push({ label: '节点', value: basicForm.value.name || nodeTypeText.value })
+  }
+  return items.filter(item => item.value).slice(0, 4)
+})
+
 function normalizeEntityFormIds(value) {
   const ids = Array.isArray(value) ? value : (value ? [value] : [])
   return [...new Set(ids.map(id => String(id || '').trim()).filter(Boolean))]
@@ -1823,28 +2037,83 @@ async function loadOrganizations() {
 
 // 绑定的实体信息
 const boundEntity = ref(null)
+const ENTITY_NOT_BOUND_MESSAGE = '该流程未绑定实体'
+let entityFormsLoadingProcessId = ''
+let entityFormsLoadingPromise = null
+
+function isEntityNotBoundError(error) {
+  const messages = [
+    error?.message,
+    error?.source?.message,
+    error?.source?.msg,
+    error?.response?.data?.message,
+    error?.response?.data?.msg
+  ]
+  return messages.some(message => String(message || '').includes(ENTITY_NOT_BOUND_MESSAGE))
+}
+
+function resetEntityFormsState() {
+  boundEntity.value = null
+  entityFormOptions.value = []
+}
 
 // 加载流程绑定的实体及表单列表
 async function loadEntityForms() {
-  if (!props.processId) {
-    console.warn('processId 为空，无法加载实体表单')
+  const processId = String(props.processId || '').trim()
+  if (!processId) {
+    resetEntityFormsState()
     return
   }
-  try {
-    // 1. 先获取流程绑定的实体
-    const entityRes = await request.get(`/entity/process/${props.processId}`)
-    if (entityRes) {
-      boundEntity.value = entityRes
-      // 2. 加载该实体的表单列表
-      if (boundEntity.value?.id) {
-        const formsRes = await request.get(`/entity-form/entity/${boundEntity.value.id}`)
-        if (formsRes && Array.isArray(formsRes)) {
-          entityFormOptions.value = formsRes
-        }
-      }
+
+  if (entityFormsLoadingPromise && entityFormsLoadingProcessId === processId) {
+    return entityFormsLoadingPromise
+  }
+
+  const loadingPromise = (async () => {
+    let entityRes
+    try {
+      entityRes = await request.get(`/entity/process/${processId}`, { silentError: true })
+    } catch (error) {
+      if (String(props.processId || '').trim() !== processId) return
+      resetEntityFormsState()
+      if (isEntityNotBoundError(error)) return
+      console.error('加载流程绑定实体失败:', error)
+      ElMessage.error(`加载流程绑定实体失败: ${error.message || '未知错误'}`)
+      return
     }
-  } catch (e) {
-    console.error('加载实体表单列表失败:', e)
+
+    if (String(props.processId || '').trim() !== processId) return
+    if (!entityRes?.id) {
+      resetEntityFormsState()
+      return
+    }
+
+    boundEntity.value = entityRes
+    entityFormOptions.value = []
+
+    try {
+      const formsRes = await request.get(`/entity-form/entity/${entityRes.id}`, { silentError: true })
+      if (String(props.processId || '').trim() === processId) {
+        entityFormOptions.value = Array.isArray(formsRes) ? formsRes : []
+      }
+    } catch (error) {
+      if (String(props.processId || '').trim() !== processId) return
+      entityFormOptions.value = []
+      console.error('加载实体表单列表失败:', error)
+      ElMessage.error(`加载实体表单列表失败: ${error.message || '未知错误'}`)
+    }
+  })()
+
+  entityFormsLoadingProcessId = processId
+  entityFormsLoadingPromise = loadingPromise
+
+  try {
+    return await loadingPromise
+  } finally {
+    if (entityFormsLoadingPromise === loadingPromise) {
+      entityFormsLoadingProcessId = ''
+      entityFormsLoadingPromise = null
+    }
   }
 }
 
@@ -1878,7 +2147,6 @@ onMounted(() => {
   loadGroups()
   loadRoles()
   loadOrganizations()
-  loadEntityForms()
   loadEntityFields()
 })
 
@@ -3305,11 +3573,51 @@ async function saveStatusConfig() {
 <style scoped>
 .node-config-panel { height: 100%; display: flex; flex-direction: column; }
 .node-type-header { display: flex; align-items: center; gap: 10px; padding: 10px 15px; border-bottom: 1px solid #e4e7ed; background-color: #f5f7fa; }
-.node-id { flex: 1; font-size: 12px; color: #909399; font-family: monospace; }
 .node-info-icon { color: #909399; cursor: pointer; font-size: 16px; }
 .node-info-icon:hover { color: #409eff; }
 .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; }
+.node-config-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebeef5;
+  background: #fff;
+}
+.node-config-summary__item {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f5f7fa;
+}
+.node-config-summary__item span,
+.node-config-summary__item strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-config-summary__item span {
+  margin-bottom: 2px;
+  color: #909399;
+  font-size: 11px;
+}
+.node-config-summary__item strong {
+  color: #303133;
+  font-size: 13px;
+  font-weight: 600;
+}
 .config-tabs { flex: 1; }
+.config-tabs :deep(.el-tabs__nav-scroll) {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.config-tabs :deep(.el-tabs__nav) {
+  min-width: max-content;
+}
+.config-tabs :deep(.el-tabs__item) {
+  padding: 0 8px;
+}
 .config-tabs :deep(.el-tabs__content) { padding: 15px; height: calc(100% - 40px); overflow-y: auto; }
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
 :deep(.el-divider__text) { font-size: 12px; color: #909399; }

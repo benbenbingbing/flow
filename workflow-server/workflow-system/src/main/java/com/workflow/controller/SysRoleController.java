@@ -1,10 +1,13 @@
 package com.workflow.controller;
 
+import com.workflow.common.PageResult;
 import com.workflow.common.Result;
 import com.workflow.entity.SysMenu;
 import com.workflow.entity.SysRole;
+import com.workflow.entity.SysUser;
 import com.workflow.service.SysMenuService;
 import com.workflow.service.SysRoleService;
+import com.workflow.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +30,8 @@ public class SysRoleController {
     private final SysRoleService roleService;
     /** 菜单服务，用于获取菜单树供角色分配权限 */
     private final SysMenuService menuService;
+    /** 用户服务，用于查询角色成员 */
+    private final SysUserService userService;
     
     /**
      * 查询角色列表
@@ -134,6 +139,24 @@ public class SysRoleController {
     @GetMapping("/{id}/menus")
     public Result<List<SysMenu>> getRoleMenus(@PathVariable String id) {
         return Result.success(roleService.getRoleMenuTree(id));
+    }
+
+    /**
+     * 分页查询已分配当前角色的用户
+     *
+     * @param id       角色ID
+     * @param pageNum  页码
+     * @param pageSize 每页条数
+     * @param keyword  用户名、昵称、邮箱或手机号关键字
+     * @return 用户分页结果
+     */
+    @GetMapping("/{id}/users")
+    public Result<PageResult<SysUser>> getRoleUsers(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(required = false) String keyword) {
+        return Result.success(userService.getUsersByRolePage(id, pageNum, pageSize, keyword));
     }
     
     /**

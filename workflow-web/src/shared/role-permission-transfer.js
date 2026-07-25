@@ -43,6 +43,45 @@ export function flattenPermissionMenuTree(menuTree = []) {
   return options
 }
 
+export function buildPermissionTreeView(menuTree = [], selectedKeys = [], side = 'available') {
+  const selectedKeySet = new Set(selectedKeys.map(normalizeKey))
+  const showAssigned = side === 'assigned'
+
+  const walk = (menus, ancestorNames = []) => {
+    const nodes = []
+
+    for (const menu of Array.isArray(menus) ? menus : []) {
+      const id = normalizeKey(menu.id)
+      if (!id) continue
+
+      const menuName = menu.menuName || menu.title || '未命名权限'
+      const pathNames = [...ancestorNames, menuName]
+      const children = walk(menu.children, pathNames)
+      const isAssigned = selectedKeySet.has(id)
+      const belongsToSide = showAssigned ? isAssigned : !isAssigned
+
+      if (!belongsToSide && children.length === 0) continue
+
+      const { children: _children, ...menuData } = menu
+      nodes.push({
+        ...menuData,
+        id,
+        menuName,
+        fullPath: pathNames.join(' / '),
+        menuTypeLabel: MENU_TYPE_LABELS[menu.menuType] || '权限',
+        searchText: [...pathNames, menu.perm].filter(Boolean).join(' ').toLowerCase(),
+        transferDisabled: !belongsToSide,
+        contextOnly: !belongsToSide,
+        children
+      })
+    }
+
+    return nodes
+  }
+
+  return walk(menuTree)
+}
+
 export function sanitizePermissionKeys(keys = [], options = []) {
   const selectedKeys = new Set(keys.map(normalizeKey))
   return options

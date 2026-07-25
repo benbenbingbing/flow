@@ -1,6 +1,8 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.workflow.common.PageResult;
 import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysRole;
 import com.workflow.entity.SysUser;
@@ -58,6 +60,38 @@ public class SysUserService {
             fillUserOrgInfo(user);
         });
         return users;
+    }
+
+    /**
+     * 分页查询已分配指定角色的用户
+     *
+     * @param roleId   角色ID
+     * @param pageNum  页码
+     * @param pageSize 每页条数
+     * @param keyword  用户名、昵称、邮箱或手机号关键字
+     * @return 用户分页结果
+     */
+    public PageResult<SysUser> getUsersByRolePage(
+            String roleId,
+            int pageNum,
+            int pageSize,
+            String keyword) {
+        int safePageNum = Math.max(pageNum, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        String normalizedKeyword = StringUtils.hasText(keyword) ? keyword.trim() : null;
+
+        Page<SysUser> page = new Page<>(safePageNum, safePageSize);
+        Page<SysUser> resultPage = userMapper.selectPageByRoleId(page, roleId, normalizedKeyword);
+        resultPage.getRecords().forEach(user -> {
+            fillUserRoles(user);
+            fillUserOrgInfo(user);
+        });
+
+        return new PageResult<>(
+                resultPage.getRecords(),
+                resultPage.getTotal(),
+                resultPage.getCurrent(),
+                resultPage.getSize());
     }
     
     /**

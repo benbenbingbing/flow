@@ -45,6 +45,11 @@ export const getRoleMenus = (id: string) => {
   return request.get(`/system/role/${id}/menus`)
 }
 
+// 分页查询已分配角色的用户
+export const getRoleUsers = (id: string, params: any) => {
+  return request.get(`/system/role/${id}/users`, { params })
+}
+
 // 保存角色菜单权限
 export const saveRoleMenus = (id: string, menuIds: string[]) => {
   return request.post(`/system/role/${id}/menus`, menuIds)

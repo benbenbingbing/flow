@@ -73,166 +73,197 @@
       v-model="actionDialogVisible"
       :title="editingAction.id ? '编辑流程动作' : '添加流程动作'"
       width="680px"
+      top="5vh"
+      class="flow-action-dialog"
       append-to-body
       destroy-on-close
       :close-on-click-modal="false"
     >
       <el-form :model="editingAction" label-width="110px" size="small">
-        <el-form-item label="快捷模板">
-          <el-select
-            v-model="selectedTemplate"
-            placeholder="可选：选择常用场景快速带出配置"
-            clearable
-            style="width: 100%"
-            @change="applyTemplate"
-          >
-            <el-option
-              v-for="template in availableTemplates"
-              :key="template.value"
-              :label="template.label"
-              :value="template.value"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="动作名称" required>
-          <el-input v-model="editingAction.actionName" placeholder="如：发送下一办理人通知" />
-        </el-form-item>
-
-        <el-form-item label="执行时机" required>
-          <el-select
-            v-model="editingAction.triggerTiming"
-            :disabled="timingOptions.length === 1"
-            style="width: 100%"
-            @change="onTimingChange"
-          >
-            <el-option
-              v-for="option in timingOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            >
-              <div class="timing-option">
-                <span>{{ option.label }}</span>
-                <span>{{ option.description }}</span>
-              </div>
-            </el-option>
-          </el-select>
-          <div class="form-tip">{{ currentTimingOption?.availableContext }}</div>
-        </el-form-item>
-
-        <el-form-item label="执行方式" required>
-          <el-radio-group v-model="editingAction.executionMode" @change="onExecutionModeChange">
-            <el-radio-button
-              label="IN_TRANSACTION"
-              :disabled="!handlerSupportsMode('IN_TRANSACTION')"
-            >
-              事务内执行
-            </el-radio-button>
-            <el-radio-button
-              label="AFTER_COMMIT"
-              :disabled="!handlerSupportsMode('AFTER_COMMIT')"
-            >
-              提交后执行
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="失败策略" required>
-          <el-select v-model="editingAction.failurePolicy" style="width: 100%">
-            <el-option
-              v-for="option in failurePolicyOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item
-          v-if="editingAction.executionMode === 'AFTER_COMMIT' && editingAction.failurePolicy === 'RETRY'"
-          label="最大重试"
+        <SettingsSection
+          title="常用设置"
+          description="先完成动作名称、时机、执行方式和处理器"
+          primary
+          :collapsible="false"
         >
-          <el-input-number v-model="retryForm.maxRetries" :min="0" :max="20" />
-          <div class="form-tip">默认指数退避，最多等待 6 小时；超过次数进入死信记录</div>
-        </el-form-item>
+          <el-form-item label="快捷模板">
+            <el-select
+              v-model="selectedTemplate"
+              placeholder="可选：选择常用场景快速带出配置"
+              clearable
+              style="width: 100%"
+              @change="applyTemplate"
+            >
+              <el-option
+                v-for="template in availableTemplates"
+                :key="template.value"
+                :label="template.label"
+                :value="template.value"
+              />
+            </el-select>
+          </el-form-item>
 
-        <el-alert
-          v-for="warning in riskWarnings"
-          :key="warning"
-          type="warning"
-          :closable="false"
-          show-icon
-          class="risk-warning"
-          :title="warning"
-        />
+          <el-form-item label="动作名称" required>
+            <el-input v-model="editingAction.actionName" placeholder="如：发送下一办理人通知" />
+          </el-form-item>
 
-        <el-form-item label="处理器" required>
-          <el-select
-            v-model="editingAction.actionDefinitionId"
-            placeholder="选择当前实体可见的流程动作"
-            filterable
-            clearable
-            style="width: 100%"
-            @change="onHandlerChange"
+          <el-form-item label="执行时机" required>
+            <el-select
+              v-model="editingAction.triggerTiming"
+              :disabled="timingOptions.length === 1"
+              style="width: 100%"
+              @change="onTimingChange"
+            >
+              <el-option
+                v-for="option in timingOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              >
+                <div class="timing-option">
+                  <span>{{ option.label }}</span>
+                  <span>{{ option.description }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <div class="form-tip">{{ currentTimingOption?.availableContext }}</div>
+          </el-form-item>
+
+          <el-form-item label="执行方式" required>
+            <el-radio-group v-model="editingAction.executionMode" @change="onExecutionModeChange">
+              <el-radio-button
+                label="IN_TRANSACTION"
+                :disabled="!handlerSupportsMode('IN_TRANSACTION')"
+              >
+                事务内执行
+              </el-radio-button>
+              <el-radio-button
+                label="AFTER_COMMIT"
+                :disabled="!handlerSupportsMode('AFTER_COMMIT')"
+              >
+                提交后执行
+              </el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="处理器" required>
+            <el-select
+              v-model="editingAction.actionDefinitionId"
+              placeholder="选择当前实体可见的流程动作"
+              filterable
+              clearable
+              style="width: 100%"
+              @change="onHandlerChange"
+            >
+              <el-option
+                v-for="handler in handlers"
+                :key="handler.definitionId"
+                :label="handler.displayName"
+                :value="handler.definitionId"
+              >
+                <div class="handler-option">
+                  <span>{{ handler.displayName }}</span>
+                  <small>{{ handler.beanName }} · {{ handler.visibilityScope === 'GLOBAL' ? '全局' : '当前实体' }}</small>
+                </div>
+              </el-option>
+            </el-select>
+            <div class="form-tip">
+              {{ currentHandler?.description || '处理器必须实现 FlowActionHandler，提交后动作应使用幂等键' }}
+            </div>
+          </el-form-item>
+
+          <el-form-item label="是否启用">
+            <el-switch v-model="editingAction.enabled" />
+          </el-form-item>
+        </SettingsSection>
+
+        <SettingsSection
+          title="可靠性与失败策略"
+          description="失败处理、重试和当前配置风险"
+          :default-expanded="editingAction.executionMode === 'AFTER_COMMIT' || riskWarnings.length > 0"
+        >
+          <template #summary>
+            <el-tag size="small" type="info">
+              {{ failurePolicyLabel(editingAction.failurePolicy) }}
+            </el-tag>
+          </template>
+
+          <el-form-item label="失败策略" required>
+            <el-select v-model="editingAction.failurePolicy" style="width: 100%">
+              <el-option
+                v-for="option in failurePolicyOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item
+            v-if="editingAction.executionMode === 'AFTER_COMMIT' && editingAction.failurePolicy === 'RETRY'"
+            label="最大重试"
           >
-            <el-option
-              v-for="handler in handlers"
-              :key="handler.definitionId"
-              :label="handler.displayName"
-              :value="handler.definitionId"
-            >
-              <div class="handler-option">
-                <span>{{ handler.displayName }}</span>
-                <small>{{ handler.beanName }} · {{ handler.visibilityScope === 'GLOBAL' ? '全局' : '当前实体' }}</small>
-              </div>
-            </el-option>
-          </el-select>
-          <div class="form-tip">
-            {{ currentHandler?.description || '处理器必须实现 FlowActionHandler，提交后动作应使用幂等键' }}
-          </div>
-        </el-form-item>
+            <el-input-number v-model="retryForm.maxRetries" :min="0" :max="20" />
+            <div class="form-tip">默认指数退避，最多等待 6 小时；超过次数进入死信记录</div>
+          </el-form-item>
 
-        <el-form-item label="描述">
-          <el-input v-model="editingAction.description" type="textarea" :rows="2" />
-        </el-form-item>
+          <el-alert
+            v-for="warning in riskWarnings"
+            :key="warning"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="risk-warning"
+            :title="warning"
+          />
+        </SettingsSection>
 
-        <el-form-item label="参数配置">
-          <div class="action-params-list">
-            <el-row
-              v-for="(param, index) in actionParamList"
-              :key="index"
-              :gutter="8"
-              align="middle"
-              class="action-param-row"
-            >
-              <el-col :span="7"><el-input v-model="param.name" placeholder="参数名" /></el-col>
-              <el-col :span="6">
-                <el-select v-model="param.type" style="width: 100%">
-                  <el-option
-                    v-for="type in actionParamTypeOptions"
-                    :key="type.value"
-                    :label="type.label"
-                    :value="type.value"
-                  />
-                </el-select>
-              </el-col>
-              <el-col :span="8"><el-input v-model="param.value" placeholder="参数值" /></el-col>
-              <el-col :span="3">
-                <el-button type="danger" link @click="removeActionParam(index)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </el-col>
-            </el-row>
-            <el-button type="primary" link @click="addActionParam">
-              <el-icon><Plus /></el-icon>添加参数
-            </el-button>
-          </div>
-        </el-form-item>
+        <SettingsSection
+          title="说明与参数"
+          description="传给处理器的附加说明和结构化参数"
+          :default-expanded="Boolean(editingAction.description) || actionParamList.length > 0"
+        >
+          <template #summary>
+            <span>{{ actionParamList.length }} 个参数</span>
+          </template>
 
-        <el-form-item label="是否启用">
-          <el-switch v-model="editingAction.enabled" />
-        </el-form-item>
+          <el-form-item label="描述">
+            <el-input v-model="editingAction.description" type="textarea" :rows="2" />
+          </el-form-item>
+
+          <el-form-item label="参数配置">
+            <div class="action-params-list">
+              <el-row
+                v-for="(param, index) in actionParamList"
+                :key="index"
+                :gutter="8"
+                align="middle"
+                class="action-param-row"
+              >
+                <el-col :span="7"><el-input v-model="param.name" placeholder="参数名" /></el-col>
+                <el-col :span="6">
+                  <el-select v-model="param.type" style="width: 100%">
+                    <el-option
+                      v-for="type in actionParamTypeOptions"
+                      :key="type.value"
+                      :label="type.label"
+                      :value="type.value"
+                    />
+                  </el-select>
+                </el-col>
+                <el-col :span="8"><el-input v-model="param.value" placeholder="参数值" /></el-col>
+                <el-col :span="3">
+                  <el-button type="danger" link @click="removeActionParam(index)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </el-col>
+              </el-row>
+              <el-button type="primary" link @click="addActionParam">
+                <el-icon><Plus /></el-icon>添加参数
+              </el-button>
+            </div>
+          </el-form-item>
+        </SettingsSection>
       </el-form>
 
       <template #footer>
@@ -252,6 +283,7 @@ import { ArrowDown, ArrowUp, Delete, Plus, Setting } from '@element-plus/icons-v
 import { processActionApi } from '@/api/processAction'
 import { useUserStore } from '@/stores/user'
 import FlowActionHandlerConfigDialog from '@/components/FlowActionHandlerConfigDialog.vue'
+import SettingsSection from '@/components/SettingsSection.vue'
 
 const props = defineProps({
   processId: { type: String, required: true },
@@ -544,6 +576,15 @@ function executionModeLabel(value) {
   return value === 'AFTER_COMMIT' ? '提交后执行' : '事务内执行'
 }
 
+function failurePolicyLabel(value) {
+  return {
+    RETRY: '失败自动重试',
+    IGNORE: '记录失败后忽略',
+    ROLLBACK: '失败回滚流程',
+    CONTINUE: '记录失败后继续'
+  }[value] || '未设置失败策略'
+}
+
 function handlerLabel(action) {
   const handler = handlers.value.find(item =>
     item.definitionId === action.actionDefinitionId || item.beanName === action.interfaceName
@@ -670,5 +711,10 @@ function handlerLabel(action) {
 
 .risk-warning {
   margin-bottom: 10px;
+}
+
+:global(.flow-action-dialog .el-dialog__body) {
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
 }
 </style>

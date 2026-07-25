@@ -260,13 +260,20 @@
             placeholder="请输入版本说明（可选）"
           />
         </el-form-item>
-        <el-form-item label="待导出清单">
-          <el-switch v-model="publishForm.markForExport" />
-          <span class="publish-tip">发布成功后自动出现在“系统管理 / 配置迁移”</span>
-        </el-form-item>
-        <el-form-item v-if="publishForm.markForExport" label="迁移标记">
-          <el-input v-model="publishForm.migrationTag" placeholder="如 REL-20260716-001" />
-        </el-form-item>
+        <SettingsSection
+          title="发布后迁移"
+          description="仅在需要跨环境发布时配置"
+          :summary="publishForm.markForExport ? `加入导出清单 · ${publishForm.migrationTag || '待生成标记'}` : '不加入导出清单'"
+          :default-expanded="false"
+        >
+          <el-form-item label="待导出清单">
+            <el-switch v-model="publishForm.markForExport" />
+            <span class="publish-tip">发布成功后自动出现在“系统管理 / 配置迁移”</span>
+          </el-form-item>
+          <el-form-item v-if="publishForm.markForExport" label="迁移标记">
+            <el-input v-model="publishForm.migrationTag" placeholder="如 REL-20260724-001" />
+          </el-form-item>
+        </SettingsSection>
       </el-form>
       <template #footer>
         <el-button @click="publishDialogVisible = false">取消</el-button>
@@ -287,6 +294,7 @@ import { Search } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
 import { processActionApi } from '@/api/processAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
+import SettingsSection from '@/components/SettingsSection.vue'
 import { generateMigrationTag } from '@/utils/migrationTag'
 
 const router = useRouter()

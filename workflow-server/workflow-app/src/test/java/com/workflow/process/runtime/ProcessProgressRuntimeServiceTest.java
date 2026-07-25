@@ -1,5 +1,6 @@
 package com.workflow.process.runtime;
 
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessNodeApprovalMapper;
@@ -11,6 +12,7 @@ import com.workflow.mapper.SysUserMapper;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.ProcessNodeForm;
+import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.service.EntityDataDynamicService;
@@ -116,7 +118,9 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
         verify(fixture.snapshotService)
-                .getNodeFormsByProcessDefinitionId("pd-1", "task-1");
+                .getNodeFormsContextByProcessDefinitionId(
+                        "pd-1",
+                        "task-1");
     }
 
     /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
@@ -289,16 +293,26 @@ class ProcessProgressRuntimeServiceTest {
             nodeForm.setFormReleaseVersion(2);
             nodeForm.setIsReadonly(1);
             nodeForm.setSortOrder(0);
-            when(snapshotService.getNodeFormsByProcessDefinitionId(
+            ProcessVersionHistory history =
+                    new ProcessVersionHistory();
+            history.setId("history-1");
+            when(snapshotService.getNodeFormsContextByProcessDefinitionId(
                     "pd-1",
-                    "task-1")).thenReturn(List.of(nodeForm));
+                    "task-1"))
+                    .thenReturn(
+                            new ProcessPublishedSnapshotService.PublishedNodeForms(
+                                    history,
+                                    List.of(nodeForm)));
 
             EntityForm form = new EntityForm();
             form.setId("form-1");
             form.setFormName("审批表单");
             form.setFormKey("approval-form");
             form.setLayoutType("vertical");
-            when(entityFormRuntimeService.getByBinding(nodeForm))
+            when(entityFormRuntimeService.getByBinding(
+                    nodeForm,
+                    "history-1",
+                    UiRuntimePurpose.ACTIVE_TASK))
                     .thenReturn(form);
         }
 

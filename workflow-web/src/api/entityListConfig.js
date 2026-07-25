@@ -65,8 +65,22 @@ export const entityListConfigApi = {
     return request.get(`/entity-list-config/${id}/diff`)
   },
 
-  publish(id, description = '') {
-    return request.post(`/entity-list-config/${id}/publish`, { description })
+  publish(id, data = '') {
+    return request.post(
+      `/entity-list-config/${id}/publish`,
+      typeof data === 'string' ? { description: data } : data
+    )
+  },
+
+  previewPublish(id, data) {
+    return request.post(`/entity-list-config/${id}/publish-preview`, data)
+  },
+
+  rollbackHotfix(id, releaseId, reason = '') {
+    return request.post(
+      `/entity-list-config/${id}/releases/${releaseId}/rollback-hotfix`,
+      { reason }
+    )
   },
 
   getReleases(id) {

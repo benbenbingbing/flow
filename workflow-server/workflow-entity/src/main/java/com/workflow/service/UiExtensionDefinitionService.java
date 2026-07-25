@@ -237,6 +237,33 @@ public class UiExtensionDefinitionService {
         }
     }
 
+    /**
+     * 判断扩展是否显式声明兼容热修复。
+     *
+     * <p>未声明、无法解析或声明为 false 时一律按不兼容处理。</p>
+     */
+    public boolean supportsHotfix(UiExtensionDefinition definition) {
+        if (definition == null
+                || !StringUtils.hasText(
+                        definition.getCapabilitiesDocument())) {
+            return false;
+        }
+        try {
+            Map<String, Object> capabilities = codec.readObject(
+                    definition.getCapabilitiesDocument(),
+                    "扩展能力");
+            if (Boolean.TRUE.equals(
+                    capabilities.get("hotfixCompatible"))) {
+                return true;
+            }
+            Object hotfix = capabilities.get("hotfix");
+            return hotfix instanceof Map<?, ?> values
+                    && Boolean.TRUE.equals(values.get("compatible"));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
     private void validate(UiExtensionDefinitionSaveRequest request) {
         if (request == null
                 || !TYPES.contains(normalize(request.getExtensionType()))) {

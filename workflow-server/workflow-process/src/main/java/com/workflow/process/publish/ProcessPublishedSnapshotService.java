@@ -43,11 +43,23 @@ public class ProcessPublishedSnapshotService {
      */
     @Transactional(readOnly = true)
     public List<ProcessNodeForm> getNodeForms(String processKey, String nodeId) {
+        return getNodeFormsContext(processKey, nodeId).nodeForms();
+    }
+
+    /**
+     * 根据流程Key获取节点表单及其发布历史上下文。
+     */
+    @Transactional(readOnly = true)
+    public PublishedNodeForms getNodeFormsContext(
+            String processKey,
+            String nodeId) {
         ProcessVersionHistory history = versionHistoryMapper.findLatestByProcessKey(processKey);
         if (history == null) {
             throw new RuntimeException("流程未发布: " + processKey);
         }
-        return nodeForms(history, nodeId);
+        return new PublishedNodeForms(
+                history,
+                nodeForms(history, nodeId));
     }
 
     /**
@@ -65,6 +77,18 @@ public class ProcessPublishedSnapshotService {
     public List<ProcessNodeForm> getNodeFormsByProcessDefinitionId(
             String processDefinitionId,
             String nodeId) {
+        return getNodeFormsContextByProcessDefinitionId(
+                processDefinitionId,
+                nodeId).nodeForms();
+    }
+
+    /**
+     * 根据 Flowable 流程定义ID获取节点表单及其发布历史上下文。
+     */
+    @Transactional(readOnly = true)
+    public PublishedNodeForms getNodeFormsContextByProcessDefinitionId(
+            String processDefinitionId,
+            String nodeId) {
         if (processDefinitionId == null || processDefinitionId.isBlank()) {
             throw new IllegalArgumentException("流程定义ID不能为空");
         }
@@ -80,7 +104,9 @@ public class ProcessPublishedSnapshotService {
                         .orElseThrow(() -> new RuntimeException(
                                 "流程发布快照不存在: deploymentId="
                                         + processDefinition.getDeploymentId()));
-        return nodeForms(history, nodeId);
+        return new PublishedNodeForms(
+                history,
+                nodeForms(history, nodeId));
     }
 
     private List<ProcessNodeForm> nodeForms(
@@ -106,5 +132,13 @@ public class ProcessPublishedSnapshotService {
         } catch (JsonProcessingException e) {
             throw new RuntimeException("流程节点表单快照解析失败: " + history.getProcessKey(), e);
         }
+    }
+
+    /**
+     * 节点表单快照及其服务端可信流程发布上下文。
+     */
+    public record PublishedNodeForms(
+            ProcessVersionHistory history,
+            List<ProcessNodeForm> nodeForms) {
     }
 }

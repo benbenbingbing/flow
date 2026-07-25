@@ -125,6 +125,7 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("026"), "dynamic entity collation migration must be V026");
         assertTrue(versions.contains("030"), "incremental UI configuration migration must be V030");
         assertTrue(versions.contains("031"), "UI extension registry migration must be V031");
+        assertTrue(versions.contains("037"), "UI hotfix rollout migration must be V037");
     }
 
     /**
@@ -249,6 +250,41 @@ class SchemaRequiredTablesTest {
         }
         assertTrue(sql.contains("snapshot_document longtext NOT NULL"));
         assertTrue(sql.contains("content_hash varchar(64) NOT NULL"));
+    }
+
+    /**
+     * V037 热修复迁移应补齐发布元数据、流程绑定、目标快照、审计和权限。
+     */
+    @Test
+    void uiConfigHotfixMigrationCreatesRolloutSchemaAndPermissions() throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V037__add_ui_config_hotfix_rollout.sql");
+        assertTrue(Files.exists(migration), "V037 UI hotfix rollout migration must exist");
+        String sql = Files.readString(migration);
+
+        for (String column : List.of(
+                "'release_mode'",
+                "'base_release_id'",
+                "'risk_level'",
+                "'rollout_scope'",
+                "'patch_document'",
+                "'override_risk'",
+                "'override_reason'")) {
+            assertTrue(sql.contains(column), "V037 must add " + column);
+        }
+        for (String table : List.of(
+                "process_ui_release_binding",
+                "ui_config_hotfix_target",
+                "ui_config_release_audit")) {
+            assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS " + table),
+                    "V037 must create " + table);
+        }
+        assertTrue(sql.contains("entity:ui-config:hotfix"),
+                "V037 must seed hotfix permission");
+        assertTrue(sql.contains("entity:ui-config:hotfix:override"),
+                "V037 must seed hotfix override permission");
+        assertTrue(sql.contains("uk_ui_hotfix_target_active"),
+                "V037 must prevent multiple active targets for one process/form binding");
     }
 
     /**

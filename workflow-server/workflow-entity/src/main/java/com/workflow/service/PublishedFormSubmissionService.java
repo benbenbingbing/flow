@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.dto.UiDataSourceExecuteRequest;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityForm;
@@ -172,11 +173,37 @@ public class PublishedFormSubmissionService {
             String mode,
             Map<String, Object> submittedData,
             FormSubmissionExecutionContext executionContext) {
+        return applyForm(
+                formId,
+                releaseId,
+                releaseVersion,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext,
+                UiRuntimeResolutionContext.historical(null, null));
+    }
+
+    /**
+     * 按服务端可信流程上下文应用指定发布版本表单的提交处理。
+     */
+    public Map<String, Object> applyForm(
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext,
+            UiRuntimeResolutionContext resolutionContext) {
         ResolvedEntityFormRelease resolved =
                 releaseService.resolveRuntimeFormRelease(
                         formId,
                         releaseId,
-                        releaseVersion);
+                        releaseVersion,
+                        resolutionContext);
         EntityForm form = resolved.form();
         if (form == null) {
             throw new IllegalArgumentException(

@@ -1,11 +1,15 @@
 package com.workflow.service.entity;
 
 import com.workflow.common.BusinessConflictException;
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.service.UiConfigReleaseService;
+import com.workflow.service.ResolvedEntityFormRelease;
+import com.workflow.service.UiReleaseResolutionTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
@@ -24,6 +28,7 @@ public class EntityFormRuntimeService {
 
     private final UiConfigReleaseService releaseService;
     private final EntityFormMapper formMapper;
+    private final UiReleaseResolutionTokenService resolutionTokenService;
 
     /**
      * 根据表单ID解析运行时表单。
@@ -42,13 +47,64 @@ public class EntityFormRuntimeService {
      * @return 运行时表单，不存在时返回 null
      */
     public EntityForm getByBinding(ProcessNodeForm nodeForm) {
+        return getByBinding(
+                nodeForm,
+                null,
+                UiRuntimePurpose.HISTORICAL);
+    }
+
+    /**
+     * 根据流程发布上下文解析节点表单。
+     */
+    public EntityForm getByBinding(
+            ProcessNodeForm nodeForm,
+            String processVersionHistoryId,
+            UiRuntimePurpose purpose) {
+        ResolvedEntityFormRelease resolved = resolveByBinding(
+                nodeForm,
+                processVersionHistoryId,
+                purpose);
+        return resolved == null ? null : resolved.form();
+    }
+
+    /**
+     * 返回包含原始钉版与有效热修复身份的解析结果。
+     */
+    public ResolvedEntityFormRelease resolveByBinding(
+            ProcessNodeForm nodeForm,
+            String processVersionHistoryId,
+            UiRuntimePurpose purpose) {
         if (nodeForm == null || nodeForm.getFormId() == null) {
             return null;
         }
-        return releaseService.resolveRuntimeForm(
+        UiRuntimeResolutionContext context =
+                new UiRuntimeResolutionContext(
+                        purpose,
+                        processVersionHistoryId,
+                        nodeForm.getNodeId());
+        ResolvedEntityFormRelease resolved =
+                releaseService.resolveRuntimeFormRelease(
                 nodeForm.getFormId(),
                 nodeForm.getFormReleaseId(),
-                nodeForm.getFormReleaseVersion());
+                nodeForm.getFormReleaseVersion(),
+                context);
+        EntityForm form = resolved.form();
+        if (form != null) {
+            form.setRuntimeReleaseId(resolved.releaseId());
+            form.setRuntimeReleaseVersion(
+                    resolved.releaseVersion());
+            form.setEffectiveReleaseId(
+                    resolved.effectiveReleaseId());
+            form.setHotfixApplied(resolved.hotfixApplied());
+            form.setReleaseResolutionToken(
+                    resolutionTokenService.issue(
+                            context,
+                            form.getId(),
+                            resolved.releaseId(),
+                            resolved.releaseVersion(),
+                            0));
+        }
+        return resolved;
     }
 
     /**
@@ -63,6 +119,15 @@ public class EntityFormRuntimeService {
      * @throws BusinessConflictException 表单没有激活版本或流程快照版本已经过期时抛出
      */
     public void requireCurrentBindingForNewData(ProcessNodeForm nodeForm) {
+        requireCurrentBindingForNewData(nodeForm, null);
+    }
+
+    /**
+     * 校验最新流程版本的表单钉版，已批准热修复不视为过期。
+     */
+    public void requireCurrentBindingForNewData(
+            ProcessNodeForm nodeForm,
+            String processVersionHistoryId) {
         if (nodeForm == null || !StringUtils.hasText(nodeForm.getFormId())) {
             return;
         }
@@ -78,7 +143,13 @@ public class EntityFormRuntimeService {
                 || nodeForm.getFormReleaseVersion() != null;
         if (pinned
                 && (!Objects.equals(active.getId(), nodeForm.getFormReleaseId())
-                || !Objects.equals(active.getVersion(), nodeForm.getFormReleaseVersion()))) {
+                || !Objects.equals(active.getVersion(), nodeForm.getFormReleaseVersion()))
+                && !releaseService.isApprovedHotfix(
+                        nodeForm.getFormId(),
+                        nodeForm.getFormReleaseId(),
+                        nodeForm.getFormReleaseVersion(),
+                        processVersionHistoryId,
+                        active.getId())) {
             throw new BusinessConflictException(
                     "PROCESS_FORM_RELEASE_STALE",
                     "流程节点表单已发布新版本，请重新发布流程后再新增数据");

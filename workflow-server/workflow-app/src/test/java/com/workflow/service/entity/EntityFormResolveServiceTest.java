@@ -1,12 +1,15 @@
 package com.workflow.service.entity;
 
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessNodeForm;
+import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
+import org.flowable.engine.HistoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
@@ -41,7 +44,8 @@ class EntityFormResolveServiceTest {
                 snapshotService,
                 formService,
                 mock(RuntimeService.class),
-                mock(TaskService.class));
+                mock(TaskService.class),
+                mock(HistoryService.class));
 
         EntityDefinition entity = new EntityDefinition();
         entity.setId("entity-1");
@@ -60,15 +64,28 @@ class EntityFormResolveServiceTest {
         binding.setFormId("form-first");
         binding.setFormReleaseId("release-2");
         binding.setFormReleaseVersion(2);
-        when(snapshotService.getNodeForms("expense-flow", "Task_First"))
-                .thenReturn(List.of(binding));
+        ProcessVersionHistory history = new ProcessVersionHistory();
+        history.setId("history-1");
+        when(snapshotService.getNodeFormsContext(
+                "expense-flow",
+                "Task_First"))
+                .thenReturn(
+                        new ProcessPublishedSnapshotService.PublishedNodeForms(
+                                history,
+                                List.of(binding)));
 
         EntityForm form = new EntityForm();
         form.setId("form-first");
-        when(formService.getByBinding(binding)).thenReturn(form);
+        when(formService.getByBinding(
+                binding,
+                "history-1",
+                UiRuntimePurpose.NEW_INSTANCE))
+                .thenReturn(form);
 
         assertEquals("form-first", service.resolveFormForNewData("expense").getId());
-        verify(formService).requireCurrentBindingForNewData(binding);
+        verify(formService).requireCurrentBindingForNewData(
+                binding,
+                "history-1");
     }
 
     /** 测试首个用户任务解析可穿越网关：验证解析结果为网关之后的 Task_First */
@@ -80,7 +97,8 @@ class EntityFormResolveServiceTest {
                 mock(ProcessPublishedSnapshotService.class),
                 mock(EntityFormRuntimeService.class),
                 mock(RuntimeService.class),
-                mock(TaskService.class));
+                mock(TaskService.class),
+                mock(HistoryService.class));
 
         assertEquals("Task_First", service.resolveFirstUserTaskId(bpmn()));
     }

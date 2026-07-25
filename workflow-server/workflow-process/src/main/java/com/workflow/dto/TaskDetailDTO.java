@@ -102,6 +102,12 @@ public class TaskDetailDTO {
         private String formReleaseId;
         /** 表单发布版本号 */
         private Integer formReleaseVersion;
+        /** 实际生效的热修复发布ID */
+        private String effectiveFormReleaseId;
+        /** 是否应用兼容热修复 */
+        private Boolean hotfixApplied;
+        /** 嵌套表单解析上下文令牌 */
+        private String releaseResolutionToken;
         /** 表单名称 */
         private String formName;
         /** 布局类型 */
@@ -143,6 +149,32 @@ public class TaskDetailDTO {
 
         public void setFormReleaseVersion(Integer formReleaseVersion) {
             this.formReleaseVersion = formReleaseVersion;
+        }
+
+        public String getEffectiveFormReleaseId() {
+            return effectiveFormReleaseId;
+        }
+
+        public void setEffectiveFormReleaseId(
+                String effectiveFormReleaseId) {
+            this.effectiveFormReleaseId = effectiveFormReleaseId;
+        }
+
+        public Boolean getHotfixApplied() {
+            return hotfixApplied;
+        }
+
+        public void setHotfixApplied(Boolean hotfixApplied) {
+            this.hotfixApplied = hotfixApplied;
+        }
+
+        public String getReleaseResolutionToken() {
+            return releaseResolutionToken;
+        }
+
+        public void setReleaseResolutionToken(
+                String releaseResolutionToken) {
+            this.releaseResolutionToken = releaseResolutionToken;
         }
         
         public String getFormName() {

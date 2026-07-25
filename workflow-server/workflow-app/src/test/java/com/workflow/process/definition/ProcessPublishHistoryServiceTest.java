@@ -8,6 +8,7 @@ import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.ProcessNodeFormMapper;
 import com.workflow.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.publish.ProcessUiReleaseBindingService;
 import com.workflow.service.UiConfigReleaseService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -41,6 +42,8 @@ class ProcessPublishHistoryServiceTest {
         FlowActionDesignPort flowActionDesignPort = mock(FlowActionDesignPort.class);
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
+        ProcessUiReleaseBindingService bindingService =
+                mock(ProcessUiReleaseBindingService.class);
         when(versionHistoryMapper.findMaxVersionByProcessConfigId("process-1")).thenReturn(2);
 
         ProcessPublishHistoryService service = new ProcessPublishHistoryService(
@@ -48,6 +51,7 @@ class ProcessPublishHistoryServiceTest {
                 flowActionDesignPort,
                 nodeFormMapper,
                 releaseService,
+                bindingService,
                 new ObjectMapper());
 
         assertEquals(3, service.nextVersion("process-1"));
@@ -66,6 +70,8 @@ class ProcessPublishHistoryServiceTest {
         FlowActionDesignPort flowActionDesignPort = mock(FlowActionDesignPort.class);
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
+        ProcessUiReleaseBindingService bindingService =
+                mock(ProcessUiReleaseBindingService.class);
         doAnswer(invocation -> {
             ProcessVersionHistory history = invocation.getArgument(0);
             history.setId("version-1");
@@ -87,6 +93,7 @@ class ProcessPublishHistoryServiceTest {
                 flowActionDesignPort,
                 nodeFormMapper,
                 releaseService,
+                bindingService,
                 new ObjectMapper());
 
         ProcessVersionHistory result = service.recordPublish(config, "<xml />", "deployment-1", 3, "首版");
@@ -106,6 +113,9 @@ class ProcessPublishHistoryServiceTest {
         assertEquals("deployment-1", history.getDeploymentId());
         assertEquals(ProcessVersionHistory.Status.ACTIVE.name(), history.getStatus());
         verify(flowActionDesignPort).publishActions("process-1", "version-1");
+        verify(bindingService).replaceBindings(
+                org.mockito.ArgumentMatchers.same(history),
+                org.mockito.ArgumentMatchers.anyList());
     }
 
     /**
@@ -119,12 +129,15 @@ class ProcessPublishHistoryServiceTest {
         FlowActionDesignPort flowActionDesignPort = mock(FlowActionDesignPort.class);
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
+        ProcessUiReleaseBindingService bindingService =
+                mock(ProcessUiReleaseBindingService.class);
 
         ProcessPublishHistoryService service = new ProcessPublishHistoryService(
                 versionHistoryMapper,
                 flowActionDesignPort,
                 nodeFormMapper,
                 releaseService,
+                bindingService,
                 new ObjectMapper());
 
         assertEquals(1, service.nextVersion("process-1"));
@@ -145,6 +158,8 @@ class ProcessPublishHistoryServiceTest {
                 mock(ProcessNodeFormMapper.class);
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
+        ProcessUiReleaseBindingService bindingService =
+                mock(ProcessUiReleaseBindingService.class);
         when(nodeFormMapper.selectByProcessConfigId("process-1"))
                 .thenReturn(List.of(nodeForm("task-1", "form-1", 0)));
 
@@ -157,6 +172,7 @@ class ProcessPublishHistoryServiceTest {
                         flowActionDesignPort,
                         nodeFormMapper,
                         releaseService,
+                        bindingService,
                         new ObjectMapper());
 
         IllegalStateException exception = assertThrows(

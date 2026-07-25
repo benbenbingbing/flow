@@ -33,6 +33,23 @@ public class UiConfigRelease {
     private String status;
     /** 版本描述 */
     private String description;
+    /** 发布模式：STANDARD/HOTFIX */
+    private String releaseMode;
+    /** 热修复基线发布ID */
+    private String baseReleaseId;
+    /** 最高风险级别：SAFE/REVIEW/BLOCKED */
+    private String riskLevel;
+    /** 生效范围，首期固定 ACTIVE_AND_FUTURE */
+    private String rolloutScope;
+    /** 稳定ID语义补丁JSON文档 */
+    private String patchDocument;
+    /** 是否经授权覆盖 REVIEW 风险 */
+    private Integer overrideRisk;
+    /** 风险覆盖原因 */
+    private String overrideReason;
+    /** 当前热修复 rollout 状态：ACTIVE/SUPERSEDED/ROLLED_BACK */
+    @TableField(exist = false)
+    private String rolloutStatus;
     /** 发布人ID */
     private String publishedBy;
 

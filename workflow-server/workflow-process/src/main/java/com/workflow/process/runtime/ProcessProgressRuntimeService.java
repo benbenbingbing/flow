@@ -1,5 +1,6 @@
 package com.workflow.process.runtime;
 
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.EntityDefinitionMapper;
@@ -769,17 +770,25 @@ public class ProcessProgressRuntimeService {
                     && targetNodeId != null
                     && !targetNodeId.isEmpty()) {
                 try {
-                    List<com.workflow.entity.ProcessNodeForm> nodeForms =
+                    ProcessPublishedSnapshotService.PublishedNodeForms published =
                             processPublishedSnapshotService
-                                    .getNodeFormsByProcessDefinitionId(
+                                    .getNodeFormsContextByProcessDefinitionId(
                                             progress.getProcessDefinitionId(),
                                             targetNodeId);
-                    for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
+                    UiRuntimePurpose purpose =
+                            "RUNNING".equals(progress.getStatus())
+                                    ? UiRuntimePurpose.ACTIVE_TASK
+                                    : UiRuntimePurpose.HISTORICAL;
+                    for (com.workflow.entity.ProcessNodeForm nodeForm
+                            : published.nodeForms()) {
                         if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
                             continue;
                         }
                         com.workflow.entity.EntityForm entityForm =
-                                entityFormRuntimeService.getByBinding(nodeForm);
+                                entityFormRuntimeService.getByBinding(
+                                        nodeForm,
+                                        published.history().getId(),
+                                        purpose);
                         if (entityForm != null) {
                             Boolean nodeFormReadonly =
                                     Integer.valueOf(1).equals(nodeForm.getIsReadonly()) ? Boolean.TRUE : null;
@@ -797,7 +806,8 @@ public class ProcessProgressRuntimeService {
             }
             
             // 3b. 映射表中没有表单绑定，尝试使用默认表单
-            if (formConfigs.isEmpty()) {
+            if (formConfigs.isEmpty()
+                    && "RUNNING".equals(progress.getStatus())) {
                 com.workflow.entity.EntityForm entityForm =
                         entityFormRuntimeService.getDefaultForm(entityDef.getId());
                 if (entityForm != null) {
@@ -848,6 +858,12 @@ public class ProcessProgressRuntimeService {
         formConfig.setIsReadonly(Boolean.TRUE.equals(readonlyOverride));
         formConfig.setCustomComponent(entityForm.getCustomComponent());
         formConfig.setViewConfig(entityForm.getViewConfig());
+        formConfig.setEffectiveFormReleaseId(
+                entityForm.getEffectiveReleaseId());
+        formConfig.setHotfixApplied(
+                entityForm.getHotfixApplied());
+        formConfig.setReleaseResolutionToken(
+                entityForm.getReleaseResolutionToken());
 
         if (entityForm.getFields() != null) {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();

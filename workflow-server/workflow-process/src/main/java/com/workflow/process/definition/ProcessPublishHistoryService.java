@@ -10,6 +10,7 @@ import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.ProcessNodeFormMapper;
 import com.workflow.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.publish.ProcessUiReleaseBindingService;
 import com.workflow.service.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,8 @@ public class ProcessPublishHistoryService {
     private final ProcessNodeFormMapper nodeFormMapper;
     /** UI 配置发布版本服务，查询表单发布版本 */
     private final UiConfigReleaseService uiConfigReleaseService;
+    /** 流程版本与UI发布版本规范化绑定服务 */
+    private final ProcessUiReleaseBindingService uiReleaseBindingService;
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper;
 
@@ -67,6 +70,25 @@ public class ProcessPublishHistoryService {
                                                String deploymentId,
                                                int version,
                                                String versionDescription) {
+        return recordPublish(
+                config,
+                bpmnXml,
+                deploymentId,
+                version,
+                versionDescription,
+                prepareNodeFormsSnapshot(config.getId()));
+    }
+
+    /**
+     * 使用部署前已锁定、已校验的节点表单快照记录流程发布历史。
+     */
+    public ProcessVersionHistory recordPublish(
+            ProcessDefinitionConfig config,
+            String bpmnXml,
+            String deploymentId,
+            int version,
+            String versionDescription,
+            PublishedNodeForms publishedNodeForms) {
         ProcessVersionHistory versionHistory = new ProcessVersionHistory();
         versionHistory.setProcessConfigId(config.getId());
         versionHistory.setProcessKey(config.getProcessKey());
@@ -74,12 +96,15 @@ public class ProcessPublishHistoryService {
         versionHistory.setVersion(version);
         versionHistory.setVersionDescription(versionDescription);
         versionHistory.setBpmnXml(bpmnXml);
-        versionHistory.setNodeFormsSnapshot(toNodeFormsSnapshot(config.getId()));
+        versionHistory.setNodeFormsSnapshot(publishedNodeForms.document());
         versionHistory.setPublishedAt(LocalDateTime.now());
         versionHistory.setPublishedBy(UserContext.getUsername());
         versionHistory.setDeploymentId(deploymentId);
         versionHistory.setStatus(ProcessVersionHistory.Status.ACTIVE.name());
         versionHistoryMapper.insert(versionHistory);
+        uiReleaseBindingService.replaceBindings(
+                versionHistory,
+                publishedNodeForms.bindings());
 
         flowActionDesignPort.publishActions(config.getId(), versionHistory.getId());
         return versionHistory;
@@ -94,12 +119,29 @@ public class ProcessPublishHistoryService {
      * @return 节点表单快照 JSON 字符串
      * @throws RuntimeException 当快照序列化失败或表单未发布时抛出
      */
-    private String toNodeFormsSnapshot(String processConfigId) {
-        List<ProcessNodeForm> nodeForms = nodeFormMapper.selectByProcessConfigId(processConfigId);
+    public PublishedNodeForms prepareNodeFormsSnapshot(
+            String processConfigId) {
+        List<ProcessNodeForm> nodeForms =
+                nodeFormMapper.selectByProcessConfigId(
+                        processConfigId);
+        nodeForms.stream()
+                .map(ProcessNodeForm::getFormId)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .sorted()
+                .forEach(
+                        uiConfigReleaseService
+                                ::lockFormForProcessPublish);
         try {
-            return objectMapper.writeValueAsString(nodeForms.stream()
+            List<NodeFormSnapshot> snapshots = nodeForms.stream()
                     .map(this::toSnapshot)
-                    .toList());
+                    .toList();
+            List<ProcessNodeForm> bindings = snapshots.stream()
+                    .map(this::toBinding)
+                    .toList();
+            return new PublishedNodeForms(
+                    objectMapper.writeValueAsString(snapshots),
+                    bindings);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("节点表单快照生成失败: " + processConfigId, e);
         }
@@ -130,6 +172,23 @@ public class ProcessPublishHistoryService {
                 release.getVersion(),
                 nodeForm.getIsReadonly(),
                 nodeForm.getSortOrder());
+    }
+
+    private ProcessNodeForm toBinding(NodeFormSnapshot snapshot) {
+        ProcessNodeForm binding = new ProcessNodeForm();
+        binding.setNodeId(snapshot.nodeId());
+        binding.setNodeName(snapshot.nodeName());
+        binding.setFormId(snapshot.formId());
+        binding.setFormReleaseId(snapshot.formReleaseId());
+        binding.setFormReleaseVersion(snapshot.formReleaseVersion());
+        binding.setIsReadonly(snapshot.isReadonly());
+        binding.setSortOrder(snapshot.sortOrder());
+        return binding;
+    }
+
+    public record PublishedNodeForms(
+            String document,
+            List<ProcessNodeForm> bindings) {
     }
 
     private record NodeFormSnapshot(String nodeId,

@@ -5,6 +5,7 @@ import com.workflow.entity.ProcessNodeForm;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.service.UiConfigReleaseService;
+import com.workflow.service.UiReleaseResolutionTokenService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -20,7 +21,8 @@ class EntityFormRuntimeServiceTest {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
                 releaseService,
-                mock(EntityFormMapper.class));
+                mock(EntityFormMapper.class),
+                mock(UiReleaseResolutionTokenService.class));
         ProcessNodeForm binding = binding("release-3", 3);
         when(releaseService.active(UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(release("release-3", 3));
@@ -33,7 +35,8 @@ class EntityFormRuntimeServiceTest {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
                 releaseService,
-                mock(EntityFormMapper.class));
+                mock(EntityFormMapper.class),
+                mock(UiReleaseResolutionTokenService.class));
         ProcessNodeForm binding = binding("release-2", 2);
         when(releaseService.active(UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(release("release-3", 3));
@@ -53,13 +56,41 @@ class EntityFormRuntimeServiceTest {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
                 releaseService,
-                mock(EntityFormMapper.class));
+                mock(EntityFormMapper.class),
+                mock(UiReleaseResolutionTokenService.class));
         ProcessNodeForm binding = new ProcessNodeForm();
         binding.setFormId("form-1");
         when(releaseService.active(UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(release("release-3", 3));
 
         assertDoesNotThrow(() -> service.requireCurrentBindingForNewData(binding));
+    }
+
+    @Test
+    void newDataAcceptsApprovedHotfixForPinnedRelease() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        EntityFormRuntimeService service = new EntityFormRuntimeService(
+                releaseService,
+                mock(EntityFormMapper.class),
+                mock(UiReleaseResolutionTokenService.class));
+        ProcessNodeForm binding = binding("release-2", 2);
+        when(releaseService.active(
+                UiConfigReleaseService.FORM,
+                "form-1"))
+                .thenReturn(release("hotfix-3", 3));
+        when(releaseService.isApprovedHotfix(
+                "form-1",
+                "release-2",
+                2,
+                "history-1",
+                "hotfix-3"))
+                .thenReturn(true);
+
+        assertDoesNotThrow(() ->
+                service.requireCurrentBindingForNewData(
+                        binding,
+                        "history-1"));
     }
 
     private ProcessNodeForm binding(String releaseId, int version) {

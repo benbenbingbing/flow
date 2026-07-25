@@ -2,6 +2,8 @@ package com.workflow.controller;
 
 import com.workflow.common.Result;
 import com.workflow.dto.UiConfigDiffDTO;
+import com.workflow.dto.UiConfigHotfixRollbackRequest;
+import com.workflow.dto.UiConfigPublishPreviewDTO;
 import com.workflow.dto.UiConfigPublishRequest;
 import com.workflow.entity.UiConfigRelease;
 import com.workflow.service.UiConfigReleaseService;
@@ -42,12 +44,15 @@ public class UiConfigReleaseController {
     public Result<Object> formRuntimeRelease(
             @PathVariable String id,
             @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer version) {
+            @RequestParam(required = false) Integer version,
+            @RequestParam(required = false)
+            String releaseResolutionToken) {
         return Result.success(
                 releaseService.runtimeFormRelease(
                         id,
                         releaseId,
-                        version));
+                        version,
+                        releaseResolutionToken));
     }
 
     /**
@@ -90,7 +95,21 @@ public class UiConfigReleaseController {
         return Result.success(releaseService.publish(
                 UiConfigReleaseService.FORM,
                 id,
-                request == null ? null : request.getDescription()));
+                request));
+    }
+
+    /**
+     * 预检表单普通发布或兼容热修复影响范围。
+     */
+    @PostMapping("/entity-forms/{id}/publish-preview")
+    public Result<UiConfigPublishPreviewDTO> previewFormPublish(
+            @PathVariable String id,
+            @RequestBody(required = false) UiConfigPublishRequest request) {
+        accessService.requireFormAccess(id);
+        return Result.success(releaseService.publishPreview(
+                UiConfigReleaseService.FORM,
+                id,
+                request));
     }
 
     /**
@@ -120,6 +139,23 @@ public class UiConfigReleaseController {
         accessService.requireFormAccess(id);
         return Result.success(releaseService.activate(
                 UiConfigReleaseService.FORM, id, releaseId));
+    }
+
+    /**
+     * 按发布顺序撤回表单热修复 rollout。
+     */
+    @PostMapping("/entity-forms/{id}/releases/{releaseId}/rollback-hotfix")
+    public Result<UiConfigRelease> rollbackFormHotfix(
+            @PathVariable String id,
+            @PathVariable String releaseId,
+            @RequestBody(required = false)
+            UiConfigHotfixRollbackRequest request) {
+        accessService.requireFormAccess(id);
+        return Result.success(releaseService.rollbackHotfix(
+                UiConfigReleaseService.FORM,
+                id,
+                releaseId,
+                request == null ? null : request.getReason()));
     }
 
     /**
@@ -162,7 +198,21 @@ public class UiConfigReleaseController {
         return Result.success(releaseService.publish(
                 UiConfigReleaseService.LIST,
                 id,
-                request == null ? null : request.getDescription()));
+                request));
+    }
+
+    /**
+     * 预检列表普通发布或兼容热修复影响范围。
+     */
+    @PostMapping("/entity-list-config/{id}/publish-preview")
+    public Result<UiConfigPublishPreviewDTO> previewListPublish(
+            @PathVariable String id,
+            @RequestBody(required = false) UiConfigPublishRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(releaseService.publishPreview(
+                UiConfigReleaseService.LIST,
+                id,
+                request));
     }
 
     /**
@@ -192,5 +242,23 @@ public class UiConfigReleaseController {
         accessService.requireListAccess(id);
         return Result.success(releaseService.activate(
                 UiConfigReleaseService.LIST, id, releaseId));
+    }
+
+    /**
+     * 按发布顺序撤回列表热修复。
+     */
+    @PostMapping(
+            "/entity-list-config/{id}/releases/{releaseId}/rollback-hotfix")
+    public Result<UiConfigRelease> rollbackListHotfix(
+            @PathVariable String id,
+            @PathVariable String releaseId,
+            @RequestBody(required = false)
+            UiConfigHotfixRollbackRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(releaseService.rollbackHotfix(
+                UiConfigReleaseService.LIST,
+                id,
+                releaseId,
+                request == null ? null : request.getReason()));
     }
 }

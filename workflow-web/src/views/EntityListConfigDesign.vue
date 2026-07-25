@@ -42,164 +42,203 @@
                 </el-button>
               </div>
               <el-form label-width="120px" size="small" class="view-config-form">
-                <el-divider content-position="left">渲染模式</el-divider>
-                <el-form-item label="自定义列表组件">
-                  <el-select
-                    v-model="configInfo.customComponent"
-                    placeholder="留空使用默认动态列表"
-                    filterable
-                    allow-create
-                    clearable
-                    style="width: 420px"
-                  >
-                    <el-option
-                      v-for="option in customListOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
+                <SettingsSection
+                  title="常用体验"
+                  description="查询区域、表格样式和分页设置保存后即可在预览中确认"
+                  :collapsible="false"
+                  primary
+                >
+                  <el-form-item label="默认显示条件">
+                    <el-input-number v-model="viewConfig.search.defaultVisibleCount" :min="1" :max="20" />
+                  </el-form-item>
+                  <el-form-item label="允许展开收起">
+                    <el-switch v-model="viewConfig.search.collapsible" />
+                  </el-form-item>
+                  <el-form-item label="标签宽度">
+                    <el-input-number v-model="viewConfig.search.labelWidth" :min="60" :max="240" />
+                    <span class="unit-text">px</span>
+                  </el-form-item>
+                  <el-form-item label="表格样式">
+                    <el-checkbox v-model="viewConfig.table.stripe">斑马纹</el-checkbox>
+                    <el-checkbox v-model="viewConfig.table.border">边框</el-checkbox>
+                    <el-checkbox v-model="viewConfig.table.showIndex">序号列</el-checkbox>
+                  </el-form-item>
+                  <el-form-item label="表格尺寸">
+                    <el-radio-group v-model="viewConfig.table.size">
+                      <el-radio-button value="small">紧凑</el-radio-button>
+                      <el-radio-button value="default">默认</el-radio-button>
+                      <el-radio-button value="large">宽松</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item label="默认每页">
+                    <el-select v-model="viewConfig.pagination.pageSize" style="width: 160px">
+                      <el-option
+                        v-for="size in viewConfig.pagination.pageSizes"
+                        :key="size"
+                        :label="`${size} 条`"
+                        :value="size"
+                      />
+                    </el-select>
+                  </el-form-item>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="访问范围"
+                  description="配置列表的权限边界、实体数据范围和可用场景"
+                  :default-expanded="true"
+                >
+                  <template #summary>
+                    {{ configInfo.dataScopeMode === 'INHERIT' ? '继承实体范围' : '列表自定义范围' }}
+                  </template>
+                  <el-form-item label="数据范围模式">
+                    <el-select v-model="configInfo.dataScopeMode" style="width: 420px">
+                      <el-option label="继承实体默认范围" value="INHERIT" />
+                      <el-option label="在实体范围内缩小" value="NARROW" />
+                      <el-option label="使用列表独立范围（高风险）" value="OVERRIDE" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="访问权限码">
+                    <el-input
+                      v-model="configInfo.accessPermissionCode"
+                      placeholder="留空继承 entity:{code}:list"
+                      style="width: 420px"
+                    />
+                  </el-form-item>
+                  <el-form-item label="允许场景">
+                    <div class="scene-options">
+                      <el-checkbox
+                        v-for="scene in sceneOptions"
+                        :key="scene.value"
+                        :model-value="isSceneEnabled(scene.value)"
+                        :disabled="sceneSavingCodes.has(scene.value)"
+                        @change="toggleScene(scene.value, $event)"
+                      >
+                        {{ scene.label }}
+                      </el-checkbox>
+                    </div>
+                    <el-text type="info" size="small">勾选后仅保存当前场景，发布后运行时生效。</el-text>
+                  </el-form-item>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="选择行为"
+                  description="配置列表是否允许选择，以及选择结果如何返回"
+                  :default-expanded="true"
+                >
+                  <template #summary>
+                    {{ configInfo.selectionMode === 'NONE' ? '仅浏览' : '返回选择结果' }}
+                  </template>
+                  <el-form-item label="选择模式">
+                    <el-radio-group v-model="configInfo.selectionMode">
+                      <el-radio-button value="NONE">不选择</el-radio-button>
+                      <el-radio-button value="SINGLE">单选</el-radio-button>
+                      <el-radio-button value="MULTIPLE">多选</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回值字段">
+                    <el-select v-model="configInfo.selectionValueField" filterable style="width: 420px">
+                      <el-option label="主键 ID" value="id" />
+                      <el-option
+                        v-for="field in entityFields"
+                        :key="field.fieldCode"
+                        :label="`${field.fieldName} (${field.fieldCode})`"
+                        :value="field.fieldCode"
+                      />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
+                    <el-input
+                      v-model="configInfo.selectionReturnMappingsText"
+                      type="textarea"
+                      :rows="3"
+                      placeholder='例如 [{"sourceField":"name","targetField":"customerName"}]'
+                    />
+                  </el-form-item>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="查询实现"
+                  description="面向扩展开发的固定条件、可信上下文、Provider 和统一数据源"
+                  :default-expanded="false"
+                >
+                  <template #summary>
+                    {{ configInfo.queryProviderCode || configInfo.queryDataSourceId ? '已配置扩展查询' : '平台默认查询' }}
+                  </template>
+                  <el-form-item label="固定条件 JSON">
+                    <el-input
+                      v-model="configInfo.fixedFilterConfig"
+                      type="textarea"
+                      :rows="3"
+                      placeholder='例如 {"status":"RUNNING","status_op":"EQ"}'
+                    />
+                  </el-form-item>
+                  <el-form-item label="上下文绑定 JSON">
+                    <el-input
+                      v-model="configInfo.contextBindingConfig"
+                      type="textarea"
+                      :rows="3"
+                      placeholder='只保存 relationKey 等服务端可信上下文配置'
+                    />
+                  </el-form-item>
+                  <el-form-item label="安全查询提供者">
+                    <el-input
+                      v-model="configInfo.queryProviderCode"
+                      placeholder="留空使用平台动态表查询"
+                      style="width: 420px"
+                    />
+                  </el-form-item>
+                  <el-form-item label="统一查询数据源">
+                    <el-select
+                      v-model="configInfo.queryDataSourceId"
+                      clearable
+                      filterable
+                      placeholder="可选：LIST_QUERY 数据源"
+                      style="width: 420px"
                     >
-                      <div>{{ option.label }}</div>
-                      <small class="option-description">{{ option.description }}</small>
-                    </el-option>
-                  </el-select>
-                </el-form-item>
-                <el-form-item v-if="selectedCustomListSchema.length" label="组件参数">
-                  <ConfigSchemaEditor
-                    v-model="viewConfig.customComponentProps"
-                    :schema="selectedCustomListSchema"
-                  />
-                </el-form-item>
+                      <el-option
+                        v-for="source in listQuerySources"
+                        :key="source.id"
+                        :label="`${source.sourceName} (${source.sourceType})`"
+                        :value="source.id"
+                      />
+                    </el-select>
+                  </el-form-item>
+                </SettingsSection>
 
-                <el-divider content-position="left">访问与数据范围</el-divider>
-                <el-form-item label="数据范围模式">
-                  <el-select v-model="configInfo.dataScopeMode" style="width: 420px">
-                    <el-option label="继承实体默认范围" value="INHERIT" />
-                    <el-option label="在实体范围内缩小" value="NARROW" />
-                    <el-option label="使用列表独立范围（高风险）" value="OVERRIDE" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="访问权限码">
-                  <el-input
-                    v-model="configInfo.accessPermissionCode"
-                    placeholder="留空继承 entity:{code}:list"
-                    style="width: 420px"
-                  />
-                </el-form-item>
-                <el-form-item label="允许场景">
-                  <div class="scene-options">
-                    <el-checkbox
-                      v-for="scene in sceneOptions"
-                      :key="scene.value"
-                      :model-value="isSceneEnabled(scene.value)"
-                      :disabled="sceneSavingCodes.has(scene.value)"
-                      @change="toggleScene(scene.value, $event)"
+                <SettingsSection
+                  title="扩展渲染"
+                  description="仅在默认动态列表无法满足展示需求时配置"
+                >
+                  <template #summary>
+                    {{ configInfo.customComponent ? '已启用自定义组件' : '默认动态列表' }}
+                  </template>
+                  <el-form-item label="自定义列表组件">
+                    <el-select
+                      v-model="configInfo.customComponent"
+                      placeholder="留空使用默认动态列表"
+                      filterable
+                      allow-create
+                      clearable
+                      style="width: 420px"
                     >
-                      {{ scene.label }}
-                    </el-checkbox>
-                  </div>
-                  <el-text type="info" size="small">勾选后仅保存当前场景，发布后运行时生效。</el-text>
-                </el-form-item>
-                <el-form-item label="选择模式">
-                  <el-radio-group v-model="configInfo.selectionMode">
-                    <el-radio-button value="NONE">不选择</el-radio-button>
-                    <el-radio-button value="SINGLE">单选</el-radio-button>
-                    <el-radio-button value="MULTIPLE">多选</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回值字段">
-                  <el-select v-model="configInfo.selectionValueField" filterable style="width: 420px">
-                    <el-option label="主键 ID" value="id" />
-                    <el-option
-                      v-for="field in entityFields"
-                      :key="field.fieldCode"
-                      :label="`${field.fieldName} (${field.fieldCode})`"
-                      :value="field.fieldCode"
+                      <el-option
+                        v-for="option in customListOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                      >
+                        <div>{{ option.label }}</div>
+                        <small class="option-description">{{ option.description }}</small>
+                      </el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item v-if="selectedCustomListSchema.length" label="组件参数">
+                    <ConfigSchemaEditor
+                      v-model="viewConfig.customComponentProps"
+                      :schema="selectedCustomListSchema"
                     />
-                  </el-select>
-                </el-form-item>
-                <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
-                  <el-input
-                    v-model="configInfo.selectionReturnMappingsText"
-                    type="textarea"
-                    :rows="3"
-                    placeholder='例如 [{"sourceField":"name","targetField":"customerName"}]'
-                  />
-                </el-form-item>
-                <el-form-item label="固定条件 JSON">
-                  <el-input
-                    v-model="configInfo.fixedFilterConfig"
-                    type="textarea"
-                    :rows="3"
-                    placeholder='例如 {"status":"RUNNING","status_op":"EQ"}'
-                  />
-                </el-form-item>
-                <el-form-item label="上下文绑定 JSON">
-                  <el-input
-                    v-model="configInfo.contextBindingConfig"
-                    type="textarea"
-                    :rows="3"
-                    placeholder='只保存 relationKey 等服务端可信上下文配置'
-                  />
-                </el-form-item>
-                <el-form-item label="安全查询提供者">
-                  <el-input
-                    v-model="configInfo.queryProviderCode"
-                    placeholder="留空使用平台动态表查询"
-                    style="width: 420px"
-                  />
-                </el-form-item>
-                <el-form-item label="统一查询数据源">
-                  <el-select
-                    v-model="configInfo.queryDataSourceId"
-                    clearable
-                    filterable
-                    placeholder="可选：LIST_QUERY 数据源"
-                    style="width: 420px"
-                  >
-                    <el-option
-                      v-for="source in listQuerySources"
-                      :key="source.id"
-                      :label="`${source.sourceName} (${source.sourceType})`"
-                      :value="source.id"
-                    />
-                  </el-select>
-                </el-form-item>
-
-                <el-divider content-position="left">查询区域</el-divider>
-                <el-form-item label="默认显示条件">
-                  <el-input-number v-model="viewConfig.search.defaultVisibleCount" :min="1" :max="20" />
-                </el-form-item>
-                <el-form-item label="允许展开收起">
-                  <el-switch v-model="viewConfig.search.collapsible" />
-                </el-form-item>
-                <el-form-item label="标签宽度">
-                  <el-input-number v-model="viewConfig.search.labelWidth" :min="60" :max="240" />
-                  <span class="unit-text">px</span>
-                </el-form-item>
-
-                <el-divider content-position="left">表格与分页</el-divider>
-                <el-form-item label="表格样式">
-                  <el-checkbox v-model="viewConfig.table.stripe">斑马纹</el-checkbox>
-                  <el-checkbox v-model="viewConfig.table.border">边框</el-checkbox>
-                  <el-checkbox v-model="viewConfig.table.showIndex">序号列</el-checkbox>
-                </el-form-item>
-                <el-form-item label="表格尺寸">
-                  <el-radio-group v-model="viewConfig.table.size">
-                    <el-radio-button value="small">紧凑</el-radio-button>
-                    <el-radio-button value="default">默认</el-radio-button>
-                    <el-radio-button value="large">宽松</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item label="默认每页">
-                  <el-select v-model="viewConfig.pagination.pageSize" style="width: 160px">
-                    <el-option
-                      v-for="size in viewConfig.pagination.pageSizes"
-                      :key="size"
-                      :label="`${size} 条`"
-                      :value="size"
-                    />
-                  </el-select>
-                </el-form-item>
+                  </el-form-item>
+                </SettingsSection>
               </el-form>
             </el-tab-pane>
             <el-tab-pane label="字段配置" name="fields">
@@ -226,92 +265,34 @@
                     <el-icon class="drag-handle"><Rank /></el-icon>
                   </template>
                 </el-table-column>
-                <el-table-column label="字段名称" min-width="100">
+                <el-table-column label="字段名称" width="92">
                   <template #default="{ row }">
                     <el-input v-model="row.fieldName" size="small" />
                   </template>
                 </el-table-column>
-                <el-table-column label="字段编码" min-width="120">
+                <el-table-column label="字段编码" width="105">
                   <template #default="{ row }">
                     <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
                   </template>
                 </el-table-column>
-                <el-table-column label="加入列表" width="80" align="center">
+                <el-table-column label="用途" width="84">
                   <template #default="{ row }">
-                    <el-checkbox v-model="row.showInList" />
+                    <div class="field-purpose-controls">
+                      <el-checkbox v-model="row.showInList">列表</el-checkbox>
+                      <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row)">查询</el-checkbox>
+                    </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="查询条件" width="80" align="center">
+                <el-table-column label="当前配置" width="125">
                   <template #default="{ row }">
-                    <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row)" />
+                    <span class="field-config-summary" :title="fieldConfigSummary(row)">
+                      {{ fieldConfigSummary(row) }}
+                    </span>
                   </template>
                 </el-table-column>
-                <el-table-column label="查询方式" width="100">
+                <el-table-column label="操作" width="122" fixed="right">
                   <template #default="{ row }">
-                    <el-select v-model="row.queryType" size="small" :disabled="!row.isQuery">
-                      <el-option label="等于" value="EQ" />
-                      <el-option label="不等于" value="NE" />
-                      <el-option label="包含" value="LIKE" />
-                      <el-option label="不包含" value="NOT_LIKE" />
-                      <el-option label="大于" value="GT" />
-                      <el-option label="大于等于" value="GE" />
-                      <el-option label="小于" value="LT" />
-                      <el-option label="小于等于" value="LE" />
-                      <el-option label="范围" value="BETWEEN" />
-                      <el-option label="包含于" value="IN" />
-                      <el-option label="不包含于" value="NOT_IN" />
-                      <el-option label="为空" value="EMPTY" />
-                      <el-option label="非空" value="NOT_EMPTY" />
-                    </el-select>
-                  </template>
-                </el-table-column>
-                <el-table-column label="数据源" min-width="140">
-                  <template #default="{ row }">
-                    <el-select
-                      v-model="row.dataSourceType"
-                      size="small"
-                      :disabled="!isVirtualField(row)"
-                      @change="handleDataSourceChange(row)"
-                    >
-                      <el-option
-                        v-for="option in dataSourceOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                        :disabled="isVirtualField(row) && option.supportsVirtualField === false"
-                      />
-                    </el-select>
-                  </template>
-                </el-table-column>
-                <el-table-column label="渲染组件" min-width="140">
-                  <template #default="{ row }">
-                    <el-select v-model="row.renderComponent" size="small" clearable placeholder="自动">
-                      <el-option
-                        v-for="option in cellComponentOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </el-select>
-                  </template>
-                </el-table-column>
-                <el-table-column label="宽度" width="80">
-                  <template #default="{ row }">
-                    <el-input-number v-model="row.width" :min="0" :max="500" size="small" controls-position="right" :disabled="!row.showInList" />
-                  </template>
-                </el-table-column>
-                <el-table-column label="对齐" width="90">
-                  <template #default="{ row }">
-                    <el-select v-model="row.align" size="small" :disabled="!row.showInList">
-                      <el-option label="左对齐" value="left" />
-                      <el-option label="居中" value="center" />
-                      <el-option label="右对齐" value="right" />
-                    </el-select>
-                  </template>
-                </el-table-column>
-                <el-table-column label="配置" width="110" fixed="right">
-                  <template #default="{ row }">
-                    <el-button link type="primary" @click="openFieldConfig(row)">高级</el-button>
+                    <el-button link type="primary" @click="openFieldConfig(row)">设置</el-button>
                     <el-button
                       link
                       type="success"
@@ -322,8 +303,11 @@
                       v-if="isVirtualField(row)"
                       link
                       type="danger"
+                      :icon="Delete"
+                      aria-label="删除虚拟列"
+                      title="删除虚拟列"
                       @click="removeVirtualField(row)"
-                    >删除</el-button>
+                    />
                   </template>
                 </el-table-column>
               </el-table>
@@ -501,100 +485,222 @@
       width="720px"
       destroy-on-close
     >
-      <el-tabs v-if="editingField" v-model="activeFieldConfigTab">
-        <el-tab-pane label="数据源" name="source">
-          <el-alert
-            :title="selectedDataSourceOption?.description || '实体字段无需额外配置'"
-            type="info"
-            :closable="false"
-            style="margin-bottom: 12px"
-          />
-          <ConfigSchemaEditor
-            v-model="editingDataSourceConfig"
-            :schema="selectedDataSourceOption?.configSchema || []"
-          />
-          <el-divider>统一数据源目录</el-divider>
-          <el-select
-            v-model="editingField.dataSourceId"
-            clearable
-            filterable
-            placeholder="可选：LIST_COLUMN 数据源"
-            style="width: 100%"
+      <el-tabs v-if="editingField" v-model="activeFieldConfigTab" class="field-config-tabs">
+        <el-tab-pane label="常用" name="common">
+          <SettingsSection
+            title="查询项"
+            description="配置字段作为查询条件时的输入方式"
+            :collapsible="false"
+            primary
           >
-            <el-option
-              v-for="source in listColumnSources"
-              :key="source.id"
-              :label="`${source.sourceName} (${source.sourceType})`"
-              :value="source.id"
-            />
-          </el-select>
-          <el-divider>列模板</el-divider>
-          <el-select
-            v-model="editingField.templateId"
-            clearable
-            filterable
-            placeholder="复制后独立"
-            style="width: 100%"
-            @change="handleListTemplateChange"
+            <el-form label-width="110px" size="small">
+              <el-form-item label="查询组件">
+                <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%">
+                  <el-option
+                    v-for="option in queryComponentOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="查询方式">
+                <el-select
+                  v-model="editingField.queryType"
+                  :disabled="!editingField.isQuery"
+                  style="width: 100%"
+                >
+                  <el-option label="等于" value="EQ" />
+                  <el-option label="不等于" value="NE" />
+                  <el-option label="包含" value="LIKE" />
+                  <el-option label="不包含" value="NOT_LIKE" />
+                  <el-option label="大于" value="GT" />
+                  <el-option label="大于等于" value="GE" />
+                  <el-option label="小于" value="LT" />
+                  <el-option label="小于等于" value="LE" />
+                  <el-option label="范围" value="BETWEEN" />
+                  <el-option label="包含于" value="IN" />
+                  <el-option label="不包含于" value="NOT_IN" />
+                  <el-option label="为空" value="EMPTY" />
+                  <el-option label="非空" value="NOT_EMPTY" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="占位提示">
+                <el-input v-model="editingQueryConfig.placeholder" />
+              </el-form-item>
+              <el-form-item label="默认值">
+                <el-input v-model="editingQueryConfig.defaultValue" />
+              </el-form-item>
+            </el-form>
+          </SettingsSection>
+
+          <SettingsSection
+            title="列展示"
+            description="配置列宽和对齐方式等常用展示项"
+            :collapsible="false"
           >
-            <el-option
-              v-for="template in listTemplates"
-              :key="template.id"
-              :label="`${template.templateName} (v${template.currentVersion})`"
-              :value="template.id"
-            />
-          </el-select>
-          <el-button
-            v-if="editingField.templateId"
-            link
-            type="primary"
-            style="margin-top: 8px"
-            @click="upgradeListTemplate"
-          >
-            检查模板升级（当前 v{{ editingField.templateVersion || 1 }}）
-          </el-button>
-        </el-tab-pane>
-        <el-tab-pane label="单元格" name="render">
-          <ConfigSchemaEditor
-            v-model="editingRenderConfig"
-            :schema="selectedCellDescriptor?.configSchema || []"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="查询项" name="query">
-          <el-form label-width="110px" size="small">
-            <el-form-item label="查询组件">
-              <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%">
-                <el-option
-                  v-for="option in queryComponentOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
+            <el-form label-width="110px" size="small">
+              <el-form-item label="列宽">
+                <el-input-number
+                  v-model="editingField.width"
+                  :min="0"
+                  :max="500"
+                  :disabled="!editingField.showInList"
                 />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="占位提示">
-              <el-input v-model="editingQueryConfig.placeholder" />
-            </el-form-item>
-            <el-form-item label="默认值">
-              <el-input v-model="editingQueryConfig.defaultValue" />
-            </el-form-item>
-          </el-form>
+                <span class="unit-text">0 表示自动</span>
+              </el-form-item>
+              <el-form-item label="对齐">
+                <el-select
+                  v-model="editingField.align"
+                  :disabled="!editingField.showInList"
+                  style="width: 100%"
+                >
+                  <el-option label="左对齐" value="left" />
+                  <el-option label="居中" value="center" />
+                  <el-option label="右对齐" value="right" />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </SettingsSection>
+
+          <SettingsSection
+            title="高级列布局"
+            description="仅在需要冻结列或精细控制宽度时配置"
+            :default-expanded="false"
+          >
+            <el-form label-width="110px" size="small">
+              <el-form-item label="固定位置">
+                <el-select v-model="editingColumnConfig.fixed" clearable placeholder="不固定" style="width: 100%">
+                  <el-option label="左侧" value="left" />
+                  <el-option label="右侧" value="right" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="最小宽度">
+                <el-input-number v-model="editingColumnConfig.minWidth" :min="60" :max="1000" />
+              </el-form-item>
+              <el-form-item label="溢出提示">
+                <el-switch v-model="editingColumnConfig.showOverflowTooltip" />
+              </el-form-item>
+            </el-form>
+          </SettingsSection>
         </el-tab-pane>
-        <el-tab-pane label="列展示" name="column">
-          <el-form label-width="110px" size="small">
-            <el-form-item label="固定位置">
-              <el-select v-model="editingColumnConfig.fixed" clearable placeholder="不固定" style="width: 100%">
-                <el-option label="左侧" value="left" />
-                <el-option label="右侧" value="right" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="最小宽度">
-              <el-input-number v-model="editingColumnConfig.minWidth" :min="60" :max="1000" />
-            </el-form-item>
-            <el-form-item label="溢出提示">
-              <el-switch v-model="editingColumnConfig.showOverflowTooltip" />
-            </el-form-item>
-          </el-form>
+
+        <el-tab-pane label="数据与显示" name="data-render">
+          <SettingsSection
+            title="数据与显示"
+            description="集中配置字段取值来源、单元格组件和显示参数"
+            :collapsible="false"
+            primary
+          >
+            <div class="field-config-subsection">
+              <div class="field-config-subsection__title">数据来源</div>
+              <el-alert
+                :title="selectedDataSourceOption?.description || '实体字段无需额外配置'"
+                type="info"
+                :closable="false"
+                style="margin-bottom: 12px"
+              />
+              <ConfigSchemaEditor
+                v-model="editingDataSourceConfig"
+                :schema="selectedDataSourceOption?.configSchema || []"
+              />
+              <el-form label-width="110px" size="small">
+                <el-form-item label="字段数据源">
+                  <el-select
+                    v-model="editingField.dataSourceType"
+                    :disabled="!isVirtualField(editingField)"
+                    style="width: 100%"
+                    @change="handleDataSourceChange(editingField)"
+                  >
+                    <el-option
+                      v-for="option in dataSourceOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                      :disabled="isVirtualField(editingField) && option.supportsVirtualField === false"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="统一数据源">
+                  <el-select
+                    v-model="editingField.dataSourceId"
+                    clearable
+                    filterable
+                    placeholder="可选：LIST_COLUMN 数据源"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="source in listColumnSources"
+                      :key="source.id"
+                      :label="`${source.sourceName} (${source.sourceType})`"
+                      :value="source.id"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <div class="field-config-subsection">
+              <div class="field-config-subsection__title">单元格显示</div>
+              <el-form label-width="110px" size="small">
+                <el-form-item label="渲染组件">
+                  <el-select
+                    v-model="editingField.renderComponent"
+                    clearable
+                    placeholder="自动匹配"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="option in cellComponentOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+              <ConfigSchemaEditor
+                v-model="editingRenderConfig"
+                :schema="selectedCellDescriptor?.configSchema || []"
+              />
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="高级模板"
+            description="锁定模板版本，升级时保留本地覆盖"
+            :default-expanded="false"
+          >
+            <el-form label-width="110px" size="small">
+              <el-form-item label="模板">
+                <div class="template-selector">
+                  <el-select
+                    v-model="editingField.templateId"
+                    clearable
+                    filterable
+                    placeholder="复制后独立"
+                    style="width: 100%"
+                    @change="handleListTemplateChange"
+                  >
+                    <el-option
+                      v-for="template in listTemplates"
+                      :key="template.id"
+                      :label="`${template.templateName} (v${template.currentVersion})`"
+                      :value="template.id"
+                    />
+                  </el-select>
+                  <el-button
+                    v-if="editingField.templateId"
+                    link
+                    type="primary"
+                    @click="upgradeListTemplate"
+                  >
+                    检查模板升级（当前 v{{ editingField.templateVersion || 1 }}）
+                  </el-button>
+                </div>
+              </el-form-item>
+            </el-form>
+          </SettingsSection>
         </el-tab-pane>
       </el-tabs>
       <template #footer>
@@ -603,21 +709,48 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="releaseDialogVisible" title="列表发布版本" width="760px">
+    <UiConfigPublishDialog
+      v-model="publishDialogVisible"
+      config-type="LIST"
+      :config-id="String(configId)"
+      config-label="列表"
+      @published="handlePublished"
+    />
+
+    <el-dialog v-model="releaseDialogVisible" title="列表发布版本" width="920px">
       <el-table :data="releases" size="small">
         <el-table-column prop="version" label="版本" width="80" />
+        <el-table-column prop="releaseMode" label="方式" width="100">
+          <template #default="{ row }">
+            {{ row.releaseMode === 'HOTFIX' ? '兼容热修复' : '普通发布' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="riskLevel" label="风险" width="90" />
+        <el-table-column prop="rolloutStatus" label="Rollout" width="110">
+          <template #default="{ row }">
+            {{ row.releaseMode === 'HOTFIX' ? (row.rolloutStatus || '-') : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="contentHash" label="内容哈希" min-width="220" show-overflow-tooltip />
         <el-table-column prop="publishedBy" label="发布人" width="120" />
         <el-table-column prop="publishedAt" label="发布时间" width="180" />
         <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="100">
+        <el-table-column label="操作" width="150">
           <template #default="{ row }">
             <el-button
+              v-if="row.releaseMode !== 'HOTFIX'"
               link
               type="primary"
               :disabled="row.status === 'ACTIVE'"
               @click="activateRelease(row)"
             >激活</el-button>
+            <el-button
+              v-else
+              link
+              type="danger"
+              :disabled="row.rolloutStatus !== 'ACTIVE'"
+              @click="rollbackHotfixRelease(row)"
+            >撤回热修复</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -629,7 +762,7 @@
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Rank, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Rank, Plus } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
@@ -637,6 +770,8 @@ import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import SettingsSection from '@/components/SettingsSection.vue'
+import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
 import { getFormFieldComponentOptions } from '@/components/form-fields'
@@ -659,6 +794,7 @@ const entityCode = ref('')
 const entityId = ref('')
 const entityFields = ref([])
 const entityDefinition = ref({})
+const publishDialogVisible = ref(false)
 const releaseDialogVisible = ref(false)
 const releases = ref([])
 const diffInfo = ref({ changed: true, changedSections: [] })
@@ -711,7 +847,7 @@ const selectedCustomListSchema = computed(() =>
 )
 
 const fieldConfigDialogVisible = ref(false)
-const activeFieldConfigTab = ref('source')
+const activeFieldConfigTab = ref('common')
 const editingField = ref(null)
 const editingDataSourceConfig = ref({})
 const editingRenderConfig = ref({})
@@ -1040,7 +1176,7 @@ function openFieldConfig(field) {
     showOverflowTooltip: true,
     ...safeParseConfig(field.columnConfig)
   }
-  activeFieldConfigTab.value = 'source'
+  activeFieldConfigTab.value = 'common'
   fieldConfigDialogVisible.value = true
 }
 
@@ -1379,6 +1515,42 @@ function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(fiel
   }
 }
 
+function fieldConfigSummary(field) {
+  const parts = []
+  if (field.isQuery) {
+    const queryLabel = {
+      EQ: '等于',
+      NE: '不等于',
+      LIKE: '包含',
+      NOT_LIKE: '不包含',
+      GT: '大于',
+      GE: '大于等于',
+      LT: '小于',
+      LE: '小于等于',
+      BETWEEN: '范围',
+      IN: '包含于',
+      NOT_IN: '不包含于',
+      EMPTY: '为空',
+      NOT_EMPTY: '非空'
+    }[field.queryType] || '默认查询'
+    parts.push(`查询：${queryLabel}`)
+  }
+  if (field.showInList) {
+    const renderer = cellComponentOptions.find(option => option.value === field.renderComponent)?.label
+      || '自动渲染'
+    parts.push(renderer)
+    if (Number(field.width) > 0) parts.push(`${field.width}px`)
+    if (field.align && field.align !== 'left') {
+      parts.push(field.align === 'center' ? '居中' : '右对齐')
+    }
+  }
+  if (isVirtualField(field)) {
+    const source = dataSourceOptions.find(option => option.value === field.dataSourceType)?.label
+    if (source) parts.push(source)
+  }
+  return parts.join(' · ') || '未启用'
+}
+
 function handleRevisionConflict(error, target) {
   if (error?.status === 409 || error?.errorCode === 'CONFIG_REVISION_CONFLICT') {
     ElMessage.warning('配置已被其他人修改，已切换为服务器当前版本')
@@ -1464,26 +1636,18 @@ async function loadDiff() {
 }
 
 async function handlePublish() {
-  try {
-    const diff = await entityListConfigApi.getDiff(configId)
-    if (!diff.changed) {
-      ElMessage.info('当前草稿与已发布版本一致')
-      return
-    }
-    await ElMessageBox.confirm(
-      `将发布 ${describePublishChanges(diff)}，运行时会原子切换。`,
-      '发布列表',
-      { type: 'warning' }
-    )
-    await entityListConfigApi.publish(configId, '列表设计器发布')
-    await loadDiff()
-    await loadPreviewData()
-    ElMessage.success('列表发布成功')
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error?.message || '发布失败')
-    }
+  const diff = await entityListConfigApi.getDiff(configId)
+  if (!diff.changed) {
+    ElMessage.info('当前草稿与已发布版本一致')
+    return
   }
+  publishDialogVisible.value = true
+}
+
+async function handlePublished() {
+  await refreshConfigRevision()
+  await loadDiff()
+  await loadPreviewData()
 }
 
 function describePublishChanges(diff) {
@@ -1522,6 +1686,29 @@ async function activateRelease(release) {
   await loadDiff()
   await loadPreviewData()
   ElMessage.success('历史版本已激活')
+}
+
+async function rollbackHotfixRelease(release) {
+  const { value } = await ElMessageBox.prompt(
+    `确认按发布顺序撤回热修复 v${release.version}？`,
+    '撤回兼容热修复',
+    {
+      type: 'warning',
+      inputPlaceholder: '请输入撤回原因',
+      inputValidator: text => Boolean(String(text || '').trim())
+        || '撤回原因不能为空'
+    }
+  )
+  await entityListConfigApi.rollbackHotfix(
+    configId,
+    release.id,
+    value
+  )
+  await showReleaseHistory()
+  await refreshConfigRevision()
+  await loadDiff()
+  await loadPreviewData()
+  ElMessage.success('列表热修复已撤回')
 }
 
 async function loadPreviewData() {
@@ -1604,6 +1791,32 @@ function goBack() {
   max-width: 760px;
 }
 
+.view-config-form :deep(.settings-section__body > .el-form-item:last-child),
+.field-config-tabs :deep(.settings-section__body > .el-form:last-child .el-form-item:last-child) {
+  margin-bottom: 10px;
+}
+
+.template-selector {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.field-config-subsection + .field-config-subsection {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.field-config-subsection__title {
+  margin-bottom: 10px;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .field-toolbar {
   display: flex;
   align-items: center;
@@ -1613,6 +1826,28 @@ function goBack() {
 
 .field-toolbar :deep(.el-alert) {
   flex: 1;
+}
+
+.field-purpose-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.field-purpose-controls :deep(.el-checkbox) {
+  height: 22px;
+  margin-right: 0;
+}
+
+.field-config-summary {
+  display: block;
+  overflow: hidden;
+  color: #606266;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .config-tabs :deep(.el-tabs__nav-scroll) {
@@ -1663,12 +1898,12 @@ function goBack() {
   overflow: hidden;
 }
 .config-panel {
-  flex: 1;
+  flex: 1.3;
   min-width: 0;
   overflow-y: auto;
 }
 .preview-panel {
-  flex: 1;
+  flex: 0.7;
   min-width: 0;
   overflow-y: auto;
 }

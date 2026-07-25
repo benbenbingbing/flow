@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.dto.TaskDetailDTO;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.EntityForm;
@@ -62,6 +63,7 @@ public class TaskDetailService {
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
+        boolean historicalProcess = processInstance == null;
         
         TaskDetailDTO.ProcessInstanceDTO instanceDTO = new TaskDetailDTO.ProcessInstanceDTO();
         instanceDTO.setProcessInstanceId(processInstanceId);
@@ -118,13 +120,19 @@ public class TaskDetailService {
         if (processTask.getProcessDefinitionId() != null
                 && nodeId != null) {
             try {
-                List<com.workflow.entity.ProcessNodeForm> nodeForms =
+                ProcessPublishedSnapshotService.PublishedNodeForms published =
                         processPublishedSnapshotService
-                                .getNodeFormsByProcessDefinitionId(
+                                .getNodeFormsContextByProcessDefinitionId(
                                         processTask.getProcessDefinitionId(),
                                         nodeId);
-                for (com.workflow.entity.ProcessNodeForm nodeForm : nodeForms) {
-                    EntityForm form = entityFormRuntimeService.getByBinding(nodeForm);
+                for (com.workflow.entity.ProcessNodeForm nodeForm
+                        : published.nodeForms()) {
+                    EntityForm form = entityFormRuntimeService.getByBinding(
+                            nodeForm,
+                            published.history().getId(),
+                            historicalProcess
+                                    ? UiRuntimePurpose.HISTORICAL
+                                    : UiRuntimePurpose.ACTIVE_TASK);
                     if (form != null) {
                         formConfigs.add(buildFormConfig(
                                 form,
@@ -142,7 +150,9 @@ public class TaskDetailService {
             }
         }
 
-        if (formConfigs.isEmpty() && entityCode != null) {
+        if (formConfigs.isEmpty()
+                && entityCode != null
+                && !historicalProcess) {
             try {
                 com.workflow.entity.EntityDefinition entityDef =
                         entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
@@ -181,7 +191,8 @@ public class TaskDetailService {
 
         if (formConfigs.isEmpty()
                 && formKey != null
-                && entityCode != null) {
+                && entityCode != null
+                && !historicalProcess) {
             try {
                 com.workflow.entity.EntityDefinition entityDef =
                         entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
@@ -305,6 +316,11 @@ public class TaskDetailService {
         formConfig.setLayoutType(form.getLayoutType());
         formConfig.setIsReadonly(nodeForm == null
                 || Integer.valueOf(1).equals(nodeForm.getIsReadonly()));
+        formConfig.setEffectiveFormReleaseId(
+                form.getEffectiveReleaseId());
+        formConfig.setHotfixApplied(form.getHotfixApplied());
+        formConfig.setReleaseResolutionToken(
+                form.getReleaseResolutionToken());
         if (nodeForm != null) {
             formConfig.setFormReleaseId(nodeForm.getFormReleaseId());
             formConfig.setFormReleaseVersion(nodeForm.getFormReleaseVersion());

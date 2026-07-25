@@ -40,7 +40,7 @@ export default {
   title: '实体配置用户手册',
   subtitle: '覆盖实体创建、字段与关系、数据权限、递归表单节点、列表单项配置、统一数据源、草稿发布、模板升级和迁移兼容的完整配置闭环。',
   version: '当前 UI 配置基线',
-  updatedAt: '2026-07-22',
+  updatedAt: '2026-07-25',
   intro: [
     {
       title: '推荐顺序',
@@ -50,7 +50,7 @@ export default {
     {
       title: '保存不等于发布',
       type: 'warning',
-      text: '表单节点、列表列、按钮和场景的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。发布前必须查看 diff：除章节摘要外，还会按稳定 ID 列出新增、修改、移动和删除项目；确认数据源、权限、嵌套关系和迁移兼容校验全部通过。'
+      text: '表单节点、列表列、按钮和场景的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。发布时默认选择 STANDARD 普通发布；只有展示兼容修改才考虑 HOTFIX。两种模式都必须先做影响预检，按稳定 ID 核对差异、风险、数据源、权限、嵌套关系和迁移兼容结果。'
     }
   ],
   sections: [
@@ -233,6 +233,12 @@ export default {
           id: 'entity-field-common',
           title: '公共字段属性',
           blocks: [
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '常用配置优先',
+              text: '字段属性按使用频率收敛为三组：“常用属性”首屏直接展开，未发布字段可编辑名称、编码、类型、必填和默认值；字段发布或系统锁定后，编码与类型移入顶部只读摘要，不再占用常用表单。“数据与约束”和“类型专属配置”默认折叠，仅在需要数据库约束、选项、附件、引用或子表关系时展开。'
+            },
             {
               type: 'table',
               columns: fieldColumns,
@@ -448,6 +454,12 @@ export default {
           title: '规则基础配置',
           blocks: [
             {
+              type: 'callout',
+              tone: 'info',
+              title: '权限规则按任务分组',
+              text: '编辑弹窗把规则名称、适用列表、允许/拒绝和启用状态放在“基本规则”首屏；用户、角色、用户组和组织条件进入“适用对象”；数据范围、结构化条件组与状态限制进入“可见数据范围”。后两组默认折叠并显示条件数量或当前范围摘要。'
+            },
+            {
               type: 'table',
               columns: fieldColumns,
               rows: [
@@ -569,7 +581,7 @@ export default {
                 { option: '设为默认', meaning: '作为实体默认表单；流程节点无显式表单时会尝试使用。', notes: '一个实体应保持一个明确默认表单。' },
                 { option: '复制', meaning: '复制现有表单作为独立草稿。', notes: '复制后节点获得新的稳定 ID，与来源模板或表单不再联动。' },
                 { option: '预览', meaning: '直接读取当前草稿树和草稿数据源绑定。', notes: '预览不会改变线上激活版本，也不能替代权限和真实接口验证。' },
-                { option: '发布', meaning: '校验全树后生成不可变快照并原子激活。', notes: '独立实体在下次打开新增表单时读取新版本；流程节点表单还会被流程发布版本固定，表单发布后必须重新发布依赖流程。流程快照过期时新增入口返回 409 并提示重新发布，不再静默展示旧表单。' },
+                { option: '发布', meaning: '校验全树后生成不可变快照并原子激活。', notes: '发布只包含已经保存到服务端的草稿；画布或属性仍有本地修改时会先阻止发布。独立实体在下次打开新增表单时读取新版本；流程节点表单还会被流程发布版本固定，表单发布后必须确认节点绑定并重新发布依赖流程。流程快照过期时新增入口返回 409 并提示重新发布，不再静默展示旧表单。' },
                 { option: '版本', meaning: '查看 diff、releases，并通过 activate 激活历史版本。', notes: '历史版本不可修改；回滚实质是重新激活已存在快照。' },
                 { option: '删除', meaning: '删除表单。', notes: '先检查流程节点、子表单和默认表单引用。' }
               ]
@@ -639,7 +651,9 @@ export default {
                 { field: '搜索字段', meaning: '按实体字段名称或编码过滤左侧字段。', defaultLimit: '默认空。', effect: '快速定位字段；已添加字段显示“已添加”。', publish: '无发布影响。' },
                 { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树；画布用“Tab 集合 / Tab 页”“栅格容器”等轻量结构标题区分层级，不展示技术标签。', defaultLimit: '最大嵌套深度 8 层；不显示序号、nodeType、revision 或父级 ID 等技术元信息。', effect: '区块、栅格、Tab、折叠面板、子表和明细表可以递归组合；选中任一节点后可在属性抽屉移动到合法父容器。', publish: '保存和发布都会拒绝非法父子类型、循环引用、孤儿节点和移动整棵子树后超过 8 层的结构。' },
                 { field: '节点拖拽', meaning: '悬停或选中节点后，拖拽右上角手柄调整同级顺序，或移动到区块、栅格、Tab 页、折叠面板、子表和明细表等兼容容器。Tab 页使用 Tab 集合内的页签拖拽手柄。', defaultLimit: 'TAB 只能进入 TAB_SET；普通节点不能直接进入 TAB_SET；禁止放入自身、后代或形成超过 8 层的结构。排序保存期间暂时禁用再次拖拽。', effect: '已保存节点立即通过独立排序接口携带 expectedRevision 写入草稿；未保存节点先更新本地树，点击“保存草稿”后落库。失败或 409 时重新加载服务器节点和 revision。', publish: '拖拽只修改草稿位置，不影响当前激活发布版本；发布前应在草稿预览中核对嵌套布局。' },
+                { field: '表单级设置摘要', meaning: '画布顶部常驻表单名称，并摘要展示表单标识、渲染组件、标签宽度和数据源数量；点击“表单设置”才展开低频配置。', defaultLimit: '默认收起；关闭不清除已编辑值。', effect: '减少表单标识、自定义组件、版本、标签宽度和数据源长期占用画布首屏。', publish: '展开状态只影响设计体验，保存与发布数据结构不变。' },
                 { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；默认关闭以保留设计画布空间。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '技术摘要只读展示，当前节点独立保存，不会修改其他节点。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
+                { field: '节点类型动态分组', meaning: '属性按“常用属性、布局与层级、数据源、校验、模式与权限、关系与子表、复用与扩展”组织。', defaultLimit: '常用属性首屏展开；其余分组仅在当前 nodeType 支持时显示并默认折叠。', effect: '字段节点不会看到子表关系，容器不会看到字段校验；数据源、校验和运行模式不再挤在同一个长分组。', publish: '技术字段和绑定身份仍只读；分组只影响编辑体验，不改变草稿、发布快照或运行时语义。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
                 { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定；历史 RELATION 缺少 bindingRef 时先迁移修复，普通编辑不会自动解除绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
                 { field: '统一栅格布局', meaning: '垂直布局默认每项 24 栅格，水平布局默认每项 12 栅格，网格布局按节点 gridSpan 排列。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
@@ -859,12 +873,18 @@ export default {
           title: '显隐与值联动',
           blocks: [
             {
+              type: 'callout',
+              tone: 'info',
+              title: '联动页签已合并',
+              text: '联动面板统一为“显示与状态、值与计算、选项”三个页签。显隐与禁用/必填放在一起，值映射与计算公式放在一起，减少在五个窄页签之间来回切换。'
+            },
+            {
               type: 'table',
               columns: fieldColumns,
               rows: [
                 { field: '显隐控制', meaning: '满足条件时显示当前字段。', defaultLimit: '默认关闭；条件可选字段、==、!=、>、<、>=、<=、contains、empty、notEmpty；组合默认 AND，可选 OR。', effect: '表单值变化时动态显示/隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
-                { field: '值联动：API', meaning: '通过接口查询当前字段值。', defaultLimit: '接口地址、请求参数 JSON 字符串、结果字段路径。', effect: '源字段变化后调用接口并取结果。', publish: '当前联动规则持久化重点覆盖公式和映射；API 配置上线前必须确认运行时已实现并实际保存。' },
+                { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应改用统一数据源目录中的 Provider 或 Connector。', publish: 'Provider/Connector 必须统一处理凭据、数据权限、超时和审计，禁止通过自由 URL 绕过。' },
                 { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
               ]
             }
@@ -963,6 +983,12 @@ export default {
           id: 'entity-list-view-settings',
           title: '列表设置',
           blocks: [
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '列表设置分组',
+              text: '列表级设置按任务拆为“常用体验、访问范围、选择行为、查询实现、扩展渲染”。常用体验和业务访问首屏可见，Provider、固定条件、上下文绑定和统一数据源归入默认折叠的查询实现。字段主表只保留名称、编码、列表/查询用途、当前配置摘要和单项操作；字段弹窗把常用查询与列展示放首屏，冻结列、最小宽度和溢出提示归入“高级列布局”，数据源与单元格渲染合并为“数据与显示”，模板归入“高级模板”。'
+            },
             {
               type: 'table',
               columns: fieldColumns,
@@ -1076,6 +1102,12 @@ export default {
           title: '按钮公共配置',
           blocks: [
             {
+              type: 'callout',
+              tone: 'info',
+              title: '首屏只保留高频按钮设置',
+              text: '按钮表格首屏只编辑排序、启用、名称、执行方式、权限码和适用条件；图标、按钮样式、行按钮 Link 样式、模板及其他低频展示参数统一进入当前按钮的“更多设置”。保存仍只提交当前按钮，不会覆盖其他按钮。'
+            },
+            {
               type: 'table',
               columns: fieldColumns,
               rows: [
@@ -1085,9 +1117,10 @@ export default {
                 { field: '类型', meaning: 'built-in 内置或 custom 自定义。', defaultLimit: '按添加方式决定。', effect: '内置走平台逻辑，自定义走执行器或组件。', publish: '不要把内置按钮改成自定义却保留旧 key。' },
                 { field: '内置类型 / 执行器', meaning: '内置选择固定 key；自定义填写处理器或组件名。', defaultLimit: '自定义必填执行器/组件名。', effect: '决定点击行为。', publish: '目标环境必须注册对应扩展。' },
                 { field: '自定义模式', meaning: '自定义按钮可选 handler 函数、component 组件或 open-list 打开列表。', defaultLimit: '默认 handler；工具栏和行按钮均可配置。', effect: 'open-list 直接复用目标 entityCode + listKey。', publish: '组件和回调必须在目标环境注册。' },
-                { field: '图标', meaning: 'Element Plus 图标名。', defaultLimit: '可空。', effect: '按钮显示图标。', publish: '图标名错误时通常只缺图标。' },
-                { field: '样式', meaning: 'default、primary、success、warning、danger、info。', defaultLimit: '自定义默认 default。', effect: '改变颜色语义。', publish: '危险操作应使用 danger 并确认。' },
-                { field: 'Link', meaning: '行按钮是否使用链接样式。', defaultLimit: '行自定义默认开启。', effect: '减少操作列视觉重量。', publish: '无权限影响。' },
+                { field: '图标', meaning: 'Element Plus 图标名。', defaultLimit: '位于“更多设置”，可空。', effect: '按钮显示图标。', publish: '图标名错误时通常只缺图标。' },
+                { field: '样式', meaning: 'default、primary、success、warning、danger、info。', defaultLimit: '位于“更多设置”；自定义默认 default。', effect: '改变颜色语义。', publish: '危险操作应使用 danger 并确认。' },
+                { field: 'Link', meaning: '行按钮是否使用链接样式。', defaultLimit: '位于“更多设置”；行自定义默认开启。', effect: '减少操作列视觉重量。', publish: '无权限影响。' },
+                { field: '模板', meaning: '绑定版本化按钮模板并支持显式升级。', defaultLimit: '位于“更多设置”；留空表示复制后独立。', effect: '复用按钮展示与扩展配置，不自动跟随模板升级。', publish: '升级前查看差异并保留本地覆盖。' },
                 { field: '权限码', meaning: '功能级授权标识。', defaultLimit: '可从标准/自定义权限选择，也可手工输入；内置按钮会自动归一为标准权限。', effect: '用户无权限时按钮不可用或不显示。', publish: '角色必须被授予相应 F 类型权限资源。' },
                 { field: '适用条件', meaning: '记录级或选择集级条件。', defaultLimit: '默认始终可操作，部分内置按钮有预设规则。', effect: '条件不满足时隐藏或禁用并说明。', publish: '与权限码、数据权限三者同时生效。' }
               ]
@@ -1105,8 +1138,8 @@ export default {
                 { field: '目标实体 / 目标列表', meaning: '指定要打开的 entityCode 和 listKey。', defaultLimit: '两项必填。', effect: '使用目标列表的字段、数据范围、权限和发布版本。', publish: '目标列表必须允许 DIALOG 或 DRAWER 场景。' },
                 { field: '打开方式', meaning: '弹窗 DIALOG 或抽屉 DRAWER。', defaultLimit: '默认 DIALOG。', effect: '只改变容器，不改变查询和安全规则。', publish: '移动端优先评估抽屉宽度。' },
                 { field: '选择方式', meaning: 'NONE 仅查看、SINGLE 单选、MULTIPLE 多选。', defaultLimit: '默认 NONE。', effect: '选择型场景自动隐藏新增、编辑、审批、删除等业务动作，只保留勾选和确认。', publish: '返回数据由选择回调处理。' },
-                { field: '上下文关系', meaning: '传递已注册 relationKey。', defaultLimit: '可选。', effect: '行按钮同时传递来源实体和来源记录 ID，后端重新读取来源记录生成可信条件。', publish: '不得把客户端传值直接当作授权条件。' },
-                { field: '选择回调', meaning: '处理选择结果的前端注册名。', defaultLimit: '可选。', effect: '分别复用工具栏或行操作注册中心。', publish: '目标环境缺少回调时只提示，不执行未知代码。' }
+                { field: '上下文关系', meaning: '传递已注册 relationKey。', defaultLimit: '可选，位于默认折叠的“高级映射”。', effect: '行按钮同时传递来源实体和来源记录 ID，后端重新读取来源记录生成可信条件。', publish: '不得把客户端传值直接当作授权条件。' },
+                { field: '选择回调', meaning: '处理选择结果的前端注册名。', defaultLimit: '可选，位于默认折叠的“高级映射”。', effect: '分别复用工具栏或行操作注册中心。', publish: '目标环境缺少回调时只提示，不执行未知代码。' }
               ]
             }
           ]
@@ -1206,9 +1239,11 @@ export default {
               rows: [
                 { option: '/draft', meaning: '读取当前可编辑草稿、节点树或列表项目及 revision。', notes: '设计器使用；生产运行时不得读取。' },
                 { option: '/diff', meaning: '比较草稿与当前激活 release，按稳定 ID 展示新增、修改、移动和删除。', notes: '同时展示数据源、模板版本、权限和嵌套校验结果。' },
-                { option: '/publish', meaning: '校验通过后生成不可变快照、内容哈希、发布人和发布时间，并原子激活。', notes: '失败时原激活版本继续服务，不出现半发布状态。' },
-                { option: '/releases', meaning: '查看历史发布版本和快照摘要。', notes: '发布记录不可修改或覆盖。' },
-                { option: '/activate', meaning: '激活指定历史 release。', notes: '激活前重新执行兼容和依赖校验；回滚不修改历史快照。' }
+                { option: '/publish-preview', meaning: '按 STANDARD 或 HOTFIX 预检差异、风险和影响范围。', notes: '返回 draftHash、activeReleaseId、impactToken、风险项、目标流程版本、运行中实例数、跳过历史实例数和阻断原因。' },
+                { option: '/publish', meaning: '校验通过后生成不可变快照、内容哈希、发布人和发布时间，并原子激活。', notes: 'HOTFIX 必须回传预检得到的 expectedDraftHash、expectedActiveReleaseId 和 impactToken；失败时原激活版本继续服务。' },
+                { option: '/releases', meaning: '查看历史发布版本、快照摘要和 rolloutStatus。', notes: 'HOTFIX 状态为 ACTIVE、SUPERSEDED 或 ROLLED_BACK；发布记录本身不可修改或覆盖。' },
+                { option: '/activate', meaning: '激活指定 STANDARD 历史 release。', notes: 'HOTFIX 不允许通过 activate 跳转，避免绕过 rollout 顺序。' },
+                { option: '/rollback-hotfix', meaning: '撤回指定 HOTFIX rollout。', notes: '只有 rolloutStatus=ACTIVE 的热修复可撤回；必须从最新热修复开始按发布时间逆序撤回，所有目标原子恢复到上一有效快照。' }
               ]
             },
             {
@@ -1216,6 +1251,62 @@ export default {
               tone: 'info',
               title: '运行时回退',
               text: '新运行时优先读取当前激活发布快照；升级期间如果旧配置尚未生成 release，可临时回退旧表单/列表配置并记录告警。生成初始 release 后应关闭长期回退，避免草稿意外被当成线上配置。'
+            }
+          ]
+        },
+        {
+          id: 'entity-config-release-mode',
+          title: 'STANDARD 与 HOTFIX 怎么选',
+          blocks: [
+            {
+              type: 'table',
+              columns: [
+                { key: 'mode', label: '发布模式' },
+                { key: 'useCase', label: '适用修改' },
+                { key: 'effect', label: '生效范围' },
+                { key: 'limits', label: '边界' }
+              ],
+              rows: [
+                { mode: 'STANDARD 普通发布', useCase: '业务结构、字段绑定、数据权限、数据源、提交映射和写操作等常规变更。', effect: '独立表单使用新 ACTIVE；流程表单需要重新发布流程后供新实例使用，运行中实例仍使用流程原快照。', limits: '默认选项；旧客户端只传 description 时也按 STANDARD 处理。' },
+                { mode: 'HOTFIX 兼容热修复', useCase: '必须立即修正当前流程中的兼容展示问题。', effect: '表单作用于当前可发起流程版本及仍有运行实例的历史版本；已完成、已终止实例跳过。', limits: '只能发布 SAFE，或经授权强制确认 REVIEW；任何 BLOCKED 都必须改用 STANDARD。' },
+                { mode: '列表发布', useCase: '列表标题、列宽、格式化或其他列表配置。', effect: '列表始终全局读取当前 ACTIVE，STANDARD 和 HOTFIX 发布后都会立即影响所有列表页面。', limits: '列表 HOTFIX 的价值是增加风险预检、审计和逆序快速回滚，不提供流程实例隔离。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '历史实例保持可复现',
+              text: '已完成和已终止流程的详情、审批回放始终读取流程发布时钉定的原始表单 release，不应用后来发布的 HOTFIX。运行中任务和当前可发起流程没有有效热修复时也只能回退原始钉定版本，不能静默读取任意最新版。'
+            }
+          ]
+        },
+        {
+          id: 'entity-config-hotfix-risk',
+          title: '热修复风险分类、预检与权限',
+          blocks: [
+            {
+              type: 'table',
+              columns: [
+                { key: 'risk', label: '风险' },
+                { key: 'examples', label: '典型修改' },
+                { key: 'result', label: '处理方式' }
+              ],
+              rows: [
+                { risk: 'SAFE', examples: '文字、帮助说明、占位符、列标题、宽度、对齐、顺序、分页大小和空状态。', result: '具备热修复权限且影响预检通过后可直接发布。' },
+                { risk: 'REVIEW', examples: '只读、显隐、默认值、客户端校验、格式化器和声明兼容的组件补丁版本。', result: '必须由超级管理员或拥有覆盖权限的用户勾选强制确认并填写原因。' },
+                { risk: 'BLOCKED', examples: '节点或字段增删、绑定或类型、权限与数据范围、查询数据源、提交映射、关系/子表结构和写操作按钮。', result: '任何权限都不能覆盖；改用 STANDARD 并重新发布依赖流程。' }
+              ]
+            },
+            {
+              type: 'bullets',
+              items: [
+                'HOTFIX 发布与撤回都需要 entity:ui-config:hotfix；只有发布 REVIEW 风险时才额外要求超级管理员或 entity:ui-config:hotfix:override，并填写强制确认原因。',
+                '风险等级由后端根据语义补丁判定，前端只能展示，不能把 REVIEW 或 BLOCKED 降级。',
+                '自定义组件只有显式声明热修复兼容能力时，兼容补丁版本才可进入 REVIEW；未声明时默认 BLOCKED。',
+                '影响预检必须核对 processVersionCount、activeInstanceCount、skippedHistoricalInstanceCount、targets[].compatible 和 blockers。',
+                '发布历史中的 rolloutStatus=ACTIVE 表示当前正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已经撤回；只有 ACTIVE 显示撤回入口。',
+                '预检后草稿、当前 ACTIVE release、目标流程版本或运行实例集合发生变化时，发布返回 409 HOTFIX_IMPACT_CHANGED，必须重新预检，不能复用旧 impactToken。'
+              ]
             }
           ]
         },
@@ -1247,6 +1338,8 @@ export default {
                 '编辑历史节点时按当前 nodeType Schema 重新归一化；不兼容的活动 props、rules、组件参数和数据源绑定会被清除，必要原值只作为非活动 legacyProps 兼容数据保留，不再参与运行时。',
                 '列表列、按钮和场景保留已有稳定 ID；缺失 ID 时只生成一次，重复执行迁移结果一致。',
                 '为已有表单和列表生成初始 release，快照内容哈希与旧运行时输出核对一致。',
+                'V037 创建流程 UI release 绑定、热修复目标和发布审计表，并把既有 release 标记为 STANDARD；启动时通过 workflow.ui-hotfix.binding-backfill-enabled 控制存量 node_forms_snapshot 的幂等回填，默认开启。',
+                '大库升级可先设置 workflow.ui-hotfix.binding-backfill-enabled=false 完成结构迁移，再在受控窗口开启回填；日志应核对 histories、inserted、updated、missingRelease、invalidSnapshot 和 skippedExisting。',
                 '迁移输出节点数、未知属性、生成 ID 数、release 版本和快照哈希；失败可安全重跑。',
                 '迁移前后使用同一真实数据对比截图、结构、查询结果和提交载荷。'
               ]
@@ -1318,7 +1411,9 @@ export default {
                 '数据权限由普通角色验证，所有 LIST_QUERY、LIST_COLUMN 和表单实体查询均执行 DataScopePlan。',
                 '按钮权限已授予角色，适用条件与后端操作校验一致。',
                 '流程绑定、节点表单和实体状态连线配置完整。',
-                '草稿预览、diff、发布、releases、activate 回滚和发布失败保持旧版本均已验证。',
+                'STANDARD/HOTFIX 预检、SAFE/REVIEW/BLOCKED 分类、权限拒绝、影响数量和 409 重新预检均已验证。',
+                'STANDARD activate、HOTFIX 逆序 rollback、列表全局 ACTIVE 立即生效和发布失败保持旧版本均已验证。',
+                '运行中流程应用有效 HOTFIX；已完成、已终止实例和历史审批回放仍使用原始钉定快照。',
                 '迁移重复执行结果幂等，legacyProps、初始 release、内容哈希和临时旧配置回退均已复核。'
               ]
             }

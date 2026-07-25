@@ -1,64 +1,65 @@
-# Role Permission Transfer Design QA
+# Role Permission Tree Transfer Design QA
 
 final result: passed
 
 ## Evidence
 
 - Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-5a18837d-a0da-466a-9f06-000d629e299c.png`
-- Implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-transfer.png`
-- Scrolled-state screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-transfer-scrolled.png`
-- Focused dialog screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-transfer-dialog.png`
-- Side-by-side comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-transfer-comparison.png`
+- Normalized source: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-source-normalized.png`
+- Implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-tree-transfer.png`
+- Scrolled-state screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-tree-transfer-scrolled.png`
+- Side-by-side comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/visual-acceptance/role-permission-tree-comparison.png`
 - Viewport: `1562 x 690` CSS px.
-- Source pixels: `3126 x 1380`; treated as an approximately 2x capture and normalized to `1562 x 690`.
-- Implementation pixels: `1562 x 690`; effective capture density 1x.
-- State: role management, first role's permission dialog open, `474 / 475` permissions assigned, both searches blank, lists at the top.
+- Source pixels: `3126 x 1380`, normalized to `1562 x 690`.
+- Implementation pixels: `1562 x 690`, capture density 1x.
+- State: role management, the first role's permission dialog open, `474 / 475` permissions assigned, both searches blank, both trees at the top.
+- Current sizing contract: dialog width `66.6667vw`, height `90vh`, top offset `5vh`, and maximum width `calc(100vw - 32px)`.
+- The screenshots document the verified dual-tree behavior before the final dialog sizing adjustment. The current sizing delta is verified from the deterministic viewport CSS, functional tests, and production build because the in-app preview browser was blocked on its network error page by browser security policy.
 
 ## Full-View Comparison
 
-The source shows the original narrow tree dialog extending below the viewport. The implementation intentionally replaces that structure with a centered `960 x 620` transfer dialog. The two panels, transfer controls, internal scroll regions, assignment count, and footer actions are all visible in the same `1562 x 690` viewport.
+The source establishes the existing Element Plus visual language and exposes the original problem: a narrow tree dialog extends below the viewport and hides its footer. The implementation changes the composition to a large centered permission dialog with two equal tree panels, centered transfer controls, fixed headers and footer, and independently scrollable tree bodies.
+
+At the verified `1562 x 690` viewport, the sizing contract resolves to approximately `1041.3px` wide and `621px` high, positioned `34.5px` from the top. The matching `5vh` top offset and `90vh` height leave `5vh` below the dialog, while the flex body gives remaining height to the two internally scrollable trees and keeps the action footer visible.
 
 ## Focused Comparison
 
-The focused dialog capture is sufficient to read the panel headers, search fields, permission paths, type tags, transfer buttons, assignment count, and footer actions. No additional crop was needed.
+The full-view comparison is also sufficient as the focused review because the panel titles, search inputs, hierarchy indentation, checkboxes, menu-type tags, transfer buttons, counts, and footer controls remain readable at the matched viewport. The scrolled-state capture verifies the long-tree behavior that cannot be judged from a static top position.
 
 ## Findings
 
 No actionable P0, P1, or P2 findings remain.
 
-- Fonts and typography: Element Plus and the application's existing Chinese font stack are preserved. Header, panel title, row label, type tag, and footer hierarchy are legible with no wrapping or overlap.
-- Spacing and layout rhythm: The dialog has a fixed total height, balanced two-column tracks, consistent 24px outer padding, and a footer contained within the dialog frame.
-- Colors and visual tokens: Existing Element Plus primary, neutral, warning, success, and info tokens are reused. Contrast and semantic type tags are consistent with the product.
-- Image quality and asset fidelity: This screen contains no product imagery or custom raster assets. Existing icon and control rendering remains crisp.
-- Copy and content: `未分配`, `已分配`, `搜索权限`, permission paths, type labels, assignment count, `取消`, and `确定` are accurate and concise.
+- Fonts and typography: the application's existing Element Plus Chinese font stack, weights, sizes, line heights, and zero letter spacing are preserved. Labels and tags remain legible without overlap.
+- Spacing and layout rhythm: the dialog uses two thirds of the viewport width and 90% of its height, both panels share equal width, the `80px` transfer-control column stays stable, and headers, search fields, tree bodies, panel footers, and dialog actions align consistently.
+- Colors and visual tokens: existing primary, neutral, warning, success, and info tokens are reused. The panel framing and disabled context nodes remain clear without introducing a competing palette.
+- Image quality and asset fidelity: the screen contains no product imagery. Existing framework icons and controls render crisply, with no substitute assets.
+- Copy and content: `未分配`, `已分配`, side-specific search placeholders, menu-type labels, assignment count, `取消`, and `确定` are accurate and concise.
 
 ## Interaction Verification
 
-- Scrolled the assigned list by `1200px`: list scroll changed while page scroll remained `0`; the footer and confirmation button stayed fixed.
-- Moved the only unassigned directory to the assigned panel: count changed from `474 / 475` to `475 / 475`, including hierarchy completion.
-- Filtered assigned permissions by `角色管理`: only `系统管理 / 角色管理` remained visible.
-- Closed and reopened after filtering: both search inputs reset to empty and the original `474 / 475` assignment state returned.
+- The assigned tree body measured `362px` high with a `17084px` scroll height at the `1562 x 690` viewport.
+- Scrolling the assigned tree to `1100px` left page scroll at `0`; the dialog footer stayed at `611px` and the confirmation button stayed inside the viewport at `658px`.
+- Searching the available tree for `角色管理` displayed the ancestor `系统管理` and the matching child `角色管理`.
+- Moving `角色管理` from left to right changed the assigned count from `1` to `3` and retained the `系统管理 > 角色管理` hierarchy.
+- Closing and reopening the dialog reset both search inputs to empty.
 - No save request was submitted during QA.
-- Browser console warnings/errors: none.
+- The final sizing change introduces no new interaction logic; `npm run test:functional` and `npm run build` both pass.
+- Current automated browser re-capture: unavailable because the in-app browser security policy blocked access after its local connection error page. No workaround or alternate browser surface was used.
 
 ## Comparison History
 
-### Iteration 1
+### Current Iteration
 
-- Earlier P2: At a 690px viewport height, the footer extended about 19px beyond the dialog frame.
-- Fix: Set a fixed total dialog height with a flexible, overflow-contained body.
-- Post-fix evidence: dialog bottom `654.5px`; footer bottom `638.5px`; confirm button bottom `622.5px`.
-
-### Iteration 2
-
-- Earlier P2: Closing and reopening retained the previous transfer search query.
-- Fix: Enabled `destroy-on-close` for the permission dialog.
-- Post-fix evidence: reopened search values were `["", ""]`, with `474` assigned items visible.
+- No P0, P1, or P2 issue was found in the centered `66.6667vw × 90vh` dual-tree implementation.
+- The earlier fixed-height flat transfer layout was replaced as requested; its previous footer and search-state findings are no longer applicable to the current component structure.
 
 ## Implementation Checklist
 
-- [x] Replace the permission tree with an unassigned/assigned transfer control.
-- [x] Preserve hierarchy context through full permission paths and type labels.
-- [x] Keep the dialog height fixed and lists independently scrollable.
-- [x] Keep footer actions visible at the tested desktop viewport.
-- [x] Verify transfer, search, cancel, reopen, and hierarchy behavior.
+- [x] Size the permission dialog to two thirds of the viewport width.
+- [x] Fix the dialog height at 90% of the viewport with 5% space above and below.
+- [x] Render both unassigned and assigned permissions as menu trees.
+- [x] Preserve ancestor context on both sides.
+- [x] Keep each long tree independently scrollable.
+- [x] Keep the bottom action bar visible at a `690px` viewport height.
+- [x] Verify tree search, selection, transfer, hierarchy preservation, cancel, and reopen behavior.

@@ -809,6 +809,8 @@ const handleCreate = async () => {
   isEdit.value = false
   dialogTitle.value = '新增数据'
   formLoading.value = true
+  resolvedForm.value = null
+  let formLoadFailed = false
   
   // 调用接口获取解析后的表单（流程节点表单或默认表单）
   try {
@@ -863,8 +865,8 @@ const handleCreate = async () => {
     }
   } catch (error) {
     console.error('获取表单失败:', error)
+    formLoadFailed = true
     ElMessage.error(error?.message || '获取表单失败')
-    // 失败时使用空表单
     formData.value = {
       entityCode: entityCode,
       title: '',
@@ -876,6 +878,8 @@ const handleCreate = async () => {
   } finally {
     formLoading.value = false
   }
+
+  if (formLoadFailed) return
 
   dialogVisible.value = true
   // 初始化联动状态

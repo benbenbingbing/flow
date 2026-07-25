@@ -1,8 +1,11 @@
 package com.workflow.service;
 
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import com.workflow.entity.ProcessNodeForm;
+import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import com.workflow.service.entity.EntityFormRuntimeService;
 import org.flowable.engine.RuntimeService;
@@ -59,7 +62,9 @@ class NodeFormSubmissionServiceTest {
                 eq("expense"), eq("data-1"),
                 eq("approve"),
                 org.mockito.ArgumentMatchers.anyMap(),
-                eq(executionContext)))
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class)))
                 .thenAnswer(invocation -> invocation.getArgument(6));
 
         Task task = task();
@@ -71,13 +76,16 @@ class NodeFormSubmissionServiceTest {
         nodeForm.setFormReleaseId("release-3");
         nodeForm.setFormReleaseVersion(3);
         nodeForm.setIsReadonly(0);
-        when(snapshotService.getNodeFormsByProcessDefinitionId(
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
                 "definition-1", "Task_Review"))
-                .thenReturn(List.of(nodeForm));
+                .thenReturn(published(nodeForm));
 
         EntityForm form = new EntityForm();
         form.setFields(List.of(field("amount", 0), field("lockedNote", 1)));
-        when(runtimeFormService.getByBinding(nodeForm))
+        when(runtimeFormService.getByBinding(
+                nodeForm,
+                "history-1",
+                UiRuntimePurpose.ACTIVE_TASK))
                 .thenReturn(form);
 
         service.applyEditableData(task, Map.of(
@@ -97,7 +105,9 @@ class NodeFormSubmissionServiceTest {
                         eq("data-1"),
                         eq("approve"),
                         org.mockito.ArgumentMatchers.anyMap(),
-                        eq(executionContext));
+                        eq(executionContext),
+                        org.mockito.ArgumentMatchers.any(
+                                UiRuntimeResolutionContext.class));
     }
 
     /** 测试全局只读节点拒绝所有提交变更：验证不触发数据更新、变量设置与表单提交 */
@@ -125,9 +135,9 @@ class NodeFormSubmissionServiceTest {
         ProcessNodeForm nodeForm = new ProcessNodeForm();
         nodeForm.setFormId("form-1");
         nodeForm.setIsReadonly(1);
-        when(snapshotService.getNodeFormsByProcessDefinitionId(
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
                 "definition-1", "Task_Review"))
-                .thenReturn(List.of(nodeForm));
+                .thenReturn(published(nodeForm));
 
         service.applyEditableData(task, Map.of("amount", 99));
 
@@ -141,7 +151,9 @@ class NodeFormSubmissionServiceTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.any());
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class));
     }
 
     /** 测试无法解析确切流程快照时 fail-closed：验证抛出 IllegalStateException 且不静默放行 */
@@ -166,7 +178,7 @@ class NodeFormSubmissionServiceTest {
         when(runtimeService.getVariable(
                 "instance-1",
                 "entityDataId")).thenReturn("data-1");
-        when(snapshotService.getNodeFormsByProcessDefinitionId(
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
                 "definition-1",
                 "Task_Review"))
                 .thenThrow(new IllegalStateException(
@@ -210,5 +222,14 @@ class NodeFormSubmissionServiceTest {
                 Map.of(
                         "taskId",
                         "task-1"));
+    }
+
+    private ProcessPublishedSnapshotService.PublishedNodeForms
+            published(ProcessNodeForm nodeForm) {
+        ProcessVersionHistory history = new ProcessVersionHistory();
+        history.setId("history-1");
+        return new ProcessPublishedSnapshotService.PublishedNodeForms(
+                history,
+                List.of(nodeForm));
     }
 }

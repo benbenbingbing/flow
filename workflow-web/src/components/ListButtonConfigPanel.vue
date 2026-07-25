@@ -19,77 +19,76 @@
     </div>
 
     <el-table :data="sortedButtons" size="small" border>
-      <el-table-column label="排序" width="80" align="center">
+      <el-table-column label="排序" width="76" align="center">
         <template #default="{ row }">
-          <el-input-number v-model="row.sort" :min="0" :max="999" controls-position="right" size="small" style="width: 70px" />
+          <el-input-number
+            v-model="row.sort"
+            :min="0"
+            :max="999"
+            controls-position="right"
+            size="small"
+            class="sort-input"
+          />
         </template>
       </el-table-column>
-      <el-table-column label="启用" width="60" align="center">
+      <el-table-column label="启用" width="58" align="center">
         <template #default="{ row }">
           <el-checkbox v-model="row.enabled" />
         </template>
       </el-table-column>
-      <el-table-column label="按钮名称" width="130">
+      <el-table-column label="按钮名称" min-width="126">
         <template #default="{ row }">
           <el-input v-model="row.label" size="small" placeholder="按钮名称" />
         </template>
       </el-table-column>
-      <el-table-column label="类型" width="110">
+      <el-table-column label="执行方式" min-width="280">
         <template #default="{ row }">
-          <el-select v-model="row.type" size="small" style="width: 100px">
-            <el-option label="内置" value="built-in" />
-            <el-option label="自定义" value="custom" />
-          </el-select>
-        </template>
-      </el-table-column>
-      <el-table-column label="内置类型 / 执行器" width="180">
-        <template #default="{ row }">
-          <el-select v-if="row.type === 'built-in'" v-model="row.key" size="small" style="width: 150px">
-            <el-option v-for="opt in builtinOptions" :key="opt.key" :label="opt.label" :value="opt.key" />
-          </el-select>
-          <template v-else-if="row.customMode === 'open-list'">
-            <el-button size="small" type="primary" text @click="configureOpenList(row)">
+          <div class="execution-config">
+            <div class="execution-config__main">
+              <el-select v-model="row.type" size="small" class="execution-config__type">
+                <el-option label="内置" value="built-in" />
+                <el-option label="自定义" value="custom" />
+              </el-select>
+              <el-select
+                v-if="row.type === 'built-in'"
+                v-model="row.key"
+                size="small"
+                class="execution-config__choice"
+              >
+                <el-option v-for="opt in builtinOptions" :key="opt.key" :label="opt.label" :value="opt.key" />
+              </el-select>
+              <el-select
+                v-else
+                v-model="row.customMode"
+                size="small"
+                class="execution-config__choice"
+              >
+                <el-option label="函数" value="handler" />
+                <el-option label="组件" value="component" />
+                <el-option label="打开列表" value="open-list" />
+              </el-select>
+            </div>
+            <el-button
+              v-if="row.type === 'custom' && row.customMode === 'open-list'"
+              size="small"
+              type="primary"
+              text
+              class="execution-config__detail execution-config__open-list"
+              @click="configureOpenList(row)"
+            >
               {{ openListSummary(row) }}
             </el-button>
-          </template>
-          <template v-else>
-            <el-input v-model="row.customHandler" size="small" placeholder="执行器/组件名" style="width: 150px" />
-          </template>
+            <el-input
+              v-else-if="row.type === 'custom'"
+              v-model="row.customHandler"
+              size="small"
+              class="execution-config__detail"
+              :placeholder="row.customMode === 'component' ? '组件名' : '执行器名称'"
+            />
+          </div>
         </template>
       </el-table-column>
-      <el-table-column label="自定义模式" width="120">
-        <template #default="{ row }">
-          <el-select v-if="row.type === 'custom'" v-model="row.customMode" size="small" style="width: 110px">
-            <el-option label="函数" value="handler" />
-            <el-option label="组件" value="component" />
-            <el-option label="打开列表" value="open-list" />
-          </el-select>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="图标" width="110">
-        <template #default="{ row }">
-          <el-input v-model="row.icon" size="small" placeholder="Element 图标名" />
-        </template>
-      </el-table-column>
-      <el-table-column label="样式" width="110">
-        <template #default="{ row }">
-          <el-select v-model="row.buttonType" size="small" style="width: 100px">
-            <el-option label="默认" value="default" />
-            <el-option label="主要" value="primary" />
-            <el-option label="成功" value="success" />
-            <el-option label="警告" value="warning" />
-            <el-option label="危险" value="danger" />
-            <el-option label="信息" value="info" />
-          </el-select>
-        </template>
-      </el-table-column>
-      <el-table-column label="Link" width="70" align="center" v-if="type === 'row'">
-        <template #default="{ row }">
-          <el-checkbox v-model="row.link" />
-        </template>
-      </el-table-column>
-      <el-table-column label="权限码" min-width="180">
+      <el-table-column label="权限码" min-width="190">
         <template #default="{ row }">
           <el-select
             v-model="row.perm"
@@ -131,37 +130,9 @@
           </el-button>
         </template>
       </el-table-column>
-      <el-table-column label="模板" min-width="200">
+      <el-table-column label="操作" width="174" align="center" fixed="right">
         <template #default="{ row }">
-          <el-select
-            v-model="row.templateId"
-            clearable
-            filterable
-            placeholder="复制后独立"
-            size="small"
-            style="width: 100%"
-            @change="handleTemplateChange(row, $event)"
-          >
-            <el-option
-              v-for="template in templates"
-              :key="template.id"
-              :label="`${template.templateName} (v${template.currentVersion})`"
-              :value="template.id"
-            />
-          </el-select>
-          <el-button
-            v-if="row.templateId"
-            link
-            type="primary"
-            size="small"
-            @click="$emit('upgrade-template', row)"
-          >
-            升级 v{{ row.templateVersion || 1 }}
-          </el-button>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="110" align="center" fixed="right">
-        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click="openAdvancedSettings(row)">更多</el-button>
           <el-button
             link
             type="success"
@@ -180,6 +151,66 @@
       :statuses="statuses"
       @save="saveRule"
     />
+
+    <el-dialog v-model="advancedDialogVisible" title="按钮更多设置" width="560px">
+      <el-form v-if="advancedButton" label-width="100px" class="advanced-settings-form">
+        <el-form-item label="图标">
+          <el-input v-model="advancedButton.icon" placeholder="Element Plus 图标名" />
+        </el-form-item>
+        <el-form-item label="按钮样式">
+          <el-select v-model="advancedButton.buttonType" style="width: 100%">
+            <el-option label="默认" value="default" />
+            <el-option label="主要" value="primary" />
+            <el-option label="成功" value="success" />
+            <el-option label="警告" value="warning" />
+            <el-option label="危险" value="danger" />
+            <el-option label="信息" value="info" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="type === 'row'" label="Link 样式">
+          <el-switch v-model="advancedButton.link" />
+          <span class="field-help">开启后以文字链接样式显示行按钮</span>
+        </el-form-item>
+        <el-form-item label="组件模板">
+          <div class="template-settings">
+            <el-select
+              v-model="advancedButton.templateId"
+              clearable
+              filterable
+              placeholder="复制后独立"
+              style="width: 100%"
+              @change="handleTemplateChange(advancedButton, $event)"
+            >
+              <el-option
+                v-for="template in templates"
+                :key="template.id"
+                :label="`${template.templateName} (v${template.currentVersion})`"
+                :value="template.id"
+              />
+            </el-select>
+            <div v-if="advancedButton.templateId" class="template-version">
+              <span>当前锁定 v{{ advancedButton.templateVersion || 1 }}</span>
+              <el-button
+                link
+                type="primary"
+                @click="$emit('upgrade-template', advancedButton)"
+              >
+                检查并升级版本
+              </el-button>
+            </div>
+          </div>
+        </el-form-item>
+        <el-alert
+          title="这里直接编辑当前按钮草稿，关闭弹窗不会丢失修改；仍需点击表格中的“保存”提交。"
+          type="info"
+          :closable="false"
+          show-icon
+        />
+      </el-form>
+      <template #footer>
+        <el-button type="primary" @click="advancedDialogVisible = false">完成</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="openListDialogVisible" title="打开实体列表" width="620px">
       <el-form label-width="110px">
@@ -225,12 +256,20 @@
         <el-form-item label="标题">
           <el-input v-model="openListForm.openListTitle" placeholder="留空使用“选择数据”" />
         </el-form-item>
-        <el-form-item label="上下文关系">
-          <el-input v-model="openListForm.relationKey" placeholder="可选：服务端注册的 relationKey" />
-        </el-form-item>
-        <el-form-item label="选择回调">
-          <el-input v-model="openListForm.selectionHandler" placeholder="可选：已注册的前端选择结果处理器" />
-        </el-form-item>
+        <SettingsSection
+          title="高级映射"
+          description="仅在需要可信上下文关系或自定义选择结果处理时配置"
+        >
+          <template #summary>
+            {{ openListForm.relationKey || openListForm.selectionHandler ? '已配置' : '未配置' }}
+          </template>
+          <el-form-item label="上下文关系">
+            <el-input v-model="openListForm.relationKey" placeholder="可选：服务端注册的 relationKey" />
+          </el-form-item>
+          <el-form-item label="选择回调">
+            <el-input v-model="openListForm.selectionHandler" placeholder="可选：已注册的前端选择结果处理器" />
+          </el-form-item>
+        </SettingsSection>
         <el-alert
           type="info"
           :closable="false"
@@ -254,6 +293,7 @@ import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
+import SettingsSection from '@/components/SettingsSection.vue'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
 import { safeParseConfig } from '@/shared/config-runtime'
 
@@ -299,6 +339,8 @@ const sortedButtons = computed(() => {
 const permissionOptions = ref([])
 const statuses = ref([])
 const ruleEditorRef = ref()
+const advancedDialogVisible = ref(false)
+const advancedButton = ref(null)
 const openListDialogVisible = ref(false)
 const openListTargetButton = ref(null)
 const entityOptions = ref([])
@@ -353,6 +395,11 @@ function addCustom() {
     customHandler: '',
     link: props.type === 'row'
   })
+}
+
+function openAdvancedSettings(row) {
+  advancedButton.value = row
+  advancedDialogVisible.value = true
 }
 
 async function handleTemplateChange(row, templateId) {
@@ -590,6 +637,66 @@ function ruleSummary(row) {
     margin-bottom: 12px;
   }
 }
+
+.sort-input {
+  width: 66px;
+}
+
+.execution-config {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.execution-config__main {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+}
+
+.execution-config__type {
+  width: 82px;
+  flex: 0 0 82px;
+}
+
+.execution-config__choice {
+  min-width: 0;
+  flex: 1;
+}
+
+.execution-config__detail {
+  width: 100%;
+}
+
+.execution-config__open-list {
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.advanced-settings-form {
+  padding-right: 12px;
+}
+
+.field-help {
+  margin-left: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.template-settings {
+  width: 100%;
+}
+
+.template-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
 .permission-option {
   display: flex;
   flex-direction: column;

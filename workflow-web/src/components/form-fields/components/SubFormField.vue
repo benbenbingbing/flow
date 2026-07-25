@@ -15,7 +15,13 @@
           :model-value="row"
           :readonly="isDisabled"
           :mode="context.mode || (isDisabled ? 'view' : 'edit')"
-          :context="{ ...context, parentField: field, subFormRowIndex: index }"
+          :context="{
+            ...context,
+            releaseResolutionToken: childFormDefinition?.releaseResolutionToken
+              || context.releaseResolutionToken,
+            parentField: field,
+            subFormRowIndex: index
+          }"
           :data-source-runtime="dataSourceRuntime"
           @update:model-value="replaceNestedRow(row, $event)"
         />
@@ -110,7 +116,8 @@ watch(
         const release = await getFormRuntimeRelease(
           formId,
           releaseId,
-          releaseVersion
+          releaseVersion,
+          props.context?.releaseResolutionToken
         )
         if (!releaseId) {
           console.warn(
@@ -127,6 +134,8 @@ watch(
           id: formId,
           entityId: refEntityId
         }
+        childFormDefinition.value.releaseResolutionToken =
+          release.releaseResolutionToken || null
         childReleaseIdentity.value = `${formId}:${release.id || releaseId || 'active'}:${release.version || releaseVersion || 'latest'}`
         const layout = snapshot?.form?.layoutType
         if (layout) refFormLayoutType.value = layout

@@ -54,6 +54,7 @@ import {
 } from '@/shared/entity-design'
 import {
   applyPermissionTransferChange,
+  buildPermissionTreeView,
   flattenPermissionMenuTree,
   sanitizePermissionKeys
 } from '@/shared/role-permission-transfer'
@@ -100,6 +101,53 @@ assert.deepEqual(
   applyPermissionTransferChange(['system', 'user', 'role', 'role-edit'], 'left', ['role'], permissionOptions),
   ['system', 'user']
 )
+const availablePermissionTree = buildPermissionTreeView([
+  {
+    id: 'system',
+    menuName: '系统管理',
+    menuType: 'M',
+    children: [
+      { id: 'user', menuName: '用户管理', menuType: 'C', children: [] },
+      {
+        id: 'role',
+        menuName: '角色管理',
+        menuType: 'C',
+        children: [
+          { id: 'role-edit', menuName: '编辑角色', menuType: 'F', perm: 'system:role:edit' }
+        ]
+      }
+    ]
+  }
+], ['system', 'role', 'role-edit'], 'available')
+assert.equal(availablePermissionTree.length, 1)
+assert.equal(availablePermissionTree[0].contextOnly, true)
+assert.equal(availablePermissionTree[0].children.length, 1)
+assert.equal(availablePermissionTree[0].children[0].id, 'user')
+assert.equal(availablePermissionTree[0].children[0].transferDisabled, false)
+
+const assignedPermissionTree = buildPermissionTreeView([
+  {
+    id: 'system',
+    menuName: '系统管理',
+    menuType: 'M',
+    children: [
+      { id: 'user', menuName: '用户管理', menuType: 'C', children: [] },
+      {
+        id: 'role',
+        menuName: '角色管理',
+        menuType: 'C',
+        children: [
+          { id: 'role-edit', menuName: '编辑角色', menuType: 'F', perm: 'system:role:edit' }
+        ]
+      }
+    ]
+  }
+], ['role-edit'], 'assigned')
+assert.equal(assignedPermissionTree[0].id, 'system')
+assert.equal(assignedPermissionTree[0].transferDisabled, true)
+assert.equal(assignedPermissionTree[0].children[0].id, 'role')
+assert.equal(assignedPermissionTree[0].children[0].contextOnly, true)
+assert.equal(assignedPermissionTree[0].children[0].children[0].fullPath, '系统管理 / 角色管理 / 编辑角色')
 
 registerCustomListComponent('functionalList', DemoComponent, {
   label: '功能列表',
@@ -277,7 +325,7 @@ const apiExpectations = {
   'src/api/processTask.js': ['getTodoList', 'getDoneList', 'getStatistics', 'completeTask', 'getTaskOperations', 'previewAddSign', 'addSignTask', 'cancelAddSign', 'ccTask', 'getMyCcList', 'markCcRead', 'withdrawProcess', 'terminateProcess'],
   'src/api/system/menu.ts': ['getMenuTree', 'getSidebarMenuTree', 'createMenu', 'updateMenu', 'deleteMenu', 'updateSort'],
   'src/api/system/user.ts': ['getUserList', 'createUser', 'updateUser', 'deleteUser', 'resetPassword'],
-  'src/api/system/role.ts': ['getRoleList', 'createRole', 'updateRole', 'deleteRole', 'saveRoleMenus'],
+  'src/api/system/role.ts': ['getRoleList', 'createRole', 'updateRole', 'deleteRole', 'getRoleUsers', 'saveRoleMenus'],
   'src/api/system/group.ts': ['getGroupList', 'createGroup', 'updateGroup', 'deleteGroup', 'saveGroupUsers'],
   'src/api/system/dict.ts': ['getDictList', 'createDict', 'updateDict', 'deleteDict']
 }

@@ -133,4 +133,24 @@ public class EntityForm {
      */
     @TableField(exist = false)
     private EntityDefinition entity;
+
+    /** 流程发布时原始钉定的表单发布ID */
+    @TableField(exist = false)
+    private String runtimeReleaseId;
+
+    /** 流程发布时原始钉定的表单版本号 */
+    @TableField(exist = false)
+    private Integer runtimeReleaseVersion;
+
+    /** 实际生效的热修复发布ID */
+    @TableField(exist = false)
+    private String effectiveReleaseId;
+
+    /** 是否应用了兼容热修复 */
+    @TableField(exist = false)
+    private Boolean hotfixApplied;
+
+    /** 嵌套表单继承解析上下文的短期签名令牌 */
+    @TableField(exist = false)
+    private String releaseResolutionToken;
 }

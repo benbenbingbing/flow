@@ -1,5 +1,7 @@
 package com.workflow.service;
 
+import com.workflow.common.BusinessForbiddenException;
+import com.workflow.common.PermissionUtil;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.dto.EntityListConfigDTO;
@@ -30,6 +32,29 @@ public class UiConfigurationAccessService {
     public void requireGlobalConfigurationAccess() {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护全局 UI 扩展、数据源和组件模板");
+    }
+
+    /**
+     * 校验当前用户可执行 UI 配置热修复。
+     *
+     * @param overrideRisk 是否需要覆盖 REVIEW 风险
+     */
+    public void requireHotfixAccess(boolean overrideRisk) {
+        if (currentUserRoleService.isSuperAdmin()) {
+            return;
+        }
+        if (!PermissionUtil.hasPermission("entity:ui-config:hotfix")) {
+            throw new BusinessForbiddenException(
+                    "UI_HOTFIX_PERMISSION_REQUIRED",
+                    "没有 UI 配置兼容热修复权限");
+        }
+        if (overrideRisk
+                && !PermissionUtil.hasPermission(
+                        "entity:ui-config:hotfix:override")) {
+            throw new BusinessForbiddenException(
+                    "UI_HOTFIX_OVERRIDE_PERMISSION_REQUIRED",
+                    "没有 UI 配置热修复风险覆盖权限");
+        }
     }
 
     /**

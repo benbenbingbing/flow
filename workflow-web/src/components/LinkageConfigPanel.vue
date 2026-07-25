@@ -11,104 +11,303 @@
     </div>
     
     <el-tabs v-model="activeTab" type="border-card" class="linkage-tabs">
-      <!-- 显隐控制 -->
-      <el-tab-pane label="显隐控制" name="visibility">
+      <el-tab-pane label="显示与状态" name="display-state">
         <div class="tab-content">
-          <el-alert type="info" :closable="false" class="tab-tip">
-            根据条件动态显示或隐藏此字段
-          </el-alert>
-          
-          <div class="condition-builder">
-            <div class="condition-header">
-              <span>当满足以下条件时显示：</span>
-              <el-switch v-model="config.visibilityEnabled" />
-            </div>
-            
-            <template v-if="config.visibilityEnabled">
-              <div class="condition-list">
-                <div 
-                  v-for="(condition, index) in visibilityConditions" 
-                  :key="index"
-                  class="condition-item"
-                >
-                  <el-select v-model="condition.field" placeholder="选择字段" size="small" style="width: 120px">
-                    <el-option
-                      v-for="f in availableFields"
-                      :key="f.fieldCode || f.fieldKey"
-                      :label="f.fieldName"
-                      :value="f.fieldCode || f.fieldKey"
-                      :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
+          <SettingsSection
+            title="显示条件"
+            description="根据其他字段动态控制当前字段是否显示"
+            :collapsible="false"
+            primary
+          >
+            <el-alert type="info" :closable="false" class="tab-tip">
+              根据条件动态显示或隐藏此字段
+            </el-alert>
+
+            <div class="condition-builder">
+              <div class="condition-header">
+                <span>当满足以下条件时显示：</span>
+                <el-switch v-model="config.visibilityEnabled" />
+              </div>
+
+              <template v-if="config.visibilityEnabled">
+                <div class="condition-list">
+                  <div
+                    v-for="(condition, index) in visibilityConditions"
+                    :key="index"
+                    class="condition-item"
+                  >
+                    <el-select v-model="condition.field" placeholder="选择字段" size="small" class="condition-field">
+                      <el-option
+                        v-for="f in availableFields"
+                        :key="f.fieldCode || f.fieldKey"
+                        :label="f.fieldName"
+                        :value="f.fieldCode || f.fieldKey"
+                        :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
+                      />
+                    </el-select>
+
+                    <el-select v-model="condition.operator" placeholder="操作符" size="small" class="condition-operator">
+                      <el-option label="等于" value="==" />
+                      <el-option label="不等于" value="!=" />
+                      <el-option label="大于" value=">" />
+                      <el-option label="小于" value="<" />
+                      <el-option label="大于等于" value=">=" />
+                      <el-option label="小于等于" value="<=" />
+                      <el-option label="包含" value="contains" />
+                      <el-option label="为空" value="empty" />
+                      <el-option label="不为空" value="notEmpty" />
+                    </el-select>
+
+                    <el-input
+                      v-if="!['empty', 'notEmpty'].includes(condition.operator)"
+                      v-model="condition.value"
+                      placeholder="值"
+                      size="small"
+                      class="condition-value"
                     />
-                  </el-select>
-                  
-                  <el-select v-model="condition.operator" placeholder="操作符" size="small" style="width: 100px">
-                    <el-option label="等于" value="==" />
-                    <el-option label="不等于" value="!=" />
-                    <el-option label="大于" value=">" />
-                    <el-option label="小于" value="<" />
-                    <el-option label="大于等于" value=">=" />
-                    <el-option label="小于等于" value="<=" />
-                    <el-option label="包含" value="contains" />
-                    <el-option label="为空" value="empty" />
-                    <el-option label="不为空" value="notEmpty" />
-                  </el-select>
-                  
-                  <el-input 
-                    v-if="!['empty', 'notEmpty'].includes(condition.operator)"
-                    v-model="condition.value" 
-                    placeholder="值" 
-                    size="small" 
-                    style="width: 100px"
-                  />
-                  
-                  <el-button type="danger" size="small" text @click="removeVisibilityCondition(index)">
-                    <el-icon><Delete /></el-icon>
-                  </el-button>
+
+                    <el-button type="danger" size="small" text @click="removeVisibilityCondition(index)">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </div>
                 </div>
-              </div>
-              
-              <el-button type="primary" size="small" text @click="addVisibilityCondition">
-                <el-icon><Plus /></el-icon> 添加条件
-              </el-button>
-              
-              <div class="logic-selector">
-                <span>条件组合方式：</span>
-                <el-radio-group v-model="config.visibilityLogic" size="small">
-                  <el-radio-button label="and">全部满足</el-radio-button>
-                  <el-radio-button label="or">任一满足</el-radio-button>
-                </el-radio-group>
-              </div>
-            </template>
-          </div>
+
+                <el-button type="primary" size="small" text @click="addVisibilityCondition">
+                  <el-icon><Plus /></el-icon> 添加条件
+                </el-button>
+
+                <div class="logic-selector">
+                  <span>条件组合方式：</span>
+                  <el-radio-group v-model="config.visibilityLogic" size="small">
+                    <el-radio-button label="and">全部满足</el-radio-button>
+                    <el-radio-button label="or">任一满足</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </template>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="禁用与必填"
+            description="根据条件切换可编辑状态和必填要求"
+            :default-expanded="hasStateLinkage"
+          >
+            <el-form label-width="100px" size="small">
+              <el-form-item label="禁用条件">
+                <el-switch v-model="config.disabledEnabled" />
+              </el-form-item>
+
+              <el-form-item v-if="config.disabledEnabled" label="条件表达式">
+                <el-input
+                  v-model="config.disabledCondition"
+                  placeholder="如：${status} == 'locked'"
+                />
+              </el-form-item>
+
+              <el-form-item label="必填条件">
+                <el-switch v-model="config.requiredEnabled" />
+              </el-form-item>
+
+              <el-form-item v-if="config.requiredEnabled" label="条件表达式">
+                <el-input
+                  v-model="config.requiredCondition"
+                  placeholder="如：${type} == 'urgent'"
+                />
+              </el-form-item>
+            </el-form>
+          </SettingsSection>
         </div>
       </el-tab-pane>
-      
-      <!-- 值联动 -->
-      <el-tab-pane label="值联动" name="value">
+
+      <el-tab-pane label="值与计算" name="value-calculation">
         <div class="tab-content">
-          <el-alert type="info" :closable="false" class="tab-tip">
-            根据其他字段的值自动填充此字段
-          </el-alert>
-          
-          <div class="value-linkage-builder">
-            <el-form label-width="100px" size="small">
-              <el-form-item label="启用值联动">
-                <el-switch v-model="config.valueLinkageEnabled" />
-              </el-form-item>
-              
-              <template v-if="config.valueLinkageEnabled">
-                <el-form-item label="数据来源">
-                  <el-radio-group v-model="config.valueSourceType">
-                    <el-radio label="field">字段值</el-radio>
-                    <el-radio label="api">接口查询</el-radio>
-                    <el-radio label="formula">计算公式</el-radio>
-                  </el-radio-group>
+          <SettingsSection
+            title="值联动"
+            description="从字段映射、受限公式或历史接口配置生成当前字段值"
+            :collapsible="false"
+            primary
+          >
+            <el-alert type="info" :closable="false" class="tab-tip">
+              根据其他字段的值自动填充此字段
+            </el-alert>
+
+            <div class="value-linkage-builder">
+              <el-form label-width="100px" size="small">
+                <el-form-item label="启用值联动">
+                  <el-switch v-model="config.valueLinkageEnabled" />
                 </el-form-item>
-                
-                <!-- 字段值来源 -->
-                <template v-if="config.valueSourceType === 'field'">
-                  <el-form-item label="源字段">
-                    <el-select v-model="config.sourceField" placeholder="选择源字段" style="width: 100%">
+
+                <template v-if="config.valueLinkageEnabled">
+                  <el-form-item label="数据来源">
+                    <el-radio-group v-model="config.valueSourceType" class="source-type-group">
+                      <el-radio label="field">字段值</el-radio>
+                      <el-radio label="formula">计算公式</el-radio>
+                      <el-radio label="api">历史接口（高级）</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+
+                  <template v-if="config.valueSourceType === 'field'">
+                    <el-form-item label="源字段">
+                      <el-select v-model="config.sourceField" placeholder="选择源字段" style="width: 100%">
+                        <el-option
+                          v-for="f in availableFields"
+                          :key="f.fieldCode || f.fieldKey"
+                          :label="f.fieldName"
+                          :value="f.fieldCode || f.fieldKey"
+                          :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
+                        />
+                      </el-select>
+                    </el-form-item>
+
+                    <el-alert type="info" :closable="false" size="small" style="margin-bottom: 8px">
+                      当<b>源字段</b>的值等于<b>源值</b>时，当前字段自动填充为<b>目标值</b>
+                    </el-alert>
+
+                    <el-form-item label="映射规则">
+                      <div class="mapping-rules">
+                        <div v-for="(rule, index) in valueMappingRules" :key="index" class="mapping-item">
+                          <el-input v-model="rule.sourceValue" placeholder="源字段的值" size="small" />
+                          <span class="arrow">→</span>
+                          <el-input v-model="rule.targetValue" placeholder="当前字段显示的值" size="small" />
+
+                          <el-button type="danger" size="small" text @click="removeValueMapping(index)">
+                            <el-icon><Delete /></el-icon>
+                          </el-button>
+                        </div>
+
+                        <el-button type="primary" size="small" text @click="addValueMapping">
+                          <el-icon><Plus /></el-icon> 添加映射
+                        </el-button>
+                      </div>
+                    </el-form-item>
+                  </template>
+
+                  <template v-if="config.valueSourceType === 'formula'">
+                    <el-form-item label="计算公式">
+                      <el-input
+                        v-model="config.valueFormula"
+                        type="textarea"
+                        :rows="3"
+                        placeholder="如：${amount} * ${price} * ${discount}"
+                      />
+                      <div class="formula-help">
+                        <p>支持的运算符：+ - * / ( )</p>
+                        <p>使用 ${字段名} 引用字段值</p>
+                      </div>
+                    </el-form-item>
+                  </template>
+
+                  <template v-if="config.valueSourceType === 'api'">
+                    <el-alert
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                      class="controlled-source-tip"
+                      title="生产环境请使用受控 Provider / Connector"
+                      description="以下字段仅保留历史配置兼容。生产环境应从统一数据源目录选择 Provider 或 Connector，并由平台统一处理凭据、权限、超时与审计；不建议新增任意接口地址。"
+                    />
+
+                    <SettingsSection
+                      title="受控数据源 / 高级兼容"
+                      description="维护历史 apiUrl、apiParams、apiResultField，不改变原保存字段"
+                      :default-expanded="false"
+                      class="legacy-api-section"
+                    >
+                      <el-form-item label="接口地址">
+                        <el-input
+                          v-model="config.apiUrl"
+                          placeholder="历史兼容地址，如：/api/region/getByParentId"
+                        />
+                      </el-form-item>
+
+                      <el-form-item label="请求参数">
+                        <el-input
+                          v-model="config.apiParams"
+                          type="textarea"
+                          :rows="2"
+                          placeholder='{"parentId": "${sourceField}"}'
+                        />
+                      </el-form-item>
+
+                      <el-form-item label="结果字段">
+                        <el-input v-model="config.apiResultField" placeholder="如：data.name" />
+                      </el-form-item>
+                    </SettingsSection>
+                  </template>
+                </template>
+              </el-form>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="计算字段"
+            description="按公式持续计算字段值，并控制精度与可编辑性"
+            :default-expanded="config.calculationEnabled"
+          >
+            <el-alert type="info" :closable="false" class="tab-tip">
+              根据公式自动计算字段值（如：数量 * 单价 = 总价）
+            </el-alert>
+
+            <div class="calculation-builder">
+              <el-form label-width="100px" size="small">
+                <el-form-item label="启用计算">
+                  <el-switch v-model="config.calculationEnabled" />
+                </el-form-item>
+
+                <template v-if="config.calculationEnabled">
+                  <el-form-item label="计算公式">
+                    <el-input
+                      v-model="config.calculationFormula"
+                      type="textarea"
+                      :rows="3"
+                      placeholder="如：${quantity} * ${price} * (1 - ${discount})"
+                    />
+                  </el-form-item>
+
+                  <el-form-item label="计算精度">
+                    <el-input-number v-model="config.calculationPrecision" :min="0" :max="10" />
+                    <span class="unit">位小数</span>
+                  </el-form-item>
+
+                  <el-form-item label="可编辑">
+                    <el-switch v-model="config.calculationEditable" />
+                    <span class="hint">关闭后用户无法修改计算结果</span>
+                  </el-form-item>
+
+                  <div v-if="config.calculationFormula" class="formula-preview">
+                    <div class="preview-title">公式预览</div>
+                    <div class="preview-content">
+                      <code>{{ formatFormula(config.calculationFormula) }}</code>
+                    </div>
+                  </div>
+                </template>
+              </el-form>
+            </div>
+          </SettingsSection>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="选项" name="options">
+        <div class="tab-content">
+          <SettingsSection
+            title="选项联动"
+            description="根据依赖字段动态过滤当前字段可选项"
+            :collapsible="false"
+            primary
+          >
+            <el-alert type="info" :closable="false" class="tab-tip">
+              根据其他字段的值动态过滤下拉选项
+            </el-alert>
+
+            <div class="options-linkage-builder">
+              <el-form label-width="100px" size="small">
+                <el-form-item label="启用选项联动">
+                  <el-switch v-model="config.optionsLinkageEnabled" />
+                </el-form-item>
+
+                <template v-if="config.optionsLinkageEnabled">
+                  <el-form-item label="依赖字段">
+                    <el-select v-model="config.optionsDependField" placeholder="选择依赖字段" style="width: 100%">
                       <el-option
                         v-for="f in availableFields"
                         :key="f.fieldCode || f.fieldKey"
@@ -118,211 +317,44 @@
                       />
                     </el-select>
                   </el-form-item>
-                  
-                  <el-alert type="info" :closable="false" size="small" style="margin-bottom: 8px">
-                    当<b>源字段</b>的值等于<b>源值</b>时，当前字段自动填充为<b>目标值</b>
-                  </el-alert>
 
-                  <el-form-item label="映射规则">
-                    <div class="mapping-rules">
-                      <div v-for="(rule, index) in valueMappingRules" :key="index" class="mapping-item">
-                        <el-input v-model="rule.sourceValue" placeholder="源字段的值" size="small" style="width: 120px" />
-                        <span class="arrow">→</span>
-                        <el-input v-model="rule.targetValue" placeholder="当前字段显示的值" size="small" style="width: 140px" />
+                  <el-form-item label="选项过滤规则">
+                    <div class="filter-rules">
+                      <div v-for="(rule, index) in optionsFilterRules" :key="index" class="filter-item">
+                        <div class="filter-header">
+                          <span>当 {{ config.optionsDependField }} =</span>
+                          <el-input v-model="rule.dependValue" placeholder="值" size="small" class="filter-depend-value" />
+                          <span>时显示：</span>
 
-                        <el-button type="danger" size="small" text @click="removeValueMapping(index)">
-                          <el-icon><Delete /></el-icon>
-                        </el-button>
+                          <el-button type="danger" size="small" text @click="removeFilterRule(index)">
+                            <el-icon><Delete /></el-icon>
+                          </el-button>
+                        </div>
+
+                        <el-select
+                          v-model="rule.allowedOptions"
+                          multiple
+                          placeholder="选择要显示的选项"
+                          style="width: 100%"
+                        >
+                          <el-option
+                            v-for="opt in currentFieldOptions"
+                            :key="opt.value"
+                            :label="opt.label"
+                            :value="opt.value"
+                          />
+                        </el-select>
                       </div>
 
-                      <el-button type="primary" size="small" text @click="addValueMapping">
-                        <el-icon><Plus /></el-icon> 添加映射
+                      <el-button type="primary" size="small" text @click="addFilterRule">
+                        <el-icon><Plus /></el-icon> 添加过滤规则
                       </el-button>
                     </div>
                   </el-form-item>
                 </template>
-                
-                <!-- 接口查询来源 -->
-                <template v-if="config.valueSourceType === 'api'">
-                  <el-form-item label="接口地址">
-                    <el-input v-model="config.apiUrl" placeholder="如：/api/region/getByParentId" />
-                  </el-form-item>
-                  
-                  <el-form-item label="请求参数">
-                    <el-input 
-                      v-model="config.apiParams" 
-                      type="textarea" 
-                      :rows="2"
-                      placeholder='{"parentId": "${sourceField}"}' 
-                    />
-                  </el-form-item>
-                  
-                  <el-form-item label="结果字段">
-                    <el-input v-model="config.apiResultField" placeholder="如：data.name" />
-                  </el-form-item>
-                </template>
-                
-                <!-- 计算公式来源 -->
-                <template v-if="config.valueSourceType === 'formula'">
-                  <el-form-item label="计算公式">
-                    <el-input 
-                      v-model="config.valueFormula" 
-                      type="textarea" 
-                      :rows="3"
-                      placeholder="如：${amount} * ${price} * ${discount}"
-                    />
-                    <div class="formula-help">
-                      <p>支持的运算符：+ - * / ( )</p>
-                      <p>使用 ${字段名} 引用字段值</p>
-                    </div>
-                  </el-form-item>
-                </template>
-              </template>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-      
-      <!-- 选项联动 -->
-      <el-tab-pane label="选项联动" name="options">
-        <div class="tab-content">
-          <el-alert type="info" :closable="false" class="tab-tip">
-            根据其他字段的值动态过滤下拉选项
-          </el-alert>
-          
-          <div class="options-linkage-builder">
-            <el-form label-width="100px" size="small">
-              <el-form-item label="启用选项联动">
-                <el-switch v-model="config.optionsLinkageEnabled" />
-              </el-form-item>
-              
-              <template v-if="config.optionsLinkageEnabled">
-                <el-form-item label="依赖字段">
-                  <el-select v-model="config.optionsDependField" placeholder="选择依赖字段" style="width: 100%">
-                    <el-option
-                      v-for="f in availableFields"
-                      :key="f.fieldCode || f.fieldKey"
-                      :label="f.fieldName"
-                      :value="f.fieldCode || f.fieldKey"
-                      :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
-                    />
-                  </el-select>
-                </el-form-item>
-                
-                <el-form-item label="选项过滤规则">
-                  <div class="filter-rules">
-                    <div v-for="(rule, index) in optionsFilterRules" :key="index" class="filter-item">
-                      <div class="filter-header">
-                        <span>当 {{ config.optionsDependField }} =</span>
-                        <el-input v-model="rule.dependValue" placeholder="值" size="small" style="width: 100px" />
-                        <span>时显示：</span>
-                        
-                        <el-button type="danger" size="small" text @click="removeFilterRule(index)">
-                          <el-icon><Delete /></el-icon>
-                        </el-button>
-                      </div>
-                      
-                      <el-select 
-                        v-model="rule.allowedOptions" 
-                        multiple 
-                        placeholder="选择要显示的选项" 
-                        style="width: 100%"
-                      >
-                        <el-option 
-                          v-for="opt in currentFieldOptions" 
-                          :key="opt.value" 
-                          :label="opt.label" 
-                          :value="opt.value"
-                        />
-                      </el-select>
-                    </div>
-                    
-                    <el-button type="primary" size="small" text @click="addFilterRule">
-                      <el-icon><Plus /></el-icon> 添加过滤规则
-                    </el-button>
-                  </div>
-                </el-form-item>
-              </template>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-      
-      <!-- 计算字段 -->
-      <el-tab-pane label="计算字段" name="calculation">
-        <div class="tab-content">
-          <el-alert type="info" :closable="false" class="tab-tip">
-            根据公式自动计算字段值（如：数量 * 单价 = 总价）
-          </el-alert>
-          
-          <div class="calculation-builder">
-            <el-form label-width="100px" size="small">
-              <el-form-item label="启用计算">
-                <el-switch v-model="config.calculationEnabled" />
-              </el-form-item>
-              
-              <template v-if="config.calculationEnabled">
-                <el-form-item label="计算公式">
-                  <el-input 
-                    v-model="config.calculationFormula" 
-                    type="textarea" 
-                    :rows="3"
-                    placeholder="如：${quantity} * ${price} * (1 - ${discount})"
-                  />
-                </el-form-item>
-                
-                <el-form-item label="计算精度">
-                  <el-input-number v-model="config.calculationPrecision" :min="0" :max="10" />
-                  <span class="unit">位小数</span>
-                </el-form-item>
-                
-                <el-form-item label="可编辑">
-                  <el-switch v-model="config.calculationEditable" />
-                  <span class="hint">关闭后用户无法修改计算结果</span>
-                </el-form-item>
-                
-                <div class="formula-preview" v-if="config.calculationFormula">
-                  <div class="preview-title">公式预览</div>
-                  <div class="preview-content">
-                    <code>{{ formatFormula(config.calculationFormula) }}</code>
-                  </div>
-                </div>
-              </template>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-      
-      <!-- 禁用/必填联动 -->
-      <el-tab-pane label="禁用/必填" name="state">
-        <div class="tab-content">
-          <el-form label-width="100px" size="small">
-            <el-form-item label="禁用条件">
-              <el-switch v-model="config.disabledEnabled" />
-            </el-form-item>
-            
-            <template v-if="config.disabledEnabled">
-              <el-form-item label="条件表达式">
-                <el-input 
-                  v-model="config.disabledCondition" 
-                  placeholder="如：${status} == 'locked'"
-                />
-              </el-form-item>
-            </template>
-            
-            <el-form-item label="必填条件">
-              <el-switch v-model="config.requiredEnabled" />
-            </el-form-item>
-            
-            <template v-if="config.requiredEnabled">
-              <el-form-item label="条件表达式">
-                <el-input 
-                  v-model="config.requiredCondition" 
-                  placeholder="如：${type} == 'urgent'"
-                />
-              </el-form-item>
-            </template>
-          </el-form>
+              </el-form>
+            </div>
+          </SettingsSection>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -338,6 +370,7 @@
 import { ref, computed, watch } from 'vue'
 import { Connection, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import SettingsSection from '@/components/SettingsSection.vue'
 import { LinkageEngine } from '../utils/linkageEngine'
 
 const props = defineProps({
@@ -353,7 +386,7 @@ const props = defineProps({
 
 const emit = defineEmits(['save'])
 
-const activeTab = ref('visibility')
+const activeTab = ref('display-state')
 
 // 配置数据
 const config = ref({
@@ -441,6 +474,9 @@ const hasLinkage = computed(() => {
          config.value.disabledEnabled ||
          config.value.requiredEnabled
 })
+const hasStateLinkage = computed(() => (
+  config.value.disabledEnabled || config.value.requiredEnabled
+))
 
 // 显隐条件
 const visibilityConditions = computed({
@@ -762,6 +798,10 @@ function parseLinkageRules(rules) {
   padding: 15px;
 }
 
+.tab-content :deep(.settings-section:last-child) {
+  margin-bottom: 0;
+}
+
 .tab-tip {
   margin-bottom: 15px;
 }
@@ -795,6 +835,18 @@ function parseLinkageRules(rules) {
   gap: 10px;
 }
 
+.condition-field {
+  width: 120px;
+}
+
+.condition-operator {
+  width: 100px;
+}
+
+.condition-value {
+  width: 100px;
+}
+
 .logic-selector {
   margin-top: 15px;
   display: flex;
@@ -815,6 +867,10 @@ function parseLinkageRules(rules) {
   gap: 10px;
 }
 
+.mapping-item .el-input {
+  min-width: 0;
+}
+
 .arrow {
   color: #909399;
 }
@@ -831,6 +887,28 @@ function parseLinkageRules(rules) {
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.filter-depend-value {
+  width: 100px;
+}
+
+.source-type-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.source-type-group :deep(.el-radio) {
+  margin-right: 0;
+}
+
+.controlled-source-tip {
+  margin: 4px 0 12px;
+}
+
+.legacy-api-section {
+  margin-top: 8px;
 }
 
 .formula-help {
@@ -889,5 +967,22 @@ function parseLinkageRules(rules) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .condition-item,
+  .mapping-item,
+  .filter-header,
+  .logic-selector {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .condition-field,
+  .condition-operator,
+  .condition-value,
+  .filter-depend-value {
+    width: 100%;
+  }
 }
 </style>

@@ -169,6 +169,12 @@ public class ProcessProgressDTO {
          * 流程发布时固定的表单发布版本号。
          */
         private Integer formReleaseVersion;
+        /** 实际生效的热修复发布ID */
+        private String effectiveFormReleaseId;
+        /** 是否应用兼容热修复 */
+        private Boolean hotfixApplied;
+        /** 嵌套表单解析上下文令牌 */
+        private String releaseResolutionToken;
         
         /**
          * 表单名称
