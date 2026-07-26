@@ -5,6 +5,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.EntityDefinitionDTO;
 import com.workflow.dto.EntityFieldDTO;
 import com.workflow.dto.EntityListConfigDTO;
@@ -157,6 +161,16 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalArgumentException 没有可发布条目
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.PUBLISH,
+            operation = "发布配置迁移包",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public Map<String, Object> publish(String importId, ConfigImportPublishRequest request) {
         ConfigImportPackage importPackage = requiredImport(importId);
         if ("PUBLISHED".equals(importPackage.getStatus())) {
@@ -224,6 +238,15 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalStateException 批次未发布、上一版本非完整快照不能自动回滚
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.ROLLBACK,
+            operation = "回滚配置迁移包",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE",
+            targetIdArg = 0,
+            captureResult = true)
     public Map<String, Object> rollback(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
         if ("ROLLED_BACK".equals(importPackage.getStatus())) {

@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.workflow.dto.*;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
 import lombok.RequiredArgsConstructor;
@@ -69,6 +73,15 @@ public class NodeConfigService {
      * @throws RuntimeException 所属流程不存在时抛出
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CONFIGURE,
+            operation = "保存流程节点配置",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_NODE",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public NodeConfigDTO save(String processId, NodeConfigDTO dto) {
         ProcessDefinitionConfig process = processMapper.selectById(processId);
         if (process == null) {
@@ -115,6 +128,13 @@ public class NodeConfigService {
      * @param id 节点配置ID
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.DELETE,
+            operation = "删除流程节点配置",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_NODE",
+            targetIdArg = 0)
     public void delete(String id) {
         nodeMapper.deleteById(id);
     }

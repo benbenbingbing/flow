@@ -3,6 +3,10 @@ package com.workflow.service.permission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.permission.*;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
@@ -76,6 +80,16 @@ public class EntityListScopeService {
      * @throws IllegalArgumentException 编码为空、方案编码重复或过滤配置非法时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体数据权限方案",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_POLICY",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityListScopePolicyDTO savePolicy(
             String id,
             EntityListScopePolicyDTO request) {
@@ -151,6 +165,16 @@ public class EntityListScopeService {
      * @throws IllegalArgumentException 方案不存在、列表不存在、适用用户或效果配置非法时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体数据权限绑定",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_BINDING",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityListScopeBindingDTO saveBinding(
             String id,
             EntityListScopeBindingDTO request) {
@@ -216,6 +240,14 @@ public class EntityListScopeService {
      * @throws IllegalStateException 方案仍被绑定引用时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体数据权限方案",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_POLICY",
+            targetIdArg = 0)
     public void deletePolicy(String id) {
         EntityListScopePolicy policy = policyMapper.selectById(id);
         if (policy == null) {
@@ -237,6 +269,14 @@ public class EntityListScopeService {
      * @param id 绑定ID
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体数据权限绑定",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_BINDING",
+            targetIdArg = 0)
     public void deleteBinding(String id) {
         bindingMapper.deleteById(id);
     }
@@ -251,6 +291,16 @@ public class EntityListScopeService {
      * @throws EntityListScopeManualReviewRequiredException 存在待人工复核规则时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.PUBLISH,
+            operation = "发布实体数据权限",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_RELEASE",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityListScopeRelease publish(String entityCode, String description) {
         requireEntity(entityCode);
         List<EntityListScopePolicy> policies = policyMapper.findByEntityCode(entityCode);
@@ -321,6 +371,16 @@ public class EntityListScopeService {
      * @throws IllegalArgumentException 版本不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.ROLLBACK,
+            operation = "激活实体数据权限版本",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_RELEASE",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityListScopeRelease activateRelease(String entityCode, int version) {
         EntityListScopeRelease release = releaseMapper.selectOne(
                 new LambdaQueryWrapper<EntityListScopeRelease>()

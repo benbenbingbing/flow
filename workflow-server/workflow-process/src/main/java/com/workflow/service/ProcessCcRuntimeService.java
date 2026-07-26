@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.TaskCcRequest;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
@@ -62,6 +66,13 @@ public class ProcessCcRuntimeService {
      * @throws ForbiddenException       当前节点未开放人工知会或用户无权限时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CC,
+            operation = "手工知会流程任务",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public int manualCc(String taskId, TaskCcRequest request) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {

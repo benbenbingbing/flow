@@ -1,6 +1,6 @@
 package com.workflow.listener;
 
-import com.workflow.entity.EntityStatus;
+import com.workflow.entity.policy.EntityProcessStatusPolicy;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,11 +21,7 @@ class ProcessEndListenerTest {
      */
     @Test
     void preservesExplicitStatusWhenCategoryMatchesProcessEnd() {
-        EntityStatus status = new EntityStatus();
-        status.setStatusCode("FINAL_SPECIAL");
-        status.setStatusCategory("COMPLETED");
-
-        assertTrue(ProcessEndListener.shouldPreserveStatus(status, "COMPLETED"));
+        assertTrue(EntityProcessStatusPolicy.shouldPreserve("COMPLETED", "COMPLETED"));
     }
 
     /**
@@ -35,10 +31,6 @@ class ProcessEndListenerTest {
      */
     @Test
     void replacesStatusWhenCategoryDoesNotMatchProcessEnd() {
-        EntityStatus status = new EntityStatus();
-        status.setStatusCode("IN_REVIEW");
-        status.setStatusCategory("PROCESSING");
-
-        assertFalse(ProcessEndListener.shouldPreserveStatus(status, "COMPLETED"));
+        assertFalse(EntityProcessStatusPolicy.shouldPreserve("PROCESSING", "COMPLETED"));
     }
 }

@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.common.PageResult;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.SysMenu;
 import com.workflow.entity.SysRole;
 import com.workflow.mapper.SysMenuMapper;
@@ -160,6 +164,15 @@ public class SysMenuService {
      * @throws RuntimeException 权限标识已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存菜单",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_MENU",
+            captureArguments = true,
+            captureResult = true)
     public SysMenu saveMenu(SysMenu menu) {
         normalizeEntityListMenu(menu);
         // 校验权限标识唯一性
@@ -239,6 +252,14 @@ public class SysMenuService {
      * @throws RuntimeException 菜单不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除菜单",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_MENU",
+            targetIdArg = 0)
     public void deleteMenu(String id) {
         SysMenu menu = menuMapper.selectById(id);
         if (menu == null) {
@@ -273,6 +294,15 @@ public class SysMenuService {
      * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新菜单状态",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "SYS_MENU",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         SysMenu menu = new SysMenu();
         menu.setId(id);
@@ -288,6 +318,15 @@ public class SysMenuService {
      * @param visible 显示状态：0-显示 1-隐藏
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新菜单可见性",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "SYS_MENU",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateVisible(String id, String visible) {
         SysMenu menu = new SysMenu();
         menu.setId(id);
@@ -302,6 +341,13 @@ public class SysMenuService {
      * @param menuIds 按目标顺序排列的菜单ID列表
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "调整菜单排序",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_MENU",
+            captureArguments = true)
     public void updateSort(List<String> menuIds) {
         for (int i = 0; i < menuIds.size(); i++) {
             SysMenu menu = new SysMenu();
@@ -450,6 +496,14 @@ public class SysMenuService {
      * @param menus 待导入的菜单列表
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.IMPORT,
+            operation = "导入菜单",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_MENU",
+            captureArguments = true)
     public void importMenus(List<SysMenu> menus) {
         for (SysMenu menu : menus) {
             // 检查权限标识是否已存在

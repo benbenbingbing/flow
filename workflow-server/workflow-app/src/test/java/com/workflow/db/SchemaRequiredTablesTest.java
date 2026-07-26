@@ -330,4 +330,21 @@ class SchemaRequiredTablesTest {
                 "UNIQUE KEY uk_ui_extension_version "
                         + "(extension_type, extension_key, version, deleted)"));
     }
+
+    /**
+     * V040 系统审计迁移应创建日志、Outbox 与权限。
+     */
+    @Test
+    void systemAuditMigrationCreatesTablesAndPermissions() throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V040__add_system_operation_audit.sql");
+        assertTrue(Files.exists(migration), "V040 system audit migration must exist");
+        String sql = Files.readString(migration);
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS `system_operation_log`"));
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS `system_audit_outbox`"));
+        assertTrue(sql.contains("'system:audit:list'"));
+        assertTrue(sql.contains("'system:audit:detail'"));
+        assertTrue(sql.contains("'system:audit:export'"));
+        assertTrue(sql.contains("role.role_code IN ('super_admin', 'admin')"));
+    }
 }

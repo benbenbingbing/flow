@@ -1,11 +1,11 @@
 package com.workflow.service.entity;
 
+import com.workflow.contracts.entity.EntityFormBinding;
+import com.workflow.contracts.entity.EntityFormRuntimeContext;
+import com.workflow.contracts.entity.EntityFormRuntimePort;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityForm;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessNodeForm;
-import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
 import lombok.RequiredArgsConstructor;
@@ -36,18 +36,17 @@ import java.util.Set;
 /**
  * 实体表单解析服务。
  *
- * <p>根据实体编码与数据状态，解析出新增数据、查看数据时应使用的表单：
- * 流程绑定时优先取流程首个/当前节点绑定的表单，否则回落到实体默认表单。</p>
+ * <p>根据实体编码与数据状态，解析新增数据、活动任务或历史任务实际生效的发布表单。
+ * 流程模块仅依赖实体表单运行时端口，不直接访问实体定义、表单服务或 Mapper。</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class EntityFormResolveService {
 
-    private final EntityDefinitionMapper entityDefinitionMapper;
+    private final EntityFormRuntimePort entityFormRuntimePort;
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
-    private final EntityFormRuntimeService entityFormRuntimeService;
     private final RuntimeService runtimeService;
     private final TaskService taskService;
     private final HistoryService historyService;
@@ -55,93 +54,93 @@ public class EntityFormResolveService {
     /**
      * 解析实体新增数据时使用的表单。
      *
-     * <p>实体绑定流程时取流程首个用户任务节点绑定的表单；未绑定流程或无节点表单时回落到默认表单。</p>
-     *
-     * @param entityCode 实体编码
-     * @return 运行时表单，不存在时返回 null
+     * <p>实体绑定流程时取最新流程发布快照中首个用户任务绑定的表单；
+     * 未绑定流程或节点没有表单时回落到实体默认表单。</p>
      */
-    public EntityForm resolveFormForNewData(String entityCode) {
-        EntityDefinition entityDefinition = entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
-        if (entityDefinition == null) {
+    public Map<String, Object> resolveFormForNewData(String entityCode) {
+        EntityFormRuntimeContext context =
+                entityFormRuntimePort.findContext(entityCode).orElse(null);
+        if (context == null) {
             log.debug("未找到实体定义[{}]", entityCode);
             return null;
         }
-
-        if (entityDefinition.getProcessDefinitionId() == null
-                || entityDefinition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
-            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+        if (context.processDefinitionId() == null || !context.workflowEnabled()) {
+            return context.defaultForm();
         }
 
         ProcessDefinitionConfig processConfig =
-                processDefinitionConfigMapper.selectById(entityDefinition.getProcessDefinitionId());
+                processDefinitionConfigMapper.selectById(
+                        context.processDefinitionId());
         if (processConfig == null) {
-            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+            return context.defaultForm();
         }
 
-        String firstUserTaskId = resolveFirstUserTaskId(processConfig.getBpmnXml());
-        EntityForm nodeForm = getNodeBoundEntityForm(
+        String firstUserTaskId =
+                resolveFirstUserTaskId(processConfig.getBpmnXml());
+        Map<String, Object> nodeForm = getNodeBoundEntityForm(
                 processConfig.getProcessKey(),
                 null,
                 firstUserTaskId,
                 UiRuntimePurpose.NEW_INSTANCE);
         if (nodeForm != null) {
-            log.debug("新增数据使用首节点表单: processConfigId={}, nodeId={}, formId={}",
-                    processConfig.getId(), firstUserTaskId, nodeForm.getId());
+            log.debug(
+                    "新增数据使用首节点表单: processConfigId={}, nodeId={}, formId={}",
+                    processConfig.getId(),
+                    firstUserTaskId,
+                    nodeForm.get("id"));
             return nodeForm;
         }
-
-        return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+        return context.defaultForm();
     }
 
     /**
      * 解析查看实体数据时使用的表单。
      *
-     * <p>根据数据对应的流程实例当前任务节点取绑定的表单；无流程或无任务时回落到默认表单。</p>
-     *
-     * @param entityCode   实体编码
-     * @param entityDataId 实体数据ID（作为流程业务Key）
-     * @return 运行时表单，不存在时返回 null
+     * <p>运行中流程按当前活动任务解析；流程已结束时按最后一个历史任务及原流程发布快照解析。</p>
      */
-    public EntityForm resolveFormForViewData(String entityCode, String entityDataId) {
-        EntityDefinition entityDefinition = entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
-        if (entityDefinition == null) {
+    public Map<String, Object> resolveFormForViewData(
+            String entityCode,
+            String entityDataId) {
+        EntityFormRuntimeContext context =
+                entityFormRuntimePort.findContext(entityCode).orElse(null);
+        if (context == null) {
             log.debug("未找到实体定义[{}]", entityCode);
             return null;
         }
-        if (entityDefinition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
-            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+        if (!context.workflowEnabled()) {
+            return context.defaultForm();
         }
 
-        ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+        ProcessInstance processInstance = runtimeService
+                .createProcessInstanceQuery()
                 .processInstanceBusinessKey(entityDataId)
                 .singleResult();
         if (processInstance == null) {
-            HistoricProcessInstance historicInstance =
-                    historyService.createHistoricProcessInstanceQuery()
-                            .processInstanceBusinessKey(entityDataId)
-                            .list()
-                            .stream()
-                            .max(java.util.Comparator.comparing(
-                                    HistoricProcessInstance::getStartTime,
-                                    java.util.Comparator.nullsLast(
-                                            java.util.Comparator.naturalOrder())))
-                            .orElse(null);
+            HistoricProcessInstance historicInstance = historyService
+                    .createHistoricProcessInstanceQuery()
+                    .processInstanceBusinessKey(entityDataId)
+                    .list()
+                    .stream()
+                    .max(java.util.Comparator.comparing(
+                            HistoricProcessInstance::getStartTime,
+                            java.util.Comparator.nullsLast(
+                                    java.util.Comparator.naturalOrder())))
+                    .orElse(null);
             if (historicInstance == null) {
-                return entityFormRuntimeService.getDefaultForm(
-                        entityDefinition.getId());
+                return context.defaultForm();
             }
-            HistoricTaskInstance historicTask =
-                    historyService.createHistoricTaskInstanceQuery()
-                            .processInstanceId(historicInstance.getId())
-                            .list()
-                            .stream()
-                            .max(java.util.Comparator.comparing(
-                                    item -> item.getEndTime() == null
-                                            ? item.getStartTime()
-                                            : item.getEndTime(),
-                                    java.util.Comparator.nullsLast(
-                                            java.util.Comparator.naturalOrder())))
-                            .orElse(null);
+            HistoricTaskInstance historicTask = historyService
+                    .createHistoricTaskInstanceQuery()
+                    .processInstanceId(historicInstance.getId())
+                    .list()
+                    .stream()
+                    .max(java.util.Comparator.comparing(
+                            item -> item.getEndTime() == null
+                                    ? item.getStartTime()
+                                    : item.getEndTime(),
+                            java.util.Comparator.nullsLast(
+                                    java.util.Comparator.naturalOrder())))
+                    .orElse(null);
             return historicTask == null
                     ? null
                     : getNodeBoundEntityForm(
@@ -156,28 +155,19 @@ public class EntityFormResolveService {
                 .active()
                 .singleResult();
         if (currentTask == null) {
-            return entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+            return context.defaultForm();
         }
 
-        EntityForm nodeForm =
-                getNodeBoundEntityForm(
-                        null,
-                        processInstance.getProcessDefinitionId(),
-                        currentTask.getTaskDefinitionKey(),
-                        UiRuntimePurpose.ACTIVE_TASK);
-        return nodeForm != null
-                ? nodeForm
-                : entityFormRuntimeService.getDefaultForm(entityDefinition.getId());
+        Map<String, Object> nodeForm = getNodeBoundEntityForm(
+                null,
+                processInstance.getProcessDefinitionId(),
+                currentTask.getTaskDefinitionKey(),
+                UiRuntimePurpose.ACTIVE_TASK);
+        return nodeForm != null ? nodeForm : context.defaultForm();
     }
 
     /**
-     * 解析 BPMN 中首个用户任务节点ID。
-     *
-     * <p>从开始事件出发按广度优先遍历顺序流，找到的第一个 userTask 即返回；
-     * 遍历不到时返回任意一个 userTask，解析失败返回 null。</p>
-     *
-     * @param bpmnXml BPMN XML 内容
-     * @return 首个用户任务节点ID
+     * 从开始事件出发按广度优先顺序解析首个可达用户任务。
      */
     String resolveFirstUserTaskId(String bpmnXml) {
         if (bpmnXml == null || bpmnXml.isBlank()) {
@@ -185,29 +175,43 @@ public class EntityFormResolveService {
         }
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilderFactory factory =
+                    DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
             factory.setXIncludeAware(false);
             factory.setExpandEntityReferences(false);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setFeature(
+                    "http://apache.org/xml/features/disallow-doctype-decl",
+                    true);
+            factory.setFeature(
+                    "http://xml.org/sax/features/external-general-entities",
+                    false);
+            factory.setFeature(
+                    "http://xml.org/sax/features/external-parameter-entities",
+                    false);
 
             Document document = factory.newDocumentBuilder().parse(
-                    new ByteArrayInputStream(bpmnXml.getBytes(StandardCharsets.UTF_8)));
-            Set<String> userTaskIds = elementIds(document.getElementsByTagNameNS("*", "userTask"));
+                    new ByteArrayInputStream(
+                            bpmnXml.getBytes(StandardCharsets.UTF_8)));
+            Set<String> userTaskIds = elementIds(
+                    document.getElementsByTagNameNS("*", "userTask"));
             if (userTaskIds.isEmpty()) {
                 return null;
             }
 
             Map<String, List<String>> outgoingTargets = new HashMap<>();
-            NodeList sequenceFlows = document.getElementsByTagNameNS("*", "sequenceFlow");
+            NodeList sequenceFlows =
+                    document.getElementsByTagNameNS("*", "sequenceFlow");
             for (int index = 0; index < sequenceFlows.getLength(); index++) {
                 Element sequenceFlow = (Element) sequenceFlows.item(index);
                 String sourceRef = sequenceFlow.getAttribute("sourceRef");
                 String targetRef = sequenceFlow.getAttribute("targetRef");
                 if (!sourceRef.isBlank() && !targetRef.isBlank()) {
-                    outgoingTargets.computeIfAbsent(sourceRef, key -> new ArrayList<>()).add(targetRef);
+                    outgoingTargets
+                            .computeIfAbsent(
+                                    sourceRef,
+                                    key -> new ArrayList<>())
+                            .add(targetRef);
                 }
             }
 
@@ -222,11 +226,11 @@ public class EntityFormResolveService {
                 if (userTaskIds.contains(current)) {
                     return current;
                 }
-                for (String target : outgoingTargets.getOrDefault(current, List.of())) {
+                for (String target :
+                        outgoingTargets.getOrDefault(current, List.of())) {
                     queue.addLast(target);
                 }
             }
-
             return userTaskIds.iterator().next();
         } catch (Exception exception) {
             log.warn("解析流程首个用户任务失败: {}", exception.getMessage());
@@ -234,7 +238,6 @@ public class EntityFormResolveService {
         }
     }
 
-    /** 提取 XML 节点集合中所有非空的 id 属性值，保持顺序去重 */
     private Set<String> elementIds(NodeList elements) {
         Set<String> ids = new java.util.LinkedHashSet<>();
         for (int index = 0; index < elements.getLength(); index++) {
@@ -247,16 +250,7 @@ public class EntityFormResolveService {
         return ids;
     }
 
-    /**
-     * 根据流程标识或流程定义ID查询节点绑定的运行时表单。
-     *
-     * @param processKey         流程标识（与 processDefinitionId 二选一）
-     * @param processDefinitionId 流程定义ID
-     * @param nodeId             节点ID
-     * @param purpose 运行时解析目的
-     * @return 运行时表单，无绑定或节点为空时返回 null
-     */
-    private EntityForm getNodeBoundEntityForm(
+    private Map<String, Object> getNodeBoundEntityForm(
             String processKey,
             String processDefinitionId,
             String nodeId,
@@ -265,35 +259,41 @@ public class EntityFormResolveService {
             return null;
         }
         ProcessPublishedSnapshotService.PublishedNodeForms published;
-        if (processDefinitionId != null && !processDefinitionId.isBlank()) {
-            published =
-                    processPublishedSnapshotService
-                            .getNodeFormsContextByProcessDefinitionId(
-                                    processDefinitionId,
-                                    nodeId);
-        } else if (processKey != null && !processKey.isBlank()) {
-            published =
-                    processPublishedSnapshotService.getNodeFormsContext(
-                            processKey,
+        if (processDefinitionId != null
+                && !processDefinitionId.isBlank()) {
+            published = processPublishedSnapshotService
+                    .getNodeFormsContextByProcessDefinitionId(
+                            processDefinitionId,
                             nodeId);
+        } else if (processKey != null && !processKey.isBlank()) {
+            published = processPublishedSnapshotService
+                    .getNodeFormsContext(processKey, nodeId);
         } else {
             return null;
         }
+
         List<ProcessNodeForm> nodeForms = published.nodeForms();
         if (nodeForms == null || nodeForms.isEmpty()) {
             return null;
         }
-        ProcessNodeForm binding = nodeForms.get(0);
-        String processVersionHistoryId =
-                published.history().getId();
+        EntityFormBinding binding = toBinding(nodeForms.get(0));
+        String processVersionHistoryId = published.history().getId();
         if (UiRuntimePurpose.NEW_INSTANCE.equals(purpose)) {
-            entityFormRuntimeService.requireCurrentBindingForNewData(
+            entityFormRuntimePort.requireCurrentBindingForNewData(
                     binding,
                     processVersionHistoryId);
         }
-        return entityFormRuntimeService.getByBinding(
+        return entityFormRuntimePort.findFormByBinding(
                 binding,
                 processVersionHistoryId,
                 purpose);
+    }
+
+    private EntityFormBinding toBinding(ProcessNodeForm binding) {
+        return new EntityFormBinding(
+                binding.getNodeId(),
+                binding.getFormId(),
+                binding.getFormReleaseId(),
+                binding.getFormReleaseVersion());
     }
 }

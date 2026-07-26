@@ -3,6 +3,10 @@ package com.workflow.service;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.common.RevisionConflictException;
 import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.dto.EntityListFieldSaveRequest;
 import com.workflow.dto.EntityListItemReorderRequest;
@@ -78,6 +82,15 @@ public class EntityListConfigService {
      * 普通 HTTP 更新必须调用带 expectedRevision 的重载。
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体列表配置",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "ENTITY_LIST_CONFIG",
+            captureArguments = true,
+            captureResult = true)
     public EntityListConfigDTO saveConfig(EntityListConfigDTO dto) {
         return saveConfigInternal(dto, null, SaveMode.SYSTEM_IMPORT);
     }
@@ -309,6 +322,14 @@ public class EntityListConfigService {
      * 删除列表配置（逻辑删除，级联删除字段）
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体列表配置",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "ENTITY_LIST_CONFIG",
+            targetIdArg = 0)
     public void deleteConfig(String id) {
         // 逻辑删除配置
         configMapper.deleteById(id);

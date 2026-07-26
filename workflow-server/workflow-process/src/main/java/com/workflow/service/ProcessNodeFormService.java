@@ -2,6 +2,10 @@ package com.workflow.service;
 
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.ProcessNodeForm;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.mapper.EntityFormMapper;
 import com.workflow.mapper.ProcessNodeFormMapper;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +60,14 @@ public class ProcessNodeFormService {
      * 保存节点表单绑定
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CONFIGURE,
+            operation = "保存流程节点表单",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_NODE_FORM",
+            captureArguments = true,
+            captureResult = true)
     public ProcessNodeForm saveNodeForm(ProcessNodeForm nodeForm) {
         nodeForm.setUpdateTime(LocalDateTime.now());
         
@@ -86,6 +98,13 @@ public class ProcessNodeFormService {
      * 删除节点表单绑定
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.DELETE,
+            operation = "删除流程节点表单",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_NODE_FORM",
+            targetIdArg = 0)
     public void deleteNodeForm(String id) {
         nodeFormMapper.deleteById(id);
     }
@@ -94,6 +113,14 @@ public class ProcessNodeFormService {
      * 批量保存节点表单绑定
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CONFIGURE,
+            operation = "批量保存流程节点表单",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_NODE_FORM",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveNodeForms(String processConfigId, List<ProcessNodeForm> nodeForms) {
         // 删除原有绑定
         nodeFormMapper.deleteByProcessConfigId(processConfigId);

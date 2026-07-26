@@ -5,7 +5,11 @@ import com.workflow.dto.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
 import com.workflow.contracts.action.FlowActionDesignPort;
-import com.workflow.contracts.migration.MigrationAssetRecorder;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.process.definition.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
 import com.workflow.process.definition.ProcessFlowableDeploymentService;
@@ -43,7 +47,7 @@ public class ProcessDefinitionService {
     private final ProcessDefinitionNodeSyncService nodeSyncService;
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionDesignPort flowActionDesignPort;
-    private final MigrationAssetRecorder migrationAssetRecorder;
+    private final MigrationAssetHandler migrationAssetHandler;
     
     /**
      * 查询所有启用的流程定义。
@@ -216,6 +220,14 @@ public class ProcessDefinitionService {
      * @return 创建后的流程定义
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CREATE,
+            operation = "创建流程定义",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_DEFINITION",
+            captureArguments = true,
+            captureResult = true)
     public ProcessDefinitionDTO save(ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig config = convertToEntity(dto);
         config.setVersion(0); // 初始版本为0，表示从未发布
@@ -233,6 +245,15 @@ public class ProcessDefinitionService {
      * @throws RuntimeException 流程不存在时抛出
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.UPDATE,
+            operation = "更新流程定义",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public ProcessDefinitionDTO update(String id, ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig existing = processMapper.selectById(id);
         if (existing == null) {
@@ -276,6 +297,14 @@ public class ProcessDefinitionService {
      * @throws RuntimeException 流程不存在时抛出
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.DELETE,
+            operation = "删除流程定义",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "PROCESS_DEFINITION",
+            targetIdArg = 0)
     public void delete(String id) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
         if (config == null) {
@@ -313,6 +342,16 @@ public class ProcessDefinitionService {
      * @throws RuntimeException 流程不存在或缺少BPMN XML时抛出
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.PUBLISH,
+            operation = "发布流程定义",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "PROCESS_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public ProcessDefinitionDTO publish(String id, ConfigMigrationPublishRequest request) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
         if (config == null) {
@@ -360,7 +399,7 @@ public class ProcessDefinitionService {
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
         config.setVersion(newVersion);
         processMapper.updateById(config);
-        migrationAssetRecorder.recordProcess(config.getId(), history.getId(), publishRequest);
+        migrationAssetHandler.recordProcess(config.getId(), history.getId(), publishRequest);
         
         // 重新查询确保获取最新值
         ProcessDefinitionConfig updatedConfig = processMapper.selectById(id);
@@ -371,6 +410,16 @@ public class ProcessDefinitionService {
      * 回滚到指定版本 - 创建新版本而不是直接覆盖
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.ROLLBACK,
+            operation = "回滚流程版本",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "PROCESS_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public ProcessDefinitionDTO rollbackToVersion(String processId, String versionId, String reason) {
         ProcessDefinitionConfig config = processMapper.selectById(processId);
         if (config == null) {
@@ -400,6 +449,15 @@ public class ProcessDefinitionService {
      * @return 禁用后的流程定义
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.DISABLE,
+            operation = "停用流程定义",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "PROCESS_DEFINITION",
+            targetIdArg = 0,
+            captureResult = true)
     public ProcessDefinitionDTO disable(String id) {
         ProcessDefinitionConfig config = processMapper.selectById(id);
         if (config == null) {
@@ -417,6 +475,14 @@ public class ProcessDefinitionService {
      * @throws RuntimeException 版本不存在时抛出
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.DELETE,
+            operation = "删除流程版本",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "PROCESS_VERSION",
+            targetIdArg = 0)
     public void deleteVersion(String versionId) {
         ProcessVersionHistory version = versionHistoryMapper.selectById(versionId);
         if (version == null) {

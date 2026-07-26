@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.SysMenu;
 import com.workflow.entity.SysRole;
 import com.workflow.entity.SysRoleMenu;
@@ -90,6 +94,15 @@ public class SysRoleService {
      * @throws RuntimeException 角色编码已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存角色",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_ROLE",
+            captureArguments = true,
+            captureResult = true)
     public SysRole saveRole(SysRole role) {
         // 校验角色编码唯一性
         if (StringUtils.hasText(role.getRoleCode())) {
@@ -135,6 +148,14 @@ public class SysRoleService {
      * @throws RuntimeException 角色不存在或为超级管理员角色时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除角色",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_ROLE",
+            targetIdArg = 0)
     public void deleteRole(String id) {
         SysRole role = roleMapper.selectById(id);
         if (role == null) {
@@ -162,6 +183,15 @@ public class SysRoleService {
      * @throws RuntimeException 禁用超级管理员角色时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新角色状态",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_ROLE",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         // 不能禁用超级管理员角色
         if ("1".equals(status)) {
@@ -185,6 +215,15 @@ public class SysRoleService {
      * @param menuIds 菜单ID列表
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.ASSIGN_PERMISSION,
+            operation = "分配角色菜单权限",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_ROLE",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveRoleMenus(String roleId, List<String> menuIds) {
         // 删除原有权限
         roleMenuMapper.deleteByRoleId(roleId);

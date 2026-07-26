@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.SysDictItem;
 import com.workflow.mapper.SysDictItemMapper;
 import lombok.RequiredArgsConstructor;
@@ -77,6 +81,14 @@ public class SysDictItemService {
      * @return 保存后的字典项对象
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存字典项",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_DICT_ITEM",
+            captureArguments = true,
+            captureResult = true)
     public SysDictItem saveItem(SysDictItem item) {
         if (!StringUtils.hasText(item.getStatus())) {
             item.setStatus(SysDictItem.Status.ENABLED.getValue());
@@ -110,6 +122,13 @@ public class SysDictItemService {
      * @throws RuntimeException 字典项不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除字典项",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_DICT_ITEM",
+            targetIdArg = 0)
     public void deleteItem(String id) {
         SysDictItem item = dictItemMapper.selectById(id);
         if (item == null) {
@@ -148,6 +167,14 @@ public class SysDictItemService {
      * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新字典项状态",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_DICT_ITEM",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         SysDictItem item = new SysDictItem();
         item.setId(id);

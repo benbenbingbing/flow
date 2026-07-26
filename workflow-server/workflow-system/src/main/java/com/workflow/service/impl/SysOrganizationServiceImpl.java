@@ -2,6 +2,10 @@ package com.workflow.service.impl;
 
 import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysUser;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.mapper.SysOrganizationMapper;
 import com.workflow.mapper.SysUserMapper;
 import com.workflow.service.SysOrganizationService;
@@ -85,6 +89,14 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存组织部门",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_ORGANIZATION",
+            captureArguments = true,
+            captureResult = true)
     public SysOrganization saveOrg(SysOrganization org) {
         if (StringUtils.hasText(org.getOrgCode())) {
             String excludeId = org.getId() != null ? org.getId() : "";
@@ -132,6 +144,13 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除组织部门",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_ORGANIZATION",
+            targetIdArg = 0)
     public void deleteOrg(String id) {
         SysOrganization org = orgMapper.selectById(id);
         if (org == null) {
@@ -160,6 +179,14 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新组织部门状态",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_ORGANIZATION",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         SysOrganization org = new SysOrganization();
         org.setId(id);

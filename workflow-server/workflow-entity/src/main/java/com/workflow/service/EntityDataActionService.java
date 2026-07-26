@@ -2,6 +2,10 @@ package com.workflow.service;
 
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.entity.EntityListConfig;
 import com.workflow.service.permission.EntityActionCapabilityService;
@@ -75,6 +79,13 @@ public class EntityDataActionService {
      * @throws ForbiddenException        缺少新增权限时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CREATE,
+            operation = "新增实体数据",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_RECORD",
+            captureResult = true)
     public EntityDataDTO create(EntityDataDTO dto) {
         if (dto == null || !StringUtils.hasText(dto.getEntityCode())) {
             throw new IllegalArgumentException("实体编码不能为空");
@@ -109,6 +120,13 @@ public class EntityDataActionService {
      * @throws ForbiddenException 数据不可访问或缺少编辑权限时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPDATE,
+            operation = "更新实体数据",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_RECORD",
+            targetIdArg = 1)
     public EntityDataDTO update(
             String entityCode,
             String id,
@@ -149,6 +167,13 @@ public class EntityDataActionService {
      * @throws ForbiddenException 数据不可访问或缺少删除权限时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体数据",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_RECORD",
+            targetIdArg = 1)
     public void delete(String entityCode, String id, String listKey) {
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
         capabilityService.requireRowAction(entityCode, listKey, "delete", row);
@@ -165,6 +190,12 @@ public class EntityDataActionService {
      * @throws ForbiddenException       存在不可删除数据时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.BATCH_DELETE,
+            operation = "批量删除实体数据",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_RECORD_BATCH")
     public void batchDelete(String entityCode, List<String> ids, String listKey) {
         if (ids == null || ids.isEmpty()) {
             throw new IllegalArgumentException("请选择需要删除的数据");

@@ -3,6 +3,10 @@ package com.workflow.service;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.common.RevisionConflictException;
 import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityForm;
@@ -98,6 +102,14 @@ public class EntityFormService {
      * 普通 HTTP 更新必须调用带 expectedRevision 的重载。
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体表单",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_FORM",
+            captureArguments = true,
+            captureResult = true)
     public EntityForm saveForm(EntityForm form) {
         return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
     }
@@ -239,6 +251,13 @@ public class EntityFormService {
      * 删除表单
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体表单",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_FORM",
+            targetIdArg = 0)
     public void deleteForm(String id) {
         EntityForm form = formMapper.selectById(id);
         if (form == null) {
@@ -257,6 +276,14 @@ public class EntityFormService {
      * 仅更新表单初始化配置
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "更新表单初始化配置",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_FORM",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateInitConfig(String id, Map<String, Object> initConfig) {
         EntityForm form = formMapper.selectById(id);
         if (form == null) {
@@ -279,6 +306,14 @@ public class EntityFormService {
      * 普通字段整包保存，父表单 revision 作为聚合 CAS。
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "保存实体表单字段",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_FORM",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveFormFields(
             String formId,
             List<EntityFormField> fields,

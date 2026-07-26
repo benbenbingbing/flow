@@ -3,6 +3,10 @@ package com.workflow.service;
 import com.workflow.common.BusinessConflictException;
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.ProcessTask;
 import com.workflow.mapper.EntityDataMapper;
@@ -67,11 +71,25 @@ public class TaskActionService {
      * @param actionLabel 操作显示文本（如"同意，需要会签"）
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.APPROVE,
+            operation = "办理流程任务",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public void completeTask(String taskId, String userId, String action, String comment, String transferTo, String actionLabel) {
         completeTask(taskId, userId, action, comment, transferTo, actionLabel, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.APPROVE,
+            operation = "办理流程任务",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public void completeTask(String taskId, String userId, String action, String comment, String transferTo,
                              String actionLabel, Map<String, Object> formData) {
         completeTaskInternal(taskId, userId, action, comment, transferTo, actionLabel, formData, true);
@@ -501,6 +519,13 @@ public class TaskActionService {
      * @param reason            撤回原因
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.WITHDRAW,
+            operation = "撤回流程",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_INSTANCE",
+            targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String userId, String reason) {
         // 验证流程实例是否存在
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()

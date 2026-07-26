@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.workflow.common.ForbiddenException;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.EntityDataExportRequest;
 import com.workflow.entity.EntityDefinition;
@@ -54,6 +58,13 @@ public class EntityDataExportService {
      * @param response   HTTP 响应，用于写入 CSV 流
      * @throws ForbiddenException 缺少导出权限或存在不可导出数据时抛出
      */
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.EXPORT,
+            operation = "导出实体数据",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_RECORD",
+            targetIdArg = 0)
     public void export(String entityCode, EntityDataExportRequest request, HttpServletResponse response) {
         // 1. 服务端根据导出类型决定权限，禁止信任客户端传入的权限码
         boolean exportSelected = "SELECTED".equalsIgnoreCase(request.getExportType());

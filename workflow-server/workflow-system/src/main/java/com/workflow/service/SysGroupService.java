@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.SysGroup;
 import com.workflow.entity.SysUser;
 import com.workflow.entity.SysUserGroup;
@@ -81,6 +85,14 @@ public class SysGroupService {
      * @throws RuntimeException 组编码已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存用户组",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_GROUP",
+            captureArguments = true,
+            captureResult = true)
     public SysGroup saveGroup(SysGroup group) {
         // 校验组编码唯一性
         if (StringUtils.hasText(group.getGroupCode())) {
@@ -126,6 +138,13 @@ public class SysGroupService {
      * @throws RuntimeException 组不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除用户组",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_GROUP",
+            targetIdArg = 0)
     public void deleteGroup(String id) {
         SysGroup group = groupMapper.selectById(id);
         if (group == null) {
@@ -147,6 +166,14 @@ public class SysGroupService {
      * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新用户组状态",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_GROUP",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         SysGroup group = new SysGroup();
         group.setId(id);
@@ -162,6 +189,14 @@ public class SysGroupService {
      * @param userIds 用户ID列表
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.ASSIGN_PERMISSION,
+            operation = "维护用户组成员",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_GROUP",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveGroupUsers(String groupId, List<String> userIds) {
         // 删除原有用户
         userGroupMapper.deleteByGroupId(groupId);

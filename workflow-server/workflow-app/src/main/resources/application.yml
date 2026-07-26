@@ -79,3 +79,13 @@ file:
     local:
       path: ${FILE_STORAGE_PATH:/Users/dawei/Documents/ddup/ai/flow/uploads}
       access-url: ${FILE_STORAGE_ACCESS_URL:/Users/dawei/Documents/ddup/ai/flow/uploads}
+
+workflow:
+  audit:
+    outbox-delay-ms: ${AUDIT_OUTBOX_DELAY_MS:3000}
+    outbox-batch-size: ${AUDIT_OUTBOX_BATCH_SIZE:100}
+    enqueue-retries: ${AUDIT_ENQUEUE_RETRIES:3}
+    processing-timeout-minutes: ${AUDIT_PROCESSING_TIMEOUT_MINUTES:10}
+    max-retries: ${AUDIT_MAX_RETRIES:8}
+    payload-max-length: ${AUDIT_PAYLOAD_MAX_LENGTH:32768}
+    retention-days: ${AUDIT_RETENTION_DAYS:365}

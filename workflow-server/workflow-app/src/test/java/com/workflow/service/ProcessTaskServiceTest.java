@@ -1,14 +1,13 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.EntityFormRuntimePort;
+import com.workflow.contracts.identity.IdentityDirectoryPort;
 import com.workflow.entity.ProcessTask;
-import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.NodeConfigMapper;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.mapper.ProcessTaskMapper;
-import com.workflow.mapper.SysGroupMapper;
-import com.workflow.mapper.SysUserGroupMapper;
-import com.workflow.mapper.SysUserMapper;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
@@ -24,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.mockito.ArgumentCaptor;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,25 +51,16 @@ class ProcessTaskServiceTest {
     private NodeConfigMapper nodeConfigMapper;
 
     @Mock
-    private EntityDefinitionMapper entityDefinitionMapper;
+    private EntityFormRuntimePort entityFormRuntimePort;
 
     @Mock
     private ProcessDefinitionConfigMapper processDefinitionConfigMapper;
 
     @Mock
-    private EntityDataDynamicService entityDataDynamicService;
+    private EntityRecordPort entityRecordPort;
 
     @Mock
-    private SysGroupMapper sysGroupMapper;
-
-    @Mock
-    private SysUserGroupMapper sysUserGroupMapper;
-
-    @Mock
-    private SysUserMapper sysUserMapper;
-
-    @Mock
-    private SysUserService sysUserService;
+    private IdentityDirectoryPort identityDirectoryPort;
 
     @Mock
     private TaskQuery taskQuery;
@@ -89,14 +78,11 @@ class ProcessTaskServiceTest {
                 runtimeService,
                 repositoryService,
                 nodeConfigMapper,
-                entityDefinitionMapper,
+                entityFormRuntimePort,
                 processDefinitionConfigMapper,
                 new ObjectMapper(),
-                entityDataDynamicService,
-                sysGroupMapper,
-                sysUserGroupMapper,
-                sysUserMapper,
-                sysUserService
+                entityRecordPort,
+                identityDirectoryPort
         );
     }
 
@@ -116,7 +102,7 @@ class ProcessTaskServiceTest {
 
         service.syncTasksFromFlowable("proc-1");
 
-        verify(entityDataDynamicService).updateCurrentTask(
+        verify(entityRecordPort).updateCurrentTask(
                 "demo_expense",
                 "data-1",
                 null,
@@ -143,7 +129,7 @@ class ProcessTaskServiceTest {
 
         service.syncTasksFromFlowable("proc-1");
 
-        verify(entityDataDynamicService).updateCurrentTask(
+        verify(entityRecordPort).updateCurrentTask(
                 "demo_expense",
                 "data-1",
                 null,
@@ -206,7 +192,8 @@ class ProcessTaskServiceTest {
         localTask.setAssigneeId("candidate-group");
         localTask.setAssigneeType("group");
         when(taskMapper.selectByTaskIdForUpdate("task-1")).thenReturn(localTask);
-        when(sysUserService.getDisplayName("admin")).thenReturn("管理员(admin)");
+        when(identityDirectoryPort.getDisplayName("admin"))
+                .thenReturn("管理员(admin)");
         when(runtimeService.getVariables("proc-1")).thenReturn(Map.of(
                 "entityCode", "expense",
                 "entityDataId", "record-1"
@@ -227,7 +214,7 @@ class ProcessTaskServiceTest {
         Assertions.assertEquals("admin", updated.getAssigneeId());
         Assertions.assertEquals("管理员(admin)", updated.getAssigneeName());
         Assertions.assertEquals("user", updated.getAssigneeType());
-        verify(entityDataDynamicService).updateCurrentTask(
+        verify(entityRecordPort).updateCurrentTask(
                 "expense", "record-1", "task-1", "经理审批", "admin");
     }
 }

@@ -3,6 +3,10 @@ package com.workflow.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.common.PageResult;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.SysDict;
 import com.workflow.entity.SysDictItem;
 import com.workflow.mapper.SysDictMapper;
@@ -104,6 +108,14 @@ public class SysDictService {
      * @throws RuntimeException 字典编码已存在或字典类型不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存字典类型",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_DICT",
+            captureArguments = true,
+            captureResult = true)
     public SysDict saveDict(SysDict dict) {
         // 校验字典编码唯一性
         if (StringUtils.hasText(dict.getDictCode())) {
@@ -157,6 +169,14 @@ public class SysDictService {
      * @throws IllegalArgumentException 代码项为空、编码/名称为空或编码重复时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.CREATE,
+            operation = "创建字典及代码项",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_DICT",
+            captureArguments = true,
+            captureResult = true)
     public SysDict createWithItems(SysDict dict, List<SysDictItem> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("代码项不能为空");
@@ -201,6 +221,13 @@ public class SysDictService {
      * @throws RuntimeException 字典类型不存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除字典类型",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_DICT",
+            targetIdArg = 0)
     public void deleteDict(String id) {
         SysDict dict = dictMapper.selectById(id);
         if (dict == null) {
@@ -223,6 +250,14 @@ public class SysDictService {
      * @param status 状态值：0-启用 1-禁用
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新字典状态",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_DICT",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         SysDict dict = new SysDict();
         dict.setId(id);

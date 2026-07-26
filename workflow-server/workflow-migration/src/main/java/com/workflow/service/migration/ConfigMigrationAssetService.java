@@ -3,7 +3,11 @@ package com.workflow.service.migration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.migration.MigrationAssetRecorder;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.dto.migration.ConfigMigrationAssetQuery;
 import com.workflow.dto.migration.ConfigMigrationMarkRequest;
 import com.workflow.dto.migration.ConfigMigrationPublishRequest;
@@ -86,7 +90,7 @@ import java.util.regex.Pattern;
  */
 @Service
 @RequiredArgsConstructor
-public class ConfigMigrationAssetService implements MigrationAssetRecorder {
+public class ConfigMigrationAssetService implements MigrationAssetHandler {
 
     public static final String ENTITY = "ENTITY";       // 资产类型：实体
     public static final String PROCESS = "PROCESS";     // 资产类型：流程
@@ -197,6 +201,15 @@ public class ConfigMigrationAssetService implements MigrationAssetRecorder {
      * @return 更新后的资产
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.CONFIGURE,
+            operation = "标记配置迁移资产",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "CONFIG_MIGRATION_ASSET",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public ConfigMigrationAsset updateMark(String id, ConfigMigrationMarkRequest request) {
         ConfigMigrationAsset asset = getRequired(id);
         if (request.getMarkForExport() != null) {

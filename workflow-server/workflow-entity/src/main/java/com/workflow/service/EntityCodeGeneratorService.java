@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.workflow.entity.EntityCodeRule;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.mapper.EntityCodeRuleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -201,6 +205,13 @@ public class EntityCodeGeneratorService {
      * 保存或更新编码规则
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "保存实体编码规则",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_CODE_RULE",
+            captureArguments = true)
     public void saveRule(EntityCodeRule rule) {
         if (rule == null || rule.getEntityCode() == null || rule.getEntityCode().isBlank()) {
             throw new RuntimeException("实体编码不能为空");

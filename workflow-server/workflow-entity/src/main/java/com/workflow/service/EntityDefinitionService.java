@@ -7,7 +7,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.BusinessConflictException;
 import com.workflow.common.PageResult;
-import com.workflow.contracts.migration.MigrationAssetRecorder;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
 import com.workflow.dto.EntityDefinitionDTO;
@@ -58,7 +62,7 @@ public class EntityDefinitionService {
     private final ObjectMapper objectMapper;
     private final com.workflow.service.permission.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.service.permission.EntityListScopeService entityListScopeService;
-    private final MigrationAssetRecorder migrationAssetRecorder;
+    private final MigrationAssetHandler migrationAssetHandler;
     
     /**
      * 查询所有实体定义
@@ -192,6 +196,14 @@ public class EntityDefinitionService {
      * 保存实体定义
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CREATE,
+            operation = "创建实体定义",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_DEFINITION",
+            captureArguments = true,
+            captureResult = true)
     public EntityDefinitionDTO save(EntityDefinitionDTO dto) {
         // 校验实体编码唯一性（不区分大小写）
         validateEntityCodeUnique(dto.getEntityCode());
@@ -429,6 +441,15 @@ public class EntityDefinitionService {
      * 注意：实体发布后，已保存的字段不能再删除，只能添加新字段
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPDATE,
+            operation = "更新实体定义",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityDefinitionDTO update(String id, EntityDefinitionDTO dto) {
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
@@ -617,6 +638,14 @@ public class EntityDefinitionService {
      * 删除实体定义
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体定义",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_DEFINITION",
+            targetIdArg = 0)
     public void delete(String id) {
         EntityDefinition entity = entityMapper.selectById(id);
         if (entity != null && storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
@@ -642,6 +671,16 @@ public class EntityDefinitionService {
     }
 
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.PUBLISH,
+            operation = "发布实体定义",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityDefinitionDTO publish(String id,
                                        String userId,
                                        String userName,
@@ -700,7 +739,7 @@ public class EntityDefinitionService {
         entityListScopeService.publish(
                 entity.getEntityCode(),
                 publishRequest.getVersionDescription());
-        migrationAssetRecorder.recordEntity(entity.getId(), history.getId(), publishRequest);
+        migrationAssetHandler.recordEntity(entity.getId(), history.getId(), publishRequest);
         return convertToDTO(entity);
     }
     
@@ -738,6 +777,16 @@ public class EntityDefinitionService {
      * @return 更新后的实体DTO
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "绑定实体流程",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "ENTITY_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityDefinitionDTO bindWorkflow(String entityId, String processId) {
         EntityDefinition entity = entityMapper.selectById(entityId);
         if (entity == null) {
@@ -783,6 +832,15 @@ public class EntityDefinitionService {
     }
 
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "解除实体流程绑定",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "ENTITY_DEFINITION",
+            targetIdArg = 0,
+            captureResult = true)
     public EntityDefinitionDTO unbindWorkflow(String entityId) {
         EntityDefinition entity = entityMapper.selectById(entityId);
         if (entity == null) {
@@ -807,6 +865,16 @@ public class EntityDefinitionService {
     }
 
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "更新实体生命周期模式",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "ENTITY_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
     public EntityDefinitionDTO updateLifecycleMode(
             String entityId,
             EntityDefinition.LifecycleMode requestedMode) {

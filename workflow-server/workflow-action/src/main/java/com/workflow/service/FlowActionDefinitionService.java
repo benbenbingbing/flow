@@ -3,6 +3,10 @@ package com.workflow.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.dto.FlowActionDefinitionRequest;
 import com.workflow.dto.FlowActionHandlerOptionDTO;
@@ -80,6 +84,15 @@ public class FlowActionDefinitionService {
      * @throws RuntimeException 非超管、处理器不存在或实体编码无效时抛出
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.CONFIGURE,
+            operation = "配置流程动作处理器",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "FLOW_ACTION_HANDLER",
+            captureArguments = true,
+            captureResult = true)
     public FlowActionHandlerOptionDTO save(String beanName, FlowActionDefinitionRequest request) {
         currentUserRoleService.requireSuperAdmin();
         FlowActionHandler handler = applicationContext.getBeansOfType(FlowActionHandler.class).get(beanName);

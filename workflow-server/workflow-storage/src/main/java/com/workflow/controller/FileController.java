@@ -1,6 +1,10 @@
 package com.workflow.controller;
 
 import com.workflow.common.Result;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.service.storage.FileStorageFactory;
 import com.workflow.service.storage.FileStorageStrategy;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +40,12 @@ public class FileController {
      * @return 文件信息（url、filename 等）或错误信息
      */
     @PostMapping("/upload")
+    @SystemAudit(
+            module = AuditModule.STORAGE,
+            action = AuditAction.UPLOAD,
+            operation = "上传文件",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "FILE")
     public Result<Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
             return Result.error("请选择要上传的文件");
@@ -79,6 +89,13 @@ public class FileController {
      * @return 删除成功返回成功结果，否则返回错误信息
      */
     @PostMapping
+    @SystemAudit(
+            module = AuditModule.STORAGE,
+            action = AuditAction.DELETE,
+            operation = "删除文件",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "FILE",
+            targetIdArg = 0)
     public Result<Void> deleteFile(@RequestParam("url") String fileUrl) {
         try {
             FileStorageStrategy strategy = storageFactory.getStrategy();

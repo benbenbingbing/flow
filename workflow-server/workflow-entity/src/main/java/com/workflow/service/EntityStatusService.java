@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.workflow.entity.EntityStatus;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.mapper.EntityStatusMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +35,13 @@ public class EntityStatusService {
      * 保存实体状态
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体状态",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_STATUS",
+            captureArguments = true)
     public void saveStatus(EntityStatus status) {
         entityAccessPolicy.requireDynamicByCode(status.getEntityCode());
         if (status.getId() == null || status.getId().isEmpty()) {
@@ -44,6 +55,14 @@ public class EntityStatusService {
      * 批量保存实体状态
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CONFIGURE,
+            operation = "批量保存实体状态",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_STATUS",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveStatusList(String entityCode, List<EntityStatus> statuses) {
         entityAccessPolicy.requireDynamicByCode(entityCode);
         // 先物理删除旧的状态（避免主键冲突；全局逻辑删除配置会使 BaseMapper.delete 变成软删，这里必须物理删除）
@@ -70,6 +89,13 @@ public class EntityStatusService {
      * 删除实体状态
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体状态",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_STATUS",
+            targetIdArg = 0)
     public void deleteStatus(String id) {
         EntityStatus status = entityStatusMapper.selectById(id);
         if (status != null) {

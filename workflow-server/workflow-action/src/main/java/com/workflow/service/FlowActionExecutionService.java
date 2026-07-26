@@ -4,6 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.dto.FlowActionExecutionDetailDTO;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.FlowAction;
 import com.workflow.entity.FlowActionExecution;
 import com.workflow.mapper.FlowActionMapper;
@@ -330,6 +334,14 @@ public class FlowActionExecutionService {
      * @throws RuntimeException 记录不存在或状态不可重试时抛出
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.RETRY,
+            operation = "手工重试流程动作",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "FLOW_ACTION_EXECUTION",
+            targetIdArg = 0)
     public void retry(String id) {
         FlowActionExecution execution = executionMapper.selectById(id);
         if (execution == null) {

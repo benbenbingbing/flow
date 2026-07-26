@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.migration.ConfigEnvironmentMappingRequest;
 import com.workflow.dto.migration.ConfigExportRequest;
 import com.workflow.entity.EntityDefinition;
@@ -100,6 +104,15 @@ public class ConfigMigrationPackageService {
      * @throws IllegalArgumentException 未选择资产或缺少可导出依赖
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.EXPORT,
+            operation = "导出配置迁移包",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE",
+            captureArguments = true,
+            captureResult = true)
     public Map<String, Object> exportPackage(ConfigExportRequest request) {
         if (request == null || request.getAssetIds() == null || request.getAssetIds().isEmpty()) {
             throw new IllegalArgumentException("请选择至少一个迁移资产");
@@ -168,6 +181,14 @@ public class ConfigMigrationPackageService {
      * @throws IllegalArgumentException 导出包不存在
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.EXPORT,
+            operation = "下载配置迁移包",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE",
+            targetIdArg = 0)
     public DownloadFile downloadExport(String id) {
         ConfigExportPackage exportPackage = exportPackageMapper.selectById(id);
         if (exportPackage == null || exportPackage.getPackageData() == null) {
@@ -192,6 +213,13 @@ public class ConfigMigrationPackageService {
      * @throws IllegalArgumentException 文件为空或解码失败
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.IMPORT,
+            operation = "导入配置迁移包",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE")
     public Map<String, Object> importPackage(MultipartFile file, String sourceEnvironment) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请选择 wfpack 文件");
@@ -285,6 +313,15 @@ public class ConfigMigrationPackageService {
      * @return 校验报告
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.CONFIGURE,
+            operation = "分析配置迁移包",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE",
+            targetIdArg = 0,
+            captureResult = true)
     public Map<String, Object> analyze(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
         List<ConfigImportItem> items = listImportItems(importId);
@@ -342,6 +379,15 @@ public class ConfigMigrationPackageService {
      * @throws IllegalArgumentException 映射缺少类型/来源键/目标键
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.MIGRATION,
+            action = AuditAction.CONFIGURE,
+            operation = "保存配置迁移映射",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "CONFIG_MIGRATION_PACKAGE",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveMappings(String importId, ConfigEnvironmentMappingRequest request) {
         requiredImport(importId);
         if (request == null || request.getMappings() == null) {

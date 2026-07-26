@@ -1,6 +1,10 @@
 package com.workflow.service.impl;
 
 import com.workflow.common.PageResult;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.vo.TaskStatisticsVO;
 import com.workflow.vo.TaskVO;
 import lombok.RequiredArgsConstructor;
@@ -213,6 +217,13 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.APPROVE,
+            operation = "办理流程任务",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public void completeTask(String taskId, String action, String comment, String transferTo, String actionLabel) {
         org.flowable.task.api.Task task = flowableTaskService.createTaskQuery()
                 .taskId(taskId)
@@ -703,6 +714,13 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.WITHDRAW,
+            operation = "撤回流程",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_INSTANCE",
+            targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String reason) {
         // 1. 查询流程实例
         HistoricProcessInstance processInstance = historyService
@@ -803,6 +821,13 @@ public class TaskServiceImpl implements com.workflow.service.TaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.RESUBMIT,
+            operation = "重新提交任务",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public void resubmitTask(String taskId, String comment, Map<String, Object> formData) {
         org.flowable.task.api.Task task = flowableTaskService.createTaskQuery()
                 .taskId(taskId)

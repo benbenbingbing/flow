@@ -5,6 +5,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.TaskAddSignRequest;
 import com.workflow.entity.ProcessTask;
 import com.workflow.entity.ProcessTaskAddSign;
@@ -113,6 +117,14 @@ public class TaskAddSignService {
      * @throws IllegalStateException    任务镜像不存在或已存在进行中加签时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.ADD_SIGN,
+            operation = "发起任务加签",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0,
+            captureResult = true)
     public Map<String, Object> addSign(String taskId, TaskAddSignRequest request) {
         Task sourceTask = requireSourceTask(taskId);
         String operator = requireTaskOperator(sourceTask);
@@ -265,6 +277,13 @@ public class TaskAddSignService {
      * @throws ForbiddenException       当前用户非加签任务办理人时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.APPROVE,
+            operation = "办理加签任务",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public void completeAddSignTask(String taskId, String action, String comment) {
         ProcessTaskAddSignUser taskLookup = addSignUserMapper.findByGeneratedTaskId(taskId);
         if (taskLookup == null) {
@@ -326,6 +345,13 @@ public class TaskAddSignService {
      * @throws IllegalStateException    原任务已提交或已有加签任务被处理时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CANCEL_ADD_SIGN,
+            operation = "撤销任务加签",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_ADD_SIGN",
+            targetIdArg = 0)
     public void cancel(String addSignId) {
         ProcessTaskAddSign addSign = addSignMapper.selectByIdForUpdate(addSignId);
         if (addSign == null) {

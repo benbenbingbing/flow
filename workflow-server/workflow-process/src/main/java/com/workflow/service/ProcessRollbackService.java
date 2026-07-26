@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.workflow.common.Result;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.EntityData;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.ProcessTask;
@@ -50,6 +54,13 @@ public class ProcessRollbackService {
      * @param targetNodeId 目标节点ID（可选，默认是发起人节点）
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.REJECT,
+            operation = "驳回流程任务",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
     public Result<Void> rejectTask(String taskId, String userId, String comment, String targetNodeId) {
         // 1. 验证任务
         Task task = taskService.createTaskQuery()
@@ -126,6 +137,13 @@ public class ProcessRollbackService {
      * @param comment           重新提交备注
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.RESUBMIT,
+            operation = "重新提交流程",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_INSTANCE",
+            targetIdArg = 0)
     public Result<Void> resubmitProcess(String processInstanceId, String userId, 
                                          Map<String, Object> formData, String comment) {
         // 1. 验证流程实例

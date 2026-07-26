@@ -3,6 +3,10 @@ package com.workflow.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.common.PageResult;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.SysOrganization;
 import com.workflow.entity.SysRole;
 import com.workflow.entity.SysUser;
@@ -230,6 +234,15 @@ public class SysUserService {
      * @throws RuntimeException 用户名已存在时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPSERT,
+            operation = "保存用户",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "SYS_USER",
+            captureArguments = true,
+            captureResult = true)
     public SysUser saveUser(SysUser user) {
         // 校验用户名唯一性
         if (StringUtils.hasText(user.getUsername())) {
@@ -281,6 +294,14 @@ public class SysUserService {
      * @throws RuntimeException 用户不存在或为超级管理员时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.DELETE,
+            operation = "删除用户",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_USER",
+            targetIdArg = 0)
     public void deleteUser(String id) {
         SysUser user = userMapper.selectById(id);
         if (user == null) {
@@ -308,6 +329,15 @@ public class SysUserService {
      * @throws RuntimeException 禁用超级管理员时抛出
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "更新用户状态",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "SYS_USER",
+            targetIdArg = 0,
+            captureArguments = true)
     public void updateStatus(String id, String status) {
         // 不能禁用超级管理员
         if ("1".equals(status)) {
@@ -325,6 +355,14 @@ public class SysUserService {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.UPDATE,
+            operation = "批量更新用户状态",
+            risk = AuditRiskLevel.HIGH,
+            required = true,
+            targetType = "SYS_USER_BATCH",
+            captureArguments = true)
     public void batchUpdateStatus(List<String> userIds, String status) {
         if (userIds == null || userIds.isEmpty()) {
             throw new IllegalArgumentException("至少选择一个用户");
@@ -339,6 +377,14 @@ public class SysUserService {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.ASSIGN_PERMISSION,
+            operation = "批量分配用户角色",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_USER_BATCH",
+            captureArguments = true)
     public void batchAssignRoles(List<String> userIds, List<String> roleIds) {
         if (userIds == null || userIds.isEmpty()) {
             throw new IllegalArgumentException("至少选择一个用户");
@@ -359,6 +405,14 @@ public class SysUserService {
      * @return 只应在本次响应中展示的临时密码
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SECURITY,
+            action = AuditAction.RESET_PASSWORD,
+            operation = "重置用户密码",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_USER",
+            targetIdArg = 0)
     public String resetPassword(String id) {
         SysUser existing = userMapper.selectById(id);
         if (existing == null) {
@@ -378,6 +432,14 @@ public class SysUserService {
      * 校验当前密码并完成改密，同时解除首次登录限制。
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SECURITY,
+            action = AuditAction.RESET_PASSWORD,
+            operation = "修改当前用户密码",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_USER",
+            targetIdArg = 0)
     public void changePassword(String id, String currentPassword, String newPassword) {
         SysUser existing = userMapper.selectById(id);
         if (existing == null) {
@@ -402,6 +464,14 @@ public class SysUserService {
      * 登录成功后迁移历史明文密码，避免继续保留明文。
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SECURITY,
+            action = AuditAction.RESET_PASSWORD,
+            operation = "迁移历史用户密码",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_USER",
+            targetIdArg = 0)
     public void migrateLegacyPassword(String id, String rawPassword) {
         SysUser update = new SysUser();
         update.setId(id);
@@ -441,6 +511,15 @@ public class SysUserService {
      * @param roleIds 角色ID列表
      */
     @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.SYSTEM,
+            action = AuditAction.ASSIGN_PERMISSION,
+            operation = "分配用户角色",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "SYS_USER",
+            targetIdArg = 0,
+            captureArguments = true)
     public void saveUserRoles(String userId, List<String> roleIds) {
         // 删除原有角色
         userRoleMapper.deleteByUserId(userId);

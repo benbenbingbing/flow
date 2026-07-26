@@ -1,7 +1,7 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.migration.MigrationAssetRecorder;
+import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
 import com.workflow.dto.EntityDefinitionDTO;
@@ -59,7 +59,7 @@ public class EntityDefinitionServiceTest {
     private ProcessCatalogPort processCatalogPort;
 
     @Mock
-    private MigrationAssetRecorder migrationAssetRecorder;
+    private MigrationAssetHandler migrationAssetHandler;
 
     @Mock
     private ObjectMapper objectMapper;

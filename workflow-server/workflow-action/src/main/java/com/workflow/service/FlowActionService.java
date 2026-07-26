@@ -1,6 +1,10 @@
 package com.workflow.service;
 
 import com.workflow.common.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.dto.FlowActionSaveRequest;
 import com.workflow.entity.FlowAction;
 import com.workflow.mapper.FlowActionMapper;
@@ -62,12 +66,28 @@ public class FlowActionService {
      * 保存动作（草稿状态）
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.UPSERT,
+            operation = "保存流程动作",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "FLOW_ACTION",
+            captureArguments = true,
+            captureResult = true)
     public FlowAction saveAction(FlowActionSaveRequest request) {
         FlowAction action = toEntity(request);
         return saveAction(action);
     }
 
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.UPSERT,
+            operation = "保存流程动作",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "FLOW_ACTION",
+            captureArguments = true,
+            captureResult = true)
     public FlowAction saveAction(FlowAction action) {
         normalizeAction(action);
         var definition = definitionService.requireSelectable(
@@ -100,6 +120,13 @@ public class FlowActionService {
      * 删除动作（仅可删除草稿状态）
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.DELETE,
+            operation = "删除流程动作",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "FLOW_ACTION",
+            targetIdArg = 0)
     public void deleteAction(String actionId) {
         FlowAction action = flowActionMapper.selectById(actionId);
         if (action != null && FlowAction.Status.DRAFT.name().equals(action.getStatus())) {
@@ -193,6 +220,13 @@ public class FlowActionService {
      * 更新动作排序
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.UPDATE,
+            operation = "调整流程动作排序",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "FLOW_ACTION",
+            captureArguments = true)
     public void updateSortOrder(List<String> actionIds) {
         for (int i = 0; i < actionIds.size(); i++) {
             FlowAction action = new FlowAction();
@@ -207,6 +241,13 @@ public class FlowActionService {
      * 切换动作启用状态
      */
     @Transactional
+    @SystemAudit(
+            module = AuditModule.ACTION,
+            action = AuditAction.ENABLE,
+            operation = "切换流程动作启用状态",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "FLOW_ACTION",
+            targetIdArg = 0)
     public void toggleEnabled(String actionId) {
         FlowAction action = flowActionMapper.selectById(actionId);
         if (action == null) {

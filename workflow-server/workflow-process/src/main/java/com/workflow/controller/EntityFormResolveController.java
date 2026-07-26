@@ -1,10 +1,11 @@
 package com.workflow.controller;
 
 import com.workflow.dto.ApiResponse;
-import com.workflow.entity.EntityForm;
 import com.workflow.service.entity.EntityFormResolveService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 /**
  * 实体表单解析控制器
@@ -28,8 +29,8 @@ public class EntityFormResolveController {
      * @return 表单信息，包含表单字段
      */
     @GetMapping("/new-data/{entityCode}")
-    public ApiResponse<EntityForm> getFormForNewData(@PathVariable String entityCode) {
-        EntityForm form = entityFormResolveService.resolveFormForNewData(entityCode);
+    public ApiResponse<Map<String, Object>> getFormForNewData(@PathVariable String entityCode) {
+        Map<String, Object> form = entityFormResolveService.resolveFormForNewData(entityCode);
         return ApiResponse.success(form);
     }
 
@@ -42,10 +43,11 @@ public class EntityFormResolveController {
      * @return 表单信息，包含当前任务节点信息
      */
     @GetMapping("/view-data/{entityCode}/{entityDataId}")
-    public ApiResponse<EntityForm> getFormForViewData(
+    public ApiResponse<Map<String, Object>> getFormForViewData(
             @PathVariable String entityCode,
             @PathVariable String entityDataId) {
-        EntityForm form = entityFormResolveService.resolveFormForViewData(entityCode, entityDataId);
+        Map<String, Object> form =
+                entityFormResolveService.resolveFormForViewData(entityCode, entityDataId);
         return ApiResponse.success(form);
     }
 }

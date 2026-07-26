@@ -5,6 +5,10 @@ import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.common.BusinessConflictException;
 import com.workflow.common.ForbiddenException;
 import com.workflow.common.PageResult;
+import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.process.ProcessRuntimePort;
+import com.workflow.contracts.process.ProcessStartRequest;
+import com.workflow.contracts.process.ProcessStartResult;
 import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.permission.DataPermissionResult;
 import com.workflow.entity.EntityDefinition;
@@ -12,12 +16,12 @@ import com.workflow.entity.EntityField;
 import com.workflow.entity.EntityRelation;
 import com.workflow.entity.EntityStatus;
 import com.workflow.entity.SysUser;
+import com.workflow.entity.policy.EntityProcessStatusPolicy;
 import com.workflow.entity.publish.EntityPublishedSnapshot;
 import com.workflow.entity.publish.EntityPublishedSnapshotService;
 import com.workflow.entity.runtime.EntityRelationRuntimeService;
 import com.workflow.entity.runtime.EntityMultiValueRuntimeService;
 import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
-import com.workflow.entity.runtime.EntityWorkflowRuntimePort;
 import com.workflow.mapper.EntityDataDynamicMapper;
 import com.workflow.mapper.EntityDefinitionMapper;
 import com.workflow.mapper.EntityStatusMapper;
@@ -39,7 +43,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class EntityDataDynamicService {
+public class EntityDataDynamicService implements EntityRecordPort {
 
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
@@ -49,7 +53,7 @@ public class EntityDataDynamicService {
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityRelationRuntimeService relationRuntimeService;
     private final EntityMultiValueRuntimeService multiValueRuntimeService;
-    private final EntityWorkflowRuntimePort workflowRuntimeService;
+    private final ProcessRuntimePort processRuntimePort;
     private final DataPermissionEngine dataPermissionEngine;
     private final SysUserService sysUserService;
     private final EntityPublishedSnapshotService snapshotService;
@@ -470,7 +474,7 @@ public class EntityDataDynamicService {
         // 如果需要发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
                 definition.getProcessDefinitionId() != null) {
-            workflowRuntimeService.startProcess(dto, definition);
+            startWorkflow(dto);
         }
 
         return dto;
@@ -595,7 +599,7 @@ public class EntityDataDynamicService {
                 dto.setSubmitterId(submitterIdObj != null ? submitterIdObj.toString() : null);
                 dto.setSubmitterName(submitterNameObj != null ? submitterNameObj.toString() : null);
                 dto.setProcessVariables(null);
-                workflowRuntimeService.startProcess(dto, definition);
+                startWorkflow(dto);
                 // 重新加载最新数据返回
                 Map<String, Object> refreshedData = dynamicMapper.selectById(tableName, id);
                 dto = recordMapper.toDto(refreshedData, entityCode);
@@ -701,9 +705,16 @@ public class EntityDataDynamicService {
     /**
      * 更新实体数据的当前任务信息
      */
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentTask(String entityCode, String entityDataId, String currentTaskId, String currentTaskName, String currentTaskAssignee) {
-        workflowRuntimeService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
+        String tableName = dynamicTableService.getTableName(entityCode);
+        dynamicMapper.updateCurrentTask(
+                tableName,
+                entityDataId,
+                currentTaskId,
+                currentTaskName,
+                currentTaskAssignee);
     }
 
     /**
@@ -711,11 +722,29 @@ public class EntityDataDynamicService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void markWithdrawn(String entityCode, String entityDataId) {
+        markProcessEnded(entityCode, entityDataId, "WITHDRAWN", "WITHDRAWN");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void markProcessEnded(
+            String entityCode,
+            String entityDataId,
+            String statusCategory,
+            String fallbackStatus) {
         String tableName = dynamicTableService.getTableName(entityCode);
-        List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, "WITHDRAWN");
-        String statusCode = statuses == null || statuses.isEmpty()
-                ? "WITHDRAWN"
-                : statuses.get(0).getStatusCode();
+        Map<String, Object> existingData = dynamicMapper.selectById(tableName, entityDataId);
+        String currentStatus = existingData == null
+                ? null
+                : asText(existingData.get("status"));
+        EntityStatus currentDefinition = StringUtils.hasText(currentStatus)
+                ? entityStatusMapper.findByEntityAndCode(entityCode, currentStatus)
+                : null;
+        String statusCode = EntityProcessStatusPolicy.shouldPreserve(
+                currentDefinition == null ? null : currentDefinition.getStatusCategory(),
+                statusCategory)
+                ? currentStatus
+                : getStatusByCategory(entityCode, statusCategory, fallbackStatus);
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("id", entityDataId);
         updateData.put("status", statusCode);
@@ -723,6 +752,23 @@ public class EntityDataDynamicService {
         updateData.put("update_time", LocalDateTime.now());
         dynamicMapper.update(tableName, updateData);
         dynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);
+    }
+
+    @Override
+    public void recordActivity(
+            String entityCode,
+            String entityRecordId,
+            String action,
+            String actionName,
+            String processInstanceId,
+            String taskId) {
+        entityRecordTeamService.record(
+                entityCode,
+                entityRecordId,
+                action,
+                actionName,
+                processInstanceId,
+                taskId);
     }
 
     private String getCurrentUserId(String defaultValue) {
@@ -901,6 +947,62 @@ public class EntityDataDynamicService {
         }
         // 默认返回 DRAFT
         return "DRAFT";
+    }
+
+    private void startWorkflow(EntityDataDTO dto) {
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(dto.getEntityCode());
+        String processDefinitionId = snapshot.getProcessDefinitionId();
+        if (!StringUtils.hasText(processDefinitionId)) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_READY",
+                    "实体发布快照未绑定流程定义: " + dto.getEntityCode());
+        }
+        ProcessStartResult result = processRuntimePort.start(new ProcessStartRequest(
+                processDefinitionId,
+                dto.getEntityCode(),
+                dto.getId(),
+                dto.getDataNo(),
+                dto.getSubmitterId(),
+                dto.getSubmitterName(),
+                getStatusByCategory(dto.getEntityCode(), "PROCESSING", "PENDING"),
+                dto.getData(),
+                dto.getProcessVariables()));
+
+        Map<String, Object> updateData = new HashMap<>();
+        updateData.put("id", dto.getId());
+        updateData.put("process_instance_id", result.processInstanceId());
+        updateData.put("process_start_time", LocalDateTime.now());
+        updateData.put("status", result.entityStatus());
+        updateData.put("update_time", LocalDateTime.now());
+        updateData.put("current_task_id", result.currentTaskId());
+        updateData.put("current_task_name", result.currentTaskName());
+        updateData.put("current_task_assignee", result.currentTaskAssignee());
+        dynamicMapper.update(dynamicTableService.getTableName(dto.getEntityCode()), updateData);
+
+        dto.setProcessInstanceId(result.processInstanceId());
+        dto.setStatus(result.entityStatus());
+        dto.setCurrentTaskId(result.currentTaskId());
+        dto.setCurrentTaskName(result.currentTaskName());
+        dto.setCurrentTaskAssignee(result.currentTaskAssignee());
+        entityRecordTeamService.record(
+                dto.getEntityCode(),
+                dto.getId(),
+                "START_PROCESS",
+                "发起流程",
+                result.processInstanceId(),
+                result.currentTaskId());
+    }
+
+    private String getStatusByCategory(String entityCode, String category, String fallback) {
+        try {
+            List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, category);
+            if (statuses != null && !statuses.isEmpty()) {
+                return statuses.get(0).getStatusCode();
+            }
+        } catch (Exception exception) {
+            log.warn("获取实体[{}]状态分类[{}]失败: {}", entityCode, category, exception.getMessage());
+        }
+        return fallback;
     }
 
 }

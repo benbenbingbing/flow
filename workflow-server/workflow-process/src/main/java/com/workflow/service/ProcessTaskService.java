@@ -1,5 +1,10 @@
 package com.workflow.service;
 
+import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.EntityFormRuntimePort;
+import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.identity.IdentityGroup;
+import com.workflow.contracts.identity.IdentityUser;
 import com.workflow.entity.ProcessTask;
 import com.workflow.mapper.ProcessTaskMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -29,41 +34,32 @@ public class ProcessTaskService {
     private final RuntimeService runtimeService;
     private final org.flowable.engine.RepositoryService repositoryService;
     private final com.workflow.mapper.NodeConfigMapper nodeConfigMapper;
-    private final com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper;
+    private final EntityFormRuntimePort entityFormRuntimePort;
     private final com.workflow.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
-    private final com.workflow.service.EntityDataDynamicService entityDataDynamicService;
-    private final com.workflow.mapper.SysGroupMapper sysGroupMapper;
-    private final com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper;
-    private final com.workflow.mapper.SysUserMapper sysUserMapper;
-    private final com.workflow.service.SysUserService sysUserService;
+    private final EntityRecordPort entityRecordPort;
+    private final IdentityDirectoryPort identityDirectoryPort;
     
     public ProcessTaskService(ProcessTaskMapper taskMapper,
                               TaskService flowableTaskService,
                               RuntimeService runtimeService,
                               org.flowable.engine.RepositoryService repositoryService,
                               com.workflow.mapper.NodeConfigMapper nodeConfigMapper,
-                              com.workflow.mapper.EntityDefinitionMapper entityDefinitionMapper,
+                              EntityFormRuntimePort entityFormRuntimePort,
                               com.workflow.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper,
                               com.fasterxml.jackson.databind.ObjectMapper objectMapper,
-                              @Lazy com.workflow.service.EntityDataDynamicService entityDataDynamicService,
-                              com.workflow.mapper.SysGroupMapper sysGroupMapper,
-                              com.workflow.mapper.SysUserGroupMapper sysUserGroupMapper,
-                              com.workflow.mapper.SysUserMapper sysUserMapper,
-                              com.workflow.service.SysUserService sysUserService) {
+                              @Lazy EntityRecordPort entityRecordPort,
+                              IdentityDirectoryPort identityDirectoryPort) {
         this.taskMapper = taskMapper;
         this.flowableTaskService = flowableTaskService;
         this.runtimeService = runtimeService;
         this.repositoryService = repositoryService;
         this.nodeConfigMapper = nodeConfigMapper;
-        this.entityDefinitionMapper = entityDefinitionMapper;
+        this.entityFormRuntimePort = entityFormRuntimePort;
         this.processDefinitionConfigMapper = processDefinitionConfigMapper;
         this.objectMapper = objectMapper;
-        this.entityDataDynamicService = entityDataDynamicService;
-        this.sysGroupMapper = sysGroupMapper;
-        this.sysUserGroupMapper = sysUserGroupMapper;
-        this.sysUserMapper = sysUserMapper;
-        this.sysUserService = sysUserService;
+        this.entityRecordPort = entityRecordPort;
+        this.identityDirectoryPort = identityDirectoryPort;
     }
     
     /**
@@ -167,11 +163,12 @@ public class ProcessTaskService {
             String entityCode = task.getEntityCode();
             String nodeId = task.getNodeId();
             if (entityCode != null && nodeId != null) {
-                com.workflow.entity.EntityDefinition entityDef = entityDefinitionMapper
-                        .findByEntityCode(entityCode).orElse(null);
-                if (entityDef != null && entityDef.getProcessDefinitionId() != null) {
+                String processDefinitionId = entityFormRuntimePort.findContext(entityCode)
+                        .map(context -> context.processDefinitionId())
+                        .orElse(null);
+                if (processDefinitionId != null) {
                     com.workflow.entity.NodeConfig nodeConfig = nodeConfigMapper
-                            .selectByNodeIdAndProcessId(nodeId, entityDef.getProcessDefinitionId());
+                            .selectByNodeIdAndProcessId(nodeId, processDefinitionId);
                     if (nodeConfig != null && nodeConfig.getConfigJson() != null) {
                         com.fasterxml.jackson.databind.JsonNode config = objectMapper
                                 .readTree(nodeConfig.getConfigJson());
@@ -301,11 +298,12 @@ public class ProcessTaskService {
             String nodeId = task.getNodeId();
             if (entityCode != null && nodeId != null) {
                 // 通过entityCode获取流程定义配置ID
-                com.workflow.entity.EntityDefinition entityDef = entityDefinitionMapper
-                        .findByEntityCode(entityCode).orElse(null);
-                if (entityDef != null && entityDef.getProcessDefinitionId() != null) {
+                String processDefinitionId = entityFormRuntimePort.findContext(entityCode)
+                        .map(context -> context.processDefinitionId())
+                        .orElse(null);
+                if (processDefinitionId != null) {
                     com.workflow.entity.NodeConfig nodeConfig = nodeConfigMapper
-                            .selectByNodeIdAndProcessId(nodeId, entityDef.getProcessDefinitionId());
+                            .selectByNodeIdAndProcessId(nodeId, processDefinitionId);
                     if (nodeConfig != null && nodeConfig.getConfigJson() != null) {
                         com.fasterxml.jackson.databind.JsonNode config = objectMapper
                                 .readTree(nodeConfig.getConfigJson());
@@ -409,7 +407,8 @@ public class ProcessTaskService {
         ProcessTask task = taskMapper.selectByTaskIdForUpdate(taskId);
         if (task != null) {
             task.setAssigneeId(assignee);
-            task.setAssigneeName(sysUserService.getDisplayName(assignee));
+            task.setAssigneeName(
+                    identityDirectoryPort.getDisplayName(assignee));
             task.setAssigneeType("user");
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
@@ -512,7 +511,12 @@ public class ProcessTaskService {
             currentTaskAssignee = task.getAssignee();
         }
         
-        entityDataDynamicService.updateCurrentTask(entityCode, entityDataId, currentTaskId, currentTaskName, currentTaskAssignee);
+        entityRecordPort.updateCurrentTask(
+                entityCode,
+                entityDataId,
+                currentTaskId,
+                currentTaskName,
+                currentTaskAssignee);
     }
     
     /**
@@ -590,22 +594,22 @@ public class ProcessTaskService {
      */
     private String getGroupMemberNames(String groupCode) {
         try {
-            com.workflow.entity.SysGroup group = sysGroupMapper.selectByGroupCode(groupCode);
+            IdentityGroup group = identityDirectoryPort.findGroup(groupCode).orElse(null);
             if (group == null) {
                 return groupCode;
             }
-            List<String> userIds = sysUserGroupMapper.selectUserIdsByGroupId(group.getId());
-            if (userIds == null || userIds.isEmpty()) {
-                return group.getGroupName();
+            List<IdentityUser> users = identityDirectoryPort.findGroupUsers(group.id());
+            if (users.isEmpty()) {
+                return group.name();
             }
             List<String> names = new java.util.ArrayList<>();
-            for (String userId : userIds) {
-                String displayName = sysUserService.getDisplayName(userId);
+            for (IdentityUser user : users) {
+                String displayName = identityDirectoryPort.getDisplayName(user.id());
                 if (!names.contains(displayName)) {
                     names.add(displayName);
                 }
             }
-            return names.isEmpty() ? group.getGroupName() : String.join(",", names);
+            return names.isEmpty() ? group.name() : String.join(",", names);
         } catch (Exception e) {
             log.warn("获取组成员失败: {}", groupCode, e);
             return groupCode;
@@ -616,7 +620,7 @@ public class ProcessTaskService {
      * 根据用户ID/用户名列表获取统一显示名称列表
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
-        return sysUserService.getDisplayNames(idsOrNames);
+        return identityDirectoryPort.getDisplayNames(idsOrNames);
     }
 
 }
