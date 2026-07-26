@@ -143,7 +143,7 @@ registerFormFieldComponent('rating', RatingField, {
             <li>前端注册只负责提供运行时代码；发布前还必须在设计器“扩展清单”登记同名 `NODE` manifest。</li>
             <li>设计器保存 `componentName + componentVersion + snapshotVersion`，不会自动跟随目标环境的最新版本。</li>
             <li>发布会校验启用状态、实现版本、节点类型、绑定类型和快照协议，任一不兼容都会阻止发布。</li>
-            <li>自定义组件未在后端 manifest 显式声明热修复兼容时，任何组件版本变化默认归为 `BLOCKED`；声明兼容的补丁版本仍至少归为 `REVIEW`，不能由前端自行标成 SAFE。</li>
+            <li>自定义组件版本变化至少归为 `REVIEW`。未在后端 manifest 声明热修复兼容能力时会显示更强风险说明，但不再归为 `BLOCKED`，确认后仍可热修复。</li>
           </ul>
           <CodeCard title="RatingField.vue" language="Vue">
             <pre v-pre><code>&lt;script setup&gt;
@@ -267,14 +267,14 @@ defineExpose({ validate })
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW/BLOCKED、影响流程版本、运行中实例、跳过历史实例、blockers 和 impactToken。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；流程表单不再返回 BLOCKED。</el-descriptions-item>
             <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 必须带 expectedActiveReleaseId、expectedDraftHash、impactToken 和固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
             <el-descriptions-item label="/releases">查看历史发布记录及 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
             <el-descriptions-item label="/activate">只激活 STANDARD 历史版本；HOTFIX 只能通过 rollback-hotfix 撤回。</el-descriptions-item>
             <el-descriptions-item label="/rollback-hotfix">只有 rolloutStatus=`ACTIVE` 可从最新热修复开始按发布时间逆序原子恢复上一有效快照。</el-descriptions-item>
           </el-descriptions>
           <ul class="check-list">
-            <li>`SAFE` 仅允许展示型修改；`REVIEW` 包括只读、显隐、默认值、客户端校验、格式化器和兼容组件补丁；节点/字段增删、绑定、权限、数据源、提交映射、关系/子表和写操作均为 `BLOCKED`。</li>
+            <li>`SAFE` 用于展示型修改；其他所有通过发布校验的表单修改统一为 `REVIEW`，包括节点/字段增删、绑定、权限、数据源、提交映射、关系/子表、写操作和未声明兼容的自定义组件。</li>
             <li>表单 HOTFIX 只作用于当前可发起流程版本和运行中实例；`HISTORICAL` 模式下已完成、已终止实例始终读取流程发布时的原始钉定 release。</li>
             <li>HOTFIX 发布和撤回都需要 `entity:ui-config:hotfix`；只有发布 REVIEW 风险时才额外需要超级管理员或 `entity:ui-config:hotfix:override`，且必须填写可审计原因。</li>
             <li>`rolloutStatus=ACTIVE` 表示正在生效且可撤回，`SUPERSEDED` 表示已被更新热修复替代，`ROLLED_BACK` 表示已撤回；只有 ACTIVE 接受 rollback-hotfix。</li>
@@ -356,7 +356,7 @@ defineExpose({ validate })
             <li>修改一个节点后其他节点的 ID、revision、更新时间和内容完全不变。</li>
             <li>循环引用和超过 8 层嵌套被发布校验拒绝。</li>
             <li>STANDARD 不影响运行中流程；HOTFIX 原子影响当前发起和运行中任务，历史实例仍用原快照。</li>
-            <li>SAFE/REVIEW/BLOCKED、权限拒绝、409 重新预检、逆序回滚和嵌套令牌 8 层限制均有负向测试。</li>
+            <li>SAFE/REVIEW、节点集合增删补丁、权限拒绝、409 重新预检、逆序回滚和嵌套令牌 8 层限制均有负向测试。</li>
             <li>模板三方升级保留 localOverrides，迁移可重复执行且快照哈希可核对。</li>
           </ul>
         </section>

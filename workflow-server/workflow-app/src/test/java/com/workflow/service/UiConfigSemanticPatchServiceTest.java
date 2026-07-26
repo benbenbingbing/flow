@@ -117,7 +117,7 @@ class UiConfigSemanticPatchServiceTest {
     }
 
     @Test
-    void blocksStructuralMoveAndComponentTypeChange() {
+    void reviewsStructuralMoveAndComponentTypeChange() {
         Map<String, Object> source = formSnapshot(node(
                 null,
                 "标签",
@@ -140,22 +140,38 @@ class UiConfigSemanticPatchServiceTest {
                         "FORM",
                         source,
                         formSnapshot(targetNode));
+        UiConfigSemanticPatchService.PatchApplication application =
+                service.apply(
+                        source,
+                        analysis.operations(),
+                        true);
 
         assertEquals(
-                UiConfigSemanticPatchService.BLOCKED,
+                UiConfigSemanticPatchService.REVIEW,
                 analysis.riskLevel());
         assertTrue(analysis.operations().stream().anyMatch(item ->
                 "/parentId".equals(item.getPath())
-                        && UiConfigSemanticPatchService.BLOCKED.equals(
+                        && UiConfigSemanticPatchService.REVIEW.equals(
                                 item.getRiskLevel())));
         assertTrue(analysis.operations().stream().anyMatch(item ->
                 item.getPath().endsWith("/componentType")
-                        && UiConfigSemanticPatchService.BLOCKED.equals(
+                        && UiConfigSemanticPatchService.REVIEW.equals(
                                 item.getRiskLevel())));
+        assertFalse(service.apply(
+                source,
+                analysis.operations(),
+                false).compatible());
+        assertTrue(application.compatible());
+        assertEquals(
+                "section-2",
+                firstNode(application.snapshot()).get("parentId"));
+        assertEquals(
+                "dangerous-custom",
+                nodeProps(application.snapshot()).get("componentType"));
     }
 
     @Test
-    void blocksAddingOrRemovingStableNode() {
+    void reviewsAndAppliesRemovingStableNode() {
         Map<String, Object> source = formSnapshot(node(
                 null,
                 "标签",
@@ -166,12 +182,54 @@ class UiConfigSemanticPatchServiceTest {
 
         UiConfigSemanticPatchService.PatchAnalysis analysis =
                 service.build("FORM", source, target);
+        UiConfigSemanticPatchService.PatchApplication application =
+                service.apply(
+                        source,
+                        analysis.operations(),
+                        true);
 
         assertEquals(
-                UiConfigSemanticPatchService.BLOCKED,
+                UiConfigSemanticPatchService.REVIEW,
                 analysis.riskLevel());
         assertTrue(analysis.operations().stream().anyMatch(item ->
-                "REMOVED".equals(item.getChangeType())));
+                "REMOVED".equals(item.getChangeType())
+                        && UiConfigSemanticPatchService.REVIEW.equals(
+                                item.getRiskLevel())));
+        assertFalse(service.apply(
+                source,
+                analysis.operations(),
+                false).compatible());
+        assertTrue(application.compatible());
+        assertTrue(((List<?>) application.snapshot().get("nodes")).isEmpty());
+    }
+
+    @Test
+    void reviewsAndAppliesAddingStableNode() {
+        Map<String, Object> source = formSnapshotNodes(List.of());
+        Map<String, Object> target = formSnapshot(node(
+                null,
+                "新增字段",
+                false));
+
+        UiConfigSemanticPatchService.PatchAnalysis analysis =
+                service.build("FORM", source, target);
+        UiConfigSemanticPatchService.PatchApplication application =
+                service.apply(
+                        source,
+                        analysis.operations(),
+                        true);
+
+        assertEquals(
+                UiConfigSemanticPatchService.REVIEW,
+                analysis.riskLevel());
+        assertTrue(analysis.operations().stream().anyMatch(item ->
+                "ADDED".equals(item.getChangeType())
+                        && UiConfigSemanticPatchService.REVIEW.equals(
+                                item.getRiskLevel())));
+        assertTrue(application.compatible());
+        assertEquals(
+                "node-1",
+                firstNode(application.snapshot()).get("id"));
     }
 
     @Test
@@ -207,15 +265,22 @@ class UiConfigSemanticPatchServiceTest {
     private Map<String, Object> formSnapshot(
             Map<String, Object> node,
             Map<String, Object> legacyField) {
+        Map<String, Object> snapshot = formSnapshotNodes(List.of(node));
+        snapshot.put(
+                "legacyFields",
+                legacyField == null ? List.of() : List.of(legacyField));
+        return snapshot;
+    }
+
+    private Map<String, Object> formSnapshotNodes(
+            List<Map<String, Object>> nodes) {
         Map<String, Object> form = new LinkedHashMap<>();
         form.put("id", "form-1");
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("configType", "FORM");
         snapshot.put("form", form);
-        snapshot.put("nodes", List.of(node));
-        snapshot.put(
-                "legacyFields",
-                legacyField == null ? List.of() : List.of(legacyField));
+        snapshot.put("nodes", nodes);
+        snapshot.put("legacyFields", List.of());
         return snapshot;
     }
 
@@ -273,11 +338,16 @@ class UiConfigSemanticPatchServiceTest {
     }
 
     @SuppressWarnings("unchecked")
+    private Map<String, Object> firstNode(
+            Map<String, Object> snapshot) {
+        return (Map<String, Object>) ((List<?>) snapshot.get(
+                "nodes")).get(0);
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> nodeProps(
             Map<String, Object> snapshot) {
-        Map<String, Object> node =
-                (Map<String, Object>) ((List<?>) snapshot.get(
-                        "nodes")).get(0);
+        Map<String, Object> node = firstNode(snapshot);
         return codec.readObject(
                 String.valueOf(node.get("propsDocument")),
                 "测试节点属性");

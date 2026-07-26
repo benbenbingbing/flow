@@ -1275,7 +1275,7 @@ export default {
               ],
               rows: [
                 { mode: 'STANDARD 普通发布', useCase: '业务结构、字段绑定、数据权限、数据源、提交映射和写操作等常规变更。', effect: '独立表单使用新 ACTIVE；流程表单需要重新发布流程后供新实例使用，运行中实例仍使用流程原快照。', limits: '默认选项；旧客户端只传 description 时也按 STANDARD 处理。' },
-                { mode: 'HOTFIX 兼容热修复', useCase: '必须立即修正当前流程中的兼容展示问题。', effect: '表单作用于当前可发起流程版本及仍有运行实例的历史版本；已完成、已终止实例跳过。', limits: '只能发布 SAFE，或经授权强制确认 REVIEW；任何 BLOCKED 都必须改用 STANDARD。' },
+                { mode: 'HOTFIX 流程表单热修复', useCase: '需要把任意通过发布校验的表单修改立即推送到当前流程。', effect: '表单作用于当前可发起流程版本及仍有运行实例的历史版本；已完成、已终止实例跳过。', limits: '展示修改为 SAFE；结构、绑定、权限、数据源、提交映射和自定义组件等高风险修改统一为 REVIEW，确认后可热修复。' },
                 { mode: '列表发布', useCase: '列表标题、列宽、格式化或其他列表配置。', effect: '列表始终全局读取当前 ACTIVE，STANDARD 和 HOTFIX 发布后都会立即影响所有列表页面。', limits: '列表 HOTFIX 的价值是增加风险预检、审计和逆序快速回滚，不提供流程实例隔离。' }
               ]
             },
@@ -1300,16 +1300,16 @@ export default {
               ],
               rows: [
                 { risk: 'SAFE', examples: '文字、帮助说明、占位符、列标题、宽度、对齐、顺序、分页大小和空状态。', result: '具备热修复权限且影响预检通过后可直接发布。' },
-                { risk: 'REVIEW', examples: '只读、显隐、默认值、客户端校验、格式化器和声明兼容的组件补丁版本。', result: '必须由超级管理员或拥有覆盖权限的用户勾选强制确认并填写原因。' },
-                { risk: 'BLOCKED', examples: '节点或字段增删、绑定或类型、权限与数据范围、查询数据源、提交映射、关系/子表结构和写操作按钮。', result: '任何权限都不能覆盖；改用 STANDARD 并重新发布依赖流程。' }
+                { risk: 'REVIEW（流程表单）', examples: '只读、显隐、默认值、校验、节点/字段增删、绑定或类型、权限与数据范围、数据源、提交映射、关系/子表、写操作及未声明兼容的自定义组件。', result: '不再硬阻断；超级管理员或拥有覆盖权限的用户勾选强制确认并填写原因后即可热修复。' },
+                { risk: 'BLOCKED（列表保留）', examples: '列表查询数据源、数据范围、写按钮及字段/绑定结构等不适合即时全局替换的修改。', result: '仅列表配置继续按原策略阻断；不适用于流程表单。' }
               ]
             },
             {
               type: 'bullets',
               items: [
                 'HOTFIX 发布与撤回都需要 entity:ui-config:hotfix；只有发布 REVIEW 风险时才额外要求超级管理员或 entity:ui-config:hotfix:override，并填写强制确认原因。',
-                '风险等级由后端根据语义补丁判定，前端只能展示，不能把 REVIEW 或 BLOCKED 降级。',
-                '自定义组件只有显式声明热修复兼容能力时，兼容补丁版本才可进入 REVIEW；未声明时默认 BLOCKED。',
+                '风险等级由后端根据语义补丁判定。流程表单不会再返回 BLOCKED：除 SAFE 外统一提升为 REVIEW；列表仍保留 BLOCKED。',
+                '流程表单自定义组件无论是否声明热修复兼容能力都允许进入 REVIEW；声明能力用于完善风险说明，不再形成硬阻断。',
                 '影响预检必须核对 processVersionCount、activeInstanceCount、skippedHistoricalInstanceCount、targets[].compatible 和 blockers。',
                 '发布历史中的 rolloutStatus=ACTIVE 表示当前正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已经撤回；只有 ACTIVE 显示撤回入口。',
                 '预检后草稿、当前 ACTIVE release、目标流程版本或运行实例集合发生变化时，发布返回 409 HOTFIX_IMPACT_CHANGED，必须重新预检，不能复用旧 impactToken。'
@@ -1418,7 +1418,7 @@ export default {
                 '数据权限由普通角色验证，所有 LIST_QUERY、LIST_COLUMN 和表单实体查询均执行 DataScopePlan。',
                 '按钮权限已授予角色，适用条件与后端操作校验一致。',
                 '流程绑定、节点表单和实体状态连线配置完整。',
-                'STANDARD/HOTFIX 预检、SAFE/REVIEW/BLOCKED 分类、权限拒绝、影响数量和 409 重新预检均已验证。',
+                'STANDARD/HOTFIX 预检、流程表单 SAFE/REVIEW、列表 BLOCKED、权限拒绝、影响数量和 409 重新预检均已验证。',
                 'STANDARD activate、HOTFIX 逆序 rollback、列表全局 ACTIVE 立即生效和发布失败保持旧版本均已验证。',
                 '运行中流程应用有效 HOTFIX；已完成、已终止实例和历史审批回放仍使用原始钉定快照。',
                 '迁移重复执行结果幂等，legacyProps、初始 release、内容哈希和临时旧配置回退均已复核。'

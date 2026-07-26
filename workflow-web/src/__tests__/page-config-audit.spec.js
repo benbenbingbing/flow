@@ -1050,4 +1050,34 @@ const pagedEntityDataList = readFileSync(path.join(root, 'src/views/entity/Entit
   assert.ok(pagedEntityDataList.includes(marker), `实体数据列表缺少服务端分页能力: ${marker}`)
 })
 
+const uiConfigPublishDialog = readFileSync(
+  path.join(root, 'src/components/UiConfigPublishDialog.vue'),
+  'utf8'
+)
+assert.ok(
+  uiConfigPublishDialog.includes('所有通过发布校验的表单变更都可热修复')
+    && uiConfigPublishDialog.includes('高风险表单变更会立即影响运行中任务'),
+  '流程表单热修复界面应明确无硬阻断、高风险统一复核'
+)
+assert.doesNotMatch(
+  uiConfigPublishDialog,
+  /仅允许兼容修改/,
+  '流程表单热修复界面不得继续声称只允许兼容修改'
+)
+
+const processManualSource = readFileSync(
+  path.join(root, 'src/data/user-manual/process.js'),
+  'utf8'
+)
+assert.ok(
+  processManualSource.includes('流程表单不再产生 BLOCKED')
+    && processManualSource.includes('高风险修改统一为 REVIEW'),
+  '流程手册应说明表单热修复的 SAFE/REVIEW 新策略'
+)
+assert.doesNotMatch(
+  processManualSource,
+  /BLOCKED 立即停止并改用 STANDARD/,
+  '流程手册不得保留表单 BLOCKED 硬阻断说明'
+)
+
 console.log('page configuration audit passed')

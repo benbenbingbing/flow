@@ -142,6 +142,7 @@ public class UiConfigSemanticPatchService {
                         "列表适用场景变化会改变运行入口"));
             }
         }
+        normalizeFormRisk(configType, operations);
         operations.sort(Comparator
                 .comparing(UiConfigSemanticPatchOperation::getSection)
                 .thenComparing(UiConfigSemanticPatchOperation::getItemId)
@@ -179,6 +180,51 @@ public class UiConfigSemanticPatchService {
                 blockers.add(operation.getPath() + "：" + operation.getReason());
                 continue;
             }
+            if (isCollectionChange(operation)) {
+                CollectionLocation collection = locateCollection(
+                        result,
+                        operation);
+                if (collection == null) {
+                    blockers.add(operation.getPath()
+                            + "：目标版本缺少稳定配置集合");
+                    continue;
+                }
+                Map<String, Object> current = findItem(
+                        collection.items(),
+                        operation.getItemId(),
+                        collection.idKeys());
+                boolean diverged = !equivalent(
+                        current,
+                        operation.getBeforeValue());
+                divergedTarget = divergedTarget || diverged;
+                if (diverged && !allowReviewOverride) {
+                    blockers.add(operation.getPath()
+                            + "：目标版本内容已分歧，需要风险覆盖");
+                    continue;
+                }
+                if (REVIEW.equals(operation.getRiskLevel())
+                        && !allowReviewOverride) {
+                    blockers.add(operation.getPath()
+                            + "：属于 REVIEW 修改");
+                    continue;
+                }
+                if ("ADDED".equals(operation.getChangeType())) {
+                    Map<String, Object> added = mapValue(
+                            deepCopyValue(operation.getAfterValue()));
+                    if (added.isEmpty()) {
+                        blockers.add(operation.getPath()
+                                + "：新增配置条目内容无效");
+                        continue;
+                    }
+                    if (current != null) {
+                        collection.items().remove(current);
+                    }
+                    collection.items().add(added);
+                } else if (current != null) {
+                    collection.items().remove(current);
+                }
+                continue;
+            }
             ApplyLocation location = locate(result, operation);
             if (location == null) {
                 blockers.add(operation.getPath() + "：目标版本缺少稳定条目或配置路径");
@@ -204,6 +250,66 @@ public class UiConfigSemanticPatchService {
                 blockers.isEmpty() ? result : null,
                 List.copyOf(blockers),
                 divergedTarget);
+    }
+
+    private void normalizeFormRisk(
+            String configType,
+            List<UiConfigSemanticPatchOperation> operations) {
+        if (!UiConfigReleaseService.FORM.equals(configType)) {
+            return;
+        }
+        for (UiConfigSemanticPatchOperation operation : operations) {
+            if (!BLOCKED.equals(operation.getRiskLevel())) {
+                continue;
+            }
+            operation.setRiskLevel(REVIEW);
+            operation.setReason(
+                    isCollectionChange(operation)
+                            ? "流程表单结构条目变化，确认对运行中任务的影响后可热修复"
+                            : "流程表单高风险配置变化，确认对运行中任务的影响后可热修复");
+        }
+    }
+
+    private boolean isCollectionChange(
+            UiConfigSemanticPatchOperation operation) {
+        return "/".equals(operation.getPath())
+                && Set.of("ADDED", "REMOVED").contains(
+                        operation.getChangeType());
+    }
+
+    private CollectionLocation locateCollection(
+            Map<String, Object> snapshot,
+            UiConfigSemanticPatchOperation operation) {
+        if ("nodes".equals(operation.getSection())
+                || "legacyFields".equals(operation.getSection())) {
+            String collection = operation.getSection();
+            List<Map<String, Object>> items =
+                    mapList(snapshot.get(collection));
+            snapshot.put(collection, items);
+            return new CollectionLocation(
+                    items,
+                    "legacyFields".equals(collection)
+                            ? List.of("id", "fieldCode")
+                            : List.of("id", "nodeKey"));
+        }
+        Map<String, Object> list = mapValue(snapshot.get("list"));
+        snapshot.put("list", list);
+        String collection = switch (operation.getSection()) {
+            case "fields" -> "fields";
+            case "toolbarActions" -> "toolbarConfig";
+            case "rowActions" -> "rowActionConfig";
+            default -> null;
+        };
+        if (collection == null) {
+            return null;
+        }
+        List<Map<String, Object>> items = mapList(list.get(collection));
+        list.put(collection, items);
+        return new CollectionLocation(
+                items,
+                "fields".equals(operation.getSection())
+                        ? List.of("id", "fieldCode")
+                        : List.of("id", "key", "actionCode"));
     }
 
     public String writePatch(List<UiConfigSemanticPatchOperation> operations) {
@@ -650,6 +756,11 @@ public class UiConfigSemanticPatchService {
     private record ParsedDocument(
             Map<String, Object> before,
             Map<String, Object> after) {
+    }
+
+    private record CollectionLocation(
+            List<Map<String, Object>> items,
+            List<String> idKeys) {
     }
 
     private record EmbeddedDocument(

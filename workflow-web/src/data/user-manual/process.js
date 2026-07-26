@@ -640,7 +640,7 @@ export default {
               type: 'callout',
               tone: 'warning',
               title: '普通发布与兼容热修复',
-              text: '流程发布快照会固定节点表单的 release ID 和版本。STANDARD 普通发布仍要求重新发布流程：未重发时新增流程数据返回 409 PROCESS_FORM_RELEASE_STALE；重发后新实例使用新版本，运行中实例继续使用原版本。只有后端预检判定为 SAFE，或经授权确认的 REVIEW 修改，才可选择 HOTFIX 直接作用于当前可发起版本和运行中实例。'
+              text: '流程发布快照会固定节点表单的 release ID 和版本。STANDARD 普通发布仍要求重新发布流程：未重发时新增流程数据返回 409 PROCESS_FORM_RELEASE_STALE；重发后新实例使用新版本，运行中实例继续使用原版本。流程表单的任意有效修改都可选择 HOTFIX：展示修改为 SAFE，其余高风险修改统一为 REVIEW，经授权确认后直接作用于当前可发起版本和运行中实例。'
             },
             {
               type: 'table',
@@ -982,8 +982,8 @@ export default {
               type: 'steps',
               items: [
                 { title: '保存草稿', text: '只保存需要修复的节点或列表项，确认没有夹带字段绑定、权限、数据源或写操作变化。' },
-                { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW/BLOCKED、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。' },
-                { title: '处理风险', text: 'SAFE 可直接继续；REVIEW 需要覆盖权限、强制确认和原因；BLOCKED 立即停止并改用 STANDARD。' },
+                { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。流程表单不再产生 BLOCKED。' },
+                { title: '处理风险', text: 'SAFE 可直接继续；节点增删、绑定、权限、数据源、提交映射、关系/子表和写操作等高风险修改统一为 REVIEW，需要覆盖权限、强制确认和原因。' },
                 { title: '原子发布', text: '发布请求回传 expectedActiveReleaseId、expectedDraftHash 和 impactToken；任一目标不兼容或影响集合变化时整次失败。' },
                 { title: '验证与回滚', text: '分别验证当前发起入口、运行中任务和历史详情；只有 rolloutStatus=ACTIVE 的 HOTFIX 可撤回，并须从最新版本开始按发布时间逆序原子回滚。' }
               ]
@@ -1062,7 +1062,7 @@ export default {
                 '所有服务、发送、接收、规则、脚本和子流程目标在目标环境存在。',
                 '排他/包容网关条件覆盖所有情况，默认流唯一，approved 使用审批项 value。',
                 '节点表单已保存、启用、模式权限正确；只读与隐藏叠加符合预期。',
-                '节点表单使用 STANDARD 时依赖流程已重新发布；使用 HOTFIX 时 SAFE/REVIEW/BLOCKED、权限、原因、影响预检和原子生效均已验证。',
+                '节点表单使用 STANDARD 时依赖流程已重新发布；使用 HOTFIX 时 SAFE/REVIEW、结构增删补丁、权限、原因、影响预检和原子生效均已验证。',
                 '当前可发起版本与运行中实例读取有效 HOTFIX，已完成和已终止实例仍读取原始钉定快照。',
                 '嵌套表单 releaseResolutionToken 不可伪造、会过期、绑定当前用户且超过 8 层被拒绝。',
                 '审批选项 label/value、备注显示与必填、所有出线条件保持一致。',

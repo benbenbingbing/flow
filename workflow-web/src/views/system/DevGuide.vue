@@ -295,7 +295,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">返回可编辑草稿、稳定项目 ID、revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">按稳定 ID 比较草稿与激活快照，并返回树、数据源、权限、模板和兼容校验；`changedItems[]` 使用 section、id、label、changeType、changedFields 标识新增、修改、移动、删除，`changedSections` 仅保留兼容用途。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">POST 表单或列表发布预检；返回 draftHash、activeReleaseId、targetHash、impactToken、风险项、目标流程版本、影响实例数和 blockers。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">POST 表单或列表发布预检；返回 draftHash、activeReleaseId、targetHash、impactToken、风险项、目标流程版本、影响实例数和待处理事项。流程表单只返回 SAFE/REVIEW，列表仍可返回 BLOCKED。</el-descriptions-item>
             <el-descriptions-item label="/publish">`releaseMode` 缺省为 `STANDARD`；`HOTFIX` 必须回传预检状态并通过后端语义风险判定，发布和目标 rollout 在同一事务中原子生效。</el-descriptions-item>
             <el-descriptions-item label="/releases">列出历史版本、哈希、激活状态和 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
             <el-descriptions-item label="/activate">只用于 STANDARD 历史版本；HOTFIX 返回 `409 HOTFIX_ACTIVATE_NOT_ALLOWED`。</el-descriptions-item>
@@ -381,8 +381,8 @@ Content-Type: application/json
   "overrideReason": null
 }
 
-// REVIEW 时 overrideRisk 必须为 true，并填写 overrideReason；
-// BLOCKED 不能通过任何权限或参数覆盖。</code></pre>
+// 流程表单除 SAFE 外统一为 REVIEW；
+// REVIEW 时 overrideRisk 必须为 true，并填写 overrideReason。</code></pre>
           </CodeCard>
           <CodeCard title="HOTFIX 409：影响范围已变化" language="HTTP">
             <pre v-pre><code>409 Conflict
@@ -422,7 +422,7 @@ Content-Type: application/json
             <li>`STANDARD` 是默认模式。流程表单发布后仍由流程 release 钉定；未重新发布流程时新增入口可返回 `409 PROCESS_FORM_RELEASE_STALE`，运行中和历史实例继续使用原快照。</li>
             <li>`HOTFIX` 表单只影响当前可发起流程版本和仍有运行实例的历史版本；已完成、已终止实例明确使用 `HISTORICAL`，始终读取原始钉定快照。</li>
             <li>列表没有流程版本隔离，运行时始终全局读取 `ACTIVE` release；STANDARD 与 HOTFIX 发布都会立即影响所有列表页面，HOTFIX 主要增加预检、审计和快速回滚。</li>
-            <li>HOTFIX 发布和撤回都需要 `entity:ui-config:hotfix`；只有发布 REVIEW 风险时才额外需要超级管理员或 `entity:ui-config:hotfix:override`，并填写 `overrideReason`。BLOCKED 永远不能覆盖。</li>
+            <li>HOTFIX 发布和撤回都需要 `entity:ui-config:hotfix`；流程表单的高风险修改统一为 REVIEW，需要超级管理员或 `entity:ui-config:hotfix:override` 并填写 `overrideReason`。列表配置仍可保留 BLOCKED。</li>
             <li>发布历史聚合 `rolloutStatus`：`ACTIVE` 正在生效且可撤回，`SUPERSEDED` 已被更新热修复替代，`ROLLED_BACK` 已撤回；只有 ACTIVE 显示或接受撤回操作。</li>
             <li>`impactToken` 绑定 configType/configId、releaseMode、draftHash、activeReleaseId、targetHash、riskLevel 和 overrideRisk；任一输入变化必须重新预检。</li>
             <li>`releaseResolutionToken` 是服务端 HMAC 签发的 5 分钟短期令牌，绑定用户、运行目的、流程历史版本、节点、父表单 release 和深度；嵌套最大 8 层，前端不得自行拼接流程版本上下文。</li>
@@ -598,8 +598,8 @@ const dataSourceBindings = [
 
 const hotfixRiskRows = [
   { risk: 'SAFE', changes: '文案、帮助、占位、列标题、宽度、对齐、顺序、分页大小、空状态。', policy: '具备 HOTFIX 权限且预检无阻断时可直接发布。' },
-  { risk: 'REVIEW', changes: '只读、显隐、默认值、客户端校验、格式化器、声明兼容的组件补丁版本。', policy: '必须有 override 权限，填写原因并强制确认；目标分歧也会升级为 REVIEW。' },
-  { risk: 'BLOCKED', changes: '节点/字段增删、绑定和类型、权限/数据范围、查询数据源、提交映射、关系/子表、写操作按钮。', policy: '任何权限都不能热修复；改用 STANDARD 并重新发布流程。' }
+  { risk: 'REVIEW（表单）', changes: '除 SAFE 外的全部有效表单变更，包括节点/字段增删、绑定和类型、权限/数据范围、数据源、提交映射、关系/子表、写操作和自定义组件。', policy: '不再硬阻断；必须有 override 权限，填写原因并强制确认。' },
+  { risk: 'BLOCKED（列表）', changes: '列表查询数据源、数据范围、写按钮及字段/绑定结构等即时全局替换风险。', policy: '仅列表保留硬阻断策略。' }
 ]
 
 const providerContext = [

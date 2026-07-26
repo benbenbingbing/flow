@@ -1139,9 +1139,10 @@ public class UiConfigReleaseService {
                         draft);
         patch = enforceExtensionHotfixCapabilities(draft, patch);
         String effectiveRisk = patch.riskLevel();
-        if (UiConfigSemanticPatchService.BLOCKED.equals(
-                patch.riskLevel())) {
-            blockers.add("包含 BLOCKED 修改，必须普通发布并重新发布流程");
+        if (!FORM.equals(configType)
+                && UiConfigSemanticPatchService.BLOCKED.equals(
+                        patch.riskLevel())) {
+            blockers.add("包含 BLOCKED 修改，必须改用普通发布");
         }
         if (UiConfigSemanticPatchService.REVIEW.equals(
                 patch.riskLevel())
@@ -1330,12 +1331,11 @@ public class UiConfigReleaseService {
                         "FORM",
                         componentName,
                         componentVersion);
-                operation.setRiskLevel(compatible
-                        ? UiConfigSemanticPatchService.REVIEW
-                        : UiConfigSemanticPatchService.BLOCKED);
+                operation.setRiskLevel(
+                        UiConfigSemanticPatchService.REVIEW);
                 operation.setReason(compatible
                         ? "自定义表单组件声明兼容热修复，版本变更需要风险确认"
-                        : "自定义表单组件未显式声明热修复兼容能力");
+                        : "自定义表单组件未声明热修复兼容能力，按高风险变更复核");
             } else if ("nodes".equals(operation.getSection())
                     && operation.getPath().endsWith(
                             "/componentVersion")) {
@@ -1352,9 +1352,9 @@ public class UiConfigReleaseService {
                             componentVersion);
                     if (!compatible) {
                         operation.setRiskLevel(
-                                UiConfigSemanticPatchService.BLOCKED);
+                                UiConfigSemanticPatchService.REVIEW);
                         operation.setReason(
-                                "自定义组件未显式声明热修复兼容能力");
+                                "自定义组件未声明热修复兼容能力，按高风险变更复核");
                     }
                 }
             }

@@ -3,11 +3,14 @@ package com.workflow.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.common.json.JsonDocumentCodec;
 import com.workflow.common.BusinessConflictException;
+import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpactPort;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.dto.EntityListConfigDTO;
 import com.workflow.dto.UiConfigDiffDTO;
+import com.workflow.dto.UiConfigPublishPreviewDTO;
+import com.workflow.dto.UiConfigPublishRequest;
 import com.workflow.entity.EntityForm;
 import com.workflow.entity.EntityFormField;
 import com.workflow.entity.EntityFormNode;
@@ -210,6 +213,56 @@ class UiConfigReleaseServiceTest {
                         && "MOVED".equals(item.getChangeType())
                         && item.getChangedFields().contains("parentId")
                         && item.getChangedFields().contains("orderKey")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void formStructuralHotfixIsReviewAndPublishableWithOverride() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setDataSourceBindingsDocument("{}");
+        when(context.formService().getById("form-1")).thenReturn(form);
+
+        Map<String, Object> activeSnapshot =
+                context.codec().readObject(
+                        context.codec().write(
+                                context.service().draftSnapshot(
+                                        UiConfigReleaseService.FORM,
+                                        "form-1"),
+                                "测试流程表单热修复基线"),
+                        "测试流程表单热修复基线");
+        activeSnapshot.put("nodes", List.of());
+        UiConfigRelease active = release(
+                context.codec(),
+                "release-1",
+                activeSnapshot);
+        active.setStatus("ACTIVE");
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        when(context.processImpactPort().analyzeFormImpact("form-1"))
+                .thenReturn(UiHotfixProcessImpact.empty());
+
+        UiConfigPublishRequest request = new UiConfigPublishRequest();
+        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
+        request.setOverrideRisk(true);
+        request.setOverrideReason("已验证新增节点并准备回滚");
+
+        UiConfigPublishPreviewDTO preview =
+                context.service().publishPreview(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        request);
+
+        assertEquals(
+                UiConfigSemanticPatchService.REVIEW,
+                preview.getRiskLevel());
+        assertTrue(preview.isRequiresOverride());
+        assertTrue(preview.isCanPublish());
+        assertTrue(preview.getBlockers().isEmpty());
+        assertTrue(preview.getRiskItems().stream().noneMatch(item ->
+                UiConfigSemanticPatchService.BLOCKED.equals(
+                        item.getRiskLevel())));
     }
 
     /**
@@ -721,6 +774,8 @@ class UiConfigReleaseServiceTest {
                 mock(UiComponentTemplateVersionMapper.class);
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        UiHotfixProcessImpactPort processImpactPort =
+                mock(UiHotfixProcessImpactPort.class);
         when(formMapper.selectByIdForUpdate("form-1"))
                 .thenReturn(form());
         UiConfigReleaseService service = new UiConfigReleaseService(
@@ -738,7 +793,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityListConfigService.class),
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
-                mock(UiHotfixProcessImpactPort.class),
+                processImpactPort,
                 mock(UiConfigurationAccessService.class),
                 mock(UiReleaseResolutionTokenService.class),
                 mock(FormSubmissionTraceService.class),
@@ -751,6 +806,7 @@ class UiConfigReleaseServiceTest {
                 templateMapper,
                 templateVersionMapper,
                 formService,
+                processImpactPort,
                 codec);
     }
 
@@ -863,6 +919,7 @@ class UiConfigReleaseServiceTest {
             UiComponentTemplateMapper templateMapper,
             UiComponentTemplateVersionMapper templateVersionMapper,
             EntityFormService formService,
+            UiHotfixProcessImpactPort processImpactPort,
             JsonDocumentCodec codec) {
     }
 

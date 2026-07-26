@@ -26,7 +26,7 @@
           </template>
           <template v-else>
             <span v-if="configType === 'FORM'">
-              仅允许兼容修改，原子作用于当前可发起版本和运行中实例。
+              所有通过发布校验的表单变更都可热修复；高风险统一复核后，原子作用于当前可发起版本和运行中实例。
             </span>
             <span v-else>
               仍为全局立即生效，但增加后端风险判定、审计和快速回滚。
@@ -92,7 +92,9 @@
               v-model="form.overrideRisk"
               :disabled="!canOverride"
             >
-              我已确认这项需复核的变更会影响运行中任务
+              {{ configType === 'FORM'
+                ? '我已确认高风险表单变更会立即影响运行中任务'
+                : '我已确认这项需复核的变更会影响运行中页面' }}
             </el-checkbox>
           </el-form-item>
           <el-form-item label="覆盖原因">
@@ -289,6 +291,9 @@ async function submit() {
 }
 
 function riskTagType(risk) {
+  if (props.configType === 'FORM' && risk === 'BLOCKED') {
+    return 'warning'
+  }
   return {
     SAFE: 'success',
     REVIEW: 'warning',
@@ -297,6 +302,9 @@ function riskTagType(risk) {
 }
 
 function riskLabel(risk) {
+  if (props.configType === 'FORM' && risk === 'BLOCKED') {
+    return '需复核'
+  }
   return {
     SAFE: '低风险',
     REVIEW: '需复核',
