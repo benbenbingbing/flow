@@ -161,6 +161,15 @@ const routes = [
         meta: { title: '字典设置' }
       },
       {
+        path: '/system/audit-logs',
+        name: 'SystemAudit',
+        component: () => import('@/views/system/SystemAudit.vue'),
+        meta: {
+          title: '系统日志',
+          requiredPermissions: ['system:audit:list']
+        }
+      },
+      {
         path: '/system/config-migration',
         name: 'ConfigMigration',
         component: () => import('@/views/system/ConfigMigration.vue'),
@@ -261,6 +270,19 @@ router.beforeEach(async (to, from, next) => {
       || hasRequiredPermission
     if (!canAccessDeveloperArea) {
       ElMessage.warning('该页面面向系统管理员和开发人员，当前账号无权访问')
+      next('/home')
+      return
+    }
+  }
+
+  if (!to.meta?.developerOnly && to.meta?.requiredPermissions?.length) {
+    const hasRequiredPermission = userStore.isSuperAdmin
+      || userStore.permissions.includes('*')
+      || to.meta.requiredPermissions.some(permission =>
+        userStore.permissions.includes(permission)
+      )
+    if (!hasRequiredPermission) {
+      ElMessage.warning('当前账号无权访问该页面')
       next('/home')
       return
     }

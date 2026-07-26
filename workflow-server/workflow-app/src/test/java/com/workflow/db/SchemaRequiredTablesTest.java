@@ -129,6 +129,17 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("039"), "department system field binding migration must be V039");
     }
 
+    /**
+     * Existing databases whose migration history is reset must baseline at V041.
+     */
+    @Test
+    void flywayBaselineMatchesConsolidatedHistory() throws Exception {
+        String applicationYaml = Files.readString(
+                Path.of("src/main/resources/application.yml"));
+        assertTrue(applicationYaml.contains(
+                "baseline-version: \"${FLYWAY_BASELINE_VERSION:041}\""));
+    }
+
     /** 所属部门字段迁移应绑定系统组织实体且保持幂等更新 */
     @Test
     void departmentSystemFieldMigrationBindsOrganizationEntity() throws Exception {
@@ -346,5 +357,36 @@ class SchemaRequiredTablesTest {
         assertTrue(sql.contains("'system:audit:detail'"));
         assertTrue(sql.contains("'system:audit:export'"));
         assertTrue(sql.contains("role.role_code IN ('super_admin', 'admin')"));
+
+        Path menuMigration = Path.of(
+                "src/main/resources/db/migration/V041__add_system_audit_menu.sql");
+        assertTrue(Files.exists(menuMigration),
+                "V041 system audit menu migration must exist");
+        String menuSql = Files.readString(menuMigration);
+        assertTrue(menuSql.contains("'系统日志', 'C'"));
+        assertTrue(menuSql.contains("'/system/audit-logs'"));
+        assertTrue(menuSql.contains("'system/SystemAudit'"));
+        assertTrue(menuSql.contains(
+                "perm IN ('system:audit:list', 'system:audit:detail', 'system:audit:export')"));
+        assertTrue(menuSql.contains(
+                "id COLLATE utf8mb4_unicode_ci\n"
+                        + "    = @system_audit_menu_id COLLATE utf8mb4_unicode_ci"));
+        assertTrue(menuSql.contains(
+                "permission_menu.id COLLATE utf8mb4_unicode_ci"));
+        assertTrue(menuSql.contains(
+                "role_menu.menu_id COLLATE utf8mb4_unicode_ci"));
+        assertTrue(menuSql.contains(
+                "role_menu.role_id COLLATE utf8mb4_unicode_ci"));
+
+        Path recoveryCallback = Path.of(
+                "src/main/resources/db/migration/"
+                        + "beforeValidate__repair_failed_system_audit_menu.sql");
+        assertTrue(Files.exists(recoveryCallback),
+                "failed V041 recovery callback must exist");
+        String recoverySql = Files.readString(recoveryCallback);
+        assertTrue(recoverySql.contains("`version` = ''041''"));
+        assertTrue(recoverySql.contains("`success` = 0"));
+        assertTrue(recoverySql.contains(
+                "`script` = ''V041__add_system_audit_menu.sql''"));
     }
 }

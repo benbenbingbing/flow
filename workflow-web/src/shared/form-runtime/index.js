@@ -1,6 +1,7 @@
 export const SYSTEM_FIELD_CODES = [
   'id',
   'dataNo',
+  'title',
   'name',
   'code',
   'status',
@@ -21,6 +22,19 @@ export const SYSTEM_FIELD_CODES = [
 ]
 
 export const SYSTEM_FIELDS = new Set(SYSTEM_FIELD_CODES)
+
+export function normalizeEntityRecordForForm(record = {}) {
+  const result = {
+    ...(record?.data && typeof record.data === 'object' ? record.data : {})
+  }
+  SYSTEM_FIELD_CODES.forEach((fieldCode) => {
+    const value = record?.[fieldCode]
+    if (value !== null && value !== undefined) {
+      result[fieldCode] = value
+    }
+  })
+  return result
+}
 
 export function getFieldKey(field) {
   return String(field?.fieldCode || field?.fieldKey || field?.fieldId || field?.id || '')

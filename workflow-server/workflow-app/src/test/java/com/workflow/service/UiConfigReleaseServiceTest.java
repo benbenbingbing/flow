@@ -217,7 +217,7 @@ class UiConfigReleaseServiceTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void formStructuralHotfixIsReviewAndPublishableWithOverride() {
+    void formStructuralHotfixIsReviewAndPublishableWithoutOverride() {
         TestContext context = context();
         EntityForm form = form();
         form.setDataSourceBindingsDocument("{}");
@@ -245,8 +245,6 @@ class UiConfigReleaseServiceTest {
 
         UiConfigPublishRequest request = new UiConfigPublishRequest();
         request.setReleaseMode(UiConfigReleaseService.HOTFIX);
-        request.setOverrideRisk(true);
-        request.setOverrideReason("已验证新增节点并准备回滚");
 
         UiConfigPublishPreviewDTO preview =
                 context.service().publishPreview(
@@ -257,12 +255,68 @@ class UiConfigReleaseServiceTest {
         assertEquals(
                 UiConfigSemanticPatchService.REVIEW,
                 preview.getRiskLevel());
-        assertTrue(preview.isRequiresOverride());
+        assertFalse(preview.isRequiresOverride());
         assertTrue(preview.isCanPublish());
         assertTrue(preview.getBlockers().isEmpty());
         assertTrue(preview.getRiskItems().stream().noneMatch(item ->
                 UiConfigSemanticPatchService.BLOCKED.equals(
                         item.getRiskLevel())));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listHighRiskHotfixIsReviewAndPublishableWithoutOverride() {
+        TestContext context = context();
+        EntityListConfigDTO list = listConfig(5);
+        when(context.listConfigService().findById("list-1"))
+                .thenReturn(list);
+
+        Map<String, Object> activeSnapshot =
+                context.codec().readObject(
+                        context.codec().write(
+                                context.service().draftSnapshot(
+                                        UiConfigReleaseService.LIST,
+                                        "list-1"),
+                                "测试列表热修复基线"),
+                        "测试列表热修复基线");
+        Map<String, Object> activeList =
+                (Map<String, Object>) activeSnapshot.get("list");
+        Map<String, Object> activeViewConfig =
+                (Map<String, Object>) activeList.get("viewConfig");
+        Map<String, Object> activeSearch =
+                (Map<String, Object>) activeViewConfig.get("search");
+        activeSearch.put("defaultVisibleCount", 3);
+        UiConfigRelease active = release(
+                context.codec(),
+                "release-list-1",
+                activeSnapshot);
+        active.setConfigType(UiConfigReleaseService.LIST);
+        active.setConfigId("list-1");
+        active.setStatus("ACTIVE");
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.LIST,
+                "list-1")).thenReturn(active);
+
+        UiConfigPublishRequest request = new UiConfigPublishRequest();
+        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
+
+        UiConfigPublishPreviewDTO preview =
+                context.service().publishPreview(
+                        UiConfigReleaseService.LIST,
+                        "list-1",
+                        request);
+
+        assertEquals(
+                UiConfigSemanticPatchService.REVIEW,
+                preview.getRiskLevel());
+        assertFalse(preview.isRequiresOverride());
+        assertTrue(preview.isCanPublish());
+        assertTrue(preview.getBlockers().isEmpty());
+        assertTrue(preview.getRiskItems().stream().anyMatch(item ->
+                "/viewConfig/search/defaultVisibleCount".equals(
+                        item.getPath())
+                        && UiConfigSemanticPatchService.REVIEW.equals(
+                                item.getRiskLevel())));
     }
 
     /**
@@ -773,6 +827,8 @@ class UiConfigReleaseServiceTest {
         UiComponentTemplateVersionMapper templateVersionMapper =
                 mock(UiComponentTemplateVersionMapper.class);
         EntityFormService formService = mock(EntityFormService.class);
+        EntityListConfigService listConfigService =
+                mock(EntityListConfigService.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         UiHotfixProcessImpactPort processImpactPort =
                 mock(UiHotfixProcessImpactPort.class);
@@ -790,7 +846,7 @@ class UiConfigReleaseServiceTest {
                 formService,
                 mock(EntityFormNodeService.class),
                 mock(UiExtensionDefinitionService.class),
-                mock(EntityListConfigService.class),
+                listConfigService,
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
                 processImpactPort,
@@ -806,6 +862,7 @@ class UiConfigReleaseServiceTest {
                 templateMapper,
                 templateVersionMapper,
                 formService,
+                listConfigService,
                 processImpactPort,
                 codec);
     }
@@ -864,6 +921,24 @@ class UiConfigReleaseServiceTest {
         return snapshot;
     }
 
+    private EntityListConfigDTO listConfig(int defaultVisibleCount) {
+        Map<String, Object> search = new LinkedHashMap<>();
+        search.put("defaultVisibleCount", defaultVisibleCount);
+        Map<String, Object> viewConfig = new LinkedHashMap<>();
+        viewConfig.put("search", search);
+        EntityListConfigDTO list = new EntityListConfigDTO();
+        list.setId("list-1");
+        list.setEntityId("entity-1");
+        list.setEntityCode("demo_entity");
+        list.setListKey("default");
+        list.setListName("默认列表");
+        list.setViewConfig(viewConfig);
+        list.setFields(List.of());
+        list.setToolbarConfig(List.of());
+        list.setRowActionConfig(List.of());
+        return list;
+    }
+
     /** 构造一个表单节点 Map，含 id、parentId、nodeType 等基础字段 */
     private Map<String, Object> node(
             String id,
@@ -919,6 +994,7 @@ class UiConfigReleaseServiceTest {
             UiComponentTemplateMapper templateMapper,
             UiComponentTemplateVersionMapper templateVersionMapper,
             EntityFormService formService,
+            EntityListConfigService listConfigService,
             UiHotfixProcessImpactPort processImpactPort,
             JsonDocumentCodec codec) {
     }

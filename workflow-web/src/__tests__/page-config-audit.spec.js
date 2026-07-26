@@ -58,7 +58,7 @@ assert.deepEqual(
   assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/config-migration'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -793,6 +793,14 @@ const listFieldTableSource = listDesigner.match(
 ;['field-purpose-controls', 'fieldConfigSummary(row)', 'openFieldConfig(row)'].forEach((marker) => {
   assert.ok(listFieldTableSource.includes(marker), `列表字段主表缺少用途、摘要或单项设置入口: ${marker}`)
 })
+assert.ok(
+  listFieldTableSource.includes('label="当前配置" min-width="320"'),
+  '列表字段主表应让当前配置列弹性占满剩余空间'
+)
+assert.ok(
+  listDesigner.includes('.field-config-table {') && listDesigner.includes('width: 100%;'),
+  '列表字段主表应铺满配置面板'
+)
 ;['label="查询方式"', 'label="字段数据源"', 'label="渲染组件"', 'label="列宽"', 'label="对齐"'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表字段设置弹窗缺少迁移后的配置项: ${marker}`)
 })
@@ -847,6 +855,25 @@ const configMigration = readFileSync(path.join(root, 'src/views/system/ConfigMig
   'saveMappings'
 ].forEach((marker) => {
   assert.ok(configMigration.includes(marker), `配置迁移页面缺少闭环能力: ${marker}`)
+})
+
+const systemAudit = readFileSync(path.join(root, 'src/views/system/SystemAudit.vue'), 'utf8')
+;[
+  '系统日志',
+  'getSystemAuditLogs',
+  'getSystemAuditLogDetail',
+  'exportSystemAuditLogs',
+  'system:audit:detail',
+  'system:audit:export',
+  '变更前',
+  '变更后',
+  'Trace ID'
+].forEach((marker) => {
+  assert.ok(systemAudit.includes(marker), `系统日志页面缺少查询、详情或导出能力: ${marker}`)
+})
+assert.ok(!systemAudit.includes('<h2>系统日志</h2>'), '系统日志页面不得重复渲染路由标题')
+;['class="search-card"', 'class="table-toolbar"', 'searchExpanded', 'ArrowDown', 'ArrowUp'].forEach((marker) => {
+  assert.ok(systemAudit.includes(marker), `系统日志页面缺少标准查询折叠或列表工具栏结构: ${marker}`)
 })
 
 const processList = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
@@ -1056,23 +1083,35 @@ const uiConfigPublishDialog = readFileSync(
 )
 assert.ok(
   uiConfigPublishDialog.includes('所有通过发布校验的表单变更都可热修复')
-    && uiConfigPublishDialog.includes('高风险表单变更会立即影响运行中任务'),
-  '流程表单热修复界面应明确无硬阻断、高风险统一复核'
+    && uiConfigPublishDialog.includes('所有通过发布校验的列表变更都可热修复')
+    && uiConfigPublishDialog.includes('REVIEW 仅提示风险，不阻止发布'),
+  '列表和表单热修复界面应明确 REVIEW 仅提示且不阻止发布'
 )
 assert.doesNotMatch(
   uiConfigPublishDialog,
   /仅允许兼容修改/,
   '流程表单热修复界面不得继续声称只允许兼容修改'
 )
+;[
+  'override-form',
+  'canOverride',
+  'entity:ui-config:hotfix:override',
+  '已阻断'
+].forEach((marker) => {
+  assert.ok(
+    !uiConfigPublishDialog.includes(marker),
+    `热修复发布界面不得保留风险覆盖阻塞逻辑: ${marker}`
+  )
+})
 
 const processManualSource = readFileSync(
   path.join(root, 'src/data/user-manual/process.js'),
   'utf8'
 )
 assert.ok(
-  processManualSource.includes('流程表单不再产生 BLOCKED')
-    && processManualSource.includes('高风险修改统一为 REVIEW'),
-  '流程手册应说明表单热修复的 SAFE/REVIEW 新策略'
+  processManualSource.includes('列表和表单都只使用 SAFE/REVIEW')
+    && processManualSource.includes('REVIEW 仅提示风险，不阻止发布'),
+  '流程手册应说明列表和表单统一使用 SAFE/REVIEW'
 )
 assert.doesNotMatch(
   processManualSource,

@@ -292,22 +292,22 @@
                 size="small"
                 border
               >
-                <el-table-column label="排序" width="40" align="center">
+                <el-table-column label="排序" width="48" align="center">
                   <template #default>
                     <el-icon class="drag-handle"><Rank /></el-icon>
                   </template>
                 </el-table-column>
-                <el-table-column label="字段名称" width="92">
+                <el-table-column label="字段名称" width="148">
                   <template #default="{ row }">
                     <el-input v-model="row.fieldName" size="small" />
                   </template>
                 </el-table-column>
-                <el-table-column v-if="configMode !== 'basic'" label="字段编码" width="105">
+                <el-table-column v-if="configMode !== 'basic'" label="字段编码" width="168">
                   <template #default="{ row }">
                     <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
                   </template>
                 </el-table-column>
-                <el-table-column label="用途" width="84">
+                <el-table-column label="用途" width="104">
                   <template #default="{ row }">
                     <div class="field-purpose-controls">
                       <el-checkbox v-model="row.showInList">列表</el-checkbox>
@@ -315,14 +315,14 @@
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="当前配置" width="125">
+                <el-table-column label="当前配置" min-width="320">
                   <template #default="{ row }">
                     <span class="field-config-summary" :title="fieldConfigSummary(row)">
                       {{ fieldConfigSummary(row) }}
                     </span>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="122" fixed="right">
+                <el-table-column label="操作" width="138" fixed="right">
                   <template #default="{ row }">
                     <el-button link type="primary" @click="openFieldConfig(row)">设置</el-button>
                     <el-button
@@ -2129,6 +2129,10 @@ function goBack() {
 
 .field-toolbar :deep(.el-alert) {
   flex: 1;
+}
+
+.field-config-table {
+  width: 100%;
 }
 
 .field-purpose-controls {

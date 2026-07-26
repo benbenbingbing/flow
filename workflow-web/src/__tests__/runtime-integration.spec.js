@@ -10,6 +10,7 @@ import {
   isRuntimeFieldReadonly,
   isRuntimeFormReadonly,
   mergeRuntimeFormConfigs,
+  normalizeEntityRecordForForm,
   normalizeRuntimeFormConfigs
 } from '@/shared/form-runtime'
 import {
@@ -102,6 +103,22 @@ assert.deepEqual(normalizeRuntimeFormConfigs({ formConfig: configA }), [configA]
 assert.deepEqual(normalizeRuntimeFormConfigs({ formConfigs: [configA, configB] }), [configA, configB])
 assert.deepEqual(mergeRuntimeFormConfigs([configA, configB]).fields.map((field) => field.fieldCode), ['name', 'amount', 'remark'])
 assert.deepEqual(mergeRuntimeFormConfigs([configA, configB]).buttons.map((button) => button.key), ['save', 'submit'])
+assert.deepEqual(
+  normalizeEntityRecordForForm({
+    id: 'data-1',
+    title: '费用申请',
+    processInstanceId: 'pi-1',
+    processStartTime: '2026-07-25T10:30:00',
+    data: { amount: 100 }
+  }),
+  {
+    amount: 100,
+    id: 'data-1',
+    title: '费用申请',
+    processInstanceId: 'pi-1',
+    processStartTime: '2026-07-25T10:30:00'
+  }
+)
 
 assert.equal(hasButtonPermission({ perm: 'entity:add' }, ['entity:add']), true)
 assert.equal(hasButtonPermission({ perm: 'entity:add' }, ['entity:view']), false)

@@ -26,10 +26,10 @@
           </template>
           <template v-else>
             <span v-if="configType === 'FORM'">
-              所有通过发布校验的表单变更都可热修复；高风险统一复核后，原子作用于当前可发起版本和运行中实例。
+              所有通过发布校验的表单变更都可热修复；REVIEW 仅提示风险，不阻止发布，并原子作用于当前可发起版本和运行中实例。
             </span>
             <span v-else>
-              仍为全局立即生效，但增加后端风险判定、审计和快速回滚。
+              所有通过发布校验的列表变更都可热修复；REVIEW 仅提示风险，不阻止发布，发布后全局立即生效。
             </span>
           </template>
         </div>
@@ -81,32 +81,6 @@
           show-icon
           class="publish-alert"
         />
-
-        <el-form
-          v-if="preview.requiresOverride"
-          label-width="96px"
-          class="override-form"
-        >
-          <el-form-item label="风险覆盖">
-            <el-checkbox
-              v-model="form.overrideRisk"
-              :disabled="!canOverride"
-            >
-              {{ configType === 'FORM'
-                ? '我已确认高风险表单变更会立即影响运行中任务'
-                : '我已确认这项需复核的变更会影响运行中页面' }}
-            </el-checkbox>
-          </el-form-item>
-          <el-form-item label="覆盖原因">
-            <el-input
-              v-model="form.overrideReason"
-              type="textarea"
-              :rows="2"
-              placeholder="必填：说明紧急原因、验证范围和回退方案"
-              @blur="form.overrideRisk && loadPreview()"
-            />
-          </el-form-item>
-        </el-form>
 
         <el-table
           v-if="preview.riskItems?.length"
@@ -195,28 +169,16 @@ const previewLoading = ref(false)
 const publishing = ref(false)
 const form = reactive({
   releaseMode: 'STANDARD',
-  description: '',
-  overrideRisk: false,
-  overrideReason: ''
+  description: ''
 })
 
 const canHotfix = computed(() =>
   userStore.isSuperAdmin
   || userStore.permissions.includes('entity:ui-config:hotfix')
 )
-const canOverride = computed(() =>
-  userStore.isSuperAdmin
-  || userStore.permissions.includes('entity:ui-config:hotfix:override')
+const canSubmit = computed(() =>
+  Boolean(preview.value?.changed && preview.value?.canPublish)
 )
-const canSubmit = computed(() => {
-  if (!preview.value?.changed || !preview.value?.canPublish) return false
-  if (preview.value.requiresOverride) {
-    return form.overrideRisk
-      && canOverride.value
-      && Boolean(form.overrideReason.trim())
-  }
-  return true
-})
 
 function requestPayload(includePreviewState = false) {
   return {
@@ -225,8 +187,6 @@ function requestPayload(includePreviewState = false) {
       ? 'ACTIVE_AND_FUTURE'
       : undefined,
     description: form.description,
-    overrideRisk: form.overrideRisk,
-    overrideReason: form.overrideReason,
     ...(includePreviewState && preview.value
       ? {
           expectedActiveReleaseId: preview.value.activeReleaseId,
@@ -240,8 +200,6 @@ function requestPayload(includePreviewState = false) {
 async function initialize() {
   form.releaseMode = 'STANDARD'
   form.description = ''
-  form.overrideRisk = false
-  form.overrideReason = ''
   await loadPreview()
 }
 
@@ -291,24 +249,18 @@ async function submit() {
 }
 
 function riskTagType(risk) {
-  if (props.configType === 'FORM' && risk === 'BLOCKED') {
-    return 'warning'
-  }
   return {
     SAFE: 'success',
     REVIEW: 'warning',
-    BLOCKED: 'danger'
+    BLOCKED: 'warning'
   }[risk] || 'info'
 }
 
 function riskLabel(risk) {
-  if (props.configType === 'FORM' && risk === 'BLOCKED') {
-    return '需复核'
-  }
   return {
     SAFE: '低风险',
     REVIEW: '需复核',
-    BLOCKED: '已阻断'
+    BLOCKED: '需复核'
   }[risk] || '待评估'
 }
 </script>
@@ -339,10 +291,4 @@ function riskLabel(risk) {
   color: var(--el-text-color-regular);
 }
 
-.override-form {
-  margin-top: 12px;
-  padding: 12px 12px 0;
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
-}
 </style>

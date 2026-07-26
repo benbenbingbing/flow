@@ -23,6 +23,7 @@ public class UiConfigPublishPreviewDTO {
     String impactToken;
     String riskLevel;
     boolean changed;
+    /** 兼容旧客户端保留，当前固定为 false */
     boolean requiresOverride;
     boolean canPublish;
     int processVersionCount;

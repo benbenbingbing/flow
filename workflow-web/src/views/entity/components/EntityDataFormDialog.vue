@@ -106,6 +106,7 @@ import {
   createFormDataSourceRuntime,
   getFieldKey,
   isRuntimeFieldVisible,
+  normalizeEntityRecordForForm,
   resolveRuntimeFormTabLayout
 } from '@/shared/form-runtime'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
@@ -294,19 +295,7 @@ const openEdit = async (row: any) => {
   const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey).catch(() => row)
   formData.id = detail.id
   formData.name = detail.name
-  formData.data = { ...(detail.data || {}) }
-  if (detail.name != null) formData.data.name = detail.name
-  if (detail.code != null) formData.data.code = detail.code
-  if (detail.status != null) formData.data.status = detail.status
-  if (detail.dataNo != null) formData.data.dataNo = detail.dataNo
-  if (detail.title != null) formData.data.title = detail.title
-  if (detail.deptId != null) formData.data.deptId = detail.deptId
-  if (detail.submitterId != null) formData.data.submitterId = detail.submitterId
-  if (detail.submitterName != null) formData.data.submitterName = detail.submitterName
-  if (detail.processInstanceId != null) formData.data.processInstanceId = detail.processInstanceId
-  if (detail.currentTaskId != null) formData.data.currentTaskId = detail.currentTaskId
-  if (detail.currentTaskName != null) formData.data.currentTaskName = detail.currentTaskName
-  if (detail.currentTaskAssignee != null) formData.data.currentTaskAssignee = detail.currentTaskAssignee
+  formData.data = normalizeEntityRecordForForm(detail)
 
   processInstanceId.value = detail.processInstanceId || ''
   if (processInstanceId.value) {
@@ -373,7 +362,16 @@ const handleSubmit = async () => {
     }
 
     if (formData.id) {
-      await entityDataApi.update(props.entityCode, formData.id, data, data.startProcess, props.listKey)
+      await entityDataApi.update(
+        props.entityCode,
+        formData.id,
+        {
+          data: formData.data,
+          startProcess: formData.startProcess
+        },
+        formData.startProcess,
+        props.listKey
+      )
       ElMessage.success('更新成功')
     } else {
       await entityDataApi.save(data, data.startProcess)

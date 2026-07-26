@@ -17,8 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 实体数据功能权限、数据范围与按钮规则统一执行入口。
@@ -26,6 +28,16 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class EntityDataActionService {
+
+    private static final Set<String> UPDATE_CONTEXT_FIELDS = Set.of(
+            "entityCode",
+            "entityName",
+            "listKey",
+            "id",
+            "startProcess",
+            "processVariables",
+            "extData",
+            "actionCapabilities");
 
     private final EntityDataDynamicService dynamicService;
     private final EntityListActionConfigService actionConfigService;
@@ -145,17 +157,23 @@ public class EntityDataActionService {
                                 id,
                                 "mode",
                                 "edit"));
+        Map<String, Object> submittedData = extractSubmittedData(formData);
         Map<String, Object> safeData =
                 formSubmissionService.applyDefaultForm(
                         entityCode,
                         id,
                         "edit",
-                        formData,
+                        submittedData,
                         executionContext);
+        Map<String, Object> updateRequest = new LinkedHashMap<>();
+        updateRequest.put("data", safeData);
+        if (formData != null && formData.containsKey("startProcess")) {
+            updateRequest.put("startProcess", formData.get("startProcess"));
+        }
         return dynamicService.update(
                 entityCode,
                 id,
-                Map.of("data", safeData));
+                updateRequest);
     }
 
     /**
@@ -238,5 +256,19 @@ public class EntityDataActionService {
                             "reason", exception.getMessage()));
             throw exception;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> extractSubmittedData(Map<String, Object> formData) {
+        if (formData == null || formData.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        Object nested = formData.get("data");
+        if (nested instanceof Map<?, ?> nestedData) {
+            return new LinkedHashMap<>((Map<String, Object>) nestedData);
+        }
+        Map<String, Object> submittedData = new LinkedHashMap<>(formData);
+        UPDATE_CONTEXT_FIELDS.forEach(submittedData::remove);
+        return submittedData;
     }
 }

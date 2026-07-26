@@ -549,8 +549,29 @@ public class EntityDataDynamicService implements EntityRecordPort {
             }
         });
 
-        // 2. 从 formData.data 提取自定义字段
-        updateData.putAll(recordMapper.extractRequestCustomData(parentFormData));
+        // 2. 从 formData.data 提取已发布的自定义字段，忽略列表上下文等非实体列。
+        Set<String> writableColumns = new HashSet<>(existingData.keySet());
+        EntityPublishedSnapshot publishedSnapshot =
+                snapshotService.getLatestByEntityCode(entityCode);
+        if (publishedSnapshot.getFields() != null) {
+            publishedSnapshot.getFields().stream()
+                    .filter(field -> !isRelationField(field))
+                    .map(EntityField::getFieldCode)
+                    .filter(StringUtils::hasText)
+                    .map(recordMapper::toColumnName)
+                    .forEach(writableColumns::add);
+        }
+        recordMapper.extractRequestCustomData(parentFormData)
+                .forEach((column, value) -> {
+                    if (writableColumns.contains(column)) {
+                        updateData.put(column, value);
+                    } else {
+                        log.warn(
+                                "忽略实体更新请求中的未发布字段: entityCode={}, field={}",
+                                entityCode,
+                                column);
+                    }
+                });
 
         // 3. 补充 existingData 中缺失的字段（保持原有值）
         existingData.forEach((key, value) -> {

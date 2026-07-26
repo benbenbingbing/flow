@@ -190,7 +190,7 @@ function remove(row) {
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">设计器读取列、按钮、场景和列表顶层草稿；生产运行时不读取草稿。</el-descriptions-item>
             <el-descriptions-item label="/diff">按稳定 ID 展示新增、修改、移动和删除，并校验数据源、权限与组件依赖；响应中的 `changedItems[]` 返回 section、id、label、changeType、changedFields，`changedSections` 保留给旧客户端兼容。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">后端判定 SAFE/REVIEW/BLOCKED，并返回 draftHash、activeReleaseId、impactToken、riskItems 和 blockers。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">后端判定 SAFE/REVIEW，并返回 draftHash、activeReleaseId、impactToken、riskItems 和 blockers；REVIEW 仅提示风险。</el-descriptions-item>
             <el-descriptions-item label="/publish">`STANDARD` 为默认；`HOTFIX` 必须回传预检状态。两种模式都会创建不可变快照并切换列表全局 ACTIVE。</el-descriptions-item>
             <el-descriptions-item label="/releases">列出历史版本、发布人、发布时间、哈希、激活状态和 HOTFIX rolloutStatus。</el-descriptions-item>
             <el-descriptions-item label="/activate">只用于 STANDARD 历史 release；HOTFIX 不允许通过 activate 跳转。</el-descriptions-item>
@@ -204,8 +204,8 @@ function remove(row) {
             style="margin-top: 16px"
           />
           <ul class="check-list">
-            <li>`SAFE` 包括列标题、宽度、对齐、顺序、分页大小、格式说明和空状态；`REVIEW` 包括显隐、格式化器和声明兼容的组件补丁；查询数据源、数据范围、写按钮及字段/绑定结构变化均为 `BLOCKED`。</li>
-            <li>HOTFIX 发布和撤回都需要 `entity:ui-config:hotfix`；只有发布 REVIEW 风险时才额外需要超级管理员或 `entity:ui-config:hotfix:override`，BLOCKED 不可覆盖。</li>
+            <li>`SAFE` 包括列标题、宽度、对齐、顺序、分页大小、格式说明和空状态；其他通过发布校验的列表修改统一为 `REVIEW`，包括显隐、格式化器、查询数据源、数据范围、写按钮及字段/绑定结构变化。</li>
+            <li>HOTFIX 发布和撤回都只需要 `entity:ui-config:hotfix`；`REVIEW` 仅提示风险，不要求额外覆盖权限、确认勾选或原因，也不阻止发布。</li>
             <li>发布历史的 `rolloutStatus` 为 `ACTIVE`、`SUPERSEDED` 或 `ROLLED_BACK`；只有 ACTIVE 正在生效并允许撤回。</li>
             <li>预检后的草稿或 ACTIVE release 变化会返回 `409 HOTFIX_IMPACT_CHANGED`；列表 targetHash 使用全局 ACTIVE 基线，客户端必须重新预检。</li>
             <li>自定义列表组件只能消费平台传入的当前 ACTIVE `runtime.viewConfig`；不能缓存旧 release、按流程实例选择版本或直接读取草稿。</li>
@@ -214,8 +214,7 @@ function remove(row) {
             <pre v-pre><code>POST /api/entity-list-config/lst_order/publish-preview
 {
   "releaseMode": "HOTFIX",
-  "rolloutScope": "ACTIVE_AND_FUTURE",
-  "overrideRisk": false
+  "rolloutScope": "ACTIVE_AND_FUTURE"
 }
 
 POST /api/entity-list-config/lst_order/publish
@@ -225,8 +224,7 @@ POST /api/entity-list-config/lst_order/publish
   "rolloutScope": "ACTIVE_AND_FUTURE",
   "expectedActiveReleaseId": "list_release_7",
   "expectedDraftHash": "draft-sha256",
-  "impactToken": "impact-sha256",
-  "overrideRisk": false
+  "impactToken": "impact-sha256"
 }</code></pre>
           </CodeCard>
           <ul class="check-list">
@@ -298,7 +296,7 @@ emit('pageChange', 2)</code></pre>
             <li>表单选择器只显示选择能力，不出现新增、编辑、审批、删除等业务操作。</li>
             <li>修改一个列、按钮或场景后，其他项目的 ID、revision、更新时间和内容不变。</li>
             <li>草稿预览不影响线上；STANDARD/HOTFIX 发布都原子切换全局 ACTIVE 并立即影响所有列表页面。</li>
-            <li>SAFE/REVIEW/BLOCKED、权限拒绝、409 重新预检、HOTFIX 逆序回滚和 STANDARD activate 均已验证。</li>
+            <li>SAFE/REVIEW、REVIEW 不阻断发布、权限拒绝、409 重新预检、HOTFIX 逆序回滚和 STANDARD activate 均已验证。</li>
             <li>模板不会自动级联，三方升级保留 localOverrides。</li>
           </ul>
         </section>

@@ -327,7 +327,8 @@ const apiExpectations = {
   'src/api/system/user.ts': ['getUserList', 'createUser', 'updateUser', 'deleteUser', 'resetPassword'],
   'src/api/system/role.ts': ['getRoleList', 'createRole', 'updateRole', 'deleteRole', 'getRoleUsers', 'saveRoleMenus'],
   'src/api/system/group.ts': ['getGroupList', 'createGroup', 'updateGroup', 'deleteGroup', 'saveGroupUsers'],
-  'src/api/system/dict.ts': ['getDictList', 'createDict', 'updateDict', 'deleteDict']
+  'src/api/system/dict.ts': ['getDictList', 'createDict', 'updateDict', 'deleteDict'],
+  'src/api/system/audit.ts': ['getSystemAuditLogs', 'getSystemAuditLogDetail', 'exportSystemAuditLogs']
 }
 
 for (const [file, names] of Object.entries(apiExpectations)) {

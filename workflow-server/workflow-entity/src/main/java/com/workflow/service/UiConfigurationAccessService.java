@@ -37,9 +37,9 @@ public class UiConfigurationAccessService {
     /**
      * 校验当前用户可执行 UI 配置热修复。
      *
-     * @param overrideRisk 是否需要覆盖 REVIEW 风险
+     * @param ignoredOverrideRisk 兼容旧调用签名，REVIEW 不再需要额外覆盖权限
      */
-    public void requireHotfixAccess(boolean overrideRisk) {
+    public void requireHotfixAccess(boolean ignoredOverrideRisk) {
         if (currentUserRoleService.isSuperAdmin()) {
             return;
         }
@@ -47,13 +47,6 @@ public class UiConfigurationAccessService {
             throw new BusinessForbiddenException(
                     "UI_HOTFIX_PERMISSION_REQUIRED",
                     "没有 UI 配置兼容热修复权限");
-        }
-        if (overrideRisk
-                && !PermissionUtil.hasPermission(
-                        "entity:ui-config:hotfix:override")) {
-            throw new BusinessForbiddenException(
-                    "UI_HOTFIX_OVERRIDE_PERMISSION_REQUIRED",
-                    "没有 UI 配置热修复风险覆盖权限");
         }
     }
 

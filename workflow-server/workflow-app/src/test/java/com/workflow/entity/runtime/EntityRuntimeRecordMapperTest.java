@@ -95,13 +95,16 @@ class EntityRuntimeRecordMapperTest {
     /**
      * 从请求 Map 提取动态列数据应仅返回自定义字段并转换为下划线命名。
      *
-     * <p>断言 status 与 currentTaskId 被过滤，amountTotal 转为 amount_total。</p>
+     * <p>断言系统字段与运行时上下文被过滤，amountTotal 转为 amount_total。</p>
      */
     @Test
     void extractRequestCustomDataReturnsDynamicColumnsOnly() {
         Map<String, Object> request = Map.of("data", Map.of(
                 "status", "APPROVED",
                 "currentTaskId", "task-1",
+                "entityCode", "expense",
+                "listKey", "default",
+                "data", Map.of("nested", true),
                 "amountTotal", 12
         ));
 

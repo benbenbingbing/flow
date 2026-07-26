@@ -19,6 +19,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -292,8 +293,6 @@ class UiConfigReleaseControllerTest {
         request.put("expectedActiveReleaseId", "active-release");
         request.put("expectedDraftHash", "draft-hash");
         request.put("impactToken", "impact-token");
-        request.put("overrideRisk", true);
-        request.put("overrideReason", "紧急兼容修复");
         return objectMapper.writeValueAsString(request);
     }
 
@@ -319,10 +318,8 @@ class UiConfigReleaseControllerTest {
                 () -> assertEquals(
                         "impact-token",
                         request.getImpactToken()),
-                () -> assertTrue(request.getOverrideRisk()),
-                () -> assertEquals(
-                        "紧急兼容修复",
-                        request.getOverrideReason()));
+                () -> assertNull(request.getOverrideRisk()),
+                () -> assertNull(request.getOverrideReason()));
     }
 
     private UiConfigPublishPreviewDTO preview(
@@ -340,7 +337,7 @@ class UiConfigReleaseControllerTest {
                 .impactToken("impact-token")
                 .riskLevel("REVIEW")
                 .changed(true)
-                .requiresOverride(true)
+                .requiresOverride(false)
                 .canPublish(true)
                 .processVersionCount(2)
                 .activeInstanceCount(4)

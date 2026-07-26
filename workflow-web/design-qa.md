@@ -1,3 +1,58 @@
+# Entity List Field Table Fill Design QA
+
+final result: passed
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-695fb5ee-b582-4a61-b0da-0febc14b0799.png`
+- Implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/entity-list-config-fields-full.png`
+- Focused implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/entity-list-config-fields-table.png`
+- Full-view comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/entity-list-config-fields-comparison.png`
+- Focused comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/entity-list-config-fields-focused-comparison.png`
+- Route: `http://localhost:3000/entity-list-config/design/85af37def242563d414bbd97d57e6acb`
+- Viewport: `2660 x 1804` CSS px, capture density 1x.
+- State: basic mode, `字段配置` tab, unchanged draft preview data.
+
+## Findings
+
+The source showed a P1 layout issue: every table column had a fixed width, so the table body ended after the operation column and left a large unused white area inside the field-configuration panel.
+
+The current implementation has no remaining actionable P0, P1, or P2 findings.
+
+- Layout: `当前配置` is now the flexible column with `min-width="320"` and expands through the available panel width. At the verified viewport it measured `1051px`.
+- Boundaries: the table measured `1489px` wide from `x=259` to `x=1748`; the fixed operation column ended at the same `x=1748` boundary, leaving no blank region after it.
+- Advanced mode: the field-code column remains visible at `168px`; `当前配置` still expands to `883px`, and the operation column remains aligned to the right edge.
+- Narrow mode: at `1440 x 900`, the document width stayed at `1440px`. Minimum column widths are preserved through the table's internal horizontal scrolling without creating page-level overflow.
+- Typography: existing Element Plus fonts, sizes, line heights, and zero letter spacing are unchanged.
+- Spacing and controls: field inputs, purpose checkboxes, summary text, and row actions remain aligned and do not overlap.
+- Colors and tokens: existing primary, success, neutral, border, and background tokens are unchanged.
+- Images and assets: this surface contains no product imagery; existing icons render unchanged.
+- Copy and content: all field labels, summaries, button labels, and preview data are unchanged.
+
+## Interaction Verification
+
+- Switched from basic mode to advanced mode and back with the table remaining full width.
+- Verified the wide viewport and a `1440 x 900` viewport.
+- Browser console error count: `0`.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- `npm run test:page-config`: the new field-table assertions passed before the suite reached an unrelated existing hotfix-copy assertion failure near line 1084.
+
+## Comparison History
+
+### Before
+
+- Fixed-width columns totaled less than the available panel width.
+- A large blank area appeared to the right of the operation column.
+
+### After
+
+- Stable controls keep explicit widths.
+- The summary column absorbs remaining width.
+- The fixed operation column sits on the panel's right edge in both basic and advanced modes.
+
+---
+
 # Role Permission Tree Transfer Design QA
 
 final result: passed

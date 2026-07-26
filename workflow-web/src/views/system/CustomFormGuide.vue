@@ -143,7 +143,7 @@ registerFormFieldComponent('rating', RatingField, {
             <li>前端注册只负责提供运行时代码；发布前还必须在设计器“扩展清单”登记同名 `NODE` manifest。</li>
             <li>设计器保存 `componentName + componentVersion + snapshotVersion`，不会自动跟随目标环境的最新版本。</li>
             <li>发布会校验启用状态、实现版本、节点类型、绑定类型和快照协议，任一不兼容都会阻止发布。</li>
-            <li>自定义组件版本变化至少归为 `REVIEW`。未在后端 manifest 声明热修复兼容能力时会显示更强风险说明，但不再归为 `BLOCKED`，确认后仍可热修复。</li>
+            <li>自定义组件版本变化至少归为 `REVIEW`。未在后端 manifest 声明热修复兼容能力时会显示更强风险说明，但仍只作提示并允许热修复。</li>
           </ul>
           <CodeCard title="RatingField.vue" language="Vue">
             <pre v-pre><code>&lt;script setup&gt;
@@ -267,7 +267,7 @@ defineExpose({ validate })
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；流程表单不再返回 BLOCKED。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；REVIEW 只作风险提示。</el-descriptions-item>
             <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 必须带 expectedActiveReleaseId、expectedDraftHash、impactToken 和固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
             <el-descriptions-item label="/releases">查看历史发布记录及 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
             <el-descriptions-item label="/activate">只激活 STANDARD 历史版本；HOTFIX 只能通过 rollback-hotfix 撤回。</el-descriptions-item>
@@ -276,7 +276,7 @@ defineExpose({ validate })
           <ul class="check-list">
             <li>`SAFE` 用于展示型修改；其他所有通过发布校验的表单修改统一为 `REVIEW`，包括节点/字段增删、绑定、权限、数据源、提交映射、关系/子表、写操作和未声明兼容的自定义组件。</li>
             <li>表单 HOTFIX 只作用于当前可发起流程版本和运行中实例；`HISTORICAL` 模式下已完成、已终止实例始终读取流程发布时的原始钉定 release。</li>
-            <li>HOTFIX 发布和撤回都需要 `entity:ui-config:hotfix`；只有发布 REVIEW 风险时才额外需要超级管理员或 `entity:ui-config:hotfix:override`，且必须填写可审计原因。</li>
+            <li>HOTFIX 发布和撤回都只需要 `entity:ui-config:hotfix`；`REVIEW` 仅提示风险，不要求额外覆盖权限、确认勾选或原因，也不阻止发布。</li>
             <li>`rolloutStatus=ACTIVE` 表示正在生效且可撤回，`SUPERSEDED` 表示已被更新热修复替代，`ROLLED_BACK` 表示已撤回；只有 ACTIVE 接受 rollback-hotfix。</li>
             <li>预检后草稿、ACTIVE release 或目标流程/实例集合变化时返回 `409 HOTFIX_IMPACT_CHANGED`；客户端必须丢弃旧 impactToken 并重新预检。</li>
           </ul>

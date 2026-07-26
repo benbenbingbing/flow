@@ -38,6 +38,7 @@ import org.flowable.task.api.history.HistoricTaskInstanceQuery;
 import org.flowable.variable.api.history.HistoricVariableInstanceQuery;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -117,6 +118,17 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(1, progress.getFormConfigs().size());
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
+        assertEquals("data-1", progress.getEntityData().get("id"));
+        assertEquals("pi-1", progress.getEntityData().get("processInstanceId"));
+        assertEquals(
+                LocalDateTime.of(2026, 7, 25, 10, 30),
+                progress.getEntityData().get("processStartTime"));
+        assertEquals(
+                "task-1-runtime",
+                progress.getEntityData().get("currentTaskId"));
+        assertEquals(
+                "当前审批",
+                progress.getEntityData().get("currentTaskName"));
         verify(fixture.snapshotService)
                 .getNodeFormsContextByProcessDefinitionId(
                         "pd-1",
@@ -281,6 +293,10 @@ class ProcessProgressRuntimeServiceTest {
             EntityDataDTO dto = new EntityDataDTO();
             dto.setId("data-1");
             dto.setDataNo("EXP-1");
+            dto.setProcessInstanceId("pi-1");
+            dto.setProcessStartTime(LocalDateTime.of(2026, 7, 25, 10, 30));
+            dto.setCurrentTaskId("task-1-runtime");
+            dto.setCurrentTaskName("当前审批");
             when(entityDataDynamicService.findById("expense", "data-1")).thenReturn(dto);
         }
 

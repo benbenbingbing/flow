@@ -37,7 +37,12 @@ public class EntityRuntimeRecordMapper {
             "submitTime", "submit_time",
             "createdTime", "create_time", "updatedTime", "update_time",
             "createdBy", "createBy", "create_by", "updatedBy", "updateBy", "update_by",
-            "deleted", "entityCode", "entity_code", "startProcess", "start_process"));
+            "deleted", "entityCode", "entity_code", "entityName", "entity_name",
+            "deptName", "dept_name", "startProcess", "start_process",
+            "listKey", "list_key", "data",
+            "processVariables", "process_variables",
+            "extData", "ext_data",
+            "actionCapabilities", "action_capabilities"));
 
     /** 存储层（动态表）系统列集合，提取自定义字段时需排除这些列 */
     private static final Set<String> STORAGE_SYSTEM_COLUMNS = new HashSet<>(Arrays.asList(

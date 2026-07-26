@@ -184,7 +184,11 @@ class EntityDataActionServiceTest {
                 "asset",
                 "1",
                 "edit",
-                Map.of("name", "Laptop"),
+                Map.of(
+                        "name",
+                        "Laptop",
+                        "amount",
+                        12),
                 context)).thenReturn(
                         Map.of(
                                 "name",
@@ -195,15 +199,33 @@ class EntityDataActionServiceTest {
         service.update(
                 "asset",
                 "1",
-                null,
-                Map.of("name", "Laptop"));
+                "default",
+                Map.of(
+                        "entityCode",
+                        "asset",
+                        "listKey",
+                        "default",
+                        "id",
+                        "1",
+                        "data",
+                        Map.of(
+                                "name",
+                                "Laptop",
+                                "amount",
+                                12),
+                        "startProcess",
+                        true));
 
         verify(formSubmissionService, times(1))
                 .applyDefaultForm(
                         "asset",
                         "1",
                         "edit",
-                        Map.of("name", "Laptop"),
+                        Map.of(
+                                "name",
+                                "Laptop",
+                                "amount",
+                                12),
                         context);
         verify(dynamicService, times(1)).update(
                 "asset",
@@ -214,7 +236,9 @@ class EntityDataActionServiceTest {
                                 "name",
                                 "Laptop",
                                 "normalized",
-                                true)));
+                                true),
+                        "startProcess",
+                        true));
     }
 
     /** 构造一条包含 id 与 dataNo 的实体数据 DTO */

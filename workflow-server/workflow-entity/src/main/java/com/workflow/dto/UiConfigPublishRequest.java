@@ -20,8 +20,8 @@ public class UiConfigPublishRequest {
     private String expectedDraftHash;
     /** 发布影响预检令牌 */
     private String impactToken;
-    /** 是否经授权覆盖 REVIEW 风险 */
+    /** 兼容旧客户端保留，REVIEW 已不再需要风险覆盖 */
     private Boolean overrideRisk;
-    /** 风险覆盖原因 */
+    /** 兼容旧客户端保留，不再参与热修复发布判断 */
     private String overrideReason;
 }

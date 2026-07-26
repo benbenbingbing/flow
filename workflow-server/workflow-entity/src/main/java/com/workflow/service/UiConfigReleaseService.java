@@ -869,9 +869,7 @@ public class UiConfigReleaseService {
             UiConfigPublishRequest request) {
         String releaseMode = releaseMode(request);
         if (HOTFIX.equals(releaseMode)) {
-            configurationAccessService.requireHotfixAccess(
-                    Boolean.TRUE.equals(request == null
-                            ? null : request.getOverrideRisk()));
+            configurationAccessService.requireHotfixAccess(false);
             return prepareHotfix(configType, configId, request).preview();
         }
         Map<String, Object> draft = buildDraftSnapshot(configType, configId);
@@ -897,8 +895,7 @@ public class UiConfigReleaseService {
                         draftHash,
                         current == null ? null : current.getId(),
                         targetHash,
-                        UiConfigSemanticPatchService.SAFE,
-                        false))
+                        UiConfigSemanticPatchService.SAFE))
                 .riskLevel(UiConfigSemanticPatchService.SAFE)
                 .changed(diff.isChanged())
                 .requiresOverride(false)
@@ -1007,9 +1004,7 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             UiConfigPublishRequest request) {
-        configurationAccessService.requireHotfixAccess(
-                Boolean.TRUE.equals(request == null
-                        ? null : request.getOverrideRisk()));
+        configurationAccessService.requireHotfixAccess(false);
         lockOwner(configType, configId);
         HotfixPreparation preparation =
                 prepareHotfix(configType, configId, request);
@@ -1046,9 +1041,8 @@ public class UiConfigReleaseService {
         release.setRolloutScope(ACTIVE_AND_FUTURE);
         release.setPatchDocument(semanticPatchService.writePatch(
                 preparation.patch().operations()));
-        release.setOverrideRisk(
-                Boolean.TRUE.equals(request.getOverrideRisk()) ? 1 : 0);
-        release.setOverrideReason(blankToNull(request.getOverrideReason()));
+        release.setOverrideRisk(0);
+        release.setOverrideReason(null);
         release.setPublishedBy(UserContext.getUserId());
         release.setPublishedAt(LocalDateTime.now());
         releaseMapper.insert(release);
@@ -1098,12 +1092,9 @@ public class UiConfigReleaseService {
                 configType,
                 configId,
                 release.getId(),
-                Boolean.TRUE.equals(request.getOverrideRisk())
-                        ? "OVERRIDE" : "PUBLISH_HOTFIX",
+                "PUBLISH_HOTFIX",
                 preparation.preview().getRiskLevel(),
-                firstText(
-                        request.getOverrideReason(),
-                        request.getDescription()),
+                request.getDescription(),
                 auditDetail(preparation.preview()));
         return release;
     }
@@ -1113,8 +1104,6 @@ public class UiConfigReleaseService {
             String configId,
             UiConfigPublishRequest request) {
         requireType(configType);
-        boolean overrideRisk = Boolean.TRUE.equals(
-                request == null ? null : request.getOverrideRisk());
         Map<String, Object> draft =
                 buildDraftSnapshot(configType, configId);
         validateForPublish(configType, configId, draft);
@@ -1139,22 +1128,6 @@ public class UiConfigReleaseService {
                         draft);
         patch = enforceExtensionHotfixCapabilities(draft, patch);
         String effectiveRisk = patch.riskLevel();
-        if (!FORM.equals(configType)
-                && UiConfigSemanticPatchService.BLOCKED.equals(
-                        patch.riskLevel())) {
-            blockers.add("包含 BLOCKED 修改，必须改用普通发布");
-        }
-        if (UiConfigSemanticPatchService.REVIEW.equals(
-                patch.riskLevel())
-                && !overrideRisk) {
-            blockers.add("包含 REVIEW 修改，需要风险覆盖权限和确认原因");
-        }
-        if (overrideRisk
-                && !StringUtils.hasText(request == null
-                        ? null : request.getOverrideReason())) {
-            blockers.add("风险覆盖必须填写原因");
-        }
-
         UiHotfixProcessImpact impact = FORM.equals(configType)
                 && active != null
                 ? processImpactPort.analyzeFormImpact(configId)
@@ -1189,7 +1162,7 @@ public class UiConfigReleaseService {
                             semanticPatchService.apply(
                                     baseSnapshot,
                                     patch.operations(),
-                                    overrideRisk);
+                                    true);
                     if (application.diverged()) {
                         effectiveRisk = maxRisk(
                                 effectiveRisk,
@@ -1248,12 +1221,6 @@ public class UiConfigReleaseService {
                             .blockers(List.copyOf(targetBlockers))
                             .build());
         }
-        if (UiConfigSemanticPatchService.REVIEW.equals(effectiveRisk)
-                && !overrideRisk
-                && blockers.stream().noneMatch(value ->
-                        value.contains("REVIEW"))) {
-            blockers.add("目标流程版本存在配置分歧，需要风险覆盖确认");
-        }
         String targetHash = FORM.equals(configType)
                 ? impact.targetHash()
                 : "GLOBAL_ACTIVE:"
@@ -1265,8 +1232,7 @@ public class UiConfigReleaseService {
                 draftHash,
                 active == null ? null : active.getId(),
                 targetHash,
-                effectiveRisk,
-                overrideRisk);
+                effectiveRisk);
         UiConfigPublishPreviewDTO preview =
                 UiConfigPublishPreviewDTO.builder()
                         .configType(configType)
@@ -1282,9 +1248,7 @@ public class UiConfigReleaseService {
                         .impactToken(token)
                         .riskLevel(effectiveRisk)
                         .changed(diff.isChanged())
-                        .requiresOverride(
-                                UiConfigSemanticPatchService.REVIEW.equals(
-                                        effectiveRisk))
+                        .requiresOverride(false)
                         .canPublish(blockers.isEmpty())
                         .processVersionCount(impact.processVersionCount())
                         .activeInstanceCount(impact.activeInstanceCount())
@@ -1489,8 +1453,7 @@ public class UiConfigReleaseService {
             String draftHash,
             String activeReleaseId,
             String targetHash,
-            String riskLevel,
-            boolean overrideRisk) {
+            String riskLevel) {
         return hash(String.join(
                 "|",
                 nullToEmpty(configType),
@@ -1499,8 +1462,7 @@ public class UiConfigReleaseService {
                 nullToEmpty(draftHash),
                 nullToEmpty(activeReleaseId),
                 nullToEmpty(targetHash),
-                nullToEmpty(riskLevel),
-                String.valueOf(overrideRisk)));
+                nullToEmpty(riskLevel)));
     }
 
     private String releaseMode(UiConfigPublishRequest request) {
@@ -1527,12 +1489,12 @@ public class UiConfigReleaseService {
     }
 
     private String maxRisk(String left, String right) {
-        if (UiConfigSemanticPatchService.BLOCKED.equals(left)
-                || UiConfigSemanticPatchService.BLOCKED.equals(right)) {
-            return UiConfigSemanticPatchService.BLOCKED;
-        }
-        if (UiConfigSemanticPatchService.REVIEW.equals(left)
-                || UiConfigSemanticPatchService.REVIEW.equals(right)) {
+        if (Set.of(
+                UiConfigSemanticPatchService.REVIEW,
+                UiConfigSemanticPatchService.BLOCKED).contains(left)
+                || Set.of(
+                        UiConfigSemanticPatchService.REVIEW,
+                        UiConfigSemanticPatchService.BLOCKED).contains(right)) {
             return UiConfigSemanticPatchService.REVIEW;
         }
         return UiConfigSemanticPatchService.SAFE;

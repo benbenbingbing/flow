@@ -128,6 +128,7 @@ import {
   isRuntimeFieldVisible,
   isRuntimeFormReadonly,
   createFormDataSourceRuntime,
+  normalizeEntityRecordForForm,
   resolveRuntimeFormTabLayout
 } from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
@@ -368,21 +369,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
   } else {
     try {
       const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey)
-      entityData.value = {
-        ...(detail.data || {}),
-        name: detail.name,
-        status: detail.status,
-        code: detail.code,
-        dataNo: detail.dataNo,
-        title: detail.title,
-        deptId: detail.deptId,
-        submitterId: detail.submitterId,
-        submitterName: detail.submitterName,
-        processInstanceId: detail.processInstanceId,
-        currentTaskId: detail.currentTaskId,
-        currentTaskName: detail.currentTaskName,
-        currentTaskAssignee: detail.currentTaskAssignee
-      }
+      entityData.value = normalizeEntityRecordForForm(detail)
       if (props.defaultForm && props.defaultForm.fields && props.defaultForm.fields.length > 0) {
         formConfig.value = props.defaultForm
         formConfigs.value = [props.defaultForm]

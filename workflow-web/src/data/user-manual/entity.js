@@ -1300,15 +1300,14 @@ export default {
               ],
               rows: [
                 { risk: 'SAFE', examples: '文字、帮助说明、占位符、列标题、宽度、对齐、顺序、分页大小和空状态。', result: '具备热修复权限且影响预检通过后可直接发布。' },
-                { risk: 'REVIEW（流程表单）', examples: '只读、显隐、默认值、校验、节点/字段增删、绑定或类型、权限与数据范围、数据源、提交映射、关系/子表、写操作及未声明兼容的自定义组件。', result: '不再硬阻断；超级管理员或拥有覆盖权限的用户勾选强制确认并填写原因后即可热修复。' },
-                { risk: 'BLOCKED（列表保留）', examples: '列表查询数据源、数据范围、写按钮及字段/绑定结构等不适合即时全局替换的修改。', result: '仅列表配置继续按原策略阻断；不适用于流程表单。' }
+                { risk: 'REVIEW', examples: '除 SAFE 外的列表和表单修改，包括显隐、默认值、校验、节点/字段增删、绑定或类型、权限与数据范围、数据源、提交映射、关系/子表、写操作及自定义组件。', result: '仅提示风险，不要求额外权限、确认勾选或原因，不阻止热修复发布。' }
               ]
             },
             {
               type: 'bullets',
               items: [
-                'HOTFIX 发布与撤回都需要 entity:ui-config:hotfix；只有发布 REVIEW 风险时才额外要求超级管理员或 entity:ui-config:hotfix:override，并填写强制确认原因。',
-                '风险等级由后端根据语义补丁判定。流程表单不会再返回 BLOCKED：除 SAFE 外统一提升为 REVIEW；列表仍保留 BLOCKED。',
+                'HOTFIX 发布与撤回都只需要 entity:ui-config:hotfix；REVIEW 不再要求额外覆盖权限或确认原因。',
+                '风险等级由后端根据语义补丁判定。列表和表单都只使用 SAFE/REVIEW，除 SAFE 外统一提升为 REVIEW，REVIEW 仅提示风险，不阻止发布。',
                 '流程表单自定义组件无论是否声明热修复兼容能力都允许进入 REVIEW；声明能力用于完善风险说明，不再形成硬阻断。',
                 '影响预检必须核对 processVersionCount、activeInstanceCount、skippedHistoricalInstanceCount、targets[].compatible 和 blockers。',
                 '发布历史中的 rolloutStatus=ACTIVE 表示当前正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已经撤回；只有 ACTIVE 显示撤回入口。',
@@ -1418,7 +1417,7 @@ export default {
                 '数据权限由普通角色验证，所有 LIST_QUERY、LIST_COLUMN 和表单实体查询均执行 DataScopePlan。',
                 '按钮权限已授予角色，适用条件与后端操作校验一致。',
                 '流程绑定、节点表单和实体状态连线配置完整。',
-                'STANDARD/HOTFIX 预检、流程表单 SAFE/REVIEW、列表 BLOCKED、权限拒绝、影响数量和 409 重新预检均已验证。',
+                'STANDARD/HOTFIX 预检、列表和表单 SAFE/REVIEW、REVIEW 不阻断发布、权限拒绝、影响数量和 409 重新预检均已验证。',
                 'STANDARD activate、HOTFIX 逆序 rollback、列表全局 ACTIVE 立即生效和发布失败保持旧版本均已验证。',
                 '运行中流程应用有效 HOTFIX；已完成、已终止实例和历史审批回放仍使用原始钉定快照。',
                 '迁移重复执行结果幂等，legacyProps、初始 release、内容哈希和临时旧配置回退均已复核。'

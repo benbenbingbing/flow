@@ -41,7 +41,7 @@ public class UiConfigSemanticPatchService {
             "required", "isRequired", "validation", "validationRules",
             "formatter", "componentVersion",
             "showInList");
-    private static final Set<String> BLOCKED_FIELDS = Set.of(
+    private static final Set<String> HIGH_RISK_FIELDS = Set.of(
             "id", "entityId", "formId", "formKey", "listKey", "fieldId",
             "fieldCode", "fieldType", "nodeKey", "nodeType", "bindingType",
             "bindingRef", "parentId", "componentType", "renderComponent",
@@ -138,11 +138,11 @@ public class UiConfigSemanticPatchService {
                         "/allowedScenes",
                         sourceScenes,
                         targetScenes,
-                        BLOCKED,
-                        "列表适用场景变化会改变运行入口"));
+                        REVIEW,
+                        "列表适用场景变化会改变运行入口，发布前需要复核"));
             }
         }
-        normalizeFormRisk(configType, operations);
+        normalizeHotfixRisk(operations);
         operations.sort(Comparator
                 .comparing(UiConfigSemanticPatchOperation::getSection)
                 .thenComparing(UiConfigSemanticPatchOperation::getItemId)
@@ -171,15 +171,11 @@ public class UiConfigSemanticPatchService {
     public PatchApplication apply(
             Map<String, Object> baseSnapshot,
             List<UiConfigSemanticPatchOperation> operations,
-            boolean allowReviewOverride) {
+            boolean allowDivergedTarget) {
         Map<String, Object> result = deepCopy(baseSnapshot);
         List<String> blockers = new ArrayList<>();
         boolean divergedTarget = false;
         for (UiConfigSemanticPatchOperation operation : operations) {
-            if (BLOCKED.equals(operation.getRiskLevel())) {
-                blockers.add(operation.getPath() + "：" + operation.getReason());
-                continue;
-            }
             if (isCollectionChange(operation)) {
                 CollectionLocation collection = locateCollection(
                         result,
@@ -197,15 +193,9 @@ public class UiConfigSemanticPatchService {
                         current,
                         operation.getBeforeValue());
                 divergedTarget = divergedTarget || diverged;
-                if (diverged && !allowReviewOverride) {
+                if (diverged && !allowDivergedTarget) {
                     blockers.add(operation.getPath()
-                            + "：目标版本内容已分歧，需要风险覆盖");
-                    continue;
-                }
-                if (REVIEW.equals(operation.getRiskLevel())
-                        && !allowReviewOverride) {
-                    blockers.add(operation.getPath()
-                            + "：属于 REVIEW 修改");
+                            + "：目标版本内容已分歧");
                     continue;
                 }
                 if ("ADDED".equals(operation.getChangeType())) {
@@ -235,13 +225,8 @@ public class UiConfigSemanticPatchService {
                     currentValue,
                     operation.getBeforeValue());
             divergedTarget = divergedTarget || diverged;
-            if (diverged && !allowReviewOverride) {
-                blockers.add(operation.getPath() + "：目标版本内容已分歧，需要风险覆盖");
-                continue;
-            }
-            if (REVIEW.equals(operation.getRiskLevel())
-                    && !allowReviewOverride) {
-                blockers.add(operation.getPath() + "：属于 REVIEW 修改");
+            if (diverged && !allowDivergedTarget) {
+                blockers.add(operation.getPath() + "：目标版本内容已分歧");
                 continue;
             }
             location.write(deepCopyValue(operation.getAfterValue()));
@@ -252,21 +237,16 @@ public class UiConfigSemanticPatchService {
                 divergedTarget);
     }
 
-    private void normalizeFormRisk(
-            String configType,
+    private void normalizeHotfixRisk(
             List<UiConfigSemanticPatchOperation> operations) {
-        if (!UiConfigReleaseService.FORM.equals(configType)) {
-            return;
-        }
         for (UiConfigSemanticPatchOperation operation : operations) {
             if (!BLOCKED.equals(operation.getRiskLevel())) {
                 continue;
             }
             operation.setRiskLevel(REVIEW);
-            operation.setReason(
-                    isCollectionChange(operation)
-                            ? "流程表单结构条目变化，确认对运行中任务的影响后可热修复"
-                            : "流程表单高风险配置变化，确认对运行中任务的影响后可热修复");
+            operation.setReason(isCollectionChange(operation)
+                    ? "稳定配置条目发生变化，发布前需要复核"
+                    : "高风险配置发生变化，发布前需要复核");
         }
     }
 
@@ -350,8 +330,8 @@ public class UiConfigSemanticPatchService {
                         "/",
                         source,
                         target,
-                        BLOCKED,
-                        "热修复不能新增或删除稳定配置条目"));
+                        REVIEW,
+                        "稳定配置条目发生新增或删除，发布前需要复核"));
                 continue;
             }
             diffMap(section, id, source, target, "", operations);
@@ -451,9 +431,9 @@ public class UiConfigSemanticPatchService {
 
     private Risk classify(String path, Object before, Object after) {
         String field = lastSegment(path);
-        if (BLOCKED_FIELDS.contains(field)
-                || containsBlockedMarker(path)) {
-            return new Risk(BLOCKED, "涉及结构、绑定、权限、数据源或写操作语义");
+        if (HIGH_RISK_FIELDS.contains(field)
+                || containsHighRiskMarker(path)) {
+            return new Risk(REVIEW, "涉及结构、绑定、权限、数据源或写操作语义，需要复核");
         }
         if (REVIEW_FIELDS.contains(field)) {
             return new Risk(REVIEW, "会改变运行时交互或校验行为，需要风险确认");
@@ -463,10 +443,10 @@ public class UiConfigSemanticPatchService {
                 && !(after instanceof List<?>)) {
             return new Risk(SAFE, "仅影响展示或稳定布局");
         }
-        return new Risk(BLOCKED, "未知配置路径默认禁止热修复");
+        return new Risk(REVIEW, "未知配置路径需要复核，但不阻止热修复");
     }
 
-    private boolean containsBlockedMarker(String path) {
+    private boolean containsHighRiskMarker(String path) {
         String normalized = path.toLowerCase();
         return normalized.contains("permission")
                 || normalized.contains("datasource")
@@ -718,15 +698,11 @@ public class UiConfigSemanticPatchService {
     }
 
     private String maxRisk(String left, String right) {
-        return riskRank(left) >= riskRank(right) ? left : right;
-    }
-
-    private int riskRank(String value) {
-        return switch (value) {
-            case BLOCKED -> 3;
-            case REVIEW -> 2;
-            default -> 1;
-        };
+        if (Set.of(REVIEW, BLOCKED).contains(left)
+                || Set.of(REVIEW, BLOCKED).contains(right)) {
+            return REVIEW;
+        }
+        return SAFE;
     }
 
     private String lastSegment(String path) {

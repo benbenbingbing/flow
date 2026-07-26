@@ -51,7 +51,7 @@ class UiConfigSemanticPatchServiceTest {
     }
 
     @Test
-    void classifiesReadonlyChangeAsReviewAndRequiresOverride() {
+    void classifiesReadonlyChangeAsReviewAndAppliesWithoutOverride() {
         Map<String, Object> source = formSnapshot(node(
                 null,
                 "标签",
@@ -67,7 +67,7 @@ class UiConfigSemanticPatchServiceTest {
         assertEquals(
                 UiConfigSemanticPatchService.REVIEW,
                 analysis.riskLevel());
-        assertFalse(service.apply(
+        assertTrue(service.apply(
                 source,
                 analysis.operations(),
                 false).compatible());
@@ -144,7 +144,7 @@ class UiConfigSemanticPatchServiceTest {
                 service.apply(
                         source,
                         analysis.operations(),
-                        true);
+                        false);
 
         assertEquals(
                 UiConfigSemanticPatchService.REVIEW,
@@ -157,10 +157,6 @@ class UiConfigSemanticPatchServiceTest {
                 item.getPath().endsWith("/componentType")
                         && UiConfigSemanticPatchService.REVIEW.equals(
                                 item.getRiskLevel())));
-        assertFalse(service.apply(
-                source,
-                analysis.operations(),
-                false).compatible());
         assertTrue(application.compatible());
         assertEquals(
                 "section-2",
@@ -186,7 +182,7 @@ class UiConfigSemanticPatchServiceTest {
                 service.apply(
                         source,
                         analysis.operations(),
-                        true);
+                        false);
 
         assertEquals(
                 UiConfigSemanticPatchService.REVIEW,
@@ -195,10 +191,6 @@ class UiConfigSemanticPatchServiceTest {
                 "REMOVED".equals(item.getChangeType())
                         && UiConfigSemanticPatchService.REVIEW.equals(
                                 item.getRiskLevel())));
-        assertFalse(service.apply(
-                source,
-                analysis.operations(),
-                false).compatible());
         assertTrue(application.compatible());
         assertTrue(((List<?>) application.snapshot().get("nodes")).isEmpty());
     }
@@ -217,7 +209,7 @@ class UiConfigSemanticPatchServiceTest {
                 service.apply(
                         source,
                         analysis.operations(),
-                        true);
+                        false);
 
         assertEquals(
                 UiConfigSemanticPatchService.REVIEW,
@@ -233,7 +225,7 @@ class UiConfigSemanticPatchServiceTest {
     }
 
     @Test
-    void treatsListHeaderAsSafeButRendererIdentityAsBlocked() {
+    void treatsListHeaderAsSafeButRendererIdentityAsReview() {
         Map<String, Object> source = listSnapshot(
                 "原列名",
                 "DefaultText");
@@ -250,11 +242,46 @@ class UiConfigSemanticPatchServiceTest {
                                 item.getRiskLevel())));
         assertTrue(analysis.operations().stream().anyMatch(item ->
                 item.getPath().endsWith("/renderComponent")
-                        && UiConfigSemanticPatchService.BLOCKED.equals(
+                        && UiConfigSemanticPatchService.REVIEW.equals(
                                 item.getRiskLevel())));
         assertEquals(
-                UiConfigSemanticPatchService.BLOCKED,
+                UiConfigSemanticPatchService.REVIEW,
                 analysis.riskLevel());
+        assertTrue(service.apply(
+                source,
+                analysis.operations(),
+                false).compatible());
+    }
+
+    @Test
+    void treatsUnknownListViewConfigPathAsReviewAndAllowsHotfix() {
+        Map<String, Object> source = listSnapshot(
+                "列名",
+                "DefaultText",
+                3);
+        Map<String, Object> target = listSnapshot(
+                "列名",
+                "DefaultText",
+                5);
+
+        UiConfigSemanticPatchService.PatchAnalysis analysis =
+                service.build("LIST", source, target);
+        UiConfigSemanticPatchService.PatchApplication application =
+                service.apply(source, analysis.operations(), false);
+
+        assertEquals(
+                UiConfigSemanticPatchService.REVIEW,
+                analysis.riskLevel());
+        assertTrue(analysis.operations().stream().anyMatch(item ->
+                "/viewConfig/search/defaultVisibleCount".equals(
+                        item.getPath())
+                        && UiConfigSemanticPatchService.REVIEW.equals(
+                                item.getRiskLevel())));
+        assertTrue(application.compatible());
+        assertEquals(
+                5,
+                listSearchConfig(application.snapshot())
+                        .get("defaultVisibleCount"));
     }
 
     private Map<String, Object> formSnapshot(
@@ -321,6 +348,13 @@ class UiConfigSemanticPatchServiceTest {
     private Map<String, Object> listSnapshot(
             String fieldName,
             String renderComponent) {
+        return listSnapshot(fieldName, renderComponent, null);
+    }
+
+    private Map<String, Object> listSnapshot(
+            String fieldName,
+            String renderComponent,
+            Integer defaultVisibleCount) {
         Map<String, Object> field = new LinkedHashMap<>();
         field.put("id", "field-1");
         field.put("fieldCode", "status");
@@ -331,10 +365,27 @@ class UiConfigSemanticPatchServiceTest {
         list.put("fields", List.of(field));
         list.put("toolbarConfig", List.of());
         list.put("rowActionConfig", List.of());
+        if (defaultVisibleCount != null) {
+            Map<String, Object> search = new LinkedHashMap<>();
+            search.put("defaultVisibleCount", defaultVisibleCount);
+            Map<String, Object> viewConfig = new LinkedHashMap<>();
+            viewConfig.put("search", search);
+            list.put("viewConfig", viewConfig);
+        }
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("configType", "LIST");
         snapshot.put("list", list);
         return snapshot;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> listSearchConfig(
+            Map<String, Object> snapshot) {
+        Map<String, Object> list =
+                (Map<String, Object>) snapshot.get("list");
+        Map<String, Object> viewConfig =
+                (Map<String, Object>) list.get("viewConfig");
+        return (Map<String, Object>) viewConfig.get("search");
     }
 
     @SuppressWarnings("unchecked")

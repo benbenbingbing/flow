@@ -211,6 +211,45 @@ class EntityDataDynamicServiceSubFormTest {
                 "child-1".equals(condition.get("childId")) && "EQ".equals(condition.get("childId_op"))));
     }
 
+    /**
+     * 测试更新时只把实体实际列和已发布字段交给动态 SQL：
+     * 验证 listKey 与未知运行时字段不会进入更新 Map。
+     */
+    @Test
+    void updateIgnoresRuntimeContextAndUnknownFields() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+        EntityField amount = new EntityField();
+        amount.setFieldCode("amountTotal");
+        amount.setFieldName("金额");
+        EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
+        snapshot.setEntityCode("parent");
+        snapshot.setFields(List.of(amount));
+        when(fixture.snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot);
+        when(fixture.dynamicMapper.selectById("wf_parent", "parent-1")).thenReturn(new HashMap<>(Map.of(
+                "id", "parent-1",
+                "name", "旧名称",
+                "deleted", 0
+        )));
+
+        service.update("parent", "parent-1", Map.of(
+                "data", Map.of(
+                        "name", "新名称",
+                        "amountTotal", 12,
+                        "listKey", "default",
+                        "unknownRuntimeValue", "ignored"
+                )
+        ));
+
+        ArgumentCaptor<Map<String, Object>> updateCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).update(eq("wf_parent"), updateCaptor.capture());
+        Map<String, Object> updateData = updateCaptor.getValue();
+        assertEquals("新名称", updateData.get("name"));
+        assertEquals(12, updateData.get("amount_total"));
+        assertFalse(updateData.containsKey("list_key"));
+        assertFalse(updateData.containsKey("unknown_runtime_value"));
+    }
+
     /** 测试夹具：装配被测服务与各 Mock 依赖，并预置父/子/孙实体的定义与关系数据 */
     private static class Fixture {
         final EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);

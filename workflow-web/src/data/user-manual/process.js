@@ -981,9 +981,9 @@ export default {
             {
               type: 'steps',
               items: [
-                { title: '保存草稿', text: '只保存需要修复的节点或列表项，确认没有夹带字段绑定、权限、数据源或写操作变化。' },
-                { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。流程表单不再产生 BLOCKED。' },
-                { title: '处理风险', text: 'SAFE 可直接继续；节点增删、绑定、权限、数据源、提交映射、关系/子表和写操作等高风险修改统一为 REVIEW，需要覆盖权限、强制确认和原因。' },
+                { title: '保存草稿', text: '保存需要热修复的节点、字段或列表项，所有通过发布校验的修改都可以进入 HOTFIX 预检。' },
+                { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。列表和表单都只使用 SAFE/REVIEW。' },
+                { title: '查看风险提示', text: 'SAFE 可直接继续；节点增删、绑定、权限、数据源、提交映射、关系/子表和写操作等高风险修改统一为 REVIEW。REVIEW 仅提示风险，不阻止发布，也不要求额外确认。' },
                 { title: '原子发布', text: '发布请求回传 expectedActiveReleaseId、expectedDraftHash 和 impactToken；任一目标不兼容或影响集合变化时整次失败。' },
                 { title: '验证与回滚', text: '分别验证当前发起入口、运行中任务和历史详情；只有 rolloutStatus=ACTIVE 的 HOTFIX 可撤回，并须从最新版本开始按发布时间逆序原子回滚。' }
               ]
@@ -998,7 +998,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '权限与 rolloutStatus',
-              text: 'HOTFIX 发布和撤回都需要 entity:ui-config:hotfix；只有发布 REVIEW 风险时才额外需要超级管理员或 entity:ui-config:hotfix:override。发布历史中 ACTIVE 表示正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已撤回；只有 ACTIVE 提供撤回入口。'
+              text: 'HOTFIX 发布和撤回都只需要 entity:ui-config:hotfix；REVIEW 仅提示风险，不阻止发布。发布历史中 ACTIVE 表示正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已撤回；只有 ACTIVE 提供撤回入口。'
             },
             {
               type: 'callout',

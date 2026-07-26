@@ -26,7 +26,8 @@ spring:
     sql-migration-separator: __
     sql-migration-suffixes: .sql
     baseline-on-migrate: true
-    baseline-version: "003"
+    # Existing non-empty databases without history are complete through V041.
+    baseline-version: "${FLYWAY_BASELINE_VERSION:041}"
     placeholder-replacement: false
 
   servlet:

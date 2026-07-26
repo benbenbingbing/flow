@@ -1,6 +1,7 @@
 package com.workflow.process.runtime;
 
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.dto.EntityDataDTO;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.EntityDefinitionMapper;
@@ -36,6 +37,7 @@ import org.springframework.util.StringUtils;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -675,22 +677,10 @@ public class ProcessProgressRuntimeService {
             // 2. 加载实体数据
             if (entityDataId != null && entityCode != null) {
                 try {
-                    com.workflow.dto.EntityDataDTO entityData = entityDataDynamicService.findById(entityCode, entityDataId);
+                    EntityDataDTO entityData =
+                            entityDataDynamicService.findById(entityCode, entityDataId);
                     if (entityData != null) {
-                        Map<String, Object> entityDataMap = new java.util.HashMap<>();
-                        if (entityData.getData() != null) {
-                            entityDataMap.putAll(entityData.getData());
-                        }
-                        // 将系统标准字段合并进去，确保审批弹窗能正确显示
-                        if (entityData.getName() != null) entityDataMap.put("name", entityData.getName());
-                        if (entityData.getCode() != null) entityDataMap.put("code", entityData.getCode());
-                        if (entityData.getStatus() != null) entityDataMap.put("status", entityData.getStatus());
-                        if (entityData.getDataNo() != null) entityDataMap.put("dataNo", entityData.getDataNo());
-                        if (entityData.getTitle() != null) entityDataMap.put("title", entityData.getTitle());
-                        if (entityData.getDeptId() != null) entityDataMap.put("deptId", entityData.getDeptId());
-                        if (entityData.getSubmitterId() != null) entityDataMap.put("submitterId", entityData.getSubmitterId());
-                        if (entityData.getSubmitterName() != null) entityDataMap.put("submitterName", entityData.getSubmitterName());
-                        progress.setEntityData(entityDataMap);
+                        progress.setEntityData(toRuntimeFormData(entityData));
                     }
                 } catch (Exception e) {
                     log.debug("获取实体数据失败: {}", e.getMessage());
@@ -728,7 +718,62 @@ public class ProcessProgressRuntimeService {
             log.warn("加载实体数据和表单配置失败: {}", e.getMessage());
         }
     }
-    
+
+    /**
+     * 将实体数据 DTO 转为运行时表单模型，自定义字段与系统字段使用同一层级。
+     */
+    private Map<String, Object> toRuntimeFormData(EntityDataDTO entityData) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (entityData.getData() != null) {
+            result.putAll(entityData.getData());
+        }
+        putIfNotNull(result, "id", entityData.getId());
+        putIfNotNull(result, "entityCode", entityData.getEntityCode());
+        putIfNotNull(result, "entityName", entityData.getEntityName());
+        putIfNotNull(result, "dataNo", entityData.getDataNo());
+        putIfNotNull(result, "title", entityData.getTitle());
+        putIfNotNull(result, "name", entityData.getName());
+        putIfNotNull(result, "code", entityData.getCode());
+        putIfNotNull(result, "status", entityData.getStatus());
+        putIfNotNull(
+                result,
+                "processInstanceId",
+                entityData.getProcessInstanceId());
+        putIfNotNull(
+                result,
+                "processStartTime",
+                entityData.getProcessStartTime());
+        putIfNotNull(
+                result,
+                "processEndTime",
+                entityData.getProcessEndTime());
+        putIfNotNull(result, "currentTaskId", entityData.getCurrentTaskId());
+        putIfNotNull(result, "currentTaskName", entityData.getCurrentTaskName());
+        putIfNotNull(
+                result,
+                "currentTaskAssignee",
+                entityData.getCurrentTaskAssignee());
+        putIfNotNull(result, "submitterId", entityData.getSubmitterId());
+        putIfNotNull(result, "submitterName", entityData.getSubmitterName());
+        putIfNotNull(result, "deptId", entityData.getDeptId());
+        putIfNotNull(result, "deptName", entityData.getDeptName());
+        putIfNotNull(result, "submitTime", entityData.getSubmitTime());
+        putIfNotNull(result, "createdAt", entityData.getCreatedAt());
+        putIfNotNull(result, "updatedAt", entityData.getUpdatedAt());
+        putIfNotNull(result, "createdBy", entityData.getCreatedBy());
+        putIfNotNull(result, "updatedBy", entityData.getUpdatedBy());
+        return result;
+    }
+
+    private void putIfNotNull(
+            Map<String, Object> target,
+            String key,
+            Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
     /**
      * 加载表单配置
      */
