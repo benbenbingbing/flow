@@ -301,11 +301,11 @@ const disabled = computed(() =>
     || runtimeField.value?.isReadonly === true
     || runtimeField.value?.isReadonly === 1
 )
-const required = computed(() =>
+const required = computed(() => Boolean(
   props.linkageState?.required?.[fieldKey.value]
     ?? runtimeField.value?.isRequired
     ?? false
-)
+))
 const options = computed(() =>
   props.linkageState?.options?.[fieldKey.value]
     || runtimeField.value?.options

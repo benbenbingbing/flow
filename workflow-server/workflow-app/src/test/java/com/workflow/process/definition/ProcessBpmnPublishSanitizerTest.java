@@ -2,6 +2,7 @@ package com.workflow.process.definition;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flowable.bpmn.converter.BpmnXMLConverter;
+import org.flowable.bpmn.model.BoundaryEvent;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.CallActivity;
 import org.flowable.bpmn.model.ServiceTask;
@@ -76,6 +77,9 @@ class ProcessBpmnPublishSanitizerTest {
                 <bpmn:callActivity id="call">
                   %s
                 </bpmn:callActivity>
+                <bpmn:scriptTask id="script">
+                  %s
+                </bpmn:scriptTask>
                 <bpmn:endEvent id="end" />
                 """.formatted(
                 properties(
@@ -91,6 +95,9 @@ class ProcessBpmnPublishSanitizerTest {
                         """)),
                 properties(property("callConfig", """
                         {"calledElement":"child_process","callActivityType":"bpmn","inputParameters":"{\\"childAmount\\":\\"${amount}\\"}","outputParameters":"{\\"result\\":\\"${childResult}\\"}","businessKey":"${businessKey}"}
+                        """)),
+                properties(property("scriptConfig", """
+                        {"scriptFormat":"groovy","script":"def total = 1 + 2\\ntotal","resultVariable":"total","autoStoreVariables":false}
                         """))));
 
         String result = sanitizer.sanitize(input, "runtime_process");
@@ -107,6 +114,10 @@ class ProcessBpmnPublishSanitizerTest {
         assertTrue(result.contains("flowable:businessKey=\"${businessKey}\""));
         assertTrue(result.contains("<flowable:in sourceExpression=\"${amount}\" target=\"childAmount\" />"));
         assertTrue(result.contains("<flowable:out sourceExpression=\"${childResult}\" target=\"result\" />"));
+        assertTrue(result.contains("<bpmn:serviceTask id=\"script\""));
+        assertTrue(result.contains(
+                "flowable:delegateExpression=\"${configuredScriptTaskDelegate}\""));
+        assertFalse(result.contains("<bpmn:scriptTask"));
 
         BpmnModel model = new BpmnXMLConverter().convertToBpmnModel(
                 () -> new ByteArrayInputStream(result.getBytes(StandardCharsets.UTF_8)),
@@ -115,6 +126,7 @@ class ProcessBpmnPublishSanitizerTest {
         assertTrue(model.getFlowElement("send") instanceof ServiceTask);
         assertTrue(model.getFlowElement("rule") instanceof ServiceTask);
         assertTrue(model.getFlowElement("call") instanceof CallActivity);
+        assertTrue(model.getFlowElement("script") instanceof ServiceTask);
         assertEquals("child_process", ((CallActivity) model.getFlowElement("call")).getCalledElement());
     }
 
@@ -137,6 +149,18 @@ class ProcessBpmnPublishSanitizerTest {
                         "runtime_process"));
         assertTrue(sendError.getMessage().contains("接收人"));
 
+        IllegalArgumentException unsupportedChannelError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:sendTask id=\"send\">"
+                                + properties(property(
+                                        "sendConfig",
+                                        "{\"channels\":[\"email\"],"
+                                                + "\"to\":\"admin\"}"))
+                                + "</bpmn:sendTask>"),
+                        "runtime_process"));
+        assertTrue(unsupportedChannelError.getMessage().contains("仅支持站内信"));
+
         IllegalArgumentException callError = assertThrows(
                 IllegalArgumentException.class,
                 () -> sanitizer.sanitize(
@@ -145,6 +169,155 @@ class ProcessBpmnPublishSanitizerTest {
                                 + "</bpmn:callActivity>"),
                         "runtime_process"));
         assertTrue(callError.getMessage().contains("子流程Key"));
+
+        IllegalArgumentException restError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:serviceTask id=\"rest\">"
+                                + properties(property("restConfig", "{\"method\":\"GET\",\"url\":\"\"}"))
+                                + "</bpmn:serviceTask>"),
+                        "runtime_process"));
+        assertTrue(restError.getMessage().contains("请求URL"));
+
+        IllegalArgumentException scriptError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:scriptTask id=\"script\">"
+                                + properties(property(
+                                        "scriptConfig",
+                                        "{\"scriptFormat\":\"javascript\",\"script\":\"\"}"))
+                                + "</bpmn:scriptTask>"),
+                        "runtime_process"));
+        assertTrue(scriptError.getMessage().contains("脚本内容"));
+
+        IllegalArgumentException unsupportedScriptError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:scriptTask id=\"script\">"
+                                + properties(property(
+                                        "scriptConfig",
+                                        "{\"scriptFormat\":\"javascript\","
+                                                + "\"script\":\"1 + 1\"}"))
+                                + "</bpmn:scriptTask>"),
+                        "runtime_process"));
+        assertTrue(unsupportedScriptError.getMessage().contains("仅支持 Groovy"));
+    }
+
+    /**
+     * 显式知会不能覆盖服务或发送任务的主实现，纯知会节点则直接使用知会代理。
+     */
+    @Test
+    void sanitizeAddsCcListenerWithoutReplacingPrimaryTaskImplementation() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String ccConfig = """
+                {"enabled":true,"timings":["EXPLICIT"],"channels":["IN_APP"],
+                 "recipientRules":[{"type":"USER","values":["admin"]}]}
+                """;
+        String input = wrap("""
+                <bpmn:serviceTask id="rest">
+                  %s
+                </bpmn:serviceTask>
+                <bpmn:sendTask id="send">
+                  %s
+                </bpmn:sendTask>
+                <bpmn:serviceTask id="cc-only">
+                  %s
+                </bpmn:serviceTask>
+                """.formatted(
+                properties(
+                        property("restConfig", "{\"method\":\"GET\",\"url\":\"http://localhost/test\"}"),
+                        property("ccConfig", ccConfig)),
+                properties(
+                        property("sendConfig", "{\"channels\":[\"message\"],\"to\":\"admin\"}"),
+                        property("ccConfig", ccConfig)),
+                properties(property("ccConfig", ccConfig))));
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+
+        assertTrue(result.contains(
+                "id=\"rest\" flowable:delegateExpression=\"${restServiceTaskDelegate}\""));
+        assertTrue(result.contains(
+                "id=\"send\" flowable:delegateExpression=\"${configuredSendTaskDelegate}\""));
+        assertEquals(
+                2,
+                occurrences(
+                        result,
+                        "delegateExpression=\"${ccNotificationDelegate}\" />"));
+        assertTrue(result.contains(
+                "id=\"cc-only\" flowable:delegateExpression=\"${ccNotificationDelegate}\""));
+    }
+
+    /**
+     * 接收任务超时应转换为可部署的定时边界事件，并复用原出线路径。
+     */
+    @Test
+    void sanitizeAddsExecutableReceiveTaskTimeoutAndIsIdempotent() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:startEvent id="start" />
+                <bpmn:receiveTask id="receive">
+                  %s
+                </bpmn:receiveTask>
+                <bpmn:endEvent id="end" />
+                <bpmn:sequenceFlow id="flow-out" sourceRef="receive" targetRef="end">
+                  <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${approved == 'approve'}</bpmn:conditionExpression>
+                </bpmn:sequenceFlow>
+                """.formatted(properties(property(
+                "receiveConfig",
+                """
+                        {"messageRef":"paymentCallback","hasTimeout":true,
+                         "timeout":30,"timeoutUnit":"MINUTE","timeoutAction":"continue"}
+                        """))));
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+        String secondPass = sanitizer.sanitize(result, "runtime_process");
+
+        assertTrue(result.contains("id=\"receive__receive_timeout\""));
+        assertTrue(result.contains("attachedToRef=\"receive\""));
+        assertTrue(result.contains("<bpmn:timeDuration>PT30M</bpmn:timeDuration>"));
+        assertTrue(result.contains(
+                "flowable:delegateExpression=\"${receiveTaskTimeoutDelegate}\""));
+        assertTrue(result.contains(
+                "id=\"receive__receive_timeout_flow__flow-out\""));
+        assertTrue(result.contains("sourceRef=\"receive__receive_timeout_handler\""));
+        assertTrue(result.contains("targetRef=\"end\""));
+        assertEquals(1, occurrences(secondPass, "id=\"receive__receive_timeout\""));
+        assertEquals(
+                1,
+                occurrences(
+                        secondPass,
+                        "id=\"receive__receive_timeout_handler\""));
+
+        BpmnModel model = parse(result);
+        assertTrue(model.getFlowElement(
+                "receive__receive_timeout") instanceof BoundaryEvent);
+        assertTrue(model.getFlowElement(
+                "receive__receive_timeout_handler") instanceof ServiceTask);
+    }
+
+    /**
+     * 接收任务超时参数不完整时应在部署前拒绝。
+     */
+    @Test
+    void sanitizeRejectsInvalidReceiveTaskTimeout() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+
+        IllegalArgumentException timeoutError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:receiveTask id=\"receive\">"
+                                + properties(property(
+                                        "receiveConfig",
+                                        "{\"hasTimeout\":true,\"timeout\":0,"
+                                                + "\"timeoutUnit\":\"MINUTE\","
+                                                + "\"timeoutAction\":\"continue\"}"))
+                                + "</bpmn:receiveTask>"),
+                        "runtime_process"));
+
+        assertTrue(timeoutError.getMessage().contains("大于0"));
     }
 
     /** 将流程元素片段包装为完整的 BPMN definitions 文档 */
@@ -152,12 +325,21 @@ class ProcessBpmnPublishSanitizerTest {
         return """
                 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                     xmlns:flowable="http://flowable.org/bpmn"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                     targetNamespace="http://workflow.test/process">
                   <bpmn:process id="draft_process" isExecutable="true">
                     %s
                   </bpmn:process>
                 </bpmn:definitions>
                 """.formatted(elements);
+    }
+
+    /** 将 XML 解析为 Flowable BPMN 模型 */
+    private static BpmnModel parse(String xml) {
+        return new BpmnXMLConverter().convertToBpmnModel(
+                () -> new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)),
+                true,
+                false);
     }
 
     /** 拼接多个 flowable:property 元素并包裹在 extensionElements 中 */
@@ -179,5 +361,16 @@ class ProcessBpmnPublishSanitizerTest {
                 .replace("\"", "&quot;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
+    }
+
+    /** 统计指定文本出现次数 */
+    private static int occurrences(String value, String target) {
+        int count = 0;
+        int index = 0;
+        while ((index = value.indexOf(target, index)) >= 0) {
+            count++;
+            index += target.length();
+        }
+        return count;
     }
 }

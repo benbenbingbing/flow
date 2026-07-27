@@ -1,0 +1,150 @@
+{
+  "apiBase": "http://localhost:8080/api",
+  "webBase": "http://localhost:3000",
+  "entityCode": "upload_entity_2607270222kw6",
+  "entityName": "文件图片上传验收实体2607270222kw6",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "id": "1",
+        "username": "admin"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2081565881573412865",
+        "fields": [
+          {
+            "id": "2081565881577607169",
+            "code": "name",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881577607170",
+            "code": "code",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881581801473",
+            "code": "status",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881585995778",
+            "code": "processInstanceId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881590190082",
+            "code": "processStartTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081565881590190083",
+            "code": "processEndTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081565881594384386",
+            "code": "submitterId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881598578690",
+            "code": "submitterName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881602772993",
+            "code": "deptId",
+            "type": "REFERENCE"
+          },
+          {
+            "id": "2081565881615355907",
+            "code": "attachment",
+            "type": "FILE"
+          },
+          {
+            "id": "2081565881602772994",
+            "code": "dataNo",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881606967298",
+            "code": "submitTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081565881611161602",
+            "code": "currentTaskId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881611161603",
+            "code": "currentTaskName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881615355906",
+            "code": "currentTaskAssignee",
+            "type": "STRING"
+          },
+          {
+            "id": "2081565881619550210",
+            "code": "siteImage",
+            "type": "IMAGE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createAndPublishForm",
+      "data": {
+        "id": "2081565882185781250",
+        "releaseId": "8aca73a3c233af46cc8ceba8a7a036c7",
+        "version": 1
+      }
+    },
+    {
+      "name": "createAndPublishList",
+      "data": {
+        "id": "89f31260ef654612b4c388fd403ae36a",
+        "releaseId": "e06e9eecdadf6c4ff5d6dffd185035c4",
+        "version": 1
+      }
+    },
+    {
+      "name": "browserUploadAndEditRecall",
+      "data": {
+        "route": "/entity-list/upload_entity_2607270222kw6/upload_records",
+        "fileName": "acceptance-2607270222kw6.txt",
+        "imageName": "acceptance-2607270222kw6.png",
+        "uploadUrls": [
+          "/uploads/20260727102239_20b370dd.txt",
+          "/uploads/20260727102239_bc1bafd1.png"
+        ],
+        "screenshot": "/Users/dawei/Documents/ddup/ai/flow/workflow-web/docs/file-upload-e2e/real-file-image-upload.png"
+      }
+    },
+    {
+      "name": "verifySavedDataAndStaticAccess",
+      "data": {
+        "dataId": "f2765d3de9614316bd2bc166595aad63",
+        "attachment": "/uploads/20260727102239_20b370dd.txt",
+        "siteImage": "/uploads/20260727102239_bc1bafd1.png",
+        "fileStatus": 200,
+        "imageStatus": 200
+      }
+    }
+  ],
+  "fixture": {
+    "entityId": "2081565881573412865",
+    "formId": "2081565882185781250",
+    "listConfigId": "89f31260ef654612b4c388fd403ae36a",
+    "route": "/entity-list/upload_entity_2607270222kw6/upload_records"
+  },
+  "result": "PASS",
+  "conclusion": "PASS: FILE 与 IMAGE 已通过浏览器真实上传、保存、编辑回显和静态访问验证"
+}

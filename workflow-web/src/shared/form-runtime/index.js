@@ -40,6 +40,45 @@ export function getFieldKey(field) {
   return String(field?.fieldCode || field?.fieldKey || field?.fieldId || field?.id || '')
 }
 
+export function parseRuntimeDefaultValue(value) {
+  if (value == null || typeof value !== 'string') return value
+  const normalized = value.trim()
+  if (!normalized) return value
+  try {
+    return JSON.parse(normalized)
+  } catch {
+    return value
+  }
+}
+
+export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields = []) {
+  const defaultsByField = new Map()
+  const addFieldDefault = (field = {}) => {
+    const fieldKey = getFieldKey(field)
+    if (!fieldKey || field.defaultValue == null || field.defaultValue === '') return
+    defaultsByField.set(fieldKey, field.defaultValue)
+  }
+
+  entityFields.forEach(addFieldDefault)
+  ;(form?.fields || []).forEach(addFieldDefault)
+  ;(form?.nodes || []).forEach(node => {
+    const nodeType = String(node?.nodeType || '').toUpperCase()
+    if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(nodeType)) return
+    const props = typeof node?.propsDocument === 'string'
+      ? parseRuntimeDefaultValue(node.propsDocument)
+      : (node?.propsDocument || node?.props || {})
+    if (!props || typeof props !== 'object' || Array.isArray(props)) return
+    addFieldDefault(props)
+  })
+
+  defaultsByField.forEach((value, fieldKey) => {
+    if (target[fieldKey] == null || target[fieldKey] === '') {
+      target[fieldKey] = parseRuntimeDefaultValue(value)
+    }
+  })
+  return target
+}
+
 export function isSystemField(fieldOrCode) {
   const fieldCode = typeof fieldOrCode === 'string' ? fieldOrCode : getFieldKey(fieldOrCode)
   return SYSTEM_FIELDS.has(fieldCode)

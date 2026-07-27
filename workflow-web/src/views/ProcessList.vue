@@ -69,31 +69,30 @@
             {{ formatDate(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleDesign(row)">打开设计器</el-button>
-            <el-dropdown>
-              <el-button link type="info" aria-label="更多流程操作">更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="handleEdit(row)">编辑基本信息</el-dropdown-item>
-                  <el-dropdown-item @click="handleViewVersions(row)">版本历史</el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="row.status === 'DRAFT' || row.status === 'DISABLED'"
-                    @click="handlePublish(row)"
-                  >
-                    {{ row.status === 'DISABLED' ? '发布新版本并启用' : '发布流程' }}
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="row.status === 'PUBLISHED'"
-                    @click="handleDisable(row)"
-                  >
-                    禁用新发起
-                  </el-dropdown-item>
-                  <el-dropdown-item divided @click="handleDelete(row)">删除流程</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <div class="table-row-actions">
+              <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
+              <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+              <el-button link type="info" @click="handleViewVersions(row)">历史</el-button>
+              <el-button
+                v-if="row.status === 'DRAFT' || row.status === 'DISABLED'"
+                link
+                type="success"
+                @click="handlePublish(row)"
+              >
+                发布
+              </el-button>
+              <el-button
+                v-if="row.status === 'PUBLISHED'"
+                link
+                type="warning"
+                @click="handleDisable(row)"
+              >
+                禁用
+              </el-button>
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>

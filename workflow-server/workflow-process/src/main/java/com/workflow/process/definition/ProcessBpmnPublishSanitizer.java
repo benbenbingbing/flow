@@ -4,8 +4,25 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,6 +37,8 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class ProcessBpmnPublishSanitizer {
+
+    private static final String FLOWABLE_NAMESPACE = "http://flowable.org/bpmn";
 
     /** JSON 序列化工具，用于解析节点配置 JSON */
     private final ObjectMapper objectMapper;
@@ -54,13 +73,107 @@ public class ProcessBpmnPublishSanitizer {
         result = useProcessKey(result, processKey);
         result = removeInvalidMultiInstanceConfig(result);
         result = fixMultiInstanceAssignee(result);
+        result = fixExplicitCcTasks(result);
         result = fixConfiguredServiceTasks(result);
         result = fixConfiguredSendTasks(result);
         result = fixConfiguredBusinessRuleTasks(result);
         result = fixConfiguredCallActivities(result);
+        result = fixConfiguredReceiveTasks(result);
         result = fixScriptTasks(result);
 
         return result;
+    }
+
+    /**
+     * 为服务任务和发送任务附加显式知会。
+     * <p>
+     * 已有主实现时在节点结束后执行知会监听器；没有主实现时将节点本身作为纯知会节点。
+     */
+    private String fixExplicitCcTasks(String bpmnXml) {
+        String result = rewriteConfiguredElements(
+                bpmnXml,
+                "serviceTask",
+                "ccConfig",
+                (element, config) -> configureExplicitCc(element, config, "restConfig"));
+        return rewriteConfiguredElements(
+                result,
+                "sendTask",
+                "ccConfig",
+                (element, config) -> configureExplicitCc(element, config, "sendConfig"));
+    }
+
+    private ConfiguredElement configureExplicitCc(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode config,
+            String primaryConfigProperty) {
+        String content = removeGeneratedCcListener(element.content());
+        if (!config.path("enabled").asBoolean(false)
+                || !containsTextValue(config.path("timings"), "EXPLICIT")) {
+            return element.withContent(content);
+        }
+
+        String delegateExpression = attributeValue(
+                element.startTag(),
+                "delegateExpression");
+        boolean hasConfiguredPrimary =
+                readPropertyValue(content, primaryConfigProperty) != null;
+        boolean hasStandardPrimary =
+                hasAttribute(element.startTag(), "class")
+                || hasAttribute(element.startTag(), "expression")
+                || (hasAttribute(element.startTag(), "delegateExpression")
+                    && !"${ccNotificationDelegate}".equals(delegateExpression));
+
+        if (!hasConfiguredPrimary && !hasStandardPrimary) {
+            String startTag = removeAttributes(
+                    element.startTag(),
+                    "class",
+                    "expression",
+                    "delegateExpression");
+            return element
+                    .withStartTag(setQualifiedAttribute(
+                            startTag,
+                            "delegateExpression",
+                            "${ccNotificationDelegate}"))
+                    .withContent(content);
+        }
+
+        String startTag = "${ccNotificationDelegate}".equals(delegateExpression)
+                ? removeAttributes(element.startTag(), "delegateExpression")
+                : element.startTag();
+        String listener = "<flowable:executionListener event=\"end\" "
+                + "delegateExpression=\"${ccNotificationDelegate}\" />";
+        return element
+                .withStartTag(startTag)
+                .withContent(appendToExtensionElements(content, listener));
+    }
+
+    private boolean containsTextValue(
+            com.fasterxml.jackson.databind.JsonNode values,
+            String expected) {
+        if (!values.isArray()) {
+            return false;
+        }
+        for (com.fasterxml.jackson.databind.JsonNode value : values) {
+            if (expected.equalsIgnoreCase(value.asText(""))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasAttribute(String startTag, String name) {
+        return Pattern.compile(
+                "(?i)\\s+(?:flowable:)?" + Pattern.quote(name) + "=\"[^\"]*\"")
+                .matcher(startTag)
+                .find();
+    }
+
+    private String removeGeneratedCcListener(String content) {
+        return content.replaceAll(
+                "(?i)<flowable:executionListener\\b"
+                        + "[^>]*delegateExpression=\"\\$\\{ccNotificationDelegate}\""
+                        + "[^>]*/>",
+                "");
     }
 
     /**
@@ -69,6 +182,18 @@ public class ProcessBpmnPublishSanitizer {
      */
     private String fixConfiguredServiceTasks(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "serviceTask", "restConfig", (element, config) -> {
+            String url = config.path("url").asText("");
+            if (url.isBlank()) {
+                throw new IllegalArgumentException("REST 服务任务必须配置请求URL: " + element.id());
+            }
+            if ("multipart/form-data".equalsIgnoreCase(
+                    config.path("contentType").asText(""))) {
+                throw new IllegalArgumentException(
+                        "REST 服务任务暂不支持 multipart/form-data: " + element.id());
+            }
+            validateJsonObjectDocument(config.path("headers").asText(""), "REST 请求头", element.id());
+            validateJsonObjectDocument(config.path("queryParams").asText(""), "REST 查询参数", element.id());
+            validateJsonObjectDocument(config.path("resultMapping").asText(""), "REST 结果映射", element.id());
             String startTag = removeAttributes(
                     element.startTag(),
                     "class", "expression", "delegateExpression", "type");
@@ -90,6 +215,14 @@ public class ProcessBpmnPublishSanitizer {
         return rewriteConfiguredElements(bpmnXml, "sendTask", "sendConfig", (element, config) -> {
             if (!config.path("channels").isArray() || config.path("channels").isEmpty()) {
                 throw new IllegalArgumentException("发送任务至少需要配置一个发送渠道: " + element.id());
+            }
+            for (com.fasterxml.jackson.databind.JsonNode channel : config.path("channels")) {
+                String value = channel.asText("");
+                if (!"message".equalsIgnoreCase(value)
+                        && !"in_app".equalsIgnoreCase(value)) {
+                    throw new IllegalArgumentException(
+                            "发送任务当前仅支持站内信渠道: " + element.id());
+                }
             }
             if (config.path("to").asText("").isBlank()) {
                 throw new IllegalArgumentException("发送任务必须配置接收人: " + element.id());
@@ -113,6 +246,10 @@ public class ProcessBpmnPublishSanitizer {
             if (decisionRef.isBlank()) {
                 throw new IllegalArgumentException("业务规则任务必须配置决策表Key: " + element.id());
             }
+            validateJsonObjectDocument(
+                    config.path("inputVariables").asText(""),
+                    "业务规则输入变量",
+                    element.id());
             String startTag = element.startTag()
                     .replaceFirst("(?i)<(bpmn:)?businessRuleTask\\b", "<$1serviceTask");
             startTag = removeAttributes(startTag, "type", "class", "expression", "delegateExpression");
@@ -148,6 +285,382 @@ public class ProcessBpmnPublishSanitizer {
             }
             return element.withStartTag(startTag).withContent(content);
         });
+    }
+
+    /**
+     * 为配置了超时的接收任务生成中断式定时边界事件。
+     *
+     * <p>定时器先进入平台超时处理代理，再复用接收任务原有出线。continue 策略会设置
+     * 超时变量后继续；error 策略由代理抛出异常并交给 Flowable 作业重试/失败机制处理。</p>
+     */
+    private String fixConfiguredReceiveTasks(String bpmnXml) {
+        if (!bpmnXml.contains("receiveConfig")
+                && !bpmnXml.contains("__receive_timeout")) {
+            return bpmnXml;
+        }
+        try {
+            Document document = parseXml(bpmnXml);
+            List<Element> receiveTasks = elementsByLocalName(document, "receiveTask");
+            boolean changed = false;
+            for (Element receiveTask : receiveTasks) {
+                String receiveTaskId = receiveTask.getAttribute("id");
+                if (receiveTaskId.isBlank()) {
+                    throw new IllegalArgumentException("接收任务缺少节点ID");
+                }
+                Element container = (Element) receiveTask.getParentNode();
+                changed |= removeGeneratedReceiveTimeout(container, receiveTaskId);
+
+                String configDocument = readPropertyValue(receiveTask, "receiveConfig");
+                if (configDocument == null || configDocument.isBlank()) {
+                    continue;
+                }
+                com.fasterxml.jackson.databind.JsonNode config =
+                        objectMapper.readTree(configDocument);
+                if (!config.path("hasTimeout").asBoolean(false)) {
+                    continue;
+                }
+
+                int timeout = strictPositiveInteger(config.path("timeout"), receiveTaskId);
+                String unit = config.path("timeoutUnit")
+                        .asText("MINUTE")
+                        .toUpperCase(Locale.ROOT);
+                String action = config.path("timeoutAction")
+                        .asText("error")
+                        .toLowerCase(Locale.ROOT);
+                String duration = receiveTimeoutDuration(timeout, unit, receiveTaskId);
+                if (!"continue".equals(action) && !"error".equals(action)) {
+                    throw new IllegalArgumentException(
+                            "接收任务超时处理仅支持 continue 或 error: " + receiveTaskId);
+                }
+
+                appendReceiveTimeout(
+                        document,
+                        container,
+                        receiveTask,
+                        duration,
+                        action);
+                changed = true;
+            }
+            return changed ? writeXml(document) : bpmnXml;
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "接收任务超时配置处理失败: " + exception.getMessage(),
+                    exception);
+        }
+    }
+
+    private void appendReceiveTimeout(
+            Document document,
+            Element container,
+            Element receiveTask,
+            String duration,
+            String action) {
+        String receiveTaskId = receiveTask.getAttribute("id");
+        String prefix = receiveTask.getPrefix();
+        String namespace = receiveTask.getNamespaceURI();
+        String boundaryId = receiveTaskId + "__receive_timeout";
+        String handlerId = receiveTaskId + "__receive_timeout_handler";
+        String boundaryFlowId = receiveTaskId + "__receive_timeout_boundary_flow";
+        List<Element> outgoingFlows = directSequenceFlows(container, receiveTaskId);
+
+        Element boundary = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                "boundaryEvent");
+        boundary.setAttribute("id", boundaryId);
+        boundary.setAttribute("name", "接收任务超时");
+        boundary.setAttribute("attachedToRef", receiveTaskId);
+        boundary.setAttribute("cancelActivity", "true");
+        appendReferenceElement(
+                document,
+                boundary,
+                namespace,
+                prefix,
+                "outgoing",
+                boundaryFlowId);
+        Element timerDefinition = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                "timerEventDefinition");
+        Element timeDuration = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                "timeDuration");
+        timeDuration.setTextContent(duration);
+        timerDefinition.appendChild(timeDuration);
+        boundary.appendChild(timerDefinition);
+
+        Element handler = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                "serviceTask");
+        handler.setAttribute("id", handlerId);
+        handler.setAttribute(
+                "name",
+                "error".equals(action) ? "接收任务超时异常" : "接收任务超时继续");
+        handler.setAttributeNS(
+                FLOWABLE_NAMESPACE,
+                "flowable:delegateExpression",
+                "${receiveTaskTimeoutDelegate}");
+        appendReceiveTimeoutProperties(
+                document,
+                handler,
+                namespace,
+                prefix,
+                receiveTaskId,
+                action);
+        appendReferenceElement(
+                document,
+                handler,
+                namespace,
+                prefix,
+                "incoming",
+                boundaryFlowId);
+
+        List<Element> timeoutFlows = new ArrayList<>();
+        for (Element outgoingFlow : outgoingFlows) {
+            String originalFlowId = outgoingFlow.getAttribute("id");
+            if (originalFlowId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "接收任务出线缺少ID: " + receiveTaskId);
+            }
+            String timeoutFlowId =
+                    receiveTaskId + "__receive_timeout_flow__" + originalFlowId;
+            Element timeoutFlow = (Element) outgoingFlow.cloneNode(true);
+            timeoutFlow.setAttribute("id", timeoutFlowId);
+            timeoutFlow.setAttribute("sourceRef", handlerId);
+            appendReferenceElement(
+                    document,
+                    handler,
+                    namespace,
+                    prefix,
+                    "outgoing",
+                    timeoutFlowId);
+            timeoutFlows.add(timeoutFlow);
+        }
+
+        Element boundaryFlow = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                "sequenceFlow");
+        boundaryFlow.setAttribute("id", boundaryFlowId);
+        boundaryFlow.setAttribute("sourceRef", boundaryId);
+        boundaryFlow.setAttribute("targetRef", handlerId);
+
+        container.appendChild(boundary);
+        container.appendChild(handler);
+        container.appendChild(boundaryFlow);
+        timeoutFlows.forEach(container::appendChild);
+    }
+
+    private void appendReceiveTimeoutProperties(
+            Document document,
+            Element handler,
+            String namespace,
+            String prefix,
+            String receiveTaskId,
+            String action) {
+        Element extensionElements = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                "extensionElements");
+        Element properties = document.createElementNS(
+                FLOWABLE_NAMESPACE,
+                "flowable:properties");
+        properties.appendChild(flowableProperty(
+                document,
+                "receiveTaskId",
+                receiveTaskId));
+        properties.appendChild(flowableProperty(
+                document,
+                "receiveTimeoutAction",
+                action));
+        extensionElements.appendChild(properties);
+        handler.appendChild(extensionElements);
+    }
+
+    private Element flowableProperty(
+            Document document,
+            String name,
+            String value) {
+        Element property = document.createElementNS(
+                FLOWABLE_NAMESPACE,
+                "flowable:property");
+        property.setAttribute("name", name);
+        property.setAttribute("value", value);
+        return property;
+    }
+
+    private void appendReferenceElement(
+            Document document,
+            Element parent,
+            String namespace,
+            String prefix,
+            String localName,
+            String value) {
+        Element reference = createBpmnElement(
+                document,
+                namespace,
+                prefix,
+                localName);
+        reference.setTextContent(value);
+        parent.appendChild(reference);
+    }
+
+    private Element createBpmnElement(
+            Document document,
+            String namespace,
+            String prefix,
+            String localName) {
+        String qualifiedName = prefix == null || prefix.isBlank()
+                ? localName
+                : prefix + ":" + localName;
+        return document.createElementNS(namespace, qualifiedName);
+    }
+
+    private List<Element> directSequenceFlows(
+            Element container,
+            String sourceRef) {
+        List<Element> result = new ArrayList<>();
+        NodeList children = container.getChildNodes();
+        for (int index = 0; index < children.getLength(); index++) {
+            Node node = children.item(index);
+            if (node instanceof Element element
+                    && "sequenceFlow".equals(element.getLocalName())
+                    && sourceRef.equals(element.getAttribute("sourceRef"))) {
+                result.add(element);
+            }
+        }
+        return result;
+    }
+
+    private boolean removeGeneratedReceiveTimeout(
+            Element container,
+            String receiveTaskId) {
+        String generatedPrefix = receiveTaskId + "__receive_timeout";
+        List<Node> generated = new ArrayList<>();
+        NodeList children = container.getChildNodes();
+        for (int index = 0; index < children.getLength(); index++) {
+            Node node = children.item(index);
+            if (node instanceof Element element
+                    && element.getAttribute("id").startsWith(generatedPrefix)) {
+                generated.add(node);
+            }
+        }
+        generated.forEach(container::removeChild);
+        return !generated.isEmpty();
+    }
+
+    private String receiveTimeoutDuration(
+            int timeout,
+            String unit,
+            String receiveTaskId) {
+        return switch (unit) {
+            case "MINUTE" -> "PT" + timeout + "M";
+            case "HOUR" -> "PT" + timeout + "H";
+            case "DAY" -> "P" + timeout + "D";
+            default -> throw new IllegalArgumentException(
+                    "接收任务超时单位仅支持 MINUTE、HOUR、DAY: " + receiveTaskId);
+        };
+    }
+
+    private int strictPositiveInteger(
+            com.fasterxml.jackson.databind.JsonNode value,
+            String receiveTaskId) {
+        if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+            throw new IllegalArgumentException(
+                    "接收任务超时时间必须是正整数: " + receiveTaskId);
+        }
+        int timeout = value.intValue();
+        if (timeout < 1) {
+            throw new IllegalArgumentException(
+                    "接收任务超时时间必须大于0: " + receiveTaskId);
+        }
+        return timeout;
+    }
+
+    private List<Element> elementsByLocalName(
+            Document document,
+            String localName) {
+        List<Element> result = new ArrayList<>();
+        NodeList elements = document.getElementsByTagNameNS("*", localName);
+        for (int index = 0; index < elements.getLength(); index++) {
+            result.add((Element) elements.item(index));
+        }
+        return result;
+    }
+
+    private String readPropertyValue(
+            Element element,
+            String propertyName) {
+        NodeList properties = element.getElementsByTagNameNS(
+                FLOWABLE_NAMESPACE,
+                "property");
+        for (int index = 0; index < properties.getLength(); index++) {
+            Element property = (Element) properties.item(index);
+            if (propertyName.equals(property.getAttribute("name"))) {
+                return property.getAttribute("value");
+            }
+        }
+        return null;
+    }
+
+    private Document parseXml(String bpmnXml) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature(
+                "http://apache.org/xml/features/disallow-doctype-decl",
+                true);
+        factory.setFeature(
+                "http://xml.org/sax/features/external-general-entities",
+                false);
+        factory.setFeature(
+                "http://xml.org/sax/features/external-parameter-entities",
+                false);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        return factory.newDocumentBuilder().parse(
+                new InputSource(new StringReader(bpmnXml)));
+    }
+
+    private String writeXml(Document document) throws Exception {
+        TransformerFactory factory = TransformerFactory.newInstance();
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        Transformer transformer = factory.newTransformer();
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+        transformer.setOutputProperty(OutputKeys.INDENT, "no");
+        StringWriter writer = new StringWriter();
+        transformer.transform(new DOMSource(document), new StreamResult(writer));
+        return writer.toString();
+    }
+
+    private void validateJsonObjectDocument(
+            String document,
+            String label,
+            String elementId) {
+        if (document == null || document.isBlank()) {
+            return;
+        }
+        try {
+            if (!objectMapper.readTree(document).isObject()) {
+                throw new IllegalArgumentException(
+                        label + "必须是 JSON 对象: " + elementId);
+            }
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    label + "不是合法 JSON: " + elementId,
+                    exception);
+        }
     }
 
     /**
@@ -504,77 +1017,55 @@ public class ProcessBpmnPublishSanitizer {
     }
 
     private String fixScriptTasks(String bpmnXml) {
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "(?i)<(bpmn:)?scriptTask\\b([^>]*)>([\\s\\S]*?)</\\1scriptTask>",
-                java.util.regex.Pattern.DOTALL);
-        java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            String fullTag = matcher.group(0);
-            String startTag = fullTag.substring(0, fullTag.indexOf('>') + 1);
-            String content = matcher.group(3);
-            String prefix = matcher.group(1) != null ? matcher.group(1) : "";
-            String endTag = "</" + prefix + "scriptTask>";
-
-            java.util.regex.Matcher configMatcher = java.util.regex.Pattern
-                    .compile("(?i)<flowable:property\\s+name=\\\"scriptConfig\\\"\\s+value=\\\"([^\\\"]*)\\\"")
-                    .matcher(content);
-            if (!configMatcher.find()) {
-                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(fullTag));
-                continue;
-            }
-
-            String configJson = decodeXml(configMatcher.group(1));
-            try {
-                com.fasterxml.jackson.databind.JsonNode config = objectMapper.readTree(configJson);
-                String script = config.has("script") ? config.get("script").asText() : "";
-                script = script.replaceAll("(?i)<script[^>]*>", "").replaceAll("(?i)</script>", "").trim();
-                if (script.isEmpty()) {
-                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(fullTag));
-                    continue;
-                }
-
-                String newStartTag = applyScriptAttributes(startTag, config);
-                String newContent = content.replaceAll("(?i)<" + prefix + "script>[^<]*</" + prefix + "script>", "")
-                        .replaceAll("(?i)<script>[^<]*</script>", "");
-                String scriptElement = "<" + prefix + "script>" + script + "</" + prefix + "script>";
-                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(newStartTag + newContent + scriptElement + endTag));
-            } catch (Exception e) {
-                log.warn("解析 scriptTask 配置失败: {}", e.getMessage());
-                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(fullTag));
-            }
-        }
-        matcher.appendTail(sb);
-        return sb.toString();
-    }
-
-    private String applyScriptAttributes(String startTag, com.fasterxml.jackson.databind.JsonNode config) {
-        String result = startTag;
-        String scriptFormat = config.has("scriptFormat") ? config.get("scriptFormat").asText() : "javascript";
-        if (!result.toLowerCase().contains("scriptformat=")) {
-            result = result.replace(">", " scriptFormat=\"" + scriptFormat + "\">");
-        } else {
-            result = result.replaceAll("(?i)scriptFormat=\\\"[^\\\"]*\\\"", "scriptFormat=\"" + scriptFormat + "\"");
-        }
-
-        String resultVariable = config.has("resultVariable") ? config.get("resultVariable").asText() : "";
-        if (!resultVariable.isEmpty()) {
-            if (!result.toLowerCase().contains("flowable:resultvariable=")) {
-                result = result.replace(">", " flowable:resultVariable=\"" + resultVariable + "\">");
-            } else {
-                result = result.replaceAll("(?i)flowable:resultVariable=\\\"[^\\\"]*\\\"", "flowable:resultVariable=\"" + resultVariable + "\"");
-            }
-        }
-
-        boolean autoStore = config.has("autoStoreVariables") && config.get("autoStoreVariables").asBoolean();
-        if (autoStore) {
-            if (!result.toLowerCase().contains("flowable:autostorevariables=")) {
-                result = result.replace(">", " flowable:autoStoreVariables=\"true\">");
-            } else {
-                result = result.replaceAll("(?i)flowable:autoStoreVariables=\\\"[^\\\"]*\\\"", "flowable:autoStoreVariables=\"true\"");
-            }
-        }
-        return result;
+        return rewriteConfiguredElements(
+                bpmnXml,
+                "scriptTask",
+                "scriptConfig",
+                (element, config) -> {
+                    String script = config.path("script").asText("")
+                            .replaceAll("(?i)<script[^>]*>", "")
+                            .replaceAll("(?i)</script>", "")
+                            .trim();
+                    if (script.isEmpty()) {
+                        throw new IllegalArgumentException(
+                                "脚本任务必须配置脚本内容: " + element.id());
+                    }
+                    String scriptFormat = config.path("scriptFormat")
+                            .asText("")
+                            .trim();
+                    if (scriptFormat.isEmpty()) {
+                        throw new IllegalArgumentException(
+                                "脚本任务必须配置脚本类型: " + element.id());
+                    }
+                    if (!"groovy".equalsIgnoreCase(scriptFormat)) {
+                        throw new IllegalArgumentException(
+                                "脚本任务当前仅支持 Groovy: " + element.id());
+                    }
+                    String newContent = element.content().replaceAll(
+                            "(?is)<(?:bpmn:)?script\\b[^>]*>.*?</(?:bpmn:)?script>",
+                            "");
+                    String startTag = element.startTag()
+                            .replaceFirst(
+                                    "(?i)<(bpmn:)?scriptTask\\b",
+                                    "<$1serviceTask");
+                    startTag = removeAttributes(
+                            startTag,
+                            "type",
+                            "class",
+                            "expression",
+                            "delegateExpression",
+                            "scriptFormat",
+                            "resultVariable",
+                            "autoStoreVariables");
+                    startTag = setQualifiedAttribute(
+                            startTag,
+                            "delegateExpression",
+                            "${configuredScriptTaskDelegate}");
+                    return element
+                            .withTagName("serviceTask")
+                            .withStartTag(startTag)
+                            .withContent(newContent);
+                });
     }
 
     private String processSkipNodeTasks(String bpmnXml) {

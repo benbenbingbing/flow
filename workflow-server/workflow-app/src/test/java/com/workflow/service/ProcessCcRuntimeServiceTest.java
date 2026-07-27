@@ -41,6 +41,7 @@ class ProcessCcRuntimeServiceTest {
     @Mock SysGroupMapper groupMapper;
     @Mock SysUserGroupMapper userGroupMapper;
     @Mock SysOrganizationMapper organizationMapper;
+    @Mock PersonResolverRuntimeService personResolverRuntimeService;
 
     /** 测试固定用户规则触发收件箱与 Outbox 各一次：验证知会记录的用户、唯一键与渠道符合预期 */
     @Test
@@ -59,7 +60,8 @@ class ProcessCcRuntimeServiceTest {
                 userGroupMapper,
                 organizationMapper,
                 new ObjectMapper(),
-                List.of());
+                List.of(),
+                personResolverRuntimeService);
         SysUser user = new SysUser();
         user.setId("u1");
         user.setUsername("observer");
@@ -111,7 +113,8 @@ class ProcessCcRuntimeServiceTest {
                 userGroupMapper,
                 organizationMapper,
                 new ObjectMapper(),
-                List.of());
+                List.of(),
+                personResolverRuntimeService);
         CcRuntimeContext context = new CcRuntimeContext(
                 "process-1", "definition-1", "expense", "费用流程", "biz-1",
                 "approve-node", "经理审批", "TASK_CREATE", "admin", Map.of());

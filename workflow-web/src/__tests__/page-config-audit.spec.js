@@ -120,6 +120,17 @@ dynamicRuntimeFiles.forEach((file) => {
   assert.equal(existsSync(path.join(root, file)), true, `动态配置运行时文件不存在: ${file}`)
 })
 
+const switchFieldSource = readFileSync(
+  path.join(root, 'src/components/form-fields/components/SwitchField.vue'),
+  'utf8'
+)
+assert.ok(
+  switchFieldSource.includes('type: [String, Number, Boolean]')
+    && switchFieldSource.includes(':model-value="switchValue"')
+    && switchFieldSource.includes('@update:model-value="handleChange"'),
+  '布尔字段必须避免 Vue 将空字符串自动转换为 true，并保持单一更新通道'
+)
+
 const settingsSectionSource = readFileSync(path.join(root, 'src/components/SettingsSection.vue'), 'utf8')
 ;['defaultExpanded', 'collapsible', 'primary', 'settings-section__summary', 'aria-expanded'].forEach((marker) => {
   assert.ok(settingsSectionSource.includes(marker), `共享设置分组缺少折叠或首屏语义: ${marker}`)
@@ -275,6 +286,15 @@ const entitySettingsDesigner = readFileSync(path.join(root, 'src/views/EntityDes
 ;['title="常用属性"', 'title="数据与约束"', 'title="类型专属配置"'].forEach((marker) => {
   assert.ok(entitySettingsDesigner.includes(marker), `实体字段设置缺少频率分组: ${marker}`)
 })
+;[
+  [entitySettingsDesigner, 'designMode', ['label="数据库列名"', 'label="验证规则"']],
+  [listDesigner, 'configMode', ['title="查询实现"', 'title="扩展渲染"', 'label="数据与显示"']]
+].forEach(([source, modeVariable, visibleMarkers]) => {
+  assert.equal(source.includes(modeVariable), false, `设计器不得再按模式隐藏配置: ${modeVariable}`)
+  visibleMarkers.forEach((marker) => {
+    assert.ok(source.includes(marker), `设计器缺少直接展示的配置项: ${marker}`)
+  })
+})
 const entityFieldGroupPositions = [
   entitySettingsDesigner.indexOf('title="常用属性"'),
   entitySettingsDesigner.indexOf('title="数据与约束"'),
@@ -287,6 +307,21 @@ assert.deepEqual(
 )
 
 const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
+assert.equal(formDesigner.includes('designMode'), false, '表单设计器不得再按基础、高级或开发者模式隐藏配置')
+;['扩展管理', 'label="自定义组件"', 'title="数据源"', 'title="校验"', 'title="模式与权限"'].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单设计器缺少直接展示的配置项: ${marker}`)
+})
+;[
+  "parseJsonConfig(row.inputMappingText",
+  "parseJsonConfig(row.outputMappingText",
+  'validateNodeDataSourceMappings(selectedField.value)',
+  'validateNodeDataSourceMappings(field)'
+].forEach((marker) => {
+  assert.ok(
+    formDesigner.includes(marker),
+    `表单数据源映射保存前必须执行严格 JSON 校验: ${marker}`
+  )
+})
 ;['getFormFieldComponentOptions', 'selectedComponentConfig', 'validationRules', 'extensionConfig', 'modeOptions'].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })
@@ -354,7 +389,22 @@ const formNodeHierarchy = readFileSync(path.join(root, 'src/shared/form-node-hie
 const formPreviewLinkage = readFileSync(path.join(root, 'src/components/FormPreviewLinkage.vue'), 'utf8')
 const formNodeRenderer = readFileSync(path.join(root, 'src/components/FormNodeRenderer.vue'), 'utf8')
 const formNodeRuntimeItem = readFileSync(path.join(root, 'src/components/FormNodeRuntimeItem.vue'), 'utf8')
+const entityDataFormFields = readFileSync(
+  path.join(root, 'src/views/entity/components/EntityDataFormFields.vue'),
+  'utf8'
+)
 const formTreeRuntime = `${formNodeRenderer}\n${formNodeRuntimeItem}`
+
+assert.ok(
+  entityDataFormFields.includes(':form="runtimeForm"')
+    && entityDataFormFields.includes('fields: runtimeFormFields.value'),
+  '节点表单运行态必须使用注入字典和动态选项后的字段集合'
+)
+assert.match(
+  formNodeRuntimeItem,
+  /const required = computed\(\(\) => Boolean\(/,
+  '节点表单必填状态必须规范化为 Boolean'
+)
 
 assert.match(
   formDesigner,
@@ -686,6 +736,15 @@ const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActio
 const processDesign = readFileSync(path.join(root, 'src/views/ProcessDesign.vue'), 'utf8')
 assert.match(processDesign, /全局(?:流程)?动作[\s\S]*scope-type="PROCESS"/, '流程设计器应提供全局流程动作入口')
 ;[
+  '@click="globalActionVisible = true"',
+  '>全局动作',
+  '@click="handleSaveXML"',
+  '>查看 XML'
+].forEach((marker) => {
+  assert.ok(processDesign.includes(marker), `流程设计器顶部缺少直接可见的工具操作: ${marker}`)
+})
+assert.equal(processDesign.includes('handleAdvancedCommand'), false, '流程设计器不应再通过“高级”下拉隐藏全局动作和 XML')
+;[
   'class="node-config-panel"',
   'nodeConfigVisible && selectedElement',
   'class="node-config-trigger"',
@@ -695,6 +754,15 @@ assert.match(processDesign, /全局(?:流程)?动作[\s\S]*scope-type="PROCESS"/
 })
 assert.equal(processDesign.includes('class="config-panel"'), false, '流程设计器不应继续保留固定节点配置栏')
 assert.ok(processDesign.includes("name || '未命名节点'"), '流程节点面板不应使用技术 ID 作为未命名节点标题')
+const nodeConfigPanelSource = readFileSync(path.join(root, 'src/components/NodeConfigPanel.vue'), 'utf8')
+;[
+  'min-height: 0',
+  'overflow-y: auto',
+  'scrollbar-gutter: stable',
+  '.config-tabs :deep(.el-tabs__content)'
+].forEach((marker) => {
+  assert.ok(nodeConfigPanelSource.includes(marker), `流程节点配置缺少纵向滚动能力: ${marker}`)
+})
 
 const processListSource = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
 ;[
@@ -738,11 +806,20 @@ assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程�
   assert.ok(nodeConfigPanel.includes(marker), `流程条件配置缺少条件组能力: ${marker}`)
 })
 ;[
-  'node-config-summary',
   'title="技术信息"',
   "import SettingsSection from '@/components/SettingsSection.vue'"
 ].forEach((marker) => {
-  assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少常用摘要或折叠技术信息: ${marker}`)
+  assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少折叠技术信息: ${marker}`)
+})
+assert.equal(nodeConfigPanel.includes('node-config-summary'), false, '流程节点配置不应展示占用首屏空间的摘要卡片')
+;[
+  'class="node-config-panel__meta"',
+  'nodeConfigTypeText',
+  'nodeConfigTypeDesc',
+  'getNodeTypeText',
+  'getNodeTypeDescription'
+].forEach((marker) => {
+  assert.ok(processDesign.includes(marker), `流程节点类型应展示在顶部标题栏: ${marker}`)
 })
 const nodeTabPatterns = [
   ['常用', /<span>常用<\/span>/],
@@ -769,6 +846,30 @@ assert.deepEqual(
 ;['ENTITY_NOT_BOUND_MESSAGE', 'isEntityNotBoundError', 'entityFormsLoadingPromise', 'silentError: true'].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `流程未绑定实体时缺少预期状态去重或静默处理: ${marker}`)
 })
+;[
+  "import { processApi } from '@/api/process'",
+  'processApi.getPublishedList()',
+  "String(process.id || '') !== String(props.processId || '')",
+  'allow-create',
+  ':loading="subProcessesLoading"'
+].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `调用活动缺少真实已发布子流程选择能力: ${marker}`)
+})
+assert.equal(
+  nodeConfigPanel.includes("{ key: 'seal_process', name: '盖章流程' }"),
+  false,
+  '调用活动不应继续展示写死的演示子流程'
+)
+assert.match(
+  nodeConfigPanel,
+  /if \(isUserTask\.value \|\| isStartEvent\.value\) \{[\s\S]{0,500}entityFormIds/,
+  '默认实体表单只应绑定到开始事件或用户任务'
+)
+assert.equal(
+  nodeConfigPanel.includes("delegateExpression: '${ccNotificationDelegate}'"),
+  false,
+  '节点知会不能覆盖服务任务或发送任务的主实现'
+)
 
 ;[
   'title="常用体验"',
@@ -1104,6 +1205,30 @@ assert.doesNotMatch(
   )
 })
 
+const entityFormListSource = readFileSync(
+  path.join(root, 'src/views/EntityFormList.vue'),
+  'utf8'
+)
+;[
+  [
+    entityList,
+    ['handleDesign(row)', "'设计'", 'handleRepublish(row)', '重新发布', 'handleListConfig(row)', '列表', 'handleForm(row)', '表单']
+  ],
+  [
+    processListSource,
+    ['handleDesign(row)', '设计', 'handleEdit(row)', '编辑', 'handlePublish(row)', '发布', 'handleDisable(row)', '禁用']
+  ],
+  [
+    entityFormListSource,
+    ['handleDesign(row)', '设计', 'handlePreview(row)', '预览', 'handleEdit(row)', '编辑', 'handleSetDefault(row)', '默认', 'handleCopy(row)', '复制', 'handleInitConfig(row)', '配置', 'handleDelete(row)', '删除']
+  ]
+].forEach(([source, markers]) => {
+  assert.doesNotMatch(source, /<el-dropdown(?:\s|>)/, '列表操作不得继续收纳到更多下拉')
+  markers.forEach((marker) => {
+    assert.ok(source.includes(marker), `操作列缺少直接操作或精简文案: ${marker}`)
+  })
+})
+
 const processManualSource = readFileSync(
   path.join(root, 'src/data/user-manual/process.js'),
   'utf8'
@@ -1117,6 +1242,250 @@ assert.doesNotMatch(
   processManualSource,
   /BLOCKED 立即停止并改用 STANDARD/,
   '流程手册不得保留表单 BLOCKED 硬阻断说明'
+)
+
+const extensionManagementSource = readFileSync(
+  path.join(root, 'src/views/system/ExtensionManagement.vue'),
+  'utf8'
+)
+;[
+  "path: '/system/extensions'",
+  "requiredPermissions: ['system:extension:list']"
+].forEach((marker) => {
+  assert.ok(
+    routerSource.includes(marker),
+    `扩展管理必须作为系统管理路由并受权限控制: ${marker}`
+  )
+})
+;[
+  'normalizeRouteType(route.query.type)',
+  'searchExpanded',
+  'table-toolbar',
+  'extensionCatalogApi.manage',
+  'personResolverApi.saveConfig',
+  'getManagedExtensionManifest',
+  'isPlatformBuiltInUiExtension'
+].forEach((marker) => {
+  assert.ok(
+    extensionManagementSource.includes(marker),
+    `统一扩展管理页面缺少能力: ${marker}`
+  )
+})
+
+const extensionPickerSource = readFileSync(
+  path.join(root, 'src/components/ExtensionCapabilityPicker.vue'),
+  'utf8'
+)
+;[
+  'remote',
+  'limit: keyword?.trim() ? 20 : 6',
+  'sortRecentFirst',
+  'extension_recent_',
+  "props.capabilityType.startsWith('UI_')"
+].forEach((marker) => {
+  assert.ok(
+    extensionPickerSource.includes(marker),
+    `扩展配置选择器缺少按需加载能力: ${marker}`
+  )
+})
+
+const realAcceptanceScripts = [
+  'scripts/real-acceptance-preflight.mjs',
+  'scripts/e2e-real-workflow.mjs',
+  'scripts/real-ui-config-release.mjs',
+  'scripts/real-workflow-config-closure.mjs',
+  'scripts/real-workflow-node-forms.mjs',
+  'scripts/real-workflow-closure.mjs',
+  'scripts/real-flow-action-timing.mjs',
+  'scripts/real-dynamic-extension-demo.mjs',
+  'scripts/visual-acceptance-real.mjs'
+]
+realAcceptanceScripts.forEach((scriptFile) => {
+  const source = readFileSync(path.join(root, scriptFile), 'utf8')
+  assert.ok(
+    source.includes('process.env.TEST_USERNAME')
+      && source.includes('process.env.TEST_PASSWORD'),
+    `真实验收脚本必须支持通过环境变量注入凭据: ${scriptFile}`
+  )
+  assert.doesNotMatch(
+    source,
+    /username:\s*['"]admin['"]\s*,\s*password:\s*['"]admin['"]/,
+    `真实验收脚本不得在登录请求中写死 admin/admin: ${scriptFile}`
+  )
+  assert.doesNotMatch(
+    source,
+    /flowable:(?:assignee|candidateUsers)=["']admin["']/,
+    `真实验收流程的办理人必须跟随注入的测试账号: ${scriptFile}`
+  )
+  assert.doesNotMatch(
+    source,
+    /\b(?:const|let|var)\s+process\b/,
+    `真实验收脚本不得用 process 命名业务对象，以免遮蔽 Node.js process: ${scriptFile}`
+  )
+  assert.ok(
+    !source.includes('/entity-flow-status/list/'),
+    `真实验收脚本不得调用已移除的状态映射旧接口: ${scriptFile}`
+  )
+  assert.doesNotMatch(
+    source,
+    /api\(['"]PUT['"],\s*`\/process-entity-status-mappings\/process\/\$\{[^}]+\}`\s*,/,
+    `真实验收脚本必须调用 POST /process-entity-status-mappings/process/{id}/update: ${scriptFile}`
+  )
+  assert.doesNotMatch(
+    source,
+    /api\(['"]PUT['"],\s*`\/entity\/\$\{[^}]+\}\/workflow-binding`\s*,/,
+    `真实验收脚本必须调用 POST /entity/{id}/workflow-binding/update: ${scriptFile}`
+  )
+  ;['/flow-actions', '/flow-action-handlers', '/flow-action-executions'].forEach((endpoint) => {
+    assert.equal(
+      source.includes(endpoint),
+      false,
+      `真实验收脚本不得调用已移除的流程动作旧接口 ${endpoint}: ${scriptFile}`
+    )
+  })
+})
+
+const visualAcceptanceSource = readFileSync(
+  path.join(root, 'scripts/visual-acceptance-real.mjs'),
+  'utf8'
+)
+assert.ok(
+  visualAcceptanceSource.includes('docs/dynamic-extension-demo/latest.json'),
+  '真实视觉验收必须读取当轮动态扩展真实夹具'
+)
+assert.doesNotMatch(
+  visualAcceptanceSource,
+  /project_nitiation|\/entity\/list\//,
+  '真实视觉验收不得依赖已经删除的历史实体路由'
+)
+;[
+  '`/entity/design/${fixture.entityId}`',
+  '`/entity-list-config/${fixture.entityId}`',
+  '`/entity-list/${fixture.entityCode}/${listKey}`',
+  '`/entity-list-config/design/${fixture.listConfigId}`',
+  '`/entity-form/list-by-entity/${fixture.entityId}`',
+  '`/entity-form/design/${fixture.formId}?entityId=${fixture.entityId}`',
+  '`/process/design/${fixture.processId}`'
+].forEach((marker) => {
+  assert.ok(
+    visualAcceptanceSource.includes(marker),
+    `真实视觉验收必须覆盖动态夹具页面: ${marker}`
+  )
+})
+
+const dynamicExtensionRouteSource = readFileSync(
+  path.join(root, 'scripts/real-dynamic-extension-demo.mjs'),
+  'utf8'
+)
+assert.ok(
+  dynamicExtensionRouteSource.includes('listRoute: `/entity-list/${entityCode}/${listKey}`'),
+  '动态扩展验收证据必须记录带 listKey 的现行实体列表运行地址'
+)
+assert.doesNotMatch(
+  dynamicExtensionRouteSource,
+  /listRoute:\s*`\/entity\/list\//,
+  '动态扩展验收不得再生成已经废弃的实体列表地址'
+)
+
+const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8')
+;[
+  '"test:acceptance:preflight"',
+  '"test:acceptance:real"',
+  'test:real-ui-config',
+  'test:workflow:real',
+  'test:workflow:config-real',
+  'test:workflow:node-forms-real',
+  'test:workflow:actions-real',
+  'test:visual:real'
+].forEach((marker) => {
+  assert.ok(
+    packageSource.includes(marker),
+    `真实验收一键入口缺少步骤: ${marker}`
+  )
+})
+
+const workflowConfigClosureSource = readFileSync(
+  path.join(root, 'scripts/real-workflow-config-closure.mjs'),
+  'utf8'
+)
+const workflowNodeFormsSource = readFileSync(
+  path.join(root, 'scripts/real-workflow-node-forms.mjs'),
+  'utf8'
+)
+const workflowActionTimingSource = readFileSync(
+  path.join(root, 'scripts/real-flow-action-timing.mjs'),
+  'utf8'
+)
+const dynamicExtensionDemoSource = readFileSync(
+  path.join(root, 'scripts/real-dynamic-extension-demo.mjs'),
+  'utf8'
+)
+;[
+  "extensionType: 'FORM'",
+  "extensionType: 'LIST'",
+  'customComponentVersion: formExtension.version',
+  'customComponentSnapshotVersion: formExtension.snapshotVersion',
+  '`/entity-forms/${form.id}/publish`',
+  '`/entity-list-config/${listConfig.id}/publish`',
+  'viewConfig: {\n      search:'
+].forEach((marker) => {
+  assert.ok(
+    dynamicExtensionDemoSource.includes(marker),
+    `动态扩展真实验收必须登记版本并发布表单和列表: ${marker}`
+  )
+})
+;[
+  'prepareActionHandlers()',
+  'restoreActionHandlers()',
+  'handlerConfigBackups',
+  'actionDefinitionId: definition.definitionId',
+  "assert.deepEqual(restoreErrors, []"
+].forEach((marker) => {
+  assert.ok(
+    workflowActionTimingSource.includes(marker),
+    `流程动作真实验收必须按目录可见性准备并恢复测试处理器: ${marker}`
+  )
+})
+;[
+  'await publishForm(defaultForm',
+  'await publishForm(formA',
+  'await publishForm(formC',
+  "assert.equal(published.status, 'ACTIVE'"
+].forEach((marker) => {
+  assert.ok(
+    workflowNodeFormsSource.includes(marker),
+    `节点表单真实验收必须先发布全部被引用表单: ${marker}`
+  )
+})
+assert.ok(
+  workflowNodeFormsSource.indexOf('await publishForm(formC')
+    < workflowNodeFormsSource.indexOf('`/process/${workflowProcess.id}/publish`'),
+  '节点表单真实验收必须在流程发布前完成全部表单发布'
+)
+;[
+  'reset?.temporaryPassword',
+  "'/auth/change-password'",
+  'activateApprover('
+].forEach((marker) => {
+  assert.ok(
+    workflowConfigClosureSource.includes(marker),
+    `跨用户流程验收必须完成随机临时密码激活闭环: ${marker}`
+  )
+})
+assert.doesNotMatch(
+  workflowConfigClosureSource,
+  /login\([^,]+,\s*['"]123456['"]\)/,
+  '跨用户流程验收不得假设重置密码固定为 123456'
+)
+assert.doesNotMatch(
+  workflowConfigClosureSource,
+  /api\(['"]PUT['"],\s*`\/system\/user\/\$\{[^}]+\}\/reset-password`\)/,
+  '重置用户密码接口仅支持 POST，真实验收脚本不得使用 PUT'
+)
+assert.doesNotMatch(
+  workflowConfigClosureSource,
+  /api\(['"]PUT['"],\s*`\/system\/role\/\$\{[^}]+\}\/menus`\s*,/,
+  '保存角色菜单接口仅支持 POST，真实验收脚本不得使用 PUT'
 )
 
 console.log('page configuration audit passed')

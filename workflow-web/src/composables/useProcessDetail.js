@@ -59,6 +59,19 @@ export function useProcessDetail() {
    */
   async function loadProcessDetail(instanceId, options = {}) {
     const { startUserName = 'admin', onLoad } = options
+    bpmnXml.value = ''
+    progressData.value = {
+      completedNodes: [],
+      activeNodes: [],
+      executedSequenceFlows: [],
+      nodeAssigneeMap: {},
+      nodeAssigneesMap: {}
+    }
+    processHistory.value = []
+    entityData.value = null
+    formConfig.value = null
+    formConfigs.value = []
+    approvalConfig.value = null
     try {
       const progressRes = await request.get(`/process-instance/${instanceId}/progress`)
       if (progressRes) {
@@ -136,8 +149,10 @@ export function useProcessDetail() {
           }
         }).reverse()
       }
+      return true
     } catch (e) {
       console.error('加载流程详情失败:', e)
+      return false
     }
   }
 

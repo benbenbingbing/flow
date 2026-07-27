@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 
 import {
+  applyRuntimeFieldDefaults,
   createFormDataSourceRuntime,
   getClientBeforeSubmitBindings,
   getFieldKey,
@@ -18,7 +19,8 @@ import {
   formatListFieldValue,
   getCellValue,
   parseDataSourceConfig,
-  parseJsonOptions
+  parseJsonOptions,
+  toRuntimeFieldKey
 } from '@/shared/list-runtime'
 import {
   canExecuteAction,
@@ -86,6 +88,18 @@ assert.deepEqual(parseDataSourceConfig('{bad json'), {})
 assert.equal(getCellValue({ extData: { a: 1 }, data: { a: 2 }, a: 3 }, { fieldCode: 'a' }), 1)
 assert.equal(getCellValue({ data: { a: 2 }, a: 3 }, { fieldCode: 'a' }), 2)
 assert.equal(getCellValue({ a: 3 }, { fieldCode: 'a' }), 3)
+assert.equal(toRuntimeFieldKey('customer_name'), 'customerName')
+assert.equal(
+  getCellValue({ data: { customerName: '验收客户' } }, { fieldCode: 'customer_name' }),
+  '验收客户'
+)
+assert.equal(
+  formatListFieldValue(
+    { data: { attachment: '["/srv/uploads/a.png"]' } },
+    { fieldCode: 'attachment', fieldType: 'FILE' }
+  ),
+  'a.png'
+)
 
 assert.equal(isSystemField('createdAt'), true)
 assert.equal(isSystemField('customName'), false)
@@ -119,6 +133,42 @@ assert.deepEqual(
     processStartTime: '2026-07-25T10:30:00'
   }
 )
+
+const initializedFormData = applyRuntimeFieldDefaults(
+  { quantity: '', urgent: '', preserved: 'keep' },
+  {
+    fields: [
+      { fieldCode: 'quantity', defaultValue: '1' },
+      { fieldCode: 'urgent', defaultValue: 'false' },
+      { fieldCode: 'priority', defaultValue: 'normal' }
+    ],
+    nodes: [
+      {
+        nodeType: 'FIELD',
+        propsDocument: JSON.stringify({
+          fieldCode: 'tags',
+          defaultValue: '["dev","qa"]'
+        })
+      },
+      {
+        nodeType: 'FIELD',
+        props: {
+          fieldCode: 'preserved',
+          defaultValue: 'replace'
+        }
+      }
+    ]
+  },
+  [{ fieldCode: 'amount', defaultValue: '12.5' }]
+)
+assert.deepEqual(initializedFormData, {
+  quantity: 1,
+  urgent: false,
+  preserved: 'keep',
+  amount: 12.5,
+  priority: 'normal',
+  tags: ['dev', 'qa']
+})
 
 assert.equal(hasButtonPermission({ perm: 'entity:add' }, ['entity:add']), true)
 assert.equal(hasButtonPermission({ perm: 'entity:add' }, ['entity:view']), false)

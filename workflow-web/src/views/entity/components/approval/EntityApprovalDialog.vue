@@ -313,7 +313,7 @@ const openApprove = async (row: any) => {
   approveForm.action = 'approve'
   approveForm.comment = ''
   activeDialogTab.value = 'basic'
-  await loadProcessDetail(row.processInstanceId, {
+  const loaded = await loadProcessDetail(row.processInstanceId, {
     startUserName: currentTask.value?.startUserName,
     onLoad: (progressRes: any) => {
       if (currentTask.value) {
@@ -332,6 +332,10 @@ const openApprove = async (row: any) => {
       activeDialogTab.value = firstApprovalFormTabName.value
     }
   })
+  if (!loaded) {
+    ElMessage.error('加载最新流程表单失败，请重试')
+    return
+  }
   processDialogVisible.value = true
 }
 
@@ -352,7 +356,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
   }
   activeDialogTab.value = defaultTab || 'basic'
   if (row.processInstanceId) {
-    await loadProcessDetail(row.processInstanceId, {
+    const loaded = await loadProcessDetail(row.processInstanceId, {
       startUserName: currentTask.value?.startUserName,
       onLoad: (progressRes: any) => {
         if (currentTask.value) {
@@ -366,6 +370,10 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
         }
       }
     })
+    if (!loaded) {
+      ElMessage.error('加载最新流程表单失败，请重试')
+      return
+    }
   } else {
     try {
       const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey)

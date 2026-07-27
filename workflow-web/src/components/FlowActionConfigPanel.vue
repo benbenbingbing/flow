@@ -6,8 +6,8 @@
         <div class="section-subtitle">{{ sectionSubtitle }}</div>
       </div>
       <div class="header-actions">
-        <el-button v-if="userStore.isSuperAdmin" size="small" @click="handlerConfigRef?.open()">
-          <el-icon><Setting /></el-icon>处理器目录
+        <el-button v-if="canOpenExtensionManagement" size="small" @click="openExtensionManagement">
+          <el-icon><Setting /></el-icon>扩展管理
         </el-button>
         <el-button type="primary" size="small" @click="showActionDialog()">
           <el-icon><Plus /></el-icon>添加动作
@@ -161,26 +161,15 @@
           </el-form-item>
 
           <el-form-item label="处理器" required>
-            <el-select
+            <ExtensionCapabilityPicker
               v-model="editingAction.actionDefinitionId"
-              placeholder="选择当前实体可见的流程动作"
-              filterable
-              clearable
-              style="width: 100%"
-              @change="onHandlerChange"
-            >
-              <el-option
-                v-for="handler in handlers"
-                :key="handler.definitionId"
-                :label="handler.displayName"
-                :value="handler.definitionId"
-              >
-                <div class="handler-option">
-                  <span>{{ handler.displayName }}</span>
-                  <small>{{ handler.beanName }} · {{ handler.visibilityScope === 'GLOBAL' ? '全局' : '当前实体' }}</small>
-                </div>
-              </el-option>
-            </el-select>
+              capability-type="FLOW_ACTION"
+              value-field="id"
+              placeholder="输入名称或编码搜索当前实体可用动作"
+              :context-params="handlerContextParams"
+              :current-option="currentHandlerCatalogOption"
+              @selected="onHandlerSelected"
+            />
             <div class="form-tip">
               {{ currentHandler?.description || '处理器必须实现 FlowActionHandler，提交后动作应使用幂等键' }}
             </div>
@@ -294,17 +283,18 @@
       </template>
     </el-dialog>
 
-    <FlowActionHandlerConfigDialog ref="handlerConfigRef" @changed="loadAll" />
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowUp, Delete, Plus, Setting } from '@element-plus/icons-vue'
 import { processActionApi } from '@/api/processAction'
+import { extensionCatalogApi } from '@/api/system/extension'
 import { useUserStore } from '@/stores/user'
-import FlowActionHandlerConfigDialog from '@/components/FlowActionHandlerConfigDialog.vue'
+import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 
 const props = defineProps({
@@ -317,6 +307,7 @@ const props = defineProps({
 
 const emit = defineEmits(['changed'])
 const userStore = useUserStore()
+const router = useRouter()
 
 const actions = ref([])
 const timingOptions = ref([])
@@ -329,7 +320,9 @@ const selectedTemplate = ref('')
 const editingAction = ref({})
 const actionParamList = ref([])
 const retryForm = ref({ maxRetries: 5 })
-const handlerConfigRef = ref()
+const canOpenExtensionManagement = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('system:extension:list'))
 
 const actionParamTypeOptions = [
   { label: '静态文本', value: 'string' },
@@ -364,6 +357,20 @@ const currentHandler = computed(() => handlers.value.find(item =>
   item.definitionId === editingAction.value.actionDefinitionId
   || item.beanName === editingAction.value.interfaceName
 ))
+const handlerContextParams = computed(() => ({
+  processConfigId: props.processId
+}))
+const currentHandlerCatalogOption = computed(() => {
+  if (!editingAction.value.actionDefinitionId) return null
+  const handler = currentHandler.value
+  return {
+    id: editingAction.value.actionDefinitionId,
+    key: handler?.actionCode || editingAction.value.interfaceName,
+    displayName: handler?.displayName || editingAction.value.interfaceName,
+    sourceName: handler?.beanName || editingAction.value.interfaceName,
+    description: handler?.description || ''
+  }
+})
 const availableTemplates = computed(() => templates.filter(template => {
   if (template.scopeType !== props.scopeType) return false
   if (template.bpmnType && !props.bpmnType.includes(template.bpmnType)) return false
@@ -399,14 +406,12 @@ async function loadAll() {
   if (!props.processId) return
   loading.value = true
   try {
-    const [actionList, optionList, handlerList] = await Promise.all([
+    const [actionList, optionList] = await Promise.all([
       processActionApi.findDraftActionsByBinding(props.processId, props.scopeType, props.elementId || undefined),
-      processActionApi.timingOptions(props.scopeType, props.bpmnType),
-      processActionApi.listHandlers(props.processId)
+      processActionApi.timingOptions(props.scopeType, props.bpmnType)
     ])
     actions.value = actionList || []
     timingOptions.value = optionList || []
-    handlers.value = handlerList || []
   } catch (error) {
     console.error(error)
     ElMessage.error('加载流程动作配置失败')
@@ -433,15 +438,11 @@ function createEmptyAction() {
 
 function showActionDialog(action = null) {
   editingAction.value = action ? { ...action } : createEmptyAction()
-  if (!editingAction.value.actionDefinitionId && editingAction.value.interfaceName) {
-    editingAction.value.actionDefinitionId = handlers.value.find(
-      item => item.beanName === editingAction.value.interfaceName
-    )?.definitionId || ''
-  }
   actionParamList.value = parseParamsJson(editingAction.value.paramsJson)
   retryForm.value = parseRetryConfig(editingAction.value.retryConfig)
   selectedTemplate.value = ''
   actionDialogVisible.value = true
+  loadSelectedHandler()
 }
 
 function applyTemplate(value) {
@@ -467,14 +468,63 @@ function onExecutionModeChange(value) {
   editingAction.value.failurePolicy = value === 'AFTER_COMMIT' ? 'RETRY' : 'ROLLBACK'
 }
 
-function onHandlerChange(definitionId) {
-  const selected = handlers.value.find(item => item.definitionId === definitionId)
+function onHandlerSelected(option) {
+  const selected = option ? normalizeCatalogHandler(option) : null
+  if (selected) rememberHandler(selected)
   editingAction.value.interfaceName = selected?.beanName || ''
   const recommended = currentHandler.value?.recommendedExecutionMode
   if (recommended && handlerSupportsMode(recommended)) {
     editingAction.value.executionMode = recommended
     onExecutionModeChange(recommended)
   }
+}
+
+async function loadSelectedHandler() {
+  if (!editingAction.value.interfaceName && !editingAction.value.actionDefinitionId) return
+  try {
+    const items = await extensionCatalogApi.options({
+      capabilityType: 'FLOW_ACTION',
+      processConfigId: props.processId,
+      keyword: editingAction.value.interfaceName || undefined,
+      limit: 20
+    })
+    const option = (items || []).find(item =>
+      item.id === editingAction.value.actionDefinitionId
+        || item.sourceName === editingAction.value.interfaceName
+        || item.key === editingAction.value.interfaceName)
+    if (!option) return
+    const handler = normalizeCatalogHandler(option)
+    rememberHandler(handler)
+    editingAction.value.actionDefinitionId ||= handler.definitionId
+    editingAction.value.interfaceName ||= handler.beanName
+  } catch {
+    // 旧动作继续按已保存编码回显，保存时由后端做最终可用性校验。
+  }
+}
+
+function normalizeCatalogHandler(option) {
+  return {
+    definitionId: option.id,
+    actionCode: option.key,
+    beanName: option.sourceName,
+    displayName: option.displayName,
+    description: option.description,
+    visibilityScope: option.visibilityScope,
+    entityCodes: option.entityCodes || [],
+    supportedTriggerTimings: option.supportedTriggerTimings || [],
+    supportedExecutionModes: option.supportedExecutionModes || [],
+    recommendedExecutionMode: option.recommendedExecutionMode,
+    extraParamSchema: option.extraParamSchema || {},
+    dynamicExtraParams: option.dynamicExtraParams === true
+  }
+}
+
+function rememberHandler(handler) {
+  const index = handlers.value.findIndex(item =>
+    item.definitionId === handler.definitionId
+      || item.beanName === handler.beanName)
+  if (index >= 0) handlers.value.splice(index, 1, handler)
+  else handlers.value.push(handler)
 }
 
 function handlerSupportsMode(mode) {
@@ -620,6 +670,13 @@ function handlerLabel(action) {
     item.definitionId === action.actionDefinitionId || item.beanName === action.interfaceName
   )
   return handler?.displayName || action.interfaceName
+}
+
+function openExtensionManagement() {
+  router.push({
+    path: '/system/extensions',
+    query: { type: 'FLOW_ACTION' }
+  })
 }
 </script>
 

@@ -8,6 +8,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -35,12 +39,10 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     @Override
     public Map<String, String> upload(MultipartFile file) {
         try {
-            String uploadPath = properties.getLocal().getPath();
-            File uploadDir = new File(uploadPath);
-            // 目录不存在则自动创建
-            if (!uploadDir.exists()) {
-                uploadDir.mkdirs();
-            }
+            Path uploadDir = Path.of(properties.getLocal().getPath())
+                    .toAbsolutePath()
+                    .normalize();
+            Files.createDirectories(uploadDir);
 
             // 解析原始文件名与扩展名
             String originalFilename = file.getOriginalFilename();
@@ -52,8 +54,14 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             String newFilename = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                     + "_" + UUID.randomUUID().toString().substring(0, 8) + extension;
 
-            File destFile = new File(uploadDir, newFilename);
-            file.transferTo(destFile);
+            Path destination = uploadDir.resolve(newFilename).normalize();
+            if (!destination.startsWith(uploadDir)) {
+                throw new IOException("文件目标路径超出上传目录");
+            }
+            // Servlet 容器可能再次解析 transferTo(File) 的相对路径。
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
 
             String fileUrl = getAccessUrl(newFilename);
             Map<String, String> result = new HashMap<>();
@@ -107,7 +115,8 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
      */
     @Override
     public String getAccessUrl(String filename) {
-        return properties.getLocal().getAccessUrl() + "/" + filename;
+        String prefix = properties.getLocal().getAccessUrl();
+        return (prefix.endsWith("/") ? prefix : prefix + "/") + filename;
     }
 
     /**

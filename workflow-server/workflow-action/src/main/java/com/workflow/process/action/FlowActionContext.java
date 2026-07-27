@@ -108,6 +108,11 @@ public class FlowActionContext {
     private Map<String, Object> customParams;
 
     /**
+     * 扩展动作自定义参数。与 customParams 双写，作为新契约的统一命名。
+     */
+    private Map<String, Object> extraParams;
+
+    /**
      * Handler 可选写入的业务执行结果，最终展示在超级管理员执行日志中。
      */
     private Object executionResult;

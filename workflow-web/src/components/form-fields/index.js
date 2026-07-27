@@ -257,3 +257,12 @@ export function getFormFieldComponentOptions() {
   extensionRegistry.forEach((item, key) => merged.set(key, item))
   return Array.from(merged.values()).map(({ component, ...item }) => item)
 }
+
+export function getRegisteredFormFieldComponentOptions() {
+  return Array.from(extensionRegistry.values())
+    .map(({ component, ...item }) => item)
+}
+
+export function getBuiltInFormFieldComponentNames() {
+  return builtInDescriptors.map(item => item.name)
+}

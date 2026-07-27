@@ -42,7 +42,7 @@
     <!-- 有表单配置时：用 FormPreviewLinkage 渲染（支持 tab 子表单、联动） -->
     <FormPreviewLinkage
       ref="previewRef"
-      :form="defaultForm"
+      :form="runtimeForm"
       v-model="formData.data"
       :show-header="false"
       :no-internal-tabs="noInternalTabs"
@@ -433,6 +433,11 @@ const runtimeFormFields = computed(() =>
         : field
     })
 )
+
+const runtimeForm = computed(() => ({
+  ...(props.defaultForm || {}),
+  fields: runtimeFormFields.value
+}))
 
 // 普通字段（不含 tab 子表单）
 const normalFields = computed(() => {

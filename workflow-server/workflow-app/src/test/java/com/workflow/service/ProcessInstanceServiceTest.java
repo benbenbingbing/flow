@@ -1,8 +1,13 @@
 package com.workflow.service;
 
+import com.workflow.dto.ReceiveTaskTriggerRequest;
 import com.workflow.dto.ProcessProgressDTO;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import org.flowable.bpmn.model.BpmnModel;
+import org.flowable.bpmn.model.ExtensionAttribute;
+import org.flowable.bpmn.model.ExtensionElement;
+import org.flowable.bpmn.model.ReceiveTask;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -11,6 +16,8 @@ import org.flowable.engine.history.HistoricActivityInstance;
 import org.flowable.engine.history.HistoricActivityInstanceQuery;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.repository.ProcessDefinitionQuery;
+import org.flowable.engine.runtime.Execution;
+import org.flowable.engine.runtime.ExecutionQuery;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.junit.jupiter.api.Test;
@@ -24,6 +31,8 @@ import org.mockito.quality.Strictness;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -98,5 +107,110 @@ public class ProcessInstanceServiceTest {
         assertNotNull(repositoryService);
         assertNotNull(taskService);
         assertNotNull(processConfigMapper);
+    }
+
+    /** 匹配消息名时应触发唯一的接收任务执行实例并传递变量 */
+    @Test
+    void triggerReceiveTaskValidatesMessageAndContinuesExecution() {
+        ProcessInstance instance = mock(ProcessInstance.class);
+        when(instance.getProcessDefinitionId()).thenReturn("definition-1");
+        stubRunningProcess(instance);
+
+        Execution execution = mock(Execution.class);
+        when(execution.getId()).thenReturn("execution-1");
+        when(execution.getActivityId()).thenReturn("receive-payment");
+        when(execution.getProcessInstanceId()).thenReturn("instance-1");
+        ExecutionQuery executionQuery = mock(ExecutionQuery.class);
+        when(runtimeService.createExecutionQuery()).thenReturn(executionQuery);
+        when(executionQuery.processInstanceId("instance-1")).thenReturn(executionQuery);
+        when(executionQuery.activityId("receive-payment")).thenReturn(executionQuery);
+        when(executionQuery.list()).thenReturn(List.of(execution));
+
+        BpmnModel model = new BpmnModel();
+        model.addProcess(new org.flowable.bpmn.model.Process());
+        model.getMainProcess().addFlowElement(receiveTask(
+                "receive-payment",
+                "paymentCallback"));
+        when(repositoryService.getBpmnModel("definition-1")).thenReturn(model);
+
+        ReceiveTaskTriggerRequest request = new ReceiveTaskTriggerRequest();
+        request.setActivityId("receive-payment");
+        request.setMessageRef("paymentCallback");
+        request.setVariables(Map.of("paymentStatus", "SUCCESS"));
+
+        String executionId = processInstanceService.triggerReceiveTask(
+                "instance-1",
+                request);
+
+        assertEquals("execution-1", executionId);
+        verify(runtimeService).trigger(
+                "execution-1",
+                Map.of("paymentStatus", "SUCCESS"));
+    }
+
+    /** 消息名不匹配时必须拒绝触发，避免错误回调推进流程 */
+    @Test
+    void triggerReceiveTaskRejectsUnexpectedMessage() {
+        ProcessInstance instance = mock(ProcessInstance.class);
+        when(instance.getProcessDefinitionId()).thenReturn("definition-1");
+        stubRunningProcess(instance);
+
+        Execution execution = mock(Execution.class);
+        when(execution.getId()).thenReturn("execution-1");
+        when(execution.getActivityId()).thenReturn("receive-payment");
+        when(execution.getProcessInstanceId()).thenReturn("instance-1");
+        ExecutionQuery executionQuery = mock(ExecutionQuery.class);
+        when(runtimeService.createExecutionQuery()).thenReturn(executionQuery);
+        when(executionQuery.executionId("execution-1")).thenReturn(executionQuery);
+        when(executionQuery.singleResult()).thenReturn(execution);
+
+        BpmnModel model = new BpmnModel();
+        model.addProcess(new org.flowable.bpmn.model.Process());
+        model.getMainProcess().addFlowElement(receiveTask(
+                "receive-payment",
+                "paymentCallback"));
+        when(repositoryService.getBpmnModel("definition-1")).thenReturn(model);
+
+        ReceiveTaskTriggerRequest request = new ReceiveTaskTriggerRequest();
+        request.setExecutionId("execution-1");
+        request.setMessageRef("differentMessage");
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> processInstanceService.triggerReceiveTask(
+                        "instance-1",
+                        request));
+
+        assertTrue(exception.getMessage().contains("消息标识不匹配"));
+        verify(runtimeService, never()).trigger(anyString(), anyMap());
+    }
+
+    private void stubRunningProcess(ProcessInstance instance) {
+        ProcessInstanceQuery query = mock(ProcessInstanceQuery.class);
+        when(runtimeService.createProcessInstanceQuery()).thenReturn(query);
+        when(query.processInstanceId("instance-1")).thenReturn(query);
+        when(query.singleResult()).thenReturn(instance);
+    }
+
+    private ReceiveTask receiveTask(String id, String messageRef) {
+        ReceiveTask task = new ReceiveTask();
+        task.setId(id);
+        ExtensionElement properties = extensionElement("properties");
+        ExtensionElement property = extensionElement("property");
+        property.addAttribute(new ExtensionAttribute("name", "receiveConfig"));
+        property.addAttribute(new ExtensionAttribute(
+                "value",
+                "{\"messageRef\":\"" + messageRef + "\"}"));
+        properties.addChildElement(property);
+        task.addExtensionElement(properties);
+        return task;
+    }
+
+    private ExtensionElement extensionElement(String name) {
+        ExtensionElement element = new ExtensionElement();
+        element.setName(name);
+        element.setNamespace("http://flowable.org/bpmn");
+        element.setNamespacePrefix("flowable");
+        return element;
     }
 }

@@ -4,6 +4,7 @@ import com.workflow.listener.EntityStatusUpdateListener;
 import com.workflow.listener.MultiInstanceCollectionListener;
 import com.workflow.listener.ProcessEndListener;
 import com.workflow.listener.ProcessCcEventListener;
+import com.workflow.listener.PersonResolverTaskAssignmentListener;
 import com.workflow.process.action.FlowActionEngineEventListener;
 import com.workflow.service.WorkflowAutoSkipService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,9 @@ public class FlowableEventListenerConfig {
     private final WorkflowAutoSkipService workflowAutoSkipService;
     /** 统一流程动作事件监听器：流程/节点/任务/连线事件的统一分发入口 */
     private final FlowActionEngineEventListener flowActionEngineEventListener;
+    /** 动态办理人解析：任务创建时按受控人员接口分配任务 */
+    private final PersonResolverTaskAssignmentListener
+            personResolverTaskAssignmentListener;
     /** 自动知会监听器：解析 ccConfig 并写入知会收件箱与 Outbox */
     private final ProcessCcEventListener processCcEventListener;
 
@@ -56,6 +60,10 @@ public class FlowableEventListenerConfig {
 
         // 统一流程动作事件监听器：流程、节点、任务、连线均从这里分发。
         runtimeService.addEventListener(flowActionEngineEventListener);
+
+        // 先完成动态办理人分配，再触发任务创建时的知会规则。
+        runtimeService.addEventListener(
+                personResolverTaskAssignmentListener);
 
         // 自动知会：流程/任务时机统一解析 ccConfig 并写入知会收件箱与Outbox。
         runtimeService.addEventListener(processCcEventListener);

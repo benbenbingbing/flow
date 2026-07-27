@@ -127,6 +127,7 @@ class SchemaRequiredTablesTest {
         assertTrue(versions.contains("031"), "UI extension registry migration must be V031");
         assertTrue(versions.contains("037"), "UI hotfix rollout migration must be V037");
         assertTrue(versions.contains("039"), "department system field binding migration must be V039");
+        assertTrue(versions.contains("042"), "extension management migration must be V042");
     }
 
     /**
@@ -388,5 +389,27 @@ class SchemaRequiredTablesTest {
         assertTrue(recoverySql.contains("`success` = 0"));
         assertTrue(recoverySql.contains(
                 "`script` = ''V041__add_system_audit_menu.sql''"));
+    }
+
+    /**
+     * V042 应创建人员解析器目录，并把扩展管理直接放在系统管理下。
+     */
+    @Test
+    void extensionManagementMigrationCreatesCatalogAndSystemMenu() throws Exception {
+        Path migration = Path.of(
+                "src/main/resources/db/migration/V042__add_extension_management.sql");
+        assertTrue(Files.exists(migration),
+                "V042 extension management migration must exist");
+
+        String sql = Files.readString(migration);
+        assertTrue(sql.contains(
+                "CREATE TABLE IF NOT EXISTS process_person_resolver_definition"));
+        assertTrue(sql.contains("WHERE menu_name = '系统管理'"));
+        assertTrue(sql.contains("'扩展管理', 'C'"));
+        assertTrue(sql.contains("'/system/extensions'"));
+        assertTrue(sql.contains("'system/ExtensionManagement'"));
+        assertTrue(sql.contains("'system:extension:list'"));
+        assertTrue(sql.contains("'system:extension:update'"));
+        assertTrue(sql.contains("role.role_code IN ('super_admin', 'admin')"));
     }
 }

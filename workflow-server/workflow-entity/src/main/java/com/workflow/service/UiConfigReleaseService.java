@@ -1785,13 +1785,16 @@ public class UiConfigReleaseService {
                             FORM,
                             formId,
                             context.processVersionHistoryId());
-            if (target != null
-                    && Objects.equals(
-                            release.getId(),
-                            target.getPinnedReleaseId())
-                    && Objects.equals(
-                            release.getVersion(),
-                            target.getPinnedReleaseVersion())) {
+            if (target != null) {
+                if (!Objects.equals(
+                                release.getId(),
+                                target.getPinnedReleaseId())
+                        || !Objects.equals(
+                                release.getVersion(),
+                                target.getPinnedReleaseVersion())) {
+                    throw new IllegalStateException(
+                            "热修复目标与流程钉定表单版本不一致");
+                }
                 try {
                     Map<String, Object> snapshot =
                             verifiedEffectiveTargetSnapshot(target);
@@ -1806,12 +1809,16 @@ public class UiConfigReleaseService {
                             purpose);
                 } catch (RuntimeException exception) {
                     log.error(
-                            "热修复运行时解析失败，降级原始钉定版本: "
+                            "热修复运行时解析失败: "
                                     + "formId={}, historyId={}, targetId={}, error={}",
                             formId,
                             context.processVersionHistoryId(),
                             target.getId(),
-                            exception.getMessage());
+                            exception.getMessage(),
+                            exception);
+                    throw new IllegalStateException(
+                            "热修复运行时快照解析失败",
+                            exception);
                 }
             }
         }

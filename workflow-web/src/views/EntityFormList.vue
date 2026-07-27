@@ -47,25 +47,25 @@
         <el-table-column prop="createTime" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateValue(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleDesign(row)">打开设计器</el-button>
-            <el-button type="success" link size="small" @click="handlePreview(row)">预览</el-button>
-            <el-dropdown>
-              <el-button type="info" link size="small" aria-label="更多表单操作">更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="handleEdit(row)">编辑基本信息</el-dropdown-item>
-                  <el-dropdown-item v-if="!row.isDefault" @click="handleSetDefault(row)">
-                    设为默认表单
-                  </el-dropdown-item>
-                  <el-dropdown-item disabled v-else>当前默认表单</el-dropdown-item>
-                  <el-dropdown-item @click="handleCopy(row)">复制表单</el-dropdown-item>
-                  <el-dropdown-item @click="handleInitConfig(row)">初始化配置</el-dropdown-item>
-                  <el-dropdown-item divided @click="handleDelete(row)">删除表单</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <div class="table-row-actions">
+              <el-button type="primary" link size="small" @click="handleDesign(row)">设计</el-button>
+              <el-button type="success" link size="small" @click="handlePreview(row)">预览</el-button>
+              <el-button type="primary" link size="small" @click="handleEdit(row)">编辑</el-button>
+              <el-button
+                v-if="!row.isDefault"
+                type="primary"
+                link
+                size="small"
+                @click="handleSetDefault(row)"
+              >
+                默认
+              </el-button>
+              <el-button type="primary" link size="small" @click="handleCopy(row)">复制</el-button>
+              <el-button type="primary" link size="small" @click="handleInitConfig(row)">配置</el-button>
+              <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>

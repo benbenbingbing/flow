@@ -3,12 +3,15 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const baseUrl = process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const testUsername = process.env.TEST_USERNAME || 'admin'
+const testPassword = process.env.TEST_PASSWORD || 'admin'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
 const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
 const processKey = `demo_extension_flow_${suffix}`
 const processName = `Demo扩展验证流程${suffix}`
 const entityCode = `demo_extension_entity_${suffix}`
 const entityName = `Demo扩展验证实体${suffix}`
+const listKey = 'demo_cards'
 const evidenceDir = path.resolve('docs/dynamic-extension-demo')
 mkdirSync(evidenceDir, { recursive: true })
 
@@ -66,6 +69,39 @@ function getEntityField(fields, code) {
   return field
 }
 
+async function ensureUiExtension({
+  extensionType,
+  extensionKey,
+  displayName,
+  supportedModes = [],
+  capabilities = {}
+}) {
+  const query = new URLSearchParams({
+    extensionType,
+    extensionKey
+  })
+  const definitions = await api('GET', `/ui-extensions?${query}`)
+  const existing = definitions.find(item => Number(item.version) === 1)
+  if (existing) {
+    assert.equal(existing.status, 'ACTIVE', `${extensionKey}@1 必须处于 ACTIVE 状态`)
+    assert.ok(Number(existing.snapshotVersion) >= 1, `${extensionKey}@1 快照版本必须有效`)
+    return existing
+  }
+  return api('POST', '/ui-extensions', {
+    extensionType,
+    extensionKey,
+    displayName,
+    version: 1,
+    snapshotVersion: 1,
+    supportedModes,
+    supportedNodeTypes: [],
+    supportedBindings: [],
+    configSchema: [],
+    capabilities,
+    status: 'ACTIVE'
+  })
+}
+
 function formField(fields, code, componentType, overrides = {}) {
   const field = getEntityField(fields, code)
   return {
@@ -113,7 +149,7 @@ function bpmnXml(formId) {
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="http://flowable.org/bpmn" id="Definitions_${processKey}" targetNamespace="http://workflow.codex/dynamic-extension-demo">
   <process id="${processKey}" name="${processName}" isExecutable="true">
     <startEvent id="StartEvent_1" name="开始"><outgoing>Flow_1</outgoing></startEvent>
-    <userTask id="Task_Demo_Review" name="Demo项目审批" flowable:assignee="admin">
+    <userTask id="Task_Demo_Review" name="Demo项目审批" flowable:assignee="${testUsername}">
       <extensionElements><flowable:properties>
         <flowable:property name="entityFormId" value="${formId}" />
         <flowable:property name="entityFormReadonly" value="false" />
@@ -152,7 +188,10 @@ function writeEvidence(result, error) {
 }
 
 async function main() {
-  const login = await api('POST', '/auth/login', { username: 'admin', password: 'admin' })
+  const login = await api('POST', '/auth/login', {
+    username: testUsername,
+    password: testPassword
+  })
   token = login.token
   record('login', { id: login.id, username: login.username })
 
@@ -177,6 +216,41 @@ async function main() {
     fields: fields.map(field => ({ id: field.id, code: field.fieldCode, type: field.fieldType }))
   })
 
+  const formExtension = await ensureUiExtension({
+    extensionType: 'FORM',
+    extensionKey: 'DemoProjectForm',
+    displayName: 'Demo·项目定制表单',
+    supportedModes: ['CREATE', 'EDIT', 'APPROVE', 'VIEW'],
+    capabilities: {
+      modes: ['create', 'edit', 'approve', 'view'],
+      hotfixCompatible: true
+    }
+  })
+  const listExtension = await ensureUiExtension({
+    extensionType: 'LIST',
+    extensionKey: 'DemoProjectCardList',
+    displayName: 'Demo·项目卡片列表',
+    capabilities: {
+      layout: 'card',
+      reusesPlatformActions: true,
+      hotfixCompatible: true
+    }
+  })
+  record('ensureUiExtensions', {
+    form: {
+      id: formExtension.id,
+      version: formExtension.version,
+      snapshotVersion: formExtension.snapshotVersion,
+      status: formExtension.status
+    },
+    list: {
+      id: listExtension.id,
+      version: listExtension.version,
+      snapshotVersion: listExtension.snapshotVersion,
+      status: listExtension.status
+    }
+  })
+
   const form = await api('POST', '/entity-form', {
     entityId: entity.id,
     formName: 'Demo项目定制表单',
@@ -186,6 +260,8 @@ async function main() {
     isDefault: true,
     status: 1,
     customComponent: 'DemoProjectForm',
+    customComponentVersion: formExtension.version,
+    customComponentSnapshotVersion: formExtension.snapshotVersion,
     viewConfig: JSON.stringify({
       labelWidth: 110,
       customComponentProps: {
@@ -210,22 +286,31 @@ async function main() {
     customComponent: form.customComponent,
     viewConfig: form.viewConfig
   })
+  const formRelease = await api('POST', `/entity-forms/${form.id}/publish`, {
+    description: 'Demo项目定制表单正式发布'
+  })
+  assert.equal(formRelease.status, 'ACTIVE')
+  record('publishCustomForm', {
+    releaseId: formRelease.id,
+    version: formRelease.version,
+    status: formRelease.status
+  })
 
-  const process = await api('POST', '/process', {
+  const workflowProcess = await api('POST', '/process', {
     processKey,
     processName,
     description: 'Demo自定义表单审批验证',
     category: 'dynamic-extension-demo',
     bpmnXml: bpmnXml(form.id)
   })
-  const publishedProcess = await api('POST', `/process/${process.id}/publish`, {
+  const publishedProcess = await api('POST', `/process/${workflowProcess.id}/publish`, {
     versionDescription: 'Demo扩展真实验证'
   })
-  await api('PUT', `/entity/${entity.id}/workflow-binding`, {
-    processDefinitionId: process.id
+  await api('POST', `/entity/${entity.id}/workflow-binding/update`, {
+    processDefinitionId: workflowProcess.id
   })
   record('createPublishBindProcess', {
-    processId: process.id,
+    processId: workflowProcess.id,
     status: publishedProcess.status,
     processKey
   })
@@ -234,12 +319,12 @@ async function main() {
   const listConfig = await api('POST', '/entity-list-config/save', {
     entityId: entity.id,
     entityCode,
-    listKey: 'demo_cards',
+    listKey,
     listName: 'Demo项目卡片列表',
     description: 'src/demo/lists/DemoProjectCardList.vue 真实配置',
     isDefault: true,
     customComponent: 'DemoProjectCardList',
-    viewConfig: JSON.stringify({
+    viewConfig: {
       search: { defaultVisibleCount: 3, collapsible: true, labelWidth: 100 },
       table: { stripe: true, border: false, showIndex: false, size: 'default' },
       pagination: { pageSize: 10, pageSizes: [10, 20, 50] },
@@ -249,7 +334,7 @@ async function main() {
         showDescription: true,
         searchPlaceholder: '搜索Demo项目'
       }
-    }),
+    },
     fields: [
       listField(fields, 'projectName', { width: 200 }),
       listField(fields, 'ownerName', { width: 120 }),
@@ -277,6 +362,15 @@ async function main() {
   assert.equal(
     listConfig.fields.find(field => field.fieldCode === 'riskScore')?.renderComponent,
     'DemoRiskProgressCell')
+  const listRelease = await api('POST', `/entity-list-config/${listConfig.id}/publish`, {
+    description: 'Demo项目卡片列表正式发布'
+  })
+  assert.equal(listRelease.status, 'ACTIVE')
+  record('publishCustomList', {
+    releaseId: listRelease.id,
+    version: listRelease.version,
+    status: listRelease.status
+  })
 
   const newDataForm = await api('GET', `/entity-form-resolve/new-data/${entityCode}`)
   record('resolveNewDataForm', {
@@ -309,7 +403,7 @@ async function main() {
 
   const configuredRows = await api(
     'GET',
-    `/entity-data/entity/${entityCode}/list-with-config?listKey=demo_cards&projectName=Demo动态扩展&projectName_op=LIKE`)
+    `/entity-data/entity/${entityCode}/list-with-config?listKey=${listKey}&projectName=Demo动态扩展&projectName_op=LIKE`)
   const demoRow = toList(configuredRows).find(row => row.id === data.id)
   record('queryCustomListData', {
     count: toList(configuredRows).length,
@@ -361,13 +455,14 @@ async function main() {
   evidence.fixture = {
     entityId: entity.id,
     entityCode,
-    processId: process.id,
+    processId: workflowProcess.id,
     processKey,
     formId: form.id,
     listConfigId: listConfig.id,
+    listKey,
     dataId: data.id,
     processInstanceId: data.processInstanceId,
-    listRoute: `/entity/list/${entityCode}`
+    listRoute: `/entity-list/${entityCode}/${listKey}`
   }
   evidence.conclusion = 'PASS: 三个 src/demo 扩展已由真实流程、实体、表单、列表和业务数据验证'
   const evidencePath = writeEvidence('PASS')

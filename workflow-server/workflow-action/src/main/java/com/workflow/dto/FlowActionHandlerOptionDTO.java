@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
 
 /**
  * 流程动作处理器选项 DTO。
@@ -46,4 +47,8 @@ public class FlowActionHandlerOptionDTO {
     private Set<String> supportedExecutionModes;
     /** 处理器推荐的执行方式 */
     private String recommendedExecutionMode;
+    /** extraParams 配置 Schema */
+    private Map<String, Object> extraParamSchema;
+    /** 是否允许 Schema 外动态参数 */
+    private Boolean dynamicExtraParams;
 }

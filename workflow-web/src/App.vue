@@ -29,6 +29,17 @@ a:focus-visible,
   white-space: nowrap;
 }
 
+.table-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+}
+
+.table-row-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
 @media (max-width: 1366px) {
   .el-table .el-table-fixed-column--right,
   .el-table .el-table-fixed-column--left {

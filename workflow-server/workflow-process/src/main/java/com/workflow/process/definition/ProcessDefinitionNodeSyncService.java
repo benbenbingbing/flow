@@ -139,7 +139,7 @@ public class ProcessDefinitionNodeSyncService {
                 }
             }
         } catch (Exception e) {
-            log.warn("同步节点表单配置失败: {}", e.getMessage());
+            throw new IllegalStateException("同步节点表单配置失败: processConfigId=" + processConfigId, e);
         }
     }
 
@@ -206,7 +206,7 @@ public class ProcessDefinitionNodeSyncService {
                 }
             }
         } catch (Exception e) {
-            log.warn("同步节点审批配置失败: {}", e.getMessage());
+            throw new IllegalStateException("同步节点审批配置失败: processConfigId=" + processConfigId, e);
         }
     }
 
@@ -228,43 +228,32 @@ public class ProcessDefinitionNodeSyncService {
         }
 
         try {
-            Pattern flowPattern = Pattern.compile(
-                    "<bpmn:sequenceFlow[^>]*id=\"([^\"]+)\"[^>]*sourceRef=\"([^\"]+)\"[^>]*targetRef=\"([^\"]+)\"[^>]*>",
-                    Pattern.DOTALL);
-            Matcher flowMatcher = flowPattern.matcher(bpmnXml);
+            Document document = parseDocument(bpmnXml);
+            NodeList sequenceFlows = document.getElementsByTagNameNS("*", "sequenceFlow");
             List<EntityFlowStatusMapping> mappings = new ArrayList<>();
 
-            while (flowMatcher.find()) {
-                String flowId = flowMatcher.group(1);
-                String sourceRef = flowMatcher.group(2);
-                String targetRef = flowMatcher.group(3);
-                int flowStart = flowMatcher.start();
-                int flowEnd = bpmnXml.indexOf("</bpmn:sequenceFlow>", flowStart);
-                if (flowEnd == -1) {
+            for (int i = 0; i < sequenceFlows.getLength(); i++) {
+                Element sequenceFlow = (Element) sequenceFlows.item(i);
+                String statusCode = readExtensionProperties(sequenceFlow).get("entityStatusCode");
+                if (statusCode == null || statusCode.isBlank()) {
                     continue;
                 }
-
-                String flowContent = bpmnXml.substring(flowStart, flowEnd + 20);
-                Matcher statusMatcher = Pattern.compile("name=\"entityStatusCode\"\\s+value=\"([^\"]+)\"")
-                        .matcher(flowContent);
-                if (statusMatcher.find()) {
-                    EntityFlowStatusMapping mapping = new EntityFlowStatusMapping();
-                    mapping.setSequenceFlowId(flowId);
-                    mapping.setSourceNodeId(sourceRef);
-                    mapping.setSourceNodeName(extractNodeName(bpmnXml, sourceRef));
-                    mapping.setTargetNodeId(targetRef);
-                    mapping.setTargetNodeName(extractNodeName(bpmnXml, targetRef));
-                    mapping.setEntityStatusCode(statusMatcher.group(1));
-                    mappings.add(mapping);
-                }
+                String sourceRef = sequenceFlow.getAttribute("sourceRef");
+                String targetRef = sequenceFlow.getAttribute("targetRef");
+                EntityFlowStatusMapping mapping = new EntityFlowStatusMapping();
+                mapping.setSequenceFlowId(sequenceFlow.getAttribute("id"));
+                mapping.setSourceNodeId(sourceRef);
+                mapping.setSourceNodeName(extractNodeName(document, sourceRef));
+                mapping.setTargetNodeId(targetRef);
+                mapping.setTargetNodeName(extractNodeName(document, targetRef));
+                mapping.setEntityStatusCode(statusCode);
+                mappings.add(mapping);
             }
 
-            if (!mappings.isEmpty()) {
-                entityFlowStatusService.saveStatusMappings(processConfigId, processKey, entityCode, mappings);
-                log.info("保存流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
-            }
+            entityFlowStatusService.replaceStatusMappings(processConfigId, processKey, entityCode, mappings);
+            log.info("同步流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
         } catch (Exception e) {
-            log.warn("提取状态映射失败: processConfigId={}", processConfigId, e);
+            throw new IllegalStateException("同步流程状态映射失败: processConfigId=" + processConfigId, e);
         }
     }
 
@@ -277,30 +266,26 @@ public class ProcessDefinitionNodeSyncService {
      * @param bpmnXml         BPMN XML 内容
      */
     public void parseAndSaveNodeConfigs(String processConfigId, String bpmnXml) {
-        try {
-            nodeMapper.deleteByProcessConfigId(processConfigId);
-            int savedCount = 0;
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "startEvent", NodeConfig.NodeType.START);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "endEvent", NodeConfig.NodeType.END);
-            savedCount += parseUserTasks(processConfigId, bpmnXml);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "serviceTask", NodeConfig.NodeType.SERVICE_TASK);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "scriptTask", NodeConfig.NodeType.SCRIPT_TASK);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "sendTask", NodeConfig.NodeType.SEND_TASK);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "receiveTask", NodeConfig.NodeType.RECEIVE_TASK);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "manualTask", NodeConfig.NodeType.MANUAL_TASK);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "businessRuleTask", NodeConfig.NodeType.BUSINESS_RULE_TASK);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "exclusiveGateway", NodeConfig.NodeType.EXCLUSIVE_GATEWAY);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "parallelGateway", NodeConfig.NodeType.PARALLEL_GATEWAY);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "inclusiveGateway", NodeConfig.NodeType.INCLUSIVE_GATEWAY);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "eventBasedGateway", NodeConfig.NodeType.EVENT_BASED_GATEWAY);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "callActivity", NodeConfig.NodeType.CALL_ACTIVITY);
-            savedCount += parseNodesByType(processConfigId, bpmnXml, "subProcess", NodeConfig.NodeType.SUB_PROCESS);
-            log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, processConfigId);
-            if (savedCount == 0) {
-                log.warn("未解析到节点: processConfigId={}", processConfigId);
-            }
-        } catch (Exception e) {
-            log.error("解析节点配置失败", e);
+        nodeMapper.deleteByProcessConfigId(processConfigId);
+        int savedCount = 0;
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "startEvent", NodeConfig.NodeType.START);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "endEvent", NodeConfig.NodeType.END);
+        savedCount += parseUserTasks(processConfigId, bpmnXml);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "serviceTask", NodeConfig.NodeType.SERVICE_TASK);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "scriptTask", NodeConfig.NodeType.SCRIPT_TASK);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "sendTask", NodeConfig.NodeType.SEND_TASK);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "receiveTask", NodeConfig.NodeType.RECEIVE_TASK);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "manualTask", NodeConfig.NodeType.MANUAL_TASK);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "businessRuleTask", NodeConfig.NodeType.BUSINESS_RULE_TASK);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "exclusiveGateway", NodeConfig.NodeType.EXCLUSIVE_GATEWAY);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "parallelGateway", NodeConfig.NodeType.PARALLEL_GATEWAY);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "inclusiveGateway", NodeConfig.NodeType.INCLUSIVE_GATEWAY);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "eventBasedGateway", NodeConfig.NodeType.EVENT_BASED_GATEWAY);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "callActivity", NodeConfig.NodeType.CALL_ACTIVITY);
+        savedCount += parseNodesByType(processConfigId, bpmnXml, "subProcess", NodeConfig.NodeType.SUB_PROCESS);
+        log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, processConfigId);
+        if (savedCount == 0) {
+            log.warn("未解析到节点: processConfigId={}", processConfigId);
         }
     }
 
@@ -410,22 +395,23 @@ public class ProcessDefinitionNodeSyncService {
     }
 
     private String getEntityCodeByProcessId(String processConfigId) {
-        try {
-            EntityDefinition entityDef = entityDefinitionMapper.findByProcessDefinitionId(processConfigId).orElse(null);
-            if (entityDef != null) {
-                return entityDef.getEntityCode();
-            }
-        } catch (Exception e) {
-            log.warn("获取流程关联实体失败: processConfigId={}", processConfigId, e);
+        EntityDefinition entityDef = entityDefinitionMapper.findByProcessDefinitionId(processConfigId).orElse(null);
+        if (entityDef != null) {
+            return entityDef.getEntityCode();
         }
         return null;
     }
 
-    private String extractNodeName(String bpmnXml, String nodeId) {
-        Pattern namePattern = Pattern.compile(
-                "<bpmn:[^>]+id=\"" + Pattern.quote(nodeId) + "\"[^>]*name=\"([^\"]+)\"");
-        Matcher matcher = namePattern.matcher(bpmnXml);
-        return matcher.find() ? matcher.group(1) : nodeId;
+    private String extractNodeName(Document document, String nodeId) {
+        NodeList elements = document.getElementsByTagNameNS("*", "*");
+        for (int i = 0; i < elements.getLength(); i++) {
+            Element element = (Element) elements.item(i);
+            if (nodeId.equals(element.getAttribute("id"))) {
+                String name = element.getAttribute("name");
+                return name == null || name.isBlank() ? nodeId : name;
+            }
+        }
+        return nodeId;
     }
 
     private int parseNodesByType(String processConfigId, String bpmnXml, String tagName, NodeConfig.NodeType nodeType) {
@@ -483,32 +469,26 @@ public class ProcessDefinitionNodeSyncService {
                                     String nodeName,
                                     NodeConfig.NodeType nodeType,
                                     String content) {
-        try {
-            NodeConfig node = new NodeConfig();
-            node.setProcessConfigId(processConfigId);
-            node.setNodeId(nodeId);
-            node.setNodeName(nodeName);
-            node.setNodeType(nodeType);
-            node.setSkipNode(resolveSkipNode(nodeType, content));
-            nodeMapper.insert(node);
+        NodeConfig node = new NodeConfig();
+        node.setProcessConfigId(processConfigId);
+        node.setNodeId(nodeId);
+        node.setNodeName(nodeName);
+        node.setNodeType(nodeType);
+        node.setSkipNode(resolveSkipNode(nodeType, content));
+        nodeMapper.insert(node);
 
-            String nodeConfigId = resolveNodeConfigId(processConfigId, nodeId);
-            if (nodeConfigId == null) {
-                log.error("无法获取节点配置ID: nodeId={}", nodeId);
-                return null;
-            }
-
-            if (nodeType == NodeConfig.NodeType.USER_TASK) {
-                parseAndSaveAssigneeConfigs(nodeConfigId, content);
-                parseAndSaveFormConfig(nodeConfigId, content);
-                parseAndSaveMultiInstanceConfig(nodeConfigId, content);
-                parseAndSaveApprovalConfig(nodeConfigId, content);
-            }
-            return nodeConfigId;
-        } catch (Exception e) {
-            log.error("保存节点失败: nodeId={}", nodeId, e);
+        String nodeConfigId = resolveNodeConfigId(processConfigId, nodeId);
+        if (nodeConfigId == null) {
+            throw new IllegalStateException("无法获取节点配置ID: nodeId=" + nodeId);
         }
-        return null;
+
+        if (nodeType == NodeConfig.NodeType.USER_TASK) {
+            parseAndSaveAssigneeConfigs(nodeConfigId, content);
+            parseAndSaveFormConfig(nodeConfigId, content);
+            parseAndSaveMultiInstanceConfig(nodeConfigId, content);
+            parseAndSaveApprovalConfig(nodeConfigId, content);
+        }
+        return nodeConfigId;
     }
 
     private boolean resolveSkipNode(NodeConfig.NodeType nodeType, String content) {
@@ -539,60 +519,64 @@ public class ProcessDefinitionNodeSyncService {
             // 实际执行人配置保存在扩展属性中）
             String assigneeConfigJson = readExtensionPropertyValue(content, "assigneeConfig");
             if (assigneeConfigJson != null && !assigneeConfigJson.isEmpty()) {
-                try {
-                    JsonNode config = objectMapper.readTree(assigneeConfigJson);
+                JsonNode config = objectMapper.readTree(
+                        assigneeConfigJson);
+                mergeConfigJson(
+                        nodeConfigId,
+                        Map.of(
+                                "assigneeConfig",
+                                objectMapper.convertValue(
+                                        config,
+                                        Map.class)));
 
-                    // 处理多实例会签人员配置（新增独立字段）
-                    String miUsernames = config.has("multiInstanceUsernames") ? config.get("multiInstanceUsernames").asText() : "";
-                    String miGroupCodes = config.has("multiInstanceGroupCodes") ? config.get("multiInstanceGroupCodes").asText() : "";
-                    String miRoleCodes = config.has("multiInstanceRoleCodes") ? config.get("multiInstanceRoleCodes").asText() : "";
-                    boolean hasMultiInstanceUsers = !miUsernames.isEmpty() || !miGroupCodes.isEmpty() || !miRoleCodes.isEmpty();
-                    if (hasMultiInstanceUsers) {
-                        for (String user : miUsernames.split(",")) {
+                // 处理多实例会签人员配置（新增独立字段）
+                String miUsernames = config.has("multiInstanceUsernames") ? config.get("multiInstanceUsernames").asText() : "";
+                String miGroupCodes = config.has("multiInstanceGroupCodes") ? config.get("multiInstanceGroupCodes").asText() : "";
+                String miRoleCodes = config.has("multiInstanceRoleCodes") ? config.get("multiInstanceRoleCodes").asText() : "";
+                boolean hasMultiInstanceUsers = !miUsernames.isEmpty() || !miGroupCodes.isEmpty() || !miRoleCodes.isEmpty();
+                if (hasMultiInstanceUsers) {
+                    for (String user : miUsernames.split(",")) {
+                        String v = user.trim();
+                        if (!v.isEmpty()) {
+                            priority = saveUserAssignee(nodeConfigId, v, priority);
+                        }
+                    }
+                    for (String group : miGroupCodes.split(",")) {
+                        String v = group.trim();
+                        if (!v.isEmpty()) {
+                            priority = saveRoleAssignee(nodeConfigId, v, priority);
+                        }
+                    }
+                    for (String role : miRoleCodes.split(",")) {
+                        String v = role.trim();
+                        if (!v.isEmpty()) {
+                            priority = saveRoleAssignee(nodeConfigId, "ROLE_" + v, priority);
+                        }
+                    }
+                    return;
+                }
+
+                // 兜底：处理旧版/普通节点的 assigneeType + assigneeValue
+                String type = config.has("assigneeType") ? config.get("assigneeType").asText() : "";
+                String value = config.has("assigneeValue") ? config.get("assigneeValue").asText() : "";
+                if (!value.isEmpty()) {
+                    if ("user".equals(type)) {
+                        for (String user : value.split(",")) {
                             String v = user.trim();
                             if (!v.isEmpty()) {
                                 priority = saveUserAssignee(nodeConfigId, v, priority);
                             }
                         }
-                        for (String group : miGroupCodes.split(",")) {
+                        return;
+                    } else if ("group".equals(type) || "role".equals(type)) {
+                        for (String group : value.split(",")) {
                             String v = group.trim();
                             if (!v.isEmpty()) {
                                 priority = saveRoleAssignee(nodeConfigId, v, priority);
                             }
                         }
-                        for (String role : miRoleCodes.split(",")) {
-                            String v = role.trim();
-                            if (!v.isEmpty()) {
-                                priority = saveRoleAssignee(nodeConfigId, "ROLE_" + v, priority);
-                            }
-                        }
                         return;
                     }
-
-                    // 兜底：处理旧版/普通节点的 assigneeType + assigneeValue
-                    String type = config.has("assigneeType") ? config.get("assigneeType").asText() : "";
-                    String value = config.has("assigneeValue") ? config.get("assigneeValue").asText() : "";
-                    if (!value.isEmpty()) {
-                        if ("user".equals(type)) {
-                            for (String user : value.split(",")) {
-                                String v = user.trim();
-                                if (!v.isEmpty()) {
-                                    priority = saveUserAssignee(nodeConfigId, v, priority);
-                                }
-                            }
-                            return;
-                        } else if ("group".equals(type) || "role".equals(type)) {
-                            for (String group : value.split(",")) {
-                                String v = group.trim();
-                                if (!v.isEmpty()) {
-                                    priority = saveRoleAssignee(nodeConfigId, v, priority);
-                                }
-                            }
-                            return;
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("解析 assigneeConfig 扩展属性失败: nodeConfigId={}", nodeConfigId, e);
                 }
             }
 
@@ -622,26 +606,25 @@ public class ProcessDefinitionNodeSyncService {
                 }
             }
         } catch (Exception e) {
-            log.error("解析执行人配置失败: nodeConfigId={}", nodeConfigId, e);
+            throw new IllegalStateException(
+                    "解析执行人配置失败: nodeConfigId="
+                            + nodeConfigId,
+                    e);
         }
     }
 
     private String readExtensionPropertyValue(String content, String propertyName) {
-        try {
-            Matcher propsMatcher = Pattern.compile(
-                    "<(?:flowable|camunda):properties[^>]*>(.*?)</(?:flowable|camunda):properties>",
-                    Pattern.DOTALL | Pattern.CASE_INSENSITIVE).matcher(content);
-            while (propsMatcher.find()) {
-                String propsContent = propsMatcher.group(1);
-                Matcher propMatcher = Pattern.compile(
-                        "<(?:flowable|camunda):property\\s+name=\"" + Pattern.quote(propertyName) + "\"\\s+value=\"([^\"]*)\"",
-                        Pattern.CASE_INSENSITIVE).matcher(propsContent);
-                if (propMatcher.find()) {
-                    return decodeXmlAttributeValue(propMatcher.group(1));
-                }
+        Matcher propsMatcher = Pattern.compile(
+                "<(?:flowable|camunda):properties[^>]*>(.*?)</(?:flowable|camunda):properties>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE).matcher(content);
+        while (propsMatcher.find()) {
+            String propsContent = propsMatcher.group(1);
+            Matcher propMatcher = Pattern.compile(
+                    "<(?:flowable|camunda):property\\s+name=\"" + Pattern.quote(propertyName) + "\"\\s+value=\"([^\"]*)\"",
+                    Pattern.CASE_INSENSITIVE).matcher(propsContent);
+            if (propMatcher.find()) {
+                return decodeXmlAttributeValue(propMatcher.group(1));
             }
-        } catch (Exception e) {
-            log.warn("读取扩展属性失败: propertyName={}", propertyName, e);
         }
         return null;
     }
@@ -706,7 +689,10 @@ public class ProcessDefinitionNodeSyncService {
             formConfig.setIsReadonly(isReadonly);
             formMapper.insert(formConfig);
         } catch (Exception e) {
-            log.error("解析表单配置失败: nodeConfigId={}", nodeConfigId, e);
+            throw new IllegalStateException(
+                    "解析表单配置失败: nodeConfigId="
+                            + nodeConfigId,
+                    e);
         }
     }
 
@@ -743,7 +729,10 @@ public class ProcessDefinitionNodeSyncService {
             }
             mergeConfigJson(nodeConfigId, miConfig);
         } catch (Exception e) {
-            log.error("解析多实例配置失败: nodeConfigId={}", nodeConfigId, e);
+            throw new IllegalStateException(
+                    "解析多实例配置失败: nodeConfigId="
+                            + nodeConfigId,
+                    e);
         }
     }
 
@@ -757,7 +746,10 @@ public class ProcessDefinitionNodeSyncService {
                     decodeXmlAttributeValue(approvalConfigJson), HashMap.class);
             mergeConfigJson(nodeConfigId, approvalConfig);
         } catch (Exception e) {
-            log.error("解析审批配置失败: nodeConfigId={}", nodeConfigId, e);
+            throw new IllegalStateException(
+                    "解析审批配置失败: nodeConfigId="
+                            + nodeConfigId,
+                    e);
         }
     }
 
@@ -791,20 +783,31 @@ public class ProcessDefinitionNodeSyncService {
                     String.class, nodeConfigId);
             Map<String, Object> mergedConfig = new HashMap<>();
             if (existingJson != null && !existingJson.isEmpty()) {
-                try {
-                    mergedConfig = objectMapper.readValue(existingJson, HashMap.class);
-                } catch (Exception e) {
-                    log.warn("解析节点配置 JSON 失败，将覆盖: nodeConfigId={}", nodeConfigId);
-                }
+                mergedConfig = objectMapper.readValue(
+                        existingJson,
+                        HashMap.class);
             }
             mergedConfig.putAll(newConfig);
-            jdbcTemplate.update(
+            int updated = jdbcTemplate.update(
                     "UPDATE process_node_config SET config_json = ? WHERE id = ?",
                     objectMapper.writeValueAsString(mergedConfig), nodeConfigId);
+            if (updated != 1) {
+                throw new IllegalStateException(
+                        "节点配置更新数量异常: nodeConfigId="
+                                + nodeConfigId
+                                + ", updated="
+                                + updated);
+            }
         } catch (EmptyResultDataAccessException e) {
-            log.warn("节点不存在，无法合并配置: nodeConfigId={}", nodeConfigId);
+            throw new IllegalStateException(
+                    "节点不存在，无法合并配置: nodeConfigId="
+                            + nodeConfigId,
+                    e);
         } catch (Exception e) {
-            log.error("合并节点配置失败: nodeConfigId={}", nodeConfigId, e);
+            throw new IllegalStateException(
+                    "合并节点配置失败: nodeConfigId="
+                            + nodeConfigId,
+                    e);
         }
     }
 
@@ -813,23 +816,22 @@ public class ProcessDefinitionNodeSyncService {
                                         String nodeName,
                                         NodeConfig.NodeType nodeType,
                                         String defaultFlow) {
-        try {
-            NodeConfig node = new NodeConfig();
-            node.setProcessConfigId(processConfigId);
-            node.setNodeId(nodeId);
-            node.setNodeName(nodeName);
-            node.setNodeType(nodeType);
-            node.setSkipNode(false);
-            if (defaultFlow != null && !defaultFlow.isEmpty()) {
-                Map<String, Object> config = new HashMap<>();
-                config.put("defaultFlow", defaultFlow);
+        NodeConfig node = new NodeConfig();
+        node.setProcessConfigId(processConfigId);
+        node.setNodeId(nodeId);
+        node.setNodeName(nodeName);
+        node.setNodeType(nodeType);
+        node.setSkipNode(false);
+        if (defaultFlow != null && !defaultFlow.isEmpty()) {
+            Map<String, Object> config = new HashMap<>();
+            config.put("defaultFlow", defaultFlow);
+            try {
                 node.setConfigJson(objectMapper.writeValueAsString(config));
+            } catch (Exception e) {
+                throw new IllegalStateException("序列化节点配置失败: nodeId=" + nodeId, e);
             }
-            nodeMapper.insert(node);
-            return true;
-        } catch (Exception e) {
-            log.error("保存节点失败: nodeId={}", nodeId, e);
-            return false;
         }
+        nodeMapper.insert(node);
+        return true;
     }
 }

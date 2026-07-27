@@ -3,6 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const baseUrl = process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const testUsername = process.env.TEST_USERNAME || 'admin'
+const testPassword = process.env.TEST_PASSWORD || 'admin'
 const stopAt = process.env.WORKFLOW_FORM_STOP_AT || ''
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
 const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
@@ -83,22 +85,35 @@ function formField(entityFields, fieldCode, overrides = {}) {
   }
 }
 
+async function publishForm(form, description) {
+  const published = await api('POST', `/entity-forms/${form.id}/publish`, {
+    description
+  })
+  assert.equal(published.status, 'ACTIVE', `${form.formName} 发布后应立即激活`)
+  return {
+    formId: form.id,
+    releaseId: published.id,
+    version: published.version,
+    status: published.status
+  }
+}
+
 function bpmnXml(forms) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="http://flowable.org/bpmn" id="Definitions_${processKey}" targetNamespace="http://workflow.codex/node-form-matrix">
   <process id="${processKey}" name="${processName}" isExecutable="true">
     <startEvent id="StartEvent_1" name="开始"><outgoing>Flow_1</outgoing></startEvent>
-    <userTask id="Task_Form_A" name="首节点混合读写" flowable:candidateUsers="admin">
+    <userTask id="Task_Form_A" name="首节点混合读写" flowable:candidateUsers="${testUsername}">
       <extensionElements><flowable:properties>
         <flowable:property name="entityFormId" value="${forms.formA}" />
         <flowable:property name="entityFormReadonly" value="false" />
       </flowable:properties></extensionElements>
       <incoming>Flow_1</incoming><outgoing>Flow_2</outgoing>
     </userTask>
-    <userTask id="Task_Default_Fallback" name="未配置表单回退" flowable:candidateUsers="admin">
+    <userTask id="Task_Default_Fallback" name="未配置表单回退" flowable:candidateUsers="${testUsername}">
       <incoming>Flow_2</incoming><outgoing>Flow_3</outgoing>
     </userTask>
-    <userTask id="Task_Form_C_Readonly" name="末节点专属全只读" flowable:candidateUsers="admin">
+    <userTask id="Task_Form_C_Readonly" name="末节点专属全只读" flowable:candidateUsers="${testUsername}">
       <extensionElements><flowable:properties>
         <flowable:property name="entityFormId" value="${forms.formC}" />
         <flowable:property name="entityFormReadonly" value="true" />
@@ -142,7 +157,10 @@ function writeEvidence(result) {
 }
 
 async function main() {
-  const login = await api('POST', '/auth/login', { username: 'admin', password: 'admin' })
+  const login = await api('POST', '/auth/login', {
+    username: testUsername,
+    password: testPassword
+  })
   token = login.token
   record('login', { username: login.username, id: login.id })
 
@@ -203,23 +221,28 @@ async function main() {
     formA: { id: formA.id, name: formA.formName },
     formC: { id: formC.id, name: formC.formName }
   })
+  record('publishForms', {
+    defaultForm: await publishForm(defaultForm, '节点表单矩阵默认回退表单发布'),
+    formA: await publishForm(formA, '节点表单矩阵首节点表单发布'),
+    formC: await publishForm(formC, '节点表单矩阵末节点表单发布')
+  })
 
-  const process = await api('POST', '/process', {
+  const workflowProcess = await api('POST', '/process', {
     processKey,
     processName,
     description: '首节点指定表单 -> 未配置回退默认 -> 末节点指定全只读表单',
     category: 'codex-node-form-test',
     bpmnXml: bpmnXml({ formA: formA.id, formC: formC.id })
   })
-  await api('POST', `/process/${process.id}/publish`, {
+  await api('POST', `/process/${workflowProcess.id}/publish`, {
     versionDescription: '节点表单矩阵发布'
   })
-  await api('PUT', `/entity/${entity.id}/workflow-binding`, {
-    processDefinitionId: process.id
+  await api('POST', `/entity/${entity.id}/workflow-binding/update`, {
+    processDefinitionId: workflowProcess.id
   })
-  record('createPublishBindProcess', { processId: process.id, processKey })
+  record('createPublishBindProcess', { processId: workflowProcess.id, processKey })
 
-  const bindings = await api('GET', `/process-node-form/process/${process.id}`)
+  const bindings = await api('GET', `/process-node-form/process/${workflowProcess.id}`)
   record('publishedNodeFormBindings', bindings.map(binding => ({
     nodeId: binding.nodeId,
     formId: binding.formId,
@@ -275,7 +298,7 @@ async function main() {
   evidence.fixture = {
     entityId: entity.id,
     entityCode,
-    processId: process.id,
+    processId: workflowProcess.id,
     processInstanceId: saved.processInstanceId,
     dataId: saved.id,
     formIds: { defaultForm: defaultForm.id, formA: formA.id, formC: formC.id }

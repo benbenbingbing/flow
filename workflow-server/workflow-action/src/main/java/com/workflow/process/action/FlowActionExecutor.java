@@ -160,7 +160,10 @@ public class FlowActionExecutor {
         ctx.setEndReason(event.getEndReason());
         ctx.setIdempotencyKey(idempotencyKey);
         ctx.setVariablesSnapshot(event.getVariables());
-        ctx.setCustomParams(resolveCustomParams(action.getParamsJson(), event.getVariables()));
+        Map<String, Object> extraParams =
+                resolveCustomParams(action.getParamsJson(), event.getVariables());
+        ctx.setCustomParams(extraParams);
+        ctx.setExtraParams(extraParams);
         return ctx;
     }
 

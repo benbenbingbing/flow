@@ -1,0 +1,2655 @@
+{
+  "processKey": "action_timing_2607262231kd8",
+  "entityCode": "action_timing_entity_2607262231kd8",
+  "instances": {
+    "completed": {
+      "id": "f75f2b62c93644568823496cb113b1a6",
+      "entityCode": "action_timing_entity_2607262231kd8",
+      "entityName": null,
+      "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+      "title": null,
+      "name": "动作完成实例2607262231kd8",
+      "code": "ACTION_TIMI_6158BD7C20260727000001",
+      "status": "IN_REVIEW",
+      "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+      "processStartTime": null,
+      "processEndTime": null,
+      "currentTaskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+      "currentTaskName": "动作时机审批",
+      "currentTaskAssignee": "admin",
+      "data": {
+        "name": "动作完成实例2607262231kd8",
+        "amount": 100,
+        "remark": "动作完成实例2607262231kd8"
+      },
+      "submitterId": "1",
+      "submitterName": "admin",
+      "deptId": null,
+      "deptName": null,
+      "submitTime": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "createdBy": null,
+      "updatedBy": null,
+      "startProcess": true,
+      "processVariables": null,
+      "extData": null,
+      "listKey": null,
+      "actionCapabilities": {}
+    },
+    "withdrawn": {
+      "id": "6457b902476a47478f8f93cf689be476",
+      "entityCode": "action_timing_entity_2607262231kd8",
+      "entityName": null,
+      "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+      "title": null,
+      "name": "动作撤回实例2607262231kd8",
+      "code": "ACTION_TIMI_6158BD7C20260727000002",
+      "status": "IN_REVIEW",
+      "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+      "processStartTime": null,
+      "processEndTime": null,
+      "currentTaskId": "ba417eff-8941-11f1-9729-5e08ea62a462",
+      "currentTaskName": "动作时机审批",
+      "currentTaskAssignee": "admin",
+      "data": {
+        "name": "动作撤回实例2607262231kd8",
+        "amount": 100,
+        "remark": "动作撤回实例2607262231kd8"
+      },
+      "submitterId": "1",
+      "submitterName": "admin",
+      "deptId": null,
+      "deptName": null,
+      "submitTime": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "createdBy": null,
+      "updatedBy": null,
+      "startProcess": true,
+      "processVariables": null,
+      "extData": null,
+      "listKey": null,
+      "actionCapabilities": {}
+    },
+    "terminated": {
+      "id": "95ab9e6939e54559bed14446d97cf730",
+      "entityCode": "action_timing_entity_2607262231kd8",
+      "entityName": null,
+      "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+      "title": null,
+      "name": "动作终止实例2607262231kd8",
+      "code": "ACTION_TIMI_6158BD7C20260727000003",
+      "status": "IN_REVIEW",
+      "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+      "processStartTime": null,
+      "processEndTime": null,
+      "currentTaskId": "bd7050dc-8941-11f1-9729-5e08ea62a462",
+      "currentTaskName": "动作时机审批",
+      "currentTaskAssignee": "admin",
+      "data": {
+        "name": "动作终止实例2607262231kd8",
+        "amount": 100,
+        "remark": "动作终止实例2607262231kd8"
+      },
+      "submitterId": "1",
+      "submitterName": "admin",
+      "deptId": null,
+      "deptName": null,
+      "submitTime": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "createdBy": null,
+      "updatedBy": null,
+      "startProcess": true,
+      "processVariables": null,
+      "extData": null,
+      "listKey": null,
+      "actionCapabilities": {}
+    }
+  },
+  "actions": [
+    {
+      "id": "2081507678223679489",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "__PROCESS__",
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_STARTED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": null,
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "PROCESS_STARTED",
+      "description": "E2E PROCESS_STARTED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"PROCESS_STARTED\",\"message\":\"\"}",
+      "sortOrder": 0,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.688076",
+      "updatedAt": "2026-07-27T06:31:17.688073",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678261428225",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "__PROCESS__",
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3}",
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "PROCESS_COMPLETED",
+      "description": "E2E PROCESS_COMPLETED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"PROCESS_COMPLETED\",\"message\":\"\"}",
+      "sortOrder": 1,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.697662",
+      "updatedAt": "2026-07-27T06:31:17.69766",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678290788353",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "__PROCESS__",
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_WITHDRAWN",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3}",
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "PROCESS_WITHDRAWN",
+      "description": "E2E PROCESS_WITHDRAWN",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"PROCESS_WITHDRAWN\",\"message\":\"\"}",
+      "sortOrder": 2,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.70431",
+      "updatedAt": "2026-07-27T06:31:17.704309",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678320148481",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "__PROCESS__",
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_TERMINATED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3}",
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "PROCESS_TERMINATED",
+      "description": "E2E PROCESS_TERMINATED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"PROCESS_TERMINATED\",\"message\":\"\"}",
+      "sortOrder": 3,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.711822",
+      "updatedAt": "2026-07-27T06:31:17.71182",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678353702914",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "Task_Review",
+      "scopeType": "NODE",
+      "elementId": "Task_Review",
+      "triggerTiming": "NODE_ENTERED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": null,
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "NODE_ENTERED",
+      "description": "E2E NODE_ENTERED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"NODE_ENTERED\",\"message\":\"\"}",
+      "sortOrder": 4,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.71971",
+      "updatedAt": "2026-07-27T06:31:17.719708",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678383063041",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "Task_Review",
+      "scopeType": "NODE",
+      "elementId": "Task_Review",
+      "triggerTiming": "NODE_COMPLETED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": null,
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "NODE_COMPLETED",
+      "description": "E2E NODE_COMPLETED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"NODE_COMPLETED\",\"message\":\"\"}",
+      "sortOrder": 5,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.726635",
+      "updatedAt": "2026-07-27T06:31:17.726634",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678416617473",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "Task_Review",
+      "scopeType": "NODE",
+      "elementId": "Task_Review",
+      "triggerTiming": "TASK_CREATED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3}",
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "TASK_CREATED",
+      "description": "E2E TASK_CREATED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"TASK_CREATED\",\"message\":\"\"}",
+      "sortOrder": 6,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.735046",
+      "updatedAt": "2026-07-27T06:31:17.735045",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678454366210",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "Task_Review",
+      "scopeType": "NODE",
+      "elementId": "Task_Review",
+      "triggerTiming": "TASK_ASSIGNED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3}",
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "TASK_ASSIGNED",
+      "description": "E2E TASK_ASSIGNED",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"TASK_ASSIGNED\",\"message\":\"\"}",
+      "sortOrder": 7,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.743162",
+      "updatedAt": "2026-07-27T06:31:17.743161",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678487920642",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "Task_Review",
+      "scopeType": "NODE",
+      "elementId": "Task_Review",
+      "triggerTiming": "TASK_COMPLETING",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": null,
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "TASK_COMPLETING",
+      "description": "E2E TASK_COMPLETING",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"TASK_COMPLETING\",\"message\":\"\"}",
+      "sortOrder": 8,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.751277",
+      "updatedAt": "2026-07-27T06:31:17.751276",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678525669377",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "Flow_Start_Review",
+      "scopeType": "SEQUENCE_FLOW",
+      "elementId": "Flow_Start_Review",
+      "triggerTiming": "TRANSITION_TAKEN",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": null,
+      "actionDefinitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+      "actionName": "TRANSITION_TAKEN",
+      "description": "E2E TRANSITION_TAKEN",
+      "interfaceName": "demoSimpleActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"TRANSITION_TAKEN\",\"message\":\"\"}",
+      "sortOrder": 9,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.761024",
+      "updatedAt": "2026-07-27T06:31:17.761023",
+      "createdBy": "admin",
+      "deleted": 0
+    },
+    {
+      "id": "2081507678559223809",
+      "processConfigId": "2081507677137354753",
+      "sequenceFlowId": "__PROCESS__",
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":1}",
+      "actionDefinitionId": "00ba0ee0816911f18b26ee49a458cdfd",
+      "actionName": "流程完成后失败动作",
+      "description": "E2E PROCESS_COMPLETED",
+      "interfaceName": "demoFailingActionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"timing\":\"PROCESS_COMPLETED\",\"message\":\"E2E 预期失败\"}",
+      "sortOrder": 10,
+      "enabled": true,
+      "status": "DRAFT",
+      "versionId": null,
+      "createdAt": "2026-07-27T06:31:17.768736",
+      "updatedAt": "2026-07-27T06:31:17.768734",
+      "createdBy": "admin",
+      "deleted": 0
+    }
+  ],
+  "executions": {
+    "completed": [
+      {
+        "id": "2081507681352630273",
+        "actionId": "2081507678760550403",
+        "actionName": "流程完成后失败动作",
+        "handlerName": "demoFailingActionHandler",
+        "handlerDisplayName": "演示：失败与重试动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_COMPLETED",
+        "idempotencyKey": "8aa15d24-e2e9-4b78-a117-acc13e1eb892",
+        "status": "DEAD",
+        "retryCount": 1,
+        "maxRetries": 1,
+        "nextRetryTime": null,
+        "errorMessage": "E2E 预期失败",
+        "errorStack": "java.lang.RuntimeException: E2E 预期失败\n\tat com.workflow.demo.DemoFailingActionHandler.execute(DemoFailingActionHandler.java:32)\n\tat com.workflow.process.action.FlowActionExecutor.invoke(FlowActionExecutor.java:267)\n\tat com.workflow.process.action.FlowActionExecutor.executeAction(FlowActionExecutor.java:99)\n\tat com.workflow.process.action.FlowActionOutboxProcessor.process(FlowActionOutboxProcessor.java:47)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:360)\n\tat org.springframework.aop.framework.ReflectiveMethodInvocation.invokeJoinpoint(ReflectiveMethodInvocation.java:196)\n\tat org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:163)\n\tat org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:380)\n\tat org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119)\n\tat org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)\n\tat org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:728)\n\tat com.workflow.process.action.FlowActionOutboxProcessor$$SpringCGLIB$$0.process(<generated>)\n\tat com.workflow.process.action.FlowActionOutboxWorker.poll(FlowActionOutboxWorker.java:37)\n\tat jdk.internal.reflect.GeneratedMethodAccessor417.invoke(Unknown Source)\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.springframework.scheduling.support.ScheduledMethodRunnable.runInternal(ScheduledMethodRunnable.java:130)\n\tat org.springframework.scheduling.support.ScheduledMethodRunnable.lambda$run$2(ScheduledMethodRunnable.java:124)\n\tat io.micrometer.observation.Observation.observe(Observation.java:498)\n\tat org.springframework.scheduling.support.ScheduledMethodRunnable.run(ScheduledMethodRunnable.java:124)\n\tat org.springframework.scheduling.config.Task$OutcomeTrackingRunnable.run(Task.java:87)\n\tat org.springframework.scheduling.support.DelegatingErrorHandlingRunnable.run(DelegatingErrorHandlingRunnable.java:54)\n\tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\tat java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:305)\n\tat java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\tat java.base/java.lang.Thread.run(Thread.java:833)\n",
+        "durationMs": 459,
+        "startedAt": "2026-07-27T06:31:21",
+        "finishedAt": "2026-07-27T06:31:21",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:21",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": "approve",
+          "endReason": null,
+          "variables": {
+            "approver": "admin",
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "initiator": "1",
+            "remark": "动作完成实例2607262231kd8",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+            "actionLabel": "通过",
+            "approved": "approve",
+            "_approvers_": [
+              "admin",
+              "admin"
+            ],
+            "submitterId": "1",
+            "name": "动作完成实例2607262231kd8",
+            "action": "approve",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "comment": "二级通过",
+            "submitterName": "admin"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_COMPLETED",
+          "message": "E2E 预期失败"
+        },
+        "result": null,
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:18.434505",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.452893",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_COMPLETED",
+              "handlerName": "demoFailingActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.455992",
+            "stage": "HANDLER_FAILED",
+            "message": "流程动作处理器执行失败",
+            "details": {
+              "error": "E2E 预期失败"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.459899",
+            "stage": "RETRY_EXHAUSTED",
+            "message": "自动重试次数已耗尽，执行记录进入死信",
+            "details": {
+              "retryCount": 1,
+              "maxRetries": 1,
+              "errorMessage": "E2E 预期失败"
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507681348435970",
+        "actionId": "2081507678756356097",
+        "actionName": "PROCESS_COMPLETED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_COMPLETED",
+        "idempotencyKey": "d1ba4e01-a82a-4c0a-9242-d137065d201b",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 440,
+        "startedAt": "2026-07-27T06:31:21",
+        "finishedAt": "2026-07-27T06:31:21",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:21",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": "approve",
+          "endReason": null,
+          "variables": {
+            "approver": "admin",
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "initiator": "1",
+            "remark": "动作完成实例2607262231kd8",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+            "actionLabel": "通过",
+            "approved": "approve",
+            "_approvers_": [
+              "admin",
+              "admin"
+            ],
+            "submitterId": "1",
+            "name": "动作完成实例2607262231kd8",
+            "action": "approve",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "comment": "二级通过",
+            "submitterName": "admin"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_COMPLETED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:18.433667",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.418740",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_COMPLETED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.433800",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:21.440678",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 440
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507680375357442",
+        "actionId": "2081507678764744708",
+        "actionName": "NODE_COMPLETED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "NODE_COMPLETED",
+        "idempotencyKey": "70e61678-45fe-44f2-8f93-bbe085447072",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 3,
+        "startedAt": "2026-07-27T06:31:18",
+        "finishedAt": "2026-07-27T06:31:18",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:18",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "NODE_COMPLETED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": "approve",
+          "endReason": null,
+          "variables": {
+            "approver": "admin",
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "initiator": "1",
+            "remark": "动作完成实例2607262231kd8",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+            "actionLabel": "通过",
+            "approved": "approve",
+            "_approvers_": [
+              "admin"
+            ],
+            "submitterId": "1",
+            "name": "动作完成实例2607262231kd8",
+            "action": "approve",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "comment": "一级通过",
+            "submitterName": "admin"
+          }
+        },
+        "resolvedParams": {
+          "timing": "NODE_COMPLETED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:18.201745",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:18.202757",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "NODE_COMPLETED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:18.204551",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:18.205526",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 3
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507680337608706",
+        "actionId": "2081507678773133314",
+        "actionName": "TASK_COMPLETING",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_COMPLETING",
+        "idempotencyKey": "6b85a5a0-4946-466c-b06a-98e127864fe8",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 4,
+        "startedAt": "2026-07-27T06:31:18",
+        "finishedAt": "2026-07-27T06:31:18",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:18",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_COMPLETING",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": "approve",
+          "endReason": null,
+          "variables": {
+            "approver": "admin",
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "initiator": "1",
+            "remark": "动作完成实例2607262231kd8",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+            "actionLabel": "通过",
+            "approved": "approve",
+            "_approvers_": [
+              "admin"
+            ],
+            "submitterId": "1",
+            "name": "动作完成实例2607262231kd8",
+            "action": "approve",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "comment": "一级通过",
+            "submitterName": "admin"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_COMPLETING",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:18.192677",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:18.194148",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_COMPLETING",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:18.196580",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:18.197470",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 4
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507679125454850",
+        "actionId": "2081507678768939009",
+        "actionName": "TASK_CREATED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_CREATED",
+        "idempotencyKey": "ca135d56-0456-432e-bec7-b20914790649",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 399,
+        "startedAt": "2026-07-27T06:31:21",
+        "finishedAt": "2026-07-27T06:31:21",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:21",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_CREATED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作完成实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "remark": "动作完成实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_CREATED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:17.904175",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.374592",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_CREATED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.391787",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:21.400075",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 399
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507679117066241",
+        "actionId": "2081507678768939010",
+        "actionName": "TASK_ASSIGNED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_ASSIGNED",
+        "idempotencyKey": "96f43381-8518-4521-8db5-106ed8d406e1",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 356,
+        "startedAt": "2026-07-27T06:31:21",
+        "finishedAt": "2026-07-27T06:31:21",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:21",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": "b80dfcf1-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_ASSIGNED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作完成实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "remark": "动作完成实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_ASSIGNED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:17.901830",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.330624",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_ASSIGNED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.349710",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:21.356376",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 356
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507679087706114",
+        "actionId": "2081507678764744707",
+        "actionName": "NODE_ENTERED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "NODE_ENTERED",
+        "idempotencyKey": "c0baa1fa-c323-42c3-be2e-617e90d6f422",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 5,
+        "startedAt": "2026-07-27T06:31:18",
+        "finishedAt": "2026-07-27T06:31:18",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:18",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "NODE_ENTERED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作完成实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "remark": "动作完成实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6"
+          }
+        },
+        "resolvedParams": {
+          "timing": "NODE_ENTERED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:17.894427",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:17.895968",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "NODE_ENTERED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:17.898301",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:17.899750",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 5
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507679020597249",
+        "actionId": "2081507678764744706",
+        "actionName": "TRANSITION_TAKEN",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "SEQUENCE_FLOW",
+        "elementId": "Flow_Start_Review",
+        "triggerTiming": "TRANSITION_TAKEN",
+        "idempotencyKey": "8ac435a7-b29e-4ac4-8a61-7fc01dc87918",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 7,
+        "startedAt": "2026-07-27T06:31:18",
+        "finishedAt": "2026-07-27T06:31:18",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:18",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "SEQUENCE_FLOW",
+          "elementId": "Flow_Start_Review",
+          "elementName": null,
+          "elementType": "sequenceFlow",
+          "triggerTiming": "TRANSITION_TAKEN",
+          "sourceNodeId": "StartEvent_1",
+          "sourceNodeName": "开始",
+          "targetNodeId": "Task_Review",
+          "targetNodeName": "动作时机审批",
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作完成实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "remark": "动作完成实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TRANSITION_TAKEN",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:17.878248",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:17.880003",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TRANSITION_TAKEN",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:17.882593",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:17.885623",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 7
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507678924128258",
+        "actionId": "2081507678752161794",
+        "actionName": "PROCESS_STARTED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_STARTED",
+        "idempotencyKey": "4408acd1-84bf-4933-bea8-ec23b404da38",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 15,
+        "startedAt": "2026-07-27T06:31:18",
+        "finishedAt": "2026-07-27T06:31:18",
+        "createdAt": "2026-07-27T06:31:18",
+        "updatedAt": "2026-07-27T06:31:18",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "b806a9d7-8941-11f1-9729-5e08ea62a462",
+          "executionId": "b806a9ed-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_STARTED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "f75f2b62c93644568823496cb113b1a6",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作完成实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-56256083303148",
+            "skipNodeEnabled": true,
+            "remark": "动作完成实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "f75f2b62c93644568823496cb113b1a6"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_STARTED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:17.855309",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:17.858622",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_STARTED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:17.869520",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:17.871096",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 15
+            }
+          }
+        ]
+      }
+    ],
+    "withdrawn": [
+      {
+        "id": "2081507694761820162",
+        "actionId": "2081507678756356098",
+        "actionName": "PROCESS_WITHDRAWN",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_WITHDRAWN",
+        "idempotencyKey": "5e91aeba-fde2-45bc-bb02-cab5ebac42d5",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 0,
+        "startedAt": "2026-07-27T06:31:27",
+        "finishedAt": "2026-07-27T06:31:27",
+        "createdAt": "2026-07-27T06:31:22",
+        "updatedAt": "2026-07-27T06:31:27",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "executionId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_WITHDRAWN",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "6457b902476a47478f8f93cf689be476",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": "发起人撤回: E2E 2607262231kd8",
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作撤回实例2607262231kd8",
+            "skipNodeEnabled": true,
+            "remark": "动作撤回实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+            "submitterName": "admin",
+            "entityDataId": "6457b902476a47478f8f93cf689be476"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_WITHDRAWN",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:21.631666",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.586867",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_WITHDRAWN",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.602377",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:26.605268",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 0
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507694610825217",
+        "actionId": "2081507678768939009",
+        "actionName": "TASK_CREATED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+        "taskId": "ba417eff-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_CREATED",
+        "idempotencyKey": "77b3f904-4c69-4b17-93b4-4f0feeeb7018",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 0,
+        "startedAt": "2026-07-27T06:31:27",
+        "finishedAt": "2026-07-27T06:31:27",
+        "createdAt": "2026-07-27T06:31:22",
+        "updatedAt": "2026-07-27T06:31:27",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+          "taskId": "ba417eff-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_CREATED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "6457b902476a47478f8f93cf689be476",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作撤回实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+            "skipNodeEnabled": true,
+            "remark": "动作撤回实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "6457b902476a47478f8f93cf689be476"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_CREATED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:21.596196",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.549994",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_CREATED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.570492",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:26.575337",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 0
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507694606630913",
+        "actionId": "2081507678768939010",
+        "actionName": "TASK_ASSIGNED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+        "taskId": "ba417eff-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_ASSIGNED",
+        "idempotencyKey": "09ff030f-05d2-4165-a1d8-8ec51d2e495e",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 537,
+        "startedAt": "2026-07-27T06:31:26",
+        "finishedAt": "2026-07-27T06:31:27",
+        "createdAt": "2026-07-27T06:31:22",
+        "updatedAt": "2026-07-27T06:31:27",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+          "taskId": "ba417eff-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_ASSIGNED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "6457b902476a47478f8f93cf689be476",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作撤回实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+            "skipNodeEnabled": true,
+            "remark": "动作撤回实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "6457b902476a47478f8f93cf689be476"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_ASSIGNED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:21.594557",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.500456",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_ASSIGNED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.533598",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:26.537425",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 537
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507694577270785",
+        "actionId": "2081507678764744707",
+        "actionName": "NODE_ENTERED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "NODE_ENTERED",
+        "idempotencyKey": "eb69704d-761c-4904-8e56-8e01edec64a9",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 4,
+        "startedAt": "2026-07-27T06:31:22",
+        "finishedAt": "2026-07-27T06:31:22",
+        "createdAt": "2026-07-27T06:31:22",
+        "updatedAt": "2026-07-27T06:31:22",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "NODE_ENTERED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "6457b902476a47478f8f93cf689be476",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作撤回实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+            "skipNodeEnabled": true,
+            "remark": "动作撤回实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "6457b902476a47478f8f93cf689be476"
+          }
+        },
+        "resolvedParams": {
+          "timing": "NODE_ENTERED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:21.587603",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.589077",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "NODE_ENTERED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.591131",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:21.592265",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 4
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507694514356226",
+        "actionId": "2081507678764744706",
+        "actionName": "TRANSITION_TAKEN",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "SEQUENCE_FLOW",
+        "elementId": "Flow_Start_Review",
+        "triggerTiming": "TRANSITION_TAKEN",
+        "idempotencyKey": "058b43ae-dad7-4268-a40b-a79c8534ed28",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 11,
+        "startedAt": "2026-07-27T06:31:22",
+        "finishedAt": "2026-07-27T06:31:22",
+        "createdAt": "2026-07-27T06:31:22",
+        "updatedAt": "2026-07-27T06:31:22",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "SEQUENCE_FLOW",
+          "elementId": "Flow_Start_Review",
+          "elementName": null,
+          "elementType": "sequenceFlow",
+          "triggerTiming": "TRANSITION_TAKEN",
+          "sourceNodeId": "StartEvent_1",
+          "sourceNodeName": "开始",
+          "targetNodeId": "Task_Review",
+          "targetNodeName": "动作时机审批",
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "6457b902476a47478f8f93cf689be476",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作撤回实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+            "skipNodeEnabled": true,
+            "remark": "动作撤回实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "6457b902476a47478f8f93cf689be476"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TRANSITION_TAKEN",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:21.572716",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.574864",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TRANSITION_TAKEN",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.582836",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:21.583945",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 11
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507694426275842",
+        "actionId": "2081507678752161794",
+        "actionName": "PROCESS_STARTED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_STARTED",
+        "idempotencyKey": "88f33e4a-b57b-449d-ac2d-6321dfe9e3a9",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 13,
+        "startedAt": "2026-07-27T06:31:22",
+        "finishedAt": "2026-07-27T06:31:22",
+        "createdAt": "2026-07-27T06:31:22",
+        "updatedAt": "2026-07-27T06:31:22",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "ba3ac825-8941-11f1-9729-5e08ea62a462",
+          "executionId": "ba3ac83b-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_STARTED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "6457b902476a47478f8f93cf689be476",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作撤回实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-51264208906759",
+            "skipNodeEnabled": true,
+            "remark": "动作撤回实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "6457b902476a47478f8f93cf689be476"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_STARTED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:21.552044",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.555839",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_STARTED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:21.563218",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:21.565102",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 13
+            }
+          }
+        ]
+      }
+    ],
+    "terminated": [
+      {
+        "id": "2081507717549473793",
+        "actionId": "2081507678760550402",
+        "actionName": "PROCESS_TERMINATED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_TERMINATED",
+        "idempotencyKey": "85f833fc-3914-443c-9e2e-26adea4e6697",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 0,
+        "startedAt": "2026-07-27T06:31:32",
+        "finishedAt": "2026-07-27T06:31:32",
+        "createdAt": "2026-07-27T06:31:27",
+        "updatedAt": "2026-07-27T06:31:32",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "executionId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_TERMINATED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "95ab9e6939e54559bed14446d97cf730",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": "E2E 主动终止 2607262231kd8",
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作终止实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+            "skipNodeEnabled": true,
+            "remark": "动作终止实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "95ab9e6939e54559bed14446d97cf730"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_TERMINATED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:27.064639",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:31.726795",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_TERMINATED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:31.733620",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:31.735839",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 0
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507717029380098",
+        "actionId": "2081507678768939009",
+        "actionName": "TASK_CREATED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+        "taskId": "bd7050dc-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_CREATED",
+        "idempotencyKey": "360303cf-56ed-49ce-96ab-a4aa5158bdd7",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 0,
+        "startedAt": "2026-07-27T06:31:32",
+        "finishedAt": "2026-07-27T06:31:32",
+        "createdAt": "2026-07-27T06:31:27",
+        "updatedAt": "2026-07-27T06:31:32",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+          "taskId": "bd7050dc-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_CREATED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "95ab9e6939e54559bed14446d97cf730",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作终止实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+            "skipNodeEnabled": true,
+            "remark": "动作终止实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "95ab9e6939e54559bed14446d97cf730"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_CREATED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:26.940913",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:31.699287",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_CREATED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:31.714680",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:31.717784",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 0
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507717012602881",
+        "actionId": "2081507678768939010",
+        "actionName": "TASK_ASSIGNED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+        "taskId": "bd7050dc-8941-11f1-9729-5e08ea62a462",
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "TASK_ASSIGNED",
+        "idempotencyKey": "9ab68321-ff1f-49c2-984f-033b19b8528d",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 3,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 0,
+        "startedAt": "2026-07-27T06:31:32",
+        "finishedAt": "2026-07-27T06:31:32",
+        "createdAt": "2026-07-27T06:31:27",
+        "updatedAt": "2026-07-27T06:31:32",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+          "taskId": "bd7050dc-8941-11f1-9729-5e08ea62a462",
+          "taskName": "动作时机审批",
+          "taskAssignee": "admin",
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "TASK_ASSIGNED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "95ab9e6939e54559bed14446d97cf730",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作终止实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+            "skipNodeEnabled": true,
+            "remark": "动作终止实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "95ab9e6939e54559bed14446d97cf730"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TASK_ASSIGNED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:26.936369",
+            "stage": "QUEUED",
+            "message": "主事务内已写入提交后执行队列",
+            "details": {
+              "executionMode": "AFTER_COMMIT",
+              "failurePolicy": "RETRY"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:31.635839",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TASK_ASSIGNED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:31.683581",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:31.690566",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 0
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507716895162370",
+        "actionId": "2081507678764744707",
+        "actionName": "NODE_ENTERED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "NODE",
+        "elementId": "Task_Review",
+        "triggerTiming": "NODE_ENTERED",
+        "idempotencyKey": "89327e1a-0f25-4245-be4d-cdaa82c7326e",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 22,
+        "startedAt": "2026-07-27T06:31:27",
+        "finishedAt": "2026-07-27T06:31:27",
+        "createdAt": "2026-07-27T06:31:27",
+        "updatedAt": "2026-07-27T06:31:27",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "NODE",
+          "elementId": "Task_Review",
+          "elementName": "动作时机审批",
+          "elementType": "userTask",
+          "triggerTiming": "NODE_ENTERED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "95ab9e6939e54559bed14446d97cf730",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作终止实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+            "skipNodeEnabled": true,
+            "remark": "动作终止实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "95ab9e6939e54559bed14446d97cf730"
+          }
+        },
+        "resolvedParams": {
+          "timing": "NODE_ENTERED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:26.908487",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.916801",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "NODE_ENTERED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.927970",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:26.931511",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 22
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507716765138946",
+        "actionId": "2081507678764744706",
+        "actionName": "TRANSITION_TAKEN",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "SEQUENCE_FLOW",
+        "elementId": "Flow_Start_Review",
+        "triggerTiming": "TRANSITION_TAKEN",
+        "idempotencyKey": "60eca5e0-4a58-457c-b413-f15b1732c8f9",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 15,
+        "startedAt": "2026-07-27T06:31:27",
+        "finishedAt": "2026-07-27T06:31:27",
+        "createdAt": "2026-07-27T06:31:27",
+        "updatedAt": "2026-07-27T06:31:27",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "SEQUENCE_FLOW",
+          "elementId": "Flow_Start_Review",
+          "elementName": null,
+          "elementType": "sequenceFlow",
+          "triggerTiming": "TRANSITION_TAKEN",
+          "sourceNodeId": "StartEvent_1",
+          "sourceNodeName": "开始",
+          "targetNodeId": "Task_Review",
+          "targetNodeName": "动作时机审批",
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "95ab9e6939e54559bed14446d97cf730",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作终止实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+            "skipNodeEnabled": true,
+            "remark": "动作终止实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "95ab9e6939e54559bed14446d97cf730"
+          }
+        },
+        "resolvedParams": {
+          "timing": "TRANSITION_TAKEN",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:26.877712",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.882684",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "TRANSITION_TAKEN",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.889156",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:26.892877",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 15
+            }
+          }
+        ]
+      },
+      {
+        "id": "2081507716572200961",
+        "actionId": "2081507678752161794",
+        "actionName": "PROCESS_STARTED",
+        "handlerName": "demoSimpleActionHandler",
+        "handlerDisplayName": "演示：通用流程动作",
+        "versionId": "2081507678739578881",
+        "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+        "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+        "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+        "taskId": null,
+        "entityCode": "action_timing_entity_2607262231kd8",
+        "scopeType": "PROCESS",
+        "elementId": null,
+        "triggerTiming": "PROCESS_STARTED",
+        "idempotencyKey": "8e742a5c-fae9-4b04-89fa-58f1304dee7d",
+        "status": "SUCCESS",
+        "retryCount": 0,
+        "maxRetries": 5,
+        "nextRetryTime": null,
+        "errorMessage": null,
+        "errorStack": null,
+        "durationMs": 27,
+        "startedAt": "2026-07-27T06:31:27",
+        "finishedAt": "2026-07-27T06:31:27",
+        "createdAt": "2026-07-27T06:31:27",
+        "updatedAt": "2026-07-27T06:31:27",
+        "triggerContext": {
+          "versionId": "2081507678739578881",
+          "processDefinitionId": "b8001a26-8941-11f1-9729-5e08ea62a462",
+          "processInstanceId": "bd5faef2-8941-11f1-9729-5e08ea62a462",
+          "executionId": "bd5faf08-8941-11f1-9729-5e08ea62a462",
+          "taskId": null,
+          "taskName": null,
+          "taskAssignee": null,
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "elementName": null,
+          "elementType": null,
+          "triggerTiming": "PROCESS_STARTED",
+          "sourceNodeId": null,
+          "sourceNodeName": null,
+          "targetNodeId": null,
+          "targetNodeName": null,
+          "entityCode": "action_timing_entity_2607262231kd8",
+          "entityDataId": "95ab9e6939e54559bed14446d97cf730",
+          "operatorId": "1",
+          "approvalAction": null,
+          "endReason": null,
+          "variables": {
+            "amount": 100,
+            "entityCode": "action_timing_entity_2607262231kd8",
+            "submitterId": "1",
+            "initiator": "1",
+            "name": "动作终止实例2607262231kd8",
+            "dataNo": "ACTION_TIMING_ENTITY_2607262231KD8-12592375366087",
+            "skipNodeEnabled": true,
+            "remark": "动作终止实例2607262231kd8",
+            "submitterName": "admin",
+            "entityDataId": "95ab9e6939e54559bed14446d97cf730"
+          }
+        },
+        "resolvedParams": {
+          "timing": "PROCESS_STARTED",
+          "message": ""
+        },
+        "result": {
+          "status": "SUCCESS",
+          "handlerReturnType": "void"
+        },
+        "executionTrace": [
+          {
+            "time": "2026-07-27T06:31:26.831663",
+            "stage": "EXECUTION_CREATED",
+            "message": "事务内动作执行记录已创建",
+            "details": {
+              "executionMode": "IN_TRANSACTION",
+              "failurePolicy": "ROLLBACK"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.838221",
+            "stage": "HANDLER_STARTED",
+            "message": "开始调用流程动作处理器",
+            "details": {
+              "triggerTiming": "PROCESS_STARTED",
+              "handlerName": "demoSimpleActionHandler"
+            }
+          },
+          {
+            "time": "2026-07-27T06:31:26.852022",
+            "stage": "HANDLER_COMPLETED",
+            "message": "流程动作处理器执行完成"
+          },
+          {
+            "time": "2026-07-27T06:31:26.859193",
+            "stage": "SUCCESS",
+            "message": "流程动作执行成功",
+            "details": {
+              "durationMs": 27
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "handlers": {
+    "prepared": [
+      {
+        "beanName": "demoSimpleActionHandler",
+        "definitionId": "00ba0bb6816911f18b26ee49a458cdfd",
+        "visibilityScope": "ENTITY",
+        "includesTestEntity": true,
+        "enabled": true
+      },
+      {
+        "beanName": "demoFailingActionHandler",
+        "definitionId": "00ba0ee0816911f18b26ee49a458cdfd",
+        "visibilityScope": "ENTITY",
+        "includesTestEntity": true,
+        "enabled": true
+      }
+    ],
+    "restored": [
+      {
+        "beanName": "demoSimpleActionHandler",
+        "visibilityScope": "ENTITY",
+        "entityCodes": [
+          "action_timing_entity_2607151205dnr",
+          "action_timing_entity_2607151218zgw",
+          "req01"
+        ],
+        "enabled": true
+      },
+      {
+        "beanName": "demoFailingActionHandler",
+        "visibilityScope": "ENTITY",
+        "entityCodes": [
+          "action_timing_entity_2607151205dnr",
+          "action_timing_entity_2607151218zgw"
+        ],
+        "enabled": true
+      }
+    ]
+  }
+}

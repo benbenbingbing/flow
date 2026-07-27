@@ -23,7 +23,7 @@ const props = defineProps({
     required: true
   },
   modelValue: {
-    type: [String, Number, Array, Date, Object],
+    type: [String, Number, Array, Date, Object, Boolean],
     default: ''
   },
   disabled: {

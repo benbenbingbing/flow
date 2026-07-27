@@ -14,11 +14,6 @@
         <el-tag v-else type="success" effect="plain">已保存</el-tag>
       </div>
       <div class="header-right">
-        <el-radio-group v-if="!isSystemEntity" v-model="designMode" size="small" class="design-mode-switch">
-          <el-radio-button value="basic">基础</el-radio-button>
-          <el-radio-button value="advanced">高级</el-radio-button>
-          <el-radio-button value="developer">开发者</el-radio-button>
-        </el-radio-group>
         <el-button v-if="!isSystemEntity" @click="codeRuleVisible = true">
           <el-icon><Ticket /></el-icon>编码规则
         </el-button>
@@ -107,7 +102,7 @@
             >
               <div class="field-info">
                 <span class="field-name">{{ field.fieldName || '未命名' }}</span>
-                <span v-if="designMode !== 'basic' || isSystemEntity" class="field-code">{{ field.fieldCode || '-' }}</span>
+                <span class="field-code">{{ field.fieldCode || '-' }}</span>
                 <el-tag size="small" :type="getFieldTypeTag(field.fieldType)">
                   {{ getFieldTypeLabel(field.fieldType) }}
                 </el-tag>
@@ -223,7 +218,6 @@
           </SettingsSection>
 
           <SettingsSection
-            v-if="designMode !== 'basic' || showOptions || selectedField.fieldType === 'DECIMAL'"
             :key="`data-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
             title="数据与约束"
             description="数据库映射、容量、选项来源和验证规则"
@@ -235,7 +229,7 @@
               <span v-else>按需配置</span>
             </template>
 
-            <el-form-item v-if="designMode === 'developer'" label="数据库列名">
+            <el-form-item label="数据库列名">
               <el-input
                 :model-value="formatDbColumnName(selectedField.fieldCode)"
                 disabled
@@ -243,7 +237,7 @@
             </el-form-item>
 
             <!-- 字段长度配置（文本等字符串类型） -->
-            <el-form-item v-if="showFieldLength && designMode !== 'basic'" label="字段长度">
+            <el-form-item v-if="showFieldLength" label="字段长度">
               <el-input-number
                 v-model="selectedField.fieldLength"
                 :min="1"
@@ -308,7 +302,7 @@
               </el-form-item>
             </template>
 
-            <el-form-item v-if="designMode === 'developer'" label="验证规则">
+            <el-form-item label="验证规则">
               <el-input
                 v-model="selectedField.validateRules"
                 type="textarea"
@@ -618,7 +612,7 @@
       style="margin-top: 12px"
     >
       <el-table-column prop="listName" label="列表" min-width="140" />
-      <el-table-column v-if="designMode === 'developer'" prop="listKey" label="列表 Key" min-width="130" />
+      <el-table-column prop="listKey" label="列表 Key" min-width="130" />
       <el-table-column label="范围模式" width="130">
         <template #default="{ row }">
           <el-tag :type="row.dataScopeMode === 'OVERRIDE' ? 'danger' : row.dataScopeMode === 'NARROW' ? 'warning' : 'info'">
@@ -902,15 +896,15 @@
             <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="designMode === 'developer'" prop="listKey" label="适用列表 Key" width="140" align="center" />
-        <el-table-column v-if="designMode === 'developer'" prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
+        <el-table-column prop="listKey" label="适用列表 Key" width="140" align="center" />
+        <el-table-column prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
       </el-table>
     </div>
     <div v-else class="preview-section">
       <el-alert type="warning" :closable="false">没有命中任何允许方案，运行时将拒绝全部数据。</el-alert>
     </div>
 
-    <div v-if="designMode === 'developer'" class="preview-section">
+    <div class="preview-section">
       <div class="preview-section-title">最终生效 SQL</div>
       <el-input v-model="permissionSqlPreview.sql" type="textarea" :rows="4" readonly />
     </div>
@@ -978,7 +972,6 @@ const fieldTypes = ENTITY_FIELD_TYPES
 const entityData = ref({})
 const fields = ref([])
 const loadError = ref('')
-const designMode = ref('basic')
 const showSystemFields = ref(true)
 const entityBaseline = ref('')
 const entityFingerprint = () => JSON.stringify({
@@ -2353,10 +2346,6 @@ onMounted(() => {
   color: #909399;
   font-size: 12px;
   font-weight: 600;
-}
-
-.design-mode-switch {
-  margin-right: 4px;
 }
 
 /* ===== 滚动条美化 ===== */

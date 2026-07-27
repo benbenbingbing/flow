@@ -5,8 +5,6 @@ import groovy.lang.GroovyShell;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,7 +24,7 @@ public class ScriptTestService {
      */
     public Map<String, Object> testScript(ScriptTestDTO dto) {
         Map<String, Object> result = new HashMap<>();
-        String format = dto.getScriptFormat() != null ? dto.getScriptFormat().toLowerCase() : "javascript";
+        String format = dto.getScriptFormat() != null ? dto.getScriptFormat().toLowerCase() : "groovy";
         String script = dto.getScript();
         
         if (script == null || script.trim().isEmpty()) {
@@ -38,20 +36,12 @@ public class ScriptTestService {
         ScriptExecutionContext execution = new ScriptExecutionContext(dto.getTestVariables());
         
         try {
-            Object evalResult;
-            switch (format) {
-                case "groovy":
-                    evalResult = executeGroovy(script, execution);
-                    break;
-                case "python":
-                    result.put("success", false);
-                    result.put("message", "Python 脚本测试需要 Jython 环境，当前暂不支持在线测试，请发布后在流程中验证");
-                    return result;
-                case "javascript":
-                default:
-                    evalResult = executeJavaScript(script, execution);
-                    break;
+            if (!"groovy".equals(format)) {
+                result.put("success", false);
+                result.put("message", "当前运行时仅支持 Groovy 脚本");
+                return result;
             }
+            Object evalResult = executeGroovy(script, execution);
             
             result.put("success", true);
             result.put("result", evalResult);
@@ -73,19 +63,6 @@ public class ScriptTestService {
         }
         
         return result;
-    }
-    
-    /**
-     * 执行 JavaScript (Nashorn)
-     */
-    private Object executeJavaScript(String script, ScriptExecutionContext execution) throws Exception {
-        ScriptEngineManager manager = new ScriptEngineManager();
-        ScriptEngine engine = manager.getEngineByName("nashorn");
-        if (engine == null) {
-            throw new RuntimeException("当前运行环境未提供 JavaScript 脚本引擎");
-        }
-        engine.put("execution", execution);
-        return engine.eval(script);
     }
     
     /**

@@ -388,7 +388,7 @@ public class ProcessDefinitionService {
                 ? new ConfigMigrationPublishRequest() : request;
         ProcessVersionHistory history = publishHistoryService.recordPublish(
                 config,
-                runtimeBpmnXml,
+                designBpmnXml,
                 deployment.getId(),
                 newVersion,
                 publishRequest.getVersionDescription(),

@@ -6,7 +6,7 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
-    "test:unit": "node src/utils/__tests__/calcEngine.spec.js && node src/utils/__tests__/flowConditionGroups.spec.js && node src/utils/__tests__/jsonConfig.spec.js",
+    "test:unit": "node src/utils/__tests__/calcEngine.spec.js && node src/utils/__tests__/flowConditionGroups.spec.js && node src/utils/__tests__/jsonConfig.spec.js && node src/components/form-fields/composables/__tests__/useFormField.spec.js",
     "test:form-node-schema": "node src/shared/__tests__/form-node-property-schema.spec.js",
     "test:form-node-drag": "node src/shared/__tests__/form-node-drag.spec.js",
     "test:runtime-form-tabs": "node src/shared/__tests__/runtime-form-tabs.spec.js",
@@ -19,12 +19,16 @@
     "test:e2e:mock": "npm run build && node scripts/e2e-mock-pages.mjs",
     "test:functional": "node --loader ./scripts/test-alias-loader.mjs src/__tests__/functional.spec.js",
     "test:real-ui-config": "node scripts/real-ui-config-release.mjs",
+    "test:real-file-upload": "node scripts/real-file-upload.mjs",
     "test:visual:real": "node scripts/visual-acceptance-real.mjs",
     "test:workflow:real": "node scripts/e2e-real-workflow.mjs",
     "test:workflow:config-real": "node scripts/real-workflow-config-closure.mjs",
     "test:workflow:node-forms-real": "node scripts/real-workflow-node-forms.mjs",
     "test:workflow:actions-real": "node scripts/real-flow-action-timing.mjs",
-    "test:demo:real": "node scripts/real-dynamic-extension-demo.mjs"
+    "test:workflow:closure-real": "node scripts/real-workflow-closure.mjs",
+    "test:demo:real": "node scripts/real-dynamic-extension-demo.mjs",
+    "test:acceptance:preflight": "node scripts/real-acceptance-preflight.mjs",
+    "test:acceptance:real": "npm run test:acceptance:preflight && npm run test:real-ui-config && npm run test:real-file-upload && npm run test:workflow:real && npm run test:workflow:config-real && npm run test:workflow:node-forms-real && npm run test:workflow:closure-real && npm run test:workflow:actions-real && npm run test:demo:real && npm run test:visual:real"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

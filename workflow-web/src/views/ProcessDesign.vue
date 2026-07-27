@@ -34,22 +34,14 @@
         
         <el-divider direction="vertical" />
 
-        <el-dropdown trigger="click" @command="handleAdvancedCommand">
-          <el-badge :value="globalActionCount" :hidden="globalActionCount === 0" class="global-action-badge">
-            <el-button>
-              <el-icon><MoreFilled /></el-icon>高级
-            </el-button>
-          </el-badge>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="actions">
-                全局流程动作
-                <span v-if="globalActionCount" class="advanced-count">{{ globalActionCount }}</span>
-              </el-dropdown-item>
-              <el-dropdown-item command="xml" divided>查看 BPMN XML</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <el-badge :value="globalActionCount" :hidden="globalActionCount === 0" class="global-action-badge">
+          <el-button @click="globalActionVisible = true">
+            <el-icon><Setting /></el-icon>全局动作
+          </el-button>
+        </el-badge>
+        <el-button @click="handleSaveXML">
+          <el-icon><Document /></el-icon>查看 XML
+        </el-button>
 
         <el-button type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>保存草稿
@@ -130,7 +122,27 @@
       </el-button>
       <aside v-if="nodeConfigVisible && selectedElement" class="node-config-panel">
         <div class="node-config-panel__header">
-          <strong>{{ nodeConfigDrawerTitle }}</strong>
+          <div class="node-config-panel__heading">
+            <strong>{{ nodeConfigDrawerTitle }}</strong>
+            <div class="node-config-panel__meta">
+              <el-tag :type="nodeConfigTypeTag">
+                {{ nodeConfigTypeText }}
+              </el-tag>
+              <el-popover placement="bottom" trigger="hover" :width="280">
+                <template #reference>
+                  <el-icon class="node-config-panel__info"><InfoFilled /></el-icon>
+                </template>
+                <div class="node-type-info">
+                  <div class="info-title">{{ nodeConfigTypeDesc.title }}</div>
+                  <div class="info-desc">{{ nodeConfigTypeDesc.desc }}</div>
+                  <div class="info-scene">
+                    <el-tag size="small" type="warning">场景</el-tag>
+                    {{ nodeConfigTypeDesc.scene }}
+                  </div>
+                </div>
+              </el-popover>
+            </div>
+          </div>
           <el-button text circle aria-label="关闭节点配置" title="关闭节点配置" @click="closeNodeConfig">
             <el-icon><Close /></el-icon>
           </el-button>
@@ -152,9 +164,10 @@
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Document, Check, Back, Right, Setting, MoreFilled, Close } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Check, Back, Right, Setting, Close, InfoFilled } from '@element-plus/icons-vue'
 import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
+import { getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
 import formatXML from 'xml-formatter'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
 import VueBpmnDesigner from '@/components/VueBpmnDesigner.vue'
@@ -210,14 +223,9 @@ const nodeConfigDrawerTitle = computed(() => {
   const name = selectedElement.value?.businessObject?.name?.trim()
   return `节点配置 · ${name || '未命名节点'}`
 })
-
-const handleAdvancedCommand = (command) => {
-  if (command === 'actions') {
-    globalActionVisible.value = true
-  } else if (command === 'xml') {
-    handleSaveXML()
-  }
-}
+const nodeConfigTypeText = computed(() => getNodeTypeText(selectedElement.value?.type))
+const nodeConfigTypeTag = computed(() => getNodeTypeTag(selectedElement.value?.type))
+const nodeConfigTypeDesc = computed(() => getNodeTypeDescription(selectedElement.value?.type))
 
 // 撤销/重做状态
 const canUndo = ref(false)
@@ -516,14 +524,17 @@ onUnmounted(() => {
 .node-config-panel {
   width: min(440px, 42vw);
   min-width: 360px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: #fff;
   border-left: 1px solid #e4e7ed;
 }
 
 .node-config-panel__header {
-  min-height: 52px;
+  flex-shrink: 0;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -532,22 +543,68 @@ onUnmounted(() => {
   border-bottom: 1px solid #e4e7ed;
 }
 
-.node-config-panel__header strong {
+.node-config-panel__heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.node-config-panel__heading strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.node-config-panel__meta {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-config-panel__info {
+  color: #909399;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.node-config-panel__info:hover {
+  color: #409eff;
+}
+
+.node-type-info {
+  line-height: 1.6;
+}
+
+.info-title {
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+.info-desc {
+  margin-bottom: 8px;
+  color: #606266;
+}
+
+.info-scene {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .node-config-panel__body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.advanced-count {
-  margin-left: 10px;
-  color: #909399;
+.node-config-panel__body :deep(.node-config-panel) {
+  flex: 1;
+  min-height: 0;
 }
 
 /* 历史操作按钮组 */

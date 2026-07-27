@@ -305,15 +305,14 @@ public class DynamicTableService {
         col.append(dbType);
         
         // 程序级动态控制必填/唯一，数据库列统一可空、不建唯一索引
-        col.append(" DEFAULT NULL");
-        
-        // 默认值
         if (field.getDefaultValue() != null && !field.getDefaultValue().isEmpty()) {
             col.append(" DEFAULT '");
             // 处理单引号转义
             String escaped = field.getDefaultValue().replace("'", "''");
             col.append(escaped);
             col.append("'");
+        } else {
+            col.append(" DEFAULT NULL");
         }
         
         // 注释

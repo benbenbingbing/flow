@@ -6,6 +6,8 @@ import com.workflow.mapper.EntityListScopeAuditLogMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -34,6 +36,7 @@ public class EntityListScopeAuditService {
      * @param result     操作结果，如 SUCCESS、FAILURE
      * @param detail     附加详情，将序列化为 JSON 存储，可为 null
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(
             String entityCode,
             String listKey,

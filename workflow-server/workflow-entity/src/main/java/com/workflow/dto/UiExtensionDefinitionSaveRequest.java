@@ -30,7 +30,7 @@ public class UiExtensionDefinitionSaveRequest {
     /** 支持的绑定类型列表 */
     private List<String> supportedBindings;
     /** 配置项 Schema */
-    private Map<String, Object> configSchema;
+    private Object configSchema;
     /** 能力声明 */
     private Map<String, Object> capabilities;
     /** 状态 */

@@ -1,33 +1,65 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 
 const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const baseUrl = 'http://localhost:3000'
+const baseUrl = process.env.WORKFLOW_WEB_BASE || 'http://localhost:3000'
+const testUsername = process.env.TEST_USERNAME
+const testPassword = process.env.TEST_PASSWORD
 const debugPort = 9333
 const outDir = path.resolve('docs/visual-acceptance')
 const userDataDir = path.join(tmpdir(), `workflow-visual-${Date.now()}`)
 mkdirSync(outDir, { recursive: true })
+
+assert.ok(testUsername, 'TEST_USERNAME is required')
+assert.ok(testPassword, 'TEST_PASSWORD is required')
+
+const fixtureEvidencePath = path.resolve('docs/dynamic-extension-demo/latest.json')
+const fixtureEvidence = JSON.parse(readFileSync(fixtureEvidencePath, 'utf8'))
+assert.equal(
+  fixtureEvidence.result,
+  'PASS',
+  `visual acceptance requires a passing real fixture: ${fixtureEvidencePath}`
+)
+const fixture = fixtureEvidence.fixture || {}
+;['entityId', 'entityCode', 'processId', 'formId', 'listConfigId'].forEach(key => {
+  assert.ok(fixture[key], `real visual fixture is missing ${key}`)
+})
+const listKey = fixture.listKey || 'demo_cards'
+const listRoute = `/entity-list/${fixture.entityCode}/${listKey}`
+const entityName = fixtureEvidence.entityName
+const processName = fixtureEvidence.processName
+const projectName = fixtureEvidence.steps
+  ?.find(step => step.name === 'queryCustomListData')
+  ?.data?.row?.projectName
+assert.ok(entityName, 'real visual fixture is missing entityName')
+assert.ok(processName, 'real visual fixture is missing processName')
+assert.ok(projectName, 'real visual fixture is missing custom list projectName')
 
 const preLoginRoute = ['01-login', '/login', ['流程配置系统', 'Workflow Configuration System', '登 录']]
 const routes = [
   ['02-home', '/home', ['待办任务', '已办任务', '我发起的']],
   ['03-entity', '/entity', ['实体管理', '新建实体']],
   ['04-process', '/process', ['流程列表', '新建流程']],
-  ['05-project-list', '/entity/list/project_nitiation', ['立项管理', '新增数据']],
-  ['06-req-list', '/entity/list/req01', ['需求申请', '新增数据']],
-  ['07-user', '/system/user', ['用户管理', '新增用户']],
-  ['08-role', '/system/role', ['角色管理', '新增角色']],
-  ['09-group', '/system/group', ['用户组管理', '新增用户组']],
-  ['10-org', '/system/org', ['组织部门管理', '新增']],
-  ['11-menu', '/system/menu', ['菜单管理', '新增顶级菜单']],
-  ['12-dict', '/system/dict', ['字典设置', '字典类型']],
-  ['13-dev-guide', '/system/dev-guide', ['列表字段扩展']],
-  ['14-custom-list-guide', '/system/custom-list-guide', ['自定义列表组件']],
-  ['15-custom-form-guide', '/system/custom-form-guide', ['自定义表单组件']]
+  ['05-real-entity-design', `/entity/design/${fixture.entityId}`, [entityName, '流程实体', '字段类型', '业务字段']],
+  ['06-real-list-catalog', `/entity-list-config/${fixture.entityId}`, [entityName, '新建列表配置', 'Demo项目卡片列表']],
+  ['07-real-entity-list', listRoute, [projectName, '新增项目', '负责人', '风险']],
+  ['08-real-list-design', `/entity-list-config/design/${fixture.listConfigId}`, ['列表配置设计：', 'Demo项目卡片列表', '保存全部', '字段配置']],
+  ['09-real-form-list', `/entity-form/list-by-entity/${fixture.entityId}`, [entityName, '表单管理', 'Demo项目定制表单', '新建表单']],
+  ['10-real-form-design', `/entity-form/design/${fixture.formId}?entityId=${fixture.entityId}`, ['表单设计 -', 'Demo项目定制表单', '表单设计（所见即所得）', '保存草稿']],
+  ['11-real-process-design', `/process/design/${fixture.processId}`, [processName, '全局动作', '查看 XML', '保存草稿']],
+  ['12-user', '/system/user', ['用户管理', '新增用户']],
+  ['13-role', '/system/role', ['角色管理', '新增角色']],
+  ['14-group', '/system/group', ['用户组管理', '新增用户组']],
+  ['15-org', '/system/org', ['组织部门管理', '新增']],
+  ['16-menu', '/system/menu', ['菜单管理', '创建顶级菜单']],
+  ['17-dict', '/system/dict', ['字典设置', '字典类型']],
+  ['18-dev-guide', '/system/dev-guide', ['表单与列表配置扩展']],
+  ['19-custom-list-guide', '/system/custom-list-guide', ['自定义列表组件']],
+  ['20-custom-form-guide', '/system/custom-form-guide', ['自定义表单组件']]
 ]
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)) }
@@ -129,8 +161,8 @@ try {
   await evalValue(cdp, `(() => {
     const inputs = [...document.querySelectorAll('input')];
     const set = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
-    set(inputs.find(i => i.placeholder?.includes('用户名')) || inputs[0], 'admin');
-    set(inputs.find(i => i.placeholder?.includes('密码')) || inputs[1], 'admin');
+    set(inputs.find(i => i.placeholder?.includes('用户名')) || inputs[0], ${JSON.stringify(testUsername)});
+    set(inputs.find(i => i.placeholder?.includes('密码')) || inputs[1], ${JSON.stringify(testPassword)});
     [...document.querySelectorAll('button')].find(b => b.textContent.replace(/\\s+/g,'').includes('登录'))?.click();
     return true;
   })()`)

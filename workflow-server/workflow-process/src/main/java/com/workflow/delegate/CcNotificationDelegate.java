@@ -6,6 +6,7 @@ import com.workflow.service.cc.ProcessCcConfigService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.DelegateExecution;
+import org.flowable.engine.delegate.ExecutionListener;
 import org.flowable.engine.delegate.JavaDelegate;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.springframework.stereotype.Component;
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Component;
  */
 @Component("ccNotificationDelegate")
 @RequiredArgsConstructor
-public class CcNotificationDelegate implements JavaDelegate {
+public class CcNotificationDelegate implements JavaDelegate, ExecutionListener {
     /** 抄送运行时服务，触发抄送 */
     private final ProcessCcRuntimeService runtimeService;
     /** 抄送配置服务，查询节点抄送配置 */
@@ -51,5 +52,15 @@ public class CcNotificationDelegate implements JavaDelegate {
                 "EXPLICIT",
                 null,
                 execution.getVariables()), config);
+    }
+
+    /**
+     * 作为节点结束监听器执行知会，不改变节点原有的服务或发送实现。
+     *
+     * @param execution Flowable 执行上下文
+     */
+    @Override
+    public void notify(DelegateExecution execution) {
+        execute(execution);
     }
 }

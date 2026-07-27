@@ -234,12 +234,12 @@ export default {
               rows: [
                 { option: '用户任务 UserTask', meaning: '生成人工待办，支持办理人、候选人、会签/串行多实例、节点表单、审批项和高级配置。', notes: '人工审批首选；必须明确人员解析和表单权限。' },
                 { option: '服务任务 ServiceTask', meaning: '自动执行 Java 类、表达式、Spring Bean 或 REST 请求。', notes: '外部调用优先考虑流程动作的提交后模式，避免长事务。' },
-                { option: '发送任务 SendTask', meaning: '按邮件、短信、站内信渠道发送消息。', notes: '当前配置保存为平台扩展；必须确认运行处理器已接入。' },
+                { option: '发送任务 SendTask', meaning: '向系统用户发送站内信。', notes: '接收人支持用户名、用户 ID 或流程变量；邮件和短信通道尚未接入。' },
                 { option: '接收任务 ReceiveTask', meaning: '暂停流程，等待外部消息继续。', notes: '消息名称必须与外部系统约定；超时策略要有运维监控。' },
                 { option: '手动任务 ManualTask', meaning: '记录系统外线下工作，不生成待办。', notes: '只用于建模和记录，不能替代需要系统确认的用户任务。' },
                 { option: '业务规则任务 BusinessRuleTask', meaning: '执行 DMN 决策表并映射结果。', notes: '目标环境必须部署同 key 决策表。' },
-                { option: '脚本任务 ScriptTask', meaning: '执行 JavaScript、Groovy 或 Python 脚本处理轻量逻辑。', notes: '脚本引擎支持受运行环境限制；复杂业务应使用服务任务或动作处理器。' },
-                { option: '调用活动 CallActivity', meaning: '调用独立 BPMN 子流程或 CMMN 案例，支持入参、出参和业务 key。', notes: '当前子流程候选列表为界面内置示例，正式使用前必须确认目标定义真实存在。' },
+                { option: '脚本任务 ScriptTask', meaning: '执行 Groovy 脚本处理轻量逻辑。', notes: '发布时转换为平台脚本代理；复杂业务应使用服务任务或动作处理器。' },
+                { option: '调用活动 CallActivity', meaning: '调用独立 BPMN 子流程或 CMMN 案例，支持入参、出参和业务 key。', notes: 'BPMN 候选来自已发布流程并排除当前流程；CMMN 可直接填写已部署案例 key。' },
                 { option: '子流程 SubProcess / 事务 Transaction / 事件子流程', meaning: '在一个流程内封装局部步骤，事务和事件子流程具有更特殊的 BPMN 语义。', notes: '平台无完整专用属性面板时，需要通过 XML 和 Flowable 兼容性验证。' }
               ]
             }
@@ -414,7 +414,7 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: 'Java 类 class', meaning: '填写实现 Flowable JavaDelegate 的完整类名。', notes: '示例 com.workflow.delegate.DemoJavaDelegate；类必须在服务端 classpath。' },
-                { option: '表达式 expression', meaning: '执行表达式，例如 ${demoExpressionService.execute(execution)}。', notes: 'Bean 和方法必须可解析，表达式可直接影响流程变量。' },
+                { option: '表达式 expression', meaning: "执行表达式，例如 ${demoExpressionService.execute('pending')}。", notes: 'Bean 和方法必须可解析；返回值可通过结果变量保存。' },
                 { option: 'Spring Bean delegateExpression', meaning: '填写 Bean 表达式，例如 ${demoServiceTask}。', notes: 'Bean 通常实现 JavaDelegate。' },
                 { option: 'REST 接口 rest', meaning: '由平台扩展执行 HTTP 请求。', notes: '适合外部系统，但同步事务中网络抖动可能阻塞流程。' }
               ]
@@ -448,8 +448,8 @@ export default {
               title: '发送任务',
               columns: fieldColumns,
               rows: [
-                { field: '发送渠道', meaning: '邮件、短信、站内信，可多选。', defaultLimit: '默认 email。', effect: '按所选渠道发送。', publish: '目标环境必须配置渠道服务。' },
-                { field: '接收人', meaning: '具体地址或 ${变量}。', defaultLimit: '可选但实际发送应填写。', effect: '解析消息接收目标。', publish: '多渠道接收人格式可能不同。' },
+                { field: '发送渠道', meaning: '当前仅支持站内信。', defaultLimit: '默认 message。', effect: '写入用户的流程知会收件箱。', publish: '邮件和短信配置会在发布前被拒绝。' },
+                { field: '接收人', meaning: '用户名、用户 ID 或 ${变量}，支持逗号分隔。', defaultLimit: '必填。', effect: '解析为启用状态的系统用户。', publish: '变量解析后为空或用户不存在时不会产生发送记录。' },
                 { field: '消息标题', meaning: '标题模板。', defaultLimit: '可选。', effect: '支持业务标题。', publish: '避免泄露敏感字段。' },
                 { field: '消息内容', meaning: '正文模板，支持 ${processName} 等变量。', defaultLimit: '可选。', effect: '运行时替换变量。', publish: '缺失变量要有可读兜底。' },
                 { field: '消息模板', meaning: '流程提交、审批通过、审批拒绝预置模板 key。', defaultLimit: '可清空。', effect: '由消息服务选择模板。', publish: '模板必须在目标环境存在。' }
@@ -461,7 +461,7 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '消息名称', meaning: '外部系统触发流程继续的消息标识。', defaultLimit: '示例 paymentCallback。', effect: '流程停在节点等待同名消息。', publish: '外部系统必须携带正确实例关联信息。' },
-                { field: '超时设置', meaning: '是否配置等待超时。', defaultLimit: '默认关闭。', effect: '开启后达到时间执行超时处理。', publish: '当前配置属于平台扩展，确认运行监听器已实现。' },
+                { field: '超时设置', meaning: '是否配置等待超时。', defaultLimit: '默认关闭。', effect: '发布时生成中断式定时边界事件。', publish: '依赖 Flowable 定时作业执行器；发布版本中会生成超时处理节点。' },
                 { field: '超时时间 / 单位', meaning: '等待长度。', defaultLimit: '数值最小 1；单位 MINUTE、HOUR、DAY，默认 30 MINUTE。', effect: '决定超时点。', publish: '长时间等待关注定时作业和部署迁移。' },
                 { field: '超时处理', meaning: 'error 抛异常或 continue 继续。', defaultLimit: '默认 error。', effect: '决定未收到消息时流程行为。', publish: 'continue 必须有业务补偿或状态标记。' }
               ]

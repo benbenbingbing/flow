@@ -9,6 +9,8 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.identity.resolver.PersonResolveRequest;
+import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.dto.TaskCcRequest;
 import com.workflow.entity.*;
 import com.workflow.mapper.*;
@@ -53,6 +55,8 @@ public class ProcessCcRuntimeService {
     private final ObjectMapper objectMapper;
     /** 自定义知会人员解析器列表 */
     private final List<CcRecipientResolver> customResolvers;
+    /** 统一人员解析器运行时 */
+    private final PersonResolverRuntimeService personResolverRuntimeService;
 
     /**
      * 人工知会：办理人手动添加知会人员。
@@ -282,12 +286,72 @@ public class ProcessCcRuntimeService {
     /** 调用自定义解析器（按 resolverCode 匹配）解析知会人员 */
     private List<SysUser> resolveCustom(JsonNode rule, CcRuntimeContext context) {
         String resolverCode = rule.path("resolverCode").asText();
+        if (personResolverRuntimeService.supports(
+                resolverCode, PersonResolveUsage.CC)) {
+            Map<String, Object> extraParams = readResolverExtraParams(rule);
+            return resolveDirectUsers(
+                    personResolverRuntimeService.resolveUsernames(
+                            resolverCode,
+                            new PersonResolveRequest(
+                            1,
+                            textVariable(context.variables(), "traceId"),
+                            String.join(":",
+                                    "CC",
+                                    nullSafe(context.processInstanceId()),
+                                    nullSafe(context.nodeId()),
+                                    nullSafe(context.timing()),
+                                    resolverCode),
+                            PersonResolveUsage.CC,
+                            textVariable(context.variables(), "processConfigId"),
+                            context.processDefinitionId(),
+                            context.processInstanceId(),
+                            context.businessKey(),
+                            context.nodeId(),
+                            context.nodeName(),
+                            textVariable(context.variables(), "taskId"),
+                            textVariable(context.variables(), "entityCode"),
+                            firstText(
+                                    context.variables().get("entityDataId"),
+                                    context.businessKey()),
+                            firstText(
+                                    context.variables().get("startUserId"),
+                                    context.variables().get("submitterId"),
+                                    context.variables().get("initiator")),
+                            context.operatorId(),
+                            context.variables(),
+                            mapVariable(context.variables().get("entityData")),
+                            extraParams)));
+        }
+
         CcRecipientResolver resolver = customResolvers.stream()
                 .filter(item -> item.code().equalsIgnoreCase(resolverCode))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("未注册知会人员解析器: " + resolverCode));
-        Map<String, Object> parameters = objectMapper.convertValue(rule.path("params"), Map.class);
+        Map<String, Object> parameters = readResolverExtraParams(rule);
         return resolveDirectUsers(resolver.resolve(context, parameters));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readResolverExtraParams(JsonNode rule) {
+        JsonNode extraParams = rule.path("extraParams");
+        if (!extraParams.isObject()) {
+            extraParams = rule.path("params");
+        }
+        if (!extraParams.isObject()) {
+            return Map.of();
+        }
+        return objectMapper.convertValue(extraParams, Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mapVariable(Object value) {
+        return value instanceof Map<?, ?> map
+                ? new LinkedHashMap<>((Map<String, Object>) map)
+                : Map.of();
+    }
+
+    private String textVariable(Map<String, Object> variables, String key) {
+        return firstText(variables.get(key));
     }
 
     /**

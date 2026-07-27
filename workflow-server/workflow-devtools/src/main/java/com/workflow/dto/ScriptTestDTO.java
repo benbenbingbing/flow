@@ -10,7 +10,7 @@ import java.util.Map;
 public class ScriptTestDTO {
     
     /**
-     * 脚本类型：javascript、groovy、python
+     * 脚本类型：当前仅支持 groovy
      */
     private String scriptFormat;
     

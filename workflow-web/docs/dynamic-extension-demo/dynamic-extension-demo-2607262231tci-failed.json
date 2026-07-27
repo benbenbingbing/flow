@@ -1,0 +1,127 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "demo_extension_flow_2607262231tci",
+  "processName": "Demo扩展验证流程2607262231tci",
+  "entityCode": "demo_extension_entity_2607262231tci",
+  "entityName": "Demo扩展验证实体2607262231tci",
+  "extensions": {
+    "listCell": "DemoRiskProgressCell",
+    "customList": "DemoProjectCardList",
+    "customForm": "DemoProjectForm"
+  },
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "id": "1",
+        "username": "admin"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2081507822490959873",
+        "entityCode": "demo_extension_entity_2607262231tci",
+        "fields": [
+          {
+            "id": "2081507822495154178",
+            "code": "name",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822499348482",
+            "code": "code",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822499348483",
+            "code": "status",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822503542786",
+            "code": "processInstanceId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822503542787",
+            "code": "processStartTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081507822507737090",
+            "code": "processEndTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081507822507737091",
+            "code": "submitterId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822511931393",
+            "code": "submitterName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822516125697",
+            "code": "deptId",
+            "type": "REFERENCE"
+          },
+          {
+            "id": "2081507822520320002",
+            "code": "dataNo",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822532902913",
+            "code": "projectName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822520320003",
+            "code": "submitTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081507822524514305",
+            "code": "currentTaskId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822528708610",
+            "code": "currentTaskName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822528708611",
+            "code": "currentTaskAssignee",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822537097218",
+            "code": "ownerName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081507822537097219",
+            "code": "budget",
+            "type": "DECIMAL"
+          },
+          {
+            "id": "2081507822541291521",
+            "code": "riskScore",
+            "type": "INTEGER"
+          },
+          {
+            "id": "2081507822541291522",
+            "code": "description",
+            "type": "TEXT"
+          }
+        ]
+      }
+    }
+  ],
+  "result": "FAIL",
+  "error": "Error: POST /entity-form failed: HTTP 400, body={\"code\":400,\"message\":\"自定义表单组件必须锁定实现版本和配置快照版本\",\"errorCode\":null,\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-dynamic-extension-demo.mjs:50:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-dynamic-extension-demo.mjs:185:16)"
+}

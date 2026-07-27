@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const apiBase = 'http://localhost:8080/api'
+const apiBase = process.env.API_BASE || process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const testUsername = process.env.TEST_USERNAME || 'admin'
+const testPassword = process.env.TEST_PASSWORD || 'admin'
 const entityCode = 'codex_flow_e2e'
 const processKey = 'codex-flow-e2e'
 const outputDir = path.resolve('docs/real-workflow-e2e')
@@ -62,11 +64,11 @@ function buildBpmnXml() {
     <bpmn:startEvent id="StartEvent_Config" name="提交申请">
       <bpmn:outgoing>Flow_Start_Review</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id="Task_ConfigReview" name="配置校验审批" flowable:assignee="admin">
+    <bpmn:userTask id="Task_ConfigReview" name="配置校验审批" flowable:assignee="${testUsername}">
       <bpmn:incoming>Flow_Start_Review</bpmn:incoming>
       <bpmn:outgoing>Flow_Review_Finance</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id="Task_ConfigFinance" name="财务复核审批" flowable:assignee="admin">
+    <bpmn:userTask id="Task_ConfigFinance" name="财务复核审批" flowable:assignee="${testUsername}">
       <bpmn:incoming>Flow_Review_Finance</bpmn:incoming>
       <bpmn:outgoing>Flow_Finance_End</bpmn:outgoing>
     </bpmn:userTask>
@@ -128,7 +130,7 @@ function buildBpmnXml() {
 
 const login = await request('/auth/login', {
   method: 'POST',
-  body: JSON.stringify({ username: 'admin', password: 'admin' })
+  body: JSON.stringify({ username: testUsername, password: testPassword })
 })
 token = login.token
 
@@ -177,9 +179,9 @@ await request(`/entity-status/save-list/${entityCode}`, {
 })
 
 const bpmnXml = buildBpmnXml()
-let process = await findOrNull(`/process/key/${processKey}`)
-if (!process) {
-  process = await request('/process', {
+let workflowProcess = await findOrNull(`/process/key/${processKey}`)
+if (!workflowProcess) {
+  workflowProcess = await request('/process', {
     method: 'POST',
     body: JSON.stringify({
       processKey,
@@ -190,10 +192,10 @@ if (!process) {
     })
   })
 } else {
-  process = await request(`/process/${\1}/update`, {
-    method: \'POST\',
+  workflowProcess = await request(`/process/${workflowProcess.id}/update`, {
+    method: 'POST',
     body: JSON.stringify({
-      ...process,
+      ...workflowProcess,
       processName: 'Codex真实流程闭环',
       description: '验证节点名称、审批人、状态映射和流程历史',
       category: 'E2E',
@@ -202,24 +204,24 @@ if (!process) {
   })
 }
 
-entity = await request(`/entity/${\1}/workflow-binding/update`, {
-    method: \'POST\',
-  body: JSON.stringify({ processDefinitionId: process.id })
+entity = await request(`/entity/${entity.id}/workflow-binding/update`, {
+  method: 'POST',
+  body: JSON.stringify({ processDefinitionId: workflowProcess.id })
 })
-process = await request(`/process/${process.id}/publish`, {
+workflowProcess = await request(`/process/${workflowProcess.id}/publish`, {
   method: 'POST',
   body: JSON.stringify({ versionDescription: `真实流程闭环 ${runId}` })
 })
 
-const nodes = await request(`/process/${process.id}/nodes`)
+const nodes = await request(`/process/${workflowProcess.id}/nodes`)
 const reviewNode = nodes.find(node => node.nodeId === 'Task_ConfigReview')
 const financeNode = nodes.find(node => node.nodeId === 'Task_ConfigFinance')
 assert.equal(reviewNode?.nodeName, '配置校验审批')
-assert.equal(reviewNode?.assignees?.[0]?.assigneeValue, 'admin')
+assert.equal(reviewNode?.assignees?.[0]?.assigneeValue, testUsername)
 assert.equal(financeNode?.nodeName, '财务复核审批')
-assert.equal(financeNode?.assignees?.[0]?.assigneeValue, 'admin')
+assert.equal(financeNode?.assignees?.[0]?.assigneeValue, testUsername)
 
-const mappings = await request(`/entity-flow-status/list/${process.id}`)
+const mappings = await request(`/process-entity-status-mappings/process/${workflowProcess.id}`)
 assert.equal(mappings.find(item => item.sequenceFlowId === 'Flow_Review_Finance')?.entityStatusCode, 'FINANCE_REVIEW')
 assert.equal(mappings.find(item => item.sequenceFlowId === 'Flow_Finance_End')?.entityStatusCode, 'APPROVED')
 
@@ -241,7 +243,7 @@ const created = await request('/entity-data', {
 assert.ok(created.id)
 assert.ok(created.processInstanceId)
 assert.equal(created.currentTaskName, '配置校验审批')
-assert.equal(created.currentTaskAssignee, 'admin')
+assert.equal(created.currentTaskAssignee, testUsername)
 assert.equal(created.status, 'IN_REVIEW')
 
 const firstTask = await waitFor(async () => {
@@ -250,7 +252,7 @@ const firstTask = await waitFor(async () => {
 }, '未生成第一节点待办')
 
 assert.equal(firstTask.taskName, '配置校验审批')
-assert.equal(firstTask.assignee, 'admin')
+assert.equal(firstTask.assignee, testUsername)
 
 await request('/process-task/complete', {
   method: 'POST',
@@ -267,7 +269,7 @@ const afterFirstApproval = await waitFor(async () => {
   return detail.currentTaskName === '财务复核审批' ? detail : null
 }, '流程未进入第二节点')
 
-assert.equal(afterFirstApproval.currentTaskAssignee, 'admin')
+assert.equal(afterFirstApproval.currentTaskAssignee, testUsername)
 assert.equal(afterFirstApproval.status, 'FINANCE_REVIEW')
 
 const secondTask = await waitFor(async () => {
@@ -310,9 +312,9 @@ assert.ok(history.some(item => item.taskName === '财务复核审批' && item.co
 const result = {
   runId,
   process: {
-    id: process.id,
+    id: workflowProcess.id,
     processKey,
-    version: process.version,
+    version: workflowProcess.version,
     configuredNodes: nodes,
     statusMappings: mappings
   },

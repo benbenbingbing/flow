@@ -1,6 +1,7 @@
 package com.workflow.controller;
 
 import com.workflow.common.Result;
+import com.workflow.config.FileStorageProperties;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
@@ -32,6 +33,8 @@ public class FileController {
 
     /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
+    /** 当前文件存储配置 */
+    private final FileStorageProperties storageProperties;
 
     /**
      * 上传文件
@@ -128,8 +131,9 @@ public class FileController {
             }
 
             // 本地存储模式下直接读取文件
-            File file = new File("./uploads", filename);
-            if (!isFileInsideDirectory(file, "./uploads")) {
+            String uploadPath = storageProperties.getLocal().getPath();
+            File file = new File(uploadPath, filename);
+            if (!isFileInsideDirectory(file, uploadPath)) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 return;
             }

@@ -103,6 +103,7 @@ import { useUserStore } from '@/stores/user'
 import { executeFormInitializer } from '@/utils/formInitializer'
 import { useProcessDetail } from '@/composables/useProcessDetail'
 import {
+  applyRuntimeFieldDefaults,
   createFormDataSourceRuntime,
   getFieldKey,
   isRuntimeFieldVisible,
@@ -240,16 +241,9 @@ const resetForm = () => {
   
   const fields = props.entityFields.filter((f: any) => !f.isSystem)
   fields.forEach((field: any) => {
-    if (field.defaultValue) {
-      try {
-        formData.data[field.fieldCode] = JSON.parse(field.defaultValue)
-      } catch {
-        formData.data[field.fieldCode] = field.defaultValue
-      }
-    } else {
-      formData.data[field.fieldCode] = ''
-    }
+    formData.data[field.fieldCode] = ''
   })
+  applyRuntimeFieldDefaults(formData.data, props.defaultForm, fields)
 }
 
 // 新增

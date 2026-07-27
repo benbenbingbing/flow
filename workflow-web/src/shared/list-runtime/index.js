@@ -19,12 +19,28 @@ export function parseDataSourceConfig(dataSourceConfig) {
   }
 }
 
+export function toRuntimeFieldKey(fieldCode = '') {
+  return String(fieldCode).replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase())
+}
+
+function getContainerValue(container, fieldCode) {
+  if (!container || typeof container !== 'object') return undefined
+  if (fieldCode in container) return container[fieldCode]
+  const runtimeKey = toRuntimeFieldKey(fieldCode)
+  return runtimeKey !== fieldCode && runtimeKey in container
+    ? container[runtimeKey]
+    : undefined
+}
+
 export function getCellValue(row, field, fallback = '') {
   const fieldCode = field?.fieldCode
   if (!fieldCode) return fallback
-  if (row?.extData && fieldCode in row.extData) return row.extData[fieldCode]
-  if (row?.data && fieldCode in row.data) return row.data[fieldCode]
-  if (row && fieldCode in row) return row[fieldCode]
+  const extValue = getContainerValue(row?.extData, fieldCode)
+  if (extValue !== undefined) return extValue
+  const dataValue = getContainerValue(row?.data, fieldCode)
+  if (dataValue !== undefined) return dataValue
+  const rowValue = getContainerValue(row, fieldCode)
+  if (rowValue !== undefined) return rowValue
   return fallback
 }
 
@@ -59,13 +75,7 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
   const fieldCode = field?.fieldCode
   if (!fieldCode) return '-'
 
-  // 获取字段原始值：自定义字段优先从 row.data 读取，系统字段从 row 顶层读取
-  let value
-  if (row?.data && fieldCode in row.data) {
-    value = row.data[fieldCode]
-  } else if (row && fieldCode in row) {
-    value = row[fieldCode]
-  }
+  const value = getCellValue(row, field, undefined)
   if (value === null || value === undefined) return '-'
 
   const fieldType = (field.fieldType || '').toUpperCase()
@@ -113,6 +123,19 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
     return option?.label || value
   }
 
+  if (fieldType === 'DATE') {
+    return String(value).slice(0, 10) || '-'
+  }
+  if (['DATETIME', 'TIMESTAMP'].includes(fieldType)) {
+    return formatDateValue(value)
+  }
+
+  if (['FILE', 'IMAGE'].includes(fieldType)) {
+    const values = normalizeFileValues(value)
+    const names = values.map(getFileDisplayName).filter(Boolean)
+    return names.join(', ') || '-'
+  }
+
   // 子表单
   if (['SUB_FORM', 'SUB_FORM_LIST'].includes(fieldType)) {
     return Array.isArray(value) && value.length > 0 ? `${value.length} 行` : '-'
@@ -124,4 +147,27 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
   }
 
   return value ?? '-'
+}
+
+function normalizeFileValues(value) {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') {
+    return Object.values(value).flatMap(item => Array.isArray(item) ? item : [item])
+  }
+  if (typeof value !== 'string') return value == null ? [] : [value]
+  try {
+    const parsed = JSON.parse(value)
+    return normalizeFileValues(parsed)
+  } catch {
+    return value ? [value] : []
+  }
+}
+
+function getFileDisplayName(item) {
+  if (!item) return ''
+  if (typeof item === 'object') {
+    return item.name || item.originalName || getFileDisplayName(item.url || item.path || item.fileUrl)
+  }
+  const parts = String(item).split(/[\\/]/)
+  return parts[parts.length - 1] || ''
 }

@@ -3,6 +3,8 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 const baseUrl = process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const testUsername = process.env.TEST_USERNAME || 'admin'
+const testPassword = process.env.TEST_PASSWORD || 'admin'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
 const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
 const processKey = `cf_${suffix}`
@@ -48,7 +50,7 @@ function bpmnXml() {
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="http://flowable.org/bpmn" id="Definitions_${processKey}" targetNamespace="http://workflow.codex/test">
   <process id="${processKey}" name="${processName}" isExecutable="true">
     <startEvent id="StartEvent_1" name="开始"><outgoing>Flow_1</outgoing></startEvent>
-    <userTask id="Task_Admin_Review" name="Codex管理员审批" flowable:candidateUsers="admin"><incoming>Flow_1</incoming><outgoing>Flow_2</outgoing></userTask>
+    <userTask id="Task_Admin_Review" name="Codex管理员审批" flowable:candidateUsers="${testUsername}"><incoming>Flow_1</incoming><outgoing>Flow_2</outgoing></userTask>
     <endEvent id="EndEvent_1" name="结束"><incoming>Flow_2</incoming></endEvent>
     <sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_Admin_Review" />
     <sequenceFlow id="Flow_2" sourceRef="Task_Admin_Review" targetRef="EndEvent_1" />
@@ -66,29 +68,39 @@ function bpmnXml() {
 }
 
 async function main() {
-  const login = await api('POST', '/auth/login', { username: 'admin', password: 'admin' })
+  const login = await api('POST', '/auth/login', {
+    username: testUsername,
+    password: testPassword
+  })
   token = login.token
   record('login', { user: login.username, id: login.id })
 
-  const process = await api('POST', '/process', {
+  const workflowProcess = await api('POST', '/process', {
     processKey,
     processName,
     description: 'Codex真实闭环测试流程：开始 -> 管理员审批 -> 结束',
     category: 'codex-test',
     bpmnXml: bpmnXml()
   })
-  record('createProcess', { id: process.id, processKey: process.processKey, status: process.status })
+  record('createProcess', {
+    id: workflowProcess.id,
+    processKey: workflowProcess.processKey,
+    status: workflowProcess.status
+  })
 
-  const published = await api('POST', `/process/${process.id}/publish`, { versionDescription: 'Codex真实闭环测试发布' })
+  const published = await api('POST', `/process/${workflowProcess.id}/publish`, { versionDescription: 'Codex真实闭环测试发布' })
   record('publishProcess', { id: published.id, processKey: published.processKey, status: published.status, version: published.version })
   assert.equal(published.status, 'PUBLISHED')
 
-  const nodes = await api('GET', `/process/${process.id}/nodes`)
+  const nodes = await api('GET', `/process/${workflowProcess.id}/nodes`)
   record('publishedNodes', nodes)
   const reviewNode = nodes.find(n => n.nodeId === 'Task_Admin_Review')
   assert.ok(reviewNode, '发布后应解析出审批节点')
   assert.equal(reviewNode.nodeName, 'Codex管理员审批')
-  assert.ok(reviewNode.assignees?.some(a => a.assigneeValue === 'admin'), '审批节点候选人配置应生效为 admin')
+  assert.ok(
+    reviewNode.assignees?.some(a => a.assigneeValue === testUsername),
+    `审批节点候选人配置应生效为 ${testUsername}`
+  )
 
   const entity = await api('POST', '/entity', {
     entityCode,
@@ -105,8 +117,8 @@ async function main() {
   record('publishEntity', { id: entityPublished.id, status: entityPublished.status })
   assert.equal(entityPublished.status, 'PUBLISHED')
 
-  const boundEntity = await api('PUT', `/entity/${entity.id}/workflow-binding`, {
-    processDefinitionId: process.id
+  const boundEntity = await api('POST', `/entity/${entity.id}/workflow-binding/update`, {
+    processDefinitionId: workflowProcess.id
   })
   record('bindProcess', {
     entityId: boundEntity.id,
@@ -115,7 +127,7 @@ async function main() {
     lifecycleMode: boundEntity.lifecycleMode,
     workflowBindingStatus: boundEntity.workflowBindingStatus
   })
-  assert.equal(boundEntity.processDefinitionId, process.id)
+  assert.equal(boundEntity.processDefinitionId, workflowProcess.id)
   assert.equal(boundEntity.lifecycleMode, 'WORKFLOW')
 
   const dataName = `Codex闭环数据${suffix}`
@@ -156,7 +168,7 @@ async function main() {
   const todoList = Array.isArray(todos) ? todos : (todos.records || todos.list || [])
   const todo = todoList.find(t => t.processInstanceId === saved.processInstanceId || t.businessKey === saved.id)
   record('todoAfterStart', todo)
-  assert.ok(todo, '发起后应生成当前登录用户 admin 的待办')
+  assert.ok(todo, `发起后应生成当前登录用户 ${testUsername} 的待办`)
   assert.equal(todo.taskName, 'Codex管理员审批')
   assert.equal(todo.entityCode, entityCode)
 

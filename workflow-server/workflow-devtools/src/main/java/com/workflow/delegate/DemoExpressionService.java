@@ -6,12 +6,33 @@ import org.springframework.stereotype.Service;
 
 /**
  * 服务任务表达式示例服务
- * 可在 BPMN 表达式中调用，如：${demoExpressionService.execute(execution)}
+ * 可在 BPMN 表达式中调用，如：${demoExpressionService.execute('pending')}
  * 演示如何读取流程变量、设置结果变量，不修改任何业务数据
  */
 @Slf4j
 @Service("demoExpressionService")
 public class DemoExpressionService {
+
+    /**
+     * 执行表达式服务并返回下一状态。
+     *
+     * <p>服务任务 expression 不会自动暴露名为 execution 的表达式变量，因此示例通过
+     * 普通方法参数接收流程变量，并由 Flowable 的 resultVariableName 保存返回值。</p>
+     *
+     * @param status 当前状态
+     * @return 下一状态
+     */
+    public String execute(String status) {
+        String normalizedStatus = status == null || status.isBlank()
+                ? "pending"
+                : status;
+        String nextStatus = "approved".equals(normalizedStatus)
+                ? "completed"
+                : "rejected";
+        log.info("[DemoExpressionService] 表达式执行完成，status={}, nextStatus={}",
+                normalizedStatus, nextStatus);
+        return nextStatus;
+    }
 
     /**
      * 执行表达式服务：根据 status 变量推导下一状态并写回流程变量。

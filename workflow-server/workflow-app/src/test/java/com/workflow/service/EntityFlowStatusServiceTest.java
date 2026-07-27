@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -35,5 +36,26 @@ class EntityFlowStatusServiceTest {
         verify(mapper).insert(captor.capture());
         assertEquals("FINANCE_REVIEW", captor.getValue().getEntityStatus());
         assertEquals("FINANCE_REVIEW", captor.getValue().getEntityStatusCode());
+    }
+
+    @Test
+    void saveStatusMappingsKeepsExistingMappingsWhenInputIsEmpty() {
+        EntityFlowStatusMappingMapper mapper = mock(EntityFlowStatusMappingMapper.class);
+        EntityFlowStatusService service = new EntityFlowStatusService(mapper);
+
+        service.saveStatusMappings("process-1", "flow-1", "expense", List.of());
+
+        verify(mapper, never()).deleteByProcessConfigId("process-1");
+    }
+
+    @Test
+    void replaceStatusMappingsClearsExistingMappingsWhenDesignHasNone() {
+        EntityFlowStatusMappingMapper mapper = mock(EntityFlowStatusMappingMapper.class);
+        EntityFlowStatusService service = new EntityFlowStatusService(mapper);
+
+        service.replaceStatusMappings("process-1", "flow-1", "expense", List.of());
+
+        verify(mapper).deleteByProcessConfigId("process-1");
+        verify(mapper, never()).insert(org.mockito.ArgumentMatchers.any(EntityFlowStatusMapping.class));
     }
 }

@@ -3,6 +3,24 @@
  * 支持显隐控制、值联动、选项联动、计算字段
  */
 
+export function formatLinkageConditionLiteral(field, value) {
+  const fieldType = String(field?.fieldType || '').toUpperCase()
+  const componentType = String(field?.componentType || '').toLowerCase()
+  const normalized = String(value ?? '').trim().toLowerCase()
+
+  if (fieldType === 'BOOLEAN' || componentType === 'switch') {
+    if (['true', '1'].includes(normalized)) return 'true'
+    if (['false', '0'].includes(normalized)) return 'false'
+  }
+  return JSON.stringify(String(value ?? ''))
+}
+
+export function normalizeLegacyBooleanComparisons(expression) {
+  return String(expression || '')
+    .replace(/\b(true|false)\s*(==|!=)\s*(['"])(true|false)\3/gi, '$1 $2 $4')
+    .replace(/(['"])(true|false)\1\s*(==|!=)\s*\b(true|false)\b/gi, '$2 $3 $4')
+}
+
 export const LinkageEngine = {
   /**
    * 从字段中提取联动规则（兼容多种存储方式）
@@ -83,6 +101,7 @@ export const LinkageEngine = {
         }
         return value ?? 'null'
       })
+      expr = normalizeLegacyBooleanComparisons(expr)
 
       // 安全评估表达式
       const result = this.safeEvaluate(expr)

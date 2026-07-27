@@ -37,11 +37,26 @@ public class EntityFlowStatusService {
             log.info("新配置为空，保留原有状态映射: processConfigId={}", processConfigId);
             return;
         }
-        
-        // 先删除旧的配置
+
+        replaceStatusMappings(processConfigId, processKey, entityCode, mappings);
+    }
+
+    /**
+     * 以 BPMN 设计稿为准全量替换状态映射。
+     *
+     * <p>与 {@link #saveStatusMappings(String, String, String, List)} 不同，空列表代表设计稿中
+     * 已经删除全部映射，因此必须清除数据库中的旧配置。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void replaceStatusMappings(String processConfigId, String processKey, String entityCode,
+                                      List<EntityFlowStatusMapping> mappings) {
         statusMappingMapper.deleteByProcessConfigId(processConfigId);
-        
-        // 保存新的配置
+
+        if (mappings == null || mappings.isEmpty()) {
+            log.info("清空流程状态映射: processConfigId={}", processConfigId);
+            return;
+        }
+
         for (EntityFlowStatusMapping mapping : mappings) {
             mapping.setProcessConfigId(processConfigId);
             mapping.setProcessKey(processKey);
@@ -52,8 +67,8 @@ public class EntityFlowStatusService {
             mapping.setDeleted(0);
             statusMappingMapper.insert(mapping);
         }
-        
-        log.info("保存流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
+
+        log.info("替换流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
     }
     
     /**

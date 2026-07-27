@@ -159,7 +159,7 @@ import {
   getActionCapabilityReason,
   hasButtonPermission
 } from '@/utils/listButtonPermission'
-import { formatDateValue } from '@/shared/list-runtime'
+import { formatDateValue, getCellValue } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
@@ -413,7 +413,7 @@ async function loadRefEntityNames() {
 
   for (const row of dataList.value) {
     for (const field of refFields) {
-      const val = row.data?.[field.fieldCode] ?? row[field.fieldCode]
+      const val = getCellValue(row, field, null)
       if (!val) continue
 
       const entityType = field.refEntityType || field.fieldType || 'CUSTOM'

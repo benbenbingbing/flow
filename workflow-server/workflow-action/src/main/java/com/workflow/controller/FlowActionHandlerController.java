@@ -39,7 +39,7 @@ public class FlowActionHandlerController {
     }
 
     /**
-     * 查询全部处理器配置（含未启用的），仅超级管理员可调用。
+     * 查询全部处理器配置（含未启用的），仅系统管理员可调用。
      *
      * @return 全部处理器选项列表
      */

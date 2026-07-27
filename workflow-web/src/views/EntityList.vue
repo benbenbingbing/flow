@@ -87,56 +87,55 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="390" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleDesign(row)">
-              {{ row.storageMode === 'SYSTEM' ? '查看结构' : '打开设计器' }}
-            </el-button>
-            <el-dropdown v-if="row.storageMode !== 'SYSTEM'">
-              <el-button link type="info" aria-label="更多实体操作">更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-if="row.status !== 'PUBLISHED'"
-                    @click="handlePublish(row)"
-                  >
-                    发布实体
-                  </el-dropdown-item>
-                  <el-dropdown-item v-else @click="handleRepublish(row)">
-                    重新发布实体
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="handleListConfig(row)">配置列表</el-dropdown-item>
-                  <el-dropdown-item @click="handleForm(row)">配置表单</el-dropdown-item>
-                  <el-dropdown-item @click="handleStatusConfig(row)">
-                    <el-icon><SetUp /></el-icon>状态配置
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="row.lifecycleMode === 'STANDALONE'"
-                    @click="handleUpgradeWorkflow(row)"
-                  >
-                    <el-icon><Link /></el-icon>升级为流程实体
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="row.lifecycleMode === 'WORKFLOW'"
-                    @click="handleBindWorkflow(row)"
-                  >
-                    <el-icon><Link /></el-icon>{{ row.processDefinitionId ? '更换绑定流程' : '绑定流程' }}
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="row.lifecycleMode === 'WORKFLOW' && row.processDefinitionId"
-                    @click="handleUnbindWorkflow(row)"
-                  >
-                    <el-icon><Link /></el-icon>解除流程绑定
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="handleViewHistory(row)">
-                    <el-icon><Clock /></el-icon>版本历史
-                  </el-dropdown-item>
-                  <el-dropdown-item divided @click="handleDelete(row)">
-                    <el-icon><Delete /></el-icon>删除
-                  </el-dropdown-item>
-                </el-dropdown-menu>
+            <div class="table-row-actions">
+              <el-button link type="primary" @click="handleDesign(row)">
+                {{ row.storageMode === 'SYSTEM' ? '查看' : '设计' }}
+              </el-button>
+              <template v-if="row.storageMode !== 'SYSTEM'">
+                <el-button
+                  v-if="row.status !== 'PUBLISHED'"
+                  link
+                  type="success"
+                  @click="handlePublish(row)"
+                >
+                  发布
+                </el-button>
+                <el-button v-else link type="success" @click="handleRepublish(row)">
+                  重新发布
+                </el-button>
+                <el-button link type="primary" @click="handleListConfig(row)">列表</el-button>
+                <el-button link type="primary" @click="handleForm(row)">表单</el-button>
+                <el-button link type="primary" @click="handleStatusConfig(row)">状态</el-button>
+                <el-button
+                  v-if="row.lifecycleMode === 'STANDALONE'"
+                  link
+                  type="primary"
+                  @click="handleUpgradeWorkflow(row)"
+                >
+                  升级
+                </el-button>
+                <el-button
+                  v-if="row.lifecycleMode === 'WORKFLOW'"
+                  link
+                  type="primary"
+                  @click="handleBindWorkflow(row)"
+                >
+                  {{ row.processDefinitionId ? '换绑' : '绑定' }}
+                </el-button>
+                <el-button
+                  v-if="row.lifecycleMode === 'WORKFLOW' && row.processDefinitionId"
+                  link
+                  type="warning"
+                  @click="handleUnbindWorkflow(row)"
+                >
+                  解绑
+                </el-button>
+                <el-button link type="info" @click="handleViewHistory(row)">历史</el-button>
+                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
               </template>
-            </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -556,7 +555,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Rank, View, ArrowRight, ArrowDown, SetUp, Link, Clock, Delete, Search } from '@element-plus/icons-vue'
+import { Plus, Rank, View, ArrowRight, ArrowDown, Search } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'

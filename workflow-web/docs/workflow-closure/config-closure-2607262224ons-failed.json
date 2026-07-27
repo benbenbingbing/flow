@@ -1,0 +1,170 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "cfg_2607262224ons",
+  "entityCode": "cfg_entity_2607262224ons",
+  "steps": [
+    {
+      "name": "login:admin",
+      "data": {
+        "id": "1",
+        "username": "admin",
+        "nickname": "超级管理员"
+      }
+    },
+    {
+      "name": "createApproverRole",
+      "data": {
+        "id": "2081505859435053057",
+        "roleCode": "cfg_approver_2607262224ons"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l1_2607262224ons",
+      "data": {
+        "id": "2081505859791568898",
+        "username": "cfg_l1_2607262224ons",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "createApprover:cfg_l2_2607262224ons",
+      "data": {
+        "id": "2081505860500406274",
+        "username": "cfg_l2_2607262224ons",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "login:cfg_l1_2607262224ons",
+      "data": {
+        "id": "2081505859791568898",
+        "username": "cfg_l1_2607262224ons",
+        "nickname": "Codex一级审批人"
+      }
+    },
+    {
+      "name": "activateApprover:cfg_l1_2607262224ons",
+      "data": {
+        "username": "cfg_l1_2607262224ons",
+        "passwordResetRequired": false
+      }
+    },
+    {
+      "name": "login:cfg_l2_2607262224ons",
+      "data": {
+        "id": "2081505860500406274",
+        "username": "cfg_l2_2607262224ons",
+        "nickname": "Codex二级审批人"
+      }
+    },
+    {
+      "name": "activateApprover:cfg_l2_2607262224ons",
+      "data": {
+        "username": "cfg_l2_2607262224ons",
+        "passwordResetRequired": false
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2081505863755186177",
+        "processKey": "cfg_2607262224ons",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2081505863755186177",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2081505864015233025",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2081505864019427330",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2081505864019427331",
+          "nodeId": "Task_Level1_Review",
+          "nodeName": "一级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2081505864023621634",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l1_2607262224ons",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2081505864023621635",
+          "nodeId": "Task_Level2_Review",
+          "nodeName": "二级审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2081505864027815939",
+              "assigneeType": "USER",
+              "assigneeValue": "cfg_l2_2607262224ons",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2081505864141062145",
+        "entityCode": "cfg_entity_2607262224ons"
+      }
+    },
+    {
+      "name": "publishAndBindEntity",
+      "data": {
+        "entityId": "2081505864141062145",
+        "processDefinitionId": "2081505863755186177",
+        "lifecycleMode": "WORKFLOW",
+        "workflowBindingStatus": "ACTIVE"
+      }
+    },
+    {
+      "name": "grantApproverPermission",
+      "data": {
+        "roleId": "2081505859435053057",
+        "menuId": "2081505864665350146",
+        "permission": "entity:cfg_entity_2607262224ons:approve"
+      }
+    }
+  ],
+  "error": "Error: PUT /process-entity-status-mappings/process/2081505863755186177 failed: HTTP 200, body={\"code\":500,\"message\":\"系统繁忙，请稍后重试\",\"errorCode\":null,\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-config-closure.mjs:48:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-config-closure.mjs:288:3)"
+}

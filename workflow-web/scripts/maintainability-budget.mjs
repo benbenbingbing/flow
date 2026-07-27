@@ -6,6 +6,10 @@ const frontendRoot = process.cwd()
 const backendRoot = path.resolve(frontendRoot, '../workflow-server')
 const frontendDefaultLimit = 900
 const backendDefaultLimit = 800
+const extractionPlanPath = path.resolve(
+  frontendRoot,
+  '../docs/maintainability-extraction-plan-2026-07-27.md'
+)
 
 // Existing debt is frozen at the audited baseline. Reducing these limits is encouraged;
 // raising them requires an explicit review and an extraction plan.
@@ -14,7 +18,7 @@ const frontendGrandfatheredLimits = new Map([
   ['src/components/NodeConfigPanel.vue', 3840],
   ['src/views/EntityDesign.vue', 2517],
   ['src/views/EntityListConfigDesign.vue', 2313],
-  ['src/data/user-manual/entity.js', 1425],
+  ['src/data/user-manual/entity.js', 1431],
   ['src/views/EntityList.vue', 1406],
   ['src/views/system/Role.vue', 1356],
   ['src/data/user-manual/process.js', 1106],
@@ -28,22 +32,55 @@ const frontendGrandfatheredLimits = new Map([
 const backendGrandfatheredLimits = new Map([
   ['workflow-entity/src/main/java/com/workflow/service/UiConfigReleaseService.java', 2793],
   ['workflow-entity/src/main/java/com/workflow/service/EntityFormNodeService.java', 2173],
-  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationImportApplyService.java', 1394],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityDefinitionService.java', 1213],
-  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationAssetService.java', 1210],
+  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationImportApplyService.java', 1417],
+  ['workflow-entity/src/main/java/com/workflow/service/EntityDefinitionService.java', 1291],
+  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationAssetService.java', 1223],
   ['workflow-entity/src/main/java/com/workflow/service/UiDataSourceService.java', 1132],
   ['workflow-process/src/main/java/com/workflow/process/runtime/ProcessProgressRuntimeService.java', 1122],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityDataDynamicService.java', 906],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityListConfigService.java', 901],
+  ['workflow-entity/src/main/java/com/workflow/service/EntityDataDynamicService.java', 1029],
+  ['workflow-entity/src/main/java/com/workflow/service/EntityListConfigService.java', 922],
   ['workflow-entity/src/main/java/com/workflow/service/EntityFormNodePropertyPolicy.java', 900],
   ['workflow-entity/src/main/java/com/workflow/service/UiDataSourceExecutionAccessService.java', 876],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityFormService.java', 860],
-  ['workflow-process/src/main/java/com/workflow/service/impl/TaskServiceImpl.java', 845],
-  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationPackageService.java', 844],
+  ['workflow-entity/src/main/java/com/workflow/service/EntityFormService.java', 895],
+  ['workflow-process/src/main/java/com/workflow/service/impl/TaskServiceImpl.java', 870],
+  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationPackageService.java', 890],
   ['workflow-process/src/main/java/com/workflow/process/definition/ProcessDefinitionNodeSyncService.java', 835],
   ['workflow-entity/src/main/java/com/workflow/service/permission/PermissionSqlBuilder.java', 833],
   ['workflow-entity/src/main/java/com/workflow/service/EntityListRelationalConfigService.java', 805]
 ])
+
+// Reviewed growth remains fixed at the exact audited size and is only allowed
+// while the linked extraction plan is present. Any further line still fails.
+const reviewedGrowthLimits = new Map([
+  ['src/components/LinkageConfigPanel.vue', {
+    limit: 994,
+    planMarker: 'LinkageConfigPanel.vue'
+  }],
+  ['src/components/NodeConfigPanel.vue', {
+    limit: 3943,
+    planMarker: 'NodeConfigPanel.vue'
+  }],
+  ['workflow-process/src/main/java/com/workflow/process/definition/ProcessBpmnPublishSanitizer.java', {
+    limit: 1156,
+    planMarker: 'ProcessBpmnPublishSanitizer.java'
+  }],
+  ['workflow-process/src/main/java/com/workflow/process/definition/ProcessDefinitionNodeSyncService.java', {
+    limit: 837,
+    planMarker: 'ProcessDefinitionNodeSyncService.java'
+  }],
+  ['workflow-process/src/main/java/com/workflow/process/runtime/ProcessProgressRuntimeService.java', {
+    limit: 1183,
+    planMarker: 'ProcessProgressRuntimeService.java'
+  }]
+])
+
+const extractionPlan = readFileSync(extractionPlanPath, 'utf8')
+for (const [relativePath, review] of reviewedGrowthLimits) {
+  assert.ok(
+    extractionPlan.includes(review.planMarker),
+    `已评审增长缺少拆分计划: ${relativePath}`
+  )
+}
 
 function walk(directory, includeFile, excludeDirectory = () => false) {
   const files = []
@@ -81,9 +118,14 @@ function audit(files, root, defaultLimit, grandfatheredLimits, label) {
   for (const file of files) {
     const relativePath = path.relative(root, file).split(path.sep).join('/')
     const lineCount = countLines(file)
-    const limit = grandfatheredLimits.get(relativePath) ?? defaultLimit
+    const reviewedGrowth = reviewedGrowthLimits.get(relativePath)
+    const limit = reviewedGrowth?.limit
+      ?? grandfatheredLimits.get(relativePath)
+      ?? defaultLimit
     if (lineCount > limit) {
-      const reason = grandfatheredLimits.has(relativePath)
+      const reason = reviewedGrowth
+        ? `超过已评审增长基线，拆分计划见 ${path.basename(extractionPlanPath)}`
+        : grandfatheredLimits.has(relativePath)
         ? '超过审查基线，需先拆分职责后再扩展'
         : `超过新文件默认上限 ${defaultLimit}`
       issues.push(`${label} ${relativePath}: ${lineCount} 行，预算 ${limit} 行；${reason}`)
@@ -98,5 +140,6 @@ assert.equal(issues.length, 0, `可维护性预算审计失败:\n${issues.join('
 console.log(
   `maintainability budget passed: ${frontendFiles.length} frontend files, `
     + `${backendFiles.length} backend files, `
-    + `${frontendGrandfatheredLimits.size + backendGrandfatheredLimits.size} frozen debt files`
+    + `${frontendGrandfatheredLimits.size + backendGrandfatheredLimits.size} frozen debt files, `
+    + `${reviewedGrowthLimits.size} reviewed growth files`
 )

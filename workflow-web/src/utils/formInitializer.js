@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import { entityDataApi } from '@/api/entity'
-import { hasFormInitializer, getFormInitializer } from './formInitializerRegistry'
+import { hasFormInitializer, getFormInitializer } from './formInitializerRegistry.js'
 
 /**
  * 根据 form.initConfig 执行初始化，返回要回填到表单的数据
@@ -17,6 +17,15 @@ export async function executeFormInitializer(initConfig, context = {}) {
       console.warn('[formInitializer] initConfig 不是有效 JSON:', initConfig)
       return {}
     }
+  }
+
+  if (
+    !initConfig
+    || typeof initConfig !== 'object'
+    || Array.isArray(initConfig)
+    || !String(initConfig.type || '').trim()
+  ) {
+    return {}
   }
 
   const type = initConfig.type

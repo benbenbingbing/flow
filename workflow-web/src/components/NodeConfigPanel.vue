@@ -1,40 +1,9 @@
 <template>
   <div class="node-config-panel">
-    <!-- 节点类型标识 -->
-    <div class="node-type-header">
-      <el-tag :type="getNodeTypeTag(element?.type)" size="large">
-        {{ nodeTypeText }}
-      </el-tag>
-      <el-popover placement="bottom" trigger="hover" :width="280">
-        <template #reference>
-          <el-icon class="node-info-icon"><InfoFilled /></el-icon>
-        </template>
-        <div class="node-type-info">
-          <div class="info-title">{{ nodeTypeDesc.title }}</div>
-          <div class="info-desc">{{ nodeTypeDesc.desc }}</div>
-          <div class="info-scene">
-            <el-tag size="small" type="warning">场景</el-tag>
-            {{ nodeTypeDesc.scene }}
-          </div>
-        </div>
-      </el-popover>
-    </div>
-    
     <div v-if="!element" class="no-selection">
       <el-empty description="请点击流程节点进行配置" />
     </div>
 
-    <div v-if="element && nodeCommonSummaryItems.length" class="node-config-summary">
-      <div
-        v-for="item in nodeCommonSummaryItems"
-        :key="item.label"
-        class="node-config-summary__item"
-      >
-        <span>{{ item.label }}</span>
-        <strong :title="item.value">{{ item.value }}</strong>
-      </div>
-    </div>
-    
     <el-tabs v-if="element" v-model="activeTab" class="config-tabs">
       <!-- ========== 基本信息（所有节点都有） ========== -->
       <el-tab-pane name="basic">
@@ -300,55 +269,26 @@
           
           <!-- 接口动态 -->
           <template v-if="assigneeForm.assigneeType === 'interface'">
-            <el-form-item label="接口类型">
-              <el-radio-group v-model="assigneeForm.interfaceType">
-                <el-radio-button value="spring">Spring Bean</el-radio-button>
-                <el-radio-button value="rest">REST接口</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            
-            <el-form-item label="接口名称">
-              <el-input 
-                v-model="assigneeForm.interfaceName" 
-                :placeholder="assigneeForm.interfaceType === 'spring' ? '如：userSelectorService' : '如：https://api.example.com/getAssignee'"
-                @blur="updateAssigneeInterface"
+            <el-form-item label="人员接口" required>
+              <ExtensionCapabilityPicker
+                v-model="assigneeForm.resolverCode"
+                capability-type="PERSON_RESOLVER"
+                placeholder="输入名称或编码搜索办理人接口"
+                :context-params="assigneeResolverContext"
+                :current-option="assigneeResolverCurrentOption"
+                @selected="onAssigneeResolverSelected"
               />
+              <div class="form-tip">平台固定传入流程、节点、实体和操作人上下文</div>
             </el-form-item>
-            
-            <el-form-item label="方法名" v-if="assigneeForm.interfaceType === 'spring'">
-              <el-input 
-                v-model="assigneeForm.interfaceMethod" 
-                placeholder="如：selectAssignee"
-                @blur="updateAssigneeInterface"
-              />
-              <div class="form-tip">默认返回用户ID</div>
-            </el-form-item>
-            
-            <el-form-item label="请求方式" v-if="assigneeForm.interfaceType === 'rest'">
-              <el-radio-group v-model="assigneeForm.restMethod">
-                <el-radio-button value="GET">GET</el-radio-button>
-                <el-radio-button value="POST">POST</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            
-            <el-form-item label="请求参数">
-              <el-input 
-                v-model="assigneeForm.interfaceParams" 
+
+            <el-form-item label="extraParams">
+              <el-input
+                v-model="assigneeForm.extraParamsText"
                 type="textarea"
-                :rows="3"
-                placeholder='{"processId": "${processId}", "taskId": "${taskId}"}'
-                @blur="updateAssigneeInterface"
+                :rows="4"
+                placeholder='JSON 对象，例如 {"level": 2}'
               />
-              <div class="form-tip">传递给接口的参数，支持流程变量</div>
-            </el-form-item>
-            
-            <el-form-item label="返回映射">
-              <el-input 
-                v-model="assigneeForm.resultMapping" 
-                placeholder="如：assignee、assigneeList、groupList"
-                @blur="updateAssigneeInterface"
-              />
-              <div class="form-tip">接口返回结果映射到的流程变量名</div>
+              <div class="form-tip">仅填写此人员接口声明的扩展参数</div>
             </el-form-item>
           </template>
           </template>
@@ -386,7 +326,7 @@
                 <el-form-item label="人员来源">
                   <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
                     <el-radio-button value="variable">直接选择</el-radio-button>
-                    <el-radio-button value="interface">接口动态</el-radio-button>
+                    <el-radio-button value="interface">人员接口</el-radio-button>
                   </el-radio-group>
                 </el-form-item>
               </SettingsSection>
@@ -461,14 +401,26 @@
                   </el-form-item>
                 </template>
 
-                <el-form-item v-else label="接口配置">
-                  <el-input
-                    v-model="assigneeForm.collectionInterface"
-                    placeholder="如：approverSelector.getApprovers"
-                    @blur="updateMultiInstance"
-                  />
-                  <div class="form-tip">返回用户ID列表的接口</div>
-                </el-form-item>
+                <template v-else>
+                  <el-form-item label="人员接口" required>
+                    <ExtensionCapabilityPicker
+                      v-model="assigneeForm.collectionResolverCode"
+                      capability-type="PERSON_RESOLVER"
+                      placeholder="输入名称或编码搜索会签人员接口"
+                      :context-params="multiInstanceResolverContext"
+                      :current-option="collectionResolverCurrentOption"
+                      @selected="onCollectionResolverSelected"
+                    />
+                  </el-form-item>
+                  <el-form-item label="extraParams">
+                    <el-input
+                      v-model="assigneeForm.collectionExtraParamsText"
+                      type="textarea"
+                      :rows="3"
+                      placeholder='JSON 对象，例如 {"departmentLevel": 2}'
+                    />
+                  </el-form-item>
+                </template>
               </SettingsSection>
 
               <SettingsSection
@@ -581,7 +533,6 @@
               <el-select v-model="restForm.contentType" @change="updateRestConfig">
                 <el-option label="application/json" value="application/json" />
                 <el-option label="application/x-www-form-urlencoded" value="application/x-www-form-urlencoded" />
-                <el-option label="multipart/form-data" value="multipart/form-data" />
                 <el-option label="text/xml" value="text/xml" />
               </el-select>
             </el-form-item>
@@ -688,16 +639,15 @@
         <el-form :model="sendForm" label-width="100px" size="small">
           <el-form-item label="发送渠道">
             <el-checkbox-group v-model="sendForm.channels">
-              <el-checkbox label="email">邮件</el-checkbox>
-              <el-checkbox label="sms">短信</el-checkbox>
               <el-checkbox label="message">站内信</el-checkbox>
             </el-checkbox-group>
+            <div class="form-tip">当前运行时仅支持站内信</div>
           </el-form-item>
           
           <el-form-item label="接收人">
             <el-input 
               v-model="sendForm.to" 
-              placeholder="如：${approverEmail} 或具体邮箱"
+              placeholder="用户名、用户ID或变量，如：${approverUsername}"
             />
           </el-form-item>
           
@@ -871,10 +821,9 @@
         <el-form :model="scriptForm" label-width="100px" size="small">
           <el-form-item label="脚本类型">
             <el-radio-group v-model="scriptForm.scriptFormat">
-              <el-radio-button value="javascript">JavaScript</el-radio-button>
               <el-radio-button value="groovy">Groovy</el-radio-button>
-              <el-radio-button value="python">Python</el-radio-button>
             </el-radio-group>
+            <div class="form-tip">当前运行时仅支持 Groovy</div>
           </el-form-item>
           
           <el-form-item>
@@ -959,6 +908,9 @@
               v-model="callForm.calledElement" 
               placeholder="选择要调用的子流程"
               filterable
+              allow-create
+              default-first-option
+              :loading="subProcessesLoading"
               style="width: 100%"
             >
               <el-option 
@@ -1310,37 +1262,56 @@
                 <el-tag size="small" type="info">{{ ccForm.recipientRules.length }} 条规则</el-tag>
               </template>
 
-              <div v-for="(rule, index) in ccForm.recipientRules" :key="index" class="cc-rule-row">
-                <el-select v-model="rule.type" style="width:150px" @change="rule.values = []">
-                  <el-option label="固定用户" value="USER" />
-                  <el-option label="角色成员" value="ROLE" />
-                  <el-option label="用户组成员" value="GROUP" />
-                  <el-option label="组织/部门成员" value="DEPARTMENT" />
-                  <el-option label="流程发起人" value="STARTER" />
-                  <el-option label="当前办理人" value="CURRENT_ASSIGNEE" />
-                  <el-option label="历史办理人" value="HISTORY_APPROVERS" />
-                  <el-option label="实体字段用户" value="ENTITY_FIELD" />
-                  <el-option label="受控解析器" value="RESOLVER" />
-                </el-select>
-                <el-select v-if="rule.type === 'USER'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户">
-                  <el-option v-for="item in userOptions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-                <el-select v-else-if="rule.type === 'ROLE'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择角色">
-                  <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-                <el-select v-else-if="rule.type === 'GROUP'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户组">
-                  <el-option v-for="item in groupOptions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-                <el-select v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择组织或部门">
-                  <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-                <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
-                <el-input v-else-if="rule.type === 'RESOLVER'" v-model="rule.resolverCode" style="flex:1" placeholder="已注册解析器编码" />
-                <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
-                <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
-                <el-button type="danger" link aria-label="删除收件人规则" title="删除收件人规则" :disabled="ccForm.recipientRules.length <= 1" @click="removeCcRule(index)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
+              <div v-for="(rule, index) in ccForm.recipientRules" :key="index" class="cc-rule-block">
+                <div class="cc-rule-row">
+                  <el-select v-model="rule.type" style="width:150px" @change="resetCcRuleValue(rule)">
+                    <el-option label="固定用户" value="USER" />
+                    <el-option label="角色成员" value="ROLE" />
+                    <el-option label="用户组成员" value="GROUP" />
+                    <el-option label="组织/部门成员" value="DEPARTMENT" />
+                    <el-option label="流程发起人" value="STARTER" />
+                    <el-option label="当前办理人" value="CURRENT_ASSIGNEE" />
+                    <el-option label="历史办理人" value="HISTORY_APPROVERS" />
+                    <el-option label="实体字段用户" value="ENTITY_FIELD" />
+                    <el-option label="受控解析器" value="RESOLVER" />
+                  </el-select>
+                  <el-select v-if="rule.type === 'USER'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户">
+                    <el-option v-for="item in userOptions" :key="item.value" :label="item.label" :value="item.value" />
+                  </el-select>
+                  <el-select v-else-if="rule.type === 'ROLE'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择角色">
+                    <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+                  </el-select>
+                  <el-select v-else-if="rule.type === 'GROUP'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户组">
+                    <el-option v-for="item in groupOptions" :key="item.value" :label="item.label" :value="item.value" />
+                  </el-select>
+                  <el-select v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择组织或部门">
+                    <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
+                  </el-select>
+                  <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
+                  <ExtensionCapabilityPicker
+                    v-else-if="rule.type === 'RESOLVER'"
+                    v-model="rule.resolverCode"
+                    capability-type="PERSON_RESOLVER"
+                    placeholder="输入名称或编码搜索知会人员接口"
+                    :context-params="ccResolverContext"
+                    :current-option="ccResolverCurrentOption(rule)"
+                    style="flex:1"
+                    @selected="option => onCcResolverSelected(rule, option)"
+                  />
+                  <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
+                  <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
+                  <el-button type="danger" link aria-label="删除收件人规则" title="删除收件人规则" :disabled="ccForm.recipientRules.length <= 1" @click="removeCcRule(index)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+                <el-input
+                  v-if="rule.type === 'RESOLVER'"
+                  v-model="rule.extraParamsText"
+                  type="textarea"
+                  :rows="2"
+                  class="cc-extra-params"
+                  placeholder='extraParams JSON，例如 {"level": 2}'
+                />
               </div>
               <el-button type="primary" link @click="addCcRule"><el-icon><Plus /></el-icon>添加收件人规则</el-button>
               <el-form-item label="知会说明">
@@ -1439,14 +1410,21 @@
 <script setup>
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Delete, QuestionFilled, VideoPlay, InfoFilled, View, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, Delete, QuestionFilled, VideoPlay, View, WarningFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
+import { processApi } from '@/api/process'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { buildAssigneeConfig, getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
+import {
+  buildAssigneeConfig,
+  getNodeTypeDescription,
+  getProcessConditionFieldCode,
+  getProcessConditionFieldType
+} from '@/shared/process-config'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
+import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import {
   buildFlowConditionExpression,
@@ -1481,48 +1459,25 @@ const isScriptTask = computed(() => props.element?.type === 'bpmn:ScriptTask')
 
 // 脚本类型对应的占位符提示
 const scriptPlaceholder = computed(() => {
-  const type = scriptForm.value.scriptFormat
-  if (type === 'groovy') {
-    return '// Groovy: 输入脚本代码，支持 ?: Elvis 运算符'
-  }
-  if (type === 'python') {
-    return '# Python: 输入脚本代码，注意缩进和库限制'
-  }
-  return '// JavaScript: 输入脚本代码，避免使用 var 声明变量'
+  return '// Groovy: 输入脚本代码，支持 ?: Elvis 运算符'
 })
 
 // 问号 tooltip 提示文本
 const scriptHintText = computed(() => {
-  const type = scriptForm.value.scriptFormat
-  if (type === 'groovy') {
-    return 'Groovy: 支持 ?: Elvis 运算符，最后一行表达式自动返回给 resultVariable，可直接使用 execution.setVariable()'
-  }
-  if (type === 'python') {
-    return 'Python: Flowable 内嵌 Python 支持有限，避免使用复杂第三方库，resultVariable 捕获最后表达式结果'
-  }
-  return 'Nashorn JS: 避免使用 var 声明变量（var 为局部变量不会返回），直接赋值如 result = a + b; 可被 resultVariable 捕获'
+  return 'Groovy: 支持 ?: Elvis 运算符，最后一行表达式返回给结果变量，也可直接调用 execution.setVariable()'
 })
 
 // 各脚本类型的默认示例代码（有区分度且保证能执行）
 const SCRIPT_EXAMPLES = {
-  javascript: `// Nashorn JS: var 声明的变量不会返回给 resultVariable
-price = execution.getVariable("price") || 100;
-qty = execution.getVariable("qty") || 2;
-price * qty;`,
   groovy: `// Groovy: 支持 def 声明和 ?: Elvis 运算符
 def price = execution.getVariable("price") ?: 100
 def qty = execution.getVariable("qty") ?: 2
-price * qty`,
-  python: `# Python: 注意缩进，resultVariable 捕获最后赋值
-price = execution.getVariable("price") or 100
-qty = execution.getVariable("qty") or 2
-result = price * qty`
+price * qty`
 }
 
 // 插入示例代码到脚本编辑器
 function insertScriptExample() {
-  const type = scriptForm.value.scriptFormat
-  scriptForm.value.script = SCRIPT_EXAMPLES[type] || SCRIPT_EXAMPLES.javascript
+  scriptForm.value.script = SCRIPT_EXAMPLES.groovy
 }
 
 // 测试脚本代码
@@ -1598,10 +1553,6 @@ const nodeTypeDesc = computed(() => {
   return getNodeTypeDescription(props.element?.type)
 })
 
-const nodeTypeText = computed(() => {
-  return getNodeTypeText(props.element?.type)
-})
-
 function getNamePlaceholder() {
   if (isUserTask.value) return '如：经理审批'
   if (isServiceTask.value) return '如：自动审核'
@@ -1617,7 +1568,7 @@ function getNamePlaceholder() {
 const servicePlaceholder = computed(() => {
   const map = {
     class: 'com.workflow.delegate.DemoJavaDelegate',
-    expression: '${demoExpressionService.execute(execution)}',
+    expression: "${demoExpressionService.execute('pending')}",
     delegateExpression: '${demoServiceTask}',
     rest: 'http://localhost:8080/api/demo/hello?name=${userId}'
   }
@@ -1627,13 +1578,15 @@ const servicePlaceholder = computed(() => {
 // 服务任务各实现类型的默认示例
 const SERVICE_EXAMPLES = {
   class: 'com.workflow.delegate.DemoJavaDelegate',
-  expression: '${demoExpressionService.execute(execution)}',
+  expression: "${demoExpressionService.execute('pending')}",
   delegateExpression: '${demoServiceTask}',
   rest: 'http://localhost:8080/api/demo/hello?name=${userId}'
 }
 
 // ========== 表单数据 ==========
 const basicForm = ref({ id: '', name: '', documentation: '' })
+const assigneeResolverContext = { usage: 'ASSIGNEE' }
+const multiInstanceResolverContext = { usage: 'MULTI_INSTANCE' }
 const assigneeForm = ref({
   assignee: '',
   candidateUsers: '',
@@ -1656,14 +1609,40 @@ const assigneeForm = ref({
   multiInstanceRoleCodes: '',
   // 新增字段
   assigneeType: 'user', // user/group/role/expression/interface
-  interfaceType: 'spring', // spring/rest
+  resolverCode: '',
+  resolverDisplayName: '',
+  extraParams: {},
+  extraParamsText: '{}',
+  interfaceType: 'resolver',
   interfaceName: '',
   interfaceMethod: 'selectAssignee',
   interfaceParams: '',
   restMethod: 'POST',
   resultMapping: 'assignee',
   collectionSource: 'variable', // variable/interface
-  collectionInterface: ''
+  collectionInterface: '',
+  collectionResolverCode: '',
+  collectionResolverDisplayName: '',
+  collectionExtraParams: {},
+  collectionExtraParamsText: '{}'
+})
+const assigneeResolverCurrentOption = computed(() => {
+  if (!assigneeForm.value.resolverCode) return null
+  return {
+    key: assigneeForm.value.resolverCode,
+    displayName:
+      assigneeForm.value.resolverDisplayName
+      || assigneeForm.value.resolverCode
+  }
+})
+const collectionResolverCurrentOption = computed(() => {
+  if (!assigneeForm.value.collectionResolverCode) return null
+  return {
+    key: assigneeForm.value.collectionResolverCode,
+    displayName:
+      assigneeForm.value.collectionResolverDisplayName
+      || assigneeForm.value.collectionResolverCode
+  }
 })
 const serviceForm = ref({ implementationType: 'class', implementation: '', resultVariable: '' })
 
@@ -1680,17 +1659,17 @@ const restForm = ref({
   errorHandling: 'throw',
   resultMapping: ''
 })
-const sendForm = ref({ channels: ['email'], to: '', subject: '', content: '', templateKey: '' })
+const sendForm = ref({ channels: ['message'], to: '', subject: '', content: '', templateKey: '' })
 const receiveForm = ref({ messageRef: '', hasTimeout: false, timeout: 30, timeoutUnit: 'MINUTE', timeoutAction: 'error' })
 const manualForm = ref({ description: '', completionCriteria: '', responsible: '', estimatedHours: 0 })
 const ruleForm = ref({ decisionRef: '', inputVariables: '', resultVariable: '', mapDecisionResult: true })
-const scriptForm = ref({ scriptFormat: 'javascript', script: '', resultVariable: '', autoStoreVariables: false })
+const scriptForm = ref({ scriptFormat: 'groovy', script: '', resultVariable: '', autoStoreVariables: false })
 
 // 监听脚本类型切换，自动联动脚本内容
 watch(() => scriptForm.value.scriptFormat, (newType, oldType) => {
   if (!newType || newType === oldType) return
   // 切换类型时直接替换为对应语言的示例代码
-  scriptForm.value.script = SCRIPT_EXAMPLES[newType] || SCRIPT_EXAMPLES.javascript
+  scriptForm.value.script = SCRIPT_EXAMPLES[newType] || SCRIPT_EXAMPLES.groovy
 })
 
 const scriptTestLoading = ref(false)
@@ -1736,13 +1715,16 @@ const formConfig = ref({
 })
 const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '', skipNode: false })
 const organizationOptions = ref([])
+const ccResolverContext = { usage: 'CC' }
 const createCcRule = () => ({
   type: 'USER',
   values: [],
   includeChildren: false,
   fieldCode: '',
   resolverCode: '',
-  params: {}
+  extraParams: {},
+  extraParamsText: '{}',
+  resolverDisplayName: ''
 })
 const ccForm = ref({
   enabled: false,
@@ -1801,6 +1783,56 @@ function removeCcRule(index) {
   }
 }
 
+function resetCcRuleValue(rule) {
+  rule.values = []
+  rule.fieldCode = ''
+  rule.resolverCode = ''
+  rule.extraParams = {}
+  rule.extraParamsText = '{}'
+  rule.resolverDisplayName = ''
+}
+
+function ccResolverCurrentOption(rule) {
+  if (!rule.resolverCode) return null
+  return {
+    key: rule.resolverCode,
+    displayName: rule.resolverDisplayName || rule.resolverCode
+  }
+}
+
+function onCcResolverSelected(rule, option) {
+  rule.resolverDisplayName = option?.displayName || ''
+}
+
+function normalizeCcRulesForSave() {
+  return ccForm.value.recipientRules.map((rule, index) => {
+    let extraParams = {}
+    if (rule.type === 'RESOLVER') {
+      if (!rule.resolverCode) {
+        throw new Error(`第 ${index + 1} 条知会规则请选择人员接口`)
+      }
+      try {
+        extraParams = rule.extraParamsText?.trim()
+          ? JSON.parse(rule.extraParamsText)
+          : {}
+      } catch {
+        throw new Error(`第 ${index + 1} 条知会规则的 extraParams 不是合法 JSON`)
+      }
+      if (!extraParams || Array.isArray(extraParams) || typeof extraParams !== 'object') {
+        throw new Error(`第 ${index + 1} 条知会规则的 extraParams 必须是 JSON 对象`)
+      }
+    }
+    return {
+      type: rule.type,
+      values: Array.isArray(rule.values) ? rule.values : [],
+      includeChildren: rule.includeChildren === true,
+      fieldCode: rule.fieldCode || '',
+      resolverCode: rule.resolverCode || '',
+      extraParams
+    }
+  })
+}
+
 function ccRuleStaticText(type) {
   return {
     STARTER: '流程发起人',
@@ -1835,119 +1867,6 @@ const ccNaturalSummary = computed(() => {
 // 实体表单选项
 const entityFormOptions = ref([])
 const selectedFormFields = ref([])
-const selectedForm = computed(() => {
-  const formId = getPrimaryEntityFormId()
-  if (!formId) return null
-  return entityFormOptions.value.find(f => f.id === formId)
-})
-
-const assigneeTypeLabels = {
-  user: '固定人员',
-  group: '用户组',
-  role: '角色',
-  expression: '表达式',
-  interface: '接口动态'
-}
-
-function currentNodeFormSummary() {
-  if (formConfig.value.formSource === 'none') return '无表单'
-  if (formConfig.value.formSource === 'custom') {
-    return formConfig.value.formKey || '自定义表单未填写'
-  }
-  const selectedIds = getSelectedEntityFormIds()
-  if (!selectedIds.length) return '未选择'
-  const primaryName = selectedForm.value?.formName || selectedIds[0]
-  return selectedIds.length > 1
-    ? `${primaryName} +${selectedIds.length - 1}`
-    : primaryName
-}
-
-const nodeCommonSummaryItems = computed(() => {
-  const items = []
-  if (isUserTask.value) {
-    items.push({
-      label: '办理',
-      value: assigneeForm.value.isMultiInstance
-        ? (assigneeForm.value.multiInstanceType === 'sequential' ? '串行多人办理' : '并行多人办理')
-        : (assigneeTypeLabels[assigneeForm.value.assigneeType] || '未配置')
-    })
-    items.push({ label: '表单', value: currentNodeFormSummary() })
-    items.push({
-      label: '审批',
-      value: approvalForm.value.enabled
-        ? `${approvalForm.value.options?.length || 0} 个操作`
-        : '未启用'
-    })
-    items.push({
-      label: '知会',
-      value: ccForm.value.enabled
-        ? `${ccForm.value.recipientRules?.length || 0} 条规则`
-        : '未启用'
-    })
-  } else if (isStartEvent.value) {
-    items.push({ label: '表单', value: currentNodeFormSummary() })
-    items.push({ label: '节点', value: basicForm.value.name || '开始事件' })
-  } else if (isSequenceFlow.value) {
-    items.push({ label: '状态', value: selectedStatusName.value || '不变更' })
-    items.push({
-      label: '条件',
-      value: conditionForm.value.type === 'default'
-        ? '默认流'
-        : (conditionForm.value.type === 'expression' ? '条件流' : '无条件')
-    })
-  } else if (isServiceTask.value) {
-    const implementationLabels = {
-      class: 'Java 类',
-      expression: '表达式',
-      delegateExpression: 'Spring Bean',
-      rest: `${restForm.value.method || 'POST'} REST`
-    }
-    items.push({
-      label: '实现',
-      value: implementationLabels[serviceForm.value.implementationType] || '未配置'
-    })
-    items.push({
-      label: '结果',
-      value: serviceForm.value.implementationType === 'rest'
-        ? (restForm.value.resultMapping ? '已映射' : '未映射')
-        : (serviceForm.value.resultVariable || '未保存变量')
-    })
-    items.push({
-      label: '知会',
-      value: ccForm.value.enabled ? `${ccForm.value.recipientRules?.length || 0} 条规则` : '未启用'
-    })
-  } else if (isCallActivity.value) {
-    items.push({ label: '子流程', value: callForm.value.calledElement || '未选择' })
-    items.push({ label: '调用', value: callForm.value.callActivityType === 'cmmn' ? 'CMMN 案例' : 'BPMN 子流程' })
-    items.push({
-      label: '参数',
-      value: callForm.value.inputParameters || callForm.value.outputParameters ? '已配置' : '未配置'
-    })
-  } else if (isSendTask.value) {
-    items.push({ label: '渠道', value: sendForm.value.channels?.join('、') || '未选择' })
-    items.push({ label: '模板', value: sendForm.value.templateKey || '未选择' })
-    items.push({
-      label: '知会',
-      value: ccForm.value.enabled ? `${ccForm.value.recipientRules?.length || 0} 条规则` : '未启用'
-    })
-  } else if (isReceiveTask.value) {
-    items.push({ label: '消息', value: receiveForm.value.messageRef || '未填写' })
-    items.push({ label: '超时', value: receiveForm.value.hasTimeout ? `${receiveForm.value.timeout} ${receiveForm.value.timeoutUnit}` : '未启用' })
-  } else if (isManualTask.value) {
-    items.push({ label: '负责人', value: manualForm.value.responsible || '未填写' })
-    items.push({ label: '工时', value: manualForm.value.estimatedHours ? `${manualForm.value.estimatedHours} 小时` : '未填写' })
-  } else if (isBusinessRuleTask.value) {
-    items.push({ label: '决策表', value: ruleForm.value.decisionRef || '未填写' })
-    items.push({ label: '结果变量', value: ruleForm.value.resultVariable || '未填写' })
-  } else if (isScriptTask.value) {
-    items.push({ label: '语言', value: scriptForm.value.scriptFormat || 'javascript' })
-    items.push({ label: '结果变量', value: scriptForm.value.resultVariable || '未填写' })
-  } else {
-    items.push({ label: '节点', value: basicForm.value.name || nodeTypeText.value })
-  }
-  return items.filter(item => item.value).slice(0, 4)
-})
-
 function normalizeEntityFormIds(value) {
   const ids = Array.isArray(value) ? value : (value ? [value] : [])
   return [...new Set(ids.map(id => String(id || '').trim()).filter(Boolean))]
@@ -2149,6 +2068,9 @@ async function loadFormFields(formId) {
   }
 }
 
+const subProcesses = ref([])
+const subProcessesLoading = ref(false)
+
 // 在组件挂载时加载数据
 onMounted(() => {
   loadUsers()
@@ -2156,6 +2078,7 @@ onMounted(() => {
   loadRoles()
   loadOrganizations()
   loadEntityFields()
+  loadSubProcesses()
 })
 
 // 监听 processId 变化，当流程ID传入后加载实体表单
@@ -2164,6 +2087,7 @@ watch(() => props.processId, (newProcessId) => {
     console.log('processId 变化，重新加载实体表单:', newProcessId)
     loadEntityForms()
     loadEntityFields()
+    loadSubProcesses()
   }
 }, { immediate: true })
 
@@ -2186,12 +2110,24 @@ watch(() => roleOptions.value.length, () => {
   }
 })
 
-// 子流程列表（模拟）
-const subProcesses = ref([
-  { key: 'seal_process', name: '盖章流程' },
-  { key: 'payment_process', name: '付款流程' },
-  { key: 'contract_subprocess', name: '合同子流程' }
-])
+async function loadSubProcesses() {
+  subProcessesLoading.value = true
+  try {
+    const processes = await processApi.getPublishedList()
+    subProcesses.value = (Array.isArray(processes) ? processes : [])
+      .filter(process => String(process.id || '') !== String(props.processId || ''))
+      .map(process => ({
+        key: process.processKey,
+        name: `${process.processName} (${process.processKey})`
+      }))
+      .filter(process => process.key)
+  } catch (error) {
+    console.error('加载已发布子流程失败:', error)
+    subProcesses.value = []
+  } finally {
+    subProcessesLoading.value = false
+  }
+}
 
 // ========== 监听和初始化 ==========
 watch(() => props.element, (newElement) => {
@@ -2308,14 +2244,38 @@ watch(() => props.element, async (newElement) => {
         
         // 执行人类型和接口配置（从扩展属性）
         assigneeType: assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
-        interfaceType: assigneeConfig.interfaceType || 'rest',
-        interfaceName: assigneeConfig.interfaceName || '',
+        resolverCode: assigneeConfig.resolverCode || assigneeConfig.interfaceName || '',
+        resolverDisplayName: assigneeConfig.resolverDisplayName || '',
+        extraParams: assigneeConfig.extraParams || {},
+        extraParamsText: JSON.stringify(assigneeConfig.extraParams || parseLegacyParams(assigneeConfig.interfaceParams), null, 2),
+        interfaceType: 'resolver',
+        interfaceName: assigneeConfig.resolverCode || assigneeConfig.interfaceName || '',
         interfaceMethod: assigneeConfig.interfaceMethod || '',
         interfaceParams: assigneeConfig.interfaceParams || '',
         restMethod: assigneeConfig.restMethod || 'GET',
         resultMapping: assigneeConfig.resultMapping || '',
         collectionSource: assigneeConfig.collectionSource || multiInstanceConfig.collectionSource || 'interface',
-        collectionInterface: assigneeConfig.collectionInterface || multiInstanceConfig.collectionInterface || ''
+        collectionInterface: assigneeConfig.collectionResolverCode
+          || multiInstanceConfig.collectionResolverCode
+          || assigneeConfig.collectionInterface
+          || multiInstanceConfig.collectionInterface
+          || '',
+        collectionResolverCode: assigneeConfig.collectionResolverCode
+          || multiInstanceConfig.collectionResolverCode
+          || assigneeConfig.collectionInterface
+          || multiInstanceConfig.collectionInterface
+          || '',
+        collectionResolverDisplayName: assigneeConfig.collectionResolverDisplayName || '',
+        collectionExtraParams: assigneeConfig.collectionExtraParams
+          || multiInstanceConfig.collectionExtraParams
+          || {},
+        collectionExtraParamsText: JSON.stringify(
+          assigneeConfig.collectionExtraParams
+            || multiInstanceConfig.collectionExtraParams
+            || {},
+          null,
+          2
+        )
       }
       
       // 加载审批配置
@@ -2368,7 +2328,16 @@ watch(() => props.element, async (newElement) => {
             includeOperator: ccConfig.includeOperator === true,
             allowManualCc: ccConfig.allowManualCc !== false,
             recipientRules: Array.isArray(ccConfig.recipientRules) && ccConfig.recipientRules.length
-              ? ccConfig.recipientRules.map(rule => ({ ...createCcRule(), ...rule, values: Array.isArray(rule.values) ? rule.values : [] }))
+              ? ccConfig.recipientRules.map(rule => {
+                  const extraParams = rule.extraParams || rule.params || {}
+                  return {
+                    ...createCcRule(),
+                    ...rule,
+                    values: Array.isArray(rule.values) ? rule.values : [],
+                    extraParams,
+                    extraParamsText: JSON.stringify(extraParams, null, 2)
+                  }
+                })
               : [createCcRule()],
             summary: ccConfig.summary || ''
           }
@@ -2502,7 +2471,7 @@ watch(() => props.element, async (newElement) => {
         loadEntityFields()
       }
     }
-    if (isTask.value || isStartEvent.value) {
+    if (isUserTask.value || isStartEvent.value) {
       // 从扩展属性中读取表单绑定信息
       const entityFormIds = parseEntityFormIds(extProps['entityFormIds'])
       const entityFormId = extProps['entityFormId']
@@ -2709,7 +2678,10 @@ function updateMultiInstance() {
     elementVariable: assigneeForm.value.elementVariable || 'assignee',
     completionCondition: assigneeForm.value.completionCondition,
     collectionSource: assigneeForm.value.collectionSource,
-    collectionInterface: assigneeForm.value.collectionInterface
+    collectionInterface: assigneeForm.value.collectionResolverCode,
+    collectionResolverCode: assigneeForm.value.collectionResolverCode,
+    collectionExtraParams: parseJsonObjectQuietly(
+      assigneeForm.value.collectionExtraParamsText)
   }
   updateExtensionProperty('multiInstanceConfig', JSON.stringify(multiInstanceConfig))
 
@@ -2834,25 +2806,10 @@ async function loadEntityFields() {
 // 获取字段类型
 function getFieldType(fieldName) {
   if (fieldName === 'approved') return 'select'
-  const field = entityFields.value.find(f => f.fieldName === fieldName)
-  if (!field) return 'string'
-  // 映射字段类型
-  const typeMap = {
-    'string': 'string',
-    'text': 'string',
-    'number': 'number',
-    'integer': 'number',
-    'decimal': 'number',
-    'select': 'select',
-    'radio': 'select',
-    'checkbox': 'select',
-    'date': 'date',
-    'datetime': 'date',
-    'boolean': 'boolean',
-    'user': 'string',
-    'dept': 'string'
-  }
-  return typeMap[field.fieldType] || 'string'
+  const field = entityFields.value.find(f =>
+    getProcessConditionFieldCode(f) === fieldName
+    || f.fieldName === fieldName)
+  return getProcessConditionFieldType(field)
 }
 
 function onAsyncChange() {
@@ -2891,6 +2848,12 @@ function onAssigneeTypeChange(type) {
   assigneeForm.value.candidateUserIds = []
   assigneeForm.value.candidateGroupIds = []
   assigneeForm.value.candidateRoleIds = []
+  if (type !== 'interface') {
+    assigneeForm.value.resolverCode = ''
+    assigneeForm.value.resolverDisplayName = ''
+    assigneeForm.value.extraParams = {}
+    assigneeForm.value.extraParamsText = '{}'
+  }
   // 同时清除 BPMN 中旧的执行人属性，避免 XML 残留
   updateProperty('assignee', null)
   updateProperty('candidateUsers', null)
@@ -3056,7 +3019,56 @@ function updateExtensionProperty(name, value) {
 function onCollectionSourceChange() {
   assigneeForm.value.collection = ''
   assigneeForm.value.collectionInterface = ''
+  assigneeForm.value.collectionResolverCode = ''
+  assigneeForm.value.collectionResolverDisplayName = ''
+  assigneeForm.value.collectionExtraParams = {}
+  assigneeForm.value.collectionExtraParamsText = '{}'
   updateMultiInstance()
+}
+
+function onAssigneeResolverSelected(option) {
+  assigneeForm.value.resolverDisplayName = option?.displayName || ''
+  assigneeForm.value.interfaceName = option?.key || ''
+}
+
+function onCollectionResolverSelected(option) {
+  assigneeForm.value.collectionResolverDisplayName =
+    option?.displayName || ''
+  assigneeForm.value.collectionInterface = option?.key || ''
+}
+
+function parseLegacyParams(value) {
+  if (!value) return {}
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && !Array.isArray(parsed) && typeof parsed === 'object'
+      ? parsed
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function parseJsonObject(value, label) {
+  let parsed
+  try {
+    parsed = value?.trim() ? JSON.parse(value) : {}
+  } catch {
+    throw new Error(`${label} 不是合法 JSON`)
+  }
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+    throw new Error(`${label} 必须是 JSON 对象`)
+  }
+  return parsed
+}
+
+function parseJsonObjectQuietly(value) {
+  try {
+    return parseJsonObject(value, 'extraParams')
+  } catch {
+    return {}
+  }
 }
 
 function updateAssignee() {
@@ -3123,17 +3135,17 @@ function updateMultiInstanceUsers() {
 }
 
 function updateAssigneeInterface() {
-  // 将接口配置存储到扩展属性中（使用 flowable:Properties）
+  const extraParams = parseJsonObject(
+    assigneeForm.value.extraParamsText,
+    '办理人接口 extraParams')
+  assigneeForm.value.extraParams = extraParams
+  assigneeForm.value.interfaceName = assigneeForm.value.resolverCode
   const interfaceConfig = {
-    type: assigneeForm.value.assigneeType,
-    interfaceType: assigneeForm.value.interfaceType,
-    interfaceName: assigneeForm.value.interfaceName,
-    interfaceMethod: assigneeForm.value.interfaceMethod,
-    interfaceParams: assigneeForm.value.interfaceParams,
-    restMethod: assigneeForm.value.restMethod,
-    resultMapping: assigneeForm.value.resultMapping
+    type: 'resolver',
+    usage: 'ASSIGNEE',
+    resolverCode: assigneeForm.value.resolverCode,
+    extraParams
   }
-  // 使用 updateExtensionProperty 存储 JSON 字符串
   updateExtensionProperty('assigneeInterface', JSON.stringify(interfaceConfig))
   emit('save')
 }
@@ -3195,6 +3207,30 @@ function saveCurrentTab() {
           return
         }
         const updates = {}
+        if (assigneeForm.value.isMultiInstance) {
+          if (assigneeForm.value.collectionSource === 'interface') {
+            if (!assigneeForm.value.collectionResolverCode) {
+              ElMessage.warning('请选择会签人员接口')
+              return
+            }
+            try {
+              assigneeForm.value.collectionExtraParams = parseJsonObject(
+                assigneeForm.value.collectionExtraParamsText,
+                '会签人员接口 extraParams')
+            } catch (error) {
+              ElMessage.warning(error.message)
+              return
+            }
+          }
+          modeling.updateProperties(toRaw(props.element), {
+            assignee: null,
+            candidateUsers: null,
+            candidateGroups: null
+          })
+          updateAssigneeConfig()
+          updateMultiInstance()
+          break
+        }
         // 统一计算并写入执行人相关 BPMN 属性，不依赖 @change 事件
         if (assigneeForm.value.assigneeType === 'user') {
           const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
@@ -3222,6 +3258,18 @@ function saveCurrentTab() {
           updates.candidateUsers = assigneeForm.value.candidateUsers || null
           updates.candidateGroups = assigneeForm.value.candidateGroups || null
         } else if (assigneeForm.value.assigneeType === 'interface') {
+          if (!assigneeForm.value.resolverCode) {
+            ElMessage.warning('请选择办理人接口')
+            return
+          }
+          try {
+            assigneeForm.value.extraParams = parseJsonObject(
+              assigneeForm.value.extraParamsText,
+              '办理人接口 extraParams')
+          } catch (error) {
+            ElMessage.warning(error.message)
+            return
+          }
           updates.assignee = null
           updates.candidateUsers = null
           updates.candidateGroups = null
@@ -3229,36 +3277,108 @@ function saveCurrentTab() {
         }
         modeling.updateProperties(toRaw(props.element), updates)
         updateAssigneeConfig()
-        if (assigneeForm.value.isMultiInstance) {
-          updateMultiInstance()
-        }
         break
       }
       case 'service':
         if (serviceForm.value.implementationType === 'rest') {
+          if (!restForm.value.url?.trim()) {
+            ElMessage.warning('请填写 REST 请求 URL')
+            return
+          }
+          if (restForm.value.contentType === 'multipart/form-data') {
+            ElMessage.warning('REST 服务任务暂不支持 multipart/form-data')
+            return
+          }
+          try {
+            parseJsonObject(restForm.value.headers, 'REST 请求头')
+            parseJsonObject(restForm.value.queryParams, 'REST 查询参数')
+            parseJsonObject(restForm.value.resultMapping, 'REST 结果映射')
+          } catch (error) {
+            ElMessage.warning(error.message)
+            return
+          }
           updateRestConfig()
         } else {
+          if (!serviceForm.value.implementation?.trim()) {
+            ElMessage.warning('请填写服务任务实现')
+            return
+          }
           updateServiceImplementation()
           updateExtensionProperty('serviceResultVariable', serviceForm.value.resultVariable)
         }
         break
       case 'send':
+        if (!sendForm.value.channels?.length) {
+          ElMessage.warning('请至少选择一个发送渠道')
+          return
+        }
+        if (sendForm.value.channels.some(channel => channel !== 'message')) {
+          ElMessage.warning('发送任务当前仅支持站内信渠道')
+          return
+        }
+        if (!sendForm.value.to?.trim()) {
+          ElMessage.warning('请填写发送任务接收人')
+          return
+        }
         // 发送任务配置保存到扩展属性
         updateExtensionProperty('sendConfig', JSON.stringify(sendForm.value))
         break
       case 'receive':
+        if (receiveForm.value.hasTimeout) {
+          if (!Number.isInteger(receiveForm.value.timeout) || receiveForm.value.timeout < 1) {
+            ElMessage.warning('接收任务超时时间必须是正整数')
+            return
+          }
+          if (!['MINUTE', 'HOUR', 'DAY'].includes(receiveForm.value.timeoutUnit)) {
+            ElMessage.warning('请选择有效的接收任务超时单位')
+            return
+          }
+          if (!['error', 'continue'].includes(receiveForm.value.timeoutAction)) {
+            ElMessage.warning('请选择有效的接收任务超时处理方式')
+            return
+          }
+        }
         updateExtensionProperty('receiveConfig', JSON.stringify(receiveForm.value))
         break
       case 'manual':
         updateExtensionProperty('manualConfig', JSON.stringify(manualForm.value))
         break
       case 'rule':
+        if (!ruleForm.value.decisionRef?.trim()) {
+          ElMessage.warning('请填写业务规则任务的决策表 Key')
+          return
+        }
+        try {
+          parseJsonObject(ruleForm.value.inputVariables, '业务规则输入变量')
+        } catch (error) {
+          ElMessage.warning(error.message)
+          return
+        }
         updateExtensionProperty('ruleConfig', JSON.stringify(ruleForm.value))
         break
       case 'script':
+        if (scriptForm.value.scriptFormat !== 'groovy') {
+          ElMessage.warning('脚本任务当前仅支持 Groovy')
+          return
+        }
+        if (!scriptForm.value.script?.trim()) {
+          ElMessage.warning('请填写脚本内容')
+          return
+        }
         updateExtensionProperty('scriptConfig', JSON.stringify(scriptForm.value))
         break
       case 'call':
+        if (!callForm.value.calledElement?.trim()) {
+          ElMessage.warning('请选择或填写子流程 Key')
+          return
+        }
+        try {
+          parseJsonObject(callForm.value.inputParameters, '调用活动输入参数')
+          parseJsonObject(callForm.value.outputParameters, '调用活动输出参数')
+        } catch (error) {
+          ElMessage.warning(error.message)
+          return
+        }
         updateExtensionProperty('callConfig', JSON.stringify(callForm.value))
         break
       case 'condition':
@@ -3307,28 +3427,19 @@ function saveCurrentTab() {
           ElMessage.warning('请至少配置一个知会收件人规则')
           return
         }
+        let recipientRules
+        try {
+          recipientRules = normalizeCcRulesForSave()
+        } catch (error) {
+          ElMessage.warning(error.message)
+          return
+        }
         const config = {
           ...ccForm.value,
+          recipientRules,
           summary: ccForm.value.summary || ccNaturalSummary.value
         }
         updateExtensionProperty('ccConfig', JSON.stringify(config))
-        if (ccForm.value.enabled && (isServiceTask.value || isSendTask.value)) {
-          const modeling = getModeling()
-          if (modeling) {
-            modeling.updateProperties(toRaw(props.element), {
-              class: undefined,
-              expression: undefined,
-              delegateExpression: '${ccNotificationDelegate}'
-            })
-          }
-          if (isServiceTask.value) {
-            serviceForm.value = {
-              implementationType: 'delegateExpression',
-              implementation: '${ccNotificationDelegate}',
-              resultVariable: ''
-            }
-          }
-        }
         break
       }
       case 'advanced':
@@ -3579,43 +3690,19 @@ async function saveStatusConfig() {
 </script>
 
 <style scoped>
-.node-config-panel { height: 100%; display: flex; flex-direction: column; }
-.node-type-header { display: flex; align-items: center; gap: 10px; padding: 10px 15px; border-bottom: 1px solid #e4e7ed; background-color: #f5f7fa; }
-.node-info-icon { color: #909399; cursor: pointer; font-size: 16px; }
-.node-info-icon:hover { color: #409eff; }
+.node-config-panel { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; }
-.node-config-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid #ebeef5;
-  background: #fff;
-}
-.node-config-summary__item {
-  min-width: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: #f5f7fa;
-}
-.node-config-summary__item span,
-.node-config-summary__item strong {
-  display: block;
+.config-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.node-config-summary__item span {
-  margin-bottom: 2px;
-  color: #909399;
-  font-size: 11px;
+.config-tabs :deep(.el-tabs__header) {
+  flex-shrink: 0;
+  margin-bottom: 0;
 }
-.node-config-summary__item strong {
-  color: #303133;
-  font-size: 13px;
-  font-weight: 600;
-}
-.config-tabs { flex: 1; }
 .config-tabs :deep(.el-tabs__nav-scroll) {
   overflow-x: auto;
   scrollbar-width: thin;
@@ -3626,7 +3713,16 @@ async function saveStatusConfig() {
 .config-tabs :deep(.el-tabs__item) {
   padding: 0 8px;
 }
-.config-tabs :deep(.el-tabs__content) { padding: 15px; height: calc(100% - 40px); overflow-y: auto; }
+.config-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  padding: 15px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
 :deep(.el-divider__text) { font-size: 12px; color: #909399; }
 .unit { margin-left: 8px; color: #606266; }
@@ -3814,11 +3910,18 @@ async function saveStatusConfig() {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
   padding: 10px;
   border: 1px solid #e4e7ed;
   border-radius: 4px;
   background: #f8f9fb;
+}
+
+.cc-rule-block {
+  margin-bottom: 10px;
+}
+
+.cc-extra-params {
+  margin-top: 6px;
 }
 
 .script-test-result .result-vars {

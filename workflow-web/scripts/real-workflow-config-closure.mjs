@@ -3,6 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const baseUrl = process.env.API_BASE || process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const adminUsername = process.env.TEST_USERNAME || 'admin'
+const adminPassword = process.env.TEST_PASSWORD || 'admin'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
 const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
 const processKey = `cfg_${suffix}`
@@ -62,8 +64,22 @@ async function createApprover(username, nickname, roleId) {
     status: '0',
     roleIds: [roleId]
   })
-  await api('PUT', `/system/user/${user.id}/reset-password`)
+  const reset = await api('POST', `/system/user/${user.id}/reset-password`)
+  assert.ok(reset?.temporaryPassword, `重置 ${username} 密码后应返回一次性临时密码`)
   record(`createApprover:${username}`, { id: user.id, username, nickname })
+  return reset.temporaryPassword
+}
+
+async function activateApprover(username, temporaryPassword, newPassword) {
+  await login(username, temporaryPassword)
+  await api('POST', '/auth/change-password', {
+    currentPassword: temporaryPassword,
+    newPassword
+  }, username)
+  record(`activateApprover:${username}`, {
+    username,
+    passwordResetRequired: false
+  })
 }
 
 function useUser(username) {
@@ -118,8 +134,8 @@ function bpmnXml() {
 }
 
 async function main() {
-  await login('admin', 'admin')
-  useUser('admin')
+  await login(adminUsername, adminPassword)
+  useUser(adminUsername)
   const approverRole = await api('POST', '/system/role', {
     roleCode: approverRoleCode,
     roleName: `Codex配置审批角色${suffix}`,
@@ -131,21 +147,41 @@ async function main() {
     id: approverRole.id,
     roleCode: approverRole.roleCode
   })
-  await createApprover(firstApprover, 'Codex一级审批人', approverRole.id)
-  await createApprover(secondApprover, 'Codex二级审批人', approverRole.id)
-  await login(firstApprover, '123456')
-  await login(secondApprover, '123456')
+  const firstTemporaryPassword = await createApprover(
+    firstApprover,
+    'Codex一级审批人',
+    approverRole.id
+  )
+  const secondTemporaryPassword = await createApprover(
+    secondApprover,
+    'Codex二级审批人',
+    approverRole.id
+  )
+  await activateApprover(
+    firstApprover,
+    firstTemporaryPassword,
+    `CodexL1A${suffix}9`
+  )
+  await activateApprover(
+    secondApprover,
+    secondTemporaryPassword,
+    `CodexL2A${suffix}9`
+  )
 
-  const process = await api('POST', '/process', {
+  const workflowProcess = await api('POST', '/process', {
     processKey,
     processName,
     description: 'Codex真实配置闭环：管理员发起，两个独立账号逐级审批',
     category: 'codex-config-test',
     bpmnXml: bpmnXml()
   })
-  record('createProcess', { id: process.id, processKey: process.processKey, status: process.status })
+  record('createProcess', {
+    id: workflowProcess.id,
+    processKey: workflowProcess.processKey,
+    status: workflowProcess.status
+  })
 
-  const published = await api('POST', `/process/${process.id}/publish`, {
+  const published = await api('POST', `/process/${workflowProcess.id}/publish`, {
     versionDescription: 'Codex真实配置闭环发布'
   })
   record('publishProcess', {
@@ -155,7 +191,7 @@ async function main() {
   })
   assert.equal(published.status, 'PUBLISHED')
 
-  const nodes = await api('GET', `/process/${process.id}/nodes`)
+  const nodes = await api('GET', `/process/${workflowProcess.id}/nodes`)
   record('publishedNodes', nodes)
   const level1Node = nodes.find(node => node.nodeId === 'Task_Level1_Review')
   const level2Node = nodes.find(node => node.nodeId === 'Task_Level2_Review')
@@ -190,8 +226,8 @@ async function main() {
   record('createEntity', { id: entity.id, entityCode: entity.entityCode })
 
   await api('POST', `/entity/${entity.id}/publish`)
-  const boundEntity = await api('PUT', `/entity/${entity.id}/workflow-binding`, {
-    processDefinitionId: process.id
+  const boundEntity = await api('POST', `/entity/${entity.id}/workflow-binding/update`, {
+    processDefinitionId: workflowProcess.id
   })
   record('publishAndBindEntity', {
     entityId: boundEntity.id,
@@ -204,7 +240,7 @@ async function main() {
   const menuTree = await api('GET', '/system/role/menu-tree')
   const approveMenu = flattenTree(menuTree).find(menu => menu.perm === approvePermission)
   assert.ok(approveMenu, `实体绑定后应生成审批权限 ${approvePermission}`)
-  await api('PUT', `/system/role/${approverRole.id}/menus`, [approveMenu.id])
+  await api('POST', `/system/role/${approverRole.id}/menus`, [approveMenu.id])
   record('grantApproverPermission', {
     roleId: approverRole.id,
     menuId: approveMenu.id,
@@ -249,7 +285,7 @@ async function main() {
     }
   ])
 
-  await api('PUT', `/process-entity-status-mappings/process/${process.id}`, {
+  await api('POST', `/process-entity-status-mappings/process/${workflowProcess.id}/update`, {
     processKey,
     entityCode,
     mappings: [
@@ -278,7 +314,7 @@ async function main() {
     ]
   })
 
-  const mappings = await api('GET', `/process-entity-status-mappings/process/${process.id}`)
+  const mappings = await api('GET', `/process-entity-status-mappings/process/${workflowProcess.id}`)
   record('savedStatusMappings', mappings)
   assert.equal(mappings.length, 2)
   assert.equal(mappings[0].entityStatus, mappings[0].entityStatusCode)
@@ -319,7 +355,7 @@ async function main() {
     comment: '一级审批人完成真实审批'
   })
 
-  useUser('admin')
+  useUser(adminUsername)
   const afterLevel1 = await api('GET', `/entity-data/entity/${entityCode}/detail/${saved.id}`)
   record('entityAfterLevel1Approval', {
     status: afterLevel1.status,
@@ -343,7 +379,7 @@ async function main() {
     comment: '二级审批人完成真实审批'
   })
 
-  useUser('admin')
+  useUser(adminUsername)
   const progress = await api('GET', `/process-instance/${saved.processInstanceId}/progress`)
   record('completedProgress', {
     status: progress.status,

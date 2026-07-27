@@ -371,7 +371,10 @@ import { ref, computed, watch } from 'vue'
 import { Connection, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import SettingsSection from '@/components/SettingsSection.vue'
-import { LinkageEngine } from '../utils/linkageEngine'
+import {
+  formatLinkageConditionLiteral,
+  LinkageEngine
+} from '../utils/linkageEngine'
 
 const props = defineProps({
   field: {
@@ -570,7 +573,10 @@ function buildLinkageRules() {
       if (c.operator === 'empty') return `!\${${c.field}} || \${${c.field}} == ''`
       if (c.operator === 'notEmpty') return `\${${c.field}} && \${${c.field}} != ''`
       if (c.operator === 'contains') return `\${${c.field}}.includes('${c.value}')`
-      return `\${${c.field}} ${c.operator} '${c.value}'`
+      const sourceField = availableFields.value.find(field =>
+        (field.fieldCode || field.fieldKey) === c.field
+      )
+      return `\${${c.field}} ${c.operator} ${formatLinkageConditionLiteral(sourceField, c.value)}`
     })
     rules.visibilityRule = config.value.visibilityLogic === 'and'
       ? conditions.join(' && ')

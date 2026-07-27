@@ -11,6 +11,8 @@ import com.workflow.mapper.SysUserGroupMapper;
 import com.workflow.mapper.SysUserMapper;
 import com.workflow.entity.EntityDefinition;
 import com.workflow.entity.EntityForm;
+import com.workflow.entity.EntityFormField;
+import com.workflow.entity.EntityFormNode;
 import com.workflow.entity.ProcessNodeForm;
 import com.workflow.entity.ProcessVersionHistory;
 import com.workflow.process.publish.ProcessPublishedSnapshotService;
@@ -44,8 +46,11 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -118,6 +123,21 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(1, progress.getFormConfigs().size());
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
+        assertEquals(
+                "hotfix-3",
+                progress.getFormConfig().getEffectiveFormReleaseId());
+        assertEquals(true, progress.getFormConfig().getHotfixApplied());
+        assertEquals(
+                "resolution-token",
+                progress.getFormConfig().getReleaseResolutionToken());
+        assertEquals(
+                "热修复标题",
+                progress.getFormConfig().getFields().get(0)
+                        .get("fieldLabel"));
+        assertEquals(
+                "{\"fieldCode\":\"name\",\"label\":\"热修复标题\"}",
+                progress.getFormConfig().getNodes().get(0)
+                        .get("propsDocument"));
         assertEquals("data-1", progress.getEntityData().get("id"));
         assertEquals("pi-1", progress.getEntityData().get("processInstanceId"));
         assertEquals(
@@ -133,6 +153,37 @@ class ProcessProgressRuntimeServiceTest {
                 .getNodeFormsContextByProcessDefinitionId(
                         "pd-1",
                         "task-1");
+    }
+
+    @Test
+    void publishedFormResolutionFailureDoesNotFallbackToDefaultForm() {
+        Fixture fixture = new Fixture();
+        ProcessProgressRuntimeService service = fixture.service();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        fixture.entityVariables();
+        fixture.entityDefinition();
+        fixture.entityData();
+        when(fixture.snapshotService
+                .getNodeFormsContextByProcessDefinitionId(
+                        "pd-1",
+                        "task-1"))
+                .thenThrow(new IllegalStateException(
+                        "热修复有效快照完整性校验失败"));
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> service.getProcessProgress("pi-1"));
+
+        assertTrue(
+                exception.getMessage().contains(
+                        "加载流程发布表单失败"));
+        verify(fixture.entityFormRuntimeService, never())
+                .getDefaultForm("entity-1");
     }
 
     /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
@@ -325,6 +376,25 @@ class ProcessProgressRuntimeServiceTest {
             form.setFormName("审批表单");
             form.setFormKey("approval-form");
             form.setLayoutType("vertical");
+            form.setEffectiveReleaseId("hotfix-3");
+            form.setHotfixApplied(true);
+            form.setReleaseResolutionToken("resolution-token");
+            EntityFormField field = new EntityFormField();
+            field.setId("field-1");
+            field.setFieldCode("name");
+            field.setFieldName("名称");
+            field.setFieldLabel("热修复标题");
+            field.setFieldType("STRING");
+            field.setComponentType("input");
+            form.setFields(List.of(field));
+            EntityFormNode node = new EntityFormNode();
+            node.setId("node-1");
+            node.setNodeKey("name");
+            node.setNodeType("FIELD");
+            node.setPropsDocument(
+                    "{\"fieldCode\":\"name\","
+                            + "\"label\":\"热修复标题\"}");
+            form.setNodes(List.of(node));
             when(entityFormRuntimeService.getByBinding(
                     nodeForm,
                     "history-1",

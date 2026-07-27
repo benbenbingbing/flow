@@ -1,32 +1,38 @@
 <template>
   <div class="switch-field">
     <el-switch
-      v-model="fieldValue"
+      :model-value="switchValue"
       :disabled="isDisabled"
       :active-text="activeText"
       :inactive-text="inactiveText"
       v-on="customEventListeners"
-      @change="handleChange"
+      @update:model-value="handleChange"
     />
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { useFormField } from '../composables/useFormField.js'
+import {
+  normalizeFieldDefaultValue,
+  useFormField
+} from '../composables/useFormField.js'
 
 const props = defineProps({
   field: { type: Object, required: true },
-  modelValue: { type: [Boolean, Number, String], default: false },
+  modelValue: { type: [String, Number, Boolean], default: false },
   disabled: { type: Boolean, default: false },
   options: { type: Array, default: null }
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 
-const { fieldValue, isDisabled, handleChange, customEventListeners, parsedComponentProps } =
+const { isDisabled, handleChange, customEventListeners, parsedComponentProps } =
   useFormField(props, emit)
 
+const switchValue = computed(() =>
+  normalizeFieldDefaultValue(props.field, props.modelValue)
+)
 const activeText = computed(() => parsedComponentProps.value.activeText || '')
 const inactiveText = computed(() => parsedComponentProps.value.inactiveText || '')
 </script>

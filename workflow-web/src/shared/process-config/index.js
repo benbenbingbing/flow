@@ -118,6 +118,39 @@ export function getNodeTypeTag(type) {
   return ''
 }
 
+export function getProcessConditionFieldCode(field) {
+  return String(field?.fieldCode || field?.fieldName || '').trim()
+}
+
+export function getProcessConditionFieldLabel(field) {
+  return String(
+    field?.fieldLabel
+    || field?.fieldName
+    || field?.fieldCode
+    || ''
+  ).trim()
+}
+
+export function getProcessConditionFieldType(field) {
+  const typeMap = {
+    string: 'string',
+    text: 'string',
+    number: 'number',
+    integer: 'number',
+    decimal: 'number',
+    select: 'select',
+    multi_select: 'select',
+    radio: 'select',
+    checkbox: 'select',
+    date: 'date',
+    datetime: 'date',
+    boolean: 'boolean',
+    user: 'string',
+    dept: 'string'
+  }
+  return typeMap[String(field?.fieldType || '').toLowerCase()] || 'string'
+}
+
 export function buildAssigneeConfig(form) {
   const type = form.assigneeType
   let assigneeValue = ''
@@ -144,13 +177,36 @@ export function buildAssigneeConfig(form) {
     multiInstanceGroupCodes: form.multiInstanceGroupCodes || '',
     multiInstanceRoleIds: form.multiInstanceRoleIds || [],
     multiInstanceRoleCodes: form.multiInstanceRoleCodes || '',
-    interfaceType: form.interfaceType,
-    interfaceName: form.interfaceName,
+    resolverCode: form.resolverCode || form.interfaceName || '',
+    resolverDisplayName: form.resolverDisplayName || '',
+    extraParams: normalizeJsonObject(form.extraParams, form.extraParamsText),
+    interfaceType: 'resolver',
+    interfaceName: form.resolverCode || form.interfaceName || '',
     interfaceMethod: form.interfaceMethod,
     interfaceParams: form.interfaceParams,
     restMethod: form.restMethod,
     resultMapping: form.resultMapping,
     collectionSource: form.collectionSource,
-    collectionInterface: form.collectionInterface
+    collectionInterface: form.collectionResolverCode || form.collectionInterface || '',
+    collectionResolverCode: form.collectionResolverCode || form.collectionInterface || '',
+    collectionResolverDisplayName: form.collectionResolverDisplayName || '',
+    collectionExtraParams: normalizeJsonObject(
+      form.collectionExtraParams,
+      form.collectionExtraParamsText)
+  }
+}
+
+function normalizeJsonObject(value, text) {
+  if (value && !Array.isArray(value) && typeof value === 'object') {
+    return value
+  }
+  if (!text) return {}
+  try {
+    const parsed = JSON.parse(text)
+    return parsed && !Array.isArray(parsed) && typeof parsed === 'object'
+      ? parsed
+      : {}
+  } catch {
+    return {}
   }
 }

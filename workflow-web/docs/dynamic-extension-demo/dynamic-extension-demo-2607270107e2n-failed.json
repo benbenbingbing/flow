@@ -1,0 +1,168 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "demo_extension_flow_2607270107e2n",
+  "processName": "Demo扩展验证流程2607270107e2n",
+  "entityCode": "demo_extension_entity_2607270107e2n",
+  "entityName": "Demo扩展验证实体2607270107e2n",
+  "extensions": {
+    "listCell": "DemoRiskProgressCell",
+    "customList": "DemoProjectCardList",
+    "customForm": "DemoProjectForm"
+  },
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "id": "1",
+        "username": "admin"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2081547035815002114",
+        "entityCode": "demo_extension_entity_2607270107e2n",
+        "fields": [
+          {
+            "id": "2081547035819196417",
+            "code": "name",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035819196418",
+            "code": "code",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035823390722",
+            "code": "status",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035827585026",
+            "code": "processInstanceId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035827585027",
+            "code": "processStartTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081547035831779329",
+            "code": "processEndTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081547035835973633",
+            "code": "submitterId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035840167937",
+            "code": "submitterName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035844362242",
+            "code": "deptId",
+            "type": "REFERENCE"
+          },
+          {
+            "id": "2081547035848556545",
+            "code": "dataNo",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035869528066",
+            "code": "projectName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035852750849",
+            "code": "submitTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081547035856945153",
+            "code": "currentTaskId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035861139458",
+            "code": "currentTaskName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035865333762",
+            "code": "currentTaskAssignee",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035869528067",
+            "code": "ownerName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081547035873722369",
+            "code": "budget",
+            "type": "DECIMAL"
+          },
+          {
+            "id": "2081547035877916674",
+            "code": "riskScore",
+            "type": "INTEGER"
+          },
+          {
+            "id": "2081547035877916675",
+            "code": "description",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ensureUiExtensions",
+      "data": {
+        "form": {
+          "id": "5e641db285a3cecf67c1980764d1625b",
+          "version": 1,
+          "snapshotVersion": 1,
+          "status": "ACTIVE"
+        },
+        "list": {
+          "id": "57d50ec08bea7536ae2301423863703e",
+          "version": 1,
+          "snapshotVersion": 1,
+          "status": "ACTIVE"
+        }
+      }
+    },
+    {
+      "name": "createCustomForm",
+      "data": {
+        "id": "2081547036670640129",
+        "customComponent": "DemoProjectForm",
+        "viewConfig": "{\"labelWidth\":110,\"customComponentProps\":{\"subtitle\":\"真实实体与流程验证表单\",\"accentColor\":\"#7c3aed\",\"showRiskHint\":true}}"
+      }
+    },
+    {
+      "name": "publishCustomForm",
+      "data": {
+        "releaseId": "de74d0878c53c513af4879beb3e75e20",
+        "version": 1,
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "name": "createPublishBindProcess",
+      "data": {
+        "processId": "2081547036846800898",
+        "status": "PUBLISHED",
+        "processKey": "demo_extension_flow_2607270107e2n"
+      }
+    }
+  ],
+  "result": "FAIL",
+  "error": "Error: POST /entity-list-config/save failed: HTTP 200, body={\"code\":500,\"message\":\"JSON parse error: Cannot construct instance of `java.util.LinkedHashMap` (although at least one Creator exists): no String-argument constructor/factory method to deserialize from String value ('{\\\"search\\\":{\\\"defaultVisibleCount\\\":3,\\\"collapsible\\\":true,\\\"labelWidth\\\":100},\\\"table\\\":{\\\"stripe\\\":true,\\\"border\\\":false,\\\"showIndex\\\":false,\\\"size\\\":\\\"default\\\"},\\\"pagination\\\":{\\\"pageSize\\\":10,\\\"pageSizes\\\":[10,20,50]},\\\"customComponentProps\\\":{\\\"columns\\\":3,\\\"compact\\\":false,\\\"showDescription\\\":true,\\\"searchPlaceholder\\\":\\\"搜索Demo项目\\\"}}')\",\"errorCode\":null,\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-dynamic-extension-demo.mjs:50:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-dynamic-extension-demo.mjs:318:22)"
+}

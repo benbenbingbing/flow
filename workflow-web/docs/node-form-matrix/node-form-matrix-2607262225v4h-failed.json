@@ -1,0 +1,116 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "form_matrix_2607262225v4h",
+  "processName": "节点表单矩阵2607262225v4h",
+  "entityCode": "form_entity_2607262225v4h",
+  "entityName": "节点表单实体2607262225v4h",
+  "stopAt": "",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "username": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2081506237270540290",
+        "fields": [
+          {
+            "id": "2081506237270540291",
+            "code": "name"
+          },
+          {
+            "id": "2081506237274734594",
+            "code": "code"
+          },
+          {
+            "id": "2081506237278928898",
+            "code": "status"
+          },
+          {
+            "id": "2081506237278928899",
+            "code": "processInstanceId"
+          },
+          {
+            "id": "2081506237283123201",
+            "code": "processStartTime"
+          },
+          {
+            "id": "2081506237287317505",
+            "code": "processEndTime"
+          },
+          {
+            "id": "2081506237287317506",
+            "code": "submitterId"
+          },
+          {
+            "id": "2081506237291511809",
+            "code": "submitterName"
+          },
+          {
+            "id": "2081506237295706113",
+            "code": "deptId"
+          },
+          {
+            "id": "2081506237312483330",
+            "code": "amount"
+          },
+          {
+            "id": "2081506237299900418",
+            "code": "dataNo"
+          },
+          {
+            "id": "2081506237304094721",
+            "code": "submitTime"
+          },
+          {
+            "id": "2081506237304094722",
+            "code": "currentTaskId"
+          },
+          {
+            "id": "2081506237308289026",
+            "code": "currentTaskName"
+          },
+          {
+            "id": "2081506237312483329",
+            "code": "currentTaskAssignee"
+          },
+          {
+            "id": "2081506237316677633",
+            "code": "lockedNote"
+          },
+          {
+            "id": "2081506237316677634",
+            "code": "defaultMemo"
+          },
+          {
+            "id": "2081506237320871937",
+            "code": "finalNote"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createForms",
+      "data": {
+        "defaultForm": {
+          "id": "2081506237987766274",
+          "name": "默认回退表单"
+        },
+        "formA": {
+          "id": "2081506238054875137",
+          "name": "首节点混合读写表单"
+        },
+        "formC": {
+          "id": "2081506238121984001",
+          "name": "末节点专属表单"
+        }
+      }
+    }
+  ],
+  "error": "Error: POST /process/2081506238168121345/publish failed: HTTP 200, body={\"code\":500,\"message\":\"流程节点引用的表单尚未发布: nodeId=Task_Form_A, formId=2081506238054875137\",\"errorCode\":null,\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-node-forms.mjs:47:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-workflow-node-forms.mjs:219:3)",
+  "conclusion": "FAIL"
+}

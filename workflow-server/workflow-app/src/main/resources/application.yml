@@ -78,8 +78,8 @@ file:
   storage:
     type: local
     local:
-      path: ${FILE_STORAGE_PATH:/Users/dawei/Documents/ddup/ai/flow/uploads}
-      access-url: ${FILE_STORAGE_ACCESS_URL:/Users/dawei/Documents/ddup/ai/flow/uploads}
+      path: ${FILE_STORAGE_PATH:./uploads}
+      access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
 
 workflow:
   audit:

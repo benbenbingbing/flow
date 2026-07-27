@@ -51,9 +51,9 @@
             <el-option label="审批结果 (approved)" value="approved" />
             <el-option
               v-for="field in entityFields"
-              :key="field.fieldName"
-              :label="field.fieldLabel || field.fieldName"
-              :value="field.fieldName"
+              :key="getProcessConditionFieldCode(field)"
+              :label="getProcessConditionFieldLabel(field)"
+              :value="getProcessConditionFieldCode(field)"
             />
           </el-select>
 
@@ -132,6 +132,11 @@
 <script setup>
 import { Delete } from '@element-plus/icons-vue'
 import { createFlowCondition, createFlowConditionGroup } from '@/utils/flowConditionGroups'
+import {
+  getProcessConditionFieldCode,
+  getProcessConditionFieldLabel,
+  getProcessConditionFieldType
+} from '@/shared/process-config'
 
 defineOptions({ name: 'FlowConditionGroupEditor' })
 
@@ -175,29 +180,17 @@ function onPropertyChange(condition) {
 
 function getFieldType(fieldName) {
   if (fieldName === 'approved') return 'select'
-  const field = props.entityFields.find(item => item.fieldName === fieldName)
-  if (!field) return 'string'
-  const typeMap = {
-    string: 'string',
-    text: 'string',
-    number: 'number',
-    integer: 'number',
-    decimal: 'number',
-    select: 'select',
-    radio: 'select',
-    checkbox: 'select',
-    date: 'date',
-    datetime: 'date',
-    boolean: 'boolean',
-    user: 'string',
-    dept: 'string'
-  }
-  return typeMap[field.fieldType] || 'string'
+  const field = props.entityFields.find(item =>
+    getProcessConditionFieldCode(item) === fieldName
+    || item.fieldName === fieldName)
+  return getProcessConditionFieldType(field)
 }
 
 function getFieldOptions(fieldName) {
   if (fieldName === 'approved') return props.approvalOptions
-  const field = props.entityFields.find(item => item.fieldName === fieldName)
+  const field = props.entityFields.find(item =>
+    getProcessConditionFieldCode(item) === fieldName
+    || item.fieldName === fieldName)
   if (!field?.optionsJson) return []
   try {
     const options = JSON.parse(field.optionsJson)

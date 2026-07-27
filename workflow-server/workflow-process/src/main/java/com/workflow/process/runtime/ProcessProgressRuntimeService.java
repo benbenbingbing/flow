@@ -714,6 +714,8 @@ public class ProcessProgressRuntimeService {
                 loadApprovalConfig(progress, currentNodeId, progress.getBpmnXml(), processKey);
             }
             
+        } catch (FormConfigResolutionException exception) {
+            throw exception;
         } catch (Exception e) {
             log.warn("加载实体数据和表单配置失败: {}", e.getMessage());
         }
@@ -814,39 +816,38 @@ public class ProcessProgressRuntimeService {
                     && !progress.getProcessDefinitionId().isEmpty()
                     && targetNodeId != null
                     && !targetNodeId.isEmpty()) {
-                try {
-                    ProcessPublishedSnapshotService.PublishedNodeForms published =
-                            processPublishedSnapshotService
-                                    .getNodeFormsContextByProcessDefinitionId(
-                                            progress.getProcessDefinitionId(),
-                                            targetNodeId);
-                    UiRuntimePurpose purpose =
-                            "RUNNING".equals(progress.getStatus())
-                                    ? UiRuntimePurpose.ACTIVE_TASK
-                                    : UiRuntimePurpose.HISTORICAL;
-                    for (com.workflow.entity.ProcessNodeForm nodeForm
-                            : published.nodeForms()) {
-                        if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
-                            continue;
-                        }
-                        com.workflow.entity.EntityForm entityForm =
-                                entityFormRuntimeService.getByBinding(
-                                        nodeForm,
-                                        published.history().getId(),
-                                        purpose);
-                        if (entityForm != null) {
-                            Boolean nodeFormReadonly =
-                                    Integer.valueOf(1).equals(nodeForm.getIsReadonly()) ? Boolean.TRUE : null;
-                            formConfigs.add(buildProgressFormConfig(
-                                    entityForm,
-                                    nodeFormReadonly,
-                                    nodeForm));
-                            log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
-                                targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
-                        }
+                ProcessPublishedSnapshotService.PublishedNodeForms published =
+                        processPublishedSnapshotService
+                                .getNodeFormsContextByProcessDefinitionId(
+                                        progress.getProcessDefinitionId(),
+                                        targetNodeId);
+                UiRuntimePurpose purpose =
+                        "RUNNING".equals(progress.getStatus())
+                                ? UiRuntimePurpose.ACTIVE_TASK
+                                : UiRuntimePurpose.HISTORICAL;
+                for (com.workflow.entity.ProcessNodeForm nodeForm
+                        : published.nodeForms()) {
+                    if (nodeForm.getFormId() == null || nodeForm.getFormId().isEmpty()) {
+                        continue;
                     }
-                } catch (Exception e) {
-                    log.warn("从流程发布快照查询节点表单失败: {}", e.getMessage());
+                    com.workflow.entity.EntityForm entityForm =
+                            entityFormRuntimeService.getByBinding(
+                                    nodeForm,
+                                    published.history().getId(),
+                                    purpose);
+                    if (entityForm == null) {
+                        throw new IllegalStateException(
+                                "流程发布快照绑定的表单不存在: formId="
+                                        + nodeForm.getFormId());
+                    }
+                    Boolean nodeFormReadonly =
+                            Integer.valueOf(1).equals(nodeForm.getIsReadonly()) ? Boolean.TRUE : null;
+                    formConfigs.add(buildProgressFormConfig(
+                            entityForm,
+                            nodeFormReadonly,
+                            nodeForm));
+                    log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
+                        targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
                 }
             }
             
@@ -862,7 +863,7 @@ public class ProcessProgressRuntimeService {
             }
             
             if (formConfigs.isEmpty()) {
-                log.warn("无法加载表单: entityId={}, nodeId={}", entityDef.getId(), targetNodeId);
+                log.debug("节点未绑定可用表单: entityId={}, nodeId={}", entityDef.getId(), targetNodeId);
                 return;
             }
 
@@ -873,7 +874,22 @@ public class ProcessProgressRuntimeService {
                 formConfigs.get(0).getFields() != null ? formConfigs.get(0).getFields().size() : 0);
             
         } catch (Exception e) {
-            log.warn("加载表单配置失败: {}", e.getMessage(), e);
+            throw new FormConfigResolutionException(
+                    "加载流程发布表单失败: processDefinitionId="
+                            + progress.getProcessDefinitionId()
+                            + ", nodeId="
+                            + currentNodeId,
+                    e);
+        }
+    }
+
+    private static final class FormConfigResolutionException
+            extends RuntimeException {
+
+        private FormConfigResolutionException(
+                String message,
+                Throwable cause) {
+            super(message, cause);
         }
     }
 

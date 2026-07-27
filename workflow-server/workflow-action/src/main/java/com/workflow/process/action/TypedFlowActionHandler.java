@@ -27,7 +27,7 @@ public interface TypedFlowActionHandler<T> extends FlowActionHandler {
 
     @Override
     default void execute(FlowActionContext ctx) {
-        T params = ctx.getHelper().convertParams(ctx.getCustomParams(), getParamType());
+        T params = ctx.getHelper().convertParams(ctx.getExtraParams(), getParamType());
         execute(ctx, params);
     }
 }

@@ -40,12 +40,20 @@ import {
   hasFormInitializer,
   getRegisteredFormInitializerNames
 } from '@/utils/formInitializerRegistry.js'
-import { LinkageEngine } from '@/utils/linkageEngine.js'
+import { executeFormInitializer } from '@/utils/formInitializer.js'
+import {
+  formatLinkageConditionLiteral,
+  LinkageEngine,
+  normalizeLegacyBooleanComparisons
+} from '@/utils/linkageEngine.js'
 import {
   getNodeTypeDescription,
   getNodeTypeTag,
   getNodeTypeText,
-  buildAssigneeConfig
+  buildAssigneeConfig,
+  getProcessConditionFieldCode,
+  getProcessConditionFieldLabel,
+  getProcessConditionFieldType
 } from '@/shared/process-config'
 import {
   ENTITY_FIELD_TYPES,
@@ -259,6 +267,8 @@ registerFormInitializer('ownerInitializer', initializer)
 assert.equal(hasFormInitializer('ownerInitializer'), true)
 assert.deepEqual(await getFormInitializer('ownerInitializer')({ source: '功能测试' }, { userId: 'u1' }), { owner: 'u1', source: '功能测试' })
 assert.ok(getRegisteredFormInitializerNames().includes('ownerInitializer'))
+assert.deepEqual(await executeFormInitializer({}), {})
+assert.deepEqual(await executeFormInitializer('{}'), {})
 
 assert.deepEqual(
   LinkageEngine.getFieldLinkageRules({
@@ -270,6 +280,23 @@ assert.deepEqual(
 assert.equal(LinkageEngine.evaluateCondition("${amount} > 100 && ${status} == 'OPEN'", { amount: 120, status: 'OPEN' }), true)
 assert.equal(LinkageEngine.evaluateCondition("${amount} > 100", { amount: 80 }), false)
 assert.equal(LinkageEngine.evaluateCondition('', { amount: 80 }), true)
+assert.equal(LinkageEngine.evaluateCondition("${urgent} == 'true'", { urgent: true }), true)
+assert.equal(LinkageEngine.evaluateCondition("${urgent} == 'true'", { urgent: false }), false)
+assert.equal(
+  formatLinkageConditionLiteral({ fieldType: 'BOOLEAN', componentType: 'switch' }, 'true'),
+  'true'
+)
+assert.equal(formatLinkageConditionLiteral({ fieldType: 'STRING' }, 'true'), '"true"')
+assert.equal(normalizeLegacyBooleanComparisons("true == 'true'"), 'true == true')
+const processConditionField = {
+  fieldCode: 'urgent',
+  fieldName: '是否加急',
+  fieldType: 'BOOLEAN'
+}
+assert.equal(getProcessConditionFieldCode(processConditionField), 'urgent')
+assert.equal(getProcessConditionFieldLabel(processConditionField), '是否加急')
+assert.equal(getProcessConditionFieldType(processConditionField), 'boolean')
+assert.equal(getProcessConditionFieldType({ fieldType: 'DECIMAL' }), 'number')
 
 const linkageResult = LinkageEngine.processAllLinkages([
   { fieldCode: 'discount', visibilityRule: "${amount} > 100", disabledRule: "${locked} == true", requiredRule: "${status} == 'OPEN'" },
@@ -410,6 +437,42 @@ assert.ok(
 assert.ok(
   /case 'service':[\s\S]*?serviceResultVariable/.test(nodeConfigPanelSource),
   '服务任务保存按钮未持久化结果变量'
+)
+for (const validationText of [
+  '请填写 REST 请求 URL',
+  '请至少选择一个发送渠道',
+  '接收任务超时时间必须是正整数',
+  '请填写业务规则任务的决策表 Key',
+  '请填写脚本内容',
+  '请选择或填写子流程 Key'
+]) {
+  assert.ok(
+    nodeConfigPanelSource.includes(validationText),
+    `自动流程节点缺少保存前校验: ${validationText}`
+  )
+}
+assert.equal(
+  nodeConfigPanelSource.includes('<el-option label="multipart/form-data"'),
+  false,
+  'REST 节点不应提供运行时尚未支持的 multipart/form-data 选项'
+)
+assert.ok(
+  nodeConfigPanelSource.includes('当前运行时仅支持 Groovy'),
+  '脚本任务应明确展示真实可运行的语言范围'
+)
+assert.equal(
+  /<el-radio-button value="(?:javascript|python)">/.test(nodeConfigPanelSource),
+  false,
+  '脚本任务不应提供服务器未安装执行引擎的语言'
+)
+assert.ok(
+  nodeConfigPanelSource.includes('当前运行时仅支持站内信'),
+  '发送任务应明确展示真实可用的通知渠道'
+)
+assert.equal(
+  /<el-checkbox label="(?:email|sms)">/.test(nodeConfigPanelSource),
+  false,
+  '发送任务不应提供尚未注册运行时实现的邮件或短信渠道'
 )
 
 console.log('functional tests passed')

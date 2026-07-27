@@ -170,6 +170,15 @@ const routes = [
         }
       },
       {
+        path: '/system/extensions',
+        name: 'ExtensionManagement',
+        component: () => import('@/views/system/ExtensionManagement.vue'),
+        meta: {
+          title: '扩展管理',
+          requiredPermissions: ['system:extension:list']
+        }
+      },
+      {
         path: '/system/config-migration',
         name: 'ConfigMigration',
         component: () => import('@/views/system/ConfigMigration.vue'),

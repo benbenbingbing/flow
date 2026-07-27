@@ -1,5 +1,25 @@
 import { computed, watch } from 'vue'
 
+export function normalizeFieldDefaultValue(field, value) {
+  if (value == null) return value
+
+  const type = String(field?.componentType || field?.fieldType || '').toLowerCase()
+  if (type !== 'boolean' && type !== 'switch') return value
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+
+  const normalized = String(value).trim().toLowerCase()
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  if (['false', '0', 'no', 'off', ''].includes(normalized)) return false
+  return Boolean(value)
+}
+
+export function normalizeFieldCollectionValue(value) {
+  if (Array.isArray(value)) return value
+  if (value == null || value === '') return []
+  return [value]
+}
+
 /**
  * 表单字段共享逻辑 Composable
  * 统一处理字段值转换、选项解析、组件属性解析、自定义事件脚本执行
@@ -26,13 +46,17 @@ export function useFormField(props, emit) {
       const val = props.modelValue
       const type = renderType.value
 
+      if (type === 'boolean' || type === 'switch') {
+        return normalizeFieldDefaultValue(props.field, val)
+      }
+
       if (['number', 'integer', 'long', 'decimal', 'double'].includes(type) && val === '') {
         return null
       }
 
       // 多选类字段强制数组化
       if ((type === 'checkbox' || type === 'select_multiple') && !Array.isArray(val)) {
-        return val != null ? [val] : []
+        return normalizeFieldCollectionValue(val)
       }
 
       // 子表单按关系类型处理
@@ -206,7 +230,7 @@ export function useFormField(props, emit) {
     () => props.field?.defaultValue,
     (val) => {
       if (val != null && (props.modelValue == null || props.modelValue === '')) {
-        emit('update:modelValue', val)
+        emit('update:modelValue', normalizeFieldDefaultValue(props.field, val))
       }
     },
     { immediate: true }

@@ -4,7 +4,15 @@ import {
 } from '@/utils/customComponentRegistry'
 import { getCellComponentOptions } from '@/utils/listCellRegistry'
 import { getFormNodeComponentOptions } from '@/utils/formNodeRegistry'
-import { getFormFieldComponentOptions } from '@/components/form-fields'
+import {
+  getBuiltInFormFieldComponentNames,
+  getFormFieldComponentOptions,
+  getRegisteredFormFieldComponentOptions
+} from '@/components/form-fields'
+
+const builtInFormFieldNames = new Set(
+  getBuiltInFormFieldComponentNames().map(name => name.toLowerCase())
+)
 
 export function getBundledExtensionManifest() {
   const descriptors = [
@@ -17,6 +25,25 @@ export function getBundledExtensionManifest() {
   const unique = new Map()
   descriptors.forEach(item => unique.set(item.id, item))
   return Array.from(unique.values()).sort((left, right) => left.id.localeCompare(right.id))
+}
+
+export function getManagedExtensionManifest() {
+  const descriptors = [
+    ...getCustomFormComponentOptions().map(item => governedDescriptor('FORM', item)),
+    ...getCustomListComponentOptions().map(item => governedDescriptor('LIST', item)),
+    ...getFormNodeComponentOptions().map(item => governedDescriptor('NODE', item)),
+    ...getRegisteredFormFieldComponentOptions().map(item =>
+      governedDescriptor('FIELD', item))
+  ]
+  const unique = new Map()
+  descriptors.forEach(item => unique.set(item.id, item))
+  return Array.from(unique.values())
+    .sort((left, right) => left.id.localeCompare(right.id))
+}
+
+export function isPlatformBuiltInUiExtension(type, name) {
+  return String(type || '').replace(/^UI_/, '').toUpperCase() === 'FIELD'
+    && builtInFormFieldNames.has(String(name || '').toLowerCase())
 }
 
 export function validateBundledExtensionManifest(manifest = getBundledExtensionManifest()) {

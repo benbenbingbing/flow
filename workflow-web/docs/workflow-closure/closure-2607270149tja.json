@@ -1,0 +1,245 @@
+{
+  "baseUrl": "http://localhost:8080/api",
+  "processKey": "cf_2607270149tja",
+  "entityCode": "ce_2607270149tja",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "user": "admin",
+        "id": "1"
+      }
+    },
+    {
+      "name": "createProcess",
+      "data": {
+        "id": "2081557649488367617",
+        "processKey": "cf_2607270149tja",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishProcess",
+      "data": {
+        "id": "2081557649488367617",
+        "processKey": "cf_2607270149tja",
+        "status": "PUBLISHED",
+        "version": 1
+      }
+    },
+    {
+      "name": "publishedNodes",
+      "data": [
+        {
+          "id": "2081557649777774594",
+          "nodeId": "StartEvent_1",
+          "nodeName": "开始",
+          "nodeType": "START",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2081557649781968898",
+          "nodeId": "EndEvent_1",
+          "nodeName": "结束",
+          "nodeType": "END",
+          "assignees": null,
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        },
+        {
+          "id": "2081557649786163201",
+          "nodeId": "Task_Admin_Review",
+          "nodeName": "Codex管理员审批",
+          "nodeType": "USER_TASK",
+          "assignees": [
+            {
+              "id": "2081557649790357506",
+              "assigneeType": "USER",
+              "assigneeValue": "admin",
+              "assigneeName": null,
+              "priority": 0
+            }
+          ],
+          "forms": null,
+          "configJson": null,
+          "skipNode": false
+        }
+      ]
+    },
+    {
+      "name": "createEntity",
+      "data": {
+        "id": "2081557649995878402",
+        "entityCode": "ce_2607270149tja",
+        "status": "DRAFT"
+      }
+    },
+    {
+      "name": "publishEntity",
+      "data": {
+        "id": "2081557649995878402",
+        "status": "PUBLISHED"
+      }
+    },
+    {
+      "name": "bindProcess",
+      "data": {
+        "entityId": "2081557649995878402",
+        "processDefinitionId": "2081557649488367617",
+        "processName": "Codex流程闭环2607270149tja",
+        "lifecycleMode": "WORKFLOW",
+        "workflowBindingStatus": "ACTIVE"
+      }
+    },
+    {
+      "name": "submitEntityDataStartProcess",
+      "data": {
+        "id": "2015c1164ed643e49dde16e01e57f989",
+        "entityCode": "ce_2607270149tja",
+        "name": "Codex闭环数据2607270149tja",
+        "status": "PENDING",
+        "processInstanceId": "75779159-895d-11f1-979e-7612d5b69a47",
+        "currentTaskId": "757854c3-895d-11f1-979e-7612d5b69a47",
+        "currentTaskName": "Codex管理员审批",
+        "currentTaskAssignee": null
+      }
+    },
+    {
+      "name": "entityDataDetailAfterStart",
+      "data": {
+        "id": "2015c1164ed643e49dde16e01e57f989",
+        "status": "PENDING",
+        "processInstanceId": "75779159-895d-11f1-979e-7612d5b69a47",
+        "currentTaskId": "757854c3-895d-11f1-979e-7612d5b69a47",
+        "currentTaskName": "Codex管理员审批",
+        "currentTaskAssignee": null
+      }
+    },
+    {
+      "name": "todoAfterStart",
+      "data": {
+        "taskId": "757854c3-895d-11f1-979e-7612d5b69a47",
+        "taskName": "Codex管理员审批",
+        "nodeType": "USER_TASK",
+        "processInstanceId": "75779159-895d-11f1-979e-7612d5b69a47",
+        "processDefinitionId": "cf_2607270149tja:1:754de948-895d-11f1-979e-7612d5b69a47",
+        "processName": "Codex流程闭环2607270149tja",
+        "startUserName": "超级管理员(admin)",
+        "createTime": "2026-07-27T01:49:52.000+00:00",
+        "endTime": null,
+        "duration": null,
+        "result": null,
+        "comment": null,
+        "priority": 50,
+        "assignee": "admin",
+        "assigneeName": "超级管理员(admin)",
+        "assigneeType": "group",
+        "claimRequired": true,
+        "businessKey": "2015c1164ed643e49dde16e01e57f989",
+        "dataName": null,
+        "code": "CE_2607270149TJA20260727000001",
+        "name": "Codex闭环数据2607270149tja",
+        "currentTaskName": "Codex管理员审批",
+        "processStatus": null,
+        "entityCode": "ce_2607270149tja",
+        "entityDataId": "2015c1164ed643e49dde16e01e57f989",
+        "formKey": null,
+        "entityFormId": null,
+        "formData": null,
+        "formReadonly": null,
+        "formFields": null,
+        "formConfig": null,
+        "entityData": null
+      }
+    },
+    {
+      "name": "progressAfterStart",
+      "data": {
+        "processName": "Codex流程闭环2607270149tja",
+        "status": "RUNNING",
+        "activeNodes": [
+          "Task_Admin_Review"
+        ],
+        "completedNodes": [
+          "StartEvent_1",
+          "Flow_1"
+        ],
+        "entityData": {
+          "id": "2015c1164ed643e49dde16e01e57f989",
+          "status": "PENDING",
+          "currentTaskName": "Codex管理员审批",
+          "processInstanceId": "75779159-895d-11f1-979e-7612d5b69a47"
+        }
+      }
+    },
+    {
+      "name": "completeTask",
+      "data": {
+        "taskId": "757854c3-895d-11f1-979e-7612d5b69a47",
+        "action": "approve"
+      }
+    },
+    {
+      "name": "progressAfterApprove",
+      "data": {
+        "processName": "Codex流程闭环2607270149tja",
+        "status": "COMPLETED",
+        "activeNodes": [],
+        "completedNodes": [
+          "StartEvent_1",
+          "Flow_1",
+          "Task_Admin_Review",
+          "EndEvent_1",
+          "Flow_2"
+        ],
+        "executedSequenceFlows": [
+          "Flow_1",
+          "Flow_2"
+        ],
+        "nodeHistory": [
+          {
+            "nodeId": "StartEvent_1",
+            "nodeName": "开始",
+            "action": null,
+            "actionLabel": null,
+            "comment": null,
+            "status": "COMPLETED"
+          },
+          {
+            "nodeId": "Task_Admin_Review",
+            "nodeName": "Codex管理员审批",
+            "action": "APPROVED",
+            "actionLabel": "通过",
+            "comment": "Codex闭环测试审批通过",
+            "status": "COMPLETED"
+          },
+          {
+            "nodeId": "EndEvent_1",
+            "nodeName": "结束",
+            "action": null,
+            "actionLabel": null,
+            "comment": null,
+            "status": "COMPLETED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "entityDataDetailAfterApprove",
+      "data": {
+        "id": "2015c1164ed643e49dde16e01e57f989",
+        "status": "APPROVED",
+        "processInstanceId": "75779159-895d-11f1-979e-7612d5b69a47",
+        "currentTaskId": null,
+        "currentTaskName": null,
+        "currentTaskAssignee": null,
+        "processEndTime": "2026-07-27T09:49:52"
+      }
+    }
+  ],
+  "conclusion": "PASS: 流程配置、实体绑定、业务数据发起、待办生成、审批完成均按配置生效"
+}

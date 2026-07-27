@@ -8,12 +8,18 @@ import com.workflow.entity.NodeConfig;
 import com.workflow.entity.ProcessDefinitionConfig;
 import com.workflow.entity.SysGroup;
 import com.workflow.entity.SysRole;
+import com.workflow.contracts.identity.resolver.PersonResolveRequest;
+import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.mapper.*;
+import com.workflow.service.PersonResolverRuntimeService;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
+import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.delegate.event.FlowableActivityEvent;
+import org.flowable.engine.repository.ProcessDefinition;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -35,6 +41,10 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
 
     @Autowired
     private RuntimeService runtimeService;
+
+    /** 流程定义服务，用 Flowable 定义ID安全解析流程键 */
+    @Autowired
+    private RepositoryService repositoryService;
 
     /** 流程定义配置 Mapper，查询流程配置 */
     @Autowired
@@ -68,6 +78,10 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     @Autowired
     private ObjectMapper objectMapper;
 
+    /** 统一人员解析器运行时 */
+    @Autowired
+    private PersonResolverRuntimeService personResolverRuntimeService;
+
     /**
      * 流程启动前预计算多实例集合变量（主要入口）
      */
@@ -87,7 +101,13 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 // 如果调用方已经传了这个变量，不覆盖
                 if (variables.containsKey(varName)) continue;
 
-                List<String> userIds = resolveAssignees(node.getId());
+                List<String> userIds = resolveConfiguredUsers(
+                        processConfigId,
+                        node,
+                        config,
+                        variables,
+                        null,
+                        null);
                 if (!userIds.isEmpty()) {
                     variables.put(varName, userIds);
                     log.info("多实例变量预计算: nodeId={}, varName={}, users={}", node.getNodeId(), varName, userIds);
@@ -147,6 +167,61 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         return new ArrayList<>(new LinkedHashSet<>(userIds));
     }
 
+    @SuppressWarnings("unchecked")
+    private List<String> resolveConfiguredUsers(
+            String processConfigId,
+            NodeConfig node,
+            Map<String, Object> nodeConfig,
+            Map<String, Object> variables,
+            String processInstanceId,
+            String processDefinitionId) {
+        Object rawAssignee = nodeConfig.get("assigneeConfig");
+        if (rawAssignee instanceof Map<?, ?> rawMap) {
+            Map<String, Object> assigneeConfig =
+                    (Map<String, Object>) rawMap;
+            String collectionSource =
+                    text(assigneeConfig.get("collectionSource"));
+            if ("interface".equalsIgnoreCase(collectionSource)
+                    || "resolver".equalsIgnoreCase(collectionSource)) {
+                String resolverCode = firstText(
+                        assigneeConfig.get("collectionResolverCode"),
+                        assigneeConfig.get("collectionInterface"));
+                Map<String, Object> extraParams =
+                        mapValue(assigneeConfig.get(
+                                "collectionExtraParams"));
+                return personResolverRuntimeService.resolveUsernames(
+                        resolverCode,
+                        new PersonResolveRequest(
+                                1,
+                                text(variables.get("traceId")),
+                                String.join(
+                                        ":",
+                                        "MULTI_INSTANCE",
+                                        nullSafe(processInstanceId),
+                                        nullSafe(node.getNodeId())),
+                                PersonResolveUsage.MULTI_INSTANCE,
+                                processConfigId,
+                                processDefinitionId,
+                                processInstanceId,
+                                null,
+                                node.getNodeId(),
+                                node.getNodeName(),
+                                null,
+                                text(variables.get("entityCode")),
+                                text(variables.get("entityDataId")),
+                                firstText(
+                                        variables.get("startUserId"),
+                                        variables.get("submitterId"),
+                                        variables.get("initiator")),
+                                null,
+                                variables,
+                                mapValue(variables.get("entityData")),
+                                extraParams));
+            }
+        }
+        return resolveAssignees(node.getId());
+    }
+
     /* ==================== 运行时兜底：全局事件监听 ==================== */
 
     /**
@@ -156,14 +231,20 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
      */
     @Override
     public void onEvent(FlowableEvent event) {
-        if (!(event instanceof FlowableActivityEvent)) return;
+        if (event.getType() != FlowableEngineEventType.ACTIVITY_STARTED
+                || !(event instanceof FlowableActivityEvent)) {
+            return;
+        }
         FlowableActivityEvent activityEvent = (FlowableActivityEvent) event;
 
         String activityId = activityEvent.getActivityId();
         String processInstanceId = activityEvent.getProcessInstanceId();
 
         try {
-            prepareMultiInstanceCollection(processInstanceId, activityId);
+            prepareMultiInstanceCollection(
+                    processInstanceId,
+                    activityId,
+                    activityEvent.getProcessDefinitionId());
         } catch (Exception e) {
             log.error("多实例集合变量运行时准备失败: processInstanceId={}, activityId={}", processInstanceId, activityId, e);
         }
@@ -178,13 +259,35 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
      * @param activityId        活动（节点）ID
      * @throws Exception 查询流程实例或解析配置失败时抛出
      */
-    private void prepareMultiInstanceCollection(String processInstanceId, String activityId) throws Exception {
-        String processDefinitionId = runtimeService.createProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult()
-                .getProcessDefinitionId();
-
-        String processKey = processDefinitionId.substring(0, processDefinitionId.indexOf(":"));
+    private void prepareMultiInstanceCollection(
+            String processInstanceId,
+            String activityId,
+            String eventProcessDefinitionId) throws Exception {
+        if (processInstanceId == null || processInstanceId.isBlank()
+                || activityId == null || activityId.isBlank()) {
+            return;
+        }
+        String processDefinitionId = eventProcessDefinitionId;
+        if (processDefinitionId == null || processDefinitionId.isBlank()) {
+            var processInstance = runtimeService.createProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult();
+            if (processInstance == null) {
+                return;
+            }
+            processDefinitionId = processInstance.getProcessDefinitionId();
+        }
+        ProcessDefinition processDefinition = repositoryService
+                .createProcessDefinitionQuery()
+                .processDefinitionId(processDefinitionId)
+                .singleResult();
+        if (processDefinition == null) {
+            log.debug(
+                    "多实例运行时兜底跳过未知流程定义: processDefinitionId={}",
+                    processDefinitionId);
+            return;
+        }
+        String processKey = processDefinition.getKey();
         ProcessDefinitionConfig config = processMapper.findByProcessKey(processKey).orElse(null);
         if (config == null) return;
 
@@ -202,7 +305,15 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         // 运行时兜底：只有变量不存在时才补充设置
         if (runtimeService.getVariable(processInstanceId, varName) != null) return;
 
-        List<String> userIds = resolveAssignees(nodeConfig.getId());
+        Map<String, Object> variables =
+                runtimeService.getVariables(processInstanceId);
+        List<String> userIds = resolveConfiguredUsers(
+                config.getId(),
+                nodeConfig,
+                miConfig,
+                variables,
+                processInstanceId,
+                processDefinitionId);
         if (!userIds.isEmpty()) {
             runtimeService.setVariable(processInstanceId, varName, userIds);
             log.info("多实例集合变量运行时补充设置: processInstanceId={}, activityId={}, varName={}, users={}",
@@ -223,5 +334,30 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     @Override
     public boolean isFireOnTransactionLifecycleEvent() {
         return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mapValue(Object value) {
+        return value instanceof Map<?, ?>
+                ? (Map<String, Object>) value
+                : Map.of();
+    }
+
+    private String firstText(Object... values) {
+        for (Object value : values) {
+            String text = text(value);
+            if (text != null && !text.isBlank()) {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String nullSafe(String value) {
+        return value == null ? "" : value;
     }
 }

@@ -152,7 +152,8 @@ import { ElMessage } from 'element-plus'
 import { uiExtensionApi } from '@/api/uiConfig'
 import PageState from '@/components/PageState.vue'
 import {
-  getBundledExtensionManifest,
+  getManagedExtensionManifest,
+  isPlatformBuiltInUiExtension,
   validateBundledExtensionManifest
 } from '@/extensions/manifest'
 
@@ -171,7 +172,7 @@ const loadError = ref('')
 const saving = ref(false)
 const editorVisible = ref(false)
 const editor = reactive(emptyEditor())
-const localManifest = getBundledExtensionManifest()
+const localManifest = getManagedExtensionManifest()
 const manifestIssues = validateBundledExtensionManifest(localManifest)
 if (manifestIssues.length) {
   console.error('当前构建的扩展清单无效:', manifestIssues)
@@ -215,10 +216,13 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    items.value = await uiExtensionApi.list({
+    const definitions = await uiExtensionApi.list({
       extensionType: filters.extensionType || undefined,
       extensionKey: filters.extensionKey || undefined
     })
+    items.value = (definitions || []).filter(item =>
+      !isPlatformBuiltInUiExtension(
+        item.extensionType, item.extensionKey))
   } catch (error) {
     loadError.value = error?.message || '无法读取扩展目录，请重试。'
   } finally {

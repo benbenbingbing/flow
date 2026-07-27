@@ -1,0 +1,127 @@
+{
+  "apiBase": "http://localhost:8080/api",
+  "webBase": "http://localhost:3000",
+  "entityCode": "upload_entity_2607270203hmb",
+  "entityName": "文件图片上传验收实体2607270203hmb",
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "id": "1",
+        "username": "admin"
+      }
+    },
+    {
+      "name": "createAndPublishEntity",
+      "data": {
+        "id": "2081560983918104578",
+        "fields": [
+          {
+            "id": "2081560983922298881",
+            "code": "name",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983926493185",
+            "code": "code",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983930687489",
+            "code": "status",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983934881793",
+            "code": "processInstanceId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983939076098",
+            "code": "processStartTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081560983943270401",
+            "code": "processEndTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081560983947464706",
+            "code": "submitterId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983951659009",
+            "code": "submitterName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983955853313",
+            "code": "deptId",
+            "type": "REFERENCE"
+          },
+          {
+            "id": "2081560983976824834",
+            "code": "attachment",
+            "type": "FILE"
+          },
+          {
+            "id": "2081560983960047618",
+            "code": "dataNo",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983960047619",
+            "code": "submitTime",
+            "type": "DATETIME"
+          },
+          {
+            "id": "2081560983968436225",
+            "code": "currentTaskId",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983972630529",
+            "code": "currentTaskName",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983972630530",
+            "code": "currentTaskAssignee",
+            "type": "STRING"
+          },
+          {
+            "id": "2081560983981019137",
+            "code": "siteImage",
+            "type": "IMAGE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "createAndPublishForm",
+      "data": {
+        "id": "2081560984509501441",
+        "releaseId": "9a70354613aa4dab3f4c22c4a7ad04e4",
+        "version": 1
+      }
+    },
+    {
+      "name": "createAndPublishList",
+      "data": {
+        "id": "a342015a1d86879fcf12f0af0e801fc0",
+        "releaseId": "09b600a9d8f890ab55111b9979a3ccf8",
+        "version": 1
+      }
+    }
+  ],
+  "fixture": {
+    "entityId": "2081560983918104578",
+    "formId": "2081560984509501441",
+    "listConfigId": "a342015a1d86879fcf12f0af0e801fc0",
+    "route": "/entity-list/upload_entity_2607270203hmb/upload_records"
+  },
+  "result": "FAIL",
+  "conclusion": "FAIL: FILE/IMAGE 真实上传验收未完成"
+}

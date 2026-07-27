@@ -16,11 +16,6 @@
         </el-tag>
       </div>
       <div class="header-actions">
-        <el-radio-group v-model="configMode" size="small" class="config-mode-switch">
-          <el-radio-button value="basic">基础</el-radio-button>
-          <el-radio-button value="advanced">高级</el-radio-button>
-          <el-radio-button value="developer">开发者</el-radio-button>
-        </el-radio-group>
         <el-button :loading="savingAll" type="primary" @click="saveAll">
           保存全部
         </el-button>
@@ -127,7 +122,7 @@
                       <el-option label="使用列表独立范围（高风险）" value="OVERRIDE" />
                     </el-select>
                   </el-form-item>
-                  <el-form-item v-if="configMode === 'developer'" label="访问权限码">
+                  <el-form-item label="访问权限码">
                     <el-input
                       v-model="configInfo.accessPermissionCode"
                       placeholder="留空继承 entity:{code}:list"
@@ -176,7 +171,7 @@
                       />
                     </el-select>
                   </el-form-item>
-                  <el-form-item v-if="configMode === 'developer' && configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
+                  <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
                     <el-input
                       v-model="configInfo.selectionReturnMappingsText"
                       type="textarea"
@@ -187,7 +182,6 @@
                 </SettingsSection>
 
                 <SettingsSection
-                  v-if="configMode === 'developer'"
                   title="查询实现"
                   description="面向扩展开发的固定条件、可信上下文、Provider 和统一数据源"
                   :default-expanded="false"
@@ -237,7 +231,6 @@
                 </SettingsSection>
 
                 <SettingsSection
-                  v-if="configMode === 'developer'"
                   title="扩展渲染"
                   description="仅在默认动态列表无法满足展示需求时配置"
                 >
@@ -245,24 +238,14 @@
                     {{ configInfo.customComponent ? '已启用自定义组件' : '默认动态列表' }}
                   </template>
                   <el-form-item label="自定义列表组件">
-                    <el-select
+                    <ExtensionCapabilityPicker
                       v-model="configInfo.customComponent"
                       placeholder="留空使用默认动态列表"
-                      filterable
-                      allow-create
-                      clearable
+                      capability-type="UI_LIST"
+                      :local-options="customListOptions"
+                      :current-option="selectedCustomListCatalogOption"
                       style="width: 420px"
-                    >
-                      <el-option
-                        v-for="option in customListOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      >
-                        <div>{{ option.label }}</div>
-                        <small class="option-description">{{ option.description }}</small>
-                      </el-option>
-                    </el-select>
+                    />
                   </el-form-item>
                   <el-form-item v-if="selectedCustomListSchema.length" label="组件参数">
                     <ConfigSchemaEditor
@@ -281,7 +264,7 @@
                   :closable="false"
                   show-icon
                 />
-                <el-button v-if="configMode === 'developer'" type="primary" plain @click="addVirtualField">
+                <el-button type="primary" plain @click="addVirtualField">
                   <el-icon><Plus /></el-icon>添加虚拟列
                 </el-button>
               </div>
@@ -302,7 +285,7 @@
                     <el-input v-model="row.fieldName" size="small" />
                   </template>
                 </el-table-column>
-                <el-table-column v-if="configMode !== 'basic'" label="字段编码" width="168">
+                <el-table-column label="字段编码" width="168">
                   <template #default="{ row }">
                     <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
                   </template>
@@ -622,7 +605,6 @@
           </SettingsSection>
 
           <SettingsSection
-            v-if="configMode !== 'basic'"
             title="高级列布局"
             description="仅在需要冻结列或精细控制宽度时配置"
             :default-expanded="false"
@@ -644,7 +626,7 @@
           </SettingsSection>
         </el-tab-pane>
 
-        <el-tab-pane v-if="configMode === 'developer'" label="数据与显示" name="data-render">
+        <el-tab-pane label="数据与显示" name="data-render">
           <SettingsSection
             title="数据与显示"
             description="集中配置字段取值来源、单元格组件和显示参数"
@@ -778,7 +760,7 @@
 
     <el-dialog v-model="releaseDialogVisible" title="列表发布版本" width="920px">
       <el-table :data="releases" size="small">
-        <el-table-column v-if="configMode === 'developer'" type="expand">
+        <el-table-column type="expand">
           <template #default="{ row }">
             <el-descriptions :column="2" border size="small" class="release-technical-details">
               <el-descriptions-item label="内容校验值">{{ row.contentHash || '-' }}</el-descriptions-item>
@@ -834,6 +816,7 @@ import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
@@ -854,7 +837,6 @@ const router = useRouter()
 const configId = route.params.id
 
 // 配置信息
-const configMode = ref('basic')
 const configInfo = ref({})
 const entityName = ref('')
 const entityCode = ref('')
@@ -886,6 +868,17 @@ const dataSourceOptions = ref([
 ])
 const cellComponentOptions = getCellComponentOptions()
 const customListOptions = getCustomListComponentOptions()
+const selectedCustomListCatalogOption = computed(() => {
+  const option = customListOptions.find(item =>
+    item.value === configInfo.value.customComponent)
+  return option
+    ? {
+        key: option.value,
+        displayName: option.label,
+        description: option.description
+      }
+    : null
+})
 const queryComponentOptions = getFormFieldComponentOptions()
 
 const createDefaultViewConfig = () => ({
@@ -926,12 +919,6 @@ const editingDataSourceConfig = ref({})
 const editingRenderConfig = ref({})
 const editingQueryConfig = ref({})
 const editingColumnConfig = ref({})
-
-watch(configMode, (mode) => {
-  if (mode !== 'developer' && activeFieldConfigTab.value === 'data-render') {
-    activeFieldConfigTab.value = 'common'
-  }
-})
 
 const selectedDataSourceOption = computed(() =>
   dataSourceOptions.value.find(option => option.value === editingField.value?.dataSourceType)
@@ -2198,9 +2185,6 @@ function goBack() {
   gap: 8px;
 }
 
-.config-mode-switch {
-  margin-right: 4px;
-}
 .design-container {
   display: flex;
   flex: 1;

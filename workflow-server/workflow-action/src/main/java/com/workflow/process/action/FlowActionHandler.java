@@ -1,6 +1,7 @@
 package com.workflow.process.action;
 
 import java.util.Set;
+import java.util.Map;
 
 /**
  * 流程动作处理器接口。
@@ -32,5 +33,19 @@ public interface FlowActionHandler {
 
     default String recommendedExecutionMode() {
         return null;
+    }
+
+    /**
+     * 当前动作允许配置的 extraParams Schema。
+     */
+    default Map<String, Object> extraParamSchema() {
+        return Map.of();
+    }
+
+    /**
+     * 是否允许传入 Schema 未声明的动态 extraParams。
+     */
+    default boolean dynamicExtraParams() {
+        return false;
     }
 }

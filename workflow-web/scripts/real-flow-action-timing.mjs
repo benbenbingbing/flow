@@ -3,12 +3,26 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const apiBase = process.env.WORKFLOW_API_BASE || 'http://localhost:8080/api'
+const testUsername = process.env.TEST_USERNAME || 'admin'
+const testPassword = process.env.TEST_PASSWORD || 'admin'
 const suffix = `${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)}${Math.random().toString(36).slice(2, 5)}`
 const processKey = `action_timing_${suffix}`
 const entityCode = `action_timing_entity_${suffix}`
 const outputDir = path.resolve('docs/flow-action-timing-e2e')
-const evidence = { processKey, entityCode, instances: {}, actions: [], executions: {} }
+const evidence = {
+  processKey,
+  entityCode,
+  instances: {},
+  actions: [],
+  executions: {},
+  handlers: {
+    prepared: [],
+    restored: []
+  }
+}
 let token = ''
+const handlerConfigBackups = new Map()
+const handlerDefinitions = new Map()
 
 mkdirSync(outputDir, { recursive: true })
 
@@ -46,6 +60,73 @@ async function waitFor(check, message, timeout = 20000) {
   throw new Error(`${message}: ${JSON.stringify(lastValue)}`)
 }
 
+async function prepareActionHandlers() {
+  const configs = await api('GET', '/process-action-handlers/configs')
+  try {
+    for (const beanName of ['demoSimpleActionHandler', 'demoFailingActionHandler']) {
+      const current = configs.find(item => item.beanName === beanName)
+      assert.ok(current?.configured, `测试处理器 ${beanName} 必须已加入动作目录`)
+      assert.ok(current?.available, `测试处理器 ${beanName} 必须已注册`)
+      const backup = {
+        displayName: current.displayName,
+        description: current.description,
+        visibilityScope: current.visibilityScope,
+        entityCodes: current.entityCodes || [],
+        enabled: current.enabled
+      }
+      handlerConfigBackups.set(beanName, backup)
+      const saved = await api(
+        'POST',
+        `/process-action-handlers/configs/${encodeURIComponent(beanName)}`,
+        {
+          ...backup,
+          visibilityScope: 'ENTITY',
+          entityCodes: [...new Set([...backup.entityCodes, entityCode])],
+          enabled: true
+        }
+      )
+      handlerDefinitions.set(beanName, saved)
+      evidence.handlers.prepared.push({
+        beanName,
+        definitionId: saved.definitionId,
+        visibilityScope: saved.visibilityScope,
+        includesTestEntity: saved.entityCodes?.includes(entityCode),
+        enabled: saved.enabled
+      })
+    }
+  } catch (error) {
+    const restoreErrors = await restoreActionHandlers()
+    if (restoreErrors.length) {
+      throw new Error(`${error.message}; 准备失败后的动作目录恢复也失败: ${restoreErrors.join('; ')}`, {
+        cause: error
+      })
+    }
+    throw error
+  }
+}
+
+async function restoreActionHandlers() {
+  const errors = []
+  for (const [beanName, backup] of handlerConfigBackups) {
+    try {
+      const restored = await api(
+        'POST',
+        `/process-action-handlers/configs/${encodeURIComponent(beanName)}`,
+        backup
+      )
+      evidence.handlers.restored.push({
+        beanName,
+        visibilityScope: restored.visibilityScope,
+        entityCodes: restored.entityCodes || [],
+        enabled: restored.enabled
+      })
+    } catch (error) {
+      errors.push(`${beanName}: ${error.message}`)
+    }
+  }
+  return errors
+}
+
 function bpmnXml() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -57,10 +138,10 @@ function bpmnXml() {
   targetNamespace="http://workflow.codex/action-timing">
   <bpmn:process id="${processKey}" name="流程动作时机闭环${suffix}" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1" name="开始"><bpmn:outgoing>Flow_Start_Review</bpmn:outgoing></bpmn:startEvent>
-    <bpmn:userTask id="Task_Review" name="动作时机审批" flowable:assignee="admin">
+    <bpmn:userTask id="Task_Review" name="动作时机审批" flowable:assignee="${testUsername}">
       <bpmn:incoming>Flow_Start_Review</bpmn:incoming><bpmn:outgoing>Flow_Review_Confirm</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id="Task_Confirm" name="动作时机确认" flowable:assignee="admin">
+    <bpmn:userTask id="Task_Confirm" name="动作时机确认" flowable:assignee="${testUsername}">
       <bpmn:incoming>Flow_Review_Confirm</bpmn:incoming><bpmn:outgoing>Flow_Confirm_End</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id="EndEvent_1" name="结束"><bpmn:incoming>Flow_Confirm_End</bpmn:incoming></bpmn:endEvent>
@@ -83,7 +164,10 @@ function bpmnXml() {
 }
 
 async function saveAction(processId, config) {
-  const action = await api('POST', '/flow-actions', {
+  const interfaceName = config.interfaceName || 'demoSimpleActionHandler'
+  const definition = handlerDefinitions.get(interfaceName)
+  assert.ok(definition?.definitionId, `动作处理器 ${interfaceName} 缺少目录定义`)
+  const action = await api('POST', '/process-actions', {
     processConfigId: processId,
     scopeType: config.scopeType,
     elementId: config.elementId || null,
@@ -93,10 +177,11 @@ async function saveAction(processId, config) {
     failurePolicy: config.failurePolicy,
     actionName: config.actionName || config.triggerTiming,
     description: `E2E ${config.triggerTiming}`,
-    interfaceName: config.interfaceName || 'demoSimpleActionHandler',
+    interfaceName,
     methodName: 'execute',
     paramsJson: JSON.stringify({ timing: config.triggerTiming, message: config.message || '' }),
     retryConfig: config.retryConfig ? JSON.stringify(config.retryConfig) : null,
+    actionDefinitionId: definition.definitionId,
     enabled: true,
     sortOrder: evidence.actions.length
   })
@@ -133,7 +218,7 @@ async function completeTask(task, comment) {
 }
 
 async function executions(processInstanceId) {
-  return api('GET', `/flow-action-executions/process/${processInstanceId}`)
+  return api('GET', `/process-action-executions/process/${processInstanceId}`)
 }
 
 async function waitForTiming(processInstanceId, timing, status = 'SUCCESS') {
@@ -144,10 +229,13 @@ async function waitForTiming(processInstanceId, timing, status = 'SUCCESS') {
 }
 
 async function main() {
-  const login = await api('POST', '/auth/login', { username: 'admin', password: 'admin' })
+  const login = await api('POST', '/auth/login', {
+    username: testUsername,
+    password: testPassword
+  })
   token = login.token
 
-  const process = await api('POST', '/process', {
+  const workflowProcess = await api('POST', '/process', {
     processKey,
     processName: `流程动作时机闭环${suffix}`,
     description: '验证十个标准流程动作时机、Outbox 与死信',
@@ -165,8 +253,8 @@ async function main() {
     ]
   })
   await api('POST', `/entity/${entity.id}/publish`)
-  await api('PUT', `/entity/${entity.id}/workflow-binding`, {
-    processDefinitionId: process.id
+  await api('POST', `/entity/${entity.id}/workflow-binding/update`, {
+    processDefinitionId: workflowProcess.id
   })
   await api('POST', `/entity-status/save-list/${entityCode}`, [
     { statusCode: 'DRAFT', statusName: '草稿', statusCategory: 'NEW', color: '#909399' },
@@ -176,94 +264,115 @@ async function main() {
     { statusCode: 'TERMINATED', statusName: '已终止', statusCategory: 'TERMINATED', color: '#f56c6c' }
   ])
 
-  const sync = { executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK' }
-  const asyncRetry = { executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', retryConfig: { maxRetries: 3 } }
-  await saveAction(process.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_STARTED', ...sync })
-  await saveAction(process.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_COMPLETED', ...asyncRetry })
-  await saveAction(process.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_WITHDRAWN', ...asyncRetry })
-  await saveAction(process.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_TERMINATED', ...asyncRetry })
-  await saveAction(process.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'NODE_ENTERED', ...sync })
-  await saveAction(process.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'NODE_COMPLETED', ...sync })
-  await saveAction(process.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_CREATED', ...asyncRetry })
-  await saveAction(process.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_ASSIGNED', ...asyncRetry })
-  await saveAction(process.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_COMPLETING', ...sync })
-  await saveAction(process.id, { scopeType: 'SEQUENCE_FLOW', elementId: 'Flow_Start_Review', triggerTiming: 'TRANSITION_TAKEN', ...sync })
-  await saveAction(process.id, {
-    scopeType: 'PROCESS',
-    triggerTiming: 'PROCESS_COMPLETED',
-    ...asyncRetry,
-    actionName: '流程完成后失败动作',
-    interfaceName: 'demoFailingActionHandler',
-    retryConfig: { maxRetries: 1 },
-    message: 'E2E 预期失败'
-  })
+  await prepareActionHandlers()
+  let primaryError = null
+  let completedInstance
+  let withdrawnInstance
+  let terminatedInstance
+  let observedTimings
+  try {
+    const sync = { executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK' }
+    const asyncRetry = { executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', retryConfig: { maxRetries: 3 } }
+    await saveAction(workflowProcess.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_STARTED', ...sync })
+    await saveAction(workflowProcess.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_COMPLETED', ...asyncRetry })
+    await saveAction(workflowProcess.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_WITHDRAWN', ...asyncRetry })
+    await saveAction(workflowProcess.id, { scopeType: 'PROCESS', triggerTiming: 'PROCESS_TERMINATED', ...asyncRetry })
+    await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'NODE_ENTERED', ...sync })
+    await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'NODE_COMPLETED', ...sync })
+    await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_CREATED', ...asyncRetry })
+    await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_ASSIGNED', ...asyncRetry })
+    await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_COMPLETING', ...sync })
+    await saveAction(workflowProcess.id, { scopeType: 'SEQUENCE_FLOW', elementId: 'Flow_Start_Review', triggerTiming: 'TRANSITION_TAKEN', ...sync })
+    await saveAction(workflowProcess.id, {
+      scopeType: 'PROCESS',
+      triggerTiming: 'PROCESS_COMPLETED',
+      ...asyncRetry,
+      actionName: '流程完成后失败动作',
+      interfaceName: 'demoFailingActionHandler',
+      retryConfig: { maxRetries: 1 },
+      message: 'E2E 预期失败'
+    })
 
-  const published = await api('POST', `/process/${process.id}/publish`, {
-    versionDescription: `流程动作时机真实闭环 ${suffix}`
-  })
-  assert.equal(published.status, 'PUBLISHED')
+    const published = await api('POST', `/process/${workflowProcess.id}/publish`, {
+      versionDescription: `流程动作时机真实闭环 ${suffix}`
+    })
+    assert.equal(published.status, 'PUBLISHED')
 
-  const completedInstance = await createInstance(`动作完成实例${suffix}`)
-  evidence.instances.completed = completedInstance
-  const firstTask = await currentTask(completedInstance.processInstanceId, '动作时机审批')
-  await completeTask(firstTask, '一级通过')
-  const secondTask = await currentTask(completedInstance.processInstanceId, '动作时机确认')
-  await completeTask(secondTask, '二级通过')
+    completedInstance = await createInstance(`动作完成实例${suffix}`)
+    evidence.instances.completed = completedInstance
+    const firstTask = await currentTask(completedInstance.processInstanceId, '动作时机审批')
+    await completeTask(firstTask, '一级通过')
+    const secondTask = await currentTask(completedInstance.processInstanceId, '动作时机确认')
+    await completeTask(secondTask, '二级通过')
 
-  for (const timing of [
-    'PROCESS_STARTED',
-    'NODE_ENTERED',
-    'NODE_COMPLETED',
-    'TASK_CREATED',
-    'TASK_ASSIGNED',
-    'TASK_COMPLETING',
-    'TRANSITION_TAKEN',
-    'PROCESS_COMPLETED'
-  ]) {
-    await waitForTiming(completedInstance.processInstanceId, timing)
+    for (const timing of [
+      'PROCESS_STARTED',
+      'NODE_ENTERED',
+      'NODE_COMPLETED',
+      'TASK_CREATED',
+      'TASK_ASSIGNED',
+      'TASK_COMPLETING',
+      'TRANSITION_TAKEN',
+      'PROCESS_COMPLETED'
+    ]) {
+      await waitForTiming(completedInstance.processInstanceId, timing)
+    }
+    await waitForTiming(completedInstance.processInstanceId, 'PROCESS_COMPLETED', 'DEAD')
+    evidence.executions.completed = await executions(completedInstance.processInstanceId)
+
+    withdrawnInstance = await createInstance(`动作撤回实例${suffix}`)
+    evidence.instances.withdrawn = withdrawnInstance
+    await api('POST', `/process-instance/${withdrawnInstance.processInstanceId}/terminate`, {
+      reason: `发起人撤回: E2E ${suffix}`
+    })
+    await waitForTiming(withdrawnInstance.processInstanceId, 'PROCESS_WITHDRAWN')
+    evidence.executions.withdrawn = await executions(withdrawnInstance.processInstanceId)
+
+    terminatedInstance = await createInstance(`动作终止实例${suffix}`)
+    evidence.instances.terminated = terminatedInstance
+    await api('POST', `/process-instance/${terminatedInstance.processInstanceId}/terminate`, {
+      reason: `E2E 主动终止 ${suffix}`
+    })
+    await waitForTiming(terminatedInstance.processInstanceId, 'PROCESS_TERMINATED')
+    evidence.executions.terminated = await executions(terminatedInstance.processInstanceId)
+
+    observedTimings = new Set([
+      ...evidence.executions.completed,
+      ...evidence.executions.withdrawn,
+      ...evidence.executions.terminated
+    ].map(item => item.triggerTiming))
+    const standardTimings = [
+      'PROCESS_STARTED',
+      'PROCESS_COMPLETED',
+      'PROCESS_WITHDRAWN',
+      'PROCESS_TERMINATED',
+      'NODE_ENTERED',
+      'NODE_COMPLETED',
+      'TASK_CREATED',
+      'TASK_ASSIGNED',
+      'TASK_COMPLETING',
+      'TRANSITION_TAKEN'
+    ]
+    standardTimings.forEach(timing => assert.ok(observedTimings.has(timing), `缺少时机 ${timing}`))
+  } catch (error) {
+    primaryError = error
   }
-  await waitForTiming(completedInstance.processInstanceId, 'PROCESS_COMPLETED', 'DEAD')
-  evidence.executions.completed = await executions(completedInstance.processInstanceId)
 
-  const withdrawnInstance = await createInstance(`动作撤回实例${suffix}`)
-  evidence.instances.withdrawn = withdrawnInstance
-  await api('POST', `/process-instance/${withdrawnInstance.processInstanceId}/terminate`, {
-    reason: `发起人撤回: E2E ${suffix}`
-  })
-  await waitForTiming(withdrawnInstance.processInstanceId, 'PROCESS_WITHDRAWN')
-  evidence.executions.withdrawn = await executions(withdrawnInstance.processInstanceId)
-
-  const terminatedInstance = await createInstance(`动作终止实例${suffix}`)
-  evidence.instances.terminated = terminatedInstance
-  await api('POST', `/process-instance/${terminatedInstance.processInstanceId}/terminate`, {
-    reason: `E2E 主动终止 ${suffix}`
-  })
-  await waitForTiming(terminatedInstance.processInstanceId, 'PROCESS_TERMINATED')
-  evidence.executions.terminated = await executions(terminatedInstance.processInstanceId)
-
-  const observedTimings = new Set([
-    ...evidence.executions.completed,
-    ...evidence.executions.withdrawn,
-    ...evidence.executions.terminated
-  ].map(item => item.triggerTiming))
-  const standardTimings = [
-    'PROCESS_STARTED',
-    'PROCESS_COMPLETED',
-    'PROCESS_WITHDRAWN',
-    'PROCESS_TERMINATED',
-    'NODE_ENTERED',
-    'NODE_COMPLETED',
-    'TASK_CREATED',
-    'TASK_ASSIGNED',
-    'TASK_COMPLETING',
-    'TRANSITION_TAKEN'
-  ]
-  standardTimings.forEach(timing => assert.ok(observedTimings.has(timing), `缺少时机 ${timing}`))
+  const restoreErrors = await restoreActionHandlers()
+  if (primaryError) {
+    if (restoreErrors.length) {
+      throw new Error(`${primaryError.message}; 恢复动作目录失败: ${restoreErrors.join('; ')}`, {
+        cause: primaryError
+      })
+    }
+    throw primaryError
+  }
+  assert.deepEqual(restoreErrors, [], '测试结束后必须恢复动作处理器目录配置')
 
   const evidenceFile = path.join(outputDir, `flow-action-timing-${suffix}.json`)
   writeFileSync(evidenceFile, JSON.stringify(evidence, null, 2))
   console.log(JSON.stringify({
-    processId: process.id,
+    processId: workflowProcess.id,
     processKey,
     entityCode,
     completedProcessInstanceId: completedInstance.processInstanceId,

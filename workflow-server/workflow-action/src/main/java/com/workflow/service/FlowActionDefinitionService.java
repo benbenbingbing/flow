@@ -36,7 +36,7 @@ import java.util.Set;
  *
  * <p>管理动作处理器目录：扫描容器内所有 {@link FlowActionHandler} Bean，与持久化的动作定义
  * 配置合并，提供前端可见的处理器选项列表；并负责处理器中文名称、可见范围、实体绑定的
- * 增删改与校验。仅超级管理员可维护目录配置。</p>
+ * 增删改与校验。系统管理员可维护目录配置。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -65,13 +65,14 @@ public class FlowActionDefinitionService {
     }
 
     /**
-     * 列出全部处理器配置（含未启用的），仅超级管理员可调用。
+     * 列出全部处理器配置（含未启用的），仅系统管理员可调用。
      *
      * @return 全部处理器选项列表
-     * @throws RuntimeException 非超级管理员调用时抛出
+     * @throws RuntimeException 非系统管理员调用时抛出
      */
     public List<FlowActionHandlerOptionDTO> listAllForAdmin() {
-        currentUserRoleService.requireSuperAdmin();
+        currentUserRoleService.requireAdministrator(
+                "只有管理员可以查看流程动作目录");
         return buildOptions(true);
     }
 
@@ -81,7 +82,7 @@ public class FlowActionDefinitionService {
      * @param beanName 处理器 Bean 名称
      * @param request   配置请求
      * @return 保存后的处理器选项
-     * @throws RuntimeException 非超管、处理器不存在或实体编码无效时抛出
+     * @throws RuntimeException 非管理员、处理器不存在或实体编码无效时抛出
      */
     @Transactional
     @SystemAudit(
@@ -94,7 +95,8 @@ public class FlowActionDefinitionService {
             captureArguments = true,
             captureResult = true)
     public FlowActionHandlerOptionDTO save(String beanName, FlowActionDefinitionRequest request) {
-        currentUserRoleService.requireSuperAdmin();
+        currentUserRoleService.requireAdministrator(
+                "只有管理员可以维护流程动作目录");
         FlowActionHandler handler = applicationContext.getBeansOfType(FlowActionHandler.class).get(beanName);
         if (handler == null) {
             throw new RuntimeException("未找到流程动作处理器：" + beanName);
@@ -259,8 +261,17 @@ public class FlowActionDefinitionService {
             option.setSupportedTriggerTimings(handler.supportedTriggerTimings());
             option.setSupportedExecutionModes(handler.supportedExecutionModes());
             option.setRecommendedExecutionMode(handler.recommendedExecutionMode());
+            option.setExtraParamSchema(handler.extraParamSchema());
+            option.setDynamicExtraParams(handler.dynamicExtraParams());
         }
         return option;
+    }
+
+    /**
+     * 供统一扩展目录聚合动作定义。权限由聚合入口统一校验。
+     */
+    public List<FlowActionHandlerOptionDTO> listCatalog() {
+        return buildOptions(true);
     }
 
     /** 判断处理器选项对指定实体是否可见：全局可见直接通过，实体可见需实体编码匹配 */
