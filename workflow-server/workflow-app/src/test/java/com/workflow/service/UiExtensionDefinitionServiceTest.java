@@ -1,10 +1,12 @@
 package com.workflow.service;
 
+import com.workflow.entity.ui.application.UiExtensionDefinitionService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.dto.UiExtensionDefinitionSaveRequest;
-import com.workflow.entity.UiExtensionDefinition;
-import com.workflow.mapper.UiExtensionDefinitionMapper;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

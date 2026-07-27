@@ -1,13 +1,15 @@
 package com.workflow.controller;
 
-import com.workflow.common.ForbiddenException;
-import com.workflow.common.Result;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.service.DynamicTableService;
-import com.workflow.service.EntityDataDynamicService;
-import com.workflow.service.EntityDefinitionService;
-import com.workflow.service.EntityFieldService;
-import com.workflow.service.SystemEntityService;
+import com.workflow.entity.data.api.web.EntitySelectorController;
+
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.result.Result;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.definition.application.EntityDefinitionService;
+import com.workflow.entity.definition.application.EntityFieldService;
+import com.workflow.entity.definition.application.SystemEntityService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

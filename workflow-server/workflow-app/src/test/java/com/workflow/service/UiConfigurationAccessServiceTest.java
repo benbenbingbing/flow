@@ -1,16 +1,20 @@
 package com.workflow.service;
 
-import com.workflow.common.BusinessConflictException;
-import com.workflow.common.ForbiddenException;
-import com.workflow.common.UserContext;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityForm;
-import com.workflow.entity.EntityListConfig;
-import com.workflow.entity.SysRole;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.mapper.EntityListConfigMapper;
-import com.workflow.mapper.SysRoleMapper;
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.ui.application.UiConfigurationAccessService;
+
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

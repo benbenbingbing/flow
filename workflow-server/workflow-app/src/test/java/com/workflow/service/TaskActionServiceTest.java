@@ -1,12 +1,21 @@
 package com.workflow.service;
 
-import com.workflow.common.BusinessConflictException;
-import com.workflow.common.UserContext;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.mapper.EntityDataMapper;
-import com.workflow.mapper.ProcessOperationLogMapper;
-import com.workflow.entity.ProcessTask;
-import com.workflow.service.permission.EntityActionCapabilityService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityRecordTeamService;
+
+import com.workflow.process.cc.application.ProcessCcService;
+import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.task.application.ProcessTaskService;
+import com.workflow.process.task.application.TaskActionService;
+
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataMapper;
+import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -185,7 +194,7 @@ class TaskActionServiceTest {
         ordered.verify(entityActionCapabilityService).requireRowAction(
                 "expense", null, "approve", entityData);
         ordered.verify(taskService).complete(eq("task-1"), anyMap());
-        verify(operationLogMapper).insert(any(com.workflow.entity.ProcessOperationLog.class));
+        verify(operationLogMapper).insert(any(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog.class));
         verify(entityRecordTeamService).record(
                 "expense", "record-1", "CLAIM", "认领任务", "proc-1", "task-1");
     }

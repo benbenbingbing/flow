@@ -1,8 +1,18 @@
 package com.workflow.service;
 
-import com.workflow.dto.NodeConfigDTO;
-import com.workflow.entity.*;
-import com.workflow.mapper.*;
+import com.workflow.entity.form.infrastructure.persistence.mapper.FormConfigMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.FormFieldConfigMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
+
+import com.workflow.process.configuration.application.NodeConfigService;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
+import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
+import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+
+import com.workflow.process.configuration.api.model.NodeConfigDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -153,7 +163,7 @@ public class NodeConfigServiceTest {
         dto.setNodeName("审批节点");
         dto.setNodeType(NodeConfig.NodeType.USER_TASK);
         
-        com.workflow.dto.AssigneeConfigDTO assigneeDTO = new com.workflow.dto.AssigneeConfigDTO();
+        com.workflow.process.configuration.api.model.AssigneeConfigDTO assigneeDTO = new com.workflow.process.configuration.api.model.AssigneeConfigDTO();
         assigneeDTO.setAssigneeType(AssigneeConfig.AssigneeType.USER);
         assigneeDTO.setAssigneeValue("user1");
         assigneeDTO.setAssigneeName("张三");

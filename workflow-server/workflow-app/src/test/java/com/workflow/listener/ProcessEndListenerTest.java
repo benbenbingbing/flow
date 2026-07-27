@@ -1,6 +1,8 @@
 package com.workflow.listener;
 
-import com.workflow.entity.policy.EntityProcessStatusPolicy;
+import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
+
+import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;

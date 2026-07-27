@@ -1,12 +1,23 @@
 package com.workflow.service;
 
+import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
+import com.workflow.process.cc.application.ProcessCcRuntimeService;
+import com.workflow.process.cc.application.ProcessCcService;
+import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.ProcessCcRecord;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.*;
-import com.workflow.service.cc.CcRuntimeContext;
-import com.workflow.service.cc.ProcessCcConfigService;
-import com.workflow.service.cc.ProcessCcOutboxService;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
+import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
+import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.process.cc.application.CcRuntimeContext;
+import com.workflow.process.cc.application.ProcessCcConfigService;
+import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +44,7 @@ class ProcessCcRuntimeServiceTest {
     @Mock ProcessTaskMapper processTaskMapper;
     @Mock ProcessOperationLogMapper operationLogMapper;
     @Mock ProcessCcService ccService;
-    @Mock ProcessCcOutboxService outboxService;
+    @Mock ProcessCcNotificationPublisher notificationPublisher;
     @Mock ProcessCcConfigService configService;
     @Mock SysUserMapper userMapper;
     @Mock SysRoleMapper roleMapper;
@@ -51,7 +62,7 @@ class ProcessCcRuntimeServiceTest {
                 processTaskMapper,
                 operationLogMapper,
                 ccService,
-                outboxService,
+                notificationPublisher,
                 configService,
                 userMapper,
                 roleMapper,
@@ -93,7 +104,8 @@ class ProcessCcRuntimeServiceTest {
         verify(ccService).createCcRecord(captor.capture());
         assertEquals("observer", captor.getValue().getCcUserId());
         assertEquals("AUTO:process-1:approve-node:TASK_COMPLETE:observer", captor.getValue().getUniqueKey());
-        verify(outboxService).enqueue(captor.getValue(), List.of("IN_APP"));
+        verify(notificationPublisher)
+                .enqueue(captor.getValue(), List.of("IN_APP"));
     }
 
     /** 测试时机不匹配时不做任何动作：验证返回 0 且未与知会服务、Outbox 交互 */
@@ -104,7 +116,7 @@ class ProcessCcRuntimeServiceTest {
                 processTaskMapper,
                 operationLogMapper,
                 ccService,
-                outboxService,
+                notificationPublisher,
                 configService,
                 userMapper,
                 roleMapper,
@@ -121,6 +133,6 @@ class ProcessCcRuntimeServiceTest {
 
         assertEquals(0, service.trigger(context,
                 "{\"enabled\":true,\"timings\":[\"TASK_COMPLETE\"],\"recipientRules\":[]}"));
-        verifyNoInteractions(ccService, outboxService);
+        verifyNoInteractions(ccService, notificationPublisher);
     }
 }

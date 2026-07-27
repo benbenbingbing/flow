@@ -18,13 +18,12 @@
     <name>workflow-server-parent</name>
 
     <modules>
-        <module>workflow-common</module>
+        <module>workflow-core</module>
         <module>workflow-contracts</module>
-        <module>workflow-system</module>
+        <module>workflow-admin</module>
         <module>workflow-storage</module>
         <module>workflow-entity</module>
         <module>workflow-process</module>
-        <module>workflow-action</module>
         <module>workflow-integration</module>
         <module>workflow-migration</module>
         <module>workflow-devtools</module>
@@ -44,7 +43,7 @@
         <dependencies>
             <dependency>
                 <groupId>com.workflow</groupId>
-                <artifactId>workflow-common</artifactId>
+                <artifactId>workflow-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -54,7 +53,7 @@
             </dependency>
             <dependency>
                 <groupId>com.workflow</groupId>
-                <artifactId>workflow-system</artifactId>
+                <artifactId>workflow-admin</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -74,12 +73,23 @@
             </dependency>
             <dependency>
                 <groupId>com.workflow</groupId>
-                <artifactId>workflow-action</artifactId>
+                <artifactId>workflow-integration</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
+                <artifactId>workflow-outbox</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.workflow</groupId>
-                <artifactId>workflow-integration</artifactId>
+                <artifactId>workflow-http</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
+                <artifactId>workflow-notification</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -16,10 +16,7 @@
 4. 动态实体详情、更新、删除缺少行级权限，且更新入口允许修改状态、流程实例、提交人等系统字段。
    - `workflow-server/src/main/java/com/workflow/controller/EntityDataController.java:95`
    - `workflow-server/src/main/java/com/workflow/service/EntityDataDynamicService.java:276`
-5. Flyway 基线使用 `created_at/updated_at`，运行时部分实体和 SQL 使用 `create_time/update_time`，干净部署存在未知列风险。
-   - `workflow-server/src/main/resources/db/migration/V001__business_schema.sql:561`
-   - `workflow-server/src/main/java/com/workflow/entity/ProcessDefinitionConfig.java:79`
-   - `workflow-server/src/main/java/com/workflow/mapper/ProcessTaskMapper.java:38`
+5. [已解决，2026-07-27] Flyway V001、实体映射和运行时 SQL 已统一使用 `create_time/update_time`，并由数据库命名契约测试持续校验。
 
 ## P1
 

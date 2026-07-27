@@ -1,15 +1,17 @@
 package com.workflow.service;
 
+import com.workflow.process.definition.application.ProcessDefinitionService;
+
 import com.workflow.contracts.action.FlowActionDesignPort;
 import com.workflow.contracts.migration.MigrationAssetHandler;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessVersionHistoryMapper;
-import com.workflow.process.definition.ProcessBpmnPublishSanitizer;
-import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
-import com.workflow.process.definition.ProcessFlowableDeploymentService;
-import com.workflow.process.definition.ProcessPublishHistoryService;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
+import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
+import com.workflow.process.definition.application.ProcessFlowableDeploymentService;
+import com.workflow.process.definition.application.ProcessPublishHistoryService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.Test;
 

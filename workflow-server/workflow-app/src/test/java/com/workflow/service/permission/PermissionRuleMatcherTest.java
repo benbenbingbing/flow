@@ -1,10 +1,13 @@
 package com.workflow.service.permission;
 
-import com.workflow.dto.permission.MatchConfigDTO;
-import com.workflow.entity.SysOrganization;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.SysOrganizationMapper;
-import com.workflow.mapper.SysUserGroupMapper;
+import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
+import com.workflow.entity.permission.application.PermissionRuleMatcher;
+
+import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

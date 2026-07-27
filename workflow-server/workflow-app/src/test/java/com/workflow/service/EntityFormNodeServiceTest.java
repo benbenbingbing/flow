@@ -1,19 +1,22 @@
 package com.workflow.service;
 
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.form.application.EntityFormNodeService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.RevisionConflictException;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.dto.EntityFormNodeCreateRequest;
-import com.workflow.dto.EntityFormNodePatchRequest;
-import com.workflow.dto.EntityFormNodeReorderRequest;
-import com.workflow.entity.EntityForm;
-import com.workflow.entity.EntityFormNode;
-import com.workflow.entity.EntityRelation;
-import com.workflow.entity.UiConfigRelease;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.mapper.EntityFormNodeMapper;
-import com.workflow.mapper.EntityRelationMapper;
-import com.workflow.mapper.UiConfigReleaseMapper;
+import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.form.api.request.EntityFormNodeCreateRequest;
+import com.workflow.entity.form.api.request.EntityFormNodePatchRequest;
+import com.workflow.entity.form.api.request.EntityFormNodeReorderRequest;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;

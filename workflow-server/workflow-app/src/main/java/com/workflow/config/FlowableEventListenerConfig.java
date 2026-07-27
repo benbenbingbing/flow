@@ -1,12 +1,12 @@
 package com.workflow.config;
 
-import com.workflow.listener.EntityStatusUpdateListener;
-import com.workflow.listener.MultiInstanceCollectionListener;
-import com.workflow.listener.ProcessEndListener;
-import com.workflow.listener.ProcessCcEventListener;
-import com.workflow.listener.PersonResolverTaskAssignmentListener;
-import com.workflow.process.action.FlowActionEngineEventListener;
-import com.workflow.service.WorkflowAutoSkipService;
+import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
+import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
+import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
+import com.workflow.process.cc.infrastructure.flowable.ProcessCcEventListener;
+import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
+import com.workflow.process.action.application.FlowActionEngineEventListener;
+import com.workflow.process.task.application.WorkflowAutoSkipService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.RuntimeService;
 import org.springframework.context.annotation.Configuration;

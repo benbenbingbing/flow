@@ -1,20 +1,25 @@
 package com.workflow.service;
 
+import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityRecordTeamService;
+import com.workflow.entity.definition.application.EntityCodeGeneratorService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityField;
-import com.workflow.entity.EntityRelation;
-import com.workflow.entity.publish.EntityPublishedSnapshot;
-import com.workflow.entity.publish.EntityPublishedSnapshotService;
-import com.workflow.entity.runtime.EntityRelationRuntimeService;
-import com.workflow.entity.runtime.EntityMultiValueRuntimeService;
-import com.workflow.entity.runtime.EntityRuntimeRecordMapper;
-import com.workflow.mapper.EntityDataDynamicMapper;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.mapper.EntityRelationMapper;
-import com.workflow.mapper.EntityStatusMapper;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
+import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
+import com.workflow.entity.data.application.EntityRelationRuntimeService;
+import com.workflow.entity.data.application.EntityMultiValueRuntimeService;
+import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -153,9 +158,9 @@ class EntityDataDynamicServiceSubFormTest {
         dto.setStartProcess(true);
         dto.setData(new HashMap<>(Map.of("name", "基础资料")));
 
-        com.workflow.common.BusinessConflictException exception =
+        com.workflow.core.error.BusinessConflictException exception =
                 org.junit.jupiter.api.Assertions.assertThrows(
-                        com.workflow.common.BusinessConflictException.class,
+                        com.workflow.core.error.BusinessConflictException.class,
                         () -> service.save(dto));
 
         assertEquals("ENTITY_WORKFLOW_NOT_SUPPORTED", exception.getErrorCode());

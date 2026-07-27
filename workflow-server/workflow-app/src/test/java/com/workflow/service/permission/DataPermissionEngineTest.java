@@ -1,11 +1,27 @@
 package com.workflow.service.permission;
 
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
+import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
+import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
+import com.workflow.entity.permission.api.response.FilterConfigDTO;
+import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.entity.permission.application.DataPermissionEngine;
+import com.workflow.entity.permission.application.EntityListScopeAuditService;
+import com.workflow.entity.permission.application.EntityListScopeService;
+import com.workflow.entity.permission.application.PermissionRuleMatcher;
+import com.workflow.entity.permission.application.PermissionSqlBuilder;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.permission.*;
-import com.workflow.entity.EntityStatus;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.*;
-import com.workflow.service.SysUserService;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
+import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.identity.user.application.SysUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -41,8 +57,8 @@ class DataPermissionEngineTest {
     private final EntityListScopeAuditService auditService =
             mock(EntityListScopeAuditService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final com.workflow.service.EntityRecordTeamService entityRecordTeamService =
-            mock(com.workflow.service.EntityRecordTeamService.class);
+    private final com.workflow.entity.data.application.EntityRecordTeamService entityRecordTeamService =
+            mock(com.workflow.entity.data.application.EntityRecordTeamService.class);
     /** 被测权限引擎 */
     private DataPermissionEngine engine;
 
@@ -72,7 +88,7 @@ class DataPermissionEngineTest {
                 auditService,
                 entityRecordTeamService);
         when(entityRecordTeamService.teamPermission(anyString(), anyString()))
-                .thenReturn(com.workflow.service.EntityRecordTeamService.TeamPermission.disabled());
+                .thenReturn(com.workflow.entity.data.application.EntityRecordTeamService.TeamPermission.disabled());
     }
 
     /** 测试缺失发布快照时 fail-closed：验证无权限且 SQL 为 1=0 */
@@ -94,9 +110,9 @@ class DataPermissionEngineTest {
         snapshot.setBindings(List.of());
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
         when(entityRecordTeamService.teamPermission("expense", "u1"))
-                .thenReturn(new com.workflow.service.EntityRecordTeamService.TeamPermission(
+                .thenReturn(new com.workflow.entity.data.application.EntityRecordTeamService.TeamPermission(
                         true,
-                        com.workflow.entity.EntityDefinition.TeamVisibilityLevel.ABSOLUTE,
+                        com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ABSOLUTE,
                         "EXISTS (SELECT 1 FROM expense_team)"));
 
         var result = engine.calculatePermission("expense", "default", user());

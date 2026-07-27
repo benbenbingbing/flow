@@ -1,9 +1,11 @@
 package com.workflow.service;
 
-import com.workflow.entity.EntityForm;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.mapper.ProcessNodeFormMapper;
+import com.workflow.process.form.application.ProcessNodeFormService;
+
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

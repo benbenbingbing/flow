@@ -1,18 +1,21 @@
 package com.workflow.service;
 
+import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.task.application.TaskAddSignService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.UserContext;
-import com.workflow.dto.TaskAddSignRequest;
-import com.workflow.entity.ProcessTask;
-import com.workflow.entity.ProcessTaskAddSign;
-import com.workflow.entity.ProcessTaskAddSignUser;
-import com.workflow.entity.ProcessOperationLog;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.ProcessTaskAddSignMapper;
-import com.workflow.mapper.ProcessTaskAddSignUserMapper;
-import com.workflow.mapper.ProcessTaskMapper;
-import com.workflow.mapper.ProcessOperationLogMapper;
-import com.workflow.mapper.SysUserMapper;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.process.task.api.request.TaskAddSignRequest;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTaskAddSign;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTaskAddSignUser;
+import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskAddSignMapper;
+import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskAddSignUserMapper;
+import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
+import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;

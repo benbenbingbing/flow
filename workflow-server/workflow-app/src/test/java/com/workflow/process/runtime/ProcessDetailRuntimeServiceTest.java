@@ -1,9 +1,11 @@
 package com.workflow.process.runtime;
 
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.SysGroupMapper;
-import com.workflow.service.SysUserService;
-import com.workflow.vo.ProcessDetailVO;
+import com.workflow.process.instance.application.ProcessDetailRuntimeService;
+
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
+import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.process.instance.api.response.ProcessDetailVO;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;

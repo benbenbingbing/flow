@@ -1,5 +1,7 @@
 package com.workflow.service;
 
+import com.workflow.entity.data.application.EntityPhysicalTableNaming;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 实体物理表命名服务测试。
  *
  * <p>被测对象：{@link EntityPhysicalTableNaming}，覆盖表名生成（biz 前缀 + 蛇形）、
- * MySQL 标识符长度限制内的稳定性、保留配置表名拒绝、遗留表运行期拒绝但允许迁移等场景。
+ * MySQL 标识符长度限制内的稳定性，以及非 biz 表名拒绝等场景。
  */
 class EntityPhysicalTableNamingTest {
 
@@ -48,14 +50,11 @@ class EntityPhysicalTableNamingTest {
                 () -> naming.validateStoredName("process_action"));
     }
 
-    /** 测试运行期拒绝遗留表但允许迁移：验证存储校验抛异常，迁移校验放行 */
+    /** 测试运行期拒绝非 biz 表名 */
     @Test
-    void shouldRejectLegacyTableAtRuntimeButAllowMigration() {
+    void shouldRejectNonBusinessTableAtRuntime() {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> naming.validateStoredName("entity_data_order"));
-        assertEquals(
-                "entity_data_order",
-                naming.validateMigrationName("entity_data_order"));
     }
 }

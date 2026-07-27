@@ -1,7 +1,9 @@
 package com.workflow.process.definition;
 
+import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.delegate.ConfiguredScriptTaskDelegate;
+import com.workflow.process.engine.infrastructure.flowable.ConfiguredScriptTaskDelegate;
 import org.flowable.common.engine.impl.el.DefaultExpressionManager;
 import org.flowable.engine.ProcessEngine;
 import org.flowable.engine.ProcessEngineConfiguration;

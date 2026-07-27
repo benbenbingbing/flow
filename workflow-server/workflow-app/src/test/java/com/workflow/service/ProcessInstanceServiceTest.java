@@ -1,9 +1,11 @@
 package com.workflow.service;
 
-import com.workflow.dto.ReceiveTaskTriggerRequest;
-import com.workflow.dto.ProcessProgressDTO;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.instance.application.ProcessInstanceService;
+
+import com.workflow.process.task.api.request.ReceiveTaskTriggerRequest;
+import com.workflow.process.instance.api.response.ProcessProgressDTO;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;

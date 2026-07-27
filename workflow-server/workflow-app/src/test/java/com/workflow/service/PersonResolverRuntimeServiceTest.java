@@ -1,17 +1,19 @@
 package com.workflow.service;
 
+import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.contracts.identity.resolver.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.SysGroupMapper;
-import com.workflow.mapper.SysOrganizationMapper;
-import com.workflow.mapper.SysRoleMapper;
-import com.workflow.mapper.SysUserGroupMapper;
-import com.workflow.mapper.SysUserMapper;
-import com.workflow.mapper.SysUserRoleMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
+import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

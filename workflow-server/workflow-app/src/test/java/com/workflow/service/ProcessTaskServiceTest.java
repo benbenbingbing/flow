@@ -1,13 +1,15 @@
 package com.workflow.service;
 
+import com.workflow.process.task.application.ProcessTaskService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.contracts.entity.EntityFormRuntimePort;
 import com.workflow.contracts.identity.IdentityDirectoryPort;
-import com.workflow.entity.ProcessTask;
-import com.workflow.mapper.NodeConfigMapper;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessTaskMapper;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;

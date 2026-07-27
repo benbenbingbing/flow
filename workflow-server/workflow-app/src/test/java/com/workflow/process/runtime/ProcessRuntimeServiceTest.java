@@ -1,12 +1,15 @@
 package com.workflow.process.runtime;
 
+import com.workflow.process.instance.application.ProcessRuntimeService;
+import com.workflow.process.task.application.TaskService;
+
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.listener.MultiInstanceCollectionListener;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.service.ProcessTaskService;
-import com.workflow.service.WorkflowAutoSkipService;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.task.application.ProcessTaskService;
+import com.workflow.process.task.application.WorkflowAutoSkipService;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstance;

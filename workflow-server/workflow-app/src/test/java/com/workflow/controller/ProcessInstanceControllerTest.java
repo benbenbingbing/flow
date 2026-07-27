@@ -1,9 +1,11 @@
 package com.workflow.controller;
 
-import com.workflow.common.PageResult;
-import com.workflow.dto.ProcessProgressDTO;
-import com.workflow.service.ProcessInstanceService;
-import com.workflow.vo.MyStartedProcessVO;
+import com.workflow.process.instance.api.web.ProcessInstanceController;
+
+import com.workflow.core.result.PageResult;
+import com.workflow.process.instance.api.response.ProcessProgressDTO;
+import com.workflow.process.instance.application.ProcessInstanceService;
+import com.workflow.process.workbench.api.response.MyStartedProcessVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

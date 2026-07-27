@@ -1,8 +1,10 @@
 package com.workflow.service;
 
-import com.workflow.common.BusinessConflictException;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;

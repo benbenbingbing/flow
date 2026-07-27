@@ -2,12 +2,13 @@ package com.workflow.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.workflow.common.PageResult;
+import com.workflow.core.result.PageResult;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
-import com.workflow.entity.SysMenu;
-import com.workflow.entity.SysRole;
-import com.workflow.mapper.SysMenuMapper;
-import com.workflow.mapper.SysRoleMapper;
+import com.workflow.admin.authorization.menu.application.SysMenuService;
+import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
+import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

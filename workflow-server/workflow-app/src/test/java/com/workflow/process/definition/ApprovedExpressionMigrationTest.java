@@ -1,5 +1,7 @@
 package com.workflow.process.definition;
 
+import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 

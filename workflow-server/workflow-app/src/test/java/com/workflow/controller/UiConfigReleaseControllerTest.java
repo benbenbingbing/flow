@@ -1,11 +1,13 @@
 package com.workflow.controller;
 
+import com.workflow.entity.ui.api.web.UiConfigReleaseController;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.UiConfigPublishPreviewDTO;
-import com.workflow.dto.UiConfigPublishRequest;
-import com.workflow.entity.UiConfigRelease;
-import com.workflow.service.UiConfigReleaseService;
-import com.workflow.service.UiConfigurationAccessService;
+import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
+import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

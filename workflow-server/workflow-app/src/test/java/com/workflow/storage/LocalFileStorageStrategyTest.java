@@ -1,7 +1,7 @@
 package com.workflow.storage;
 
-import com.workflow.config.FileStorageProperties;
-import com.workflow.service.storage.LocalFileStorageStrategy;
+import com.workflow.storage.infrastructure.config.FileStorageProperties;
+import com.workflow.storage.infrastructure.local.LocalFileStorageStrategy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;

@@ -1,22 +1,30 @@
 package com.workflow.service;
 
+import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.entity.data.application.EntityFieldFileItemService;
+import com.workflow.entity.data.application.EntityPhysicalTableNaming;
+import com.workflow.entity.data.application.EntityRecordTeamService;
+import com.workflow.entity.definition.application.EntityDefinitionService;
+import com.workflow.entity.definition.application.EntityFieldOptionService;
+import com.workflow.entity.definition.application.EntityPublishHistoryService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
-import com.workflow.dto.EntityDefinitionDTO;
-import com.workflow.dto.EntityFieldDTO;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityField;
-import com.workflow.entity.EntityPublishHistory;
-import com.workflow.entity.EntityRelation;
-import com.workflow.mapper.EntityDataDynamicMapper;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.mapper.EntityPublishHistoryMapper;
-import com.workflow.mapper.EntityRelationMapper;
-import com.workflow.service.permission.EntityPermissionCatalogService;
-import com.workflow.service.permission.EntityListScopeService;
+import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
+import com.workflow.entity.definition.api.response.EntityFieldDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.permission.application.EntityPermissionCatalogService;
+import com.workflow.entity.permission.application.EntityListScopeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -518,7 +526,7 @@ public class EntityDefinitionServiceTest {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
 
         var exception = assertThrows(
-                com.workflow.common.BusinessConflictException.class,
+                com.workflow.core.error.BusinessConflictException.class,
                 () -> entityService.updateLifecycleMode(
                         "1",
                         EntityDefinition.LifecycleMode.STANDALONE));

@@ -1,0 +1,360 @@
+package com.workflow.process.instance.api.response;
+
+import com.workflow.entity.form.api.response.FormConfigDTO;
+
+import lombok.Data;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 流程进度DTO
+ * 用于展示流程实例的执行进度，包括已完成的节点、当前活动节点等
+ */
+@Data
+public class ProcessProgressDTO {
+    
+    /**
+     * 流程实例ID
+     */
+    private String processInstanceId;
+    
+    /**
+     * 流程定义ID
+     */
+    private String processDefinitionId;
+    
+    /**
+     * 流程标识
+     */
+    private String processKey;
+    
+    /**
+     * 流程名称
+     */
+    private String processName;
+    
+    /**
+     * BPMN XML
+     */
+    private String bpmnXml;
+    
+    /**
+     * 流程状态：RUNNING-运行中，COMPLETED-已完成，SUSPENDED-已挂起
+     */
+    private String status;
+    
+    /**
+     * 已完成的节点ID列表
+     */
+    private List<String> completedNodes;
+    
+    /**
+     * 当前活动节点ID列表
+     */
+    private List<String> activeNodes;
+    
+    /**
+     * 被终止的节点ID列表（流程终止时正在执行的节点）
+     */
+    private List<String> terminatedNodes;
+    
+    /**
+     * 已执行的连线ID列表
+     */
+    private List<String> executedSequenceFlows;
+    
+    /**
+     * 节点执行历史记录
+     */
+    private List<NodeHistoryDTO> nodeHistory;
+    
+    /**
+     * 任务信息
+     */
+    private List<TaskInfoDTO> tasks;
+    
+    /**
+     * 节点处理人映射（key: 节点ID, value: 处理人信息）
+     * 用于前端快速查询每个节点的处理人
+     */
+    private Map<String, AssigneeInfoDTO> nodeAssigneeMap;
+    
+    /**
+     * 节点处理人列表映射（key: 节点ID, value: 处理人信息列表）
+     * 用于多实例会签节点展示所有子任务处理人及其状态
+     */
+    private Map<String, List<AssigneeInfoDTO>> nodeAssigneesMap;
+    
+    /**
+     * 实体数据
+     */
+    private Map<String, Object> entityData;
+    
+    /**
+     * 表单配置
+     */
+    private FormConfigDTO formConfig;
+
+    /**
+     * 多表单配置列表。保留 formConfig 作为第一个表单的兼容字段。
+     */
+    private List<FormConfigDTO> formConfigs;
+    
+    /**
+     * 审批配置
+     */
+    private ApprovalConfigDTO approvalConfig;
+    
+    /**
+     * 审批配置DTO
+     */
+    @Data
+    public static class ApprovalConfigDTO {
+        /**
+         * 是否启用审批意见
+         */
+        private Boolean enabled;
+        
+        /**
+         * 审批意见名称
+         */
+        private String commentLabel;
+        
+        /**
+         * 审批选项列表
+         */
+        private List<ApprovalOptionDTO> options;
+    }
+    
+    /**
+     * 审批选项DTO
+     */
+    @Data
+    public static class ApprovalOptionDTO {
+        /**
+         * 选项值
+         */
+        private String value;
+        
+        /**
+         * 选项显示名称
+         */
+        private String label;
+        
+        /**
+         * 按钮样式类型
+         */
+        private String type;
+        
+        /**
+         * 是否显示审批备注
+         */
+        private Boolean showComment;
+    }
+    
+    /**
+     * 表单配置DTO
+     */
+    @Data
+    public static class FormConfigDTO {
+        /**
+         * 表单ID
+         */
+        private String formId;
+
+        /**
+         * 流程发布时固定的表单发布版本ID。
+         */
+        private String formReleaseId;
+
+        /**
+         * 流程发布时固定的表单发布版本号。
+         */
+        private Integer formReleaseVersion;
+        /** 实际生效的热修复发布ID */
+        private String effectiveFormReleaseId;
+        /** 是否应用兼容热修复 */
+        private Boolean hotfixApplied;
+        /** 嵌套表单解析上下文令牌 */
+        private String releaseResolutionToken;
+        
+        /**
+         * 表单名称
+         */
+        private String formName;
+        
+        /**
+         * 表单Key
+         */
+        private String formKey;
+        
+        /**
+         * 布局类型
+         */
+        private String layoutType;
+
+        private Boolean isReadonly;
+
+        private String customComponent;
+
+        private String viewConfig;
+        
+        /**
+         * 表单字段列表
+         */
+        private List<Map<String, Object>> fields;
+
+        /**
+         * 递归表单节点列表
+         */
+        private List<Map<String, Object>> nodes;
+    }
+    
+    /**
+     * 节点历史记录
+     */
+    @Data
+    public static class NodeHistoryDTO {
+        /**
+         * 节点ID
+         */
+        private String nodeId;
+        
+        /**
+         * 节点名称
+         */
+        private String nodeName;
+        
+        /**
+         * 节点类型
+         */
+        private String nodeType;
+        
+        /**
+         * 执行人ID
+         */
+        private String assignee;
+        
+        /**
+         * 执行人姓名
+         */
+        private String assigneeName;
+        
+        /**
+         * 开始时间
+         */
+        private String startTime;
+        
+        /**
+         * 结束时间
+         */
+        private String endTime;
+        
+        /**
+         * 执行时长（毫秒）
+         */
+        private Long duration;
+        
+        /**
+         * 执行结果：COMPLETED-完成，ACTIVE-进行中
+         */
+        private String status;
+        
+        /**
+         * 处理方式：APPROVED-同意，REJECTED-驳回，TRANSFERRED-转办
+         */
+        private String action;
+        
+        /**
+         * 处理方式显示文本（如"同意，需要会签"）
+         */
+        private String actionLabel;
+        
+        /**
+         * 审批意见/备注
+         */
+        private String comment;
+        
+        /**
+         * 节点执行变量快照（主要用于脚本任务等自动节点）
+         */
+        private Map<String, Object> variables;
+    }
+    
+    /**
+     * 任务信息
+     */
+    @Data
+    public static class TaskInfoDTO {
+        /**
+         * 任务ID
+         */
+        private String taskId;
+        
+        /**
+         * 任务名称
+         */
+        private String taskName;
+        
+        /**
+         * 节点ID
+         */
+        private String nodeId;
+        
+        /**
+         * 处理人
+         */
+        private String assignee;
+        
+        /**
+         * 处理人显示名称
+         */
+        private String assigneeName;
+        
+        /**
+         * 创建时间
+         */
+        private String createTime;
+    }
+    
+    /**
+     * 处理人信息
+     */
+    @Data
+    public static class AssigneeInfoDTO {
+        /**
+         * 处理人ID
+         */
+        private String assigneeId;
+        
+        /**
+         * 处理人姓名
+         */
+        private String assigneeName;
+        
+        /**
+         * 处理时间
+         */
+        private String handleTime;
+        
+        /**
+         * 处理方式：APPROVED-同意，REJECTED-驳回，TRANSFERRED-转办
+         */
+        private String action;
+        
+        /**
+         * 处理方式显示文本（如"同意，需要会签"）
+         */
+        private String actionLabel;
+        
+        /**
+         * 处理意见
+         */
+        private String comment;
+        
+        /**
+         * 处理状态：COMPLETED-已完成，PROCESSING-处理中，PENDING-待处理
+         */
+        private String status;
+    }
+}

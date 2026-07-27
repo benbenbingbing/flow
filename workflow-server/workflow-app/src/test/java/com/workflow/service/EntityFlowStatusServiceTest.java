@@ -1,7 +1,9 @@
 package com.workflow.service;
 
-import com.workflow.entity.EntityFlowStatusMapping;
-import com.workflow.mapper.EntityFlowStatusMappingMapper;
+import com.workflow.entity.data.application.EntityFlowStatusService;
+
+import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

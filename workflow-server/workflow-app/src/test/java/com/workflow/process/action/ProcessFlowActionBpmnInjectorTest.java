@@ -1,5 +1,6 @@
 package com.workflow.process.action;
 
+import com.workflow.process.action.application.ProcessFlowActionBpmnInjector;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

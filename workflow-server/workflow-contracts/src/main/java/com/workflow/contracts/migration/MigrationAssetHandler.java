@@ -1,6 +1,6 @@
 package com.workflow.contracts.migration;
 
-import com.workflow.dto.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 
 /**
  * 发布流程中登记迁移资产的跨模块端口。

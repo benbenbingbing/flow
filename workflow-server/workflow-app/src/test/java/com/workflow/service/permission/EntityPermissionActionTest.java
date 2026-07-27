@@ -1,5 +1,7 @@
 package com.workflow.service.permission;
 
+import com.workflow.entity.permission.application.EntityPermissionAction;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

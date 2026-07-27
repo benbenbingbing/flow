@@ -1,7 +1,9 @@
 package com.workflow.service.form;
 
+import com.workflow.entity.form.application.EntityFormFieldRuntimeMapper;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

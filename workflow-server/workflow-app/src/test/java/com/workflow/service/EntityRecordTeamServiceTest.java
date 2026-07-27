@@ -1,9 +1,12 @@
 package com.workflow.service;
 
-import com.workflow.common.UserContext;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.publish.EntityPublishedSnapshot;
-import com.workflow.entity.publish.EntityPublishedSnapshotService;
+import com.workflow.entity.data.application.EntityPhysicalTableResolver;
+import com.workflow.entity.data.application.EntityRecordTeamService;
+
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
+import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,7 +19,7 @@ import static org.mockito.Mockito.*;
  * 实体记录团队服务测试。
  *
  * <p>被测对象：{@link EntityRecordTeamService}，覆盖团队表创建（仅事件索引无业务唯一索引）、
- * 自动化系统操作跳过记录、已存在事件时跳过回填、团队权限关联记录到外层实体表等场景。
+ * 自动化系统操作跳过记录、团队权限关联记录到外层实体表等场景。
  */
 class EntityRecordTeamServiceTest {
 
@@ -60,20 +63,6 @@ class EntityRecordTeamServiceTest {
 
         verifyNoInteractions(snapshotService);
         verifyNoInteractions(jdbcTemplate);
-    }
-
-    /** 测试团队表已含事件时跳过回填：验证计数大于 0 时不执行 update */
-    @Test
-    void backfillSkipsWhenTeamTableAlreadyContainsEvents() {
-        EntityDefinition definition = new EntityDefinition();
-        when(tableResolver.resolve(definition)).thenReturn("wf_expense");
-        when(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM `wf_expense_team`", Long.class))
-                .thenReturn(2L);
-
-        service.backfillIfEmpty(definition);
-
-        verify(jdbcTemplate, never()).update(anyString());
     }
 
     /** 测试团队权限将记录关联到外层实体表：验证权限启用、层级正确且 SQL 条件含 record_id 与 user_id 关联 */

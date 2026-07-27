@@ -1,9 +1,11 @@
 package com.workflow.controller;
 
+import com.workflow.process.configuration.api.web.NodeConfigController;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.NodeConfigDTO;
-import com.workflow.entity.NodeConfig;
-import com.workflow.service.NodeConfigService;
+import com.workflow.process.configuration.api.model.NodeConfigDTO;
+import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
+import com.workflow.process.configuration.application.NodeConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

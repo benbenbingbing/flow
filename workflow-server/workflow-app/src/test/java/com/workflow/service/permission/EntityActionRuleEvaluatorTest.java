@@ -1,8 +1,10 @@
 package com.workflow.service.permission;
 
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.dto.permission.EntityActionRuleDTO;
-import com.workflow.entity.SysUser;
+import com.workflow.entity.permission.application.EntityActionRuleEvaluator;
+
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

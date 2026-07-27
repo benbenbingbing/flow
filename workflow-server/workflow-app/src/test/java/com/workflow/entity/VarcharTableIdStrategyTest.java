@@ -1,5 +1,15 @@
 package com.workflow.entity;
 
+import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.entity.form.infrastructure.persistence.record.FormFieldConfig;
+
+import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
+import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import org.junit.jupiter.api.Test;

@@ -1,11 +1,13 @@
 package com.workflow.listener;
 
-import com.workflow.entity.EntityFlowStatusMapping;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.mapper.EntityDataDynamicMapper;
-import com.workflow.mapper.EntityFlowStatusMappingMapper;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.service.DynamicTableService;
+import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
+
+import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.entity.data.application.DynamicTableService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;

@@ -4,35 +4,67 @@
       <el-empty description="请点击流程节点进行配置" />
     </div>
 
-    <el-tabs v-if="element" v-model="activeTab" class="config-tabs">
+    <div v-if="element" class="config-tabs">
+      <div class="config-tab-nav" role="tablist" aria-label="节点配置分类">
+        <button
+          type="button"
+          role="tab"
+          class="config-tab-button"
+          :class="{ active: activeTab === 'basic' }"
+          :aria-selected="activeTab === 'basic'"
+          @click="activeTab = 'basic'"
+        >
+          常用
+        </button>
+        <button
+          v-if="isCcConfigurable"
+          type="button"
+          role="tab"
+          class="config-tab-button"
+          :class="{ active: activeTab === 'collaboration' }"
+          :aria-selected="activeTab === 'collaboration'"
+          @click="activeTab = 'collaboration'"
+        >
+          协同
+        </button>
+        <button
+          v-if="hasAdvancedConfig"
+          type="button"
+          role="tab"
+          class="config-tab-button"
+          :class="{ active: activeTab === 'advanced' }"
+          :aria-selected="activeTab === 'advanced'"
+          @click="activeTab = 'advanced'"
+        >
+          高级
+        </button>
+        <button
+          v-if="isActionConfigurable"
+          type="button"
+          role="tab"
+          class="config-tab-button"
+          :class="{ active: activeTab === 'actions' }"
+          :aria-selected="activeTab === 'actions'"
+          @click="activeTab = 'actions'"
+        >
+          流程动作
+        </button>
+      </div>
+
+      <div class="config-tab-content">
       <!-- ========== 基本信息（所有节点都有） ========== -->
-      <el-tab-pane name="basic">
-        <template #label>
-          <el-popover placement="top" trigger="hover" :width="280">
-            <template #reference>
-              <span>常用</span>
-            </template>
-            <div class="node-type-info">
-              <div class="info-title">{{ nodeTypeDesc.title }}</div>
-              <div class="info-desc">{{ nodeTypeDesc.desc }}</div>
-              <div class="info-scene">
-                <el-tag size="small" type="warning">场景</el-tag>
-                {{ nodeTypeDesc.scene }}
-              </div>
-            </div>
-          </el-popover>
-        </template>
+      <section v-show="activeTab === 'basic'" class="config-section">
         <el-form :model="basicForm" label-width="100px" size="small">
           <el-form-item label="节点名称">
             <el-input 
               v-model="basicForm.name" 
               :placeholder="getNamePlaceholder()"
-              @blur="updateProperty('name', basicForm.name)"
             />
           </el-form-item>
           
           <SettingsSection
-            title="技术信息"
+            v-if="!hasAdvancedConfig"
+            title="标识与备注"
             description="节点标识与设计备注，通常无需频繁修改"
           >
             <el-form-item label="节点ID">
@@ -45,24 +77,25 @@
                 type="textarea"
                 :rows="3"
                 placeholder="记录节点设计说明..."
-                @blur="updateDocumentation"
               />
             </el-form-item>
           </SettingsSection>
         </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+      </section>
       
       <!-- ========== 状态配置（仅连线） ========== -->
-      <el-tab-pane v-if="isSequenceFlow" name="status">
-        <template #label>
-          <el-tooltip content="配置流程经过此连线时的实体数据状态变更" placement="top">
-            <span>实体状态</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="statusForm" label-width="100px" size="small">
+      <section v-if="isSequenceFlow && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="实体状态"
+          description="流程经过此连线时更新绑定实体的业务状态"
+          :default-expanded="!!statusForm.entityStatusCode"
+        >
+          <template #summary>
+            <el-tag size="small" :type="statusForm.entityStatusCode ? 'success' : 'info'">
+              {{ selectedStatusName || '未配置' }}
+            </el-tag>
+          </template>
+          <el-form :model="statusForm" label-width="100px" size="small">
           <el-form-item label="来源节点">
             <el-input v-model="statusForm.sourceNodeName" disabled />
           </el-form-item>
@@ -127,20 +160,19 @@
           <el-form-item label="说明">
             <el-input v-model="statusForm.description" type="textarea" :rows="2" placeholder="状态变更说明..." />
           </el-form-item>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveStatusConfig">保存状态配置</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 执行人配置（仅用户任务） ========== -->
-      <el-tab-pane v-if="isUserTask" name="assignee">
-        <template #label>
-          <el-tooltip content="支持固定人员、用户组、角色或动态接口指定任务处理人" placement="top">
-            <span>执行人</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="assigneeForm" label-width="100px" size="small">
+      <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="执行人与多人办理"
+          description="配置固定人员、组织角色、动态人员接口以及会签或签"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="assigneeForm" label-width="100px" size="small">
           <!-- 多实例启用时，常规执行人配置不再使用，改为下方的会签人员配置 -->
           <template v-if="!assigneeForm.isMultiInstance">
           <!-- 执行人选择类型 -->
@@ -239,7 +271,6 @@
               <el-input 
                 v-model="assigneeForm.assignee" 
                 placeholder="如：${submitUser} 或 ${initiator}"
-                @blur="updateProperty('assignee', assigneeForm.assignee)"
               />
               <div class="form-tip">使用流程变量动态指定执行人</div>
             </el-form-item>
@@ -250,7 +281,6 @@
                 type="textarea"
                 :rows="2"
                 placeholder="如：${deptManagers}"
-                @blur="updateProperty('candidateUsers', assigneeForm.candidateUsers)"
               />
               <div class="form-tip">返回用户ID列表的表达式</div>
             </el-form-item>
@@ -261,7 +291,6 @@
                 type="textarea"
                 :rows="2"
                 placeholder="如：${deptCode}_manager"
-                @blur="updateProperty('candidateGroups', assigneeForm.candidateGroups)"
               />
               <div class="form-tip">返回组编码的表达式</div>
             </el-form-item>
@@ -438,7 +467,6 @@
                   <el-input
                     v-model="assigneeForm.completionCondition"
                     placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
-                    @blur="updateMultiInstance"
                   />
                   <div class="form-tip">满足此条件时任务完成，留空表示全部实例完成</div>
                 </el-form-item>
@@ -459,7 +487,6 @@
                     v-model="assigneeForm.collection"
                     placeholder="系统默认：${_wfMultiInstanceUsers_}"
                     disabled
-                    @blur="updateMultiInstance"
                   />
                   <div class="form-tip">系统生成的用户ID集合变量，只读展示</div>
                 </el-form-item>
@@ -468,27 +495,25 @@
                   <el-input
                     v-model="assigneeForm.elementVariable"
                     placeholder="如：approver"
-                    @blur="updateMultiInstance"
                   />
                   <div class="form-tip">集合中单个用户ID在任务内使用的变量名</div>
                 </el-form-item>
               </SettingsSection>
             </template>
           </SettingsSection>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 服务配置（服务任务） ========== -->
-      <el-tab-pane v-if="isServiceTask" name="service">
-        <template #label>
-          <el-tooltip content="执行 Java、外部服务或 HTTP 请求" placement="top">
-            <span>服务</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="serviceForm" label-width="100px" size="small">
+      <section v-if="isServiceTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="服务调用"
+          description="执行 Java、Spring Bean、表达式或 REST 请求"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="serviceForm" label-width="100px" size="small">
           <el-form-item label="实现类型">
             <el-radio-group v-model="serviceForm.implementationType" @change="onServiceTypeChange">
               <el-radio-button value="class">Java类</el-radio-button>
@@ -504,7 +529,6 @@
               <el-input 
                 v-model="serviceForm.implementation" 
                 :placeholder="servicePlaceholder"
-                @blur="updateServiceImplementation"
               />
             </el-form-item>
           </template>
@@ -524,13 +548,12 @@
               <el-input 
                 v-model="restForm.url" 
                 placeholder="如：https://api.example.com/users/${userId}"
-                @blur="updateRestConfig"
               />
               <div class="form-tip">支持流程变量表达式，如：${userId}</div>
             </el-form-item>
             
             <el-form-item label="Content-Type">
-              <el-select v-model="restForm.contentType" @change="updateRestConfig">
+              <el-select v-model="restForm.contentType">
                 <el-option label="application/json" value="application/json" />
                 <el-option label="application/x-www-form-urlencoded" value="application/x-www-form-urlencoded" />
                 <el-option label="text/xml" value="text/xml" />
@@ -543,7 +566,6 @@
                 type="textarea"
                 :rows="3"
                 placeholder='{"Authorization": "Bearer ${token}", "X-Request-Id": "${requestId}"}'
-                @blur="updateRestConfig"
               />
               <div class="form-tip">JSON格式，支持流程变量表达式</div>
             </el-form-item>
@@ -554,7 +576,6 @@
                 type="textarea"
                 :rows="5"
                 :placeholder="getRestBodyPlaceholder()"
-                @blur="updateRestConfig"
                 class="code-input"
               />
               <div class="form-tip">JSON格式或表单格式，支持流程变量表达式如：${variable}</div>
@@ -566,7 +587,6 @@
                 type="textarea"
                 :rows="2"
                 placeholder='{"page": "${page}", "size": "10"}'
-                @blur="updateRestConfig"
               />
               <div class="form-tip">URL查询参数，JSON格式，支持流程变量</div>
             </el-form-item>
@@ -585,18 +605,18 @@
               <el-row :gutter="10">
                 <el-col :span="12">
                   <el-form-item label="超时时间(秒)">
-                    <el-input-number v-model="restForm.timeout" :min="1" :max="300" style="width: 100%" @change="updateRestConfig" />
+                    <el-input-number v-model="restForm.timeout" :min="1" :max="300" style="width: 100%" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
                   <el-form-item label="重试次数">
-                    <el-input-number v-model="restForm.retryCount" :min="0" :max="5" style="width: 100%" @change="updateRestConfig" />
+                    <el-input-number v-model="restForm.retryCount" :min="0" :max="5" style="width: 100%" />
                   </el-form-item>
                 </el-col>
               </el-row>
 
               <el-form-item label="错误处理">
-                <el-radio-group v-model="restForm.errorHandling" @change="updateRestConfig">
+                <el-radio-group v-model="restForm.errorHandling">
                   <el-radio value="throw">抛出异常终止流程</el-radio>
                   <el-radio value="continue">记录错误继续流程</el-radio>
                   <el-radio value="ignore">忽略错误</el-radio>
@@ -609,7 +629,6 @@
                   type="textarea"
                   :rows="3"
                   placeholder='{"data.id": "userId", "data.status": "status", "code": "resultCode"}'
-                  @blur="updateRestConfig"
                 />
                 <div class="form-tip">将响应结果映射到流程变量，JSON格式：响应路径 -> 变量名</div>
               </el-form-item>
@@ -620,23 +639,21 @@
             <el-input 
               v-model="serviceForm.resultVariable" 
               placeholder="存储结果到变量"
-              @blur="updateExtensionProperty('serviceResultVariable', serviceForm.resultVariable)"
             />
           </el-form-item>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 发送配置（发送任务） ========== -->
-      <el-tab-pane v-if="isSendTask" name="send">
-        <template #label>
-          <el-tooltip content="发送邮件、短信或站内信" placement="top">
-            <span>发送</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="sendForm" label-width="100px" size="small">
+      <section v-if="isSendTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="发送消息"
+          description="配置消息渠道、接收人和内容模板"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="sendForm" label-width="100px" size="small">
           <el-form-item label="发送渠道">
             <el-checkbox-group v-model="sendForm.channels">
               <el-checkbox label="message">站内信</el-checkbox>
@@ -674,20 +691,19 @@
               <el-option label="审批拒绝通知" value="APPROVE_REJECT" />
             </el-select>
           </el-form-item>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 接收配置（接收任务） ========== -->
-      <el-tab-pane v-if="isReceiveTask" name="receive">
-        <template #label>
-          <el-tooltip content="流程将暂停执行，等待外部系统或事件触发后才继续" placement="top">
-            <span>接收</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="receiveForm" label-width="100px" size="small">
+      <section v-if="isReceiveTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="接收消息"
+          description="等待外部系统或事件触发后继续流程"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="receiveForm" label-width="100px" size="small">
           <el-form-item label="消息名称">
             <el-input 
               v-model="receiveForm.messageRef" 
@@ -717,20 +733,19 @@
               </el-radio-group>
             </el-form-item>
           </template>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 手动任务配置（手动任务） ========== -->
-      <el-tab-pane v-if="isManualTask" name="manual">
-        <template #label>
-          <el-tooltip content="标记需要在流程系统外完成的工作，仅作记录，不生成待办" placement="top">
-            <span>手动</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="manualForm" label-width="100px" size="small">
+      <section v-if="isManualTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="线下任务"
+          description="记录需要在流程系统外完成的工作"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="manualForm" label-width="100px" size="small">
           <el-form-item label="任务描述">
             <el-input 
               v-model="manualForm.description" 
@@ -761,20 +776,19 @@
             <el-input-number v-model="manualForm.estimatedHours" :min="0" :precision="1" />
             <span class="unit">小时</span>
           </el-form-item>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 业务规则配置（业务规则任务） ========== -->
-      <el-tab-pane v-if="isBusinessRuleTask" name="rule">
-        <template #label>
-          <el-tooltip content="执行 DMN 决策表" placement="top">
-            <span>规则</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="ruleForm" label-width="100px" size="small">
+      <section v-if="isBusinessRuleTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="业务规则"
+          description="执行 DMN 决策并映射输入输出变量"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="ruleForm" label-width="100px" size="small">
           <el-form-item label="决策表Key">
             <el-input 
               v-model="ruleForm.decisionRef" 
@@ -805,20 +819,19 @@
             <el-switch v-model="ruleForm.mapDecisionResult" />
             <div class="form-tip">是否将决策结果映射到流程变量</div>
           </el-form-item>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 脚本配置（脚本任务） ========== -->
-      <el-tab-pane v-if="isScriptTask" name="script">
-        <template #label>
-          <el-tooltip content="执行脚本代码，用于轻量级数据处理" placement="top">
-            <span>脚本</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="scriptForm" label-width="100px" size="small">
+      <section v-if="isScriptTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="脚本执行"
+          description="执行 Groovy 脚本并写入流程变量"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="scriptForm" label-width="100px" size="small">
           <el-form-item label="脚本类型">
             <el-radio-group v-model="scriptForm.scriptFormat">
               <el-radio-button value="groovy">Groovy</el-radio-button>
@@ -889,20 +902,19 @@
             <el-switch v-model="scriptForm.autoStoreVariables" />
             <div class="form-tip">脚本变量写入流程上下文</div>
           </el-form-item>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 调用活动配置（调用活动） ========== -->
-      <el-tab-pane v-if="isCallActivity" name="call">
-        <template #label>
-          <el-tooltip content="调用另一个独立的子流程，实现流程模块化复用" placement="top">
-            <span>子流程</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="callForm" label-width="100px" size="small">
+      <section v-if="isCallActivity && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="调用流程"
+          description="调用另一个独立流程并配置参数映射"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="callForm" label-width="100px" size="small">
           <el-form-item label="子流程Key">
             <el-select 
               v-model="callForm.calledElement" 
@@ -968,20 +980,19 @@
               />
             </el-form-item>
           </SettingsSection>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 条件配置（顺序流） ========== -->
-      <el-tab-pane v-if="isSequenceFlow" name="condition">
-        <template #label>
-          <el-tooltip content="设置连线流转条件，支持表达式和变量判断" placement="top">
-            <span>条件</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="conditionForm" label-width="100px" size="small">
+      <section v-if="isSequenceFlow && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="流转条件"
+          description="设置无条件、条件表达式或默认连线"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="conditionForm" label-width="100px" size="small">
           <el-form-item label="条件类型">
             <el-radio-group v-model="conditionForm.type" @change="onConditionTypeChange">
               <el-radio-button value="">无条件</el-radio-button>
@@ -1054,20 +1065,19 @@
           >
             无条件：此连线在任何情况下都会执行
           </el-alert>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 表单配置（仅用户任务/开始事件） ========== -->
-      <el-tab-pane v-if="isUserTask || isStartEvent" name="form">
-        <template #label>
-          <el-tooltip content="绑定实体表单或自定义表单到当前节点" placement="top">
-            <span>表单</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="formConfig" label-width="100px" size="small">
+      <section v-if="(isUserTask || isStartEvent) && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="办理表单"
+          description="绑定实体表单、自定义表单或设置无表单"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="formConfig" label-width="100px" size="small">
           <!-- 显示绑定的实体信息 -->
           <el-form-item label="所属实体">
             <el-tag v-if="boundEntity" type="success" size="large">
@@ -1121,7 +1131,7 @@
             </el-form-item>
             
             <el-form-item label="只读模式">
-              <el-switch v-model="formConfig.isReadonly" @change="updateNodeFormBind" />
+              <el-switch v-model="formConfig.isReadonly" />
               <div class="form-tip">开启后节点只能查看表单，不能编辑</div>
             </el-form-item>
           </template>
@@ -1132,25 +1142,23 @@
               <el-input 
                 v-model="formConfig.formKey" 
                 placeholder="如：leave_apply_form"
-                @blur="updateProperty('formKey', formConfig.formKey)"
               />
               <div class="form-tip">关联外部表单标识</div>
             </el-form-item>
           </template>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 审批配置（仅用户任务） ========== -->
-      <el-tab-pane v-if="isUserTask" name="approval">
-        <template #label>
-          <el-tooltip content="自定义当前节点的审批操作选项和审批意见配置" placement="top">
-            <span>审批</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="approvalForm" label-width="120px" size="small">
+      <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="审批设置"
+          description="配置审批意见和用户可选择的审批操作"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="approvalForm" label-width="120px" size="small">
           <el-form-item label="启用审批意见">
             <el-switch v-model="approvalForm.enabled" />
           </el-form-item>
@@ -1219,20 +1227,19 @@
               </el-button>
             </div>
           </template>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
       
       <!-- ========== 知会配置 ========== -->
-      <el-tab-pane v-if="isCcConfigurable" name="cc">
-        <template #label>
-          <el-tooltip content="自动或显式生成知会，通知通过Outbox异步发送，不阻塞主流程" placement="top">
-            <span>知会</span>
-          </el-tooltip>
-        </template>
-        <el-form :model="ccForm" label-width="120px" size="small">
+      <section v-if="isCcConfigurable && activeTab === 'collaboration'" class="config-section">
+        <SettingsSection
+          title="知会配置"
+          description="按任务时机向指定人员发送协同通知"
+          :collapsible="false"
+          primary
+        >
+          <el-form :model="ccForm" label-width="120px" size="small">
           <el-form-item label="启用知会">
             <el-switch v-model="ccForm.enabled" />
           </el-form-item>
@@ -1320,19 +1327,12 @@
               <el-alert type="info" :closable="false" show-icon :title="ccNaturalSummary" />
             </SettingsSection>
           </template>
-        </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
+          </el-form>
+        </SettingsSection>
+      </section>
 
       <!-- ========== 流程动作 ========== -->
-      <el-tab-pane v-if="isActionConfigurable" name="actions">
-        <template #label>
-          <el-tooltip content="配置当前节点或连线在指定时机执行的自定义动作" placement="top">
-            <span>流程动作</span>
-          </el-tooltip>
-        </template>
+      <section v-if="isActionConfigurable && activeTab === 'actions'" class="config-section config-section--actions">
         <FlowActionConfigPanel
           :process-id="processId"
           :scope-type="isSequenceFlow ? 'SEQUENCE_FLOW' : 'NODE'"
@@ -1341,15 +1341,10 @@
           :bpmn-type="element?.type"
           @changed="emit('action-changed')"
         />
-      </el-tab-pane>
+      </section>
 
       <!-- ========== 高级配置 ========== -->
-      <el-tab-pane v-if="isTask || isGateway" name="advanced">
-        <template #label>
-          <el-tooltip content="配置异步执行、跳过表达式等高级选项" placement="top">
-            <span>高级</span>
-          </el-tooltip>
-        </template>
+      <section v-if="hasAdvancedConfig && activeTab === 'advanced'" class="config-section">
         <el-form :model="advancedForm" label-width="120px" size="small">
           <el-form-item label="异步执行">
             <el-switch v-model="advancedForm.async" @change="onAsyncChange" />
@@ -1357,10 +1352,10 @@
           
           <template v-if="advancedForm.async">
             <el-form-item label="异步前">
-              <el-switch v-model="advancedForm.asyncBefore" @change="updateAsync" />
+            <el-switch v-model="advancedForm.asyncBefore" />
             </el-form-item>
             <el-form-item label="异步后">
-              <el-switch v-model="advancedForm.asyncAfter" @change="updateAsync" />
+            <el-switch v-model="advancedForm.asyncAfter" />
             </el-form-item>
           </template>
           
@@ -1368,7 +1363,6 @@
             <el-input 
               v-model="advancedForm.skipExpression" 
               placeholder="如：${skip}"
-              @blur="updateSkipExpression"
             />
           </el-form-item>
           
@@ -1386,7 +1380,6 @@
             <el-form-item label="是否跳过">
               <el-switch
                 v-model="advancedForm.skipNode"
-                @change="updateSkipNode"
                 active-text="是"
                 inactive-text="否"
               />
@@ -1398,12 +1391,31 @@
               </template>
             </el-alert>
           </SettingsSection>
+
+          <SettingsSection
+            title="标识与备注"
+            description="节点技术标识和设计说明"
+          >
+            <el-form-item label="节点ID">
+              <el-input v-model="basicForm.id" disabled />
+            </el-form-item>
+            <el-form-item label="设计备注" class="doc-item">
+              <el-input
+                v-model="basicForm.documentation"
+                type="textarea"
+                :rows="3"
+                placeholder="记录节点设计说明..."
+              />
+            </el-form-item>
+          </SettingsSection>
         </el-form>
-        <div class="tab-footer">
-          <el-button type="primary" @click="saveCurrentTab">应用到画布</el-button>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
+      </section>
+      </div>
+
+      <div v-if="activeTab !== 'actions'" class="tab-footer">
+        <el-button type="primary" @click="applyNodeConfiguration">应用到画布</el-button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1412,13 +1424,12 @@ import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Delete, QuestionFilled, VideoPlay, View, WarningFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
-import { getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
+import { deleteStatusMappings, getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import { processApi } from '@/api/process'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   buildAssigneeConfig,
-  getNodeTypeDescription,
   getProcessConditionFieldCode,
   getProcessConditionFieldType
 } from '@/shared/process-config'
@@ -1523,6 +1534,7 @@ const isStartEvent = computed(() => props.element?.type === 'bpmn:StartEvent')
 const isSequenceFlow = computed(() => props.element?.type === 'bpmn:SequenceFlow')
 const isActionConfigurable = computed(() => Boolean(props.element?.id) && props.element?.type !== 'bpmn:Process')
 const isGateway = computed(() => props.element?.type?.includes('Gateway'))
+const hasAdvancedConfig = computed(() => isTask.value || isGateway.value)
 
 // 字段类型标签
 function getFieldTypeLabel(type) {
@@ -1547,11 +1559,6 @@ function getFieldTypeLabel(type) {
 function goToFormDesign() {
   ElMessage.info('请前往实体设计页面配置表单')
 }
-
-// ========== 节点类型说明 ==========
-const nodeTypeDesc = computed(() => {
-  return getNodeTypeDescription(props.element?.type)
-})
 
 function getNamePlaceholder() {
   if (isUserTask.value) return '如：经理审批'
@@ -2593,7 +2600,6 @@ function updateProperty(prop, value) {
     updates[prop] = value
   }
   modeling.updateProperties(toRaw(props.element), updates)
-  emit('save')
 }
 
 function updateDocumentation() {
@@ -2601,50 +2607,13 @@ function updateDocumentation() {
   if (!modeling || !moddle) return
   const docs = basicForm.value.documentation ? [moddle.create('bpmn:Documentation', { text: basicForm.value.documentation })] : []
   modeling.updateProperties(toRaw(props.element), { documentation: docs })
-  emit('save')
 }
 
 function onMultiInstanceChange(enabled) {
-  const modeling = getModeling(), moddle = getModdle()
-  if (!modeling || !moddle) return
   if (enabled) {
-    // 打开时如果没有 collection，给一个默认值，避免生成空 loopCharacteristics
     if (!assigneeForm.value.collection) {
       assigneeForm.value.collection = '${_wfMultiInstanceUsers_}'
     }
-    updateMultiInstance()
-  } else {
-    // 关闭多实例：清除 loopCharacteristics 和 assignee，恢复普通任务配置
-    modeling.updateProperties(toRaw(props.element), {
-      loopCharacteristics: undefined,
-      assignee: undefined
-    })
-    // 恢复原来的 candidateGroups/candidateUsers（如果配置过）
-    // 若 form 内存值已被切换 assigneeType 清空，则从扩展属性 assigneeConfig 兜底恢复，
-    // 避免多实例与普通模式来回切换导致执行人配置永久丢失。
-    const bo = toRaw(props.element).businessObject
-    const extProps = getExtensionProperties(bo)
-    let savedAssigneeConfig = {}
-    if (extProps['assigneeConfig']) {
-      try { savedAssigneeConfig = JSON.parse(extProps['assigneeConfig']) } catch (e) {}
-    }
-    const savedAssigneeValue = savedAssigneeConfig.assigneeValue || ''
-    const savedAssigneeType = savedAssigneeConfig.assigneeType || assigneeForm.value.assigneeType
-    // group/role 类型存的是 candidateGroups；user 类型存的是 assignee
-    const candidateGroupsToRestore = assigneeForm.value.candidateGroups
-      || ((savedAssigneeType === 'group' || savedAssigneeType === 'role') ? savedAssigneeValue : '')
-    const candidateUsersToRestore = assigneeForm.value.candidateUsers
-      || (savedAssigneeType === 'expression' ? savedAssigneeValue : '')
-
-    if (candidateGroupsToRestore) {
-      assigneeForm.value.candidateGroups = candidateGroupsToRestore
-      updateProperty('candidateGroups', candidateGroupsToRestore)
-    }
-    if (candidateUsersToRestore) {
-      assigneeForm.value.candidateUsers = candidateUsersToRestore
-      updateProperty('candidateUsers', candidateUsersToRestore)
-    }
-    emit('save')
   }
 }
 
@@ -2684,20 +2653,16 @@ function updateMultiInstance() {
       assigneeForm.value.collectionExtraParamsText)
   }
   updateExtensionProperty('multiInstanceConfig', JSON.stringify(multiInstanceConfig))
-
-  emit('save')
 }
 
 function onServiceTypeChange() {
   const type = serviceForm.value.implementationType
   if (type === 'rest') {
-    // REST类型，填充默认示例URL
-    restForm.value.url = SERVICE_EXAMPLES.rest
-    updateRestConfig()
+    if (!restForm.value.url) restForm.value.url = SERVICE_EXAMPLES.rest
   } else {
-    // Java类/表达式/Spring Bean，填充默认示例
-    serviceForm.value.implementation = SERVICE_EXAMPLES[type] || ''
-    updateServiceImplementation()
+    if (!serviceForm.value.implementation) {
+      serviceForm.value.implementation = SERVICE_EXAMPLES[type] || ''
+    }
   }
 }
 
@@ -2709,7 +2674,6 @@ function updateServiceImplementation() {
   modeling.updateProperties(toRaw(props.element), updates)
   // 清除可能残留的 REST 配置扩展属性，避免回显时误判为 REST 类型
   updateExtensionProperty('restConfig', null)
-  emit('save')
 }
 
 function getFullExpression() {
@@ -2727,60 +2691,25 @@ function getSourceElement() {
 }
 
 function onConditionTypeChange(type) {
-  const modeling = getModeling()
-  if (!modeling) return
-  
-  const source = getSourceElement()
-  
   if (type === 'expression') {
-    // 先清除默认流设置
-    if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
-      modeling.updateProperties(toRaw(source), { default: undefined })
-    }
     conditionParseWarning.value = ''
     if (!conditionRoot.value?.children?.length) {
       conditionRoot.value = createFlowConditionGroup()
     }
     updateCondition()
   } else if (type === 'default') {
-    // 设置为默认流：清除条件表达式，设置源节点的 default
-    modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
-    updateExtensionProperty('conditionGroupConfig', null)
     conditionParseWarning.value = ''
-    if (source) {
-      modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
-    }
   } else {
-    // 无条件：清除条件表达式和默认流设置
-    modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
-    updateExtensionProperty('conditionGroupConfig', null)
-    if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
-      modeling.updateProperties(toRaw(source), { default: undefined })
-    }
     conditionForm.value.expression = ''
     conditionRoot.value = createFlowConditionGroup()
     conditionParseWarning.value = ''
   }
-  emit('save')
 }
 
 function updateCondition() {
   if (conditionForm.value.type !== 'expression' || conditionParseWarning.value) return
-  const modeling = getModeling(), moddle = getModdle()
-  if (!modeling || !moddle) return
-  
   const expression = buildFlowConditionExpression(conditionRoot.value, getFieldType)
   conditionForm.value.expression = expression
-  
-  if (expression) {
-    const condition = moddle.create('bpmn:FormalExpression', { body: expression })
-    modeling.updateProperties(toRaw(props.element), { conditionExpression: condition })
-    updateExtensionProperty('conditionGroupConfig', serializeFlowConditionConfig(conditionRoot.value))
-  } else {
-    modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
-    updateExtensionProperty('conditionGroupConfig', null)
-  }
-  emit('save')
 }
 
 function resetConditionGroups() {
@@ -2813,14 +2742,16 @@ function getFieldType(fieldName) {
 }
 
 function onAsyncChange() {
-  if (!advancedForm.value.async) { advancedForm.value.asyncBefore = false; advancedForm.value.asyncAfter = false; updateAsync() }
+  if (!advancedForm.value.async) {
+    advancedForm.value.asyncBefore = false
+    advancedForm.value.asyncAfter = false
+  }
 }
 
 function updateAsync() {
   const modeling = getModeling()
   if (!modeling) return
   modeling.updateProperties(toRaw(props.element), { async: advancedForm.value.async, asyncBefore: advancedForm.value.asyncBefore, asyncAfter: advancedForm.value.asyncAfter })
-  emit('save')
 }
 
 function updateSkipExpression() {
@@ -2830,13 +2761,11 @@ function updateSkipExpression() {
     const expr = moddle.create('bpmn:FormalExpression', { body: advancedForm.value.skipExpression })
     modeling.updateProperties(toRaw(props.element), { skipExpression: expr })
   } else modeling.updateProperties(toRaw(props.element), { skipExpression: undefined })
-  emit('save')
 }
 
 function updateSkipNode() {
   // 使用扩展属性存储跳过节点配置
   updateExtensionProperty('skipNode', advancedForm.value.skipNode ? 'true' : 'false')
-  emit('save')
 }
 
 // ========== 执行人配置更新方法 ==========
@@ -2854,11 +2783,6 @@ function onAssigneeTypeChange(type) {
     assigneeForm.value.extraParams = {}
     assigneeForm.value.extraParamsText = '{}'
   }
-  // 同时清除 BPMN 中旧的执行人属性，避免 XML 残留
-  updateProperty('assignee', null)
-  updateProperty('candidateUsers', null)
-  updateProperty('candidateGroups', null)
-  updateAssigneeConfig()
 }
 
 // ========== 表单配置更新方法 ==========
@@ -2866,7 +2790,6 @@ function onFormSourceChange(source) {
   // 切换表单来源时清空之前的配置
   if (source === 'entity') {
     formConfig.value.formKey = ''
-    updateProperty('formKey', '')
   } else if (source === 'custom') {
     formConfig.value.entityFormId = ''
     formConfig.value.entityFormIds = []
@@ -2877,9 +2800,7 @@ function onFormSourceChange(source) {
     formConfig.value.entityFormId = ''
     formConfig.value.entityFormIds = []
     formConfig.value.isReadonly = false
-    updateProperty('formKey', '')
   }
-  updateNodeFormBind()
 }
 
 async function onEntityFormChange(formIds) {
@@ -2896,7 +2817,6 @@ async function onEntityFormChange(formIds) {
     selectedFormFields.value = []
     formConfig.value.entityCode = ''
   }
-  updateNodeFormBind()
 }
 
 function updateNodeFormBind() {
@@ -3023,7 +2943,6 @@ function onCollectionSourceChange() {
   assigneeForm.value.collectionResolverDisplayName = ''
   assigneeForm.value.collectionExtraParams = {}
   assigneeForm.value.collectionExtraParamsText = '{}'
-  updateMultiInstance()
 }
 
 function onAssigneeResolverSelected(option) {
@@ -3072,34 +2991,19 @@ function parseJsonObjectQuietly(value) {
 }
 
 function updateAssignee() {
-  // 多实例模式下 BPMN 的 assignee 保持为元素变量表达式，不写入具体用户
-  if (!assigneeForm.value.isMultiInstance) {
-    updateProperty('assignee', assigneeForm.value.assignee)
-  }
-  // 同时保存配置类型
-  updateAssigneeConfig()
+  // v-model 已保存选择值，实际 BPMN 写入统一由“应用到画布”完成。
 }
 
 function updateCandidateUsers() {
   // candidateUserIds 里存的是 username（el-select-v2 的 value）
   const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
   assigneeForm.value.candidateUsers = selectedUsers.map(u => u.username).join(',')
-  // 多实例模式下 BPMN 的 candidateUsers 已被清空，保持从扩展属性恢复
-  if (!assigneeForm.value.isMultiInstance) {
-    updateProperty('candidateUsers', assigneeForm.value.candidateUsers)
-  }
-  updateAssigneeConfig()
 }
 
 function updateCandidateGroups() {
   // candidateGroupIds 里存的是 groupCode（el-select-v2 的 value）
   const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
   assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
-  // 多实例模式下 BPMN 的 candidateGroups 已被清空，保持从扩展属性恢复
-  if (!assigneeForm.value.isMultiInstance) {
-    updateProperty('candidateGroups', assigneeForm.value.candidateGroups)
-  }
-  updateAssigneeConfig()
 }
 
 function updateCandidateRoles() {
@@ -3108,11 +3012,6 @@ function updateCandidateRoles() {
   // 角色也存储在candidateGroups中，通过前缀区分
   const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
   assigneeForm.value.candidateGroups = roleCodes
-  // 多实例模式下 BPMN 的 candidateGroups 已被清空，保持从扩展属性恢复
-  if (!assigneeForm.value.isMultiInstance) {
-    updateProperty('candidateGroups', roleCodes)
-  }
-  updateAssigneeConfig()
 }
 
 function updateMultiInstanceUsers() {
@@ -3131,7 +3030,6 @@ function updateMultiInstanceUsers() {
   assigneeForm.value.multiInstanceGroupCodes = groupCodes.join(',')
   assigneeForm.value.multiInstanceRoleCodes = roleCodes.join(',')
   
-  updateAssigneeConfig()
 }
 
 function updateAssigneeInterface() {
@@ -3147,14 +3045,12 @@ function updateAssigneeInterface() {
     extraParams
   }
   updateExtensionProperty('assigneeInterface', JSON.stringify(interfaceConfig))
-  emit('save')
 }
 
 function updateAssigneeConfig() {
   const config = buildAssigneeConfig(assigneeForm.value)
   // 使用 updateExtensionProperty 存储 JSON 字符串
   updateExtensionProperty('assigneeConfig', JSON.stringify(config))
-  emit('save')
 }
 
 // REST接口配置更新
@@ -3170,7 +3066,6 @@ function updateRestConfig() {
     expression: undefined,
     delegateExpression: undefined
   })
-  emit('save')
 }
 
 function getRestBodyPlaceholder() {
@@ -3183,19 +3078,32 @@ function getRestBodyPlaceholder() {
   return '请求体内容'
 }
 
-// 保存当前 tab 的配置
-function saveCurrentTab() {
+function getConfigurationSections() {
+  const sections = ['basic']
+  if (isUserTask.value) sections.push('assignee', 'form', 'approval')
+  if (isServiceTask.value) sections.push('service')
+  if (isSendTask.value) sections.push('send')
+  if (isReceiveTask.value) sections.push('receive')
+  if (isManualTask.value) sections.push('manual')
+  if (isBusinessRuleTask.value) sections.push('rule')
+  if (isScriptTask.value) sections.push('script')
+  if (isCallActivity.value) sections.push('call')
+  if (isSequenceFlow.value) sections.push('condition')
+  if (isStartEvent.value) sections.push('form')
+  if (isCcConfigurable.value) sections.push('cc')
+  if (hasAdvancedConfig.value) sections.push('advanced')
+  return sections
+}
+
+function applyConfigurationSection(section) {
   try {
-    console.log('保存当前 tab:', activeTab.value)
-    
     // 检查 element 是否有效
     if (!props.element || !props.element.businessObject) {
       ElMessage.warning('请先选择流程节点')
-      return
+      return false
     }
     
-    // 根据当前激活的 tab 执行相应的保存逻辑
-    switch (activeTab.value) {
+    switch (section) {
       case 'basic':
         updateProperty('name', basicForm.value.name)
         updateDocumentation()
@@ -3232,6 +3140,8 @@ function saveCurrentTab() {
           break
         }
         // 统一计算并写入执行人相关 BPMN 属性，不依赖 @change 事件
+        updates.loopCharacteristics = undefined
+        updateExtensionProperty('multiInstanceConfig', null)
         if (assigneeForm.value.assigneeType === 'user') {
           const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
           const usersStr = selectedUsers.map(u => u.username).join(',')
@@ -3274,8 +3184,13 @@ function saveCurrentTab() {
           updates.candidateUsers = null
           updates.candidateGroups = null
           updateAssigneeInterface()
+        } else {
+          updateExtensionProperty('assigneeInterface', null)
         }
         modeling.updateProperties(toRaw(props.element), updates)
+        if (assigneeForm.value.assigneeType !== 'interface') {
+          updateExtensionProperty('assigneeInterface', null)
+        }
         updateAssigneeConfig()
         break
       }
@@ -3388,6 +3303,8 @@ function saveCurrentTab() {
           const modeling = getModeling()
           const source = getSourceElement()
           if (modeling && source) {
+            modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+            updateExtensionProperty('conditionGroupConfig', null)
             modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
           }
         } else if (conditionForm.value.type === 'expression') {
@@ -3395,6 +3312,21 @@ function saveCurrentTab() {
             ElMessage.info('原条件表达式已保留；转换为条件组后才能进行可视化编辑')
           } else {
             updateCondition()
+            const modeling = getModeling()
+            const moddle = getModdle()
+            const source = getSourceElement()
+            const expression = conditionForm.value.expression
+            if (modeling && source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
+              modeling.updateProperties(toRaw(source), { default: undefined })
+            }
+            if (modeling && moddle && expression) {
+              const condition = moddle.create('bpmn:FormalExpression', { body: expression })
+              modeling.updateProperties(toRaw(props.element), { conditionExpression: condition })
+              updateExtensionProperty('conditionGroupConfig', serializeFlowConditionConfig(conditionRoot.value))
+            } else if (modeling) {
+              modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
+              updateExtensionProperty('conditionGroupConfig', null)
+            }
           }
         } else {
           // 无条件：清除条件表达式和默认流设置
@@ -3448,19 +3380,32 @@ function saveCurrentTab() {
         updateSkipNode()
         break
       default:
-        console.warn('未知的 tab:', activeTab.value)
+        console.warn('未知的配置分区:', section)
         ElMessage.warning('当前页面无需保存')
-        return
+        return false
     }
-
-    // 节点配置仅写入 bpmn-js 内存模型，尚未落库；落库由顶部“保存草稿”统一完成。
-    // 这里只提示画布状态，并通知父组件标记脏状态。
-    ElMessage.success('已应用到画布，请点击「保存草稿」完成保存')
-    emit('save')
+    return true
   } catch (error) {
     console.error('保存失败:', error)
     ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+    return false
   }
+}
+
+async function applyNodeConfiguration() {
+  for (const section of getConfigurationSections()) {
+    if (!applyConfigurationSection(section)) return
+  }
+  if (isSequenceFlow.value) {
+    statusForm.value.conditionExpression = conditionForm.value.type === 'expression'
+      ? getFullExpression()
+      : ''
+    if (!(await saveStatusConfig())) return
+  }
+
+  // 节点配置仅写入 bpmn-js 内存模型，尚未落库；落库由顶部“保存草稿”统一完成。
+  ElMessage.success('已应用到画布，请点击「保存草稿」完成保存')
+  emit('save')
 }
 
 // ========== 连线状态配置相关方法 ==========
@@ -3619,23 +3564,11 @@ watch(() => boundEntity.value, async (newVal) => {
   }
 }, { immediate: true })
 
-// 切换到条件 tab 时重新加载审批结果选项，确保拿到最新的节点审批配置
-watch(() => activeTab.value, (tab) => {
-  if (tab === 'condition' && isSequenceFlow.value && props.element?.businessObject) {
-    loadSourceNodeApprovalOptions(toRaw(props.element).businessObject)
-  }
-})
-
 /**
  * 保存状态配置
  */
 async function saveStatusConfig() {
   try {
-    if (!statusForm.value.entityStatusCode) {
-      ElMessage.warning('请选择实体状态')
-      return
-    }
-    
     // 获取选中的状态详情
     const selectedStatus = entityStatusList.value.find(s => s.statusCode === statusForm.value.entityStatusCode)
     
@@ -3645,31 +3578,34 @@ async function saveStatusConfig() {
     updateExtensionProperty('statusCategory', selectedStatus?.statusCategory || '')
     updateExtensionProperty('statusDescription', statusForm.value.description)
     
-    // 同时保存到后端数据库（确保发布前也能持久化）
+    // 同时保存到后端数据库。先合并已有映射，避免单条连线保存覆盖其他连线。
     if (props.processId && boundEntity.value?.entityCode) {
-      try {
+      const currentFlowId = String(props.element?.id || '')
+      const existingMappings = await getStatusMappings(props.processId) || []
+      const mappings = existingMappings.filter(mapping =>
+        String(mapping.sequenceFlowId || '') !== currentFlowId)
+      if (statusForm.value.entityStatusCode) {
+        mappings.push({
+          sequenceFlowId: props.element?.id,
+          sourceNodeId: statusForm.value.sourceNodeId,
+          sourceNodeName: statusForm.value.sourceNodeName,
+          targetNodeId: statusForm.value.targetNodeId,
+          targetNodeName: statusForm.value.targetNodeName,
+          entityStatusCode: statusForm.value.entityStatusCode,
+          description: statusForm.value.description
+        })
+      }
+      if (mappings.length) {
         await saveStatusMappings(props.processId, {
           processKey: '', // 后端会自动补充
           entityCode: boundEntity.value.entityCode,
-          mappings: [{
-            sequenceFlowId: props.element?.id,
-            sourceNodeId: statusForm.value.sourceNodeId,
-            sourceNodeName: statusForm.value.sourceNodeName,
-            targetNodeId: statusForm.value.targetNodeId,
-            targetNodeName: statusForm.value.targetNodeName,
-            entityStatusCode: statusForm.value.entityStatusCode,
-            description: statusForm.value.description
-          }]
+          mappings
         })
-      } catch (apiErr) {
-        console.warn('保存后端状态映射失败:', apiErr)
+      } else {
+        await deleteStatusMappings(props.processId)
       }
     }
     
-    // 触发 XML 更新
-    emit('save')
-    
-    ElMessage.success('状态配置已保存')
     emit('update-status-mapping', {
       elementId: props.element?.id,
       sourceNodeId: statusForm.value.sourceNodeId,
@@ -3682,9 +3618,11 @@ async function saveStatusConfig() {
       conditionExpression: statusForm.value.conditionExpression,
       description: statusForm.value.description
     })
+    return true
   } catch (error) {
     console.error('保存状态配置失败:', error)
-    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+    ElMessage.error('实体状态保存失败: ' + (error.message || '未知错误'))
+    return false
   }
 }
 </script>
@@ -3699,21 +3637,54 @@ async function saveStatusConfig() {
   flex-direction: column;
   overflow: hidden;
 }
-.config-tabs :deep(.el-tabs__header) {
+.config-tab-nav {
+  display: flex;
   flex-shrink: 0;
-  margin-bottom: 0;
-}
-.config-tabs :deep(.el-tabs__nav-scroll) {
   overflow-x: auto;
+  padding: 0 12px;
+  border-bottom: 1px solid #dcdfe6;
+  background: #fff;
   scrollbar-width: thin;
 }
-.config-tabs :deep(.el-tabs__nav) {
-  min-width: max-content;
+
+.config-tab-button {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 72px;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: #303133;
+  cursor: pointer;
+  font: inherit;
 }
-.config-tabs :deep(.el-tabs__item) {
-  padding: 0 8px;
+
+.config-tab-button:hover {
+  color: #409eff;
 }
-.config-tabs :deep(.el-tabs__content) {
+
+.config-tab-button.active {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.config-tab-button.active::after {
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  height: 2px;
+  background: #409eff;
+  content: '';
+}
+
+.config-tab-button:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: -2px;
+}
+
+.config-tab-content {
   flex: 1;
   min-height: 0;
   height: auto;
@@ -3723,15 +3694,19 @@ async function saveStatusConfig() {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+
+.config-section + .config-section {
+  margin-top: 12px;
+}
+
+.config-section--actions {
+  min-height: 100%;
+}
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
 :deep(.el-divider__text) { font-size: 12px; color: #909399; }
 .unit { margin-left: 8px; color: #606266; }
 .code-input :deep(textarea) { font-family: monospace; }
 
-.node-type-info { line-height: 1.6; }
-.info-title { font-weight: bold; margin-bottom: 5px; }
-.info-desc { color: #606266; margin-bottom: 8px; }
-.info-scene { display: flex; align-items: center; gap: 8px; }
 .actions-section { display: flex; flex-direction: column; gap: 10px; }
 .actions-header { display: flex; justify-content: space-between; align-items: center; }
 .action-alert { margin-bottom: 10px; }
@@ -3765,10 +3740,12 @@ async function saveStatusConfig() {
 /* Tab 页脚保存按钮 */
 .tab-footer {
   display: flex;
+  flex-shrink: 0;
   justify-content: center;
-  padding: 15px 0;
-  margin-top: 10px;
+  padding: 12px 15px;
   border-top: 1px solid #e4e7ed;
+  background: #fff;
+  box-shadow: 0 -4px 12px rgba(31, 45, 61, 0.06);
 }
 
 /* 条件配置样式 */

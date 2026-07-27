@@ -1,8 +1,10 @@
 package com.workflow.service;
 
+import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.BusinessForbiddenException;
-import com.workflow.common.UserContext;
+import com.workflow.core.error.BusinessForbiddenException;
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import org.junit.jupiter.api.AfterEach;

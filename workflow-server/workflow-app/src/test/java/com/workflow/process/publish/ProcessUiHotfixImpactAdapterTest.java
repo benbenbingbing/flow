@@ -1,13 +1,15 @@
 package com.workflow.process.publish;
 
+import com.workflow.process.publish.application.ProcessUiHotfixImpactAdapter;
+
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.entity.ProcessUiReleaseBinding;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.mapper.ProcessUiReleaseBindingMapper;
-import com.workflow.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.publish.infrastructure.persistence.record.ProcessUiReleaseBinding;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.publish.infrastructure.persistence.mapper.ProcessUiReleaseBindingMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;

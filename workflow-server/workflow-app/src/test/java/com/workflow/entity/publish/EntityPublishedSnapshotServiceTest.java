@@ -1,9 +1,12 @@
 package com.workflow.entity.publish;
 
+import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
+import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.EntityField;
-import com.workflow.entity.EntityPublishHistory;
-import com.workflow.mapper.EntityPublishHistoryMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

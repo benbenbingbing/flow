@@ -30,23 +30,23 @@ const frontendGrandfatheredLimits = new Map([
 ])
 
 const backendGrandfatheredLimits = new Map([
-  ['workflow-entity/src/main/java/com/workflow/service/UiConfigReleaseService.java', 2793],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityFormNodeService.java', 2173],
-  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationImportApplyService.java', 1417],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityDefinitionService.java', 1291],
-  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationAssetService.java', 1223],
-  ['workflow-entity/src/main/java/com/workflow/service/UiDataSourceService.java', 1132],
-  ['workflow-process/src/main/java/com/workflow/process/runtime/ProcessProgressRuntimeService.java', 1122],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityDataDynamicService.java', 1029],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityListConfigService.java', 922],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityFormNodePropertyPolicy.java', 900],
-  ['workflow-entity/src/main/java/com/workflow/service/UiDataSourceExecutionAccessService.java', 876],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityFormService.java', 895],
-  ['workflow-process/src/main/java/com/workflow/service/impl/TaskServiceImpl.java', 870],
-  ['workflow-migration/src/main/java/com/workflow/service/migration/ConfigMigrationPackageService.java', 890],
-  ['workflow-process/src/main/java/com/workflow/process/definition/ProcessDefinitionNodeSyncService.java', 835],
-  ['workflow-entity/src/main/java/com/workflow/service/permission/PermissionSqlBuilder.java', 833],
-  ['workflow-entity/src/main/java/com/workflow/service/EntityListRelationalConfigService.java', 805]
+  ['workflow-entity/src/main/java/com/workflow/entity/ui/application/UiConfigReleaseService.java', 2793],
+  ['workflow-entity/src/main/java/com/workflow/entity/form/application/EntityFormNodeService.java', 2173],
+  ['workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java', 1417],
+  ['workflow-entity/src/main/java/com/workflow/entity/definition/application/EntityDefinitionService.java', 1291],
+  ['workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java', 1223],
+  ['workflow-entity/src/main/java/com/workflow/entity/ui/application/UiDataSourceService.java', 1132],
+  ['workflow-process/src/main/java/com/workflow/process/instance/application/ProcessProgressRuntimeService.java', 1122],
+  ['workflow-entity/src/main/java/com/workflow/entity/data/application/EntityDataDynamicService.java', 1029],
+  ['workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListConfigService.java', 922],
+  ['workflow-entity/src/main/java/com/workflow/entity/form/application/EntityFormNodePropertyPolicy.java', 900],
+  ['workflow-entity/src/main/java/com/workflow/entity/ui/application/UiDataSourceExecutionAccessService.java', 876],
+  ['workflow-entity/src/main/java/com/workflow/entity/form/application/EntityFormService.java', 895],
+  ['workflow-process/src/main/java/com/workflow/process/task/application/TaskServiceImpl.java', 870],
+  ['workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationPackageService.java', 890],
+  ['workflow-process/src/main/java/com/workflow/process/definition/application/ProcessDefinitionNodeSyncService.java', 835],
+  ['workflow-entity/src/main/java/com/workflow/entity/permission/application/PermissionSqlBuilder.java', 833],
+  ['workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRelationalConfigService.java', 805]
 ])
 
 // Reviewed growth remains fixed at the exact audited size and is only allowed
@@ -60,15 +60,15 @@ const reviewedGrowthLimits = new Map([
     limit: 3943,
     planMarker: 'NodeConfigPanel.vue'
   }],
-  ['workflow-process/src/main/java/com/workflow/process/definition/ProcessBpmnPublishSanitizer.java', {
+  ['workflow-process/src/main/java/com/workflow/process/definition/application/ProcessBpmnPublishSanitizer.java', {
     limit: 1156,
     planMarker: 'ProcessBpmnPublishSanitizer.java'
   }],
-  ['workflow-process/src/main/java/com/workflow/process/definition/ProcessDefinitionNodeSyncService.java', {
+  ['workflow-process/src/main/java/com/workflow/process/definition/application/ProcessDefinitionNodeSyncService.java', {
     limit: 837,
     planMarker: 'ProcessDefinitionNodeSyncService.java'
   }],
-  ['workflow-process/src/main/java/com/workflow/process/runtime/ProcessProgressRuntimeService.java', {
+  ['workflow-process/src/main/java/com/workflow/process/instance/application/ProcessProgressRuntimeService.java', {
     limit: 1183,
     planMarker: 'ProcessProgressRuntimeService.java'
   }]

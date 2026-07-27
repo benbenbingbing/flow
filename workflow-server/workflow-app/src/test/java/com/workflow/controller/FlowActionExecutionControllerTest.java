@@ -1,8 +1,9 @@
 package com.workflow.controller;
 
-import com.workflow.common.ForbiddenException;
-import com.workflow.service.CurrentUserRoleService;
-import com.workflow.service.FlowActionExecutionService;
+import com.workflow.process.action.api.web.FlowActionExecutionController;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.process.action.application.FlowActionExecutionService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;

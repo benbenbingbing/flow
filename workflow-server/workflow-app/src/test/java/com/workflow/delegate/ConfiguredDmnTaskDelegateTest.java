@@ -1,5 +1,7 @@
 package com.workflow.delegate;
 
+import com.workflow.process.engine.infrastructure.flowable.ConfiguredDmnTaskDelegate;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;

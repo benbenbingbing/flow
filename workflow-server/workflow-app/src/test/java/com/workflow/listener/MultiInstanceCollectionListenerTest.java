@@ -1,6 +1,8 @@
 package com.workflow.listener;
 
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
+
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;

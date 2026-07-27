@@ -1,0 +1,561 @@
+package com.workflow.entity.permission.application;
+
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
+import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
+import com.workflow.entity.permission.api.response.FilterConfigDTO;
+import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeBindingMapper;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopePolicyMapper;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeReleaseMapper;
+import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeBinding;
+import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy;
+import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.regex.Pattern;
+
+/**
+ * 数据范围草稿、发布快照和回滚的统一服务。
+ */
+@Service
+@RequiredArgsConstructor
+public class EntityListScopeService {
+
+    private static final Pattern KEY_PATTERN =
+            Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
+    /** 允许的规则效果：允许或拒绝。 */
+    private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
+    /** 允许的列表数据范围模式：继承、缩小、覆盖。 */
+    private static final Set<String> LIST_MODES =
+            Set.of("INHERIT", "NARROW", "OVERRIDE");
+
+    private final EntityListScopePolicyMapper policyMapper;
+    private final EntityListScopeBindingMapper bindingMapper;
+    private final EntityListScopeReleaseMapper releaseMapper;
+    private final EntityListConfigMapper listConfigMapper;
+    private final EntityDefinitionMapper definitionMapper;
+    private final PermissionSqlBuilder sqlBuilder;
+    private final PermissionRuleMatcher ruleMatcher;
+    private final ObjectMapper objectMapper;
+    private final EntityListScopeAuditService auditService;
+    private final EntityDefinitionAccessPolicy entityAccessPolicy;
+
+    /**
+     * 查询实体的数据范围配置，包含方案、绑定和当前发布版本。
+     *
+     * @param entityCode 实体编码
+     * @return 数据范围配置 DTO
+     */
+    @Transactional(readOnly = true)
+    public EntityListScopeConfigurationDTO getConfiguration(String entityCode) {
+        requireEntity(entityCode);
+        EntityListScopeConfigurationDTO result = new EntityListScopeConfigurationDTO();
+        result.setEntityCode(entityCode);
+        EntityListScopeRelease active = releaseMapper.findActive(entityCode);
+        result.setActiveVersion(active == null ? null : active.getVersion());
+        result.setPolicies(policyMapper.findByEntityCode(entityCode).stream()
+                .map(this::toPolicyDTO)
+                .toList());
+        result.setBindings(bindingMapper.findByEntityCode(entityCode).stream()
+                .map(this::toBindingDTO)
+                .toList());
+        return result;
+    }
+
+    /**
+     * 新增或更新数据范围方案，并记录审计日志。
+     *
+     * @param id      方案ID，为空表示新增
+     * @param request 方案请求体
+     * @return 保存后的方案 DTO
+     * @throws IllegalArgumentException 编码为空、方案编码重复或过滤配置非法时抛出
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体数据权限方案",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_POLICY",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public EntityListScopePolicyDTO savePolicy(
+            String id,
+            EntityListScopePolicyDTO request) {
+        if (request == null || !StringUtils.hasText(request.getEntityCode())) {
+            throw new IllegalArgumentException("实体编码不能为空");
+        }
+        requireEntity(request.getEntityCode());
+        if (!StringUtils.hasText(request.getPolicyKey())
+                || !KEY_PATTERN.matcher(request.getPolicyKey()).matches()) {
+            throw new IllegalArgumentException("方案编码必须以字母开头，只能包含字母、数字、下划线和短横线");
+        }
+        if (!StringUtils.hasText(request.getPolicyName())) {
+            throw new IllegalArgumentException("方案名称不能为空");
+        }
+        FilterConfigDTO filter = request.getFilterConfig();
+        if (filter == null) {
+            throw new IllegalArgumentException("数据范围条件不能为空");
+        }
+        sqlBuilder.validateFilter(request.getEntityCode(), filter);
+
+        EntityListScopePolicy duplicate = policyMapper.selectOne(
+                new LambdaQueryWrapper<EntityListScopePolicy>()
+                        .eq(EntityListScopePolicy::getEntityCode, request.getEntityCode())
+                        .eq(EntityListScopePolicy::getPolicyKey, request.getPolicyKey())
+                        .eq(EntityListScopePolicy::getDeleted, 0)
+                        .ne(StringUtils.hasText(id), EntityListScopePolicy::getId, id)
+                        .last("LIMIT 1"));
+        if (duplicate != null) {
+            throw new IllegalArgumentException("方案编码已存在: " + request.getPolicyKey());
+        }
+
+        EntityListScopePolicy policy = StringUtils.hasText(id)
+                ? policyMapper.selectById(id)
+                : new EntityListScopePolicy();
+        if (StringUtils.hasText(id) && policy == null) {
+            throw new IllegalArgumentException("数据范围方案不存在");
+        }
+        if (policy != null && StringUtils.hasText(policy.getEntityCode())
+                && !policy.getEntityCode().equals(request.getEntityCode())) {
+            throw new IllegalArgumentException("不能修改方案所属实体");
+        }
+        policy.setEntityCode(request.getEntityCode());
+        policy.setPolicyKey(request.getPolicyKey().trim());
+        policy.setPolicyName(request.getPolicyName().trim());
+        policy.setDescription(request.getDescription());
+        policy.setPresetCode(request.getPresetCode());
+        policy.setFilterConfig(writeJson(filter));
+        policy.setStatus("DRAFT");
+        policy.setEnabled(request.getEnabled() == null ? 1 : request.getEnabled());
+        policy.setVersion((policy.getVersion() == null ? 0 : policy.getVersion()) + 1);
+        policy.setReviewRequired(0);
+        policy.setUpdatedAt(LocalDateTime.now());
+        if (!StringUtils.hasText(id)) {
+            policy.setCreatedBy(UserContext.getUserId());
+            policy.setCreatedAt(LocalDateTime.now());
+            policy.setDeleted(0);
+            policyMapper.insert(policy);
+        } else {
+            policyMapper.updateById(policy);
+        }
+        auditService.record(
+                policy.getEntityCode(), null, UserContext.getUserId(),
+                "SAVE", "SUCCESS", Map.of("policyKey", policy.getPolicyKey()));
+        return toPolicyDTO(policyMapper.selectById(policy.getId()));
+    }
+
+    /**
+     * 新增或更新数据范围绑定（方案与适用对象/列表的关联），并记录审计日志。
+     *
+     * @param id      绑定ID，为空表示新增
+     * @param request 绑定请求体
+     * @return 保存后的绑定 DTO
+     * @throws IllegalArgumentException 方案不存在、列表不存在、适用用户或效果配置非法时抛出
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "保存实体数据权限绑定",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_BINDING",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public EntityListScopeBindingDTO saveBinding(
+            String id,
+            EntityListScopeBindingDTO request) {
+        if (request == null || !StringUtils.hasText(request.getEntityCode())) {
+            throw new IllegalArgumentException("实体编码不能为空");
+        }
+        requireEntity(request.getEntityCode());
+        EntityListScopePolicy policy = policyMapper.selectById(request.getPolicyId());
+        if (policy == null || !request.getEntityCode().equals(policy.getEntityCode())) {
+            throw new IllegalArgumentException("数据范围方案不存在或不属于当前实体");
+        }
+        if (StringUtils.hasText(request.getListKey())
+                && listConfigMapper.findByEntityCodeAndListKey(
+                request.getEntityCode(), request.getListKey()) == null) {
+            throw new IllegalArgumentException("适用列表不存在: " + request.getListKey());
+        }
+        MatchConfigDTO match = request.getMatchConfig();
+        validateMatchConfig(match);
+        String effect = normalized(request.getRuleEffect(), "ALLOW");
+        if (!EFFECTS.contains(effect)) {
+            throw new IllegalArgumentException("规则效果只能是 ALLOW 或 DENY");
+        }
+        if (request.getEffectiveStartTime() != null
+                && request.getEffectiveEndTime() != null
+                && request.getEffectiveEndTime().isBefore(request.getEffectiveStartTime())) {
+            throw new IllegalArgumentException("失效时间不能早于生效时间");
+        }
+
+        EntityListScopeBinding binding = StringUtils.hasText(id)
+                ? bindingMapper.selectById(id)
+                : new EntityListScopeBinding();
+        if (StringUtils.hasText(id) && binding == null) {
+            throw new IllegalArgumentException("数据范围绑定不存在");
+        }
+        binding.setEntityCode(request.getEntityCode());
+        binding.setPolicyId(request.getPolicyId());
+        binding.setListKey(StringUtils.hasText(request.getListKey())
+                ? request.getListKey().trim() : null);
+        binding.setMatchConfig(writeJson(match));
+        binding.setRuleEffect(effect);
+        binding.setEnabled(request.getEnabled() == null ? 1 : request.getEnabled());
+        binding.setEffectiveStartTime(request.getEffectiveStartTime());
+        binding.setEffectiveEndTime(request.getEffectiveEndTime());
+        binding.setUpdatedAt(LocalDateTime.now());
+        if (!StringUtils.hasText(id)) {
+            binding.setCreatedBy(UserContext.getUserId());
+            binding.setCreatedAt(LocalDateTime.now());
+            binding.setDeleted(0);
+            bindingMapper.insert(binding);
+        } else {
+            bindingMapper.updateById(binding);
+        }
+        auditService.record(
+                binding.getEntityCode(), binding.getListKey(), UserContext.getUserId(),
+                "SAVE", "SUCCESS", Map.of("policyId", binding.getPolicyId()));
+        return toBindingDTO(bindingMapper.selectById(binding.getId()));
+    }
+
+    /**
+     * 删除数据范围方案，若仍被绑定引用则抛出异常。
+     *
+     * @param id 方案ID
+     * @throws IllegalStateException 方案仍被绑定引用时抛出
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体数据权限方案",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_POLICY",
+            targetIdArg = 0)
+    public void deletePolicy(String id) {
+        EntityListScopePolicy policy = policyMapper.selectById(id);
+        if (policy == null) {
+            return;
+        }
+        long bindingCount = bindingMapper.selectCount(
+                new LambdaQueryWrapper<EntityListScopeBinding>()
+                        .eq(EntityListScopeBinding::getPolicyId, id)
+                        .eq(EntityListScopeBinding::getDeleted, 0));
+        if (bindingCount > 0) {
+            throw new IllegalStateException("方案仍被适用对象绑定引用，不能删除");
+        }
+        policyMapper.deleteById(id);
+    }
+
+    /**
+     * 删除数据范围绑定。
+     *
+     * @param id 绑定ID
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体数据权限绑定",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_BINDING",
+            targetIdArg = 0)
+    public void deleteBinding(String id) {
+        bindingMapper.deleteById(id);
+    }
+
+    /**
+     * 发布实体的数据范围快照，生成新版本并激活，同时更新列表已发布版本号。
+     *
+     * @param entityCode  实体编码
+     * @param description 发布描述
+     * @return 发布记录
+     * @throws IllegalStateException       存在需人工复核的历史规则或缺少默认 ALLOW 绑定时抛出
+     * @throws EntityListScopeManualReviewRequiredException 存在待人工复核规则时抛出
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.PUBLISH,
+            operation = "发布实体数据权限",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_RELEASE",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public EntityListScopeRelease publish(String entityCode, String description) {
+        requireEntity(entityCode);
+        List<EntityListScopePolicy> policies = policyMapper.findByEntityCode(entityCode);
+        List<EntityListScopeBinding> bindings = bindingMapper.findByEntityCode(entityCode);
+        if (policies.stream().anyMatch(policy -> Integer.valueOf(1).equals(policy.getReviewRequired()))) {
+            throw new EntityListScopeManualReviewRequiredException(
+                    "存在需要人工确认的历史复杂规则，请重新保存方案后再发布");
+        }
+        if (bindings.stream().noneMatch(binding ->
+                binding.getListKey() == null
+                        && "ALLOW".equalsIgnoreCase(binding.getRuleEffect())
+                        && Integer.valueOf(1).equals(binding.getEnabled()))) {
+            throw new IllegalStateException("必须至少配置一个实体默认 ALLOW 数据范围");
+        }
+
+        EntityListScopeSnapshotDTO snapshot = new EntityListScopeSnapshotDTO();
+        snapshot.setEntityCode(entityCode);
+        int version = releaseMapper.findMaxVersion(entityCode) + 1;
+        snapshot.setVersion(version);
+        snapshot.setPolicies(policies.stream().map(this::toPolicyDTO).toList());
+        snapshot.setBindings(bindings.stream().map(this::toBindingDTO).toList());
+        for (EntityListConfig config : listConfigMapper.findByEntityCode(entityCode)) {
+            String mode = normalized(config.getDataScopeMode(), "INHERIT");
+            if (!LIST_MODES.contains(mode)) {
+                throw new IllegalStateException("列表数据范围模式无效: " + config.getListKey());
+            }
+            if ("NARROW".equals(mode) && bindings.stream().noneMatch(binding ->
+                    config.getListKey().equals(binding.getListKey())
+                            && "ALLOW".equalsIgnoreCase(binding.getRuleEffect())
+                            && Integer.valueOf(1).equals(binding.getEnabled()))) {
+                throw new IllegalStateException(
+                        "缩小范围列表必须至少配置一个列表级 ALLOW 绑定: " + config.getListKey());
+            }
+            snapshot.getListModes().put(config.getListKey(), mode);
+            config.setPublishedVersion(version);
+            listConfigMapper.updateById(config);
+        }
+
+        String snapshotJson = writeJson(snapshot);
+        releaseMapper.deactivate(entityCode);
+        EntityListScopeRelease release = new EntityListScopeRelease();
+        release.setEntityCode(entityCode);
+        release.setVersion(version);
+        release.setSnapshotJson(snapshotJson);
+        release.setContentHash(sha256(snapshotJson));
+        release.setStatus("ACTIVE");
+        release.setDescription(description);
+        release.setPublishedBy(UserContext.getUserId());
+        release.setPublishedAt(LocalDateTime.now());
+        releaseMapper.insert(release);
+
+        for (EntityListScopePolicy policy : policies) {
+            policy.setStatus("PUBLISHED");
+            policyMapper.updateById(policy);
+        }
+        auditService.record(
+                entityCode, null, UserContext.getUserId(), "PUBLISH", "SUCCESS",
+                Map.of("version", version, "contentHash", release.getContentHash()));
+        return release;
+    }
+
+    /**
+     * 激活指定历史发布版本，实现数据范围回滚。
+     *
+     * @param entityCode 实体编码
+     * @param version    要激活的版本号
+     * @return 激活的发布记录
+     * @throws IllegalArgumentException 版本不存在时抛出
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.ROLLBACK,
+            operation = "激活实体数据权限版本",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_RELEASE",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public EntityListScopeRelease activateRelease(String entityCode, int version) {
+        EntityListScopeRelease release = releaseMapper.selectOne(
+                new LambdaQueryWrapper<EntityListScopeRelease>()
+                        .eq(EntityListScopeRelease::getEntityCode, entityCode)
+                        .eq(EntityListScopeRelease::getVersion, version)
+                        .last("LIMIT 1"));
+        if (release == null) {
+            throw new IllegalArgumentException("数据范围发布版本不存在");
+        }
+        releaseMapper.deactivate(entityCode);
+        release.setStatus("ACTIVE");
+        releaseMapper.updateById(release);
+        auditService.record(
+                entityCode, null, UserContext.getUserId(), "ROLLBACK", "SUCCESS",
+                Map.of("version", version));
+        return release;
+    }
+
+    /**
+     * 获取实体当前激活的发布快照。
+     *
+     * @param entityCode 实体编码
+     * @return 快照 DTO，不存在已发布版本时返回 null
+     * @throws IllegalStateException 快照 JSON 损坏时抛出
+     */
+    @Transactional(readOnly = true)
+    public EntityListScopeSnapshotDTO getActiveSnapshot(String entityCode) {
+        EntityListScopeRelease release = releaseMapper.findActive(entityCode);
+        if (release == null || !StringUtils.hasText(release.getSnapshotJson())) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(
+                    release.getSnapshotJson(),
+                    EntityListScopeSnapshotDTO.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("数据范围发布快照损坏: " + entityCode, exception);
+        }
+    }
+
+    /**
+     * 确保实体存在默认数据范围方案并已发布，用于新实体初始化。
+     *
+     * <p>若无任何方案则生成"本人创建或提交"的默认方案并发布。</p>
+     *
+     * @param entityCode 实体编码
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void ensureDefaultAndRelease(String entityCode) {
+        requireEntity(entityCode);
+        if (releaseMapper.findActive(entityCode) != null) {
+            return;
+        }
+        List<EntityListScopePolicy> existing = policyMapper.findByEntityCode(entityCode);
+        if (existing.isEmpty()) {
+            FilterConfigDTO filter = defaultPersonalFilter();
+            EntityListScopePolicyDTO policyRequest = new EntityListScopePolicyDTO();
+            policyRequest.setEntityCode(entityCode);
+            policyRequest.setPolicyKey("default_personal");
+            policyRequest.setPolicyName("本人创建或提交的数据");
+            policyRequest.setDescription("系统为新实体生成的默认安全范围");
+            policyRequest.setPresetCode("PERSONAL_OR_SUBMITTER");
+            policyRequest.setFilterConfig(filter);
+            policyRequest.setEnabled(1);
+            EntityListScopePolicyDTO policy = savePolicy(null, policyRequest);
+
+            EntityListScopeBindingDTO binding = new EntityListScopeBindingDTO();
+            binding.setEntityCode(entityCode);
+            binding.setPolicyId(policy.getId());
+            binding.setRuleEffect("ALLOW");
+            binding.setEnabled(1);
+            binding.setMatchConfig(allUsersMatch());
+            saveBinding(null, binding);
+        }
+        publish(entityCode, "系统初始化数据范围");
+    }
+
+    private EntityListScopePolicyDTO toPolicyDTO(EntityListScopePolicy policy) {
+        EntityListScopePolicyDTO dto = new EntityListScopePolicyDTO();
+        BeanUtils.copyProperties(policy, dto);
+        dto.setFilterConfig(readJson(policy.getFilterConfig(), FilterConfigDTO.class));
+        return dto;
+    }
+
+    private EntityListScopeBindingDTO toBindingDTO(EntityListScopeBinding binding) {
+        EntityListScopeBindingDTO dto = new EntityListScopeBindingDTO();
+        BeanUtils.copyProperties(binding, dto);
+        dto.setMatchConfig(readJson(binding.getMatchConfig(), MatchConfigDTO.class));
+        return dto;
+    }
+
+    private void validateMatchConfig(MatchConfigDTO match) {
+        if (match == null) {
+            throw new IllegalArgumentException("适用用户配置不能为空");
+        }
+        if (match.getRoot() == null
+                && (match.getConditions() == null || match.getConditions().isEmpty())) {
+            throw new IllegalArgumentException("至少配置一个适用用户条件");
+        }
+        ruleMatcher.validate(match);
+    }
+
+    private FilterConfigDTO defaultPersonalFilter() {
+        EntityActionRuleDTO.RuleNode root = new EntityActionRuleDTO.RuleNode();
+        root.setType("GROUP");
+        root.setLogic("OR");
+        EntityActionRuleDTO.RuleNode creator = new EntityActionRuleDTO.RuleNode();
+        creator.setType("RELATION");
+        creator.setRelation("CURRENT_USER_IS_CREATOR");
+        EntityActionRuleDTO.RuleNode submitter = new EntityActionRuleDTO.RuleNode();
+        submitter.setType("RELATION");
+        submitter.setRelation("CURRENT_USER_IS_SUBMITTER");
+        root.setChildren(List.of(creator, submitter));
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("RULE");
+        filter.setRoot(root);
+        return filter;
+    }
+
+    private MatchConfigDTO allUsersMatch() {
+        MatchConfigDTO match = new MatchConfigDTO();
+        MatchConfigDTO.MatchConditionDTO condition =
+                new MatchConfigDTO.MatchConditionDTO();
+        condition.setScopeType("ALL_USERS");
+        match.setConditions(List.of(condition));
+        return match;
+    }
+
+    private void requireEntity(String entityCode) {
+        entityAccessPolicy.requireDynamicByCode(entityCode);
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("配置序列化失败", exception);
+        }
+    }
+
+    private <T> T readJson(String json, Class<T> type) {
+        try {
+            return objectMapper.readValue(json, type);
+        } catch (Exception exception) {
+            throw new IllegalStateException("数据范围配置损坏", exception);
+        }
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (Exception exception) {
+            throw new IllegalStateException("计算数据范围快照哈希失败", exception);
+        }
+    }
+
+    private String normalized(String value, String fallback) {
+        return StringUtils.hasText(value)
+                ? value.trim().toUpperCase(Locale.ROOT)
+                : fallback;
+    }
+}

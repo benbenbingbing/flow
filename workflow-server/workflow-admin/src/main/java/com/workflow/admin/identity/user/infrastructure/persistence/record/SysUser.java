@@ -1,0 +1,143 @@
+package com.workflow.admin.identity.user.infrastructure.persistence.record;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * 用户实体
+ * <p>
+ * 对应 sys_user 表，存储用户名、昵称、密码、状态及组织/部门归属等，
+ * 用户名唯一。非数据库字段（roles、roleIds、orgName、deptName）用于回显。
+ * </p>
+ */
+@Data
+@TableName("sys_user")
+public class SysUser {
+    
+    /** 主键ID（雪花算法分配） */
+    @TableId(type = IdType.ASSIGN_ID)
+    private String id;
+    
+    /**
+     * 用户名
+     */
+    private String username;
+    
+    /**
+     * 昵称
+     */
+    private String nickname;
+    
+    /**
+     * 密码
+     */
+    @JsonIgnore
+    private String password;
+
+    /**
+     * 是否必须在继续使用系统前修改密码
+     */
+    private Boolean passwordResetRequired;
+    
+    /**
+     * 邮箱
+     */
+    private String email;
+    
+    /**
+     * 手机号
+     */
+    private String phone;
+    
+    /**
+     * 头像
+     */
+    private String avatar;
+    
+    /**
+     * 状态：0-启用 1-禁用
+     */
+    private String status;
+    
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createTime;
+    
+    /**
+     * 更新时间
+     */
+    private LocalDateTime updateTime;
+    
+    /**
+     * 删除标志
+     */
+    @TableLogic
+    private Integer deleted;
+    
+    /**
+     * 组织ID
+     */
+    private String orgId;
+    
+    /**
+     * 部门ID
+     */
+    private String deptId;
+    
+    /**
+     * 组织名称（冗余）
+     */
+    @TableField(exist = false)
+    private String orgName;
+    
+    /**
+     * 部门名称（冗余）
+     */
+    @TableField(exist = false)
+    private String deptName;
+    
+    /**
+     * 角色列表（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<SysRole> roles;
+    
+    /**
+     * 角色ID列表（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<String> roleIds;
+
+    /**
+     * 创建或重置密码时仅在本次响应中返回的临时密码
+     */
+    @TableField(exist = false)
+    private String temporaryPassword;
+    
+    public enum Status {
+        /** 启用 */
+        ENABLED("0"),
+        /** 禁用 */
+        DISABLED("1");
+        
+        private final String value;
+        
+        Status(String value) {
+            this.value = value;
+        }
+        
+        public String getValue() {
+            return value;
+        }
+    }
+}

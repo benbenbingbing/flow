@@ -1,9 +1,11 @@
 package com.workflow.controller;
 
-import com.workflow.common.ForbiddenException;
-import com.workflow.common.UserContext;
-import com.workflow.service.CurrentUserRoleService;
-import com.workflow.service.ProcessCcService;
+import com.workflow.process.cc.api.web.ProcessCcController;
+
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.process.cc.application.ProcessCcService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 

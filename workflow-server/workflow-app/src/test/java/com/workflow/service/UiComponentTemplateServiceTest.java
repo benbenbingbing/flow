@@ -1,12 +1,14 @@
 package com.workflow.service;
 
+import com.workflow.entity.ui.application.UiComponentTemplateService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.dto.UiComponentTemplateUpgradeRequest;
-import com.workflow.entity.UiComponentTemplate;
-import com.workflow.entity.UiComponentTemplateVersion;
-import com.workflow.mapper.UiComponentTemplateMapper;
-import com.workflow.mapper.UiComponentTemplateVersionMapper;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.ui.api.request.UiComponentTemplateUpgradeRequest;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplateVersion;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

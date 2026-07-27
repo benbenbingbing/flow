@@ -1,7 +1,9 @@
 package com.workflow.service;
 
+import com.workflow.entity.ui.application.UiConfigSemanticPatchService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;

@@ -1,5 +1,7 @@
 package com.workflow.mapper;
 
+import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
+
 import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
 

@@ -1,13 +1,14 @@
 package com.workflow.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.workflow.common.PageResult;
-import com.workflow.entity.SysRole;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.SysOrganizationMapper;
-import com.workflow.mapper.SysRoleMapper;
-import com.workflow.mapper.SysUserMapper;
-import com.workflow.mapper.SysUserRoleMapper;
+import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.core.result.PageResult;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

@@ -1,9 +1,11 @@
 package com.workflow.delegate;
 
+import com.workflow.process.engine.infrastructure.flowable.ConfiguredSendTaskDelegate;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.service.ProcessCcRuntimeService;
-import com.workflow.service.cc.CcRuntimeContext;
+import com.workflow.process.cc.application.ProcessCcRuntimeService;
+import com.workflow.process.cc.application.CcRuntimeContext;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;
 import org.flowable.bpmn.model.ServiceTask;

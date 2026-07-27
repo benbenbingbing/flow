@@ -1,10 +1,10 @@
 package com.workflow.config;
 
-import com.workflow.common.ForbiddenException;
-import com.workflow.common.BusinessConflictException;
-import com.workflow.common.BusinessForbiddenException;
-import com.workflow.common.RevisionConflictException;
-import com.workflow.dto.ApiResponse;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.error.BusinessForbiddenException;
+import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.result.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

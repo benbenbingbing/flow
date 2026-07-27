@@ -1,7 +1,7 @@
 package com.workflow.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 

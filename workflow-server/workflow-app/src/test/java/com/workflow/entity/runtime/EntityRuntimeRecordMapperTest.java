@@ -1,8 +1,10 @@
 package com.workflow.entity.runtime;
 
+import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.EntityDataDTO;
+import com.workflow.entity.data.api.response.EntityDataDTO;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;

@@ -759,7 +759,7 @@ const nodeConfigPanelSource = readFileSync(path.join(root, 'src/components/NodeC
   'min-height: 0',
   'overflow-y: auto',
   'scrollbar-gutter: stable',
-  '.config-tabs :deep(.el-tabs__content)'
+  '.config-tab-content'
 ].forEach((marker) => {
   assert.ok(nodeConfigPanelSource.includes(marker), `流程节点配置缺少纵向滚动能力: ${marker}`)
 })
@@ -806,10 +806,10 @@ assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程�
   assert.ok(nodeConfigPanel.includes(marker), `流程条件配置缺少条件组能力: ${marker}`)
 })
 ;[
-  'title="技术信息"',
+  'title="标识与备注"',
   "import SettingsSection from '@/components/SettingsSection.vue'"
 ].forEach((marker) => {
-  assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少折叠技术信息: ${marker}`)
+  assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少标识与备注分组: ${marker}`)
 })
 assert.equal(nodeConfigPanel.includes('node-config-summary'), false, '流程节点配置不应展示占用首屏空间的摘要卡片')
 ;[
@@ -822,13 +822,10 @@ assert.equal(nodeConfigPanel.includes('node-config-summary'), false, '流程节�
   assert.ok(processDesign.includes(marker), `流程节点类型应展示在顶部标题栏: ${marker}`)
 })
 const nodeTabPatterns = [
-  ['常用', /<span>常用<\/span>/],
-  ['执行人', /<span>执行人<\/span>/],
-  ['表单', /<span>表单<\/span>/],
-  ['审批', /<span>审批(?:配置)?<\/span>/],
-  ['知会', /<span>知会<\/span>/],
-  ['流程动作', /<span>流程动作<\/span>/],
-  ['高级', /<span>高级<\/span>/]
+  ['常用', />\s*常用\s*<\/button>/],
+  ['协同', />\s*协同\s*<\/button>/],
+  ['高级', />\s*高级\s*<\/button>/],
+  ['流程动作', />\s*流程动作\s*<\/button>/]
 ]
 const nodeTabPositions = nodeTabPatterns.map(([label, pattern]) => {
   const position = pattern.exec(nodeConfigPanel)?.index ?? -1
@@ -838,8 +835,26 @@ const nodeTabPositions = nodeTabPatterns.map(([label, pattern]) => {
 assert.deepEqual(
   nodeTabPositions,
   [...nodeTabPositions].sort((left, right) => left - right),
-  '流程节点页签应按常用、执行人、表单、审批、知会、流程动作、高级排序'
+  '流程节点页签应按常用、协同、高级、流程动作排序'
 )
+assert.ok(nodeConfigPanel.includes("v-if=\"isCcConfigurable\""), '协同页签只应在支持知会的节点显示')
+assert.ok(nodeConfigPanel.includes("v-if=\"hasAdvancedConfig\""), '高级页签只应在任务或网关显示')
+;[
+  'title="执行人与多人办理"',
+  'title="办理表单"',
+  'title="审批设置"',
+  'title="实体状态"',
+  'title="流转条件"'
+].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `常用页签缺少合并配置区: ${marker}`)
+})
+assert.equal(nodeConfigPanel.includes('<el-tab-pane'), false, '节点能力不应继续拆成多个独立 Element Plus 页签')
+assert.equal(
+  (nodeConfigPanel.match(/>应用到画布<\/el-button>/g) || []).length,
+  1,
+  '节点 BPMN 配置应共用一个“应用到画布”按钮'
+)
+assert.ok(nodeConfigPanel.includes('applyNodeConfiguration'), '节点配置缺少统一应用入口')
 ;['title="办理方式"', 'title="参与人员"', 'title="完成规则"', 'title="技术参数"'].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `多人办理配置缺少任务分组: ${marker}`)
 })
@@ -1037,8 +1052,8 @@ const configurationArchitectureExpectations = {
     '节点配置页签与首屏原则',
     '点击节点打开属性抽屉',
     '关闭抽屉不会取消当前选择',
-    '常用、执行人、表单、审批、知会、流程动作、高级',
-    '技术信息',
+    '常用、协同、高级、流程动作',
+    '标识与备注',
     '按节点适用',
     '发布后迁移默认折叠'
   ],

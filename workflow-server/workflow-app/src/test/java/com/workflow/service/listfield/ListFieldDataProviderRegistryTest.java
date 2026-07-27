@@ -1,8 +1,11 @@
 package com.workflow.service.listfield;
 
+import com.workflow.entity.list.extension.ListFieldDataProvider;
+import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.entity.EntityListField;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

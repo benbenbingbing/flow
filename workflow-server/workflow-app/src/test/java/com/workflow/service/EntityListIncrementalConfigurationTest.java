@@ -1,12 +1,15 @@
 package com.workflow.service;
 
-import com.workflow.dto.EntityListActionSaveRequest;
-import com.workflow.entity.EntityListAction;
-import com.workflow.entity.EntityListConfig;
-import com.workflow.entity.EntityListField;
-import com.workflow.mapper.EntityListActionMapper;
-import com.workflow.mapper.EntityListConfigMapper;
-import com.workflow.mapper.EntityListSceneMapper;
+import com.workflow.entity.list.application.EntityListConfigService;
+import com.workflow.entity.list.application.EntityListRelationalConfigService;
+
+import com.workflow.entity.list.api.request.EntityListActionSaveRequest;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListSceneMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 

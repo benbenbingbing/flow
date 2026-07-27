@@ -1,12 +1,20 @@
 package com.workflow.service;
 
+import com.workflow.entity.form.infrastructure.persistence.mapper.FormConfigMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.FormFieldConfigMapper;
+
+import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
+import com.workflow.process.definition.application.ProcessDefinitionService;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.ProcessDefinitionDTO;
-import com.workflow.dto.ProcessVersionHistoryDTO;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.mapper.*;
-import com.workflow.process.definition.ProcessDefinitionNodeSyncService;
+import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
+import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,17 +1,20 @@
 package com.workflow.service;
 
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.form.application.EntityFormService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.entity.EntityField;
-import com.workflow.entity.EntityFormField;
-import com.workflow.entity.EntityRelation;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.mapper.EntityFormFieldMapper;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.mapper.EntityFormNodeMapper;
-import com.workflow.mapper.EntityRelationMapper;
-import com.workflow.service.config.EntityFormConfigurationValidator;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import org.junit.jupiter.api.Test;
 
 import java.beans.Introspector;

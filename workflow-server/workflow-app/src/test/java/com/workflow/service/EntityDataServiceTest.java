@@ -1,13 +1,17 @@
 package com.workflow.service;
 
+import com.workflow.entity.definition.application.EntityCodeGeneratorService;
+
+import com.workflow.process.instance.application.EntityDataService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.entity.EntityData;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.mapper.EntityDataMapper;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.repository.ProcessDefinition;

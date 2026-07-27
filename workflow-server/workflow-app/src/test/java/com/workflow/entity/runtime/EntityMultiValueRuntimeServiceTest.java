@@ -1,11 +1,13 @@
 package com.workflow.entity.runtime;
 
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityField;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.service.DynamicTableService;
-import com.workflow.service.EntityPhysicalTableResolver;
+import com.workflow.entity.data.application.EntityMultiValueRuntimeService;
+
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 

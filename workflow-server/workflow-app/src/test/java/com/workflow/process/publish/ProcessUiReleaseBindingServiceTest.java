@@ -1,16 +1,16 @@
 package com.workflow.process.publish;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.process.publish.application.ProcessUiReleaseBindingService;
+
 import com.workflow.contracts.ui.runtime.UiPublishedFormReference;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.entity.ProcessUiReleaseBinding;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.mapper.ProcessUiReleaseBindingMapper;
-import com.workflow.service.UiConfigReleaseService;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.process.publish.infrastructure.persistence.record.ProcessUiReleaseBinding;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.publish.infrastructure.persistence.mapper.ProcessUiReleaseBindingMapper;
+import com.workflow.entity.ui.application.UiConfigReleaseService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -170,86 +170,11 @@ class ProcessUiReleaseBindingServiceTest {
                 2);
     }
 
-    @Test
-    void backfillOnlyInsertsMissingBindingsAndUpdatesStaleOnes()
-            throws Exception {
-        ProcessUiReleaseBindingMapper mapper =
-                mock(ProcessUiReleaseBindingMapper.class);
-        UiConfigReleaseService releaseService =
-                mock(UiConfigReleaseService.class);
-        ObjectMapper objectMapper = new ObjectMapper();
-        ProcessUiReleaseBindingService service =
-                new ProcessUiReleaseBindingService(
-                        mapper,
-                        objectMapper,
-                        releaseService);
-        ProcessVersionHistory history = history();
-        ProcessNodeForm root = nodeForm(
-                "task-root",
-                "根审批",
-                "form-root",
-                "release-root",
-                1);
-        history.setNodeFormsSnapshot(
-                objectMapper.writeValueAsString(List.of(root)));
-        LocalDateTime originalCreateTime =
-                LocalDateTime.of(2026, 7, 1, 9, 30);
-        ProcessUiReleaseBinding staleRoot =
-                existingRootBinding(originalCreateTime);
-
-        when(mapper.findByHistoryId("history-1"))
-                .thenReturn(List.of(staleRoot));
-        when(releaseService.childFormReferences(
-                "form-root",
-                "release-root",
-                1)).thenReturn(List.of(reference(
-                        "form-child",
-                        "release-child",
-                        2)));
-        when(releaseService.childFormReferences(
-                "form-child",
-                "release-child",
-                2)).thenReturn(List.of());
-
-        ProcessUiReleaseBindingService.BackfillResult result =
-                service.backfill(history);
-
-        ArgumentCaptor<ProcessUiReleaseBinding> insertCaptor =
-                ArgumentCaptor.forClass(ProcessUiReleaseBinding.class);
-        ArgumentCaptor<ProcessUiReleaseBinding> updateCaptor =
-                ArgumentCaptor.forClass(ProcessUiReleaseBinding.class);
-        verify(mapper, never()).deleteByHistoryId("history-1");
-        verify(mapper).insert(insertCaptor.capture());
-        verify(mapper).updateById(updateCaptor.capture());
-
-        ProcessUiReleaseBinding inserted = insertCaptor.getValue();
-        assertEquals("form-child", inserted.getConfigId());
-        assertEquals("release-child", inserted.getPinnedReleaseId());
-
-        ProcessUiReleaseBinding updated = updateCaptor.getValue();
-        assertEquals("existing-root", updated.getId());
-        assertEquals(originalCreateTime, updated.getCreateTime());
-        assertEquals("process-1", updated.getProcessConfigId());
-        assertEquals("expense_flow", updated.getProcessKey());
-        assertEquals(3, updated.getProcessVersion());
-        assertEquals("deployment-3", updated.getDeploymentId());
-        assertEquals("根审批", updated.getNodeName());
-        assertEquals("release-root", updated.getPinnedReleaseId());
-        assertEquals(1, updated.getPinnedReleaseVersion());
-
-        assertEquals(1, result.inserted());
-        assertEquals(1, result.updated());
-        assertEquals(0, result.missingRelease());
-        assertEquals(0, result.invalidSnapshot());
-        assertFalse(result.skippedExisting());
-    }
-
     private static ProcessUiReleaseBindingService service(
             ProcessUiReleaseBindingMapper mapper,
             UiConfigReleaseService releaseService) {
         return new ProcessUiReleaseBindingService(
                 mapper,
-                new ObjectMapper(),
                 releaseService);
     }
 
@@ -289,23 +214,4 @@ class ProcessUiReleaseBindingServiceTest {
                 releaseVersion);
     }
 
-    private static ProcessUiReleaseBinding existingRootBinding(
-            LocalDateTime createTime) {
-        ProcessUiReleaseBinding binding =
-                new ProcessUiReleaseBinding();
-        binding.setId("existing-root");
-        binding.setProcessVersionHistoryId("history-1");
-        binding.setProcessConfigId("stale-process");
-        binding.setProcessKey("stale_flow");
-        binding.setProcessVersion(1);
-        binding.setDeploymentId("stale-deployment");
-        binding.setNodeId("task-root");
-        binding.setNodeName("旧节点名称");
-        binding.setConfigType("FORM");
-        binding.setConfigId("form-root");
-        binding.setPinnedReleaseId("release-old");
-        binding.setPinnedReleaseVersion(0);
-        binding.setCreateTime(createTime);
-        return binding;
-    }
 }

@@ -1,15 +1,17 @@
 package com.workflow.process.definition;
 
+import com.workflow.process.definition.application.ProcessPublishHistoryService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.action.FlowActionDesignPort;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.entity.UiConfigRelease;
-import com.workflow.mapper.ProcessNodeFormMapper;
-import com.workflow.mapper.ProcessVersionHistoryMapper;
-import com.workflow.process.publish.ProcessUiReleaseBindingService;
-import com.workflow.service.UiConfigReleaseService;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.publish.application.ProcessUiReleaseBindingService;
+import com.workflow.entity.ui.application.UiConfigReleaseService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

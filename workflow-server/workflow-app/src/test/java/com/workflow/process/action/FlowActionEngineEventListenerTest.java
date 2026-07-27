@@ -1,5 +1,9 @@
 package com.workflow.process.action;
 
+import com.workflow.process.action.application.FlowActionDispatcher;
+import com.workflow.process.action.application.FlowActionEngineEventListener;
+import com.workflow.process.action.domain.FlowActionTriggerEvent;
+import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEntityEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
@@ -38,7 +42,7 @@ class FlowActionEngineEventListenerTest {
     void setUp() {
         dispatcher = mock(FlowActionDispatcher.class);
         runtimeService = mock(RuntimeService.class);
-        FlowActionHelper helper = mock(FlowActionHelper.class);
+        FlowActionRuntimeAdapter helper = mock(FlowActionRuntimeAdapter.class);
         when(runtimeService.getVariables("pi-1")).thenReturn(Map.of(
                 "entityCode", "req01",
                 "entityDataId", "data-1",

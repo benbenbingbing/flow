@@ -1,9 +1,14 @@
 package com.workflow.process.action;
 
+import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.process.action.application.FlowActionExecutor;
+import com.workflow.process.action.domain.FlowActionTriggerEvent;
+import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.FlowAction;
-import com.workflow.service.FlowActionExecutionService;
-import com.workflow.service.FlowActionService;
+import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
+import com.workflow.process.action.application.FlowActionExecutionService;
+import com.workflow.process.action.application.FlowActionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
@@ -22,7 +27,7 @@ class FlowActionExecutorExtraParamsTest {
         FlowActionService actionService = mock(FlowActionService.class);
         ApplicationContext applicationContext =
                 mock(ApplicationContext.class);
-        FlowActionHelper helper = mock(FlowActionHelper.class);
+        FlowActionRuntimeAdapter helper = mock(FlowActionRuntimeAdapter.class);
         FlowActionExecutionService executionService =
                 mock(FlowActionExecutionService.class);
         AtomicReference<FlowActionContext> captured =

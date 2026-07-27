@@ -1,10 +1,11 @@
 package com.workflow.config;
 
+import com.workflow.admin.auth.infrastructure.AuthInterceptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.JwtUtil;
-import com.workflow.common.UserContext;
-import com.workflow.service.SysUserService;
+import com.workflow.admin.auth.infrastructure.JwtUtil;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.admin.identity.user.application.SysUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;

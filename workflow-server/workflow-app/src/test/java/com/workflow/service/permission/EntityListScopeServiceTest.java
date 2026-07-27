@@ -1,12 +1,21 @@
 package com.workflow.service.permission;
 
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.permission.application.EntityListScopeAuditService;
+import com.workflow.entity.permission.application.EntityListScopeService;
+import com.workflow.entity.permission.application.PermissionRuleMatcher;
+import com.workflow.entity.permission.application.PermissionSqlBuilder;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeBindingMapper;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopePolicyMapper;
+import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeReleaseMapper;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.permission.EntityListScopePolicyDTO;
-import com.workflow.dto.permission.FilterConfigDTO;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityListScopePolicy;
-import com.workflow.mapper.*;
-import com.workflow.service.EntityDefinitionAccessPolicy;
+import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
+import com.workflow.entity.permission.api.response.FilterConfigDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy;
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

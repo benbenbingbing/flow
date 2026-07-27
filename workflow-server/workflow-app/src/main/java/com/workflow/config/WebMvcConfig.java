@@ -1,5 +1,7 @@
 package com.workflow.config;
 
+import com.workflow.storage.infrastructure.config.FileStorageProperties;
+
 import java.nio.file.Path;
 
 import org.springframework.beans.factory.ObjectProvider;

@@ -1,13 +1,21 @@
 package com.workflow.service;
 
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.form.application.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.FormSubmissionTraceService;
+import com.workflow.entity.form.application.PublishedFormSubmissionService;
+
+import com.workflow.process.form.application.NodeFormSubmissionService;
+
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
-import com.workflow.entity.EntityForm;
-import com.workflow.entity.EntityFormField;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.process.publish.ProcessPublishedSnapshotService;
-import com.workflow.service.entity.EntityFormRuntimeService;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
+import com.workflow.process.form.application.EntityFormRuntimeService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.task.api.Task;
 import org.junit.jupiter.api.Test;

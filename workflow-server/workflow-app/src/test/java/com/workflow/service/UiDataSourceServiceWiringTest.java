@@ -1,10 +1,16 @@
 package com.workflow.service;
 
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
+import com.workflow.entity.ui.application.UiDataSourceService;
+
+import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.mapper.EntityListConfigMapper;
-import com.workflow.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.task.SyncTaskExecutor;

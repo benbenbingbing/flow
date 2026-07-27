@@ -431,8 +431,9 @@ for (const configurableType of ['bpmn:CallActivity', 'bpmn:SubProcess']) {
 
 const nodeConfigPanelSource = readFileSync('src/components/NodeConfigPanel.vue', 'utf8')
 assert.ok(
-  /<el-tab-pane v-if="isManualTask" name="manual">[\s\S]*?saveCurrentTab[\s\S]*?<\/el-tab-pane>/.test(nodeConfigPanelSource),
-  '手动任务缺少保存入口'
+  /v-if="isManualTask && activeTab === 'basic'"[\s\S]*?title="线下任务"/.test(nodeConfigPanelSource)
+    && nodeConfigPanelSource.includes('applyNodeConfiguration'),
+  '手动任务缺少常用配置区或统一保存入口'
 )
 assert.ok(
   /case 'service':[\s\S]*?serviceResultVariable/.test(nodeConfigPanelSource),

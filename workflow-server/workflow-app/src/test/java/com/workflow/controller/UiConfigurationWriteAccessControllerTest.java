@@ -1,17 +1,21 @@
 package com.workflow.controller;
 
-import com.workflow.common.ForbiddenException;
-import com.workflow.dto.EntityListConfigDTO;
-import com.workflow.dto.UiExtensionDefinitionSaveRequest;
-import com.workflow.entity.EntityForm;
-import com.workflow.service.EntityDataDynamicService;
-import com.workflow.service.EntityFormService;
-import com.workflow.service.EntityListConfigService;
-import com.workflow.service.UiConfigDraftMetadataService;
-import com.workflow.service.UiConfigurationAccessService;
-import com.workflow.service.UiExtensionDefinitionService;
-import com.workflow.service.listfield.ListFieldDataProviderRegistry;
-import com.workflow.service.permission.EntityActionCapabilityService;
+import com.workflow.entity.form.api.web.EntityFormController;
+import com.workflow.entity.list.api.web.EntityListConfigController;
+import com.workflow.entity.ui.api.web.UiExtensionDefinitionController;
+
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.entity.list.api.response.EntityListConfigDTO;
+import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.list.application.EntityListConfigService;
+import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
+import com.workflow.entity.ui.application.UiConfigurationAccessService;
+import com.workflow.entity.ui.application.UiExtensionDefinitionService;
+import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 

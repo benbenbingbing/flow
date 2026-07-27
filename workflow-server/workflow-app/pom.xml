@@ -6,14 +6,15 @@
     <artifactId>workflow-server</artifactId>
     <name>workflow-server</name>
     <dependencies>
-        <dependency><groupId>com.workflow</groupId><artifactId>workflow-common</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-core</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
-        <dependency><groupId>com.workflow</groupId><artifactId>workflow-system</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-admin</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-storage</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-entity</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-process</artifactId></dependency>
-        <dependency><groupId>com.workflow</groupId><artifactId>workflow-action</artifactId></dependency>
-        <dependency><groupId>com.workflow</groupId><artifactId>workflow-integration</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-outbox</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-http</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-notification</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-migration</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-devtools</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>

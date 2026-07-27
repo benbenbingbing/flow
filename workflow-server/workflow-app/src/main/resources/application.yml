@@ -25,9 +25,9 @@ spring:
     sql-migration-prefix: V
     sql-migration-separator: __
     sql-migration-suffixes: .sql
-    baseline-on-migrate: true
-    # Existing non-empty databases without history are complete through V041.
-    baseline-version: "${FLYWAY_BASELINE_VERSION:041}"
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    clean-disabled: true
     placeholder-replacement: false
 
   servlet:
@@ -82,11 +82,16 @@ file:
       access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
 
 workflow:
+  outbox:
+    delay-ms: ${OUTBOX_DELAY_MS:3000}
+    batch-size: ${OUTBOX_BATCH_SIZE:100}
+    processing-timeout-minutes: ${OUTBOX_PROCESSING_TIMEOUT_MINUTES:10}
+    retry-initial-seconds: ${OUTBOX_RETRY_INITIAL_SECONDS:30}
+    retry-max-seconds: ${OUTBOX_RETRY_MAX_SECONDS:3600}
+    retention-days: ${OUTBOX_RETENTION_DAYS:7}
   audit:
-    outbox-delay-ms: ${AUDIT_OUTBOX_DELAY_MS:3000}
-    outbox-batch-size: ${AUDIT_OUTBOX_BATCH_SIZE:100}
     enqueue-retries: ${AUDIT_ENQUEUE_RETRIES:3}
-    processing-timeout-minutes: ${AUDIT_PROCESSING_TIMEOUT_MINUTES:10}
-    max-retries: ${AUDIT_MAX_RETRIES:8}
     payload-max-length: ${AUDIT_PAYLOAD_MAX_LENGTH:32768}
     retention-days: ${AUDIT_RETENTION_DAYS:365}
+  flow-action:
+    execution-delay-ms: ${FLOW_ACTION_EXECUTION_DELAY_MS:5000}

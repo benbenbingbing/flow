@@ -1,12 +1,18 @@
 package com.workflow.service;
 
-import com.workflow.common.ForbiddenException;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.dto.permission.EntityActionCapabilityDTO;
-import com.workflow.entity.EntityListConfig;
-import com.workflow.service.permission.EntityActionCapabilityService;
-import com.workflow.service.permission.EntityListActionConfigService;
-import com.workflow.service.permission.EntityListScopeAuditService;
+import com.workflow.entity.data.application.EntityDataActionService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.form.application.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.FormSubmissionTraceService;
+import com.workflow.entity.form.application.PublishedFormSubmissionService;
+
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityListActionConfigService;
+import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

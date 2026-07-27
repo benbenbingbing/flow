@@ -1,14 +1,17 @@
 package com.workflow.service.permission;
 
-import com.workflow.dto.permission.EntityActionRuleDTO;
-import com.workflow.dto.permission.FilterConfigDTO;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityField;
-import com.workflow.entity.EntityStatus;
-import com.workflow.entity.SysUser;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.mapper.EntityStatusMapper;
+import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
+import com.workflow.entity.permission.application.PermissionSqlBuilder;
+
+import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.entity.permission.api.response.FilterConfigDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

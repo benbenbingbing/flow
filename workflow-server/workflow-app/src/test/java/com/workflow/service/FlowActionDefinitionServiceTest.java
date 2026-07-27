@@ -1,13 +1,15 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.admin.extension.action.application.FlowActionCatalogService;
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
-import com.workflow.dto.FlowActionHandlerOptionDTO;
-import com.workflow.entity.FlowActionDefinition;
-import com.workflow.mapper.FlowActionDefinitionMapper;
-import com.workflow.mapper.FlowActionDefinitionEntityMapper;
-import com.workflow.process.action.FlowActionContext;
-import com.workflow.process.action.FlowActionHandler;
+import com.workflow.admin.extension.action.api.response.FlowActionHandlerOption;
+import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
+import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;
+import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionEntityMapper;
+import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.action.FlowActionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
@@ -25,16 +27,16 @@ import static org.mockito.Mockito.when;
 /**
  * 流程动作定义服务测试。
  *
- * <p>被测对象：{@link FlowActionDefinitionService}，覆盖动作定义的可见性筛选与可选性校验，
+ * <p>被测对象：{@link FlowActionCatalogService}，覆盖动作定义的可见性筛选与可选性校验，
  * 验证全局动作与绑定当前实体的动作可见、跨实体绑定动作被拒绝。
  */
-class FlowActionDefinitionServiceTest {
+class FlowActionCatalogServiceTest {
 
     private FlowActionDefinitionMapper definitionMapper;
     private ApplicationContext applicationContext;
     private EntityCodeCatalogPort entityCodeCatalogPort;
     /** 被测服务 */
-    private FlowActionDefinitionService service;
+    private FlowActionCatalogService service;
     /** 测试用空动作处理器 */
     private FlowActionHandler handler;
 
@@ -45,7 +47,7 @@ class FlowActionDefinitionServiceTest {
         applicationContext = mock(ApplicationContext.class);
         entityCodeCatalogPort = mock(EntityCodeCatalogPort.class);
         handler = context -> {};
-        service = new FlowActionDefinitionService(
+        service = new FlowActionCatalogService(
                 definitionMapper,
                 mock(FlowActionDefinitionEntityMapper.class),
                 applicationContext,
@@ -70,11 +72,11 @@ class FlowActionDefinitionServiceTest {
                 "customerHandler", handler));
         when(entityCodeCatalogPort.findEntityCodeByProcessDefinitionId("process-1")).thenReturn("order");
 
-        List<FlowActionHandlerOptionDTO> result = service.listVisible("process-1");
+        List<FlowActionHandlerOption> result = service.listVisible("process-1");
 
         assertEquals(
                 Set.of("globalHandler", "orderHandler"),
-                result.stream().map(FlowActionHandlerOptionDTO::getBeanName).collect(java.util.stream.Collectors.toSet()));
+                result.stream().map(FlowActionHandlerOption::getBeanName).collect(java.util.stream.Collectors.toSet()));
     }
 
     /**

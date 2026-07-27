@@ -1,5 +1,7 @@
 package com.workflow.mapper.provider;
 
+import com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;

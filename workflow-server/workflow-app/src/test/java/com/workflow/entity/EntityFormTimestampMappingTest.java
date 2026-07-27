@@ -1,7 +1,10 @@
 package com.workflow.entity;
 
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+
 import com.baomidou.mybatisplus.annotation.TableField;
-import com.workflow.mapper.EntityFormMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
 

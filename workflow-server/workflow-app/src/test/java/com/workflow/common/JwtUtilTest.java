@@ -1,5 +1,6 @@
 package com.workflow.common;
 
+import com.workflow.admin.auth.infrastructure.JwtUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 

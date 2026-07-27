@@ -1,11 +1,12 @@
 package com.workflow.controller;
 
-import com.workflow.common.PageResult;
-import com.workflow.common.UserContext;
-import com.workflow.entity.SysUser;
-import com.workflow.service.SysMenuService;
-import com.workflow.service.SysRoleService;
-import com.workflow.service.SysUserService;
+import com.workflow.core.result.PageResult;
+import com.workflow.admin.authorization.role.api.web.SysRoleController;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.authorization.menu.application.SysMenuService;
+import com.workflow.admin.authorization.role.application.SysRoleService;
+import com.workflow.admin.identity.user.application.SysUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

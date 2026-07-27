@@ -1,20 +1,22 @@
 package com.workflow.process.definition;
 
+import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.dto.NodeConfigDTO;
-import com.workflow.entity.AssigneeConfig;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityFlowStatusMapping;
-import com.workflow.entity.FormConfig;
-import com.workflow.entity.NodeConfig;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.mapper.AssigneeConfigMapper;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.FormConfigMapper;
-import com.workflow.mapper.NodeConfigMapper;
-import com.workflow.mapper.ProcessNodeApprovalMapper;
-import com.workflow.mapper.ProcessNodeFormMapper;
-import com.workflow.service.EntityFlowStatusService;
+import com.workflow.process.configuration.api.model.NodeConfigDTO;
+import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
+import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.FormConfigMapper;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
+import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
+import com.workflow.entity.data.application.EntityFlowStatusService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;

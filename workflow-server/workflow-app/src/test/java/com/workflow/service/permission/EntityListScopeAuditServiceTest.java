@@ -1,5 +1,7 @@
 package com.workflow.service.permission;
 
+import com.workflow.entity.permission.application.EntityListScopeAuditService;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.transaction.annotation.Propagation;

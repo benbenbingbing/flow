@@ -1,11 +1,13 @@
 package com.workflow.service.entity;
 
-import com.workflow.common.BusinessConflictException;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.entity.UiConfigRelease;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.service.UiConfigReleaseService;
-import com.workflow.service.UiReleaseResolutionTokenService;
+import com.workflow.process.form.application.EntityFormRuntimeService;
+
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;

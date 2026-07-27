@@ -1,9 +1,11 @@
 package com.workflow.process.publish;
 
+import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.ProcessNodeForm;
-import com.workflow.entity.ProcessVersionHistory;
-import com.workflow.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.junit.jupiter.api.Test;

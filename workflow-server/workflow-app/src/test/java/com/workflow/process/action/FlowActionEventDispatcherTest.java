@@ -1,11 +1,15 @@
 package com.workflow.process.action;
 
-import com.workflow.dto.FlowActionTimingOptionDTO;
-import com.workflow.entity.FlowAction;
-import com.workflow.entity.FlowActionExecution;
-import com.workflow.mapper.ProcessVersionHistoryMapper;
-import com.workflow.service.FlowActionExecutionService;
-import com.workflow.service.FlowActionService;
+import com.workflow.contracts.action.FlowActionTimingOption;
+import com.workflow.process.action.application.FlowActionEventDispatcher;
+import com.workflow.process.action.application.FlowActionExecutor;
+import com.workflow.process.action.application.FlowActionTimingCatalog;
+import com.workflow.process.action.domain.FlowActionTriggerEvent;
+import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
+import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.action.application.FlowActionExecutionService;
+import com.workflow.process.action.application.FlowActionService;
 import org.flowable.engine.RepositoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +45,7 @@ class FlowActionEventDispatcherTest {
         executor = mock(FlowActionExecutor.class);
         executionService = mock(FlowActionExecutionService.class);
         FlowActionTimingCatalog catalog = mock(FlowActionTimingCatalog.class);
-        when(catalog.find(anyString())).thenReturn(Optional.of(new FlowActionTimingOptionDTO(
+        when(catalog.find(anyString())).thenReturn(Optional.of(new FlowActionTimingOption(
                 "TASK_COMPLETING", "任务提交", "", "NODE", true,
                 "IN_TRANSACTION", "ROLLBACK", "", false)));
         dispatcher = new FlowActionEventDispatcher(

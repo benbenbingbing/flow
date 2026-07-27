@@ -1,0 +1,62 @@
+package com.workflow.process.configuration.api.model;
+
+import com.workflow.entity.form.api.response.FormConfigDTO;
+import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
+import lombok.Data;
+
+import java.util.List;
+
+/**
+ * 节点配置数据传输对象
+ * 
+ * @description 用于前后端传输节点配置数据的DTO
+ *              包含节点基本信息、审批人配置和表单配置
+ * @author Workflow Team
+ * @version 1.0.0
+ */
+@Data
+public class NodeConfigDTO {
+
+    /**
+     * 节点配置ID
+     */
+    private String id;
+
+    /**
+     * 节点ID（BPMN中的唯一标识）
+     */
+    private String nodeId;
+
+    /**
+     * 节点名称
+     */
+    private String nodeName;
+
+    /**
+     * 节点类型
+     * START, END, USER_TASK, SERVICE_TASK, EXCLUSIVE_GATEWAY, PARALLEL_GATEWAY
+     */
+    private NodeConfig.NodeType nodeType;
+
+    /**
+     * 审批人配置列表
+     */
+    private List<AssigneeConfigDTO> assignees;
+
+    /**
+     * 表单配置列表
+     */
+    private List<FormConfigDTO> forms;
+
+    /**
+     * 扩展配置JSON
+     */
+    private String configJson;
+
+    /**
+     * 是否跳过此节点（仅第一个用户任务节点可设置）
+     * true: 流程到达此节点后自动跳转到下一节点
+     * false: 正常处理
+     */
+    private Boolean skipNode;
+}

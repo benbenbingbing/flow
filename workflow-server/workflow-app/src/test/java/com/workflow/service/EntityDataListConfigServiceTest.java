@@ -1,17 +1,22 @@
 package com.workflow.service;
 
-import com.workflow.common.PageResult;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.entity.EntityDefinition;
-import com.workflow.entity.EntityListConfig;
-import com.workflow.entity.EntityListField;
-import com.workflow.mapper.EntityDefinitionMapper;
-import com.workflow.mapper.EntityListConfigMapper;
-import com.workflow.mapper.EntityListFieldMapper;
-import com.workflow.service.listfield.ListFieldConditionEvaluator;
-import com.workflow.service.listfield.ListFieldDataProvider;
-import com.workflow.service.listfield.ListFieldDataProviderRegistry;
-import com.workflow.service.permission.EntityActionCapabilityService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.list.application.EntityDataListConfigService;
+import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
+import com.workflow.entity.ui.application.UiDataSourceService;
+
+import com.workflow.core.result.PageResult;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
+import com.workflow.entity.list.extension.ListFieldConditionEvaluator;
+import com.workflow.entity.list.extension.ListFieldDataProvider;
+import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;

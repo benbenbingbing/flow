@@ -1,12 +1,15 @@
 package com.workflow.service.config;
 
+import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
+import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.dto.EntityListConfigDTO;
-import com.workflow.entity.EntityField;
-import com.workflow.entity.EntityListField;
-import com.workflow.mapper.EntityFieldMapper;
-import com.workflow.service.listfield.ListFieldDataProviderRegistry;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.list.api.response.EntityListConfigDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

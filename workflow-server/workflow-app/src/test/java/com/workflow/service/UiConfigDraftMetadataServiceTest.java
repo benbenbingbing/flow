@@ -1,13 +1,18 @@
 package com.workflow.service;
 
+import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.list.application.EntityListConfigService;
+import com.workflow.entity.list.application.EntityListRelationalConfigService;
+import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.json.JsonDocumentCodec;
-import com.workflow.dto.EntityFormMetadataPatchRequest;
-import com.workflow.entity.EntityForm;
-import com.workflow.mapper.EntityFormMapper;
-import com.workflow.mapper.EntityListConfigMapper;
-import com.workflow.service.config.EntityFormConfigurationValidator;
-import com.workflow.service.config.EntityListConfigurationValidator;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.form.api.request.EntityFormMetadataPatchRequest;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
+import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

@@ -1,8 +1,11 @@
 package com.workflow.service.config;
 
+import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
+import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.EntityForm;
-import com.workflow.entity.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

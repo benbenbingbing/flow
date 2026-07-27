@@ -1,7 +1,9 @@
 package com.workflow.listener;
 
-import com.workflow.service.ProcessCcRuntimeService;
-import com.workflow.service.cc.ProcessCcConfigService;
+import com.workflow.process.cc.infrastructure.flowable.ProcessCcEventListener;
+
+import com.workflow.process.cc.application.ProcessCcRuntimeService;
+import com.workflow.process.cc.application.ProcessCcConfigService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;

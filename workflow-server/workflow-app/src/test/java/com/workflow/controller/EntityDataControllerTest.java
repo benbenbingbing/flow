@@ -1,14 +1,16 @@
 package com.workflow.controller;
 
+import com.workflow.entity.data.api.web.EntityDataController;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.PageResult;
-import com.workflow.dto.EntityDataDTO;
-import com.workflow.entity.EntityData;
-import com.workflow.service.EntityDataDynamicService;
-import com.workflow.service.EntityDataActionService;
-import com.workflow.service.EntityDataExportService;
-import com.workflow.service.EntityDataListConfigService;
-import com.workflow.service.permission.EntityActionCapabilityService;
+import com.workflow.core.result.PageResult;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityDataActionService;
+import com.workflow.entity.data.application.EntityDataExportService;
+import com.workflow.entity.list.application.EntityDataListConfigService;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

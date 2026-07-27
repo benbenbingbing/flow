@@ -1,5 +1,10 @@
 package com.workflow.dto;
 
+import com.workflow.entity.form.api.response.FormConfigDTO;
+
+import com.workflow.process.instance.api.response.ProcessProgressDTO;
+import com.workflow.process.task.api.response.TaskDetailDTO;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

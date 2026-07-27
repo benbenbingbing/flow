@@ -1,7 +1,10 @@
 package com.workflow.service;
 
-import com.workflow.entity.EntityField;
-import com.workflow.mapper.EntityFieldMapper;
+import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.entity.data.application.EntityPhysicalTableResolver;
+
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;

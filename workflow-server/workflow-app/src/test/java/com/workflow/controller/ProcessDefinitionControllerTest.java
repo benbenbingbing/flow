@@ -1,13 +1,15 @@
 package com.workflow.controller;
 
+import com.workflow.process.definition.api.web.ProcessDefinitionController;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.common.PageResult;
-import com.workflow.dto.ProcessDefinitionDTO;
-import com.workflow.dto.ProcessDefinitionQueryDTO;
-import com.workflow.dto.ProcessVersionHistoryDTO;
-import com.workflow.dto.migration.ConfigMigrationPublishRequest;
-import com.workflow.entity.ProcessDefinitionConfig;
-import com.workflow.service.ProcessDefinitionService;
+import com.workflow.core.result.PageResult;
+import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
+import com.workflow.process.definition.api.request.ProcessDefinitionQueryDTO;
+import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
+import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.definition.application.ProcessDefinitionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
