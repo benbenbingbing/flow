@@ -352,7 +352,7 @@ class EntityDataDynamicServiceSubFormTest {
         approvedAt.setDbColumnName("approved_at");
         EntityPublishedSnapshot snapshot = Fixture.snapshot("parent");
         snapshot.setFields(List.of(approvedAt));
-        when(fixture.snapshotService.getLatestByEntityCode("parent"))
+        when(fixture.snapshotService.findLatestByEntityCode("parent"))
                 .thenReturn(snapshot);
         when(fixture.dynamicMapper.selectById("wf_parent", "parent-1"))
                 .thenReturn(new HashMap<>(Map.of(

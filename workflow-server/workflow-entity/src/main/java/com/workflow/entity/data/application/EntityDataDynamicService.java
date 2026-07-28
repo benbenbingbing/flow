@@ -741,6 +741,32 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 currentTaskAssignee);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateStatus(
+            String entityCode,
+            String entityDataId,
+            String status) {
+        String tableName = dynamicTableService.getTableName(entityCode);
+        Map<String, Object> existing =
+                dynamicMapper.selectById(tableName, entityDataId);
+        if (existing == null) {
+            throw new IllegalStateException(
+                    "实体记录不存在: " + entityCode + "/" + entityDataId);
+        }
+        if (status.equals(asText(existing.get("status")))) {
+            return;
+        }
+        Map<String, Object> update = new HashMap<>();
+        update.put("id", entityDataId);
+        update.put("status", status);
+        update.put("update_time", LocalDateTime.now());
+        if (dynamicMapper.update(tableName, update) != 1) {
+            throw new IllegalStateException(
+                    "实体状态更新失败: " + entityCode + "/" + entityDataId);
+        }
+    }
+
     /**
      * 标记实体流程已撤回。
      */
@@ -759,9 +785,11 @@ public class EntityDataDynamicService implements EntityRecordPort {
         String tableName = dynamicTableService.getTableName(entityCode);
         LocalDateTime endedAt = LocalDateTime.now();
         Map<String, Object> existingData = dynamicMapper.selectById(tableName, entityDataId);
-        String currentStatus = existingData == null
-                ? null
-                : asText(existingData.get("status"));
+        if (existingData == null) {
+            throw new IllegalStateException(
+                    "实体记录不存在: " + entityCode + "/" + entityDataId);
+        }
+        String currentStatus = asText(existingData.get("status"));
         EntityStatus currentDefinition = StringUtils.hasText(currentStatus)
                 ? entityStatusMapper.findByEntityAndCode(entityCode, currentStatus)
                 : null;
@@ -1051,19 +1079,11 @@ public class EntityDataDynamicService implements EntityRecordPort {
             Map<String, Object> updateData,
             String fieldCode,
             LocalDateTime value) {
-        try {
-            putPublishedTimestampIfPresent(
-                    snapshotService.getLatestByEntityCode(entityCode),
-                    updateData,
-                    fieldCode,
-                    value);
-        } catch (RuntimeException exception) {
-            log.debug(
-                    "读取实体发布字段失败，跳过业务时间同步: entityCode={}, fieldCode={}, reason={}",
-                    entityCode,
-                    fieldCode,
-                    exception.getMessage());
-        }
+        putPublishedTimestampIfPresent(
+                snapshotService.findLatestByEntityCode(entityCode),
+                updateData,
+                fieldCode,
+                value);
     }
 
     private void putPublishedTimestampIfPresent(

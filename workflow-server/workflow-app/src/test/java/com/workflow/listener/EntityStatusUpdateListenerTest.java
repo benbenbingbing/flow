@@ -4,10 +4,9 @@ import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateLis
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import org.flowable.engine.RuntimeService;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
@@ -15,15 +14,10 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.flowable.task.service.impl.persistence.entity.TaskEntity;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
@@ -46,15 +40,16 @@ class EntityStatusUpdateListenerTest {
     @Test
     void taskCompletionUpdatesDynamicEntityTable() {
         RuntimeService runtimeService = mock(RuntimeService.class);
-        EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);
-        DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         EntityFlowStatusMappingMapper statusMapper = mock(EntityFlowStatusMappingMapper.class);
         ProcessDefinitionConfigMapper processMapper = mock(ProcessDefinitionConfigMapper.class);
+        ProcessStatusSyncPublisher publisher =
+                mock(ProcessStatusSyncPublisher.class);
         ProcessInstanceQuery processQuery = mock(ProcessInstanceQuery.class);
         ProcessInstance processInstance = mock(ProcessInstance.class);
         TaskEntity task = mock(TaskEntity.class);
 
         when(task.getProcessInstanceId()).thenReturn("instance-1");
+        when(task.getId()).thenReturn("task-1");
         when(task.getTaskDefinitionKey()).thenReturn("Task_Review");
         when(runtimeService.createProcessInstanceQuery()).thenReturn(processQuery);
         when(processQuery.processInstanceId("instance-1")).thenReturn(processQuery);
@@ -71,22 +66,23 @@ class EntityStatusUpdateListenerTest {
         mapping.setEntityStatusCode("FINANCE_REVIEW");
         when(statusMapper.findByProcessAndSourceNode("process-1", "Task_Review"))
                 .thenReturn(List.of(mapping));
-        when(dynamicTableService.getTableName("expense")).thenReturn("biz_expense");
-        when(dynamicMapper.selectById("biz_expense", "data-1"))
-                .thenReturn(Map.of("id", "data-1", "status", "IN_REVIEW"));
-
         EntityStatusUpdateListener listener = new EntityStatusUpdateListener(
-                runtimeService, dynamicMapper, dynamicTableService, statusMapper, processMapper);
+                runtimeService,
+                statusMapper,
+                processMapper,
+                publisher);
         FlowableEntityEventImpl event = mock(FlowableEntityEventImpl.class);
         when(event.getType()).thenReturn(FlowableEngineEventType.TASK_COMPLETED);
         when(event.getEntity()).thenReturn(task);
 
         listener.onEvent(event);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(dynamicMapper).update(eq("biz_expense"), captor.capture());
-        assertEquals("data-1", captor.getValue().get("id"));
-        assertEquals("FINANCE_REVIEW", captor.getValue().get("status"));
+        verify(publisher).publishTaskStatus(
+                "instance-1",
+                "task-1",
+                "expense",
+                "data-1",
+                "FINANCE_REVIEW");
     }
 
     /**
@@ -97,18 +93,25 @@ class EntityStatusUpdateListenerTest {
     @Test
     void taskCreationDoesNotUpdateEntityStatus() {
         RuntimeService runtimeService = mock(RuntimeService.class);
-        EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);
-        DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         EntityFlowStatusMappingMapper statusMapper = mock(EntityFlowStatusMappingMapper.class);
         ProcessDefinitionConfigMapper processMapper = mock(ProcessDefinitionConfigMapper.class);
+        ProcessStatusSyncPublisher publisher =
+                mock(ProcessStatusSyncPublisher.class);
         FlowableEntityEventImpl event = mock(FlowableEntityEventImpl.class);
         when(event.getType()).thenReturn(FlowableEngineEventType.TASK_CREATED);
 
         EntityStatusUpdateListener listener = new EntityStatusUpdateListener(
-                runtimeService, dynamicMapper, dynamicTableService, statusMapper, processMapper);
+                runtimeService,
+                statusMapper,
+                processMapper,
+                publisher);
 
         listener.onEvent(event);
 
-        verifyNoInteractions(runtimeService, dynamicMapper, dynamicTableService, statusMapper, processMapper);
+        verifyNoInteractions(
+                runtimeService,
+                statusMapper,
+                processMapper,
+                publisher);
     }
 }

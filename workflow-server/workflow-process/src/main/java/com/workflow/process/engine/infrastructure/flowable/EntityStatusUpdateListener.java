@@ -1,11 +1,10 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
-import com.workflow.entity.data.application.DynamicTableService;
+import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
@@ -18,12 +17,10 @@ import org.flowable.task.service.impl.persistence.entity.TaskEntity;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
- * 流程任务完成监听器
- * 在任务完成时自动更新实体数据状态
+ * 流程任务完成监听器。
+ * 在任务事务内写入持久化状态同步事件。
  */
 @Slf4j
 @Component
@@ -32,17 +29,15 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
     
     /** Flowable 运行时服务，查询流程实例与变量 */
     private final RuntimeService runtimeService;
-    /** 动态实体数据 Mapper，读取/更新实体状态 */
-    private final EntityDataDynamicMapper entityDataDynamicMapper;
-    /** 动态表服务，获取实体对应动态表名 */
-    private final DynamicTableService dynamicTableService;
     /** 流程状态映射 Mapper，查询节点到实体状态的映射 */
     private final EntityFlowStatusMappingMapper statusMappingMapper;
     /** 流程定义配置 Mapper，查询流程配置 */
     private final ProcessDefinitionConfigMapper processConfigMapper;
+    /** 事务内发布持久化状态同步事件 */
+    private final ProcessStatusSyncPublisher statusSyncPublisher;
 
     /**
-     * 任务完成事件处理：根据节点状态映射更新关联实体数据的状态。
+     * 任务完成事件处理：根据节点状态映射写入关联实体状态同步事件。
      * <p>
      * 仅处理 TASK_COMPLETED 事件；流程未关联实体或无状态映射时跳过。
      *
@@ -122,36 +117,29 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
                     return; // 映射存在但没有配置具体状态，保持原状态不变
                 }
                 
-                // 更新实体数据状态
-                String tableName = dynamicTableService.getTableName(entityCode);
-                Map<String, Object> entityData = entityDataDynamicMapper.selectById(tableName, entityDataId);
-                if (entityData != null) {
-                    String oldStatus = entityData.get("status") != null
-                            ? String.valueOf(entityData.get("status"))
-                            : null;
-                    
-                    // 获取新状态编码
-                    String newStatusCode = mapping.getEntityStatusCode();
-                    String newStatus = parseStatus(newStatusCode);
-                    if (newStatus != null && !newStatus.equals(oldStatus)) {
-                        Map<String, Object> updateData = new HashMap<>();
-                        updateData.put("id", entityDataId);
-                        updateData.put("status", newStatus);
-                        entityDataDynamicMapper.update(tableName, updateData);
-                        
-                        log.info("实体数据状态已更新: entityDataId={}, fromStatus={}, toStatus={}, processNode={}, sourceNode={}, targetNode={}",
-                                entityDataId, oldStatus, newStatus, taskDefinitionKey, 
-                                mapping.getSourceNodeName(), mapping.getTargetNodeName());
-                    } else if (newStatus == null) {
-                        log.debug("状态值为空，不更新: processConfigId={}, sourceNodeId={}",
-                                processConfig.getId(), taskDefinitionKey);
-                    } else {
-                        log.debug("状态未变化，不更新: entityDataId={}, status={}", entityDataId, newStatus);
-                    }
+                String newStatus = parseStatus(
+                        mapping.getEntityStatusCode());
+                if (newStatus != null) {
+                    statusSyncPublisher.publishTaskStatus(
+                            processInstanceId,
+                            task.getId(),
+                            entityCode,
+                            entityDataId,
+                            newStatus);
+                    log.info(
+                            "实体状态同步事件已入队: entityDataId={}, "
+                                    + "toStatus={}, processNode={}",
+                            entityDataId,
+                            newStatus,
+                            taskDefinitionKey);
                 }
                 
             } catch (Exception e) {
-                log.error("更新实体状态失败: processInstanceId={}, taskId={}", processInstanceId, task.getId(), e);
+                throw new IllegalStateException(
+                        "实体状态同步事件入队失败: processInstanceId="
+                                + processInstanceId
+                                + ", taskId=" + task.getId(),
+                        e);
             }
         }
     }
@@ -172,11 +160,11 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
     /**
      * 是否在事件处理抛出异常时失败回滚流程。
      *
-     * @return 固定 false，状态更新失败不应影响流程执行
+     * @return 固定 true，事件无法持久化时必须回滚流程事务
      */
     @Override
     public boolean isFailOnException() {
-        return false; // 状态更新失败不应影响流程执行
+        return true;
     }
     
     @Override

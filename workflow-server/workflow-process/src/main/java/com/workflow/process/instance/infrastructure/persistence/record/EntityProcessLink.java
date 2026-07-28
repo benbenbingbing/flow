@@ -19,6 +19,7 @@ public class EntityProcessLink {
     private String state;
     private String requestId;
     private String entityStatus;
+    private LocalDateTime endedAt;
     private Long version;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

@@ -7,6 +7,8 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.List;
+
 @Mapper
 public interface EntityProcessLinkMapper {
 
@@ -49,4 +51,55 @@ public interface EntityProcessLinkMapper {
             @Param("id") String id,
             @Param("requestId") String requestId,
             @Param("processInstanceId") String processInstanceId);
+
+    @Update("""
+            UPDATE entity_process_link
+            SET state = 'ENDED',
+                entity_status = #{entityStatus},
+                ended_at = UTC_TIMESTAMP(6),
+                version = version + 1,
+                update_time = UTC_TIMESTAMP(6)
+            WHERE process_instance_id = #{processInstanceId}
+              AND state = 'ACTIVE'
+            """)
+    int closeActive(
+            @Param("processInstanceId") String processInstanceId,
+            @Param("entityStatus") String entityStatus);
+
+    @Update("""
+            UPDATE entity_process_link
+            SET entity_status = #{entityStatus},
+                version = version + 1,
+                update_time = UTC_TIMESTAMP(6)
+            WHERE process_instance_id = #{processInstanceId}
+              AND state = 'ACTIVE'
+              AND (entity_status IS NULL OR entity_status <> #{entityStatus})
+            """)
+    int updateActiveStatus(
+            @Param("processInstanceId") String processInstanceId,
+            @Param("entityStatus") String entityStatus);
+
+    @Select("""
+            SELECT * FROM entity_process_link
+            WHERE process_instance_id = #{processInstanceId}
+            LIMIT 1
+            """)
+    EntityProcessLink findByProcessInstanceId(
+            @Param("processInstanceId") String processInstanceId);
+
+    @Select("""
+            SELECT link.* FROM entity_process_link link
+            WHERE link.state = 'ACTIVE'
+              AND link.process_instance_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM ACT_HI_PROCINST historic
+                WHERE historic.PROC_INST_ID_ = link.process_instance_id
+                  AND historic.END_TIME_ IS NOT NULL
+              )
+            ORDER BY link.update_time
+            LIMIT #{limit}
+            """)
+    List<EntityProcessLink> findEndedActiveForReconciliation(
+            @Param("limit") int limit);
 }

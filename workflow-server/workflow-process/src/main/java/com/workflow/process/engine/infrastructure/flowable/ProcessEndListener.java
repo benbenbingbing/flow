@@ -1,6 +1,6 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
-import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
 /**
  * 流程结束监听器。
  *
- * <p>监听流程完成、取消与终止事件，并通过实体运行时端口回写流程结束时间和状态。
- * 实体状态保留与替换规则由实体模块统一判断。</p>
+ * <p>监听流程完成、取消与终止事件，在 Flowable 事务中写入状态同步 Outbox。
+ * 实体状态保留与替换规则由异步消费端和实体模块统一判断。</p>
  */
 @Slf4j
 @Component
@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
 public class ProcessEndListener implements FlowableEventListener {
 
     private final HistoryService historyService;
-    private final EntityRecordPort entityRecordPort;
+    private final ProcessStatusSyncPublisher statusSyncPublisher;
 
     @Override
     public void onEvent(FlowableEvent event) {
@@ -35,7 +35,10 @@ public class ProcessEndListener implements FlowableEventListener {
                 ? ""
                 : entityEvent.getType().name();
         if (!"PROCESS_COMPLETED".equals(eventType)
-                && !"PROCESS_CANCELLED".equals(eventType)) {
+                && !"PROCESS_CANCELLED".equals(eventType)
+                && !"PROCESS_COMPLETED_WITH_TERMINATE_END_EVENT".equals(eventType)
+                && !"PROCESS_COMPLETED_WITH_ERROR_END_EVENT".equals(eventType)
+                && !"PROCESS_COMPLETED_WITH_ESCALATION_END_EVENT".equals(eventType)) {
             return;
         }
         if (!(entityEvent.getEntity()
@@ -67,28 +70,30 @@ public class ProcessEndListener implements FlowableEventListener {
                     : historicInstance.getDeleteReason();
             boolean withdrawn = deleteReason != null
                     && deleteReason.startsWith("发起人撤回");
-            boolean terminated = deleteReason != null
-                    && !deleteReason.isEmpty();
+            boolean terminated = (deleteReason != null
+                    && !deleteReason.isEmpty())
+                    || eventType.contains("_WITH_");
             String statusCategory = withdrawn
                     ? "WITHDRAWN"
                     : (terminated ? "TERMINATED" : "COMPLETED");
 
-            entityRecordPort.markProcessEnded(
+            statusSyncPublisher.publishProcessEnd(
+                    processInstanceId,
                     entityCode,
                     entityDataId,
                     statusCategory,
                     defaultEndStatus(statusCategory));
             log.info(
-                    "流程结束，已更新实体数据: entityCode={}, entityDataId={}, "
+                    "流程结束状态同步事件已入队: entityCode={}, entityDataId={}, "
                             + "processInstanceId={}, statusCategory={}",
                     entityCode,
                     entityDataId,
                     processInstanceId,
                     statusCategory);
         } catch (Exception exception) {
-            log.error(
-                    "更新流程结束状态失败: processInstanceId={}",
-                    processInstanceId,
+            throw new IllegalStateException(
+                    "流程结束状态同步事件入队失败: processInstanceId="
+                            + processInstanceId,
                     exception);
         }
     }
@@ -105,26 +110,17 @@ public class ProcessEndListener implements FlowableEventListener {
     private String getHistoricVariable(
             String processInstanceId,
             String variableName) {
-        try {
-            var variable = historyService
-                    .createHistoricVariableInstanceQuery()
-                    .processInstanceId(processInstanceId)
-                    .variableName(variableName)
-                    .singleResult();
-            return variable == null ? null : (String) variable.getValue();
-        } catch (Exception exception) {
-            log.warn(
-                    "查询历史变量失败: processInstanceId={}, variableName={}",
-                    processInstanceId,
-                    variableName,
-                    exception);
-            return null;
-        }
+        var variable = historyService
+                .createHistoricVariableInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .variableName(variableName)
+                .singleResult();
+        return variable == null ? null : (String) variable.getValue();
     }
 
     @Override
     public boolean isFailOnException() {
-        return false;
+        return true;
     }
 
     @Override

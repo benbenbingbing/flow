@@ -114,6 +114,10 @@ workflow:
     executor:
       concurrency: ${FLOW_ACTION_EXECUTOR_CONCURRENCY:4}
       queue-capacity: ${FLOW_ACTION_EXECUTOR_QUEUE_CAPACITY:100}
+  status-sync:
+    reconciliation-initial-delay-ms: ${STATUS_SYNC_RECONCILIATION_INITIAL_DELAY_MS:60000}
+    reconciliation-delay-ms: ${STATUS_SYNC_RECONCILIATION_DELAY_MS:60000}
+    reconciliation-batch-size: ${STATUS_SYNC_RECONCILIATION_BATCH_SIZE:100}
 
 jwt:
   secret: ${JWT_SECRET}
