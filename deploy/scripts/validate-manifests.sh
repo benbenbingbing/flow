@@ -49,8 +49,12 @@ monitoring_kind_count=$(awk '
 ' "$temporary_directory/monitoring.yaml")
 [ "$monitoring_kind_count" -eq 2 ]
 
-kubectl apply --dry-run=client \
-  --filename "$temporary_directory/local.yaml" >/dev/null
+kubeconform_image="ghcr.io/yannh/kubeconform@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c"
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
+  <"$temporary_directory/local.yaml"
 
 CONFIG_MIGRATION_SIGNING_KEY=test-signing-key \
 DB_PASSWORD=test-db-password \

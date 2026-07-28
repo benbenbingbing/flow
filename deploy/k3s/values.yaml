@@ -5,7 +5,7 @@ global:
 server:
   image:
     repository: flow-hardening/server
-    tag: g4-final
+    tag: g5-final
     digest: ""
     pullPolicy: Never
   replicas: 2

@@ -72,6 +72,18 @@ class ProductionArtifactSecurityTest {
     }
 
     @Test
+    void securityPatchedPlatformDependenciesArePinned() throws Exception {
+        String parentPom = Files.readString(Path.of("../pom.xml"));
+
+        assertTrue(parentPom.contains(
+                "<jackson-bom.version>2.21.4</jackson-bom.version>"));
+        assertTrue(parentPom.contains(
+                "<netty.version>4.1.136.Final</netty.version>"));
+        assertTrue(parentPom.contains(
+                "<tomcat.version>10.1.55</tomcat.version>"));
+    }
+
+    @Test
     void productionComposeKeepsRuntimeAndSchemaCredentialsSeparate() throws Exception {
         String compose = Files.readString(Path.of("../../deploy/compose.prod.yml"));
 
