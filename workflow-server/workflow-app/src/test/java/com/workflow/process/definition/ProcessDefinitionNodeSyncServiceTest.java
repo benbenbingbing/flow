@@ -102,6 +102,31 @@ class ProcessDefinitionNodeSyncServiceTest {
     }
 
     /**
+     * 标准 flowable:formKey 绑定应被同步，并保留导入配置中的只读设置。
+     */
+    @Test
+    void syncNodeFormsFromBpmnUsesFormKeyAndPreservesReadonlyBinding() {
+        ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
+        ProcessNodeForm existing = new ProcessNodeForm();
+        existing.setFormId("form-assessment");
+        existing.setIsReadonly(1);
+        when(nodeFormMapper.selectListByNodeId("process-1", "task-1"))
+                .thenReturn(List.of(existing));
+        ProcessDefinitionNodeSyncService service =
+                service(null, null, null, null, null, null, nodeFormMapper, null);
+
+        service.syncNodeFormsFromBpmn("process-1", bpmnWithFormKey());
+
+        ArgumentCaptor<ProcessNodeForm> captor =
+                ArgumentCaptor.forClass(ProcessNodeForm.class);
+        verify(nodeFormMapper).insert(captor.capture());
+        ProcessNodeForm inserted = captor.getValue();
+        assertEquals("form-assessment", inserted.getFormId());
+        assertEquals(1, inserted.getIsReadonly());
+        assertEquals(0, inserted.getSortOrder());
+    }
+
+    /**
      * 从 BPMN 同步状态映射时应读取实体绑定并写入状态映射列表。
      *
      * <p>场景：流程绑定 expense 实体，BPMN 中连线 flow-1 携带 entityStatusCode，
@@ -431,6 +456,18 @@ class ProcessDefinitionNodeSyncServiceTest {
                 + "</flowable:properties>"
                 + "</bpmn:extensionElements>"
                 + "</bpmn:userTask>"
+                + "</bpmn:process>"
+                + "</bpmn:definitions>";
+    }
+
+    /** 构造使用标准 flowable:formKey 的 BPMN XML */
+    private static String bpmnWithFormKey() {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                + "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\""
+                + " xmlns:flowable=\"http://flowable.org/bpmn\">"
+                + "<bpmn:process id=\"process_1\">"
+                + "<bpmn:userTask id=\"task-1\" name=\"审批\""
+                + " flowable:formKey=\"form-assessment\" />"
                 + "</bpmn:process>"
                 + "</bpmn:definitions>";
     }

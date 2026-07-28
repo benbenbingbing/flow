@@ -1,0 +1,601 @@
+{
+  "schemaVersion": 1,
+  "assetType": "ENTITY",
+  "businessKey": "project_system_link",
+  "assetName": "项目系统关系",
+  "definition": {
+    "entityCode": "project_system_link",
+    "entityName": "项目系统关系",
+    "description": "记录项目对系统的新建、改造、集成、迁移、整改或退役范围。",
+    "lifecycleMode": "STANDALONE",
+    "storageMode": "DYNAMIC",
+    "processKey": null
+  },
+  "fields": [
+    {
+      "fieldCode": "project_id",
+      "fieldName": "项目",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 20,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project"
+    },
+    {
+      "fieldCode": "system_id",
+      "fieldName": "系统",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 30,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "system_asset"
+    },
+    {
+      "fieldCode": "construction_mode",
+      "fieldName": "建设方式",
+      "fieldType": "SELECT",
+      "dbType": "varchar(30)",
+      "isRequired": true,
+      "sortOrder": 40,
+      "fieldLength": 30,
+      "optionsJson": "[{\"label\":\"新建\",\"value\":\"NEW_BUILD\"},{\"label\":\"增强改造\",\"value\":\"ENHANCEMENT\"},{\"label\":\"系统集成\",\"value\":\"INTEGRATION\"},{\"label\":\"迁移\",\"value\":\"MIGRATION\"},{\"label\":\"安全整改\",\"value\":\"SECURITY_REMEDIATION\"},{\"label\":\"退役\",\"value\":\"RETIREMENT\"}]"
+    },
+    {
+      "fieldCode": "relation_reason",
+      "fieldName": "关联原因",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 50
+    },
+    {
+      "fieldCode": "affected_modules",
+      "fieldName": "影响模块",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 60
+    },
+    {
+      "fieldCode": "interface_impact",
+      "fieldName": "接口影响",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 70
+    },
+    {
+      "fieldCode": "data_impact",
+      "fieldName": "数据影响",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 80
+    },
+    {
+      "fieldCode": "deployment_impact",
+      "fieldName": "部署影响",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 90
+    },
+    {
+      "fieldCode": "target_system_version",
+      "fieldName": "目标系统版本",
+      "fieldType": "STRING",
+      "dbType": "varchar(100)",
+      "isRequired": false,
+      "sortOrder": 100,
+      "fieldLength": 100
+    },
+    {
+      "fieldCode": "project_system_lead_id",
+      "fieldName": "项目内系统负责人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 110,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_member"
+    },
+    {
+      "fieldCode": "technical_lead_id",
+      "fieldName": "项目内技术负责人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 120,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_member"
+    },
+    {
+      "fieldCode": "risk_level",
+      "fieldName": "关系风险等级",
+      "fieldType": "SELECT",
+      "dbType": "varchar(10)",
+      "isRequired": true,
+      "sortOrder": 130,
+      "fieldLength": 10,
+      "defaultValue": "MEDIUM",
+      "optionsJson": "[{\"label\":\"低\",\"value\":\"LOW\"},{\"label\":\"中\",\"value\":\"MEDIUM\"},{\"label\":\"高\",\"value\":\"HIGH\"},{\"label\":\"极高\",\"value\":\"CRITICAL\"}]"
+    },
+    {
+      "fieldCode": "planned_start_date",
+      "fieldName": "计划开始日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 140
+    },
+    {
+      "fieldCode": "planned_end_date",
+      "fieldName": "计划完成日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 150
+    },
+    {
+      "fieldCode": "effective_at",
+      "fieldName": "生效时间",
+      "fieldType": "DATETIME",
+      "dbType": "datetime",
+      "isRequired": false,
+      "sortOrder": 160
+    },
+    {
+      "fieldCode": "invalid_at",
+      "fieldName": "失效时间",
+      "fieldType": "DATETIME",
+      "dbType": "datetime",
+      "isRequired": false,
+      "sortOrder": 170
+    },
+    {
+      "fieldCode": "invalid_reason",
+      "fieldName": "失效原因",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 180
+    },
+    {
+      "fieldCode": "source_process",
+      "fieldName": "来源流程",
+      "fieldType": "STRING",
+      "dbType": "varchar(50)",
+      "isRequired": false,
+      "sortOrder": 190,
+      "fieldLength": 50
+    }
+  ],
+  "relations": [],
+  "statuses": [
+    {
+      "statusCode": "PROPOSED",
+      "statusName": "拟关联",
+      "statusCategory": "NEW",
+      "sortOrder": 10,
+      "color": "#909399"
+    },
+    {
+      "statusCode": "PENDING_APPROVAL",
+      "statusName": "审批中",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 20,
+      "color": "#409EFF"
+    },
+    {
+      "statusCode": "ACTIVE",
+      "statusName": "有效",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 30,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "INVALID",
+      "statusName": "已失效",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 40,
+      "color": "#606266"
+    },
+    {
+      "statusCode": "REJECTED",
+      "statusName": "已驳回",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 50,
+      "color": "#F56C6C"
+    },
+    {
+      "statusCode": "CANCELLED",
+      "statusName": "已取消",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 60,
+      "color": "#909399"
+    }
+  ],
+  "codeRule": {
+    "prefix": "PRJSYS",
+    "dateFormat": "yyyyMMdd",
+    "seqLength": 5,
+    "seqType": "DAY",
+    "currentSeq": 0,
+    "seqDate": "",
+    "example": "PRJSYS2026072800001"
+  },
+  "extensions": [],
+  "dataSources": [],
+  "forms": [
+    {
+      "formName": "项目系统关系表单",
+      "formKey": "project_system_link_default",
+      "description": "维护项目系统建设范围。",
+      "layoutType": "grid",
+      "isDefault": true,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2}",
+      "fields": [
+        {
+          "fieldCode": "system_id",
+          "fieldName": "系统",
+          "fieldLabel": "系统",
+          "fieldType": "REFERENCE",
+          "sortOrder": 10,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "construction_mode",
+          "fieldName": "建设方式",
+          "fieldLabel": "建设方式",
+          "fieldType": "SELECT",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "relation_reason",
+          "fieldName": "关联原因",
+          "fieldLabel": "关联原因",
+          "fieldType": "TEXT",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "affected_modules",
+          "fieldName": "影响模块",
+          "fieldLabel": "影响模块",
+          "fieldType": "TEXT",
+          "sortOrder": 40,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "interface_impact",
+          "fieldName": "接口影响",
+          "fieldLabel": "接口影响",
+          "fieldType": "TEXT",
+          "sortOrder": 50,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "data_impact",
+          "fieldName": "数据影响",
+          "fieldLabel": "数据影响",
+          "fieldType": "TEXT",
+          "sortOrder": 60,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "deployment_impact",
+          "fieldName": "部署影响",
+          "fieldLabel": "部署影响",
+          "fieldType": "TEXT",
+          "sortOrder": 70,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "risk_level",
+          "fieldName": "关系风险等级",
+          "fieldLabel": "关系风险等级",
+          "fieldType": "SELECT",
+          "sortOrder": 80,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_start_date",
+          "fieldName": "计划开始日期",
+          "fieldLabel": "计划开始日期",
+          "fieldType": "DATE",
+          "sortOrder": 90,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划完成日期",
+          "fieldLabel": "计划完成日期",
+          "fieldType": "DATE",
+          "sortOrder": 100,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_system_lead_id",
+          "fieldName": "项目内系统负责人",
+          "fieldLabel": "项目内系统负责人",
+          "fieldType": "REFERENCE",
+          "sortOrder": 110,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "technical_lead_id",
+          "fieldName": "项目内技术负责人",
+          "fieldLabel": "项目内技术负责人",
+          "fieldType": "REFERENCE",
+          "sortOrder": 120,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        }
+      ],
+      "nodes": []
+    }
+  ],
+  "lists": [
+    {
+      "listKey": "all",
+      "listName": "项目系统关系台账",
+      "description": "查询项目系统建设范围及生效状态。",
+      "isDefault": true,
+      "dataScopeMode": "INHERIT",
+      "allowedScenes": [
+        "PAGE",
+        "EMBEDDED",
+        "SELECTION"
+      ],
+      "selectionConfig": {
+        "selectionMode": "MULTIPLE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        },
+        {
+          "key": "edit",
+          "type": "built-in",
+          "label": "编辑",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 2,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {
+        "parentField": "project_id"
+      },
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "关系编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_id",
+          "fieldName": "项目",
+          "sortOrder": 20,
+          "width": 200,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "system_id",
+          "fieldName": "系统",
+          "sortOrder": 30,
+          "width": 200,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "construction_mode",
+          "fieldName": "建设方式",
+          "sortOrder": 40,
+          "width": 130,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "risk_level",
+          "fieldName": "风险等级",
+          "sortOrder": 50,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_system_lead_id",
+          "fieldName": "系统负责人",
+          "sortOrder": 60,
+          "width": 140,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "technical_lead_id",
+          "fieldName": "技术负责人",
+          "sortOrder": 70,
+          "width": 140,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划完成",
+          "sortOrder": 80,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "sortOrder": 90,
+          "width": 110,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "IN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    }
+  ],
+  "scopePolicies": [
+    {
+      "policyKey": "project_system_link_creator",
+      "policyName": "本人创建的项目系统关系",
+      "description": "创建人可以查看本人创建的项目系统关系。",
+      "presetCode": "CREATOR",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\"}",
+      "enabled": 1,
+      "version": 1
+    }
+  ],
+  "scopeBindings": [
+    {
+      "policyKey": "project_system_link_creator",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    }
+  ],
+  "menus": [
+    {
+      "menuName": "项目系统关系",
+      "menuType": "C",
+      "icon": "Connection",
+      "sort": 60,
+      "path": "/entity-list/project_system_link/all",
+      "component": "entity/EntityListRuntime",
+      "perm": "entity:project_system_link:list",
+      "status": "0",
+      "visible": "0",
+      "isFrame": "0",
+      "isCache": "0",
+      "resourceType": "ENTITY_LIST",
+      "listKey": "all",
+      "parentPath": "/project-management"
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project",
+      "required": true,
+      "reason": "所属项目"
+    },
+    {
+      "type": "ENTITY",
+      "key": "system_asset",
+      "required": true,
+      "reason": "建设系统"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_member",
+      "required": true,
+      "reason": "项目内责任人"
+    }
+  ]
+}

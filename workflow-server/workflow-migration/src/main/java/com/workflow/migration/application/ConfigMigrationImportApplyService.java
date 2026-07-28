@@ -1,6 +1,7 @@
 package com.workflow.migration.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -876,6 +877,8 @@ public class ConfigMigrationImportApplyService {
             EntityDefinition entity,
             List<Map<String, Object>> policyValues,
             List<Map<String, Object>> bindingValues) {
+        listScopeBindingMapper.purgeDeletedByEntityCode(entity.getEntityCode());
+        listScopePolicyMapper.purgeDeletedByEntityCode(entity.getEntityCode());
         listScopeBindingMapper.delete(new LambdaQueryWrapper<EntityListScopeBinding>()
                 .eq(EntityListScopeBinding::getEntityCode, entity.getEntityCode()));
         listScopePolicyMapper.delete(new LambdaQueryWrapper<EntityListScopePolicy>()
@@ -914,20 +917,25 @@ public class ConfigMigrationImportApplyService {
         List<SysRole> administrators = roleMapper.selectAdministratorRoles();
         for (Map<String, Object> value : values) {
             SysMenu menu = convert(value, SysMenu.class);
-            SysMenu existing = StringUtils.hasText(menu.getPerm())
-                    ? menuMapper.selectByPerm(menu.getPerm()) : null;
+            normalizeImportedMenu(menu, entity.getEntityCode());
+            List<SysMenu> identityMatches = findEntityListMenus(menu);
+            SysMenu existing = identityMatches.isEmpty()
+                    ? null
+                    : identityMatches.get(0);
+            if (existing == null && StringUtils.hasText(menu.getPerm())) {
+                existing = menuMapper.selectByPerm(menu.getPerm());
+            }
             if (existing == null && StringUtils.hasText(menu.getPath())) {
                 existing = menuMapper.selectByPathAndType(menu.getPath(), menu.getMenuType());
             }
             menu.setId(existing == null ? null : existing.getId());
-            menu.setEntityCode(entity.getEntityCode());
             String parentPath = text(value.get("parentPath"), null);
             if (StringUtils.hasText(parentPath)) {
-                SysMenu parent = menuMapper.selectByPathAndType(parentPath,
-                        parentPath.equals("/__entity_permissions__") ? "M" : "C");
-                if (parent != null) {
-                    menu.setParentId(parent.getId());
+                SysMenu parent = findParentMenu(parentPath);
+                if (parent == null) {
+                    throw new IllegalStateException("菜单父级不存在: " + parentPath);
                 }
+                menu.setParentId(parent.getId());
             } else if (existing != null) {
                 menu.setParentId(existing.getParentId());
             }
@@ -938,7 +946,9 @@ public class ConfigMigrationImportApplyService {
                 menuMapper.insert(menu);
             } else {
                 menuMapper.updateById(menu);
+                clearNullableMenuColumns(menu);
             }
+            removeDuplicateMenus(identityMatches, menu.getId());
             for (SysRole role : administrators) {
                 if (!roleMenuMapper.existsRoleMenu(role.getId(), menu.getId())) {
                     SysRoleMenu relation = new SysRoleMenu();
@@ -948,6 +958,100 @@ public class ConfigMigrationImportApplyService {
                     roleMenuMapper.insert(relation);
                 }
             }
+        }
+    }
+
+    /**
+     * 规范化迁移包中的菜单归属。
+     *
+     * <p>实体列表菜单是导航资源，不能复用隐藏功能权限的权限码，否则会把 F 类型权限节点
+     * 误更新为 C 类型侧栏菜单。目录本身也不归属于某个实体。</p>
+     */
+    static void normalizeImportedMenu(SysMenu menu, String entityCode) {
+        if (menu == null) {
+            return;
+        }
+        if (isEntityListMenu(menu)) {
+            menu.setResourceType("ENTITY_LIST");
+            menu.setPerm(null);
+        }
+        menu.setEntityCode("M".equals(menu.getMenuType()) ? null : entityCode);
+    }
+
+    static String entityListIdentity(SysMenu menu) {
+        if (!isEntityListMenu(menu)
+                || !StringUtils.hasText(menu.getEntityCode())
+                || !StringUtils.hasText(menu.getListKey())) {
+            return null;
+        }
+        return menu.getEntityCode() + ":" + menu.getListKey();
+    }
+
+    static boolean isEntityListMenu(SysMenu menu) {
+        return menu != null
+                && "C".equals(menu.getMenuType())
+                && ("ENTITY_LIST".equalsIgnoreCase(menu.getResourceType())
+                || StringUtils.hasText(menu.getListKey()));
+    }
+
+    static List<String> parentMenuTypes(String parentPath) {
+        if ("/__entity_permissions__".equals(parentPath)) {
+            return List.of("M");
+        }
+        return List.of("M", "C");
+    }
+
+    private List<SysMenu> findEntityListMenus(SysMenu menu) {
+        if (!StringUtils.hasText(entityListIdentity(menu))) {
+            return List.of();
+        }
+        return menuMapper.selectList(new LambdaQueryWrapper<SysMenu>()
+                .eq(SysMenu::getMenuType, "C")
+                .eq(SysMenu::getEntityCode, menu.getEntityCode())
+                .eq(SysMenu::getResourceType, "ENTITY_LIST")
+                .eq(SysMenu::getListKey, menu.getListKey())
+                .orderByAsc(SysMenu::getCreateTime)
+                .orderByAsc(SysMenu::getId));
+    }
+
+    private void removeDuplicateMenus(List<SysMenu> matchedMenus, String retainedMenuId) {
+        for (SysMenu duplicate : matchedMenus) {
+            if (Objects.equals(duplicate.getId(), retainedMenuId)) {
+                continue;
+            }
+            roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
+                    .eq(SysRoleMenu::getMenuId, duplicate.getId()));
+            menuMapper.deleteById(duplicate.getId());
+        }
+    }
+
+    private SysMenu findParentMenu(String parentPath) {
+        for (String menuType : parentMenuTypes(parentPath)) {
+            SysMenu parent = menuMapper.selectByPathAndType(parentPath, menuType);
+            if (parent != null) {
+                return parent;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * MyBatis-Plus 默认忽略 null 更新，这里显式清理导航菜单不应保留的权限码和目录实体归属。
+     */
+    private void clearNullableMenuColumns(SysMenu menu) {
+        LambdaUpdateWrapper<SysMenu> update = new LambdaUpdateWrapper<SysMenu>()
+                .eq(SysMenu::getId, menu.getId());
+        boolean required = false;
+        if (isEntityListMenu(menu)) {
+            update.set(SysMenu::getPerm, null);
+            required = true;
+        }
+        if ("M".equals(menu.getMenuType())) {
+            update.set(SysMenu::getEntityCode, null);
+            required = true;
+        }
+        if (required) {
+            menuMapper.update(null, update);
         }
     }
 

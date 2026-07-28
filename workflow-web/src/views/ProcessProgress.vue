@@ -178,11 +178,11 @@
 import { ref, onMounted, nextTick, watch, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import { useUserStore } from '@/stores/user'
+import { ensureBpmnLayout, hasCompleteBpmnDi } from '@/utils/bpmnLayout'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -266,7 +266,7 @@ const loadProcessProgress = async () => {
     
     if (data.bpmnXml) {
       console.log('BPMN XML长度:', data.bpmnXml.length)
-      bpmnXml.value = data.bpmnXml
+      bpmnXml.value = await addLayoutToXml(data.bpmnXml)
     } else {
       ElMessage.warning('无法获取流程图')
     }
@@ -282,16 +282,13 @@ const loadProcessProgress = async () => {
  */
 const addLayoutToXml = async (xml) => {
   try {
-    // 检查是否已有布局信息
-    if (xml.includes('BPMNDiagram') && xml.includes('BPMNShape')) {
+    if (hasCompleteBpmnDi(xml)) {
       console.log('XML已包含布局信息，跳过自动生成')
       return xml
     }
     
-    console.log('XML缺少布局信息，使用 bpmn-auto-layout 生成布局...')
-    
-    // 使用 bpmn-auto-layout 生成布局
-    const layoutedXml = await layoutProcess(xml)
+    console.log('XML缺少完整布局信息，自动补齐节点和连线...')
+    const layoutedXml = await ensureBpmnLayout(xml)
     
     console.log('布局生成完成，新XML长度:', layoutedXml.length)
     return layoutedXml

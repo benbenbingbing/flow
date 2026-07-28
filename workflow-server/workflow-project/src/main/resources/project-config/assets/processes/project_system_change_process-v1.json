@@ -1,0 +1,424 @@
+{
+  "schemaVersion": 1,
+  "assetType": "PROCESS",
+  "businessKey": "project_system_change_process",
+  "assetName": "项目系统关系变更审批",
+  "definition": {
+    "processKey": "project_system_change_process",
+    "processName": "项目系统关系变更审批",
+    "description": "项目经理、系统、技术、架构、安全、数据和PMO条件审批；批准后由代码生效关系。",
+    "category": "PROJECT_MANAGEMENT"
+  },
+  "bpmnFile": "project-config/bpmn/project-system-change.bpmn20.xml",
+  "nodes": [
+    {
+      "nodeId": "project_manager_review",
+      "nodeName": "项目经理确认",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟项目经理",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "system_owner_review",
+      "nodeName": "系统负责人审批",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟系统负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "technical_review",
+      "nodeName": "技术负责人审批",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟技术负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "architecture_review",
+      "nodeName": "架构影响评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟企业架构师",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全影响评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟安全负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "data_review",
+      "nodeName": "数据影响评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟数据负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO纳入基线审批",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟PMO",
+          "priority": 0
+        }
+      ]
+    }
+  ],
+  "nodeForms": [
+    {
+      "nodeId": "project_manager_review",
+      "nodeName": "项目经理确认",
+      "formRef": "wf-form://project_system_change_request/project_system_change_detail",
+      "isReadonly": 1,
+      "sortOrder": 10
+    },
+    {
+      "nodeId": "system_owner_review",
+      "nodeName": "系统负责人审批",
+      "formRef": "wf-form://project_system_change_request/project_system_change_review",
+      "isReadonly": 0,
+      "sortOrder": 20
+    },
+    {
+      "nodeId": "technical_review",
+      "nodeName": "技术负责人审批",
+      "formRef": "wf-form://project_system_change_request/project_system_change_review",
+      "isReadonly": 0,
+      "sortOrder": 30
+    },
+    {
+      "nodeId": "architecture_review",
+      "nodeName": "架构影响评审",
+      "formRef": "wf-form://project_system_change_request/project_system_change_review",
+      "isReadonly": 0,
+      "sortOrder": 40
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全影响评审",
+      "formRef": "wf-form://project_system_change_request/project_system_change_review",
+      "isReadonly": 0,
+      "sortOrder": 50
+    },
+    {
+      "nodeId": "data_review",
+      "nodeName": "数据影响评审",
+      "formRef": "wf-form://project_system_change_request/project_system_change_review",
+      "isReadonly": 0,
+      "sortOrder": 60
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO纳入基线审批",
+      "formRef": "wf-form://project_system_change_request/project_system_change_review",
+      "isReadonly": 0,
+      "sortOrder": 70
+    }
+  ],
+  "nodeApprovals": [
+    {
+      "nodeId": "project_manager_review",
+      "nodeName": "项目经理确认",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"确认提交变更\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "system_owner_review",
+      "nodeName": "系统负责人审批",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"系统边界通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "technical_review",
+      "nodeName": "技术负责人审批",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"技术影响通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "architecture_review",
+      "nodeName": "架构影响评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"架构影响可接受\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全影响评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"安全影响可接受\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "data_review",
+      "nodeName": "数据影响评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"数据影响可接受\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO纳入基线审批",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"批准并纳入基线\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不批准变更\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    }
+  ],
+  "flowActions": [
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_STARTED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": "{\"maxRetries\":0}",
+      "actionName": "项目系统变更跨实体门禁",
+      "description": "校验项目系统状态、当前有效关系、责任成员和移除依赖。",
+      "interfaceName": "validateProjectSystemChangeHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 10,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":5,\"initialDelaySeconds\":10,\"maxDelaySeconds\":300}",
+      "actionName": "批准后生效项目系统关系",
+      "description": "新增、更新或失效项目系统关系，并回写生效结果。",
+      "interfaceName": "applyProjectSystemChangeHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 20,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3,\"initialDelaySeconds\":30,\"maxDelaySeconds\":300}",
+      "actionName": "发送项目系统变更结果通知",
+      "description": "流程完成后发送结果通知。",
+      "interfaceName": "sendNotificationHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"templateCode\":\"PROJECT_SYSTEM_CHANGE_RESULT\",\"notifyType\":\"in_app\",\"receiverExpr\":\"${submitterId}\"}",
+      "sortOrder": 30,
+      "enabled": true,
+      "status": "DRAFT"
+    }
+  ],
+  "statusMappings": [
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_start_manager",
+      "sourceNodeId": "start",
+      "sourceNodeName": "提交项目系统变更",
+      "targetNodeId": "project_manager_review",
+      "targetNodeName": "项目经理确认",
+      "entityStatus": "IMPACT_ASSESSING",
+      "entityStatusCode": "IMPACT_ASSESSING",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 10
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_manager_approve",
+      "sourceNodeId": "manager_result",
+      "sourceNodeName": "项目经理确认结果",
+      "targetNodeId": "system_owner_review",
+      "targetNodeName": "系统负责人审批",
+      "entityStatus": "PENDING_APPROVAL",
+      "entityStatusCode": "PENDING_APPROVAL",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 20
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_manager_reject",
+      "sourceNodeId": "manager_result",
+      "sourceNodeName": "项目经理确认结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 30
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_system_reject",
+      "sourceNodeId": "system_result",
+      "sourceNodeName": "系统审批结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 40
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_technical_reject",
+      "sourceNodeId": "technical_result",
+      "sourceNodeName": "技术审批结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 50
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_architecture_reject",
+      "sourceNodeId": "architecture_result",
+      "sourceNodeName": "架构评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 60
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_security_reject",
+      "sourceNodeId": "security_result",
+      "sourceNodeName": "安全评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 70
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_data_reject",
+      "sourceNodeId": "data_result",
+      "sourceNodeName": "数据评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 80
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_pmo_reject",
+      "sourceNodeId": "pmo_result",
+      "sourceNodeName": "PMO审批结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 90
+    },
+    {
+      "entityCode": "project_system_change_request",
+      "sequenceFlowId": "flow_pmo_approve",
+      "sourceNodeId": "pmo_result",
+      "sourceNodeName": "PMO审批结果",
+      "targetNodeId": "end_approved",
+      "targetNodeName": "变更已批准",
+      "entityStatus": "APPROVED",
+      "entityStatusCode": "APPROVED",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 110
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project_system_change_request",
+      "required": true,
+      "reason": "实体状态映射"
+    },
+    {
+      "type": "FORM",
+      "key": "wf-form://project_system_change_request/project_system_change_detail",
+      "required": true,
+      "reason": "审批详情表单"
+    },
+    {
+      "type": "FORM",
+      "key": "wf-form://project_system_change_request/project_system_change_review",
+      "required": true,
+      "reason": "专业评审表单"
+    },
+    {
+      "type": "USER",
+      "key": "admin",
+      "required": true,
+      "reason": "单账号模拟审批人"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "validateProjectSystemChangeHandler",
+      "required": true,
+      "reason": "跨实体变更门禁"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "applyProjectSystemChangeHandler",
+      "required": true,
+      "reason": "批准后生效关系"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "sendNotificationHandler",
+      "required": true,
+      "reason": "流程完成通知"
+    }
+  ]
+}

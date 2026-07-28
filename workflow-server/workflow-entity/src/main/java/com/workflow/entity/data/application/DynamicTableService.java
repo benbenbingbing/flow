@@ -305,15 +305,7 @@ public class DynamicTableService {
         col.append(dbType);
         
         // 程序级动态控制必填/唯一，数据库列统一可空、不建唯一索引
-        if (field.getDefaultValue() != null && !field.getDefaultValue().isEmpty()) {
-            col.append(" DEFAULT '");
-            // 处理单引号转义
-            String escaped = field.getDefaultValue().replace("'", "''");
-            col.append(escaped);
-            col.append("'");
-        } else {
-            col.append(" DEFAULT NULL");
-        }
+        col.append(buildDefaultClause(field));
         
         // 注释
         col.append(" COMMENT '");
@@ -324,6 +316,27 @@ public class DynamicTableService {
         col.append("'");
         
         return col.toString();
+    }
+
+    static String buildDefaultClause(EntityField field) {
+        String defaultValue = field.getDefaultValue();
+        if (defaultValue == null || defaultValue.isBlank()) {
+            return " DEFAULT NULL";
+        }
+
+        if (field.getFieldType() == EntityField.FieldType.BOOLEAN) {
+            String normalized = defaultValue.trim();
+            if ("true".equalsIgnoreCase(normalized) || "1".equals(normalized)) {
+                return " DEFAULT 1";
+            }
+            if ("false".equalsIgnoreCase(normalized) || "0".equals(normalized)) {
+                return " DEFAULT 0";
+            }
+            throw new IllegalArgumentException(
+                    "布尔字段 " + field.getFieldCode() + " 的默认值必须是 true、false、1 或 0");
+        }
+
+        return " DEFAULT '" + defaultValue.replace("'", "''") + "'";
     }
 
     /**

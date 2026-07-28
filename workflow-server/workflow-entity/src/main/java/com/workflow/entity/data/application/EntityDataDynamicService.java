@@ -84,8 +84,9 @@ public class EntityDataDynamicService implements EntityRecordPort {
             dataList = dynamicMapper.selectListWithPermission(tableName, permission.getSqlCondition());
         }
 
+        List<EntityField> runtimeFields = getRuntimeFields(entityCode);
         List<EntityDataDTO> records = dataList.stream()
-                .map(data -> recordMapper.toDto(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode, runtimeFields))
                 .collect(Collectors.toList());
         enrichMultiValues(entityCode, records);
         return records;
@@ -267,8 +268,9 @@ public class EntityDataDynamicService implements EntityRecordPort {
                     pageSize);
         }
 
+        List<EntityField> runtimeFields = getRuntimeFields(entityCode);
         List<EntityDataDTO> records = rows.stream()
-                .map(data -> recordMapper.toDto(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode, runtimeFields))
                 .toList();
         enrichMultiValues(entityCode, records);
         return new PageResult<>(records, total, pageNum, pageSize);
@@ -284,7 +286,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + id);
         }
-        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        EntityDataDTO dto = toRuntimeDto(data, entityCode);
         enrichMultiValues(entityCode, List.of(dto));
         relationRuntimeService.loadRelationData(dto);
         return dto;
@@ -306,7 +308,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
         if (data == null) {
             throw new ForbiddenException("数据不存在或不在当前数据权限范围内");
         }
-        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        EntityDataDTO dto = toRuntimeDto(data, entityCode);
         enrichMultiValues(entityCode, List.of(dto));
         relationRuntimeService.loadRelationData(dto);
         return dto;
@@ -322,7 +324,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
         if (data == null) {
             throw new RuntimeException("数据不存在: " + processInstanceId);
         }
-        EntityDataDTO dto = recordMapper.toDto(data, entityCode);
+        EntityDataDTO dto = toRuntimeDto(data, entityCode);
         enrichMultiValues(entityCode, List.of(dto));
         relationRuntimeService.loadRelationData(dto);
         return dto;
@@ -590,7 +592,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
         relationRuntimeService.saveRelationData(id, relations, relationData);
         multiValueRuntimeService.save(definition, id, multiValueData);
 
-        EntityDataDTO dto = recordMapper.toDto(updateData, entityCode);
+        EntityDataDTO dto = toRuntimeDto(updateData, entityCode);
         enrichMultiValues(entityCode, List.of(dto));
         if (dto.getData() != null) {
             dto.getData().putAll(relationData);
@@ -623,7 +625,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 startWorkflow(dto);
                 // 重新加载最新数据返回
                 Map<String, Object> refreshedData = dynamicMapper.selectById(tableName, id);
-                dto = recordMapper.toDto(refreshedData, entityCode);
+                dto = toRuntimeDto(refreshedData, entityCode);
                 enrichMultiValues(entityCode, List.of(dto));
                 if (dto.getData() != null) {
                     dto.getData().putAll(relationData);
@@ -691,8 +693,9 @@ public class EntityDataDynamicService implements EntityRecordPort {
             dataList = dynamicMapper.selectByConditionWithPermission(tableName, condition, permission.getSqlCondition());
         }
 
+        List<EntityField> runtimeFields = getRuntimeFields(entityCode);
         List<EntityDataDTO> records = dataList.stream()
-                .map(data -> recordMapper.toDto(data, entityCode))
+                .map(data -> recordMapper.toDto(data, entityCode, runtimeFields))
                 .collect(Collectors.toList());
         enrichMultiValues(entityCode, records);
         return records;
@@ -754,6 +757,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
             String statusCategory,
             String fallbackStatus) {
         String tableName = dynamicTableService.getTableName(entityCode);
+        LocalDateTime endedAt = LocalDateTime.now();
         Map<String, Object> existingData = dynamicMapper.selectById(tableName, entityDataId);
         String currentStatus = existingData == null
                 ? null
@@ -769,8 +773,15 @@ public class EntityDataDynamicService implements EntityRecordPort {
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("id", entityDataId);
         updateData.put("status", statusCode);
-        updateData.put("process_end_time", LocalDateTime.now());
-        updateData.put("update_time", LocalDateTime.now());
+        updateData.put("process_end_time", endedAt);
+        updateData.put("update_time", endedAt);
+        if ("COMPLETED".equals(statusCategory)) {
+            putPublishedTimestampIfPresent(
+                    entityCode,
+                    updateData,
+                    "approved_at",
+                    endedAt);
+        }
         dynamicMapper.update(tableName, updateData);
         dynamicMapper.updateCurrentTask(tableName, entityDataId, null, null, null);
     }
@@ -949,6 +960,21 @@ public class EntityDataDynamicService implements EntityRecordPort {
         return value == null || (value instanceof String str && str.isBlank());
     }
 
+    private EntityDataDTO toRuntimeDto(Map<String, Object> data, String entityCode) {
+        return recordMapper.toDto(data, entityCode, getRuntimeFields(entityCode));
+    }
+
+    private List<EntityField> getRuntimeFields(String entityCode) {
+        try {
+            EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+            return snapshot.getFields() != null ? snapshot.getFields() : List.of();
+        } catch (RuntimeException exception) {
+            log.debug("读取实体发布字段失败，使用兼容字段映射: entityCode={}, reason={}",
+                    entityCode, exception.getMessage());
+            return List.of();
+        }
+    }
+
     private String asText(Object value) {
         return value == null ? null : String.valueOf(value);
     }
@@ -989,15 +1015,21 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 dto.getData(),
                 dto.getProcessVariables()));
 
+        LocalDateTime startedAt = LocalDateTime.now();
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("id", dto.getId());
         updateData.put("process_instance_id", result.processInstanceId());
-        updateData.put("process_start_time", LocalDateTime.now());
+        updateData.put("process_start_time", startedAt);
         updateData.put("status", result.entityStatus());
-        updateData.put("update_time", LocalDateTime.now());
+        updateData.put("update_time", startedAt);
         updateData.put("current_task_id", result.currentTaskId());
         updateData.put("current_task_name", result.currentTaskName());
         updateData.put("current_task_assignee", result.currentTaskAssignee());
+        putPublishedTimestampIfPresent(
+                snapshot,
+                updateData,
+                "submitted_at",
+                startedAt);
         dynamicMapper.update(dynamicTableService.getTableName(dto.getEntityCode()), updateData);
 
         dto.setProcessInstanceId(result.processInstanceId());
@@ -1012,6 +1044,46 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 "发起流程",
                 result.processInstanceId(),
                 result.currentTaskId());
+    }
+
+    private void putPublishedTimestampIfPresent(
+            String entityCode,
+            Map<String, Object> updateData,
+            String fieldCode,
+            LocalDateTime value) {
+        try {
+            putPublishedTimestampIfPresent(
+                    snapshotService.getLatestByEntityCode(entityCode),
+                    updateData,
+                    fieldCode,
+                    value);
+        } catch (RuntimeException exception) {
+            log.debug(
+                    "读取实体发布字段失败，跳过业务时间同步: entityCode={}, fieldCode={}, reason={}",
+                    entityCode,
+                    fieldCode,
+                    exception.getMessage());
+        }
+    }
+
+    private void putPublishedTimestampIfPresent(
+            EntityPublishedSnapshot snapshot,
+            Map<String, Object> updateData,
+            String fieldCode,
+            LocalDateTime value) {
+        if (snapshot == null || snapshot.getFields() == null) {
+            return;
+        }
+        snapshot.getFields().stream()
+                .filter(field -> fieldCode.equals(field.getFieldCode()))
+                .filter(field -> !isRelationField(field))
+                .findFirst()
+                .ifPresent(field -> {
+                    String columnName = StringUtils.hasText(field.getDbColumnName())
+                            ? field.getDbColumnName()
+                            : recordMapper.toColumnName(field.getFieldCode());
+                    updateData.put(columnName, value);
+                });
     }
 
     private String getStatusByCategory(String entityCode, String category, String fallback) {

@@ -5,6 +5,7 @@ import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -58,6 +59,32 @@ class EntityRuntimeRecordMapperTest {
         assertEquals(now, dto.getCreatedAt());
         assertEquals(12, dto.getData().get("amountTotal"));
         assertInstanceOf(Map.class, dto.getData().get("detailJson"));
+    }
+
+    /**
+     * 行转 DTO 应按实体字段定义还原精确字段编码。
+     */
+    @Test
+    void toDtoPreservesConfiguredSnakeCaseAndCamelCaseFieldCodes() {
+        EntityField snakeCaseField = new EntityField();
+        snakeCaseField.setFieldCode("requirement_type");
+        snakeCaseField.setDbColumnName("requirement_type");
+        EntityField camelCaseField = new EntityField();
+        camelCaseField.setFieldCode("businessOwnerId");
+        camelCaseField.setDbColumnName("business_owner_id");
+
+        EntityDataDTO dto = mapper.toDto(
+                Map.of(
+                        "id", "data-1",
+                        "requirement_type", "NEW_FEATURE",
+                        "business_owner_id", "user-1",
+                        "legacy_field", "legacy"),
+                "requirement",
+                java.util.List.of(snakeCaseField, camelCaseField));
+
+        assertEquals("NEW_FEATURE", dto.getData().get("requirement_type"));
+        assertEquals("user-1", dto.getData().get("businessOwnerId"));
+        assertEquals("legacy", dto.getData().get("legacyField"));
     }
 
     /**

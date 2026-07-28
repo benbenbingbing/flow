@@ -1,0 +1,114 @@
+{
+  "runId": "20260728060232",
+  "apiBase": "http://localhost:8080/api",
+  "flows": {
+    "F03": {
+      "projectId": "612da870952747b6a8d5c7a3e3c76036",
+      "projectCode": "PRJ2026072800003",
+      "processInstanceId": "eca3cf68-8a49-11f1-a20f-7612d5b69a47",
+      "completedTasks": [
+        {
+          "taskId": "ecb58200-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "业务负责人审核"
+        },
+        {
+          "taskId": "ece98a68-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "PMO立项评审"
+        },
+        {
+          "taskId": "ed14e039-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "关联系统负责人会签"
+        },
+        {
+          "taskId": "ed40f95a-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "企业架构评审"
+        },
+        {
+          "taskId": "ed62641c-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "安全专项评审"
+        },
+        {
+          "taskId": "ed86dc1e-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "数据专项评审"
+        },
+        {
+          "taskId": "eda623fd-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "项目发起人最终批准"
+        }
+      ],
+      "finalStatus": "APPROVED",
+      "initializationSummary": "初始化需求关系1条、系统关系1条、关键成员1名、关键角色3条",
+      "requirementLinkIds": [
+        "a52e7da240c947fbbe8f9c7378ca0314"
+      ],
+      "requirementAllocation": {
+        "requirementId": "731635dd03fd4157aada61b13ef62184",
+        "allocatedBefore": 60,
+        "allocatedByProject": 40,
+        "allocatedAfter": 100
+      },
+      "systemLinkIds": [
+        "73556e170166433fa68f3969dee67747"
+      ],
+      "memberIds": [
+        "67d5abb9784e4311ada26b538c12a8ed"
+      ],
+      "roleAssignmentIds": [
+        "a2f3afa254b64b40b44c418cd8300a4e",
+        "6037b7b418934c41b5bbb846dddb35da",
+        "02105bf520364fdf908d42a8084b1d10"
+      ]
+    },
+    "F06_ADD": {
+      "requestId": "31d3f31f4bc74e4cb95c7dcce8c811cd",
+      "processInstanceId": "eed443cc-8a49-11f1-a20f-7612d5b69a47",
+      "completedTasks": [
+        {
+          "taskId": "eeee34b4-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "项目经理确认"
+        },
+        {
+          "taskId": "ef19d8ac-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "系统负责人审批"
+        },
+        {
+          "taskId": "ef3c06bb-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "技术负责人审批"
+        },
+        {
+          "taskId": "ef59a0ec-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "架构影响评审"
+        },
+        {
+          "taskId": "ef7c432d-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "安全影响评审"
+        },
+        {
+          "taskId": "ef94d44f-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "数据影响评审"
+        },
+        {
+          "taskId": "efab699e-8a49-11f1-a20f-7612d5b69a47",
+          "taskName": "PMO纳入基线审批"
+        }
+      ],
+      "finalStatus": "EFFECTIVE",
+      "effectiveLinkId": "d3ba16a95f9b4292beb5c1ec0dde7c4d",
+      "linkStatus": "ACTIVE"
+    }
+  },
+  "crossEntityChecks": {
+    "F06_REMOVE_BLOCKED": {
+      "blockingRoleId": "fd034f953da64e0ab5900cc8a6e19641",
+      "effectiveLinkId": "d3ba16a95f9b4292beb5c1ec0dde7c4d",
+      "result": "BLOCKED",
+      "error": {
+        "code": 409,
+        "message": "项目系统关系不能移除：存在1条有效系统级项目角色",
+        "errorCode": "PROJECT_SYSTEM_REMOVAL_BLOCKED",
+        "data": null
+      }
+    }
+  },
+  "conclusion": "PASS: F03/F06 配置流程真实运行，批准后跨实体动作生效，移除关系代码门禁正确阻断。"
+}

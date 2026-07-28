@@ -20,7 +20,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -94,6 +96,22 @@ class FlowActionCatalogServiceTest {
         assertThrows(
                 RuntimeException.class,
                 () -> service.requireSelectable("process-1", "customer", "customerHandler"));
+    }
+
+    /**
+     * 测试迁移分析使用与流程发布一致的动作目录条件：
+     * 仅有 Bean 但未纳管时不可用，定义启用且 Bean 存在时才可用。
+     */
+    @Test
+    void shouldRequireConfiguredEnabledAndAvailableHandler() {
+        FlowActionDefinition configured = definition("configured", "configuredHandler", "GLOBAL", null);
+        when(definitionMapper.findByHandlerName("configuredHandler")).thenReturn(Optional.of(configured));
+        when(applicationContext.containsBean("configuredHandler")).thenReturn(true);
+        when(definitionMapper.findByHandlerName("unconfiguredHandler")).thenReturn(Optional.empty());
+        when(applicationContext.containsBean("unconfiguredHandler")).thenReturn(true);
+
+        assertTrue(service.isConfiguredAndAvailable("configuredHandler"));
+        assertFalse(service.isConfiguredAndAvailable("unconfiguredHandler"));
     }
 
     /** 构造一个启用、未删除的动作定义，含可见范围与实体编码 JSON */

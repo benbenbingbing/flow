@@ -4,12 +4,15 @@ import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
+import com.workflow.contracts.process.ProcessRuntimePort;
+import com.workflow.contracts.process.ProcessStartResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.data.application.EntityRelationRuntimeService;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -79,6 +83,35 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals(dto.getId(), childData.get("parentId"));
         assertEquals(0, childData.get("deleted"));
         assertEquals("C001", childData.get("code"));
+    }
+
+    /**
+     * 测试子表单空控件值按主表相同规则归一化：
+     * 未填写的日期时间等字段以空字符串提交时，写库前应转换为 null。
+     */
+    @Test
+    void saveNormalizesEmptySubFormValuesToNull() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setSubmitterId("admin");
+        dto.setSubmitterName("管理员");
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("itemName", "明细一");
+        detail.put("invalidAt", "");
+        dto.setData(new HashMap<>(Map.of(
+                "name", "主数据",
+                "detailList", new ArrayList<>(List.of(detail))
+        )));
+
+        service.save(dto);
+
+        ArgumentCaptor<Map<String, Object>> childCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).insert(eq("wf_child"), childCaptor.capture());
+        assertTrue(childCaptor.getValue().containsKey("invalidAt"));
+        org.junit.jupiter.api.Assertions.assertNull(childCaptor.getValue().get("invalidAt"));
     }
 
     /**
@@ -255,6 +288,102 @@ class EntityDataDynamicServiceSubFormTest {
         assertFalse(updateData.containsKey("unknown_runtime_value"));
     }
 
+    /**
+     * 测试流程发起时同步业务提交时间：发布了 submitted_at 的流程实体应使用与
+     * process_start_time 相同的时间值，业务流程无需额外配置专用动作。
+     */
+    @Test
+    void workflowStartSynchronizesSubmittedAtWhenFieldIsPublished() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+        EntityDefinition workflowEntity = Fixture.entity("parent-id", "parent");
+        workflowEntity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        workflowEntity.setProcessDefinitionId("process-config-1");
+        when(fixture.definitionMapper.findByEntityCode("parent"))
+                .thenReturn(Optional.of(workflowEntity));
+
+        EntityField submittedAt = new EntityField();
+        submittedAt.setFieldCode("submitted_at");
+        submittedAt.setDbColumnName("submitted_at");
+        EntityPublishedSnapshot snapshot = Fixture.snapshot("parent");
+        snapshot.setProcessDefinitionId("process-config-1");
+        snapshot.setFields(List.of(submittedAt));
+        when(fixture.snapshotService.getLatestByEntityCode("parent"))
+                .thenReturn(snapshot);
+        when(fixture.processRuntimePort.start(any()))
+                .thenReturn(new ProcessStartResult(
+                        "process-1",
+                        "SUBMITTED",
+                        "task-1",
+                        "业务审核",
+                        "admin"));
+
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setStartProcess(true);
+        dto.setSubmitterId("admin");
+        dto.setSubmitterName("管理员");
+        dto.setData(new HashMap<>(Map.of("name", "流程数据")));
+
+        service.save(dto);
+
+        ArgumentCaptor<Map<String, Object>> updateCaptor =
+                ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).update(
+                eq("wf_parent"),
+                updateCaptor.capture());
+        Map<String, Object> updateData = updateCaptor.getValue();
+        assertNotNull(updateData.get("process_start_time"));
+        assertEquals(
+                updateData.get("process_start_time"),
+                updateData.get("submitted_at"));
+    }
+
+    /**
+     * 测试流程正常完成时同步批准时间：发布了 approved_at 的流程实体应使用与
+     * process_end_time 相同的时间值，驳回、终止等结果不写入批准时间。
+     */
+    @Test
+    void processCompletionSynchronizesApprovedAtWhenFieldIsPublished() {
+        Fixture fixture = new Fixture();
+        EntityDataDynamicService service = fixture.service();
+        EntityField approvedAt = new EntityField();
+        approvedAt.setFieldCode("approved_at");
+        approvedAt.setDbColumnName("approved_at");
+        EntityPublishedSnapshot snapshot = Fixture.snapshot("parent");
+        snapshot.setFields(List.of(approvedAt));
+        when(fixture.snapshotService.getLatestByEntityCode("parent"))
+                .thenReturn(snapshot);
+        when(fixture.dynamicMapper.selectById("wf_parent", "parent-1"))
+                .thenReturn(new HashMap<>(Map.of(
+                        "id", "parent-1",
+                        "status", "BACKLOG")));
+        EntityStatus completedStatus = new EntityStatus();
+        completedStatus.setStatusCode("BACKLOG");
+        completedStatus.setStatusCategory("COMPLETED");
+        when(fixture.entityStatusMapper.findByEntityAndCode(
+                "parent",
+                "BACKLOG")).thenReturn(completedStatus);
+
+        service.markProcessEnded(
+                "parent",
+                "parent-1",
+                "COMPLETED",
+                "APPROVED");
+
+        ArgumentCaptor<Map<String, Object>> updateCaptor =
+                ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).update(
+                eq("wf_parent"),
+                updateCaptor.capture());
+        Map<String, Object> updateData = updateCaptor.getValue();
+        assertEquals("BACKLOG", updateData.get("status"));
+        assertNotNull(updateData.get("process_end_time"));
+        assertEquals(
+                updateData.get("process_end_time"),
+                updateData.get("approved_at"));
+    }
+
     /** 测试夹具：装配被测服务与各 Mock 依赖，并预置父/子/孙实体的定义与关系数据 */
     private static class Fixture {
         final EntityDataDynamicMapper dynamicMapper = mock(EntityDataDynamicMapper.class);
@@ -266,6 +395,8 @@ class EntityDataDynamicServiceSubFormTest {
         final EntityCodeGeneratorService codeGeneratorService = mock(EntityCodeGeneratorService.class);
         final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
         final EntityMultiValueRuntimeService multiValueRuntimeService = mock(EntityMultiValueRuntimeService.class);
+        final ProcessRuntimePort processRuntimePort = mock(ProcessRuntimePort.class);
+        final EntityRecordTeamService entityRecordTeamService = mock(EntityRecordTeamService.class);
 
         Fixture() {
             EntityDefinition parent = entity("parent-id", "parent");
@@ -313,8 +444,8 @@ class EntityDataDynamicServiceSubFormTest {
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
                     dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
-                    multiValueRuntimeService, null, null, null, snapshotService,
-                    mock(EntityRecordTeamService.class));
+                    multiValueRuntimeService, processRuntimePort, null, null, snapshotService,
+                    entityRecordTeamService);
         }
 
         /** 构造指定实体编码的空字段发布快照 */

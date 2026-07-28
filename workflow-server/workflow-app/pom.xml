@@ -12,6 +12,7 @@
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-storage</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-entity</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-process</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-project</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-outbox</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-http</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-notification</artifactId></dependency>

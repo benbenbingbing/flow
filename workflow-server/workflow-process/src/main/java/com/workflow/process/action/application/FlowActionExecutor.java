@@ -1,6 +1,7 @@
 package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionHandler;
 import com.workflow.contracts.action.FlowActionScopeType;
@@ -232,6 +233,8 @@ public class FlowActionExecutor {
         event.setTriggerTiming(FlowActionTriggerTiming.TRANSITION_TAKEN.name());
         event.setEntityCode((String) execution.getVariable("entityCode"));
         event.setEntityDataId((String) execution.getVariable("entityDataId"));
+        event.setOperatorId(firstNonBlank(UserContext.getUserId(), UserContext.getUsername()));
+        event.setOperatorName(UserContext.getUsername());
         event.setSourceNodeId(defaultString((String) execution.getVariable("_flowActionSourceNodeId_")));
         event.setSourceNodeName(defaultString((String) execution.getVariable("_flowActionSourceNodeName_")));
         event.setTargetNodeId(defaultString((String) execution.getVariable("_flowActionTargetNodeId_")));
@@ -242,6 +245,10 @@ public class FlowActionExecutor {
 
     private String defaultString(String value) {
         return value == null ? "" : value;
+    }
+
+    private String firstNonBlank(String first, String second) {
+        return StringUtils.hasText(first) ? first : second;
     }
 
     /**

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "assetType": "PROCESS",
+  "businessKey": "system_application_process",
+  "assetName": "新系统申请审批",
+  "definition": {
+    "processKey": "system_application_process",
+    "processName": "新系统申请审批",
+    "description": "业务、架构与重复检查、数据、安全、运维和IT治理审批；批准后自动生成系统资产。",
+    "category": "PROJECT_MANAGEMENT"
+  },
+  "bpmnFile": "project-config/bpmn/system-application.bpmn20.xml",
+  "nodes": [
+    {"nodeId":"business_review","nodeName":"业务负责人审核","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟业务负责人","priority":0}]},
+    {"nodeId":"architecture_review","nodeName":"企业架构与重复检查","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟企业架构师","priority":0}]},
+    {"nodeId":"data_review","nodeName":"数据治理评审","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟数据负责人","priority":0}]},
+    {"nodeId":"security_review","nodeName":"安全评审","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟安全负责人","priority":0}]},
+    {"nodeId":"ops_review","nodeName":"运维可接管评审","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟运维负责人","priority":0}]},
+    {"nodeId":"governance_review","nodeName":"IT治理审批","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟IT治理负责人","priority":0}]}
+  ],
+  "nodeForms": [
+    {"nodeId":"business_review","nodeName":"业务负责人审核","formRef":"wf-form://system_application/system_application_detail","isReadonly":1,"sortOrder":10},
+    {"nodeId":"architecture_review","nodeName":"企业架构与重复检查","formRef":"wf-form://system_application/system_application_review","isReadonly":0,"sortOrder":20},
+    {"nodeId":"data_review","nodeName":"数据治理评审","formRef":"wf-form://system_application/system_application_review","isReadonly":0,"sortOrder":30},
+    {"nodeId":"security_review","nodeName":"安全评审","formRef":"wf-form://system_application/system_application_review","isReadonly":0,"sortOrder":40},
+    {"nodeId":"ops_review","nodeName":"运维可接管评审","formRef":"wf-form://system_application/system_application_review","isReadonly":0,"sortOrder":50},
+    {"nodeId":"governance_review","nodeName":"IT治理审批","formRef":"wf-form://system_application/system_application_review","isReadonly":0,"sortOrder":60}
+  ],
+  "nodeApprovals": [
+    {"nodeId":"business_review","nodeName":"业务负责人审核","enabled":1,"commentLabel":"业务审核意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"同意专业评审\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"architecture_review","nodeName":"企业架构与重复检查","enabled":1,"commentLabel":"架构与复用意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"架构通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reuse\",\"label\":\"要求复用现有系统\",\"type\":\"warning\",\"showComment\":true,\"remarkRequired\":true},{\"value\":\"reject\",\"label\":\"架构驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"data_review","nodeName":"数据治理评审","enabled":1,"commentLabel":"数据治理意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"数据方案通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"数据方案驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"security_review","nodeName":"安全评审","enabled":1,"commentLabel":"安全评审意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"安全通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"安全驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"ops_review","nodeName":"运维可接管评审","enabled":1,"commentLabel":"运维评审意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"具备接管条件\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不具备接管条件\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"governance_review","nodeName":"IT治理审批","enabled":1,"commentLabel":"IT治理审批意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"批准建设\",\"type\":\"success\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不批准建设\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"}
+  ],
+  "flowActions": [
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":5,\"initialDelaySeconds\":10,\"maxDelaySeconds\":300}",
+      "actionName": "批准后生成系统资产",
+      "description": "仅流程最终批准时创建系统资产并回写 approved_system_id。",
+      "interfaceName": "createSystemAssetHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 10,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3,\"initialDelaySeconds\":30,\"maxDelaySeconds\":300}",
+      "actionName": "发送系统申请结果通知",
+      "description": "流程完成后通知申请人和业务负责人。",
+      "interfaceName": "sendNotificationHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"templateCode\":\"SYSTEM_APPLICATION_RESULT\",\"notifyType\":\"in_app\",\"receiverExpr\":\"${submitterId}\"}",
+      "sortOrder": 20,
+      "enabled": true,
+      "status": "DRAFT"
+    }
+  ],
+  "statusMappings": [
+    {"entityCode":"system_application","sequenceFlowId":"flow_start_business","sourceNodeId":"start","sourceNodeName":"提交新系统申请","targetNodeId":"business_review","targetNodeName":"业务负责人审核","entityStatus":"ASSESSING","entityStatusCode":"ASSESSING","statusCategory":"PROCESSING","sortOrder":10},
+    {"entityCode":"system_application","sequenceFlowId":"flow_business_approve","sourceNodeId":"business_result","sourceNodeName":"业务审核结果","targetNodeId":"architecture_review","targetNodeName":"企业架构与重复检查","entityStatus":"ARCH_REVIEW","entityStatusCode":"ARCH_REVIEW","statusCategory":"PROCESSING","sortOrder":20},
+    {"entityCode":"system_application","sequenceFlowId":"flow_need_data","sourceNodeId":"data_needed","sourceNodeName":"数据评审判断","targetNodeId":"data_review","targetNodeName":"数据治理评审","entityStatus":"DATA_REVIEW","entityStatusCode":"DATA_REVIEW","statusCategory":"PROCESSING","sortOrder":30},
+    {"entityCode":"system_application","sequenceFlowId":"flow_need_security","sourceNodeId":"security_needed","sourceNodeName":"安全评审判断","targetNodeId":"security_review","targetNodeName":"安全评审","entityStatus":"SECURITY_REVIEW","entityStatusCode":"SECURITY_REVIEW","statusCategory":"PROCESSING","sortOrder":40},
+    {"entityCode":"system_application","sequenceFlowId":"flow_skip_security","sourceNodeId":"security_needed","sourceNodeName":"安全评审判断","targetNodeId":"ops_review","targetNodeName":"运维可接管评审","entityStatus":"OPS_REVIEW","entityStatusCode":"OPS_REVIEW","statusCategory":"PROCESSING","sortOrder":50},
+    {"entityCode":"system_application","sequenceFlowId":"flow_security_approve","sourceNodeId":"security_result","sourceNodeName":"安全评审结果","targetNodeId":"ops_review","targetNodeName":"运维可接管评审","entityStatus":"OPS_REVIEW","entityStatusCode":"OPS_REVIEW","statusCategory":"PROCESSING","sortOrder":60},
+    {"entityCode":"system_application","sequenceFlowId":"flow_ops_approve","sourceNodeId":"ops_result","sourceNodeName":"运维评审结果","targetNodeId":"governance_review","targetNodeName":"IT治理审批","entityStatus":"GOVERNANCE_REVIEW","entityStatusCode":"GOVERNANCE_REVIEW","statusCategory":"PROCESSING","sortOrder":70},
+    {"entityCode":"system_application","sequenceFlowId":"flow_governance_approve","sourceNodeId":"governance_result","sourceNodeName":"IT治理审批结果","targetNodeId":"end_approved","targetNodeName":"已批准","entityStatus":"APPROVED","entityStatusCode":"APPROVED","statusCategory":"COMPLETED","sortOrder":80},
+    {"entityCode":"system_application","sequenceFlowId":"flow_business_reject","sourceNodeId":"business_result","sourceNodeName":"业务审核结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":90},
+    {"entityCode":"system_application","sequenceFlowId":"flow_architecture_reject","sourceNodeId":"architecture_result","sourceNodeName":"架构评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":100},
+    {"entityCode":"system_application","sequenceFlowId":"flow_architecture_reuse","sourceNodeId":"architecture_result","sourceNodeName":"架构评审结果","targetNodeId":"end_reuse","targetNodeName":"已要求复用","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":110,"description":"要求复用现有系统"},
+    {"entityCode":"system_application","sequenceFlowId":"flow_data_reject","sourceNodeId":"data_result","sourceNodeName":"数据评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":120},
+    {"entityCode":"system_application","sequenceFlowId":"flow_security_reject","sourceNodeId":"security_result","sourceNodeName":"安全评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":130},
+    {"entityCode":"system_application","sequenceFlowId":"flow_ops_reject","sourceNodeId":"ops_result","sourceNodeName":"运维评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":140},
+    {"entityCode":"system_application","sequenceFlowId":"flow_governance_reject","sourceNodeId":"governance_result","sourceNodeName":"IT治理审批结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":150}
+  ],
+  "dependencies": [
+    {"type":"ENTITY","key":"system_application","required":true,"reason":"实体状态映射"},
+    {"type":"FORM","key":"wf-form://system_application/system_application_detail","required":true,"reason":"业务审核详情表单"},
+    {"type":"FORM","key":"wf-form://system_application/system_application_review","required":true,"reason":"专业评审表单"},
+    {"type":"USER","key":"admin","required":true,"reason":"单账号模拟审批人"},
+    {"type":"FLOW_ACTION_HANDLER","key":"createSystemAssetHandler","required":true,"reason":"批准后创建系统资产"},
+    {"type":"FLOW_ACTION_HANDLER","key":"sendNotificationHandler","required":true,"reason":"流程完成通知"}
+  ]
+}

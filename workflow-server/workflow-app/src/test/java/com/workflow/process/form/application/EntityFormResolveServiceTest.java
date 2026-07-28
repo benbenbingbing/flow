@@ -20,6 +20,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +30,7 @@ import static org.mockito.Mockito.when;
 class EntityFormResolveServiceTest {
 
     @Test
-    void newDataUsesFirstReachableUserTaskForm() {
+    void newDataUsesPublishedDefaultFormBeforeFirstUserTaskForm() {
         EntityFormRuntimePort entityFormRuntimePort =
                 mock(EntityFormRuntimePort.class);
         ProcessDefinitionConfigMapper processConfigMapper =
@@ -51,6 +52,36 @@ class EntityFormResolveServiceTest {
                         "process-1",
                         true,
                         Map.of("id", "form-default"))));
+
+        assertEquals(
+                "form-default",
+                service.resolveFormForNewData("expense").get("id"));
+        verify(processConfigMapper, never()).selectById("process-1");
+    }
+
+    @Test
+    void newDataFallsBackToFirstReachableUserTaskFormWithoutDefaultForm() {
+        EntityFormRuntimePort entityFormRuntimePort =
+                mock(EntityFormRuntimePort.class);
+        ProcessDefinitionConfigMapper processConfigMapper =
+                mock(ProcessDefinitionConfigMapper.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        EntityFormResolveService service = new EntityFormResolveService(
+                entityFormRuntimePort,
+                processConfigMapper,
+                snapshotService,
+                mock(RuntimeService.class),
+                mock(TaskService.class),
+                mock(HistoryService.class));
+
+        when(entityFormRuntimePort.findContext("expense")).thenReturn(
+                Optional.of(new EntityFormRuntimeContext(
+                        "entity-1",
+                        "expense",
+                        "process-1",
+                        true,
+                        null)));
 
         ProcessDefinitionConfig process = new ProcessDefinitionConfig();
         process.setId("process-1");

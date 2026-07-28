@@ -1,0 +1,596 @@
+{
+  "schemaVersion": 1,
+  "assetType": "ENTITY",
+  "businessKey": "project_member",
+  "assetName": "项目成员",
+  "definition": {
+    "entityCode": "project_member",
+    "entityName": "项目成员",
+    "description": "记录项目成员加入周期、投入比例、权限和交接状态。",
+    "lifecycleMode": "STANDALONE",
+    "storageMode": "DYNAMIC",
+    "processKey": null
+  },
+  "fields": [
+    {
+      "fieldCode": "project_id",
+      "fieldName": "项目",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 20,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project"
+    },
+    {
+      "fieldCode": "user_id",
+      "fieldName": "人员",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 30,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "source_dept_id",
+      "fieldName": "来源部门",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 40,
+      "fieldLength": 64,
+      "refEntityType": "DEPT"
+    },
+    {
+      "fieldCode": "employment_type",
+      "fieldName": "人员类型",
+      "fieldType": "SELECT",
+      "dbType": "varchar(20)",
+      "isRequired": true,
+      "sortOrder": 50,
+      "fieldLength": 20,
+      "defaultValue": "INTERNAL",
+      "optionsJson": "[{\"label\":\"内部员工\",\"value\":\"INTERNAL\"},{\"label\":\"供应商\",\"value\":\"VENDOR\"},{\"label\":\"合同人员\",\"value\":\"CONTRACTOR\"},{\"label\":\"兼职投入\",\"value\":\"PART_TIME\"}]"
+    },
+    {
+      "fieldCode": "join_date",
+      "fieldName": "加入日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 60
+    },
+    {
+      "fieldCode": "planned_leave_date",
+      "fieldName": "计划退出日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": false,
+      "sortOrder": 70
+    },
+    {
+      "fieldCode": "actual_leave_date",
+      "fieldName": "实际退出日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": false,
+      "sortOrder": 80
+    },
+    {
+      "fieldCode": "allocation_percentage",
+      "fieldName": "投入比例(%)",
+      "fieldType": "DECIMAL",
+      "dbType": "decimal(5,2)",
+      "isRequired": true,
+      "sortOrder": 90,
+      "defaultValue": "100",
+      "fieldPrecision": 2,
+      "validateRules": "{\"min\":0.01,\"max\":100}"
+    },
+    {
+      "fieldCode": "join_reason",
+      "fieldName": "加入原因",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 100
+    },
+    {
+      "fieldCode": "leave_reason",
+      "fieldName": "退出原因",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 110
+    },
+    {
+      "fieldCode": "handover_user_id",
+      "fieldName": "交接成员",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 120,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_member"
+    },
+    {
+      "fieldCode": "handover_description",
+      "fieldName": "交接说明",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 130
+    },
+    {
+      "fieldCode": "account_required_flag",
+      "fieldName": "需要项目账号",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 140,
+      "defaultValue": "true"
+    },
+    {
+      "fieldCode": "environment_access_required_flag",
+      "fieldName": "需要环境权限",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 150,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "environment_scope",
+      "fieldName": "环境权限范围",
+      "fieldType": "MULTI_SELECT",
+      "dbType": "varchar(500)",
+      "isRequired": false,
+      "sortOrder": 160,
+      "fieldLength": 500,
+      "optionsJson": "[{\"label\":\"开发\",\"value\":\"DEV\"},{\"label\":\"测试\",\"value\":\"TEST\"},{\"label\":\"UAT\",\"value\":\"UAT\"},{\"label\":\"生产只读\",\"value\":\"PROD_READ\"},{\"label\":\"生产操作\",\"value\":\"PROD_OPERATE\"}]"
+    },
+    {
+      "fieldCode": "access_revoked_flag",
+      "fieldName": "权限已回收",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 170,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "handover_completed_flag",
+      "fieldName": "交接已完成",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 180,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "source_process",
+      "fieldName": "来源流程",
+      "fieldType": "STRING",
+      "dbType": "varchar(50)",
+      "isRequired": false,
+      "sortOrder": 190,
+      "fieldLength": 50
+    }
+  ],
+  "relations": [],
+  "statuses": [
+    {
+      "statusCode": "PENDING_JOIN",
+      "statusName": "待加入",
+      "statusCategory": "NEW",
+      "sortOrder": 10,
+      "color": "#909399"
+    },
+    {
+      "statusCode": "ACTIVE",
+      "statusName": "在项目中",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 20,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "SUSPENDED",
+      "statusName": "已暂停",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 30,
+      "color": "#E6A23C"
+    },
+    {
+      "statusCode": "PENDING_LEAVE",
+      "statusName": "待退出",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 40,
+      "color": "#409EFF"
+    },
+    {
+      "statusCode": "LEFT",
+      "statusName": "已退出",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 50,
+      "color": "#606266"
+    },
+    {
+      "statusCode": "REJECTED",
+      "statusName": "已驳回",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 60,
+      "color": "#F56C6C"
+    }
+  ],
+  "codeRule": {
+    "prefix": "PRJMEM",
+    "dateFormat": "yyyyMMdd",
+    "seqLength": 5,
+    "seqType": "DAY",
+    "currentSeq": 0,
+    "seqDate": "",
+    "example": "PRJMEM2026072800001"
+  },
+  "extensions": [],
+  "dataSources": [],
+  "forms": [
+    {
+      "formName": "项目成员表单",
+      "formKey": "project_member_default",
+      "description": "维护项目成员投入和权限信息。",
+      "layoutType": "grid",
+      "isDefault": true,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2}",
+      "fields": [
+        {
+          "fieldCode": "project_id",
+          "fieldName": "项目",
+          "fieldLabel": "项目",
+          "fieldType": "REFERENCE",
+          "sortOrder": 10,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "user_id",
+          "fieldName": "人员",
+          "fieldLabel": "人员",
+          "fieldType": "USER",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "source_dept_id",
+          "fieldName": "来源部门",
+          "fieldLabel": "来源部门",
+          "fieldType": "DEPT",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "dept",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "employment_type",
+          "fieldName": "人员类型",
+          "fieldLabel": "人员类型",
+          "fieldType": "SELECT",
+          "sortOrder": 40,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "join_date",
+          "fieldName": "加入日期",
+          "fieldLabel": "加入日期",
+          "fieldType": "DATE",
+          "sortOrder": 50,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "planned_leave_date",
+          "fieldName": "计划退出日期",
+          "fieldLabel": "计划退出日期",
+          "fieldType": "DATE",
+          "sortOrder": 60,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "allocation_percentage",
+          "fieldName": "投入比例(%)",
+          "fieldLabel": "投入比例(%)",
+          "fieldType": "DECIMAL",
+          "sortOrder": 70,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "number",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "join_reason",
+          "fieldName": "加入原因",
+          "fieldLabel": "加入原因",
+          "fieldType": "TEXT",
+          "sortOrder": 80,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "account_required_flag",
+          "fieldName": "需要项目账号",
+          "fieldLabel": "需要项目账号",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 90,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "environment_access_required_flag",
+          "fieldName": "需要环境权限",
+          "fieldLabel": "需要环境权限",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 100,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "environment_scope",
+          "fieldName": "环境权限范围",
+          "fieldLabel": "环境权限范围",
+          "fieldType": "MULTI_SELECT",
+          "sortOrder": 110,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select_multiple",
+          "gridSpan": 24,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${environment_access_required_flag} == true\",\"requiredRule\":\"${environment_access_required_flag} == true\"}}"
+        }
+      ],
+      "nodes": []
+    }
+  ],
+  "lists": [
+    {
+      "listKey": "all",
+      "listName": "项目成员台账",
+      "description": "查询项目成员投入和状态。",
+      "isDefault": true,
+      "dataScopeMode": "INHERIT",
+      "allowedScenes": [
+        "PAGE",
+        "EMBEDDED",
+        "SELECTION"
+      ],
+      "selectionConfig": {
+        "selectionMode": "MULTIPLE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        },
+        {
+          "key": "edit",
+          "type": "built-in",
+          "label": "编辑",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 2,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {},
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "成员编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_id",
+          "fieldName": "项目",
+          "sortOrder": 20,
+          "width": 200,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "user_id",
+          "fieldName": "人员",
+          "sortOrder": 30,
+          "width": 140,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "source_dept_id",
+          "fieldName": "来源部门",
+          "sortOrder": 40,
+          "width": 150,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "employment_type",
+          "fieldName": "人员类型",
+          "sortOrder": 50,
+          "width": 110,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "allocation_percentage",
+          "fieldName": "投入比例",
+          "sortOrder": 60,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "right",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "join_date",
+          "fieldName": "加入日期",
+          "sortOrder": 70,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "planned_leave_date",
+          "fieldName": "计划退出",
+          "sortOrder": 80,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "sortOrder": 90,
+          "width": 110,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "IN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    }
+  ],
+  "scopePolicies": [
+    {
+      "policyKey": "project_member_creator",
+      "policyName": "本人创建的项目成员",
+      "description": "创建人可以查看本人创建的项目成员。",
+      "presetCode": "CREATOR",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\"}",
+      "enabled": 1,
+      "version": 1
+    },
+    {
+      "policyKey": "project_member_self",
+      "policyName": "本人项目成员记录",
+      "description": "人员字段为当前用户的数据。",
+      "presetCode": "MEMBER_SELF",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\",\"fieldMapping\":{\"userField\":\"user_id\",\"deptField\":\"dept_id\",\"statusField\":\"status\"}}",
+      "enabled": 1,
+      "version": 1
+    }
+  ],
+  "scopeBindings": [
+    {
+      "policyKey": "project_member_creator",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_member_self",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    }
+  ],
+  "menus": [
+    {
+      "menuName": "项目成员",
+      "menuType": "C",
+      "icon": "UserFilled",
+      "sort": 65,
+      "path": "/entity-list/project_member/all",
+      "component": "entity/EntityListRuntime",
+      "perm": "entity:project_member:list",
+      "status": "0",
+      "visible": "0",
+      "isFrame": "0",
+      "isCache": "0",
+      "resourceType": "ENTITY_LIST",
+      "listKey": "all",
+      "parentPath": "/project-management"
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project",
+      "required": true,
+      "reason": "所属项目"
+    }
+  ]
+}

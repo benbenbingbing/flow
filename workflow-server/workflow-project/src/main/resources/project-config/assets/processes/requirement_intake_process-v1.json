@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "assetType": "PROCESS",
+  "businessKey": "requirement_intake_process",
+  "assetName": "需求申请与入池审批",
+  "definition": {
+    "processKey": "requirement_intake_process",
+    "processName": "需求申请与入池审批",
+    "description": "业务负责人审核、需求经理评估、系统/架构/安全/数据条件审批以及最终入池决策。",
+    "category": "PROJECT_MANAGEMENT"
+  },
+  "bpmnFile": "project-config/bpmn/requirement-intake.bpmn20.xml",
+  "nodes": [
+    {"nodeId":"business_review","nodeName":"业务负责人审核","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟业务负责人","priority":0}]},
+    {"nodeId":"requirement_manager_review","nodeName":"需求经理评估","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟需求经理","priority":0}]},
+    {"nodeId":"system_owner_review","nodeName":"涉及系统负责人会签","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟系统负责人","priority":0}]},
+    {"nodeId":"architecture_review","nodeName":"架构影响评审","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟架构师","priority":0}]},
+    {"nodeId":"security_review","nodeName":"安全影响评审","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟安全负责人","priority":0}]},
+    {"nodeId":"data_review","nodeName":"数据影响评审","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟数据负责人","priority":0}]},
+    {"nodeId":"requirement_decision","nodeName":"需求入池决策","nodeType":"USER_TASK","assignees":[{"assigneeType":"USER","assigneeValue":"wf-user://admin","assigneeName":"模拟需求决策人","priority":0}]}
+  ],
+  "nodeForms": [
+    {"nodeId":"business_review","nodeName":"业务负责人审核","formRef":"wf-form://requirement/requirement_detail","isReadonly":1,"sortOrder":10},
+    {"nodeId":"requirement_manager_review","nodeName":"需求经理评估","formRef":"wf-form://requirement/requirement_assessment","isReadonly":0,"sortOrder":20},
+    {"nodeId":"system_owner_review","nodeName":"涉及系统负责人会签","formRef":"wf-form://requirement/requirement_detail","isReadonly":1,"sortOrder":30},
+    {"nodeId":"architecture_review","nodeName":"架构影响评审","formRef":"wf-form://requirement/requirement_detail","isReadonly":1,"sortOrder":40},
+    {"nodeId":"security_review","nodeName":"安全影响评审","formRef":"wf-form://requirement/requirement_detail","isReadonly":1,"sortOrder":50},
+    {"nodeId":"data_review","nodeName":"数据影响评审","formRef":"wf-form://requirement/requirement_detail","isReadonly":1,"sortOrder":60},
+    {"nodeId":"requirement_decision","nodeName":"需求入池决策","formRef":"wf-form://requirement/requirement_assessment","isReadonly":0,"sortOrder":70}
+  ],
+  "nodeApprovals": [
+    {"nodeId":"business_review","nodeName":"业务负责人审核","enabled":1,"commentLabel":"业务审核意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"同意进入评估\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"requirement_manager_review","nodeName":"需求经理评估","enabled":1,"commentLabel":"需求评估意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"完成评估\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不予受理\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"system_owner_review","nodeName":"涉及系统负责人会签","enabled":1,"commentLabel":"系统影响意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"同意系统影响结论\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不同意\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"architecture_review","nodeName":"架构影响评审","enabled":1,"commentLabel":"架构评审意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"架构可行\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"架构不可行\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"security_review","nodeName":"安全影响评审","enabled":1,"commentLabel":"安全评审意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"安全可接受\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"安全风险不可接受\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"data_review","nodeName":"数据影响评审","enabled":1,"commentLabel":"数据评审意见","optionsJson":"[{\"value\":\"approve\",\"label\":\"数据方案可行\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"数据方案不可行\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"},
+    {"nodeId":"requirement_decision","nodeName":"需求入池决策","enabled":1,"commentLabel":"入池决策意见","optionsJson":"[{\"value\":\"backlog\",\"label\":\"进入需求池\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"planned\",\"label\":\"纳入近期计划\",\"type\":\"success\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"merged\",\"label\":\"合并到已有需求\",\"type\":\"warning\",\"showComment\":true,\"remarkRequired\":true},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"}
+  ],
+  "flowActions": [
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3,\"initialDelaySeconds\":30,\"maxDelaySeconds\":300}",
+      "actionName": "发送需求决策通知",
+      "description": "流程完成后发送需求决策结果通知。",
+      "interfaceName": "sendNotificationHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"templateCode\":\"REQUIREMENT_DECISION_RESULT\",\"notifyType\":\"in_app\",\"receiverExpr\":\"${submitterId}\"}",
+      "sortOrder": 10,
+      "enabled": true,
+      "status": "DRAFT"
+    }
+  ],
+  "statusMappings": [
+    {"entityCode":"requirement","sequenceFlowId":"flow_start_business","sourceNodeId":"start","sourceNodeName":"提交需求","targetNodeId":"business_review","targetNodeName":"业务负责人审核","entityStatus":"SUBMITTED","entityStatusCode":"SUBMITTED","statusCategory":"PROCESSING","sortOrder":10,"description":"需求已提交"},
+    {"entityCode":"requirement","sequenceFlowId":"flow_business_approve","sourceNodeId":"business_result","sourceNodeName":"业务审核结果","targetNodeId":"requirement_manager_review","targetNodeName":"需求经理评估","entityStatus":"ASSESSING","entityStatusCode":"ASSESSING","statusCategory":"PROCESSING","sortOrder":20},
+    {"entityCode":"requirement","sequenceFlowId":"flow_data_approve","sourceNodeId":"data_result","sourceNodeName":"数据评审结果","targetNodeId":"requirement_decision","targetNodeName":"需求入池决策","entityStatus":"PENDING_DECISION","entityStatusCode":"PENDING_DECISION","statusCategory":"PROCESSING","sortOrder":30},
+    {"entityCode":"requirement","sequenceFlowId":"flow_skip_data","sourceNodeId":"data_needed","sourceNodeName":"数据评审判断","targetNodeId":"requirement_decision","targetNodeName":"需求入池决策","entityStatus":"PENDING_DECISION","entityStatusCode":"PENDING_DECISION","statusCategory":"PROCESSING","sortOrder":40},
+    {"entityCode":"requirement","sequenceFlowId":"flow_business_reject","sourceNodeId":"business_result","sourceNodeName":"业务审核结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":50},
+    {"entityCode":"requirement","sequenceFlowId":"flow_manager_reject","sourceNodeId":"manager_result","sourceNodeName":"需求评估结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":60},
+    {"entityCode":"requirement","sequenceFlowId":"flow_system_reject","sourceNodeId":"system_result","sourceNodeName":"系统评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":70},
+    {"entityCode":"requirement","sequenceFlowId":"flow_architecture_reject","sourceNodeId":"architecture_result","sourceNodeName":"架构评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":80},
+    {"entityCode":"requirement","sequenceFlowId":"flow_security_reject","sourceNodeId":"security_result","sourceNodeName":"安全评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":90},
+    {"entityCode":"requirement","sequenceFlowId":"flow_data_reject","sourceNodeId":"data_result","sourceNodeName":"数据评审结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":100},
+    {"entityCode":"requirement","sequenceFlowId":"flow_decision_reject","sourceNodeId":"decision_result","sourceNodeName":"入池决策结果","targetNodeId":"end_rejected","targetNodeName":"已驳回","entityStatus":"REJECTED","entityStatusCode":"REJECTED","statusCategory":"TERMINATED","sortOrder":110},
+    {"entityCode":"requirement","sequenceFlowId":"flow_decision_backlog","sourceNodeId":"decision_result","sourceNodeName":"入池决策结果","targetNodeId":"end_backlog","targetNodeName":"已进入需求池","entityStatus":"BACKLOG","entityStatusCode":"BACKLOG","statusCategory":"COMPLETED","sortOrder":120},
+    {"entityCode":"requirement","sequenceFlowId":"flow_decision_planned","sourceNodeId":"decision_result","sourceNodeName":"入池决策结果","targetNodeId":"end_planned","targetNodeName":"已纳入计划","entityStatus":"PLANNED","entityStatusCode":"PLANNED","statusCategory":"COMPLETED","sortOrder":130},
+    {"entityCode":"requirement","sequenceFlowId":"flow_decision_merged","sourceNodeId":"decision_result","sourceNodeName":"入池决策结果","targetNodeId":"end_merged","targetNodeName":"已合并","entityStatus":"MERGED","entityStatusCode":"MERGED","statusCategory":"COMPLETED","sortOrder":140}
+  ],
+  "dependencies": [
+    {"type":"ENTITY","key":"requirement","required":true,"reason":"实体状态映射"},
+    {"type":"FORM","key":"wf-form://requirement/requirement_detail","required":true,"reason":"审批节点详情表单"},
+    {"type":"FORM","key":"wf-form://requirement/requirement_assessment","required":true,"reason":"需求评估表单"},
+    {"type":"USER","key":"admin","required":true,"reason":"单账号模拟审批人"},
+    {"type":"FLOW_ACTION_HANDLER","key":"sendNotificationHandler","required":true,"reason":"流程完成通知"}
+  ]
+}

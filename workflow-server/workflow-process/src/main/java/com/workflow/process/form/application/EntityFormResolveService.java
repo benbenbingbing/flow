@@ -54,8 +54,8 @@ public class EntityFormResolveService {
     /**
      * 解析实体新增数据时使用的表单。
      *
-     * <p>实体绑定流程时取最新流程发布快照中首个用户任务绑定的表单；
-     * 未绑定流程或节点没有表单时回落到实体默认表单。</p>
+     * <p>优先使用实体明确配置的默认表单；仅当实体没有默认表单时，
+     * 才回退到最新流程发布快照中首个用户任务绑定的表单。</p>
      */
     public Map<String, Object> resolveFormForNewData(String entityCode) {
         EntityFormRuntimeContext context =
@@ -64,15 +64,18 @@ public class EntityFormResolveService {
             log.debug("未找到实体定义[{}]", entityCode);
             return null;
         }
-        if (context.processDefinitionId() == null || !context.workflowEnabled()) {
+        if (context.defaultForm() != null) {
             return context.defaultForm();
+        }
+        if (context.processDefinitionId() == null || !context.workflowEnabled()) {
+            return null;
         }
 
         ProcessDefinitionConfig processConfig =
                 processDefinitionConfigMapper.selectById(
                         context.processDefinitionId());
         if (processConfig == null) {
-            return context.defaultForm();
+            return null;
         }
 
         String firstUserTaskId =
@@ -84,13 +87,13 @@ public class EntityFormResolveService {
                 UiRuntimePurpose.NEW_INSTANCE);
         if (nodeForm != null) {
             log.debug(
-                    "新增数据使用首节点表单: processConfigId={}, nodeId={}, formId={}",
+                    "实体未配置默认表单，新增数据回退使用首节点表单: processConfigId={}, nodeId={}, formId={}",
                     processConfig.getId(),
                     firstUserTaskId,
                     nodeForm.get("id"));
             return nodeForm;
         }
-        return context.defaultForm();
+        return null;
     }
 
     /**

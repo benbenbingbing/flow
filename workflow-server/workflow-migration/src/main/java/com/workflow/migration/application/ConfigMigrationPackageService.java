@@ -8,6 +8,7 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.action.FlowActionCatalogPort;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -37,7 +38,6 @@ import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportItem
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportPackageMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -90,7 +90,7 @@ public class ConfigMigrationPackageService {
     private final SysRoleMapper roleMapper;
     private final SysOrganizationMapper organizationMapper;
     private final SysGroupMapper groupMapper;
-    private final ApplicationContext applicationContext;
+    private final FlowActionCatalogPort flowActionCatalogPort;
     private final ObjectMapper objectMapper;
 
     /**
@@ -640,7 +640,7 @@ public class ConfigMigrationPackageService {
             return groupMapper.selectByGroupCode(key) != null || hasMapping(type, key);
         }
         if ("FLOW_ACTION_HANDLER".equals(type)) {
-            return applicationContext.containsBean(key) || classExists(key) || hasMapping(type, key);
+            return flowActionCatalogPort.isConfiguredAndAvailable(key);
         }
         if ("CUSTOM_COMPONENT".equals(type) || "DATA_PROVIDER".equals(type)) {
             return hasMapping(type, key);
@@ -663,15 +663,6 @@ public class ConfigMigrationPackageService {
                 .eq(ConfigEnvironmentMapping::getSourceType, type)
                 .eq(ConfigEnvironmentMapping::getSourceKey, key)
                 .eq(ConfigEnvironmentMapping::getEnabled, true)) > 0;
-    }
-
-    private boolean classExists(String className) {
-        try {
-            Class.forName(className);
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 
     /**

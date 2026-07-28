@@ -1,5 +1,6 @@
 package com.workflow.process.action.application;
 
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionFailurePolicy;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * 流程动作执行队列处理器。
@@ -45,8 +47,11 @@ public class FlowActionExecutionProcessor {
             executionService.markFinalFailure(execution, new RuntimeException("流程动作配置不存在"));
             return;
         }
+        String previousUserId = UserContext.getUserId();
+        String previousUsername = UserContext.getUsername();
         try {
             FlowActionTriggerEvent event = executionService.readEvent(execution);
+            restoreOperatorContext(event);
             FlowActionContext context = flowActionExecutor.executeAction(
                     action,
                     event,
@@ -65,6 +70,28 @@ public class FlowActionExecutionProcessor {
                 log.warn("提交后流程动作失败，已安排重试: executionId={}, actionId={}, retryCount={}",
                         executionId, action.getId(), execution.getRetryCount(), e);
             }
+        } finally {
+            restorePreviousContext(previousUserId, previousUsername);
+        }
+    }
+
+    private void restoreOperatorContext(FlowActionTriggerEvent event) {
+        UserContext.clear();
+        if (event == null || !StringUtils.hasText(event.getOperatorId())) {
+            return;
+        }
+        String username = StringUtils.hasText(event.getOperatorName())
+                ? event.getOperatorName()
+                : event.getOperatorId();
+        UserContext.setCurrentUser(event.getOperatorId(), username);
+    }
+
+    private void restorePreviousContext(String userId, String username) {
+        UserContext.clear();
+        if (StringUtils.hasText(userId)) {
+            UserContext.setCurrentUser(
+                    userId,
+                    StringUtils.hasText(username) ? username : userId);
         }
     }
 }

@@ -1,0 +1,2017 @@
+{
+  "schemaVersion": 1,
+  "assetType": "ENTITY",
+  "businessKey": "project",
+  "assetName": "项目立项",
+  "definition": {
+    "entityCode": "project",
+    "entityName": "项目立项",
+    "description": "项目立项申请、范围会签和批准后的初始治理关系建立。",
+    "lifecycleMode": "WORKFLOW",
+    "storageMode": "DYNAMIC",
+    "processKey": "project_initiation_process"
+  },
+  "fields": [
+    {
+      "fieldCode": "project_type",
+      "fieldName": "项目类型",
+      "fieldType": "SELECT",
+      "dbType": "varchar(30)",
+      "isRequired": true,
+      "sortOrder": 20,
+      "fieldLength": 30,
+      "optionsJson": "[{\"label\":\"新系统建设\",\"value\":\"NEW_SYSTEM\"},{\"label\":\"系统增强\",\"value\":\"ENHANCEMENT\"},{\"label\":\"系统集成\",\"value\":\"INTEGRATION\"},{\"label\":\"数据项目\",\"value\":\"DATA\"},{\"label\":\"安全项目\",\"value\":\"SECURITY\"},{\"label\":\"系统迁移\",\"value\":\"MIGRATION\"},{\"label\":\"研究咨询\",\"value\":\"RESEARCH\"}]"
+    },
+    {
+      "fieldCode": "project_level",
+      "fieldName": "项目级别",
+      "fieldType": "SELECT",
+      "dbType": "varchar(30)",
+      "isRequired": true,
+      "sortOrder": 30,
+      "fieldLength": 30,
+      "defaultValue": "DEPARTMENT",
+      "optionsJson": "[{\"label\":\"企业级\",\"value\":\"ENTERPRISE\"},{\"label\":\"跨部门\",\"value\":\"CROSS_DEPARTMENT\"},{\"label\":\"部门级\",\"value\":\"DEPARTMENT\"},{\"label\":\"小型变更\",\"value\":\"SMALL_CHANGE\"}]"
+    },
+    {
+      "fieldCode": "project_group_id",
+      "fieldName": "所属项目群",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 40,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_group"
+    },
+    {
+      "fieldCode": "sponsor_dept_id",
+      "fieldName": "发起部门",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 50,
+      "fieldLength": 64,
+      "refEntityType": "DEPT"
+    },
+    {
+      "fieldCode": "project_sponsor_id",
+      "fieldName": "项目发起人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 60,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "business_owner_id",
+      "fieldName": "业务负责人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 70,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "project_manager_id",
+      "fieldName": "项目经理",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 80,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "product_owner_id",
+      "fieldName": "产品负责人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 90,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "project_background",
+      "fieldName": "项目背景",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 100
+    },
+    {
+      "fieldCode": "project_objective",
+      "fieldName": "项目目标",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 110
+    },
+    {
+      "fieldCode": "scope_in",
+      "fieldName": "项目范围内",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 120
+    },
+    {
+      "fieldCode": "scope_out",
+      "fieldName": "项目范围外",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 130
+    },
+    {
+      "fieldCode": "expected_deliverables",
+      "fieldName": "预期交付物",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 140
+    },
+    {
+      "fieldCode": "success_metrics",
+      "fieldName": "成功指标",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 150
+    },
+    {
+      "fieldCode": "planned_start_date",
+      "fieldName": "计划开始日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 160
+    },
+    {
+      "fieldCode": "planned_end_date",
+      "fieldName": "计划结束日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 170
+    },
+    {
+      "fieldCode": "actual_start_date",
+      "fieldName": "实际开始日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": false,
+      "sortOrder": 180
+    },
+    {
+      "fieldCode": "actual_end_date",
+      "fieldName": "实际结束日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": false,
+      "sortOrder": 190
+    },
+    {
+      "fieldCode": "current_baseline_version",
+      "fieldName": "当前基线版本",
+      "fieldType": "INTEGER",
+      "dbType": "int",
+      "isRequired": true,
+      "sortOrder": 200,
+      "defaultValue": "0"
+    },
+    {
+      "fieldCode": "priority",
+      "fieldName": "项目优先级",
+      "fieldType": "SELECT",
+      "dbType": "varchar(10)",
+      "isRequired": true,
+      "sortOrder": 210,
+      "fieldLength": 10,
+      "defaultValue": "P2",
+      "optionsJson": "[{\"label\":\"P0\",\"value\":\"P0\"},{\"label\":\"P1\",\"value\":\"P1\"},{\"label\":\"P2\",\"value\":\"P2\"},{\"label\":\"P3\",\"value\":\"P3\"}]"
+    },
+    {
+      "fieldCode": "risk_level",
+      "fieldName": "项目风险等级",
+      "fieldType": "SELECT",
+      "dbType": "varchar(10)",
+      "isRequired": true,
+      "sortOrder": 220,
+      "fieldLength": 10,
+      "defaultValue": "MEDIUM",
+      "optionsJson": "[{\"label\":\"低\",\"value\":\"LOW\"},{\"label\":\"中\",\"value\":\"MEDIUM\"},{\"label\":\"高\",\"value\":\"HIGH\"},{\"label\":\"极高\",\"value\":\"CRITICAL\"}]"
+    },
+    {
+      "fieldCode": "cross_system_flag",
+      "fieldName": "是否跨系统",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 230,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "security_involved_flag",
+      "fieldName": "涉及安全专项",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 240,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "security_requirements",
+      "fieldName": "安全要求",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 250
+    },
+    {
+      "fieldCode": "data_involved_flag",
+      "fieldName": "涉及数据专项",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 260,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "data_scope",
+      "fieldName": "数据范围",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 270
+    },
+    {
+      "fieldCode": "data_classification",
+      "fieldName": "最高数据等级",
+      "fieldType": "SELECT",
+      "dbType": "varchar(20)",
+      "isRequired": false,
+      "sortOrder": 280,
+      "fieldLength": 20,
+      "optionsJson": "[{\"label\":\"公开\",\"value\":\"PUBLIC\"},{\"label\":\"内部\",\"value\":\"INTERNAL\"},{\"label\":\"敏感\",\"value\":\"SENSITIVE\"},{\"label\":\"高度敏感\",\"value\":\"HIGHLY_SENSITIVE\"}]"
+    },
+    {
+      "fieldCode": "completion_percentage",
+      "fieldName": "项目完成比例(%)",
+      "fieldType": "DECIMAL",
+      "dbType": "decimal(5,2)",
+      "isRequired": true,
+      "sortOrder": 290,
+      "defaultValue": "0",
+      "fieldPrecision": 2,
+      "validateRules": "{\"min\":0,\"max\":100}"
+    },
+    {
+      "fieldCode": "pmo_review_summary",
+      "fieldName": "PMO治理意见",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 300
+    },
+    {
+      "fieldCode": "initialization_completed_flag",
+      "fieldName": "初始化已完成",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 310,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "initialization_summary",
+      "fieldName": "初始化结果",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 320
+    },
+    {
+      "fieldCode": "initial_requirement_links",
+      "fieldName": "初始需求范围",
+      "fieldType": "SUB_FORM_LIST",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 330,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "requirement_project_link",
+      "displayMode": "embedded",
+      "refFieldCode": "project_id"
+    },
+    {
+      "fieldCode": "initial_system_links",
+      "fieldName": "初始系统范围",
+      "fieldType": "SUB_FORM_LIST",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 340,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_system_link",
+      "displayMode": "embedded",
+      "refFieldCode": "project_id"
+    },
+    {
+      "fieldCode": "applicant_id",
+      "fieldName": "申请人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 350,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "applicant_dept_id",
+      "fieldName": "申请部门",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 360,
+      "fieldLength": 64,
+      "refEntityType": "DEPT"
+    },
+    {
+      "fieldCode": "version",
+      "fieldName": "业务版本",
+      "fieldType": "INTEGER",
+      "dbType": "int",
+      "isRequired": true,
+      "sortOrder": 370,
+      "defaultValue": "1"
+    },
+    {
+      "fieldCode": "submitted_at",
+      "fieldName": "业务提交时间",
+      "fieldType": "DATETIME",
+      "dbType": "datetime",
+      "isRequired": false,
+      "sortOrder": 380
+    },
+    {
+      "fieldCode": "approved_at",
+      "fieldName": "批准时间",
+      "fieldType": "DATETIME",
+      "dbType": "datetime",
+      "isRequired": false,
+      "sortOrder": 390
+    }
+  ],
+  "relations": [
+    {
+      "parentFieldCode": "initial_requirement_links",
+      "relationCode": "project_initial_requirements",
+      "relationName": "项目初始需求范围",
+      "childEntityCode": "requirement_project_link",
+      "childRefFieldCode": "project_id",
+      "relationType": "ONE_TO_MANY",
+      "cascadeDelete": false,
+      "required": true,
+      "sortOrder": 10,
+      "enabled": true
+    },
+    {
+      "parentFieldCode": "initial_system_links",
+      "relationCode": "project_initial_systems",
+      "relationName": "项目初始系统范围",
+      "childEntityCode": "project_system_link",
+      "childRefFieldCode": "project_id",
+      "relationType": "ONE_TO_MANY",
+      "cascadeDelete": false,
+      "required": false,
+      "sortOrder": 20,
+      "enabled": true
+    }
+  ],
+  "statuses": [
+    {
+      "statusCode": "DRAFT",
+      "statusName": "草稿",
+      "statusCategory": "NEW",
+      "sortOrder": 10,
+      "color": "#909399"
+    },
+    {
+      "statusCode": "PENDING_APPROVAL",
+      "statusName": "立项审批中",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 20,
+      "color": "#409EFF"
+    },
+    {
+      "statusCode": "APPROVED",
+      "statusName": "立项已批准",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 30,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "ACTIVE",
+      "statusName": "进行中",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 40,
+      "color": "#36CFC9"
+    },
+    {
+      "statusCode": "PAUSED",
+      "statusName": "已暂停",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 50,
+      "color": "#E6A23C"
+    },
+    {
+      "statusCode": "ACCEPTING",
+      "statusName": "验收中",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 60,
+      "color": "#9B59B6"
+    },
+    {
+      "statusCode": "CLOSING",
+      "statusName": "结项中",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 70,
+      "color": "#B37FEB"
+    },
+    {
+      "statusCode": "CLOSED",
+      "statusName": "已结项",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 80,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "REJECTED",
+      "statusName": "已驳回",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 90,
+      "color": "#F56C6C"
+    },
+    {
+      "statusCode": "CANCELLED",
+      "statusName": "已取消",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 100,
+      "color": "#606266"
+    }
+  ],
+  "codeRule": {
+    "prefix": "PRJ",
+    "dateFormat": "yyyyMMdd",
+    "seqLength": 5,
+    "seqType": "DAY",
+    "currentSeq": 0,
+    "seqDate": "",
+    "example": "PRJ2026072800001"
+  },
+  "extensions": [],
+  "dataSources": [],
+  "forms": [
+    {
+      "formName": "项目立项申请表单",
+      "formKey": "project_application",
+      "description": "项目发起人录入项目范围、计划、关键人员和初始关系。",
+      "layoutType": "grid",
+      "isDefault": true,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2,\"submitLabel\":\"提交立项\"}",
+      "fields": [
+        {
+          "fieldCode": "name",
+          "fieldName": "项目名称",
+          "fieldLabel": "项目名称",
+          "fieldType": "STRING",
+          "sortOrder": 10,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "input",
+          "gridSpan": 24,
+          "validationRules": "{\"minLength\":5,\"maxLength\":200}"
+        },
+        {
+          "fieldCode": "project_type",
+          "fieldName": "项目类型",
+          "fieldLabel": "项目类型",
+          "fieldType": "SELECT",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_level",
+          "fieldName": "项目级别",
+          "fieldLabel": "项目级别",
+          "fieldType": "SELECT",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_group_id",
+          "fieldName": "所属项目群",
+          "fieldLabel": "所属项目群",
+          "fieldType": "REFERENCE",
+          "sortOrder": 40,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 8,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${project_level} == 'ENTERPRISE'\",\"requiredRule\":\"${project_level} == 'ENTERPRISE'\"}}"
+        },
+        {
+          "fieldCode": "applicant_id",
+          "fieldName": "申请人",
+          "fieldLabel": "申请人",
+          "fieldType": "USER",
+          "sortOrder": 50,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "applicant_dept_id",
+          "fieldName": "申请部门",
+          "fieldLabel": "申请部门",
+          "fieldType": "DEPT",
+          "sortOrder": 60,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "dept",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "sponsor_dept_id",
+          "fieldName": "发起部门",
+          "fieldLabel": "发起部门",
+          "fieldType": "DEPT",
+          "sortOrder": 70,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "dept",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_sponsor_id",
+          "fieldName": "项目发起人",
+          "fieldLabel": "项目发起人",
+          "fieldType": "USER",
+          "sortOrder": 80,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "business_owner_id",
+          "fieldName": "业务负责人",
+          "fieldLabel": "业务负责人",
+          "fieldType": "USER",
+          "sortOrder": 90,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_manager_id",
+          "fieldName": "项目经理",
+          "fieldLabel": "项目经理",
+          "fieldType": "USER",
+          "sortOrder": 100,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "product_owner_id",
+          "fieldName": "产品负责人",
+          "fieldLabel": "产品负责人",
+          "fieldType": "USER",
+          "sortOrder": 110,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "priority",
+          "fieldName": "项目优先级",
+          "fieldLabel": "项目优先级",
+          "fieldType": "SELECT",
+          "sortOrder": 120,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "risk_level",
+          "fieldName": "风险等级",
+          "fieldLabel": "风险等级",
+          "fieldType": "SELECT",
+          "sortOrder": 130,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_start_date",
+          "fieldName": "计划开始日期",
+          "fieldLabel": "计划开始日期",
+          "fieldType": "DATE",
+          "sortOrder": 140,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划结束日期",
+          "fieldLabel": "计划结束日期",
+          "fieldType": "DATE",
+          "sortOrder": 150,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "project_background",
+          "fieldName": "项目背景",
+          "fieldLabel": "项目背景",
+          "fieldType": "TEXT",
+          "sortOrder": 160,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "project_objective",
+          "fieldName": "项目目标",
+          "fieldLabel": "项目目标",
+          "fieldType": "TEXT",
+          "sortOrder": 170,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "scope_in",
+          "fieldName": "项目范围内",
+          "fieldLabel": "项目范围内",
+          "fieldType": "TEXT",
+          "sortOrder": 180,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "scope_out",
+          "fieldName": "项目范围外",
+          "fieldLabel": "项目范围外",
+          "fieldType": "TEXT",
+          "sortOrder": 190,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "expected_deliverables",
+          "fieldName": "预期交付物",
+          "fieldLabel": "预期交付物",
+          "fieldType": "TEXT",
+          "sortOrder": 200,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "success_metrics",
+          "fieldName": "成功指标",
+          "fieldLabel": "成功指标",
+          "fieldType": "TEXT",
+          "sortOrder": 210,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "cross_system_flag",
+          "fieldName": "是否跨系统",
+          "fieldLabel": "是否跨系统",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 220,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "security_involved_flag",
+          "fieldName": "涉及安全专项",
+          "fieldLabel": "涉及安全专项",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 230,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "data_involved_flag",
+          "fieldName": "涉及数据专项",
+          "fieldLabel": "涉及数据专项",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 240,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "security_requirements",
+          "fieldName": "安全要求",
+          "fieldLabel": "安全要求",
+          "fieldType": "TEXT",
+          "sortOrder": 250,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${security_involved_flag} == true\",\"requiredRule\":\"${security_involved_flag} == true\"}}"
+        },
+        {
+          "fieldCode": "data_scope",
+          "fieldName": "数据范围",
+          "fieldLabel": "数据范围",
+          "fieldType": "TEXT",
+          "sortOrder": 260,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 16,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${data_involved_flag} == true\",\"requiredRule\":\"${data_involved_flag} == true\"}}"
+        },
+        {
+          "fieldCode": "data_classification",
+          "fieldName": "最高数据等级",
+          "fieldLabel": "最高数据等级",
+          "fieldType": "SELECT",
+          "sortOrder": 270,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${data_involved_flag} == true\",\"requiredRule\":\"${data_involved_flag} == true\"}}"
+        },
+        {
+          "fieldCode": "initial_requirement_links",
+          "fieldName": "初始需求范围",
+          "fieldLabel": "初始需求范围",
+          "fieldType": "SUB_FORM_LIST",
+          "sortOrder": 280,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "sub_form_list",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "initial_system_links",
+          "fieldName": "初始系统范围",
+          "fieldLabel": "初始系统范围",
+          "fieldType": "SUB_FORM_LIST",
+          "sortOrder": 290,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "sub_form_list",
+          "gridSpan": 24,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${project_type} != 'RESEARCH'\",\"requiredRule\":\"${project_type} != 'RESEARCH'\"}}"
+        }
+      ],
+      "nodes": []
+    },
+    {
+      "formName": "项目治理评审表单",
+      "formKey": "project_governance_review",
+      "description": "PMO及专业评审补充治理结论。",
+      "layoutType": "grid",
+      "isDefault": false,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2}",
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "项目编号",
+          "fieldLabel": "项目编号",
+          "fieldType": "STRING",
+          "sortOrder": 10,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "input",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "name",
+          "fieldName": "项目名称",
+          "fieldLabel": "项目名称",
+          "fieldType": "STRING",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "input",
+          "gridSpan": 16
+        },
+        {
+          "fieldCode": "project_type",
+          "fieldName": "项目类型",
+          "fieldLabel": "项目类型",
+          "fieldType": "SELECT",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_level",
+          "fieldName": "项目级别",
+          "fieldLabel": "项目级别",
+          "fieldType": "SELECT",
+          "sortOrder": 40,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "priority",
+          "fieldName": "项目优先级",
+          "fieldLabel": "项目优先级",
+          "fieldType": "SELECT",
+          "sortOrder": 50,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "risk_level",
+          "fieldName": "风险等级",
+          "fieldLabel": "风险等级",
+          "fieldType": "SELECT",
+          "sortOrder": 60,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_start_date",
+          "fieldName": "计划开始日期",
+          "fieldLabel": "计划开始日期",
+          "fieldType": "DATE",
+          "sortOrder": 70,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划结束日期",
+          "fieldLabel": "计划结束日期",
+          "fieldType": "DATE",
+          "sortOrder": 80,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_objective",
+          "fieldName": "项目目标",
+          "fieldLabel": "项目目标",
+          "fieldType": "TEXT",
+          "sortOrder": 90,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "scope_in",
+          "fieldName": "项目范围内",
+          "fieldLabel": "项目范围内",
+          "fieldType": "TEXT",
+          "sortOrder": 100,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "initial_requirement_links",
+          "fieldName": "初始需求范围",
+          "fieldLabel": "初始需求范围",
+          "fieldType": "SUB_FORM_LIST",
+          "sortOrder": 110,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "sub_form_list",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "initial_system_links",
+          "fieldName": "初始系统范围",
+          "fieldLabel": "初始系统范围",
+          "fieldType": "SUB_FORM_LIST",
+          "sortOrder": 120,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "sub_form_list",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "pmo_review_summary",
+          "fieldName": "PMO治理意见",
+          "fieldLabel": "PMO治理意见",
+          "fieldType": "TEXT",
+          "sortOrder": 130,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        }
+      ],
+      "nodes": []
+    },
+    {
+      "formName": "项目立项详情表单",
+      "formKey": "project_detail",
+      "description": "审批和台账查看使用。",
+      "layoutType": "grid",
+      "isDefault": false,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2,\"readonly\":true}",
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "项目编号",
+          "fieldLabel": "项目编号",
+          "fieldType": "STRING",
+          "sortOrder": 10,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "input",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "name",
+          "fieldName": "项目名称",
+          "fieldLabel": "项目名称",
+          "fieldType": "STRING",
+          "sortOrder": 20,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "input",
+          "gridSpan": 16
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "fieldLabel": "状态",
+          "fieldType": "STRING",
+          "sortOrder": 30,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "input",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_type",
+          "fieldName": "项目类型",
+          "fieldLabel": "项目类型",
+          "fieldType": "SELECT",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_level",
+          "fieldName": "项目级别",
+          "fieldLabel": "项目级别",
+          "fieldType": "SELECT",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_group_id",
+          "fieldName": "所属项目群",
+          "fieldLabel": "所属项目群",
+          "fieldType": "REFERENCE",
+          "sortOrder": 40,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 8,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${project_level} == 'ENTERPRISE'\",\"requiredRule\":\"${project_level} == 'ENTERPRISE'\"}}"
+        },
+        {
+          "fieldCode": "applicant_id",
+          "fieldName": "申请人",
+          "fieldLabel": "申请人",
+          "fieldType": "USER",
+          "sortOrder": 50,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "applicant_dept_id",
+          "fieldName": "申请部门",
+          "fieldLabel": "申请部门",
+          "fieldType": "DEPT",
+          "sortOrder": 60,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "dept",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "sponsor_dept_id",
+          "fieldName": "发起部门",
+          "fieldLabel": "发起部门",
+          "fieldType": "DEPT",
+          "sortOrder": 70,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "dept",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_sponsor_id",
+          "fieldName": "项目发起人",
+          "fieldLabel": "项目发起人",
+          "fieldType": "USER",
+          "sortOrder": 80,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "business_owner_id",
+          "fieldName": "业务负责人",
+          "fieldLabel": "业务负责人",
+          "fieldType": "USER",
+          "sortOrder": 90,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "project_manager_id",
+          "fieldName": "项目经理",
+          "fieldLabel": "项目经理",
+          "fieldType": "USER",
+          "sortOrder": 100,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "product_owner_id",
+          "fieldName": "产品负责人",
+          "fieldLabel": "产品负责人",
+          "fieldType": "USER",
+          "sortOrder": 110,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "user",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "priority",
+          "fieldName": "项目优先级",
+          "fieldLabel": "项目优先级",
+          "fieldType": "SELECT",
+          "sortOrder": 120,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "risk_level",
+          "fieldName": "风险等级",
+          "fieldLabel": "风险等级",
+          "fieldType": "SELECT",
+          "sortOrder": 130,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_start_date",
+          "fieldName": "计划开始日期",
+          "fieldLabel": "计划开始日期",
+          "fieldType": "DATE",
+          "sortOrder": 140,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划结束日期",
+          "fieldLabel": "计划结束日期",
+          "fieldType": "DATE",
+          "sortOrder": 150,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "project_background",
+          "fieldName": "项目背景",
+          "fieldLabel": "项目背景",
+          "fieldType": "TEXT",
+          "sortOrder": 160,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "project_objective",
+          "fieldName": "项目目标",
+          "fieldLabel": "项目目标",
+          "fieldType": "TEXT",
+          "sortOrder": 170,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "scope_in",
+          "fieldName": "项目范围内",
+          "fieldLabel": "项目范围内",
+          "fieldType": "TEXT",
+          "sortOrder": 180,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "scope_out",
+          "fieldName": "项目范围外",
+          "fieldLabel": "项目范围外",
+          "fieldType": "TEXT",
+          "sortOrder": 190,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "expected_deliverables",
+          "fieldName": "预期交付物",
+          "fieldLabel": "预期交付物",
+          "fieldType": "TEXT",
+          "sortOrder": 200,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "success_metrics",
+          "fieldName": "成功指标",
+          "fieldLabel": "成功指标",
+          "fieldType": "TEXT",
+          "sortOrder": 210,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "cross_system_flag",
+          "fieldName": "是否跨系统",
+          "fieldLabel": "是否跨系统",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 220,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "security_involved_flag",
+          "fieldName": "涉及安全专项",
+          "fieldLabel": "涉及安全专项",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 230,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "data_involved_flag",
+          "fieldName": "涉及数据专项",
+          "fieldLabel": "涉及数据专项",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 240,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "security_requirements",
+          "fieldName": "安全要求",
+          "fieldLabel": "安全要求",
+          "fieldType": "TEXT",
+          "sortOrder": 250,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${security_involved_flag} == true\",\"requiredRule\":\"${security_involved_flag} == true\"}}"
+        },
+        {
+          "fieldCode": "data_scope",
+          "fieldName": "数据范围",
+          "fieldLabel": "数据范围",
+          "fieldType": "TEXT",
+          "sortOrder": 260,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 16,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${data_involved_flag} == true\",\"requiredRule\":\"${data_involved_flag} == true\"}}"
+        },
+        {
+          "fieldCode": "data_classification",
+          "fieldName": "最高数据等级",
+          "fieldLabel": "最高数据等级",
+          "fieldType": "SELECT",
+          "sortOrder": 270,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 8,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${data_involved_flag} == true\",\"requiredRule\":\"${data_involved_flag} == true\"}}"
+        },
+        {
+          "fieldCode": "initial_requirement_links",
+          "fieldName": "初始需求范围",
+          "fieldLabel": "初始需求范围",
+          "fieldType": "SUB_FORM_LIST",
+          "sortOrder": 280,
+          "isRequired": 1,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "sub_form_list",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "initial_system_links",
+          "fieldName": "初始系统范围",
+          "fieldLabel": "初始系统范围",
+          "fieldType": "SUB_FORM_LIST",
+          "sortOrder": 290,
+          "isRequired": 0,
+          "isReadonly": 1,
+          "isHidden": 0,
+          "componentType": "sub_form_list",
+          "gridSpan": 24,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${project_type} != 'RESEARCH'\",\"requiredRule\":\"${project_type} != 'RESEARCH'\"}}"
+        }
+      ],
+      "nodes": []
+    }
+  ],
+  "lists": [
+    {
+      "listKey": "all",
+      "listName": "项目台账",
+      "description": "本人发起、负责或参与治理的项目。",
+      "isDefault": true,
+      "dataScopeMode": "INHERIT",
+      "allowedScenes": [
+        "PAGE",
+        "SELECTION"
+      ],
+      "selectionConfig": {
+        "selectionMode": "MULTIPLE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [
+        {
+          "key": "create",
+          "type": "built-in",
+          "label": "申请立项",
+          "icon": "Plus",
+          "buttonType": "primary",
+          "sort": 1,
+          "enabled": true
+        }
+      ],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        },
+        {
+          "key": "edit",
+          "type": "built-in",
+          "label": "编辑",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 2,
+          "enabled": true
+        },
+        {
+          "key": "approve",
+          "type": "built-in",
+          "label": "审批",
+          "buttonType": "warning",
+          "link": true,
+          "sort": 3,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {},
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "项目编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "name",
+          "fieldName": "项目名称",
+          "sortOrder": 20,
+          "width": 240,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_type",
+          "fieldName": "项目类型",
+          "sortOrder": 30,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_level",
+          "fieldName": "项目级别",
+          "sortOrder": 40,
+          "width": 110,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_manager_id",
+          "fieldName": "项目经理",
+          "sortOrder": 50,
+          "width": 130,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "business_owner_id",
+          "fieldName": "业务负责人",
+          "sortOrder": 60,
+          "width": 130,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "priority",
+          "fieldName": "优先级",
+          "sortOrder": 70,
+          "width": 90,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "risk_level",
+          "fieldName": "风险",
+          "sortOrder": 80,
+          "width": 90,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划结束",
+          "sortOrder": 90,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "sortOrder": 100,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "IN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "currentTaskName",
+          "fieldName": "当前环节",
+          "sortOrder": 110,
+          "width": 160,
+          "showInList": true,
+          "isQuery": false,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    },
+    {
+      "listKey": "my_pending",
+      "listName": "我的立项待办",
+      "description": "当前办理人为当前用户的项目立项。",
+      "isDefault": false,
+      "dataScopeMode": "NARROW",
+      "allowedScenes": [
+        "PAGE"
+      ],
+      "selectionConfig": {
+        "selectionMode": "NONE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        },
+        {
+          "key": "approve",
+          "type": "built-in",
+          "label": "审批",
+          "buttonType": "warning",
+          "link": true,
+          "sort": 2,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {},
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "项目编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "name",
+          "fieldName": "项目名称",
+          "sortOrder": 20,
+          "width": 260,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_type",
+          "fieldName": "项目类型",
+          "sortOrder": 30,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_manager_id",
+          "fieldName": "项目经理",
+          "sortOrder": 40,
+          "width": 130,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "currentTaskName",
+          "fieldName": "当前环节",
+          "sortOrder": 50,
+          "width": 170,
+          "showInList": true,
+          "isQuery": false,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "submitterName",
+          "fieldName": "提交人",
+          "sortOrder": 60,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "submitTime",
+          "fieldName": "提交时间",
+          "sortOrder": 70,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    },
+    {
+      "listKey": "approved",
+      "listName": "已批准项目",
+      "description": "已批准及后续生命周期项目。",
+      "isDefault": false,
+      "dataScopeMode": "NARROW",
+      "allowedScenes": [
+        "PAGE",
+        "SELECTION"
+      ],
+      "selectionConfig": {
+        "selectionMode": "MULTIPLE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {
+        "status": [
+          "APPROVED",
+          "ACTIVE",
+          "PAUSED",
+          "ACCEPTING",
+          "CLOSING",
+          "CLOSED"
+        ]
+      },
+      "contextBindingConfig": {},
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "项目编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "name",
+          "fieldName": "项目名称",
+          "sortOrder": 20,
+          "width": 260,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_type",
+          "fieldName": "项目类型",
+          "sortOrder": 30,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_manager_id",
+          "fieldName": "项目经理",
+          "sortOrder": 40,
+          "width": 130,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "completion_percentage",
+          "fieldName": "完成比例",
+          "sortOrder": 50,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "right",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "current_baseline_version",
+          "fieldName": "基线版本",
+          "sortOrder": 60,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "right",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划结束",
+          "sortOrder": 70,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "sortOrder": 80,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "IN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    }
+  ],
+  "scopePolicies": [
+    {
+      "policyKey": "project_creator",
+      "policyName": "本人创建的项目",
+      "description": "创建人可以查看本人创建的项目。",
+      "presetCode": "CREATOR",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\"}",
+      "enabled": 1,
+      "version": 1
+    },
+    {
+      "policyKey": "project_manager_scope",
+      "policyName": "项目经理负责的项目",
+      "description": "项目经理字段为当前用户的数据。",
+      "presetCode": "PROJECT_MANAGER",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\",\"fieldMapping\":{\"userField\":\"project_manager_id\",\"deptField\":\"dept_id\",\"statusField\":\"status\"}}",
+      "enabled": 1,
+      "version": 1
+    },
+    {
+      "policyKey": "project_business_owner_scope",
+      "policyName": "业务负责人项目",
+      "description": "业务负责人字段为当前用户的数据。",
+      "presetCode": "BUSINESS_OWNER",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\",\"fieldMapping\":{\"userField\":\"business_owner_id\",\"deptField\":\"dept_id\",\"statusField\":\"status\"}}",
+      "enabled": 1,
+      "version": 1
+    },
+    {
+      "policyKey": "project_current_assignee",
+      "policyName": "当前待办项目",
+      "description": "当前审批人为当前用户的数据。",
+      "presetCode": "CURRENT_ASSIGNEE",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\",\"fieldMapping\":{\"userField\":\"current_task_assignee\",\"deptField\":\"dept_id\",\"statusField\":\"status\"}}",
+      "enabled": 1,
+      "version": 1
+    }
+  ],
+  "scopeBindings": [
+    {
+      "policyKey": "project_creator",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_manager_scope",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_business_owner_scope",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_current_assignee",
+      "listKey": "my_pending",
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_manager_scope",
+      "listKey": "approved",
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_business_owner_scope",
+      "listKey": "approved",
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    }
+  ],
+  "menus": [
+    {
+      "menuName": "项目台账",
+      "menuType": "C",
+      "icon": "FolderOpened",
+      "sort": 50,
+      "path": "/entity-list/project/all",
+      "component": "entity/EntityListRuntime",
+      "perm": "entity:project:list",
+      "status": "0",
+      "visible": "0",
+      "isFrame": "0",
+      "isCache": "0",
+      "resourceType": "ENTITY_LIST",
+      "listKey": "all",
+      "parentPath": "/project-management"
+    },
+    {
+      "menuName": "我的立项待办",
+      "menuType": "C",
+      "icon": "Clock",
+      "sort": 51,
+      "path": "/entity-list/project/my_pending",
+      "component": "entity/EntityListRuntime",
+      "perm": "entity:project:list",
+      "status": "0",
+      "visible": "0",
+      "isFrame": "0",
+      "isCache": "0",
+      "resourceType": "ENTITY_LIST",
+      "listKey": "my_pending",
+      "parentPath": "/project-management"
+    },
+    {
+      "menuName": "已批准项目",
+      "menuType": "C",
+      "icon": "CircleCheck",
+      "sort": 52,
+      "path": "/entity-list/project/approved",
+      "component": "entity/EntityListRuntime",
+      "perm": "entity:project:list",
+      "status": "0",
+      "visible": "0",
+      "isFrame": "0",
+      "isCache": "0",
+      "resourceType": "ENTITY_LIST",
+      "listKey": "approved",
+      "parentPath": "/project-management"
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project_group",
+      "required": true,
+      "reason": "项目群归属"
+    },
+    {
+      "type": "ENTITY",
+      "key": "requirement_project_link",
+      "required": true,
+      "reason": "初始需求范围"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_system_link",
+      "required": true,
+      "reason": "初始系统范围"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_member",
+      "required": true,
+      "reason": "关键人员初始化"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_role_assignment",
+      "required": true,
+      "reason": "关键角色初始化"
+    },
+    {
+      "type": "PROCESS",
+      "key": "project_initiation_process",
+      "required": true,
+      "reason": "项目立项审批流程"
+    }
+  ]
+}

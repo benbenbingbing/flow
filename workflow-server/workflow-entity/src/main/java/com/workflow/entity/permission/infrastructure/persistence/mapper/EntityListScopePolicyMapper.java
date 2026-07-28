@@ -3,6 +3,7 @@ package com.workflow.entity.permission.infrastructure.persistence.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -25,4 +26,14 @@ public interface EntityListScopePolicyMapper extends BaseMapper<EntityListScopeP
     @Select("SELECT * FROM entity_list_scope_policy "
             + "WHERE entity_code = #{entityCode} AND deleted = 0 ORDER BY create_time ASC")
     List<EntityListScopePolicy> findByEntityCode(@Param("entityCode") String entityCode);
+
+    /**
+     * 清理已由发布快照承载历史的旧逻辑删除记录，避免唯一索引在重复导入时冲突。
+     *
+     * @param entityCode 实体编码
+     * @return 删除行数
+     */
+    @Delete("DELETE FROM entity_list_scope_policy "
+            + "WHERE entity_code = #{entityCode} AND deleted = 1")
+    int purgeDeletedByEntityCode(@Param("entityCode") String entityCode);
 }

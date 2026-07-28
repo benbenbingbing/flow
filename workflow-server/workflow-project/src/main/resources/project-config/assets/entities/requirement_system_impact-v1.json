@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 1,
+  "assetType": "ENTITY",
+  "businessKey": "requirement_system_impact",
+  "assetName": "需求系统影响",
+  "definition": {
+    "entityCode": "requirement_system_impact",
+    "entityName": "需求系统影响",
+    "description": "记录一条需求对一个既有系统或拟建系统的影响评估。",
+    "lifecycleMode": "STANDALONE",
+    "storageMode": "DYNAMIC",
+    "processKey": null
+  },
+  "fields": [
+    {
+      "fieldCode": "requirement_id",
+      "fieldName": "需求",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "fieldLength": 64,
+      "isRequired": true,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "requirement",
+      "sortOrder": 20
+    },
+    {
+      "fieldCode": "system_scope_type",
+      "fieldName": "系统范围类型",
+      "fieldType": "SELECT",
+      "dbType": "varchar(20)",
+      "fieldLength": 20,
+      "isRequired": true,
+      "defaultValue": "EXISTING",
+      "optionsJson": "[{\"label\":\"既有系统\",\"value\":\"EXISTING\"},{\"label\":\"拟建新系统\",\"value\":\"PROPOSED_NEW\"},{\"label\":\"待确认\",\"value\":\"TBD\"}]",
+      "sortOrder": 30
+    },
+    {
+      "fieldCode": "system_id",
+      "fieldName": "涉及系统",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "fieldLength": 64,
+      "isRequired": false,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "system_asset",
+      "sortOrder": 40
+    },
+    {
+      "fieldCode": "proposed_system_name",
+      "fieldName": "拟建系统名称",
+      "fieldType": "STRING",
+      "dbType": "varchar(200)",
+      "fieldLength": 200,
+      "isRequired": false,
+      "sortOrder": 50
+    },
+    {
+      "fieldCode": "impact_type",
+      "fieldName": "影响类型",
+      "fieldType": "MULTI_SELECT",
+      "dbType": "varchar(500)",
+      "fieldLength": 500,
+      "isRequired": true,
+      "optionsJson": "[{\"label\":\"功能改造\",\"value\":\"FUNCTION\"},{\"label\":\"接口改造\",\"value\":\"INTERFACE\"},{\"label\":\"数据改造\",\"value\":\"DATA\"},{\"label\":\"部署变更\",\"value\":\"DEPLOYMENT\"},{\"label\":\"安全整改\",\"value\":\"SECURITY\"},{\"label\":\"系统下线\",\"value\":\"RETIREMENT\"}]",
+      "sortOrder": 60
+    },
+    {
+      "fieldCode": "affected_modules",
+      "fieldName": "影响模块",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 70
+    },
+    {
+      "fieldCode": "interface_impact",
+      "fieldName": "接口影响",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 80
+    },
+    {
+      "fieldCode": "data_impact",
+      "fieldName": "数据影响",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 90
+    },
+    {
+      "fieldCode": "deployment_impact",
+      "fieldName": "部署影响",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 100
+    },
+    {
+      "fieldCode": "risk_level",
+      "fieldName": "影响风险",
+      "fieldType": "SELECT",
+      "dbType": "varchar(10)",
+      "fieldLength": 10,
+      "isRequired": true,
+      "defaultValue": "MEDIUM",
+      "optionsJson": "[{\"label\":\"低\",\"value\":\"LOW\"},{\"label\":\"中\",\"value\":\"MEDIUM\"},{\"label\":\"高\",\"value\":\"HIGH\"},{\"label\":\"极高\",\"value\":\"CRITICAL\"}]",
+      "sortOrder": 110
+    },
+    {
+      "fieldCode": "system_owner_id",
+      "fieldName": "系统评估负责人",
+      "fieldType": "USER",
+      "dbType": "varchar(64)",
+      "fieldLength": 64,
+      "isRequired": false,
+      "refEntityType": "USER",
+      "sortOrder": 120
+    },
+    {
+      "fieldCode": "assessment_conclusion",
+      "fieldName": "评估结论",
+      "fieldType": "SELECT",
+      "dbType": "varchar(30)",
+      "fieldLength": 30,
+      "isRequired": false,
+      "optionsJson": "[{\"label\":\"可实施\",\"value\":\"FEASIBLE\"},{\"label\":\"有条件可实施\",\"value\":\"CONDITIONAL\"},{\"label\":\"建议复用现有能力\",\"value\":\"REUSE\"},{\"label\":\"不建议实施\",\"value\":\"NOT_RECOMMENDED\"},{\"label\":\"待补充材料\",\"value\":\"NEED_MORE_INFO\"}]",
+      "sortOrder": 130
+    },
+    {
+      "fieldCode": "assessment_comment",
+      "fieldName": "评估意见",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 140
+    },
+    {
+      "fieldCode": "effective_at",
+      "fieldName": "生效时间",
+      "fieldType": "DATETIME",
+      "dbType": "datetime",
+      "isRequired": false,
+      "sortOrder": 150
+    },
+    {
+      "fieldCode": "invalid_at",
+      "fieldName": "失效时间",
+      "fieldType": "DATETIME",
+      "dbType": "datetime",
+      "isRequired": false,
+      "sortOrder": 160
+    }
+  ],
+  "relations": [],
+  "statuses": [
+    {"statusCode":"ACTIVE","statusName":"有效","statusCategory":"NEW","sortOrder":10,"color":"#67C23A"},
+    {"statusCode":"INVALID","statusName":"已失效","statusCategory":"TERMINATED","sortOrder":20,"color":"#909399"}
+  ],
+  "codeRule": {
+    "prefix": "REQIMP",
+    "dateFormat": "yyyyMMdd",
+    "seqLength": 5,
+    "seqType": "DAY",
+    "currentSeq": 0,
+    "seqDate": "",
+    "example": "REQIMP2026072700001"
+  },
+  "extensions": [],
+  "dataSources": [],
+  "forms": [
+    {
+      "formName": "需求系统影响子表单",
+      "formKey": "requirement_system_impact_default",
+      "description": "嵌入需求申请表单的系统影响明细。",
+      "layoutType": "grid",
+      "isDefault": true,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":120,\"columns\":2}",
+      "fields": [
+        {"fieldCode":"system_scope_type","fieldName":"系统范围类型","fieldLabel":"系统范围类型","fieldType":"SELECT","sortOrder":10,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8},
+        {"fieldCode":"system_id","fieldName":"涉及系统","fieldLabel":"涉及系统","fieldType":"REFERENCE","sortOrder":20,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"reference","gridSpan":16,"componentProps":"{\"linkageRules\":{\"visibilityRule\":\"${system_scope_type} == 'EXISTING'\",\"requiredRule\":\"${system_scope_type} == 'EXISTING'\"}}"},
+        {"fieldCode":"proposed_system_name","fieldName":"拟建系统名称","fieldLabel":"拟建系统名称","fieldType":"STRING","sortOrder":30,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"input","gridSpan":16,"componentProps":"{\"linkageRules\":{\"visibilityRule\":\"${system_scope_type} == 'PROPOSED_NEW'\",\"requiredRule\":\"${system_scope_type} == 'PROPOSED_NEW'\"}}"},
+        {"fieldCode":"impact_type","fieldName":"影响类型","fieldLabel":"影响类型","fieldType":"MULTI_SELECT","sortOrder":40,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"select_multiple","gridSpan":24},
+        {"fieldCode":"affected_modules","fieldName":"影响模块","fieldLabel":"影响模块","fieldType":"TEXT","sortOrder":50,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24},
+        {"fieldCode":"interface_impact","fieldName":"接口影响","fieldLabel":"接口影响","fieldType":"TEXT","sortOrder":60,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24},
+        {"fieldCode":"data_impact","fieldName":"数据影响","fieldLabel":"数据影响","fieldType":"TEXT","sortOrder":70,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24},
+        {"fieldCode":"deployment_impact","fieldName":"部署影响","fieldLabel":"部署影响","fieldType":"TEXT","sortOrder":80,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24},
+        {"fieldCode":"risk_level","fieldName":"影响风险","fieldLabel":"影响风险","fieldType":"SELECT","sortOrder":90,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8},
+        {"fieldCode":"system_owner_id","fieldName":"系统评估负责人","fieldLabel":"系统评估负责人","fieldType":"USER","sortOrder":100,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"user","gridSpan":16},
+        {"fieldCode":"assessment_conclusion","fieldName":"评估结论","fieldLabel":"评估结论","fieldType":"SELECT","sortOrder":110,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8},
+        {"fieldCode":"assessment_comment","fieldName":"评估意见","fieldLabel":"评估意见","fieldType":"TEXT","sortOrder":120,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24}
+      ],
+      "nodes": []
+    }
+  ],
+  "lists": [
+    {
+      "listKey": "all",
+      "listName": "需求系统影响明细",
+      "description": "仅用于嵌入式关系查看和数据核对。",
+      "isDefault": true,
+      "dataScopeMode": "INHERIT",
+      "allowedScenes": ["EMBEDDED","SELECTION"],
+      "selectionConfig": {"selectionMode":"MULTIPLE","valueField":"id","returnMappings":[]},
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {"key":"view","type":"built-in","label":"查看","buttonType":"primary","link":true,"sort":1,"enabled":true},
+        {"key":"edit","type":"built-in","label":"维护","buttonType":"primary","link":true,"sort":2,"enabled":true}
+      ],
+      "viewConfig": {"density":"compact","showIndex":true},
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {"parentField":"requirement_id"},
+      "fields": [
+        {"fieldCode":"system_scope_type","fieldName":"范围类型","sortOrder":10,"width":110,"showInList":true,"isQuery":true,"queryType":"EQ","align":"center","dataSourceType":"ENTITY_FIELD"},
+        {"fieldCode":"system_id","fieldName":"涉及系统","sortOrder":20,"width":180,"showInList":true,"isQuery":true,"queryType":"EQ","align":"left","dataSourceType":"ENTITY_FIELD"},
+        {"fieldCode":"proposed_system_name","fieldName":"拟建系统","sortOrder":30,"width":180,"showInList":true,"isQuery":true,"queryType":"LIKE","align":"left","dataSourceType":"ENTITY_FIELD"},
+        {"fieldCode":"impact_type","fieldName":"影响类型","sortOrder":40,"width":180,"showInList":true,"isQuery":true,"queryType":"IN","align":"left","dataSourceType":"ENTITY_FIELD"},
+        {"fieldCode":"risk_level","fieldName":"风险等级","sortOrder":50,"width":100,"showInList":true,"isQuery":true,"queryType":"EQ","align":"center","dataSourceType":"ENTITY_FIELD"},
+        {"fieldCode":"assessment_conclusion","fieldName":"评估结论","sortOrder":60,"width":140,"showInList":true,"isQuery":true,"queryType":"EQ","align":"center","dataSourceType":"ENTITY_FIELD"}
+      ]
+    }
+  ],
+  "scopePolicies": [
+    {
+      "policyKey": "requirement_impact_personal",
+      "policyName": "需求影响参与数据",
+      "description": "本人创建或本人提交的系统影响数据。",
+      "presetCode": "PERSONAL_OR_OWNER",
+      "filterConfig": "{\"version\":1,\"type\":\"RULE\",\"root\":{\"type\":\"GROUP\",\"logic\":\"OR\",\"children\":[{\"type\":\"RELATION\",\"relation\":\"CURRENT_USER_IS_CREATOR\"},{\"type\":\"RELATION\",\"relation\":\"CURRENT_USER_IS_SUBMITTER\"}]}}",
+      "enabled": 1,
+      "version": 1
+    },
+    {
+      "policyKey": "requirement_impact_system_owner",
+      "policyName": "系统评估负责人影响数据",
+      "description": "系统评估负责人字段为当前用户的数据。",
+      "presetCode": "SYSTEM_OWNER",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\",\"fieldMapping\":{\"userField\":\"system_owner_id\",\"deptField\":\"dept_id\",\"statusField\":\"status\"}}",
+      "enabled": 1,
+      "version": 1
+    }
+  ],
+  "scopeBindings": [
+    {
+      "policyKey": "requirement_impact_personal",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "requirement_impact_system_owner",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    }
+  ],
+  "menus": [],
+  "dependencies": [
+    {"type":"ENTITY","key":"requirement","required":true,"reason":"需求主记录引用"},
+    {"type":"ENTITY","key":"system_asset","required":true,"reason":"系统资产引用"}
+  ]
+}

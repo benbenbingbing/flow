@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "assetType": "PROCESS",
+  "businessKey": "project_initiation_process",
+  "assetName": "项目立项审批",
+  "definition": {
+    "processKey": "project_initiation_process",
+    "processName": "项目立项审批",
+    "description": "业务、PMO、系统、架构、安全、数据和项目发起人条件审批；批准后初始化项目治理关系。",
+    "category": "PROJECT_MANAGEMENT"
+  },
+  "bpmnFile": "project-config/bpmn/project-initiation.bpmn20.xml",
+  "nodes": [
+    {
+      "nodeId": "business_review",
+      "nodeName": "业务负责人审核",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟业务负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO立项评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟PMO",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "system_owner_review",
+      "nodeName": "关联系统负责人会签",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟系统负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "architecture_review",
+      "nodeName": "企业架构评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟企业架构师",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全专项评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟安全负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "data_review",
+      "nodeName": "数据专项评审",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟数据负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "sponsor_review",
+      "nodeName": "项目发起人最终批准",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟项目发起人",
+          "priority": 0
+        }
+      ]
+    }
+  ],
+  "nodeForms": [
+    {
+      "nodeId": "business_review",
+      "nodeName": "业务负责人审核",
+      "formRef": "wf-form://project/project_detail",
+      "isReadonly": 1,
+      "sortOrder": 10
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO立项评审",
+      "formRef": "wf-form://project/project_governance_review",
+      "isReadonly": 0,
+      "sortOrder": 20
+    },
+    {
+      "nodeId": "system_owner_review",
+      "nodeName": "关联系统负责人会签",
+      "formRef": "wf-form://project/project_detail",
+      "isReadonly": 1,
+      "sortOrder": 30
+    },
+    {
+      "nodeId": "architecture_review",
+      "nodeName": "企业架构评审",
+      "formRef": "wf-form://project/project_governance_review",
+      "isReadonly": 0,
+      "sortOrder": 40
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全专项评审",
+      "formRef": "wf-form://project/project_governance_review",
+      "isReadonly": 0,
+      "sortOrder": 50
+    },
+    {
+      "nodeId": "data_review",
+      "nodeName": "数据专项评审",
+      "formRef": "wf-form://project/project_governance_review",
+      "isReadonly": 0,
+      "sortOrder": 60
+    },
+    {
+      "nodeId": "sponsor_review",
+      "nodeName": "项目发起人最终批准",
+      "formRef": "wf-form://project/project_detail",
+      "isReadonly": 1,
+      "sortOrder": 70
+    }
+  ],
+  "nodeApprovals": [
+    {
+      "nodeId": "business_review",
+      "nodeName": "业务负责人审核",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"确认目标与范围\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO立项评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"PMO审核通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "system_owner_review",
+      "nodeName": "关联系统负责人会签",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"系统范围通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "architecture_review",
+      "nodeName": "企业架构评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"架构方案可行\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全专项评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"安全要求通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "data_review",
+      "nodeName": "数据专项评审",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"数据方案通过\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "sponsor_review",
+      "nodeName": "项目发起人最终批准",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"批准立项\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不批准立项\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    }
+  ],
+  "flowActions": [
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_STARTED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": "{\"maxRetries\":0}",
+      "actionName": "立项跨实体门禁检查",
+      "description": "校验需求状态与分配比例、系统状态、日期和关键人员。",
+      "interfaceName": "validateProjectInitiationHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 10,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":5,\"initialDelaySeconds\":10,\"maxDelaySeconds\":300}",
+      "actionName": "批准后初始化项目治理关系",
+      "description": "激活需求和系统关系，创建关键成员及角色分配。",
+      "interfaceName": "applyProjectInitiationHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 20,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3,\"initialDelaySeconds\":30,\"maxDelaySeconds\":300}",
+      "actionName": "发送项目立项结果通知",
+      "description": "流程完成后发送结果通知。",
+      "interfaceName": "sendNotificationHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"templateCode\":\"PROJECT_INITIATION_RESULT\",\"notifyType\":\"in_app\",\"receiverExpr\":\"${submitterId}\"}",
+      "sortOrder": 30,
+      "enabled": true,
+      "status": "DRAFT"
+    }
+  ],
+  "statusMappings": [
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_start_business",
+      "sourceNodeId": "start",
+      "sourceNodeName": "提交项目立项",
+      "targetNodeId": "business_review",
+      "targetNodeName": "业务负责人审核",
+      "entityStatus": "PENDING_APPROVAL",
+      "entityStatusCode": "PENDING_APPROVAL",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 10
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_business_reject",
+      "sourceNodeId": "business_result",
+      "sourceNodeName": "业务审核结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 20
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_pmo_reject",
+      "sourceNodeId": "pmo_result",
+      "sourceNodeName": "PMO评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 30
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_system_reject",
+      "sourceNodeId": "system_result",
+      "sourceNodeName": "系统会签结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 40
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_architecture_reject",
+      "sourceNodeId": "architecture_result",
+      "sourceNodeName": "架构评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 50
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_security_reject",
+      "sourceNodeId": "security_result",
+      "sourceNodeName": "安全评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 60
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_data_reject",
+      "sourceNodeId": "data_result",
+      "sourceNodeName": "数据评审结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 70
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_sponsor_reject",
+      "sourceNodeId": "sponsor_result",
+      "sourceNodeName": "发起人审批结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "立项已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 80
+    },
+    {
+      "entityCode": "project",
+      "sequenceFlowId": "flow_sponsor_approve",
+      "sourceNodeId": "sponsor_result",
+      "sourceNodeName": "发起人审批结果",
+      "targetNodeId": "end_approved",
+      "targetNodeName": "立项已批准",
+      "entityStatus": "APPROVED",
+      "entityStatusCode": "APPROVED",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 100
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project",
+      "required": true,
+      "reason": "实体状态映射"
+    },
+    {
+      "type": "FORM",
+      "key": "wf-form://project/project_detail",
+      "required": true,
+      "reason": "审批详情表单"
+    },
+    {
+      "type": "FORM",
+      "key": "wf-form://project/project_governance_review",
+      "required": true,
+      "reason": "治理评审表单"
+    },
+    {
+      "type": "USER",
+      "key": "admin",
+      "required": true,
+      "reason": "单账号模拟审批人"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "validateProjectInitiationHandler",
+      "required": true,
+      "reason": "跨实体立项门禁"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "applyProjectInitiationHandler",
+      "required": true,
+      "reason": "批准后初始化关系"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "sendNotificationHandler",
+      "required": true,
+      "reason": "流程完成通知"
+    }
+  ]
+}

@@ -1,0 +1,580 @@
+{
+  "schemaVersion": 1,
+  "assetType": "ENTITY",
+  "businessKey": "project_role_assignment",
+  "assetName": "项目角色分配",
+  "definition": {
+    "entityCode": "project_role_assignment",
+    "entityName": "项目角色分配",
+    "description": "记录项目成员在项目、系统或发布范围内承担的角色。",
+    "lifecycleMode": "STANDALONE",
+    "storageMode": "DYNAMIC",
+    "processKey": null
+  },
+  "fields": [
+    {
+      "fieldCode": "project_id",
+      "fieldName": "项目",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 20,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project"
+    },
+    {
+      "fieldCode": "system_id",
+      "fieldName": "系统",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 30,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "system_asset"
+    },
+    {
+      "fieldCode": "release_id",
+      "fieldName": "发布",
+      "fieldType": "STRING",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 40,
+      "fieldLength": 64
+    },
+    {
+      "fieldCode": "member_id",
+      "fieldName": "项目成员",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 50,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_member"
+    },
+    {
+      "fieldCode": "user_id",
+      "fieldName": "人员",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 60,
+      "fieldLength": 64,
+      "refEntityType": "USER"
+    },
+    {
+      "fieldCode": "role_catalog_id",
+      "fieldName": "角色目录",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 70,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_role_catalog"
+    },
+    {
+      "fieldCode": "role_code",
+      "fieldName": "角色编码",
+      "fieldType": "STRING",
+      "dbType": "varchar(50)",
+      "isRequired": true,
+      "sortOrder": 80,
+      "fieldLength": 50
+    },
+    {
+      "fieldCode": "role_scope",
+      "fieldName": "角色作用域",
+      "fieldType": "SELECT",
+      "dbType": "varchar(20)",
+      "isRequired": true,
+      "sortOrder": 90,
+      "fieldLength": 20,
+      "optionsJson": "[{\"label\":\"项目\",\"value\":\"PROJECT\"},{\"label\":\"系统\",\"value\":\"SYSTEM\"},{\"label\":\"发布\",\"value\":\"RELEASE\"}]"
+    },
+    {
+      "fieldCode": "primary_flag",
+      "fieldName": "主负责人",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 100,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "responsibility_description",
+      "fieldName": "职责说明",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 110
+    },
+    {
+      "fieldCode": "effective_from",
+      "fieldName": "生效日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 120
+    },
+    {
+      "fieldCode": "effective_to",
+      "fieldName": "失效日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": false,
+      "sortOrder": 130
+    },
+    {
+      "fieldCode": "predecessor_assignment_id",
+      "fieldName": "前任角色分配",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 140,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_role_assignment"
+    },
+    {
+      "fieldCode": "handover_required_flag",
+      "fieldName": "需要交接",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 150,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "handover_completed_flag",
+      "fieldName": "交接已完成",
+      "fieldType": "BOOLEAN",
+      "dbType": "tinyint",
+      "isRequired": true,
+      "sortOrder": 160,
+      "defaultValue": "false"
+    },
+    {
+      "fieldCode": "source_process",
+      "fieldName": "来源流程",
+      "fieldType": "STRING",
+      "dbType": "varchar(50)",
+      "isRequired": false,
+      "sortOrder": 170,
+      "fieldLength": 50
+    }
+  ],
+  "relations": [],
+  "statuses": [
+    {
+      "statusCode": "PROPOSED",
+      "statusName": "待生效",
+      "statusCategory": "NEW",
+      "sortOrder": 10,
+      "color": "#909399"
+    },
+    {
+      "statusCode": "ACTIVE",
+      "statusName": "有效",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 20,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "SUSPENDED",
+      "statusName": "暂停",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 30,
+      "color": "#E6A23C"
+    },
+    {
+      "statusCode": "EXPIRED",
+      "statusName": "已到期",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 40,
+      "color": "#606266"
+    },
+    {
+      "statusCode": "REVOKED",
+      "statusName": "已撤销",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 50,
+      "color": "#F56C6C"
+    }
+  ],
+  "codeRule": {
+    "prefix": "PRJRA",
+    "dateFormat": "yyyyMMdd",
+    "seqLength": 5,
+    "seqType": "DAY",
+    "currentSeq": 0,
+    "seqDate": "",
+    "example": "PRJRA2026072800001"
+  },
+  "extensions": [],
+  "dataSources": [],
+  "forms": [
+    {
+      "formName": "项目角色分配表单",
+      "formKey": "project_role_assignment_default",
+      "description": "维护项目角色分配。",
+      "layoutType": "grid",
+      "isDefault": true,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2}",
+      "fields": [
+        {
+          "fieldCode": "project_id",
+          "fieldName": "项目",
+          "fieldLabel": "项目",
+          "fieldType": "REFERENCE",
+          "sortOrder": 10,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "member_id",
+          "fieldName": "项目成员",
+          "fieldLabel": "项目成员",
+          "fieldType": "REFERENCE",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "role_catalog_id",
+          "fieldName": "角色目录",
+          "fieldLabel": "角色目录",
+          "fieldType": "REFERENCE",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "role_scope",
+          "fieldName": "角色作用域",
+          "fieldLabel": "角色作用域",
+          "fieldType": "SELECT",
+          "sortOrder": 40,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "system_id",
+          "fieldName": "系统",
+          "fieldLabel": "系统",
+          "fieldType": "REFERENCE",
+          "sortOrder": 50,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12,
+          "componentProps": "{\"linkageRules\":{\"visibilityRule\":\"${role_scope} == 'SYSTEM'\",\"requiredRule\":\"${role_scope} == 'SYSTEM'\"}}"
+        },
+        {
+          "fieldCode": "primary_flag",
+          "fieldName": "主负责人",
+          "fieldLabel": "主负责人",
+          "fieldType": "BOOLEAN",
+          "sortOrder": 60,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "switch",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "effective_from",
+          "fieldName": "生效日期",
+          "fieldLabel": "生效日期",
+          "fieldType": "DATE",
+          "sortOrder": 70,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "effective_to",
+          "fieldName": "失效日期",
+          "fieldLabel": "失效日期",
+          "fieldType": "DATE",
+          "sortOrder": 80,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "responsibility_description",
+          "fieldName": "职责说明",
+          "fieldLabel": "职责说明",
+          "fieldType": "TEXT",
+          "sortOrder": 90,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        }
+      ],
+      "nodes": []
+    }
+  ],
+  "lists": [
+    {
+      "listKey": "all",
+      "listName": "项目角色分配台账",
+      "description": "查询项目及系统角色。",
+      "isDefault": true,
+      "dataScopeMode": "INHERIT",
+      "allowedScenes": [
+        "PAGE",
+        "EMBEDDED",
+        "SELECTION"
+      ],
+      "selectionConfig": {
+        "selectionMode": "MULTIPLE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        },
+        {
+          "key": "edit",
+          "type": "built-in",
+          "label": "编辑",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 2,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {},
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "分配编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_id",
+          "fieldName": "项目",
+          "sortOrder": 20,
+          "width": 200,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "system_id",
+          "fieldName": "系统",
+          "sortOrder": 30,
+          "width": 190,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "user_id",
+          "fieldName": "人员",
+          "sortOrder": 40,
+          "width": 140,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "role_code",
+          "fieldName": "角色编码",
+          "sortOrder": 50,
+          "width": 160,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "role_scope",
+          "fieldName": "作用域",
+          "sortOrder": 60,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "primary_flag",
+          "fieldName": "主负责人",
+          "sortOrder": 70,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "effective_from",
+          "fieldName": "生效日期",
+          "sortOrder": 80,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "effective_to",
+          "fieldName": "失效日期",
+          "sortOrder": 90,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "sortOrder": 100,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "IN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    }
+  ],
+  "scopePolicies": [
+    {
+      "policyKey": "project_role_assignment_creator",
+      "policyName": "本人创建的项目角色分配",
+      "description": "创建人可以查看本人创建的项目角色分配。",
+      "presetCode": "CREATOR",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\"}",
+      "enabled": 1,
+      "version": 1
+    },
+    {
+      "policyKey": "project_role_assignment_self",
+      "policyName": "本人角色分配",
+      "description": "人员字段为当前用户的数据。",
+      "presetCode": "ROLE_ASSIGNEE",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\",\"fieldMapping\":{\"userField\":\"user_id\",\"deptField\":\"dept_id\",\"statusField\":\"status\"}}",
+      "enabled": 1,
+      "version": 1
+    }
+  ],
+  "scopeBindings": [
+    {
+      "policyKey": "project_role_assignment_creator",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    },
+    {
+      "policyKey": "project_role_assignment_self",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    }
+  ],
+  "menus": [
+    {
+      "menuName": "项目角色分配",
+      "menuType": "C",
+      "icon": "User",
+      "sort": 80,
+      "path": "/entity-list/project_role_assignment/all",
+      "component": "entity/EntityListRuntime",
+      "perm": "entity:project_role_assignment:list",
+      "status": "0",
+      "visible": "0",
+      "isFrame": "0",
+      "isCache": "0",
+      "resourceType": "ENTITY_LIST",
+      "listKey": "all",
+      "parentPath": "/project-management"
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project",
+      "required": true,
+      "reason": "所属项目"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_member",
+      "required": true,
+      "reason": "角色承担成员"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_role_catalog",
+      "required": true,
+      "reason": "角色目录"
+    },
+    {
+      "type": "ENTITY",
+      "key": "system_asset",
+      "required": true,
+      "reason": "系统作用域"
+    }
+  ]
+}

@@ -118,16 +118,26 @@ public class ProcessDefinitionNodeSyncService {
 
                 Map<String, String> extensionProperties = readExtensionProperties(userTask);
                 List<String> entityFormIds = resolveEntityFormIds(extensionProperties);
-                Integer isReadonly = isTruthy(extensionProperties.get("entityFormReadonly")) ? 1 : 0;
+                List<ProcessNodeForm> existingBindings =
+                        nodeFormMapper.selectListByNodeId(processConfigId, nodeId);
+                boolean usesExtensionBinding = !entityFormIds.isEmpty();
+                if (!usesExtensionBinding) {
+                    entityFormIds = parseFormIdList(resolveFormKey(userTask));
+                }
+                Integer configuredReadonly =
+                        isTruthy(extensionProperties.get("entityFormReadonly")) ? 1 : 0;
 
                 nodeFormMapper.deleteByProcessConfigIdAndNodeId(processConfigId, nodeId);
                 for (int sortOrder = 0; sortOrder < entityFormIds.size(); sortOrder++) {
+                    String formId = entityFormIds.get(sortOrder);
                     ProcessNodeForm nodeForm = new ProcessNodeForm();
                     nodeForm.setProcessConfigId(processConfigId);
                     nodeForm.setNodeId(nodeId);
                     nodeForm.setNodeName(nodeName);
-                    nodeForm.setFormId(entityFormIds.get(sortOrder));
-                    nodeForm.setIsReadonly(isReadonly);
+                    nodeForm.setFormId(formId);
+                    nodeForm.setIsReadonly(usesExtensionBinding
+                            ? configuredReadonly
+                            : existingReadonly(existingBindings, formId, configuredReadonly));
                     nodeForm.setSortOrder(sortOrder);
                     nodeForm.setCreateTime(LocalDateTime.now());
                     nodeForm.setUpdateTime(LocalDateTime.now());
@@ -335,6 +345,32 @@ public class ProcessDefinitionNodeSyncService {
             return formIds;
         }
         return parseFormIdList(extensionProperties.get("entityFormId"));
+    }
+
+    private String resolveFormKey(Element userTask) {
+        String formKey = userTask.getAttributeNS("http://flowable.org/bpmn", "formKey");
+        if (formKey == null || formKey.isBlank()) {
+            formKey = userTask.getAttribute("formKey");
+        }
+        if (formKey == null || formKey.isBlank()) {
+            formKey = userTask.getAttribute("flowable:formKey");
+        }
+        return decodeXmlAttributeValue(formKey);
+    }
+
+    private Integer existingReadonly(
+            List<ProcessNodeForm> existingBindings,
+            String formId,
+            Integer fallback) {
+        if (existingBindings == null || existingBindings.isEmpty()) {
+            return fallback;
+        }
+        return existingBindings.stream()
+                .filter(binding -> formId.equals(binding.getFormId()))
+                .map(ProcessNodeForm::getIsReadonly)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(fallback);
     }
 
     private List<String> parseFormIdList(String value) {

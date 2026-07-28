@@ -2,12 +2,15 @@ package com.workflow.entity.data.application.mapping;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,6 +66,21 @@ public class EntityRuntimeRecordMapper {
      * @return 实体数据 DTO
      */
     public EntityDataDTO toDto(Map<String, Object> data, String entityCode) {
+        return toDto(data, entityCode, List.of());
+    }
+
+    /**
+     * 将动态表存储行映射为实体数据 DTO，并按实体定义还原精确字段编码。
+     *
+     * @param data       动态表行数据（列名 -> 值）
+     * @param entityCode 实体编码
+     * @param fields     当前实体字段定义
+     * @return 实体数据 DTO
+     */
+    public EntityDataDTO toDto(
+            Map<String, Object> data,
+            String entityCode,
+            Collection<EntityField> fields) {
         EntityDataDTO dto = new EntityDataDTO();
         dto.setId(getString(data, "id"));
         dto.setEntityCode(entityCode);
@@ -85,7 +103,7 @@ public class EntityRuntimeRecordMapper {
         dto.setUpdatedAt(getDateTime(data, "update_time"));
         dto.setCreatedBy(getString(data, "create_by"));
         dto.setUpdatedBy(getString(data, "update_by"));
-        dto.setData(extractCustomFields(data));
+        dto.setData(extractCustomFields(data, fields));
         dto.setExtData(new HashMap<>());
         return dto;
     }
@@ -197,11 +215,28 @@ public class EntityRuntimeRecordMapper {
         return result.toString();
     }
 
-    private Map<String, Object> extractCustomFields(Map<String, Object> data) {
+    private Map<String, Object> extractCustomFields(
+            Map<String, Object> data,
+            Collection<EntityField> fields) {
         Map<String, Object> customData = new HashMap<>();
+        Map<String, String> fieldCodeByColumn = new HashMap<>();
+        if (fields != null) {
+            for (EntityField field : fields) {
+                if (field == null || !StringUtils.hasText(field.getFieldCode())) {
+                    continue;
+                }
+                String columnName = StringUtils.hasText(field.getDbColumnName())
+                        ? field.getDbColumnName()
+                        : toColumnName(field.getFieldCode());
+                fieldCodeByColumn.put(columnName, field.getFieldCode());
+            }
+        }
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             if (!STORAGE_SYSTEM_COLUMNS.contains(entry.getKey())) {
-                customData.put(underscoreToCamel(entry.getKey()), parseJsonValue(entry.getValue()));
+                String fieldCode = fieldCodeByColumn.getOrDefault(
+                        entry.getKey(),
+                        underscoreToCamel(entry.getKey()));
+                customData.put(fieldCode, parseJsonValue(entry.getValue()));
             }
         }
         return customData;

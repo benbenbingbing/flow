@@ -1,5 +1,6 @@
 package com.workflow.process.action;
 
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.process.action.application.FlowActionDispatcher;
 import com.workflow.process.action.application.FlowActionEngineEventListener;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
@@ -14,6 +15,7 @@ import org.flowable.engine.delegate.event.FlowableEntityWithVariablesEvent;
 import org.flowable.engine.delegate.event.FlowableSequenceFlowTakenEvent;
 import org.flowable.task.api.Task;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -48,7 +50,13 @@ class FlowActionEngineEventListenerTest {
                 "entityDataId", "data-1",
                 "action", "approve",
                 "approver", "admin"));
+        UserContext.setCurrentUser("admin-id", "admin");
         listener = new FlowActionEngineEventListener(dispatcher, runtimeService, helper);
+    }
+
+    @AfterEach
+    void tearDown() {
+        UserContext.clear();
     }
 
     /**
@@ -133,6 +141,8 @@ class FlowActionEngineEventListenerTest {
         assertEquals(triggerTiming, trigger.getTriggerTiming());
         assertEquals("req01", trigger.getEntityCode());
         assertEquals("data-1", trigger.getEntityDataId());
+        assertEquals("admin-id", trigger.getOperatorId());
+        assertEquals("admin", trigger.getOperatorName());
     }
 
     /** 构造通用引擎事件桩，仅设置类型与基础属性 */

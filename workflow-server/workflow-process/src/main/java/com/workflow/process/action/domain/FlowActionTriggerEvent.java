@@ -51,6 +51,8 @@ public class FlowActionTriggerEvent {
     private String entityDataId;
     /** 操作人 ID */
     private String operatorId;
+    /** 操作人用户名，用于异步动作恢复审计上下文 */
+    private String operatorName;
     /** 审批动作，如同意/拒绝 */
     private String approvalAction;
     /** 流程结束原因（撤回、终止等） */

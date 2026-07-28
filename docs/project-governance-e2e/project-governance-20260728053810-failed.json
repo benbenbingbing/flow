@@ -1,0 +1,7 @@
+{
+  "runId": "20260728053810",
+  "apiBase": "http://localhost:8080/api",
+  "flows": {},
+  "crossEntityChecks": {},
+  "error": "Error: POST /entity-data failed: HTTP 409, body={\"code\":409,\"message\":\"需求 REQ2026072800005 的有效项目分配比例超过100%\",\"errorCode\":\"REQUIREMENT_ALLOCATION_EXCEEDED\",\"data\":null}\n    at api (file:///Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-project/tools/real-project-governance-e2e.mjs:41:19)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-project/tools/real-project-governance-e2e.mjs:139:19)"
+}

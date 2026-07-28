@@ -430,7 +430,11 @@ public class EntityRelationRuntimeService {
     }
 
     private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {
-        EntityDataDTO childDto = recordMapper.toDto(row, entityCode);
+        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
+        List<EntityField> fields = definition != null
+                ? fieldMapper.findByEntityId(definition.getId())
+                : List.of();
+        EntityDataDTO childDto = recordMapper.toDto(row, entityCode, fields);
         Map<String, Object> data = new HashMap<>();
         if (childDto.getData() != null) {
             data.putAll(childDto.getData());
@@ -457,6 +461,10 @@ public class EntityRelationRuntimeService {
     private void normalizeJsonValues(Map<String, Object> data) {
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             Object value = entry.getValue();
+            if (value instanceof String stringValue && stringValue.isEmpty()) {
+                entry.setValue(null);
+                continue;
+            }
             if (value instanceof Map || value instanceof List) {
                 try {
                     entry.setValue(objectMapper.writeValueAsString(value));

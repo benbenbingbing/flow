@@ -188,6 +188,20 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
     }
 
     /**
+     * 判断处理器是否满足流程发布所需的动作目录前置条件。
+     */
+    @Override
+    public boolean isConfiguredAndAvailable(String handlerName) {
+        if (!StringUtils.hasText(handlerName)) {
+            return false;
+        }
+        return definitionMapper.findByHandlerName(handlerName)
+                .filter(definition -> Boolean.TRUE.equals(definition.getEnabled()))
+                .filter(definition -> applicationContext.containsBean(definition.getHandlerName()))
+                .isPresent();
+    }
+
+    /**
      * 获取处理器在动作目录中的中文展示名；未配置则返回 handlerName 本身。
      *
      * @param handlerName 处理器 Bean 名称

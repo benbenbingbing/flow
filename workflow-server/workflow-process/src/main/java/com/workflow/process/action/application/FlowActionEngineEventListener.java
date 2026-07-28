@@ -124,6 +124,7 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
         trigger.setProcessInstanceId(event.getProcessInstanceId());
         trigger.setExecutionId(event.getExecutionId());
         trigger.setOperatorId(firstNonBlank(UserContext.getUserId(), UserContext.getUsername()));
+        trigger.setOperatorName(UserContext.getUsername());
         return trigger;
     }
 

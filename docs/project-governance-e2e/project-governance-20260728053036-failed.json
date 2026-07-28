@@ -1,0 +1,7 @@
+{
+  "runId": "20260728053036",
+  "apiBase": "http://localhost:8080/api",
+  "flows": {},
+  "crossEntityChecks": {},
+  "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'PROPOSED'\n- 'APPROVED'\n\n    at main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-project/tools/real-project-governance-e2e.mjs:241:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)"
+}

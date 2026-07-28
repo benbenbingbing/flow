@@ -1,0 +1,494 @@
+{
+  "schemaVersion": 1,
+  "assetType": "ENTITY",
+  "businessKey": "requirement_project_link",
+  "assetName": "需求项目关系",
+  "definition": {
+    "entityCode": "requirement_project_link",
+    "entityName": "需求项目关系",
+    "description": "记录需求被项目承接的范围、比例、计划和交付状态。",
+    "lifecycleMode": "STANDALONE",
+    "storageMode": "DYNAMIC",
+    "processKey": null
+  },
+  "fields": [
+    {
+      "fieldCode": "requirement_id",
+      "fieldName": "需求",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 20,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "requirement"
+    },
+    {
+      "fieldCode": "project_id",
+      "fieldName": "项目",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": true,
+      "sortOrder": 30,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project"
+    },
+    {
+      "fieldCode": "relation_role",
+      "fieldName": "承接角色",
+      "fieldType": "SELECT",
+      "dbType": "varchar(20)",
+      "isRequired": true,
+      "sortOrder": 40,
+      "fieldLength": 20,
+      "defaultValue": "PRIMARY",
+      "optionsJson": "[{\"label\":\"主承接\",\"value\":\"PRIMARY\"},{\"label\":\"协同承接\",\"value\":\"SUPPORTING\"},{\"label\":\"依赖项目\",\"value\":\"DEPENDENCY\"}]"
+    },
+    {
+      "fieldCode": "delivery_scope",
+      "fieldName": "承接范围",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": true,
+      "sortOrder": 50
+    },
+    {
+      "fieldCode": "allocation_percentage",
+      "fieldName": "分配比例(%)",
+      "fieldType": "DECIMAL",
+      "dbType": "decimal(5,2)",
+      "isRequired": true,
+      "sortOrder": 60,
+      "fieldPrecision": 2,
+      "validateRules": "{\"min\":0.01,\"max\":100}"
+    },
+    {
+      "fieldCode": "target_milestone_id",
+      "fieldName": "目标里程碑",
+      "fieldType": "STRING",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 70,
+      "fieldLength": 64
+    },
+    {
+      "fieldCode": "target_release_id",
+      "fieldName": "目标发布",
+      "fieldType": "STRING",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 80,
+      "fieldLength": 64
+    },
+    {
+      "fieldCode": "responsible_member_id",
+      "fieldName": "交付责任人",
+      "fieldType": "REFERENCE",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 90,
+      "fieldLength": 64,
+      "refEntityType": "CUSTOM",
+      "refEntityCode": "project_member"
+    },
+    {
+      "fieldCode": "planned_start_date",
+      "fieldName": "计划开始日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 100
+    },
+    {
+      "fieldCode": "planned_end_date",
+      "fieldName": "计划完成日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": true,
+      "sortOrder": 110
+    },
+    {
+      "fieldCode": "actual_completion_date",
+      "fieldName": "实际完成日期",
+      "fieldType": "DATE",
+      "dbType": "date",
+      "isRequired": false,
+      "sortOrder": 120
+    },
+    {
+      "fieldCode": "completion_percentage",
+      "fieldName": "完成比例(%)",
+      "fieldType": "DECIMAL",
+      "dbType": "decimal(5,2)",
+      "isRequired": true,
+      "sortOrder": 130,
+      "defaultValue": "0",
+      "fieldPrecision": 2,
+      "validateRules": "{\"min\":0,\"max\":100}"
+    },
+    {
+      "fieldCode": "acceptance_record_id",
+      "fieldName": "验收记录",
+      "fieldType": "STRING",
+      "dbType": "varchar(64)",
+      "isRequired": false,
+      "sortOrder": 140,
+      "fieldLength": 64
+    },
+    {
+      "fieldCode": "cancel_reason",
+      "fieldName": "取消原因",
+      "fieldType": "TEXT",
+      "dbType": "text",
+      "isRequired": false,
+      "sortOrder": 150
+    }
+  ],
+  "relations": [],
+  "statuses": [
+    {
+      "statusCode": "PROPOSED",
+      "statusName": "拟承接",
+      "statusCategory": "NEW",
+      "sortOrder": 10,
+      "color": "#909399"
+    },
+    {
+      "statusCode": "APPROVED",
+      "statusName": "已批准",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 20,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "DELIVERING",
+      "statusName": "交付中",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 30,
+      "color": "#409EFF"
+    },
+    {
+      "statusCode": "DELIVERED",
+      "statusName": "已交付",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 40,
+      "color": "#36CFC9"
+    },
+    {
+      "statusCode": "ACCEPTED",
+      "statusName": "已验收",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 50,
+      "color": "#67C23A"
+    },
+    {
+      "statusCode": "CANCELLED",
+      "statusName": "已取消",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 60,
+      "color": "#606266"
+    }
+  ],
+  "codeRule": {
+    "prefix": "REQPRJ",
+    "dateFormat": "yyyyMMdd",
+    "seqLength": 5,
+    "seqType": "DAY",
+    "currentSeq": 0,
+    "seqDate": "",
+    "example": "REQPRJ2026072800001"
+  },
+  "extensions": [],
+  "dataSources": [],
+  "forms": [
+    {
+      "formName": "需求项目关系表单",
+      "formKey": "requirement_project_link_default",
+      "description": "项目立项时录入需求承接范围。",
+      "layoutType": "grid",
+      "isDefault": true,
+      "status": 1,
+      "viewConfig": "{\"labelWidth\":140,\"columns\":2}",
+      "fields": [
+        {
+          "fieldCode": "requirement_id",
+          "fieldName": "需求",
+          "fieldLabel": "需求",
+          "fieldType": "REFERENCE",
+          "sortOrder": 10,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "relation_role",
+          "fieldName": "承接角色",
+          "fieldLabel": "承接角色",
+          "fieldType": "SELECT",
+          "sortOrder": 20,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "select",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "delivery_scope",
+          "fieldName": "承接范围",
+          "fieldLabel": "承接范围",
+          "fieldType": "TEXT",
+          "sortOrder": 30,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "textarea",
+          "gridSpan": 24
+        },
+        {
+          "fieldCode": "allocation_percentage",
+          "fieldName": "分配比例(%)",
+          "fieldLabel": "分配比例(%)",
+          "fieldType": "DECIMAL",
+          "sortOrder": 40,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "number",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_start_date",
+          "fieldName": "计划开始日期",
+          "fieldLabel": "计划开始日期",
+          "fieldType": "DATE",
+          "sortOrder": 50,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划完成日期",
+          "fieldLabel": "计划完成日期",
+          "fieldType": "DATE",
+          "sortOrder": 60,
+          "isRequired": 1,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "date",
+          "gridSpan": 8
+        },
+        {
+          "fieldCode": "responsible_member_id",
+          "fieldName": "交付责任人",
+          "fieldLabel": "交付责任人",
+          "fieldType": "REFERENCE",
+          "sortOrder": 70,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "reference",
+          "gridSpan": 12
+        },
+        {
+          "fieldCode": "completion_percentage",
+          "fieldName": "完成比例(%)",
+          "fieldLabel": "完成比例(%)",
+          "fieldType": "DECIMAL",
+          "sortOrder": 80,
+          "isRequired": 0,
+          "isReadonly": 0,
+          "isHidden": 0,
+          "componentType": "number",
+          "gridSpan": 12
+        }
+      ],
+      "nodes": []
+    }
+  ],
+  "lists": [
+    {
+      "listKey": "all",
+      "listName": "需求项目关系台账",
+      "description": "按需求和项目追踪分配及交付。",
+      "isDefault": true,
+      "dataScopeMode": "INHERIT",
+      "allowedScenes": [
+        "PAGE",
+        "EMBEDDED",
+        "SELECTION"
+      ],
+      "selectionConfig": {
+        "selectionMode": "MULTIPLE",
+        "valueField": "id",
+        "returnMappings": []
+      },
+      "toolbarConfig": [],
+      "rowActionConfig": [
+        {
+          "key": "view",
+          "type": "built-in",
+          "label": "查看",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 1,
+          "enabled": true
+        },
+        {
+          "key": "edit",
+          "type": "built-in",
+          "label": "编辑",
+          "buttonType": "primary",
+          "link": true,
+          "sort": 2,
+          "enabled": true
+        }
+      ],
+      "viewConfig": {
+        "density": "compact",
+        "showIndex": true,
+        "stickyActions": true
+      },
+      "fixedFilterConfig": {},
+      "contextBindingConfig": {
+        "parentField": "project_id"
+      },
+      "fields": [
+        {
+          "fieldCode": "code",
+          "fieldName": "关系编号",
+          "sortOrder": 10,
+          "width": 170,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "LIKE",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "requirement_id",
+          "fieldName": "需求",
+          "sortOrder": 20,
+          "width": 200,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "project_id",
+          "fieldName": "项目",
+          "sortOrder": 30,
+          "width": 200,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "relation_role",
+          "fieldName": "承接角色",
+          "sortOrder": 40,
+          "width": 110,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "left",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "allocation_percentage",
+          "fieldName": "分配比例",
+          "sortOrder": 50,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "right",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "completion_percentage",
+          "fieldName": "完成比例",
+          "sortOrder": 60,
+          "width": 100,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "EQ",
+          "align": "right",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "planned_end_date",
+          "fieldName": "计划完成",
+          "sortOrder": 70,
+          "width": 120,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "BETWEEN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        },
+        {
+          "fieldCode": "status",
+          "fieldName": "状态",
+          "sortOrder": 80,
+          "width": 110,
+          "showInList": true,
+          "isQuery": true,
+          "queryType": "IN",
+          "align": "center",
+          "dataSourceType": "ENTITY_FIELD"
+        }
+      ]
+    }
+  ],
+  "scopePolicies": [
+    {
+      "policyKey": "requirement_project_link_creator",
+      "policyName": "本人创建的需求项目关系",
+      "description": "创建人可以查看本人创建的需求项目关系。",
+      "presetCode": "CREATOR",
+      "filterConfig": "{\"version\":1,\"type\":\"PERSONAL\"}",
+      "enabled": 1,
+      "version": 1
+    }
+  ],
+  "scopeBindings": [
+    {
+      "policyKey": "requirement_project_link_creator",
+      "listKey": null,
+      "matchConfig": "{\"version\":1,\"logic\":\"OR\",\"conditions\":[{\"scopeType\":\"ALL_USERS\",\"operator\":\"ANY\"}]}",
+      "ruleEffect": "ALLOW",
+      "enabled": 1
+    }
+  ],
+  "menus": [],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "requirement",
+      "required": true,
+      "reason": "承接需求"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project",
+      "required": true,
+      "reason": "所属项目"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_member",
+      "required": true,
+      "reason": "交付责任人"
+    }
+  ]
+}

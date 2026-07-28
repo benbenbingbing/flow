@@ -165,9 +165,9 @@ import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right, Setting, Close, InfoFilled } from '@element-plus/icons-vue'
-import { layoutProcess } from 'bpmn-auto-layout'
 import { processApi } from '@/api/process'
 import { getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
+import { ensureBpmnLayout, hasCompleteBpmnDi } from '@/utils/bpmnLayout'
 import formatXML from 'xml-formatter'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
 import VueBpmnDesigner from '@/components/VueBpmnDesigner.vue'
@@ -180,18 +180,21 @@ import { processActionApi } from '@/api/processAction'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import PageState from '@/components/PageState.vue'
 
+const layoutRepairPending = ref(false)
+
 /**
  * 检查并修复XML布局
  */
 const fixXmlLayout = async (xml) => {
-  // 如果已有DI，直接返回
-  if (xml.includes('BPMNDiagram') && xml.includes('BPMNShape')) {
+  if (hasCompleteBpmnDi(xml)) {
+    layoutRepairPending.value = false
     return xml
   }
   
-  console.log('XML缺少布局信息，使用bpmn-auto-layout生成...')
+  console.log('XML缺少完整布局信息，自动补齐节点和连线...')
   try {
-    const layoutedXml = await layoutProcess(xml)
+    const layoutedXml = await ensureBpmnLayout(xml)
+    layoutRepairPending.value = layoutedXml !== xml
     console.log('布局生成成功，新XML长度:', layoutedXml.length)
     
     // 确保生成的 XML 包含 flowable 命名空间
@@ -204,7 +207,8 @@ const fixXmlLayout = async (xml) => {
     return layoutedXml
   } catch (error) {
     console.error('布局生成失败:', error)
-    return xml
+    layoutRepairPending.value = false
+    throw new Error(`流程图连线布局不完整，自动修复失败：${error.message || '未知错误'}`)
   }
 }
 
@@ -242,7 +246,9 @@ const hasUnsavedNodeChanges = ref(false)
 const currentHistoryToken = ref('root')
 const savedHistoryToken = ref('root')
 const isDirty = computed(() =>
-  hasUnsavedNodeChanges.value || currentHistoryToken.value !== savedHistoryToken.value
+  layoutRepairPending.value
+  || hasUnsavedNodeChanges.value
+  || currentHistoryToken.value !== savedHistoryToken.value
 )
 
 useUnsavedChangesGuard(isDirty, {
@@ -364,12 +370,12 @@ const loadProcess = async () => {
       )
     }
     
-    // 如果XML缺少DI，自动生成布局
-    if (!xml.includes('BPMNDiagram') || !xml.includes('BPMNShape')) {
-      xml = await fixXmlLayout(xml)
-    }
+    xml = await fixXmlLayout(xml)
     
     await designerRef.value?.loadXml(xml)
+    if (layoutRepairPending.value) {
+      ElMessage.warning('已自动修复流程图连线布局，请保存草稿')
+    }
   } catch (error) {
     console.error(error)
     loadError.value = error?.message || '无法读取流程草稿，请检查权限或稍后重试。'
@@ -439,6 +445,7 @@ const handleSave = async () => {
     }
 
     hasUnsavedNodeChanges.value = false
+    layoutRepairPending.value = false
     savedHistoryToken.value = currentHistoryToken.value
     ElMessage.success('草稿保存成功，发布后运行时生效')
   } catch (error) {
