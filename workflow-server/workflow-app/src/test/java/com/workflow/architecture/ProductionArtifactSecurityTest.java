@@ -60,6 +60,18 @@ class ProductionArtifactSecurityTest {
     }
 
     @Test
+    void productionLogsUseStructuredStdout() throws Exception {
+        String productionConfig = Files.readString(
+                Path.of("src/main/resources/application-production.yml"));
+        String defaultConfig = Files.readString(
+                Path.of("src/main/resources/application.yml"));
+
+        assertTrue(productionConfig.contains("console: ecs"));
+        assertFalse(defaultConfig.contains("logging.file.name"));
+        assertFalse(defaultConfig.contains("name: logs/workflow-server.log"));
+    }
+
+    @Test
     void productionComposeKeepsRuntimeAndSchemaCredentialsSeparate() throws Exception {
         String compose = Files.readString(Path.of("../../deploy/compose.prod.yml"));
 

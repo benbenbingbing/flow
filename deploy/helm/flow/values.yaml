@@ -6,7 +6,7 @@ server:
   image:
     repository: registry.example.com/flow-server
     tag: "1.0.0"
-    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    digest: ""
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -34,7 +34,7 @@ web:
   image:
     repository: registry.example.com/flow-web
     tag: "1.0.0"
-    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    digest: ""
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -81,6 +81,19 @@ application:
   logLevel: INFO
   shutdownTimeout: 30s
 
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    additionalLabels: {}
+  prometheusRule:
+    enabled: false
+    additionalLabels: {}
+    minimumReadyReplicas: 2
+    http5xxRatio: 0.05
+    queueOldestReadySeconds: 300
+
 ingress:
   enabled: false
   className: nginx
@@ -95,8 +108,11 @@ networkPolicy:
     kubernetes.io/metadata.name: ingress-nginx
   monitoringNamespaceSelector:
     kubernetes.io/metadata.name: monitoring
-  databaseCIDRs: []
-  objectStorageCIDRs: []
+  # Replace these example networks with the resolved, stable dependency CIDRs.
+  databaseCIDRs:
+    - 10.0.0.0/24
+  objectStorageCIDRs:
+    - 10.0.1.0/24
   outboundHttpsCIDRs: []
 
 topologySpread:

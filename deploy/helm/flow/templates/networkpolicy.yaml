@@ -25,7 +25,6 @@ spec:
       {{- include "flow.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Egress
-  {{- if or .Values.networkPolicy.allowSameNamespaceDependencies (gt (len .Values.networkPolicy.databaseCIDRs) 0) }}
   egress:
     - to:
         - namespaceSelector:
@@ -84,6 +83,9 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "flow.componentLabels" (dict "root" . "component" "web") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "flow.componentLabels" (dict "root" . "component" "smoke-test") | nindent 14 }}
       ports:
         - protocol: TCP
           port: 8080
@@ -121,6 +123,7 @@ spec:
           - bootstrap
   policyTypes:
     - Egress
+  {{- if or .Values.networkPolicy.allowSameNamespaceDependencies (gt (len .Values.networkPolicy.databaseCIDRs) 0) }}
   egress:
     {{- if .Values.networkPolicy.allowSameNamespaceDependencies }}
     - to:
@@ -140,6 +143,27 @@ spec:
   {{- else }}
   egress: []
   {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flow.fullname" . }}-smoke-test-egress
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flow.componentLabels" (dict "root" . "component" "smoke-test") | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

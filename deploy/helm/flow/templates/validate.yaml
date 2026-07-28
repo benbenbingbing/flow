@@ -1,0 +1,6 @@
+{{- if and .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.databaseCIDRs) 0) }}
+{{- fail "networkPolicy.databaseCIDRs is required for an external production database" }}
+{{- end }}
+{{- if and .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.objectStorageCIDRs) 0) }}
+{{- fail "networkPolicy.objectStorageCIDRs is required for external production object storage" }}
+{{- end }}

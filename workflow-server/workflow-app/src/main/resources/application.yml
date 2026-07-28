@@ -125,14 +125,11 @@ management:
 
 # 日志配置
 logging:
-  file:
-    name: logs/workflow-server.log
   level:
     root: INFO
     com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:}

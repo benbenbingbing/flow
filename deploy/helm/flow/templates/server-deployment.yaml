@@ -137,13 +137,9 @@ spec:
               drop:
                 - ALL
           volumeMounts:
-            - name: logs
-              mountPath: /app/logs
             - name: tmp
               mountPath: /tmp
       volumes:
-        - name: logs
-          emptyDir: {}
         - name: tmp
           emptyDir: {}
       {{- if .Values.topologySpread.enabled }}
