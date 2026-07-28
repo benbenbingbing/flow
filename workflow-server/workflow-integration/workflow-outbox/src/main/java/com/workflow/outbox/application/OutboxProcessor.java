@@ -54,7 +54,7 @@ public class OutboxProcessor {
             return;
         }
         ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
-                () -> mapper.heartbeat(
+                () -> heartbeat(
                         outboxId, ownerId, leaseToken, leaseSeconds),
                 Duration.ofSeconds(Math.max(1, leaseSeconds / 3)));
         try {
@@ -69,6 +69,23 @@ public class OutboxProcessor {
             markFailed(record, ownerId, leaseToken, exception);
         } finally {
             heartbeat.cancel(false);
+        }
+    }
+
+    private void heartbeat(
+            String outboxId,
+            String ownerId,
+            long leaseToken,
+            int leaseSeconds) {
+        try {
+            if (mapper.heartbeat(
+                    outboxId, ownerId, leaseToken, leaseSeconds) == 0) {
+                log.warn("Outbox 心跳被 fencing 拒绝: id={}, owner={}, token={}",
+                        outboxId, ownerId, leaseToken);
+            }
+        } catch (RuntimeException exception) {
+            log.error("Outbox 心跳失败，将在下一周期重试: id={}, owner={}",
+                    outboxId, ownerId, exception);
         }
     }
 

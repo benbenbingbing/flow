@@ -109,6 +109,11 @@ workflow:
     retention-days: ${AUDIT_RETENTION_DAYS:365}
   flow-action:
     execution-delay-ms: ${FLOW_ACTION_EXECUTION_DELAY_MS:5000}
+    batch-size: ${FLOW_ACTION_BATCH_SIZE:50}
+    lease-seconds: ${FLOW_ACTION_LEASE_SECONDS:300}
+    executor:
+      concurrency: ${FLOW_ACTION_EXECUTOR_CONCURRENCY:4}
+      queue-capacity: ${FLOW_ACTION_EXECUTOR_QUEUE_CAPACITY:100}
 
 jwt:
   secret: ${JWT_SECRET}

@@ -3,6 +3,7 @@ package com.workflow.outbox.application;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -31,6 +32,7 @@ public class OutboxWorker {
     @Value("${workflow.outbox.lease-seconds:120}")
     private int leaseSeconds = 120;
 
+    @Autowired
     public OutboxWorker(
             OutboxRecordMapper mapper,
             OutboxProcessor processor,

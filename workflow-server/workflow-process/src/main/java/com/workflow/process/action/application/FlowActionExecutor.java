@@ -259,6 +259,14 @@ public class FlowActionExecutor {
      * @throws RuntimeException 处理器 Bean 不存在或未实现 FlowActionHandler 接口时抛出
      */
     private void invoke(FlowAction action, FlowActionContext ctx) {
+        resolveHandler(action).execute(ctx);
+    }
+
+    public boolean retryable(FlowAction action) {
+        return resolveHandler(action).retryable();
+    }
+
+    private FlowActionHandler resolveHandler(FlowAction action) {
         String beanName = action.getInterfaceName();
         if (!StringUtils.hasText(beanName)) {
             throw new RuntimeException("流程动作未配置接口名称: " + action.getActionName());
@@ -271,10 +279,9 @@ public class FlowActionExecutor {
             throw new RuntimeException("未找到流程动作对应的 Bean: " + beanName, e);
         }
 
-        if (!(bean instanceof FlowActionHandler)) {
+        if (!(bean instanceof FlowActionHandler handler)) {
             throw new RuntimeException("Bean '" + beanName + "' 未实现 FlowActionHandler 接口");
         }
-
-        ((FlowActionHandler) bean).execute(ctx);
+        return handler;
     }
 }

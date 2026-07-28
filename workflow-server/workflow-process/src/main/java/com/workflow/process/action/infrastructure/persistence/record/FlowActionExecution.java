@@ -60,6 +60,12 @@ public class FlowActionExecution {
     private String executionTraceJson;
     /** 执行状态，对应 {@link Status} */
     private String status;
+    /** 当前执行租约所有者 */
+    private String ownerId;
+    /** 单调递增 fencing token */
+    private Long leaseToken;
+    /** 当前执行租约到期时间（数据库 UTC） */
+    private LocalDateTime leaseUntil;
     /** 已重试次数 */
     private Integer retryCount;
     /** 最大重试次数 */

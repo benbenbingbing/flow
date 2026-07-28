@@ -7,13 +7,14 @@ import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
-import com.workflow.process.action.application.FlowActionExecutionService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import java.time.Duration;
+import java.util.concurrent.ScheduledFuture;
 
 /**
  * 流程动作执行队列处理器。
@@ -23,55 +24,105 @@ import org.springframework.util.StringUtils;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class FlowActionExecutionProcessor {
 
     private final FlowActionExecutionService executionService;
     private final FlowActionMapper flowActionMapper;
     private final FlowActionExecutor flowActionExecutor;
+    private final TaskScheduler heartbeatScheduler;
+
+    public FlowActionExecutionProcessor(
+            FlowActionExecutionService executionService,
+            FlowActionMapper flowActionMapper,
+            FlowActionExecutor flowActionExecutor,
+            @Qualifier("flowActionHeartbeatScheduler") TaskScheduler heartbeatScheduler) {
+        this.executionService = executionService;
+        this.flowActionMapper = flowActionMapper;
+        this.flowActionExecutor = flowActionExecutor;
+        this.heartbeatScheduler = heartbeatScheduler;
+    }
 
     /**
-     * 在新事务中处理单条执行记录：读取触发事件、调用处理器并按结果更新状态。
+     * 处理单条已认领记录：读取触发事件、调用处理器并以独立事务更新状态。
      *
      * @param executionId 执行记录 ID
+     * @param ownerId 当前租约所有者
+     * @param leaseToken fencing token
+     * @param leaseSeconds 心跳续租时长
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void process(String executionId) {
-        FlowActionExecution execution = executionService.get(executionId);
+    public void process(
+            String executionId,
+            String ownerId,
+            long leaseToken,
+            int leaseSeconds) {
+        FlowActionExecution execution =
+                executionService.getClaimed(executionId, ownerId);
         // 仅处理抢占后仍处于 RUNNING 状态的记录，避免并发重复执行
-        if (execution == null || !FlowActionExecution.Status.RUNNING.name().equals(execution.getStatus())) {
+        if (execution == null
+                || execution.getLeaseToken() == null
+                || execution.getLeaseToken() != leaseToken) {
             return;
         }
-        FlowAction action = flowActionMapper.selectById(execution.getActionId());
-        if (action == null) {
-            executionService.markFinalFailure(execution, new RuntimeException("流程动作配置不存在"));
-            return;
-        }
-        String previousUserId = UserContext.getUserId();
-        String previousUsername = UserContext.getUsername();
+        ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
+                () -> heartbeat(
+                        executionId, ownerId, leaseToken, leaseSeconds),
+                Duration.ofSeconds(Math.max(1, leaseSeconds / 3)));
         try {
-            FlowActionTriggerEvent event = executionService.readEvent(execution);
-            restoreOperatorContext(event);
-            FlowActionContext context = flowActionExecutor.executeAction(
-                    action,
-                    event,
-                    execution.getIdempotencyKey(),
-                    execution);
-            executionService.markSuccess(execution, context);
-        } catch (Exception e) {
-            // IGNORE 策略：直接进入死信，不再重试
-            if (FlowActionFailurePolicy.IGNORE.name().equalsIgnoreCase(action.getFailurePolicy())) {
-                executionService.markFinalFailure(execution, e);
-                log.warn("提交后流程动作失败，按 IGNORE 策略结束: executionId={}, actionId={}",
-                        executionId, action.getId(), e);
-            } else {
-                // 默认 RETRY 策略：安排下一次重试
-                executionService.markRetryFailure(execution, e);
-                log.warn("提交后流程动作失败，已安排重试: executionId={}, actionId={}, retryCount={}",
-                        executionId, action.getId(), execution.getRetryCount(), e);
+            FlowAction action = flowActionMapper.selectById(execution.getActionId());
+            if (action == null) {
+                executionService.markFinalFailure(
+                        execution,
+                        new RuntimeException("流程动作配置不存在"));
+                return;
+            }
+            String previousUserId = UserContext.getUserId();
+            String previousUsername = UserContext.getUsername();
+            boolean retryable = false;
+            try {
+                retryable = flowActionExecutor.retryable(action);
+                FlowActionTriggerEvent event = executionService.readEvent(execution);
+                restoreOperatorContext(event);
+                FlowActionContext context = flowActionExecutor.executeAction(
+                        action,
+                        event,
+                        execution.getIdempotencyKey(),
+                        execution);
+                executionService.markSuccess(execution, context);
+            } catch (Exception e) {
+                boolean retryPolicy =
+                        FlowActionFailurePolicy.RETRY.name()
+                                .equalsIgnoreCase(action.getFailurePolicy());
+                if (retryPolicy && retryable) {
+                    executionService.markRetryFailure(execution, e);
+                    log.warn("提交后流程动作失败，已安排幂等重试: executionId={}, actionId={}, retryCount={}",
+                            executionId, action.getId(), execution.getRetryCount(), e);
+                } else {
+                    executionService.markFinalFailure(execution, e);
+                    log.warn("提交后流程动作失败，处理器未声明可安全重试: executionId={}, actionId={}",
+                            executionId, action.getId(), e);
+                }
+            } finally {
+                restorePreviousContext(previousUserId, previousUsername);
             }
         } finally {
-            restorePreviousContext(previousUserId, previousUsername);
+            heartbeat.cancel(false);
+        }
+    }
+
+    private void heartbeat(
+            String executionId,
+            String ownerId,
+            long leaseToken,
+            int leaseSeconds) {
+        try {
+            if (!executionService.heartbeat(
+                    executionId, ownerId, leaseToken, leaseSeconds)) {
+                log.warn("流程动作心跳被 fencing 拒绝: id={}, owner={}, token={}",
+                        executionId, ownerId, leaseToken);
+            }
+        } catch (RuntimeException exception) {
+            log.error("流程动作心跳失败，将在下一周期重试: id={}, owner={}",
+                    executionId, ownerId, exception);
         }
     }
 
