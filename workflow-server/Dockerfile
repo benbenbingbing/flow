@@ -4,7 +4,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q -pl workflow-app -am -Dmaven.test.skip=true package
 
-FROM eclipse-temurin:21-jre-alpine@sha256:3f08b13888f595cc49edabea7250ba69499ba25602b267da591720769400e08c
+FROM eclipse-temurin:25-jre-alpine@sha256:28db6fdf60e38945e43d840c0333aeaec66c15943070104f7586fd3c9d1665b0
 WORKDIR /app
 
 RUN apk upgrade --no-cache \
