@@ -1,6 +1,7 @@
 package com.workflow.admin.identity.user.bootstrap;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,12 +26,23 @@ public class BootstrapAdministratorRunner implements ApplicationRunner {
             "$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6";
 
     private final SysUserMapper userMapper;
+    private final BootstrapJobCoordinator bootstrapJobCoordinator;
 
     @Value("${workflow.bootstrap.admin.password:}")
     private String bootstrapPassword;
 
     @Override
     public void run(ApplicationArguments args) {
+        bootstrapJobCoordinator.executeOnce(
+                "bootstrap-administrator",
+                1,
+                () -> {
+                    initializeAdministrator();
+                    return true;
+                });
+    }
+
+    private void initializeAdministrator() {
         if (!StringUtils.hasText(bootstrapPassword)) {
             if (userMapper.isBootstrapAdministratorPending(LEGACY_BOOTSTRAP_HASH)) {
                 throw new IllegalStateException(

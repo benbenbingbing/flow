@@ -1,5 +1,6 @@
 package com.workflow.entity.permission.bootstrap;
 
+import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
 import com.workflow.entity.permission.application.EntityPermissionCatalogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 public class EntityPermissionBootstrapRunner implements ApplicationRunner {
 
     private final EntityPermissionCatalogService catalogService;
+    private final BootstrapJobCoordinator bootstrapJobCoordinator;
 
     /**
      * 应用启动入口：同步全部实体的标准权限目录与历史按钮配置。
@@ -25,6 +27,12 @@ public class EntityPermissionBootstrapRunner implements ApplicationRunner {
      */
     @Override
     public void run(ApplicationArguments args) {
-        catalogService.synchronizeAll();
+        bootstrapJobCoordinator.executeOnce(
+                "entity-permission-catalog",
+                1,
+                () -> {
+                    catalogService.synchronizeAll();
+                    return true;
+                });
     }
 }

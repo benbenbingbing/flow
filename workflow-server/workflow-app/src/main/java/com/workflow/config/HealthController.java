@@ -1,6 +1,8 @@
 package com.workflow.config;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Map;
 
@@ -25,7 +27,14 @@ public class HealthController {
     public ResponseEntity<Map<String, String>> health() {
         try (Connection connection = dataSource.getConnection()) {
             if (connection.isValid(2)) {
-                return ResponseEntity.ok(Map.of("status", "UP"));
+                if (bootstrapReady(connection)) {
+                    return ResponseEntity.ok(Map.of("status", "UP"));
+                }
+                return ResponseEntity.status(
+                                HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(Map.of(
+                                "status",
+                                "BOOTSTRAPPING"));
             }
         } catch (SQLException exception) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
@@ -33,5 +42,22 @@ public class HealthController {
         }
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("status", "DOWN"));
+    }
+
+    private boolean bootstrapReady(Connection connection)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT COUNT(*)
+                FROM workflow_bootstrap_job
+                WHERE (job_name = 'system-entity-catalog'
+                         AND completed_version >= 1)
+                   OR (job_name = 'entity-permission-catalog'
+                         AND completed_version >= 1)
+                   OR (job_name = 'bootstrap-administrator'
+                         AND completed_version >= 1)
+                """);
+             ResultSet resultSet = statement.executeQuery()) {
+            return resultSet.next() && resultSet.getInt(1) == 3;
+        }
     }
 }

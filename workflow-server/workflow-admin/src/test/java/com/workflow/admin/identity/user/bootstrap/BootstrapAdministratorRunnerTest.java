@@ -1,6 +1,9 @@
 package com.workflow.admin.identity.user.bootstrap;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -21,7 +24,7 @@ class BootstrapAdministratorRunnerTest {
         SysUserMapper mapper = mock(SysUserMapper.class);
         when(mapper.activateBootstrapAdministrator(anyString(), anyString()))
                 .thenReturn(1);
-        BootstrapAdministratorRunner runner = new BootstrapAdministratorRunner(mapper);
+        BootstrapAdministratorRunner runner = runner(mapper);
         ReflectionTestUtils.setField(
                 runner,
                 "bootstrapPassword",
@@ -43,7 +46,7 @@ class BootstrapAdministratorRunnerTest {
     void blankSecretIsAllowedAfterBootstrapWasConsumed() {
         SysUserMapper mapper = mock(SysUserMapper.class);
         when(mapper.isBootstrapAdministratorPending(anyString())).thenReturn(false);
-        BootstrapAdministratorRunner runner = new BootstrapAdministratorRunner(mapper);
+        BootstrapAdministratorRunner runner = runner(mapper);
         ReflectionTestUtils.setField(runner, "bootstrapPassword", "");
 
         runner.run(null);
@@ -55,7 +58,7 @@ class BootstrapAdministratorRunnerTest {
     void blankSecretFailsStartupWhileBootstrapIsPending() {
         SysUserMapper mapper = mock(SysUserMapper.class);
         when(mapper.isBootstrapAdministratorPending(anyString())).thenReturn(true);
-        BootstrapAdministratorRunner runner = new BootstrapAdministratorRunner(mapper);
+        BootstrapAdministratorRunner runner = runner(mapper);
         ReflectionTestUtils.setField(runner, "bootstrapPassword", "");
 
         assertThrows(IllegalStateException.class, () -> runner.run(null));
@@ -65,10 +68,24 @@ class BootstrapAdministratorRunnerTest {
     @Test
     void weakBootstrapSecretFailsClosed() {
         SysUserMapper mapper = mock(SysUserMapper.class);
-        BootstrapAdministratorRunner runner = new BootstrapAdministratorRunner(mapper);
+        BootstrapAdministratorRunner runner = runner(mapper);
         ReflectionTestUtils.setField(runner, "bootstrapPassword", "admin-password");
 
         assertThrows(IllegalStateException.class, () -> runner.run(null));
         verify(mapper, never()).activateBootstrapAdministrator(anyString(), anyString());
+    }
+
+    private BootstrapAdministratorRunner runner(SysUserMapper mapper) {
+        return new BootstrapAdministratorRunner(
+                mapper,
+                new BootstrapJobCoordinator() {
+                    @Override
+                    public <T> Optional<T> executeOnce(
+                            String jobName,
+                            int requiredVersion,
+                            Supplier<T> action) {
+                        return Optional.ofNullable(action.get());
+                    }
+                });
     }
 }
