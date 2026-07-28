@@ -22,6 +22,9 @@ public class OutboxRecord {
     private String aggregateId;
     private String payloadDocument;
     private String status;
+    private String ownerId;
+    private Long leaseToken;
+    private LocalDateTime leaseUntil;
     private Integer retryCount;
     private Integer maxRetries;
     private LocalDateTime nextRetryTime;

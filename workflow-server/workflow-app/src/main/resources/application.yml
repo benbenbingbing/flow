@@ -96,7 +96,10 @@ workflow:
   outbox:
     delay-ms: ${OUTBOX_DELAY_MS:3000}
     batch-size: ${OUTBOX_BATCH_SIZE:100}
-    processing-timeout-minutes: ${OUTBOX_PROCESSING_TIMEOUT_MINUTES:10}
+    lease-seconds: ${OUTBOX_LEASE_SECONDS:120}
+    executor:
+      concurrency: ${OUTBOX_EXECUTOR_CONCURRENCY:4}
+      queue-capacity: ${OUTBOX_EXECUTOR_QUEUE_CAPACITY:200}
     retry-initial-seconds: ${OUTBOX_RETRY_INITIAL_SECONDS:30}
     retry-max-seconds: ${OUTBOX_RETRY_MAX_SECONDS:3600}
     retention-days: ${OUTBOX_RETENTION_DAYS:7}

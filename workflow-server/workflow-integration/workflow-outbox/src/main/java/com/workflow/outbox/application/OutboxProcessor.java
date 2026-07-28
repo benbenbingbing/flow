@@ -7,13 +7,14 @@ import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.TaskScheduler;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
 
 /**
  * 在独立事务中路由并消费一条通用 Outbox 事件。
@@ -24,6 +25,7 @@ public class OutboxProcessor {
 
     private final OutboxRecordMapper mapper;
     private final Map<String, OutboxEventHandler> handlers;
+    private final TaskScheduler heartbeatScheduler;
 
     @Value("${workflow.outbox.retry-initial-seconds:30}")
     private long retryInitialSeconds = 30;
@@ -33,17 +35,28 @@ public class OutboxProcessor {
 
     public OutboxProcessor(
             OutboxRecordMapper mapper,
-            List<OutboxEventHandler> handlers) {
+            List<OutboxEventHandler> handlers,
+            @Qualifier("outboxHeartbeatScheduler") TaskScheduler heartbeatScheduler) {
         this.mapper = mapper;
         this.handlers = indexHandlers(handlers);
+        this.heartbeatScheduler = heartbeatScheduler;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void process(String outboxId) {
-        OutboxRecord record = mapper.selectById(outboxId);
-        if (record == null || !"PROCESSING".equals(record.getStatus())) {
+    public void process(
+            String outboxId,
+            String ownerId,
+            long leaseToken,
+            int leaseSeconds) {
+        OutboxRecord record = mapper.selectClaimed(outboxId, ownerId);
+        if (record == null
+                || record.getLeaseToken() == null
+                || record.getLeaseToken() != leaseToken) {
             return;
         }
+        ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
+                () -> mapper.heartbeat(
+                        outboxId, ownerId, leaseToken, leaseSeconds),
+                Duration.ofSeconds(Math.max(1, leaseSeconds / 3)));
         try {
             OutboxEventHandler handler = handlers.get(record.getTopic());
             if (handler == null) {
@@ -51,9 +64,11 @@ public class OutboxProcessor {
                         "未注册 Outbox 处理器: " + record.getTopic());
             }
             handler.handle(toEvent(record));
-            markProcessed(record);
+            markProcessed(record, ownerId, leaseToken);
         } catch (Exception exception) {
-            markFailed(record, exception);
+            markFailed(record, ownerId, leaseToken, exception);
+        } finally {
+            heartbeat.cancel(false);
         }
     }
 
@@ -92,18 +107,20 @@ public class OutboxProcessor {
                 record.getCreateTime());
     }
 
-    private void markProcessed(OutboxRecord record) {
-        LocalDateTime now = LocalDateTime.now();
-        record.setStatus("PROCESSED");
-        record.setProcessedTime(now);
-        record.setNextRetryTime(null);
-        record.setErrorMessage(null);
-        record.setUpdateTime(now);
-        mapper.updateById(record);
+    private void markProcessed(
+            OutboxRecord record,
+            String ownerId,
+            long leaseToken) {
+        if (mapper.markProcessed(record.getId(), ownerId, leaseToken) == 0) {
+            log.warn("Outbox 完成结果被 fencing 拒绝: id={}, owner={}, token={}",
+                    record.getId(), ownerId, leaseToken);
+        }
     }
 
     private void markFailed(
             OutboxRecord record,
+            String ownerId,
+            long leaseToken,
             Exception exception) {
         int retries = record.getRetryCount() == null
                 ? 1
@@ -111,15 +128,27 @@ public class OutboxProcessor {
         int maxRetries = record.getMaxRetries() == null
                 ? 8
                 : Math.max(1, record.getMaxRetries());
-        LocalDateTime now = LocalDateTime.now();
-        record.setRetryCount(retries);
-        record.setStatus(retries >= maxRetries ? "DEAD" : "FAILED");
-        record.setNextRetryTime(retries >= maxRetries
-                ? null
-                : now.plusSeconds(retryDelaySeconds(retries)));
-        record.setErrorMessage(errorMessage(exception));
-        record.setUpdateTime(now);
-        mapper.updateById(record);
+        OutboxEventHandler handler = handlers.get(record.getTopic());
+        boolean retryable = handler != null && handler.retryable();
+        String status = !retryable || retries >= maxRetries
+                ? "DEAD"
+                : "FAILED";
+        long retryDelay = "DEAD".equals(status)
+                ? 0
+                : retryDelaySeconds(retries);
+        int updated = mapper.markFailed(
+                record.getId(),
+                ownerId,
+                leaseToken,
+                status,
+                retries,
+                retryDelay,
+                errorMessage(exception));
+        if (updated == 0) {
+            log.warn("Outbox 失败结果被 fencing 拒绝: id={}, owner={}, token={}",
+                    record.getId(), ownerId, leaseToken);
+            return;
+        }
         log.error(
                 "Outbox 事件处理失败: id={}, topic={}, retry={}/{}",
                 record.getId(),

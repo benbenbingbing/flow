@@ -25,6 +25,11 @@ public class SystemAuditOutboxHandler implements OutboxEventHandler {
     }
 
     @Override
+    public boolean retryable() {
+        return true;
+    }
+
+    @Override
     public void handle(OutboxEvent event) throws Exception {
         AuditLogPayload payload = objectMapper.readValue(
                 event.payloadDocument(),
