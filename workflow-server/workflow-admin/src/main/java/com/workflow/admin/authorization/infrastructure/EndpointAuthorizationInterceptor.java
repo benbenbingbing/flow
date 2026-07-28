@@ -8,6 +8,8 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.PublicApi;
 import com.workflow.core.security.RequiresPermission;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -25,6 +27,15 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
 
     private final SysMenuMapper menuMapper;
     private final CurrentUserRoleService currentUserRoleService;
+
+    @Autowired
+    public EndpointAuthorizationInterceptor(
+            ObjectProvider<SysMenuMapper> menuMapperProvider,
+            ObjectProvider<CurrentUserRoleService> currentUserRoleServiceProvider) {
+        this(
+                menuMapperProvider.getIfAvailable(),
+                currentUserRoleServiceProvider.getIfAvailable());
+    }
 
     public EndpointAuthorizationInterceptor(
             SysMenuMapper menuMapper,
@@ -69,6 +80,9 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
                 .toArray(String[]::new);
         if (required.length == 0) {
             throw new ForbiddenException("接口权限配置无效");
+        }
+        if (menuMapper == null || currentUserRoleService == null) {
+            throw new ForbiddenException("权限服务暂不可用");
         }
         if (currentUserRoleService.isSuperAdmin()) {
             return;

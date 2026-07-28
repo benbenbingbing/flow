@@ -72,9 +72,28 @@ class EndpointAuthorizationInterceptorTest {
         assertThrows(ForbiddenException.class, () -> authorize("unclassifiedEndpoint"));
     }
 
+    @Test
+    void missingAuthorizationDependenciesFailClosed() {
+        UserContext.setCurrentUser("user-1", "reader");
+        EndpointAuthorizationInterceptor unavailable =
+                new EndpointAuthorizationInterceptor(
+                        (SysMenuMapper) null,
+                        (CurrentUserRoleService) null);
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> authorize(unavailable, "permissionEndpoint"));
+    }
+
     private boolean authorize(String methodName) throws Exception {
+        return authorize(interceptor, methodName);
+    }
+
+    private boolean authorize(
+            EndpointAuthorizationInterceptor candidate,
+            String methodName) throws Exception {
         Method method = FixtureController.class.getDeclaredMethod(methodName);
-        return interceptor.preHandle(
+        return candidate.preHandle(
                 new MockHttpServletRequest(),
                 new MockHttpServletResponse(),
                 new HandlerMethod(new FixtureController(), method));
