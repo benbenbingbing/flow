@@ -23,6 +23,11 @@ public class HealthController {
 
     private final DataSource dataSource;
 
+    @GetMapping("/livez")
+    public Map<String, String> live() {
+        return Map.of("status", "UP");
+    }
+
     @GetMapping("/healthz")
     public ResponseEntity<Map<String, String>> health() {
         try (Connection connection = dataSource.getConnection()) {

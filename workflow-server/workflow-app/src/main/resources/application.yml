@@ -1,5 +1,13 @@
 server:
   port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: ${SERVER_TOMCAT_THREADS_MAX:100}
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:10}
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
+    max-connections: ${SERVER_TOMCAT_MAX_CONNECTIONS:4096}
+    connection-timeout: ${SERVER_TOMCAT_CONNECTION_TIMEOUT:5s}
   servlet:
     encoding:
       charset: UTF-8
@@ -17,6 +25,33 @@ spring:
     password: ${DB_PASSWORD}
     hikari:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}
+      validation-timeout: ${DB_POOL_VALIDATION_TIMEOUT_MS:2000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:1800000}
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION_MS:60000}
+
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
+
+  task:
+    execution:
+      pool:
+        core-size: ${APPLICATION_EXECUTOR_CORE_SIZE:4}
+        max-size: ${APPLICATION_EXECUTOR_MAX_SIZE:16}
+        queue-capacity: ${APPLICATION_EXECUTOR_QUEUE_CAPACITY:100}
+        keep-alive: ${APPLICATION_EXECUTOR_KEEP_ALIVE:60s}
+      shutdown:
+        await-termination: true
+        await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+    scheduling:
+      pool:
+        size: ${APPLICATION_SCHEDULER_POOL_SIZE:4}
+      shutdown:
+        await-termination: true
+        await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
 
   flyway:
     enabled: true
@@ -59,6 +94,34 @@ flowable:
   async-executor-activate: true
   history-level: full
   db-history-used: true
+  task-invoker:
+    core-pool-size: ${FLOWABLE_TASK_INVOKER_CORE_SIZE:4}
+    max-pool-size: ${FLOWABLE_TASK_INVOKER_MAX_SIZE:8}
+    queue-size: ${FLOWABLE_TASK_INVOKER_QUEUE_SIZE:200}
+    await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+
+management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9090}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+    env:
+      show-values: never
+    configprops:
+      show-values: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 # 日志配置
 logging:
@@ -68,8 +131,8 @@ logging:
     root: INFO
     com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
 
 cors:
   allowed-origins: "*"
@@ -85,6 +148,8 @@ file:
       access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
 
 workflow:
+  metrics:
+    queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}
   bootstrap:
     admin:
       password: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:}
