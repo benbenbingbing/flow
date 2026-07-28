@@ -69,7 +69,16 @@ class ProductionArtifactSecurityTest {
         assertTrue(compose.contains(
                 "SCHEMA_DB_PASSWORD: ${SCHEMA_DB_PASSWORD:?SCHEMA_DB_PASSWORD is required}"));
         assertTrue(compose.contains(
-                "FLOWABLE_SCHEMA_UPDATE: ${FLOWABLE_SCHEMA_UPDATE:-false}"));
+                "FLOWABLE_SCHEMA_UPDATE: \"false\""));
+        String serverSection = compose.substring(
+                compose.indexOf("  server:"),
+                compose.indexOf("  web:"));
+        assertFalse(serverSection.contains("SCHEMA_DB_USERNAME"));
+        assertFalse(serverSection.contains("SCHEMA_DB_PASSWORD"));
+        assertTrue(serverSection.contains(
+                "WORKFLOW_SCHEMA_PUBLISHER_MODE: queue"));
+        assertTrue(compose.contains(
+                "/app/workflow-db-migrator.jar"));
 
         String databaseUsers = Files.readString(
                 Path.of("../../deploy/mysql-init/10-database-users.sh"));

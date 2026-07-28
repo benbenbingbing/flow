@@ -2,6 +2,7 @@ package com.workflow.entity.data.infrastructure;
 
 import com.workflow.entity.data.application.SchemaDdlExecutor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Component;
@@ -11,6 +12,10 @@ import org.springframework.util.StringUtils;
  * Dedicated, unpooled connection for infrequent schema publication.
  */
 @Component
+@ConditionalOnProperty(
+        name = "workflow.schema-publisher.mode",
+        havingValue = "direct",
+        matchIfMissing = true)
 public class JdbcSchemaDdlExecutor implements SchemaDdlExecutor {
 
     private final JdbcTemplate jdbcTemplate;

@@ -22,6 +22,7 @@
         <module>workflow-contracts</module>
         <module>workflow-admin</module>
         <module>workflow-storage</module>
+        <module>workflow-db-migrator</module>
         <module>workflow-entity</module>
         <module>workflow-process</module>
         <module>workflow-project</module>
@@ -60,6 +61,11 @@
             <dependency>
                 <groupId>com.workflow</groupId>
                 <artifactId>workflow-storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
+                <artifactId>workflow-db-migrator</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

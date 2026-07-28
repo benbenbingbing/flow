@@ -24,7 +24,7 @@ class SchemaRequiredTablesTest {
     private static final String LEGACY_UPDATE_TIME =
             "updated" + "_at";
     private static final Path MIGRATION_DIRECTORY =
-            Path.of("src/main/resources/db/migration");
+            Path.of("../workflow-db-migrator/src/main/resources/db/migration");
     private static final Path BASELINE =
             MIGRATION_DIRECTORY.resolve("V001__business_schema.sql");
     private static final Path SECURITY_FOUNDATION =

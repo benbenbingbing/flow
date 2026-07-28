@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { execSync } from 'node:child_process'
 import { parse as parseSfc } from '@vue/compiler-sfc'
 import { baseParse, NodeTypes } from '@vue/compiler-dom'
+import { listFiles } from './file-tree.mjs'
 
-const files = execSync("rg --files src/views src/components -g '*.vue'", { encoding: 'utf8' })
-  .trim()
-  .split('\n')
-  .filter(Boolean)
+const files = listFiles(['src/views', 'src/components'], '.vue')
 
 const auditedTags = [
   'el-form-item',

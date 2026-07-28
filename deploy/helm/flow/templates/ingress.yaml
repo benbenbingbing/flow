@@ -1,0 +1,29 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flow.fullname" . }}
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ required "ingress.className is required" .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ required "ingress.host is required" .Values.ingress.host | quote }}
+      secretName: {{ required "ingress.tlsSecretName is required" .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flow.fullname" . }}-web
+                port:
+                  name: http
+{{- end }}

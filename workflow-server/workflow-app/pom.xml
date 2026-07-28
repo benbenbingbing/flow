@@ -10,6 +10,7 @@
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-admin</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-storage</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-db-migrator</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-entity</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-process</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-project</artifactId></dependency>

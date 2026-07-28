@@ -1,0 +1,177 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flow.fullname" . }}-server
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 8 }}
+      annotations:
+        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application) | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "flow.fullname" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "flow.image" (dict "root" . "image" .Values.server.image) }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9090
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: production
+            - name: SPRING_DATASOURCE_URL
+              value: {{ .Values.database.url | quote }}
+            - name: SPRING_FLYWAY_ENABLED
+              value: "false"
+            - name: FLOWABLE_SCHEMA_UPDATE
+              value: "false"
+            - name: FLOWABLE_ASYNC_EXECUTOR_ACTIVATE
+              value: "true"
+            - name: WORKFLOW_DEPLOYMENT_ROLE
+              value: server
+            - name: WORKFLOW_BOOTSTRAP_ENABLED
+              value: "false"
+            - name: WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE
+              value: "false"
+            - name: WORKFLOW_SCHEDULING_ENABLED
+              value: "true"
+            - name: WORKFLOW_SCHEMA_PUBLISHER_MODE
+              value: queue
+            - name: FILE_STORAGE_TYPE
+              value: s3
+            - name: FILE_STORAGE_S3_ENDPOINT
+              value: {{ .Values.storage.endpoint | quote }}
+            - name: FILE_STORAGE_S3_REGION
+              value: {{ .Values.storage.region | quote }}
+            - name: FILE_STORAGE_S3_BUCKET
+              value: {{ .Values.storage.bucket | quote }}
+            - name: FILE_STORAGE_S3_ACCESS_URL
+              value: {{ .Values.storage.accessUrl | quote }}
+            - name: FILE_STORAGE_S3_PATH_STYLE
+              value: {{ .Values.storage.pathStyleAccess | quote }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ .Values.application.corsAllowedOrigins | quote }}
+            - name: TRUST_FORWARDED_HEADERS
+              value: {{ .Values.application.trustForwardedHeaders | quote }}
+            - name: WORKFLOW_HTTP_ALLOWED_HOSTS
+              value: {{ .Values.application.httpAllowedHosts | quote }}
+            - name: WORKFLOW_LOG_LEVEL
+              value: {{ .Values.application.logLevel | quote }}
+            - name: SHUTDOWN_TIMEOUT
+              value: {{ .Values.application.shutdownTimeout | quote }}
+            - name: DB_POOL_MAX_SIZE
+              value: {{ .Values.server.pool.databaseMax | quote }}
+            - name: SERVER_TOMCAT_THREADS_MAX
+              value: {{ .Values.server.pool.tomcatMaxThreads | quote }}
+            - name: APPLICATION_EXECUTOR_MAX_SIZE
+              value: {{ .Values.server.pool.applicationMaxThreads | quote }}
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            {{- include "flow.secretEnv" . | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 5
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: {{ .Values.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 14 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 20 }}
+        {{- with .Values.affinity }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

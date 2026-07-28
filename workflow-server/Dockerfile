@@ -9,8 +9,8 @@ WORKDIR /app
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache curl \
-    && addgroup -S workflow \
-    && adduser -S -D -H -h /app -s /sbin/nologin -G workflow workflow \
+    && addgroup -S -g 10001 workflow \
+    && adduser -S -D -H -u 10001 -h /app -s /sbin/nologin -G workflow workflow \
     && mkdir -p /app/logs /app/uploads \
     && chown -R workflow:workflow /app
 
@@ -21,8 +21,11 @@ ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0"
 COPY --from=build --chown=workflow:workflow \
     /app/workflow-app/target/workflow-server-1.0.0.jar \
     /app/workflow-server.jar
+COPY --from=build --chown=workflow:workflow \
+    /app/workflow-db-migrator/target/workflow-db-migrator-1.0.0-exec.jar \
+    /app/workflow-db-migrator.jar
 
-USER workflow
+USER 10001:10001
 EXPOSE 8080 9090
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \

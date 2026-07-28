@@ -1,0 +1,109 @@
+global:
+  existingSecret: flow-production-secrets
+  allowMutableImages: false
+
+server:
+  image:
+    repository: registry.example.com/flow-server
+    tag: "1.0.0"
+    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  pool:
+    databaseMax: 20
+    tomcatMaxThreads: 100
+    applicationMaxThreads: 16
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    cpuUtilization: 70
+    memoryUtilization: 80
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+web:
+  image:
+    repository: registry.example.com/flow-web
+    tag: "1.0.0"
+    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    cpuUtilization: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+schemaWorker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+database:
+  url: jdbc:mysql://mysql.example.internal:3306/workflow?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+  migrationConnectRetries: 30
+
+storage:
+  endpoint: https://s3.example.internal
+  region: us-east-1
+  bucket: flow-production
+  accessUrl: ""
+  pathStyleAccess: false
+
+application:
+  corsAllowedOrigins: ""
+  trustForwardedHeaders: true
+  httpAllowedHosts: ""
+  logLevel: INFO
+  shutdownTimeout: 30s
+
+ingress:
+  enabled: false
+  className: nginx
+  host: flow.example.com
+  tlsSecretName: flow-tls
+  annotations: {}
+
+networkPolicy:
+  enabled: true
+  allowSameNamespaceDependencies: false
+  ingressNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+  monitoringNamespaceSelector:
+    kubernetes.io/metadata.name: monitoring
+  databaseCIDRs: []
+  objectStorageCIDRs: []
+  outboundHttpsCIDRs: []
+
+topologySpread:
+  enabled: true
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

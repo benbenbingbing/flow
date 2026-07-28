@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["global", "server", "web", "database", "storage"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "required": ["existingSecret", "allowMutableImages"],
+      "properties": {
+        "existingSecret": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowMutableImages": {
+          "type": "boolean"
+        }
+      }
+    },
+    "server": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": {
+          "$ref": "#/definitions/image"
+        }
+      }
+    },
+    "web": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": {
+          "$ref": "#/definitions/image"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^jdbc:mysql://"
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "required": ["endpoint", "region", "bucket"],
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bucket": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "global": {
+            "properties": {
+              "allowMutableImages": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "server": {
+            "properties": {
+              "image": {
+                "required": ["digest"],
+                "properties": {
+                  "digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          },
+          "web": {
+            "properties": {
+              "image": {
+                "required": ["digest"],
+                "properties": {
+                  "digest": {
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          ]
+        },
+        "pullPolicy": {
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    }
+  }
+}

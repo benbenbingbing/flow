@@ -174,9 +174,18 @@ workflow:
       window-seconds: ${LOGIN_THROTTLE_WINDOW_SECONDS:900}
       block-seconds: ${LOGIN_THROTTLE_BLOCK_SECONDS:900}
   bootstrap:
+    enabled: ${WORKFLOW_BOOTSTRAP_ENABLED:true}
+    exit-on-complete: ${WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE:false}
     admin:
       password: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:}
+  deployment:
+    role: ${WORKFLOW_DEPLOYMENT_ROLE:development}
+  scheduling:
+    enabled: ${WORKFLOW_SCHEDULING_ENABLED:true}
   schema-publisher:
+    mode: ${WORKFLOW_SCHEMA_PUBLISHER_MODE:direct}
+    wait-timeout: ${SCHEMA_PUBLISHER_WAIT_TIMEOUT:120s}
+    poll-interval: ${SCHEMA_PUBLISHER_POLL_INTERVAL:500ms}
     datasource:
       url: ${SCHEMA_DATASOURCE_URL}
       username: ${SCHEMA_DB_USERNAME}

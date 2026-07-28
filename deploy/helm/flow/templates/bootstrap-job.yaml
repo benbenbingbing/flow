@@ -1,0 +1,94 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "flow.fullname" . }}-bootstrap
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bootstrap
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "flow.componentLabels" (dict "root" . "component" "bootstrap") | nindent 8 }}
+    spec:
+      serviceAccountName: default
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          image: {{ include "flow.image" (dict "root" . "image" .Values.server.image) }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: production
+            - name: SPRING_MAIN_WEB_APPLICATION_TYPE
+              value: none
+            - name: SPRING_DATASOURCE_URL
+              value: {{ .Values.database.url | quote }}
+            - name: SPRING_FLYWAY_ENABLED
+              value: "false"
+            - name: FLOWABLE_SCHEMA_UPDATE
+              value: "false"
+            - name: FLOWABLE_ASYNC_EXECUTOR_ACTIVATE
+              value: "false"
+            - name: WORKFLOW_DEPLOYMENT_ROLE
+              value: bootstrap
+            - name: WORKFLOW_BOOTSTRAP_ENABLED
+              value: "true"
+            - name: WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE
+              value: "true"
+            - name: WORKFLOW_SCHEDULING_ENABLED
+              value: "false"
+            - name: WORKFLOW_SCHEMA_PUBLISHER_MODE
+              value: queue
+            - name: FILE_STORAGE_TYPE
+              value: s3
+            - name: FILE_STORAGE_S3_ENDPOINT
+              value: {{ .Values.storage.endpoint | quote }}
+            - name: FILE_STORAGE_S3_REGION
+              value: {{ .Values.storage.region | quote }}
+            - name: FILE_STORAGE_S3_BUCKET
+              value: {{ .Values.storage.bucket | quote }}
+            - name: FILE_STORAGE_S3_ACCESS_URL
+              value: {{ .Values.storage.accessUrl | quote }}
+            - name: FILE_STORAGE_S3_PATH_STYLE
+              value: {{ .Values.storage.pathStyleAccess | quote }}
+            - name: WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: bootstrap-admin-password
+            {{- include "flow.secretEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

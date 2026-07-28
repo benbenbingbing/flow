@@ -1,0 +1,95 @@
+global:
+  existingSecret: flow-local-secrets
+  allowMutableImages: true
+
+server:
+  image:
+    repository: flow-hardening/server
+    tag: g3-final
+    digest: ""
+    pullPolicy: Never
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+  pool:
+    databaseMax: 5
+    tomcatMaxThreads: 30
+    applicationMaxThreads: 6
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    cpuUtilization: 70
+    memoryUtilization: 80
+
+web:
+  image:
+    repository: flow-hardening/web
+    tag: g3-final
+    digest: ""
+    pullPolicy: Never
+  replicas: 2
+  resources:
+    requests:
+      cpu: 25m
+      memory: 48Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    cpuUtilization: 70
+
+schemaWorker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+database:
+  url: jdbc:mysql://local-mysql:3306/workflow?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+  migrationConnectRetries: 30
+
+storage:
+  endpoint: http://minio:9000
+  region: us-east-1
+  bucket: workflow-files
+  accessUrl: ""
+  pathStyleAccess: true
+
+application:
+  corsAllowedOrigins: ""
+  trustForwardedHeaders: false
+  httpAllowedHosts: ""
+  logLevel: INFO
+  shutdownTimeout: 30s
+
+ingress:
+  enabled: false
+
+networkPolicy:
+  enabled: true
+  allowSameNamespaceDependencies: true
+  ingressNamespaceSelector:
+    kubernetes.io/metadata.name: flow-hardening
+  monitoringNamespaceSelector:
+    kubernetes.io/metadata.name: flow-hardening
+  databaseCIDRs: []
+  objectStorageCIDRs: []
+  outboundHttpsCIDRs: []
+
+topologySpread:
+  enabled: true
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
