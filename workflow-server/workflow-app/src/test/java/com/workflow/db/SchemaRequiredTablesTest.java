@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.regex.Pattern;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -28,7 +29,7 @@ class SchemaRequiredTablesTest {
             MIGRATION_DIRECTORY.resolve("V001__business_schema.sql");
 
     @Test
-    void flywayUsesOneFreshInstallBaseline() throws Exception {
+    void flywayUsesContinuousVersionedMigrations() throws Exception {
         List<String> files;
         try (var paths = Files.list(MIGRATION_DIRECTORY)) {
             files = paths
@@ -38,7 +39,22 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(List.of("V001__business_schema.sql"), files);
+        assertFalse(files.isEmpty());
+        assertEquals("V001__business_schema.sql", files.get(0));
+        Pattern migrationName = Pattern.compile(
+                "^V(\\d{3})__[a-z0-9_]+\\.sql$");
+        List<Integer> versions = files.stream()
+                .map(file -> {
+                    var matcher = migrationName.matcher(file);
+                    assertTrue(matcher.matches(),
+                            "invalid migration name: " + file);
+                    return Integer.parseInt(matcher.group(1));
+                })
+                .toList();
+        assertEquals(
+                IntStream.rangeClosed(1, versions.size()).boxed().toList(),
+                versions,
+                "migration versions must be continuous");
 
         String applicationYaml = Files.readString(
                 Path.of("src/main/resources/application.yml"));
