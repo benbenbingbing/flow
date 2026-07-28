@@ -5,8 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class FreshInstallFlywayConfigurationTest {
 
@@ -14,23 +14,21 @@ class FreshInstallFlywayConfigurationTest {
             new FreshInstallFlywayConfiguration().forwardOnlyMigrationStrategy();
 
     @Test
-    void validatesBeforeApplyingForwardMigrations() {
+    void appliesPendingForwardMigrations() {
         Flyway flyway = mock(Flyway.class);
 
         strategy.migrate(flyway);
 
-        var order = inOrder(flyway);
-        order.verify(flyway).validate();
-        order.verify(flyway).migrate();
+        verify(flyway).migrate();
     }
 
     @Test
-    void delegatesCompatibilityChecksToFlyway() {
+    void doesNotRejectPendingMigrationsWithStandaloneValidation() {
         Flyway flyway = mock(Flyway.class);
 
         strategy.migrate(flyway);
 
-        verify(flyway).validate();
         verify(flyway).migrate();
+        verifyNoMoreInteractions(flyway);
     }
 }

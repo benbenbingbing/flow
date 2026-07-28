@@ -5,15 +5,10 @@ import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.workflow.admin.security.context.UserContext;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.ibatis.logging.slf4j.Slf4jImpl;
 import org.apache.ibatis.reflection.MetaObject;
-import org.apache.ibatis.session.SqlSessionFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 
 /**
@@ -21,14 +16,6 @@ import java.time.LocalDateTime;
  */
 @Configuration
 public class MyBatisPlusConfig {
-
-    /**
-     * 设置 MyBatis 使用 SLF4J 日志，避免使用 System.out 导致阻塞
-     */
-    @PostConstruct
-    public void init() {
-        System.setProperty("mybatis-plus.configuration.log-impl", "org.apache.ibatis.logging.slf4j.Slf4jImpl");
-    }
 
     /**
      * 分页插件

@@ -42,7 +42,7 @@ mybatis-plus:
   type-handlers-package: com.workflow.config
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
   global-config:
     db-config:
       id-type: auto
@@ -63,7 +63,7 @@ logging:
     name: logs/workflow-server.log
   level:
     root: INFO
-    com.workflow: DEBUG
+    com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

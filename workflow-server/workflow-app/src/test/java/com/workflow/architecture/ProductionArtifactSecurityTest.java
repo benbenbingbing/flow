@@ -49,6 +49,10 @@ class ProductionArtifactSecurityTest {
         assertFalse(applicationConfig.contains("zhoudawei"));
         assertTrue(applicationConfig.contains("password: ${DB_PASSWORD}"));
         assertTrue(applicationConfig.contains("secret: ${JWT_SECRET}"));
+        assertTrue(applicationConfig.contains(
+                "log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl"));
+        assertTrue(applicationConfig.contains(
+                "com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}"));
         assertFalse(jwtSource.contains("${jwt.secret:"));
     }
 }
