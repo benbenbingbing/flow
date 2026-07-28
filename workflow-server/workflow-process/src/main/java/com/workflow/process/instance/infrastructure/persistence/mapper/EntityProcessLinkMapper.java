@@ -1,0 +1,52 @@
+package com.workflow.process.instance.infrastructure.persistence.mapper;
+
+import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+@Mapper
+public interface EntityProcessLinkMapper {
+
+    @Insert("""
+            INSERT IGNORE INTO entity_process_link (
+              id, entity_code, entity_record_id, generation,
+              process_definition_key, state, request_id, entity_status,
+              version, create_time, update_time
+            ) VALUES (
+              #{id}, #{entityCode}, #{entityRecordId}, #{generation},
+              #{processDefinitionKey}, 'PENDING', #{requestId}, #{entityStatus},
+              0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+            )
+            """)
+    int insertPending(EntityProcessLink link);
+
+    @Select("""
+            SELECT * FROM entity_process_link
+            WHERE entity_code = #{entityCode}
+              AND entity_record_id = #{entityRecordId}
+              AND generation = #{generation}
+            FOR UPDATE
+            """)
+    EntityProcessLink selectForUpdate(
+            @Param("entityCode") String entityCode,
+            @Param("entityRecordId") String entityRecordId,
+            @Param("generation") int generation);
+
+    @Update("""
+            UPDATE entity_process_link
+            SET process_instance_id = #{processInstanceId},
+                state = 'ACTIVE',
+                version = version + 1,
+                update_time = UTC_TIMESTAMP(6)
+            WHERE id = #{id}
+              AND request_id = #{requestId}
+              AND state = 'PENDING'
+            """)
+    int activate(
+            @Param("id") String id,
+            @Param("requestId") String requestId,
+            @Param("processInstanceId") String processInstanceId);
+}

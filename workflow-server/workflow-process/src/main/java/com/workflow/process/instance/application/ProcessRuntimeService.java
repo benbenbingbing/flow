@@ -15,6 +15,8 @@ import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceColl
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
+import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
+import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.IdentityService;
@@ -26,7 +28,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Map;
+import java.util.HexFormat;
+import java.util.UUID;
 
 /**
  * 流程发起应用服务，只负责流程引擎交互并返回运行态结果。
@@ -43,6 +50,7 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final ProcessTaskService processTaskService;
     private final WorkflowAutoSkipService workflowAutoSkipService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final EntityProcessLinkMapper entityProcessLinkMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -70,16 +78,32 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                             : "流程尚未发布，无法发起: " + processConfig.getProcessName());
         }
 
+        EntityProcessLink link = reserveLink(request, processConfig);
+        if ("ACTIVE".equals(link.getState())) {
+            return existingResult(link);
+        }
+
         Map<String, Object> variables = buildVariables(request);
         multiInstanceCollectionListener.prepareVariables(processConfig.getId(), variables);
         if (StringUtils.hasText(request.submitterId())) {
             identityService.setAuthenticatedUserId(request.submitterId());
         }
 
-        ProcessInstance processInstance = runtimeService.startProcessInstanceByKey(
-                processConfig.getProcessKey(),
-                request.entityRecordId(),
-                variables);
+        ProcessInstance processInstance;
+        try {
+            processInstance = runtimeService.startProcessInstanceByKey(
+                    processConfig.getProcessKey(),
+                    request.entityRecordId(),
+                    variables);
+        } finally {
+            if (StringUtils.hasText(request.submitterId())) {
+                identityService.setAuthenticatedUserId(null);
+            }
+        }
+        if (entityProcessLinkMapper.activate(
+                link.getId(), link.getRequestId(), processInstance.getId()) != 1) {
+            throw new IllegalStateException("实体流程链接激活失败: " + link.getId());
+        }
         workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfig.getId());
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())
@@ -95,6 +119,69 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 currentTask == null ? null : currentTask.getId(),
                 currentTask == null ? null : currentTask.getName(),
                 currentTask == null ? null : currentTask.getAssignee());
+    }
+
+    private EntityProcessLink reserveLink(
+            ProcessStartRequest request,
+            ProcessDefinitionConfig processConfig) {
+        int generation = 1;
+        String requestId = stableRequestId(
+                request.entityCode(), request.entityRecordId(), generation);
+        EntityProcessLink candidate = new EntityProcessLink();
+        candidate.setId(UUID.randomUUID().toString().replace("-", ""));
+        candidate.setEntityCode(request.entityCode());
+        candidate.setEntityRecordId(request.entityRecordId());
+        candidate.setGeneration(generation);
+        candidate.setProcessDefinitionKey(processConfig.getProcessKey());
+        candidate.setRequestId(requestId);
+        candidate.setEntityStatus(request.processingStatus());
+        int inserted = entityProcessLinkMapper.insertPending(candidate);
+        EntityProcessLink locked = entityProcessLinkMapper.selectForUpdate(
+                request.entityCode(), request.entityRecordId(), generation);
+        if (locked == null) {
+            throw new IllegalStateException("实体流程链接写入失败: " + request.entityRecordId());
+        }
+        if (inserted == 0 && "ACTIVE".equals(locked.getState())) {
+            if (!processConfig.getProcessKey().equals(locked.getProcessDefinitionKey())) {
+                throw new BusinessConflictException(
+                        "ENTITY_PROCESS_ALREADY_ACTIVE",
+                        "实体已绑定其他活动流程");
+            }
+            return locked;
+        }
+        if (inserted == 0) {
+            throw new BusinessConflictException(
+                    "ENTITY_PROCESS_START_IN_PROGRESS",
+                    "实体流程正在发起，请稍后重试");
+        }
+        return locked;
+    }
+
+    private ProcessStartResult existingResult(EntityProcessLink link) {
+        Task currentTask = taskService.createTaskQuery()
+                .processInstanceId(link.getProcessInstanceId())
+                .active()
+                .singleResult();
+        return new ProcessStartResult(
+                link.getProcessInstanceId(),
+                link.getEntityStatus(),
+                currentTask == null ? null : currentTask.getId(),
+                currentTask == null ? null : currentTask.getName(),
+                currentTask == null ? null : currentTask.getAssignee());
+    }
+
+    private String stableRequestId(
+            String entityCode,
+            String entityRecordId,
+            int generation) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                    (entityCode + '\n' + entityRecordId + '\n' + generation)
+                            .getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private Map<String, Object> buildVariables(ProcessStartRequest request) {
