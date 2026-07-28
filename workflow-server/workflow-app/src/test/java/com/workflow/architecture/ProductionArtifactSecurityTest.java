@@ -40,8 +40,15 @@ class ProductionArtifactSecurityTest {
     void datasourceDoesNotEnableMultipleStatements() throws Exception {
         String applicationConfig = Files.readString(
                 Path.of("src/main/resources/application.yml"));
+        String jwtSource = Files.readString(Path.of(
+                "../workflow-admin/src/main/java/com/workflow/admin/auth/"
+                        + "infrastructure/JwtUtil.java"));
 
         assertFalse(applicationConfig.contains("allowMultiQueries=true"));
         assertTrue(applicationConfig.contains("serverTimezone=UTC"));
+        assertFalse(applicationConfig.contains("zhoudawei"));
+        assertTrue(applicationConfig.contains("password: ${DB_PASSWORD}"));
+        assertTrue(applicationConfig.contains("secret: ${JWT_SECRET}"));
+        assertFalse(jwtSource.contains("${jwt.secret:"));
     }
 }

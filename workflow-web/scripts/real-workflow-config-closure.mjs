@@ -57,23 +57,23 @@ async function login(username, password) {
 }
 
 async function createApprover(username, nickname, roleId) {
+  const initialPassword = `InitialA9!${username}`
   const user = await api('POST', '/system/user', {
     username,
     nickname,
     email: `${username}@example.test`,
+    password: initialPassword,
     status: '0',
     roleIds: [roleId]
   })
-  const reset = await api('POST', `/system/user/${user.id}/reset-password`)
-  assert.ok(reset?.temporaryPassword, `重置 ${username} 密码后应返回一次性临时密码`)
   record(`createApprover:${username}`, { id: user.id, username, nickname })
-  return reset.temporaryPassword
+  return initialPassword
 }
 
-async function activateApprover(username, temporaryPassword, newPassword) {
-  await login(username, temporaryPassword)
+async function activateApprover(username, initialPassword, newPassword) {
+  await login(username, initialPassword)
   await api('POST', '/auth/change-password', {
-    currentPassword: temporaryPassword,
+    currentPassword: initialPassword,
     newPassword
   }, username)
   record(`activateApprover:${username}`, {
@@ -147,24 +147,24 @@ async function main() {
     id: approverRole.id,
     roleCode: approverRole.roleCode
   })
-  const firstTemporaryPassword = await createApprover(
+  const firstInitialPassword = await createApprover(
     firstApprover,
     'Codex一级审批人',
     approverRole.id
   )
-  const secondTemporaryPassword = await createApprover(
+  const secondInitialPassword = await createApprover(
     secondApprover,
     'Codex二级审批人',
     approverRole.id
   )
   await activateApprover(
     firstApprover,
-    firstTemporaryPassword,
+    firstInitialPassword,
     `CodexL1A${suffix}9`
   )
   await activateApprover(
     secondApprover,
-    secondTemporaryPassword,
+    secondInitialPassword,
     `CodexL2A${suffix}9`
   )
 

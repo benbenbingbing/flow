@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -23,8 +24,11 @@ class JwtUtilTest {
     @Test
     void generatesAndParsesToken() {
         JwtUtil jwtUtil = new JwtUtil();
-        ReflectionTestUtils.setField(jwtUtil, "secret", "workflow-secret-key-2024");
-        ReflectionTestUtils.setField(jwtUtil, "expiration", 86400000L);
+        ReflectionTestUtils.setField(
+                jwtUtil,
+                "secret",
+                "unit-test-only-jwt-secret-with-adequate-entropy");
+        ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
         jwtUtil.init();
 
         String token = JwtUtil.generateToken("u1", "admin");
@@ -32,5 +36,26 @@ class JwtUtilTest {
         assertTrue(JwtUtil.validateToken(token));
         assertEquals("u1", JwtUtil.getUserIdFromToken(token));
         assertEquals("admin", JwtUtil.getUsernameFromToken(token));
+    }
+
+    @Test
+    void rejectsWeakOrPublicSigningSecrets() {
+        JwtUtil jwtUtil = new JwtUtil();
+        ReflectionTestUtils.setField(jwtUtil, "secret", "workflow-secret-key-2024");
+        ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
+
+        assertThrows(IllegalStateException.class, jwtUtil::init);
+    }
+
+    @Test
+    void rejectsLongLivedAccessTokens() {
+        JwtUtil jwtUtil = new JwtUtil();
+        ReflectionTestUtils.setField(
+                jwtUtil,
+                "secret",
+                "unit-test-only-jwt-secret-with-adequate-entropy");
+        ReflectionTestUtils.setField(jwtUtil, "expiration", 86400000L);
+
+        assertThrows(IllegalStateException.class, jwtUtil::init);
     }
 }

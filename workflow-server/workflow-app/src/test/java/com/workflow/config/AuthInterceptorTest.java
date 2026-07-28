@@ -143,8 +143,11 @@ class AuthInterceptorTest {
     /** 初始化 JwtUtil 实例，通过反射注入密钥与过期时间后调用 init */
     private void initJwtUtil() {
         JwtUtil jwtUtil = new JwtUtil();
-        ReflectionTestUtils.setField(jwtUtil, "secret", "workflow-secret-key-2024");
-        ReflectionTestUtils.setField(jwtUtil, "expiration", 86400000L);
+        ReflectionTestUtils.setField(
+                jwtUtil,
+                "secret",
+                "auth-interceptor-test-secret-with-adequate-entropy");
+        ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
         jwtUtil.init();
     }
 }

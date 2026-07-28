@@ -6,6 +6,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -14,6 +15,23 @@ import java.util.List;
  */
 @Mapper
 public interface SysUserMapper extends BaseMapper<SysUser> {
+
+    /**
+     * Atomically activates the disabled built-in account only while it still
+     * carries the historical public password hash.
+     */
+    @Update("UPDATE sys_user SET password = #{passwordHash}, "
+            + "password_reset_required = 0, status = '0', update_time = CURRENT_TIMESTAMP "
+            + "WHERE id = '1' AND username = 'admin' AND deleted = 0 AND status = '1' "
+            + "AND password = #{expectedPasswordHash}")
+    int activateBootstrapAdministrator(
+            @Param("passwordHash") String passwordHash,
+            @Param("expectedPasswordHash") String expectedPasswordHash);
+
+    @Select("SELECT COUNT(*) > 0 FROM sys_user WHERE id = '1' AND username = 'admin' "
+            + "AND deleted = 0 AND status = '1' AND password = #{expectedPasswordHash}")
+    boolean isBootstrapAdministratorPending(
+            @Param("expectedPasswordHash") String expectedPasswordHash);
     
     /**
      * 根据用户名查询用户

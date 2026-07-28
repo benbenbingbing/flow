@@ -29,7 +29,7 @@ public class UiReleaseResolutionTokenService {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${ui.release-resolution.secret:${jwt.secret:workflow-secret-key-2024}}")
+    @Value("${ui.release-resolution.secret:${jwt.secret}}")
     private String secret;
 
     public String issue(

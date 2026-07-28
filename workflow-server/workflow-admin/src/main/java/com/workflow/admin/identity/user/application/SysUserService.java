@@ -22,10 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -40,14 +37,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysUserService {
 
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-    private static final char[] LOWERCASE = "abcdefghjkmnpqrstuvwxyz".toCharArray();
-    private static final char[] UPPERCASE = "ABCDEFGHJKMNPQRSTUVWXYZ".toCharArray();
-    private static final char[] DIGITS = "23456789".toCharArray();
-    private static final char[] SYMBOLS = "!@#$%&*+-_".toCharArray();
-    private static final char[] TEMPORARY_PASSWORD_CHARS =
-            "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#$%&*+-_".toCharArray();
-    
     /** 用户 Mapper */
     private final SysUserMapper userMapper;
     /** 角色 Mapper，用于查询用户角色 */
@@ -265,11 +254,10 @@ public class SysUserService {
         if (!StringUtils.hasText(user.getId())) {
             // 新增
             user.setCreateTime(LocalDateTime.now());
-            String temporaryPassword = generateTemporaryPassword();
-            user.setPassword(passwordEncoder.encode(temporaryPassword));
+            validateNewPassword(user.getPassword());
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
             user.setPasswordResetRequired(true);
             userMapper.insert(user);
-            user.setTemporaryPassword(temporaryPassword);
             log.info("新增用户：{}", user.getUsername());
         } else {
             // 更新 - 不更新密码
@@ -399,10 +387,9 @@ public class SysUserService {
     }
     
     /**
-     * 重置为一次性随机临时密码。
+     * 重置为管理员通过安全输入提交的新密码。
      *
      * @param id 用户ID
-     * @return 只应在本次响应中展示的临时密码
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -413,19 +400,21 @@ public class SysUserService {
             required = true,
             targetType = "SYS_USER",
             targetIdArg = 0)
-    public String resetPassword(String id) {
+    public void resetPassword(String id, String newPassword) {
         SysUser existing = userMapper.selectById(id);
         if (existing == null) {
             throw new IllegalArgumentException("用户不存在");
         }
-        String temporaryPassword = generateTemporaryPassword();
+        validateNewPassword(newPassword);
+        if (passwordMatches(newPassword, existing.getPassword())) {
+            throw new IllegalArgumentException("新密码不能与当前密码相同");
+        }
         SysUser update = new SysUser();
         update.setId(id);
-        update.setPassword(passwordEncoder.encode(temporaryPassword));
+        update.setPassword(passwordEncoder.encode(newPassword));
         update.setPasswordResetRequired(true);
         update.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(update);
-        return temporaryPassword;
     }
     
     /**
@@ -569,25 +558,6 @@ public class SysUserService {
 
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
-    }
-
-    private String generateTemporaryPassword() {
-        List<Character> characters = new ArrayList<>();
-        characters.add(randomCharacter(LOWERCASE));
-        characters.add(randomCharacter(UPPERCASE));
-        characters.add(randomCharacter(DIGITS));
-        characters.add(randomCharacter(SYMBOLS));
-        while (characters.size() < 16) {
-            characters.add(randomCharacter(TEMPORARY_PASSWORD_CHARS));
-        }
-        Collections.shuffle(characters, SECURE_RANDOM);
-        StringBuilder password = new StringBuilder(characters.size());
-        characters.forEach(password::append);
-        return password.toString();
-    }
-
-    private char randomCharacter(char[] characters) {
-        return characters[SECURE_RANDOM.nextInt(characters.length)];
     }
 
     private void validateNewPassword(String password) {

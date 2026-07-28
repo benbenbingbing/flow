@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -46,11 +47,27 @@ public class ConfigMigrationPackageCodec {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${config.migration.signing-key:workflow-config-migration-development-key}")
+    @Value("${config.migration.signing-key}")
     private String signingKey;            // 发布包 HMAC 签名密钥
 
     @Value("${config.migration.environment-name:local}")
     private String environmentName;       // 当前环境名称(写入清单)
+
+    @PostConstruct
+    void validateSigningKey() {
+        if (!StringUtils.hasText(signingKey)
+                || signingKey.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException(
+                    "CONFIG_MIGRATION_SIGNING_KEY must contain at least 32 bytes");
+        }
+        String normalized = signingKey.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("workflow-config-migration")
+                || normalized.contains("replace-with")
+                || normalized.contains("changeme")) {
+            throw new IllegalStateException(
+                    "CONFIG_MIGRATION_SIGNING_KEY cannot use a public example value");
+        }
+    }
 
     /**
      * 将迁移资产列表编码为 wfpack 发布包。

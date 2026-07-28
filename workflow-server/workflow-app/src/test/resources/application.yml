@@ -24,6 +24,14 @@ flowable:
   database-schema-update: true
   async-executor-activate: false
 
+jwt:
+  secret: workflow-test-only-jwt-secret-32-bytes-minimum
+  expiration: 900000
+
+config:
+  migration:
+    signing-key: workflow-test-only-migration-signing-key-32-bytes
+
 logging:
   level:
     root: INFO

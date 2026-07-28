@@ -43,8 +43,8 @@ export const batchAssignUserRoles = (userIds: string[], roleIds: string[]) => {
 }
 
 // 重置密码
-export const resetPassword = (id: string) => {
-  return request.post(`/system/user/${id}/reset-password`)
+export const resetPassword = (id: string, newPassword: string) => {
+  return request.post(`/system/user/${id}/reset-password`, { newPassword })
 }
 
 // 获取角色列表

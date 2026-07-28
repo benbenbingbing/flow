@@ -27,6 +27,8 @@ class SchemaRequiredTablesTest {
             Path.of("src/main/resources/db/migration");
     private static final Path BASELINE =
             MIGRATION_DIRECTORY.resolve("V001__business_schema.sql");
+    private static final Path SECURITY_FOUNDATION =
+            MIGRATION_DIRECTORY.resolve("V002__security_foundation.sql");
 
     @Test
     void flywayUsesContinuousVersionedMigrations() throws Exception {
@@ -166,7 +168,7 @@ class SchemaRequiredTablesTest {
     }
 
     @Test
-    void baselineSeedsUsableBootstrapAdministrator() throws Exception {
+    void immutableBaselineContainsLegacyBootstrapAdministrator() throws Exception {
         String sql = Files.readString(BASELINE);
         assertTrue(sql.contains("INSERT INTO `sys_role`"));
         assertTrue(sql.contains(
@@ -184,5 +186,27 @@ class SchemaRequiredTablesTest {
                 "$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6";
         assertTrue(new BCryptPasswordEncoder().matches(
                 "admin", bootstrapPasswordHash));
+    }
+
+    @Test
+    void securityMigrationDisablesPublicBootstrapCredential() throws Exception {
+        String sql = Files.readString(SECURITY_FOUNDATION);
+
+        assertTrue(sql.contains("SET status = '1'"));
+        assertTrue(sql.contains("AND username = 'admin'"));
+        assertTrue(sql.contains(
+                "AND password = '$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6'"));
+        assertTrue(sql.contains("ADD COLUMN token_version BIGINT NOT NULL DEFAULT 0"));
+        for (String permission : List.of(
+                "system:user:view",
+                "system:role:manage",
+                "system:menu:manage",
+                "system:organization:manage",
+                "system:dictionary:manage",
+                "process:definition:publish",
+                "entity:definition:publish",
+                "storage:file:delete")) {
+            assertTrue(sql.contains(permission), "missing permission: " + permission);
+        }
     }
 }

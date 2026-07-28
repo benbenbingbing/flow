@@ -791,12 +791,11 @@ assert.match(
 
 const userManagement = readFileSync(path.join(root, 'src/views/system/User.vue'), 'utf8')
 const roleManagement = readFileSync(path.join(root, 'src/views/system/Role.vue'), 'utf8')
-const temporaryPasswordNotice = readFileSync(path.join(root, 'src/components/TemporaryPasswordNotice.vue'), 'utf8')
 for (const [name, source] of [['用户管理', userManagement], ['角色管理', roleManagement]]) {
   assert.ok(source.includes(':formatter="formatDateColumn"'), `${name}应格式化创建时间`)
-  assert.ok(source.includes('<TemporaryPasswordNotice'), `${name}的新增用户流程应展示临时密码交付说明`)
+  assert.ok(source.includes('type="password"'), `${name}的新增用户流程应安全输入初始密码`)
+  assert.equal(source.includes('temporaryPassword'), false, `${name}不得从 API 响应回显密码`)
 }
-assert.ok(temporaryPasswordNotice.includes('一次性临时密码'), '新增用户流程应解释临时密码交付方式')
 assert.ok(roleManagement.includes('<RoleTableActions'), '角色列表应收敛为主操作与更多菜单')
 assert.ok(roleManagement.includes('label="操作" width="160"'), '角色列表操作列应适配常见桌面宽度')
 
@@ -1478,7 +1477,7 @@ assert.ok(
   '节点表单真实验收必须在流程发布前完成全部表单发布'
 )
 ;[
-  'reset?.temporaryPassword',
+  'password: initialPassword',
   "'/auth/change-password'",
   'activateApprover('
 ].forEach((marker) => {

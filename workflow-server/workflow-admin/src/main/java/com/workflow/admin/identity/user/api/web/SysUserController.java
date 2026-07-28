@@ -6,6 +6,7 @@ import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.identity.user.api.request.ResetPasswordDTO;
 import com.workflow.admin.authorization.role.application.SysRoleService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import lombok.RequiredArgsConstructor;
@@ -152,10 +153,11 @@ public class SysUserController {
      */
     @PostMapping("/{id}/reset-password")
     @RequiresPermission("system:user:reset-password")
-    public Result<Map<String, Object>> resetPassword(@PathVariable String id) {
-        return Result.success(Map.of(
-                "temporaryPassword", userService.resetPassword(id),
-                "passwordResetRequired", true));
+    public Result<Void> resetPassword(
+            @PathVariable String id,
+            @Validated @RequestBody ResetPasswordDTO request) {
+        userService.resetPassword(id, request.getNewPassword());
+        return Result.success();
     }
     
     /**
