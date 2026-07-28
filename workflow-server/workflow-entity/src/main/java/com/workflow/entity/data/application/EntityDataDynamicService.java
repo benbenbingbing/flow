@@ -8,9 +8,6 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.contracts.entity.EntityRecordPort;
-import com.workflow.contracts.process.ProcessRuntimePort;
-import com.workflow.contracts.process.ProcessStartRequest;
-import com.workflow.contracts.process.ProcessStartResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -53,11 +50,11 @@ public class EntityDataDynamicService implements EntityRecordPort {
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityRelationRuntimeService relationRuntimeService;
     private final EntityMultiValueRuntimeService multiValueRuntimeService;
-    private final ProcessRuntimePort processRuntimePort;
     private final DataPermissionEngine dataPermissionEngine;
     private final SysUserService sysUserService;
     private final EntityPublishedSnapshotService snapshotService;
     private final EntityRecordTeamService entityRecordTeamService;
+    private final EntityWorkflowRuntimeService workflowRuntime;
 
     /**
      * 查询某实体的所有数据（带数据权限过滤）
@@ -410,7 +407,9 @@ public class EntityDataDynamicService implements EntityRecordPort {
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
             // ========== 新增数据 ==========
-            String id = generateId();
+            String id = UUID.randomUUID()
+                    .toString()
+                    .replace("-", "");
             data.put("id", id);
             data.put("create_by", currentUserId);
             data.put("create_time", LocalDateTime.now());
@@ -445,7 +444,9 @@ public class EntityDataDynamicService implements EntityRecordPort {
 
             // 如果有流程，生成业务单号
             if (definition.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW) {
-                String dataNo = generateDataNo(entityCode);
+                // The database-fenced entity code is also the workflow
+                // business key; avoid replica-local random identifiers.
+                String dataNo = code;
                 data.put("data_no", dataNo);
                 dto.setDataNo(dataNo);
             }
@@ -483,7 +484,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
         // 如果需要发起流程
         if (Boolean.TRUE.equals(dto.getStartProcess()) &&
                 definition.getProcessDefinitionId() != null) {
-            startWorkflow(dto);
+            workflowRuntime.start(dto);
         }
 
         return dto;
@@ -629,7 +630,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 dto.setSubmitterId(submitterIdObj != null ? submitterIdObj.toString() : null);
                 dto.setSubmitterName(submitterNameObj != null ? submitterNameObj.toString() : null);
                 dto.setProcessVariables(null);
-                startWorkflow(dto);
+                workflowRuntime.start(dto);
                 // 重新加载最新数据返回
                 Map<String, Object> refreshedData = dynamicMapper.selectById(tableName, id);
                 dto = toRuntimeDto(refreshedData, entityCode);
@@ -804,14 +805,14 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 currentDefinition == null ? null : currentDefinition.getStatusCategory(),
                 statusCategory)
                 ? currentStatus
-                : getStatusByCategory(entityCode, statusCategory, fallbackStatus);
+                : workflowRuntime.statusByCategory(entityCode, statusCategory, fallbackStatus);
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("id", entityDataId);
         updateData.put("status", statusCode);
         updateData.put("process_end_time", endedAt);
         updateData.put("update_time", endedAt);
         if ("COMPLETED".equals(statusCategory)) {
-            putPublishedTimestampIfPresent(
+            workflowRuntime.putPublishedTimestampIfPresent(
                     entityCode,
                     updateData,
                     "approved_at",
@@ -926,20 +927,6 @@ public class EntityDataDynamicService implements EntityRecordPort {
         return dataPermissionEngine.calculatePermission(entityCode, listKey, user);
     }
 
-    private String generateId() {
-        return UUID.randomUUID().toString().replace("-", "");
-    }
-
-    private String generateDataNo(String entityCode) {
-        // 生成业务单号：实体编码前缀 + 时间戳后8位 + 6位随机数
-        // 使用纳秒时间戳增加唯一性
-        String prefix = entityCode.toUpperCase();
-        String timestamp = String.valueOf(System.nanoTime());
-        String timePart = timestamp.substring(Math.max(0, timestamp.length() - 8));
-        String random = String.format("%06d", (int) (Math.random() * 1000000));
-        return prefix + "-" + timePart + random;
-    }
-
     private void validatePublishedRequiredFields(String entityCode, Map<String, Object> storageData) {
         EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
         if (snapshot.getFields() == null || snapshot.getFields().isEmpty()) {
@@ -1029,100 +1016,6 @@ public class EntityDataDynamicService implements EntityRecordPort {
         }
         // 默认返回 DRAFT
         return "DRAFT";
-    }
-
-    private void startWorkflow(EntityDataDTO dto) {
-        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(dto.getEntityCode());
-        String processDefinitionId = snapshot.getProcessDefinitionId();
-        if (!StringUtils.hasText(processDefinitionId)) {
-            throw new BusinessConflictException(
-                    "ENTITY_WORKFLOW_NOT_READY",
-                    "实体发布快照未绑定流程定义: " + dto.getEntityCode());
-        }
-        ProcessStartResult result = processRuntimePort.start(new ProcessStartRequest(
-                processDefinitionId,
-                dto.getEntityCode(),
-                dto.getId(),
-                dto.getDataNo(),
-                dto.getSubmitterId(),
-                dto.getSubmitterName(),
-                getStatusByCategory(dto.getEntityCode(), "PROCESSING", "PENDING"),
-                dto.getData(),
-                dto.getProcessVariables()));
-
-        LocalDateTime startedAt = LocalDateTime.now();
-        Map<String, Object> updateData = new HashMap<>();
-        updateData.put("id", dto.getId());
-        updateData.put("process_instance_id", result.processInstanceId());
-        updateData.put("process_start_time", startedAt);
-        updateData.put("status", result.entityStatus());
-        updateData.put("update_time", startedAt);
-        updateData.put("current_task_id", result.currentTaskId());
-        updateData.put("current_task_name", result.currentTaskName());
-        updateData.put("current_task_assignee", result.currentTaskAssignee());
-        putPublishedTimestampIfPresent(
-                snapshot,
-                updateData,
-                "submitted_at",
-                startedAt);
-        dynamicMapper.update(dynamicTableService.getTableName(dto.getEntityCode()), updateData);
-
-        dto.setProcessInstanceId(result.processInstanceId());
-        dto.setStatus(result.entityStatus());
-        dto.setCurrentTaskId(result.currentTaskId());
-        dto.setCurrentTaskName(result.currentTaskName());
-        dto.setCurrentTaskAssignee(result.currentTaskAssignee());
-        entityRecordTeamService.record(
-                dto.getEntityCode(),
-                dto.getId(),
-                "START_PROCESS",
-                "发起流程",
-                result.processInstanceId(),
-                result.currentTaskId());
-    }
-
-    private void putPublishedTimestampIfPresent(
-            String entityCode,
-            Map<String, Object> updateData,
-            String fieldCode,
-            LocalDateTime value) {
-        putPublishedTimestampIfPresent(
-                snapshotService.findLatestByEntityCode(entityCode),
-                updateData,
-                fieldCode,
-                value);
-    }
-
-    private void putPublishedTimestampIfPresent(
-            EntityPublishedSnapshot snapshot,
-            Map<String, Object> updateData,
-            String fieldCode,
-            LocalDateTime value) {
-        if (snapshot == null || snapshot.getFields() == null) {
-            return;
-        }
-        snapshot.getFields().stream()
-                .filter(field -> fieldCode.equals(field.getFieldCode()))
-                .filter(field -> !isRelationField(field))
-                .findFirst()
-                .ifPresent(field -> {
-                    String columnName = StringUtils.hasText(field.getDbColumnName())
-                            ? field.getDbColumnName()
-                            : recordMapper.toColumnName(field.getFieldCode());
-                    updateData.put(columnName, value);
-                });
-    }
-
-    private String getStatusByCategory(String entityCode, String category, String fallback) {
-        try {
-            List<EntityStatus> statuses = entityStatusMapper.findByCategory(entityCode, category);
-            if (statuses != null && !statuses.isEmpty()) {
-                return statuses.get(0).getStatusCode();
-            }
-        } catch (Exception exception) {
-            log.warn("获取实体[{}]状态分类[{}]失败: {}", entityCode, category, exception.getMessage());
-        }
-        return fallback;
     }
 
 }

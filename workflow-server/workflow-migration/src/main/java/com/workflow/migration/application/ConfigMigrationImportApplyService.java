@@ -1,7 +1,6 @@
 package com.workflow.migration.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,8 +36,6 @@ import com.workflow.process.configuration.infrastructure.persistence.record.Proc
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
-import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRoleMenu;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.migration.infrastructure.persistence.record.ConfigAssetBaseline;
@@ -56,10 +53,7 @@ import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityLi
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
-import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
-import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
-import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMenuMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigAssetBaselineMapper;
@@ -125,11 +119,8 @@ public class ConfigMigrationImportApplyService {
     private final ProcessDefinitionConfigMapper processMapper;
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
     private final FlowActionMapper flowActionMapper;
-    private final SysMenuMapper menuMapper;
     private final SysUserMapper userMapper;
     private final SysOrganizationMapper organizationMapper;
-    private final SysRoleMapper roleMapper;
-    private final SysRoleMenuMapper roleMenuMapper;
     private final EntityDefinitionService entityService;
     private final EntityStatusService entityStatusService;
     private final EntityCodeGeneratorService codeGeneratorService;
@@ -146,6 +137,7 @@ public class ConfigMigrationImportApplyService {
     private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
     private final UiConfigReleaseService uiConfigReleaseService;
     private final ConfigMigrationAssetService assetService;
+    private final ConfigMigrationMenuImporter menuImporter;
     private final ObjectMapper objectMapper;
 
     /**
@@ -416,7 +408,9 @@ public class ConfigMigrationImportApplyService {
                     mapList(snapshot.get("scopeBindings")));
         }
         if (snapshot.containsKey("menus")) {
-            applyMenus(entity, mapList(snapshot.get("menus")));
+            menuImporter.apply(
+                    entity,
+                    mapList(snapshot.get("menus")));
         }
         permissionCatalogService.synchronizeEntity(entityMapper.selectById(entity.getId()));
     }
@@ -913,54 +907,6 @@ public class ConfigMigrationImportApplyService {
         listScopeService.publish(entity.getEntityCode(), "配置迁移导入发布");
     }
 
-    private void applyMenus(EntityDefinition entity, List<Map<String, Object>> values) {
-        List<SysRole> administrators = roleMapper.selectAdministratorRoles();
-        for (Map<String, Object> value : values) {
-            SysMenu menu = convert(value, SysMenu.class);
-            normalizeImportedMenu(menu, entity.getEntityCode());
-            List<SysMenu> identityMatches = findEntityListMenus(menu);
-            SysMenu existing = identityMatches.isEmpty()
-                    ? null
-                    : identityMatches.get(0);
-            if (existing == null && StringUtils.hasText(menu.getPerm())) {
-                existing = menuMapper.selectByPerm(menu.getPerm());
-            }
-            if (existing == null && StringUtils.hasText(menu.getPath())) {
-                existing = menuMapper.selectByPathAndType(menu.getPath(), menu.getMenuType());
-            }
-            menu.setId(existing == null ? null : existing.getId());
-            String parentPath = text(value.get("parentPath"), null);
-            if (StringUtils.hasText(parentPath)) {
-                SysMenu parent = findParentMenu(parentPath);
-                if (parent == null) {
-                    throw new IllegalStateException("菜单父级不存在: " + parentPath);
-                }
-                menu.setParentId(parent.getId());
-            } else if (existing != null) {
-                menu.setParentId(existing.getParentId());
-            }
-            menu.setDeleted(0);
-            menu.setCreateTime(existing == null ? LocalDateTime.now() : existing.getCreateTime());
-            menu.setUpdateTime(LocalDateTime.now());
-            if (menu.getId() == null) {
-                menuMapper.insert(menu);
-            } else {
-                menuMapper.updateById(menu);
-                clearNullableMenuColumns(menu);
-            }
-            removeDuplicateMenus(identityMatches, menu.getId());
-            for (SysRole role : administrators) {
-                if (!roleMenuMapper.existsRoleMenu(role.getId(), menu.getId())) {
-                    SysRoleMenu relation = new SysRoleMenu();
-                    relation.setRoleId(role.getId());
-                    relation.setMenuId(menu.getId());
-                    relation.setCreateTime(LocalDateTime.now());
-                    roleMenuMapper.insert(relation);
-                }
-            }
-        }
-    }
-
     /**
      * 规范化迁移包中的菜单归属。
      *
@@ -999,60 +945,6 @@ public class ConfigMigrationImportApplyService {
             return List.of("M");
         }
         return List.of("M", "C");
-    }
-
-    private List<SysMenu> findEntityListMenus(SysMenu menu) {
-        if (!StringUtils.hasText(entityListIdentity(menu))) {
-            return List.of();
-        }
-        return menuMapper.selectList(new LambdaQueryWrapper<SysMenu>()
-                .eq(SysMenu::getMenuType, "C")
-                .eq(SysMenu::getEntityCode, menu.getEntityCode())
-                .eq(SysMenu::getResourceType, "ENTITY_LIST")
-                .eq(SysMenu::getListKey, menu.getListKey())
-                .orderByAsc(SysMenu::getCreateTime)
-                .orderByAsc(SysMenu::getId));
-    }
-
-    private void removeDuplicateMenus(List<SysMenu> matchedMenus, String retainedMenuId) {
-        for (SysMenu duplicate : matchedMenus) {
-            if (Objects.equals(duplicate.getId(), retainedMenuId)) {
-                continue;
-            }
-            roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
-                    .eq(SysRoleMenu::getMenuId, duplicate.getId()));
-            menuMapper.deleteById(duplicate.getId());
-        }
-    }
-
-    private SysMenu findParentMenu(String parentPath) {
-        for (String menuType : parentMenuTypes(parentPath)) {
-            SysMenu parent = menuMapper.selectByPathAndType(parentPath, menuType);
-            if (parent != null) {
-                return parent;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * MyBatis-Plus 默认忽略 null 更新，这里显式清理导航菜单不应保留的权限码和目录实体归属。
-     */
-    private void clearNullableMenuColumns(SysMenu menu) {
-        LambdaUpdateWrapper<SysMenu> update = new LambdaUpdateWrapper<SysMenu>()
-                .eq(SysMenu::getId, menu.getId());
-        boolean required = false;
-        if (isEntityListMenu(menu)) {
-            update.set(SysMenu::getPerm, null);
-            required = true;
-        }
-        if ("M".equals(menu.getMenuType())) {
-            update.set(SysMenu::getEntityCode, null);
-            required = true;
-        }
-        if (required) {
-            menuMapper.update(null, update);
-        }
     }
 
     /**

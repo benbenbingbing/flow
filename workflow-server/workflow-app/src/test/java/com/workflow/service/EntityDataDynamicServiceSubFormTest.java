@@ -3,6 +3,7 @@ package com.workflow.service;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityRecordTeamService;
+import com.workflow.entity.data.application.EntityWorkflowRuntimeService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.contracts.process.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartResult;
@@ -441,11 +442,20 @@ class EntityDataDynamicServiceSubFormTest {
             EntityRelationRuntimeService relationRuntimeService = new EntityRelationRuntimeService(
                     dynamicMapper, definitionMapper, fieldMapper, relationMapper,
                     dynamicTableService, objectMapper, recordMapper, codeGeneratorService);
+            EntityWorkflowRuntimeService workflowRuntime =
+                    new EntityWorkflowRuntimeService(
+                            snapshotService,
+                            processRuntimePort,
+                            entityStatusMapper,
+                            dynamicMapper,
+                            dynamicTableService,
+                            recordMapper,
+                            entityRecordTeamService);
             return new EntityDataDynamicService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
                     dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
-                    multiValueRuntimeService, processRuntimePort, null, null, snapshotService,
-                    entityRecordTeamService);
+                    multiValueRuntimeService, null, null, snapshotService,
+                    entityRecordTeamService, workflowRuntime);
         }
 
         /** 构造指定实体编码的空字段发布快照 */
