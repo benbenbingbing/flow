@@ -1,5 +1,8 @@
 package com.workflow.admin.security.context;
 
+import com.workflow.core.error.ForbiddenException;
+import org.springframework.util.StringUtils;
+
 /**
  * 当前用户上下文
  * <p>
@@ -41,6 +44,16 @@ public class UserContext {
      */
     public static String getUsername() {
         return USERNAME.get();
+    }
+
+    public static String requireUsernameOrId() {
+        if (StringUtils.hasText(getUsername())) {
+            return getUsername();
+        }
+        if (StringUtils.hasText(getUserId())) {
+            return getUserId();
+        }
+        throw new ForbiddenException("用户未登录");
     }
     
     /**

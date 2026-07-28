@@ -58,17 +58,25 @@ public class JwtUtil {
      * @param username 用户名（作为 username claim）
      * @return 签名后的 JWT Token 字符串
      */
-    public static String generateToken(String userId, String username) {
+    public static String generateToken(
+            String userId,
+            String username,
+            long tokenVersion) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + STATIC_EXPIRATION);
         
         return Jwts.builder()
                 .subject(userId)
                 .claim("username", username)
+                .claim("tokenVersion", tokenVersion)
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(STATIC_KEY, Jwts.SIG.HS512)
                 .compact();
+    }
+
+    public static String generateToken(String userId, String username) {
+        return generateToken(userId, username, 0L);
     }
     
     /**
@@ -91,6 +99,12 @@ public class JwtUtil {
     public static String getUsernameFromToken(String token) {
         Claims claims = parseToken(token);
         return claims != null ? claims.get("username", String.class) : null;
+    }
+
+    public static Long getTokenVersionFromToken(String token) {
+        Claims claims = parseToken(token);
+        Object value = claims == null ? null : claims.get("tokenVersion");
+        return value instanceof Number number ? number.longValue() : null;
     }
     
     /**

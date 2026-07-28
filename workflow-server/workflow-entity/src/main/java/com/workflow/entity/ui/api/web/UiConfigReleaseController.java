@@ -26,7 +26,7 @@ import java.util.List;
  * <p>统一管理表单（FORM）与列表（LIST）两类配置的发布生命周期：
  * 运行态发布获取、草稿快照、差异对比、发布、历史版本列表及激活指定版本。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor

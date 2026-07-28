@@ -4,7 +4,10 @@ import com.workflow.core.security.AuthenticatedApi;
 
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.instance.application.ProcessRollbackService;
+import com.workflow.process.instance.application.ProcessInstanceAccessService;
+import com.workflow.process.task.application.TaskActionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,7 +17,7 @@ import java.util.Map;
  * 流程退回控制器
  * 处理驳回、重新提交等操作
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-rollback")
 @RequiredArgsConstructor
@@ -22,6 +25,8 @@ import java.util.Map;
 public class ProcessRollbackController {
 
     private final ProcessRollbackService rollbackService;
+    private final TaskActionService taskActionService;
+    private final ProcessInstanceAccessService processInstanceAccessService;
 
     /**
      * 驳回任务（驳回到发起人）
@@ -36,8 +41,9 @@ public class ProcessRollbackController {
             @RequestBody Map<String, String> requestBody) {
         String userId = UserContext.getUsername();
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
+        taskActionService.requireTaskAccess(taskId);
 
         String comment = requestBody != null ? requestBody.get("comment") : null;
         String targetNodeId = requestBody != null ? requestBody.get("targetNodeId") : null;
@@ -58,8 +64,9 @@ public class ProcessRollbackController {
             @RequestBody Map<String, Object> requestBody) {
         String userId = UserContext.getUsername();
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
+        processInstanceAccessService.requireReadAccess(processInstanceId);
 
         Map<String, Object> formData = requestBody != null ? 
                 (Map<String, Object>) requestBody.get("formData") : null;
@@ -77,6 +84,7 @@ public class ProcessRollbackController {
     @GetMapping("/rejected-status/{processInstanceId}")
     public Result<Map<String, Object>> checkRejectedStatus(
             @PathVariable String processInstanceId) {
+        processInstanceAccessService.requireReadAccess(processInstanceId);
         Map<String, Object> status = rollbackService.checkRejectedStatus(processInstanceId);
         return Result.success(status);
     }

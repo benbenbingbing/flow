@@ -10,6 +10,7 @@ import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.storage.application.FileStorageStrategy;
 import com.workflow.storage.application.StoredFile;
+import com.workflow.storage.application.StoredFileAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +36,7 @@ public class FileController {
 
     /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
+    private final StoredFileAccessService fileAccessService;
     /**
      * 上传文件
      *
@@ -56,6 +58,12 @@ public class FileController {
         try {
             FileStorageStrategy strategy = storageFactory.getStrategy();
             Map<String, String> result = strategy.upload(file);
+            try {
+                fileAccessService.register(result, file);
+            } catch (RuntimeException exception) {
+                strategy.delete(result.get("url"));
+                throw exception;
+            }
             return Result.success(result);
         } catch (Exception e) {
             log.error("文件上传失败", e);
@@ -102,10 +110,12 @@ public class FileController {
             targetType = "FILE",
             targetIdArg = 0)
     public Result<Void> deleteFile(@RequestParam("url") String fileUrl) {
+        fileAccessService.requireDelete(fileUrl);
         try {
             FileStorageStrategy strategy = storageFactory.getStrategy();
             boolean success = strategy.delete(fileUrl);
             if (success) {
+                fileAccessService.markDeleted(fileUrl);
                 return Result.success();
             } else {
                 return Result.error("文件不存在或删除失败");
@@ -125,6 +135,7 @@ public class FileController {
      */
     @GetMapping("/preview")
     public void previewFile(@RequestParam("url") String fileUrl, HttpServletResponse response) {
+        fileAccessService.requireRead(fileUrl);
         FileStorageStrategy strategy = storageFactory.getStrategy();
         try (StoredFile file = strategy.open(fileUrl)) {
             response.setContentType(file.contentType());

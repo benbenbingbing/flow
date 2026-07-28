@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.process.instance.application.ProcessInstanceService;
+import com.workflow.process.instance.application.ProcessInstanceAccessService;
 
 import com.workflow.process.task.api.request.ReceiveTaskTriggerRequest;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
@@ -65,6 +66,9 @@ public class ProcessInstanceServiceTest {
 
     @Mock
     private ProcessDefinitionConfigMapper processConfigMapper;
+
+    @Mock
+    private ProcessInstanceAccessService processInstanceAccessService;
 
     @InjectMocks
     private ProcessInstanceService processInstanceService;

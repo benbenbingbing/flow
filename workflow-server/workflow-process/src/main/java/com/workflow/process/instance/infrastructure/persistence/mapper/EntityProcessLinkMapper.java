@@ -37,6 +37,18 @@ public interface EntityProcessLinkMapper {
             @Param("entityRecordId") String entityRecordId,
             @Param("generation") int generation);
 
+    @Select("""
+            SELECT * FROM entity_process_link
+            WHERE entity_code = #{entityCode}
+              AND entity_record_id = #{entityRecordId}
+            ORDER BY generation DESC
+            LIMIT 1
+            FOR UPDATE
+            """)
+    EntityProcessLink selectLatestForUpdate(
+            @Param("entityCode") String entityCode,
+            @Param("entityRecordId") String entityRecordId);
+
     @Update("""
             UPDATE entity_process_link
             SET process_instance_id = #{processInstanceId},
@@ -73,7 +85,6 @@ public interface EntityProcessLinkMapper {
                 update_time = UTC_TIMESTAMP(6)
             WHERE process_instance_id = #{processInstanceId}
               AND state = 'ACTIVE'
-              AND (entity_status IS NULL OR entity_status <> #{entityStatus})
             """)
     int updateActiveStatus(
             @Param("processInstanceId") String processInstanceId,

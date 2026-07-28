@@ -14,8 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.delegate.DelegateExecution;
 import org.springframework.context.ApplicationContext;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
-import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -40,7 +38,6 @@ public class FlowActionExecutor {
     private final FlowActionRuntimeAdapter flowActionHelper;
     private final FlowActionExecutionService executionService;
     private final ObjectMapper objectMapper;
-    private final SpelExpressionParser spelParser = new SpelExpressionParser();
 
     /**
      * 执行指定顺序流上的所有启用动作。
@@ -173,7 +170,7 @@ public class FlowActionExecutor {
     }
 
     /**
-     * 解析 paramsJson，支持以 ${变量名} 形式引用流程变量或 SpEL 表达式。
+     * 解析 paramsJson，仅支持以 ${变量名} 形式引用流程变量。
      *
      * @param paramsJson 参数 JSON 字符串
      * @param variables  流程变量集合
@@ -188,25 +185,22 @@ public class FlowActionExecutor {
             Map<String, Object> raw = objectMapper.readValue(paramsJson, Map.class);
             for (Map.Entry<String, Object> entry : raw.entrySet()) {
                 Object value = entry.getValue();
-                // 字符串值如以 ${...} 包裹，则视作变量引用或 SpEL 表达式解析
+                // 仅允许精确变量引用。表达式求值会扩大为服务器代码执行能力。
                 if (value instanceof String) {
                     String str = (String) value;
                     if (str.startsWith("${") && str.endsWith("}")) {
-                        String expr = str.substring(2, str.length() - 1);
-                        if (variables != null && variables.containsKey(expr)) {
-                            value = variables.get(expr);
-                        } else {
-                            StandardEvaluationContext evalCtx = new StandardEvaluationContext(
-                                    variables == null ? Map.of() : variables);
-                            evalCtx.setVariables(variables == null ? Map.of() : variables);
-                            value = spelParser.parseExpression(expr).getValue(evalCtx);
+                        String variableName = str.substring(2, str.length() - 1);
+                        if (!variableName.matches("[A-Za-z_][A-Za-z0-9_]{0,127}")) {
+                            throw new IllegalArgumentException(
+                                    "流程动作参数仅支持 ${变量名} 引用");
                         }
+                        value = variables == null ? null : variables.get(variableName);
                     }
                 }
                 params.put(entry.getKey(), value);
             }
         } catch (Exception e) {
-            log.warn("解析 paramsJson 失败: {}", paramsJson, e);
+            throw new IllegalArgumentException("流程动作参数配置非法", e);
         }
         return params;
     }

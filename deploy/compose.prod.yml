@@ -48,6 +48,8 @@ services:
     image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     pull_policy: never
     restart: "no"
+    healthcheck:
+      disable: true
     depends_on:
       mysql:
         condition: service_healthy
@@ -64,6 +66,8 @@ services:
     image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     pull_policy: never
     restart: unless-stopped
+    healthcheck:
+      disable: true
     depends_on:
       migration:
         condition: service_completed_successfully
@@ -81,6 +85,8 @@ services:
     image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     pull_policy: never
     restart: "no"
+    healthcheck:
+      disable: true
     depends_on:
       migration:
         condition: service_completed_successfully

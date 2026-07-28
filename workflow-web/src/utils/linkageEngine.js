@@ -2,6 +2,8 @@
  * 表单字段联动引擎
  * 支持显隐控制、值联动、选项联动、计算字段
  */
+import { evaluateExpression } from './calcEngine.js'
+import { evaluateFlowConditionExpression } from './flowConditionGroups.js'
 
 export function formatLinkageConditionLiteral(field, value) {
   const fieldType = String(field?.fieldType || '').toUpperCase()
@@ -86,26 +88,9 @@ export const LinkageEngine = {
     if (!condition) return true
 
     try {
-      let expr = condition
-
-      // 兼容没有 ${} 的裸字段名格式（如 desc1 == '1'）
-      if (!expr.includes('${')) {
-        expr = expr.replace(/\b([a-zA-Z_]\w*)\s*([!=<>]+)\s*('[^']*')/g, '\${$1} $2 $3')
-      }
-
-      // 替换 ${field} 为实际值
-      expr = expr.replace(/\$\{(\w+)\}/g, (match, key) => {
-        const value = formData[key]
-        if (typeof value === 'string') {
-          return `'${value}'`
-        }
-        return value ?? 'null'
-      })
-      expr = normalizeLegacyBooleanComparisons(expr)
-
-      // 安全评估表达式
-      const result = this.safeEvaluate(expr)
-      return result
+      return evaluateFlowConditionExpression(
+        normalizeLegacyBooleanComparisons(condition),
+        formData)
     } catch (e) {
       console.error('评估条件失败:', condition, e)
       return false
@@ -118,20 +103,7 @@ export const LinkageEngine = {
    * @returns {boolean} 评估结果
    */
   safeEvaluate(expr) {
-    // 白名单：只允许基本的比较和逻辑运算符
-    const allowedPattern = /^[\w\s'"\d<>!=&|().+\-*/]+$/
-    if (!allowedPattern.test(expr)) {
-      console.warn('表达式包含非法字符:', expr)
-      return false
-    }
-    
-    try {
-      // 使用 Function 构造器安全执行
-      return new Function('return ' + expr)()
-    } catch (e) {
-      console.error('表达式执行失败:', expr, e)
-      return false
-    }
+    return evaluateFlowConditionExpression(expr, {})
   },
 
   /**
@@ -179,12 +151,7 @@ export const LinkageEngine = {
       return null
     }
     
-    try {
-      return new Function('return ' + expr)()
-    } catch (e) {
-      console.error('计算执行失败:', expr, e)
-      return null
-    }
+    return evaluateExpression(expr, {})
   },
 
   /**
@@ -305,7 +272,7 @@ export const LinkageEngine = {
             return typeof value === 'string' ? `'${value}'` : (value ?? 'null')
           })
         }
-        const evaluatedValue = this.safeEvaluate(expr)
+        const evaluatedValue = evaluateExpression(expr, {})
         if (evaluatedValue !== undefined) {
           result.values[fieldKey] = evaluatedValue
         }

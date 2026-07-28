@@ -29,7 +29,7 @@ import java.util.Map;
  *   <li>GET  /statistics          抄送数量统计（总数 + 未读数）</li>
  * </ul>
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-cc")
 @RequiredArgsConstructor

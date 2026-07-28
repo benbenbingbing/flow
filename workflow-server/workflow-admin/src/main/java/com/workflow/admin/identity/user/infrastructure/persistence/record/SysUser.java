@@ -47,6 +47,11 @@ public class SysUser {
      * 是否必须在继续使用系统前修改密码
      */
     private Boolean passwordResetRequired;
+
+    /**
+     * Incremented whenever all existing access tokens must be revoked.
+     */
+    private Long tokenVersion;
     
     /**
      * 邮箱

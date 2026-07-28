@@ -20,7 +20,7 @@ import java.util.List;
  *
  * <p>面向超级管理员提供流程动作执行详情查询与死信/失败记录的手动重试能力。</p>
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-action-executions")
 @RequiredArgsConstructor

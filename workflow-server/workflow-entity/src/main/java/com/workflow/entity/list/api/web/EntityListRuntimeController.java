@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
  * 实体列表运行态控制器。
  * <p>面向运行态提供列表 schema 获取、列表数据查询及数据范围模拟接口。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-lists")
 @RequiredArgsConstructor

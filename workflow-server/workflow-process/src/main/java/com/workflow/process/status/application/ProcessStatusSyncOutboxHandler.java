@@ -43,22 +43,24 @@ public class ProcessStatusSyncOutboxHandler
         }
 
         if ("TASK_COMPLETED".equals(payload.eventType())) {
-            entityRecordPort.updateStatus(
-                    payload.entityCode(),
-                    payload.entityRecordId(),
-                    payload.targetStatus());
-            entityProcessLinkMapper.updateActiveStatus(
+            if (entityProcessLinkMapper.updateActiveStatus(
                     payload.processInstanceId(),
-                    payload.targetStatus());
+                    payload.targetStatus()) == 1) {
+                entityRecordPort.updateStatus(
+                        payload.entityCode(),
+                        payload.entityRecordId(),
+                        payload.targetStatus());
+            }
         } else if ("PROCESS_END".equals(payload.eventType())) {
-            entityRecordPort.markProcessEnded(
-                    payload.entityCode(),
-                    payload.entityRecordId(),
-                    payload.statusCategory(),
-                    payload.fallbackStatus());
-            entityProcessLinkMapper.closeActive(
+            if (entityProcessLinkMapper.closeActive(
                     payload.processInstanceId(),
-                    payload.fallbackStatus());
+                    payload.fallbackStatus()) == 1) {
+                entityRecordPort.markProcessEnded(
+                        payload.entityCode(),
+                        payload.entityRecordId(),
+                        payload.statusCategory(),
+                        payload.fallbackStatus());
+            }
         } else {
             throw new IllegalArgumentException(
                     "未知状态同步事件: " + payload.eventType());

@@ -86,6 +86,27 @@ class ProcessRuntimeServiceTest {
                 .startProcessInstanceByKey(any(), any(), anyMap());
     }
 
+    @Test
+    void startsNextGenerationAfterPreviousProcessEnded() {
+        Fixture fixture = new Fixture();
+        EntityProcessLink ended = fixture.link("ENDED");
+        ended.setGeneration(1);
+        when(fixture.entityProcessLinkMapper.selectLatestForUpdate(
+                "expense", "data-1")).thenReturn(ended);
+        EntityProcessLink pending = fixture.link("PENDING");
+        pending.setGeneration(2);
+        when(fixture.entityProcessLinkMapper.selectForUpdate(
+                "expense", "data-1", 2)).thenReturn(pending);
+
+        fixture.service().start(fixture.request());
+
+        ArgumentCaptor<EntityProcessLink> linkCaptor =
+                ArgumentCaptor.forClass(EntityProcessLink.class);
+        verify(fixture.entityProcessLinkMapper).insertPending(
+                linkCaptor.capture());
+        assertEquals(2, linkCaptor.getValue().getGeneration());
+    }
+
     private static class Fixture {
         final ProcessDefinitionConfigMapper processDefinitionConfigMapper =
                 mock(ProcessDefinitionConfigMapper.class);

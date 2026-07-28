@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.api.web;
 
-import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.Result;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * 实体状态控制器
  */
-@AuthenticatedApi
+@RequiresPermission("entity:definition:view")
 @RestController
 @RequestMapping("/api/entity-status")
 @RequiredArgsConstructor
@@ -43,6 +43,7 @@ public class EntityStatusController {
      * 保存实体状态
      */
     @PostMapping("/save")
+    @RequiresPermission("entity:definition:manage")
     public Result<Void> save(@RequestBody EntityStatus status) {
         entityStatusService.saveStatus(status);
         return Result.success();
@@ -52,6 +53,7 @@ public class EntityStatusController {
      * 批量保存实体状态
      */
     @PostMapping("/save-list/{entityCode}")
+    @RequiresPermission("entity:definition:manage")
     public Result<Void> saveList(@PathVariable String entityCode, @RequestBody List<EntityStatus> statuses) {
         entityStatusService.saveStatusList(entityCode, statuses);
         return Result.success();
@@ -61,6 +63,7 @@ public class EntityStatusController {
      * 删除实体状态
      */
     @PostMapping("/delete/{id}")
+    @RequiresPermission("entity:definition:manage")
     public Result<Void> delete(@PathVariable String id) {
         entityStatusService.deleteStatus(id);
         return Result.success();

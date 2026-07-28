@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: production-deploy
@@ -31,6 +32,8 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/flow' }}
       IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'flow-production' }}
+      HELM_RELEASE: ${{ vars.HELM_RELEASE || 'flow' }}
     steps:
       - name: Validate deployment configuration
         env:
@@ -51,21 +54,38 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
+      - name: Resolve image repositories
+        id: images
+        shell: bash
+        run: |
+          owner=$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "server=ghcr.io/$owner/flow-server" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/$owner/flow-web" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build server image
+        id: server-image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./workflow-server
-          load: true
-          tags: flow-server:${{ env.IMAGE_TAG }}
+          push: true
+          tags: ${{ steps.images.outputs.server }}:${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
 
       - name: Build web image
+        id: web-image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./workflow-web
-          load: true
-          tags: flow-web:${{ env.IMAGE_TAG }}
+          push: true
+          tags: ${{ steps.images.outputs.web }}:${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
@@ -73,7 +93,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: flow-server:${{ env.IMAGE_TAG }}
+          image-ref: ${{ steps.images.outputs.server }}@${{ steps.server-image.outputs.digest }}
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
@@ -82,7 +102,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: flow-web:${{ env.IMAGE_TAG }}
+          image-ref: ${{ steps.images.outputs.web }}@${{ steps.web-image.outputs.digest }}
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
@@ -91,7 +111,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: flow-server:${{ env.IMAGE_TAG }}
+          image-ref: ${{ steps.images.outputs.server }}@${{ steps.server-image.outputs.digest }}
           format: cyclonedx
           output: server-sbom.cdx.json
 
@@ -99,7 +119,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: flow-web:${{ env.IMAGE_TAG }}
+          image-ref: ${{ steps.images.outputs.web }}@${{ steps.web-image.outputs.digest }}
           format: cyclonedx
           output: web-sbom.cdx.json
 
@@ -111,12 +131,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Package images
+      - name: Package Helm chart
         run: |
-          docker save \
-            "flow-server:$IMAGE_TAG" \
-            "flow-web:$IMAGE_TAG" |
-            gzip -1 > "flow-images-$IMAGE_TAG.tar.gz"
+          tar -C deploy/helm -czf "flow-chart-$IMAGE_TAG.tar.gz" flow
 
       - name: Configure SSH
         env:
@@ -134,30 +151,51 @@ jobs:
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=15 \
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "mkdir -p '$DEPLOY_PATH/mysql-init'"
+            "mkdir -p '$DEPLOY_PATH'"
 
       - name: Upload deployment files
         run: |
           scp -o BatchMode=yes -o ConnectTimeout=15 -P "$DEPLOY_PORT" \
-            deploy/compose.prod.yml \
-            deploy/deploy.sh \
-            "flow-images-$IMAGE_TAG.tar.gz" \
+            "flow-chart-$IMAGE_TAG.tar.gz" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
-          scp -o BatchMode=yes -o ConnectTimeout=15 -P "$DEPLOY_PORT" \
-            deploy/mysql-init/10-database-users.sh \
-            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/mysql-init/"
 
-      - name: Deploy tested images
+      - name: Deploy immutable images with Helm
+        env:
+          SERVER_IMAGE: ${{ steps.images.outputs.server }}
+          SERVER_DIGEST: ${{ steps.server-image.outputs.digest }}
+          WEB_IMAGE: ${{ steps.images.outputs.web }}
+          WEB_DIGEST: ${{ steps.web-image.outputs.digest }}
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=15 \
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -eu; \
-             gzip -dc '$DEPLOY_PATH/flow-images-$IMAGE_TAG.tar.gz' | docker load; \
-             rm -f '$DEPLOY_PATH/flow-images-$IMAGE_TAG.tar.gz'; \
-             chmod +x '$DEPLOY_PATH/deploy.sh'; \
-             cd '$DEPLOY_PATH' && \
-             DEPLOY_DIR='$DEPLOY_PATH' \
-             IMAGE_TAG='$IMAGE_TAG' \
-             SERVER_IMAGE='flow-server:$IMAGE_TAG' \
-             WEB_IMAGE='flow-web:$IMAGE_TAG' \
-             ./deploy.sh"
+            "DEPLOY_PATH='$DEPLOY_PATH' IMAGE_TAG='$IMAGE_TAG' \
+             K8S_NAMESPACE='$K8S_NAMESPACE' HELM_RELEASE='$HELM_RELEASE' \
+             SERVER_IMAGE='$SERVER_IMAGE' SERVER_DIGEST='$SERVER_DIGEST' \
+             WEB_IMAGE='$WEB_IMAGE' WEB_DIGEST='$WEB_DIGEST' sh -se" <<'REMOTE'
+          set -eu
+          command -v helm >/dev/null
+          command -v kubectl >/dev/null
+          test -f "$DEPLOY_PATH/values.production.yaml"
+          chart_directory="$DEPLOY_PATH/chart-$IMAGE_TAG"
+          mkdir -p "$chart_directory"
+          tar -C "$chart_directory" -xzf \
+            "$DEPLOY_PATH/flow-chart-$IMAGE_TAG.tar.gz"
+          helm upgrade --install "$HELM_RELEASE" "$chart_directory/flow" \
+            --namespace "$K8S_NAMESPACE" \
+            --create-namespace \
+            --values "$DEPLOY_PATH/values.production.yaml" \
+            --set-string server.image.repository="$SERVER_IMAGE" \
+            --set-string server.image.digest="$SERVER_DIGEST" \
+            --set-string web.image.repository="$WEB_IMAGE" \
+            --set-string web.image.digest="$WEB_DIGEST" \
+            --atomic \
+            --timeout 15m \
+            --wait
+          kubectl -n "$K8S_NAMESPACE" rollout status \
+            "deployment/$HELM_RELEASE-flow-server" --timeout=10m
+          kubectl -n "$K8S_NAMESPACE" rollout status \
+            "deployment/$HELM_RELEASE-flow-web" --timeout=10m
+          helm -n "$K8S_NAMESPACE" test "$HELM_RELEASE" \
+            --logs --timeout 5m
+          rm -f "$DEPLOY_PATH/flow-chart-$IMAGE_TAG.tar.gz"
+          REMOTE

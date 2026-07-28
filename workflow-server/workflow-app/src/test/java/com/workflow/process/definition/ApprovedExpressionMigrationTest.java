@@ -23,7 +23,8 @@ class ApprovedExpressionMigrationTest {
     /** BPMN XML 前缀片段，含 definitions、process 与 sequenceFlow 起始标签 */
     private static final String XML_PREFIX =
             "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" "
-                    + "xmlns:flowable=\"http://flowable.org/bpmn\">"
+                    + "xmlns:flowable=\"http://flowable.org/bpmn\" "
+                    + "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
                     + "<bpmn:process id=\"p1\">"
                     + "<bpmn:sequenceFlow id=\"f1\" sourceRef=\"g1\" targetRef=\"t1\">"
                     + "<bpmn:conditionExpression xsi:type=\"bpmn:tFormalExpression\">";
@@ -42,7 +43,7 @@ class ApprovedExpressionMigrationTest {
      * @return 完整的 BPMN XML 字符串
      */
     private String wrap(String expression) {
-        return XML_PREFIX + expression + XML_SUFFIX;
+        return XML_PREFIX + expression.replace("&", "&amp;") + XML_SUFFIX;
     }
 
     /** approved==true 应被迁移为 approved=='approve' */

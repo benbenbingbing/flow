@@ -27,6 +27,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ProcessBpmnPublishSanitizerTest {
 
+    @Test
+    void rejectsUserControlledExecutableExtensions() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:serviceTask id=\"unsafe\" "
+                                + "flowable:delegateExpression=\"${customBean}\" />"),
+                        "runtime_process"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:serviceTask id=\"unsafe\" "
+                                + "flowable:class=\"com.example.CustomDelegate\" />"),
+                        "runtime_process"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:sequenceFlow id=\"unsafe\">"
+                                + "<bpmn:conditionExpression>"
+                                + "${demoExpressionService.execute('x')}"
+                                + "</bpmn:conditionExpression>"
+                                + "</bpmn:sequenceFlow>"),
+                        "runtime_process"));
+    }
+
     /**
      * 清洗时应将 Camunda 属性转换为 Flowable 属性并使用运行时流程 Key。
      *
@@ -38,7 +66,8 @@ class ProcessBpmnPublishSanitizerTest {
         ProcessBpmnPublishSanitizer sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
         String input = """
                 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                    xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                    xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI">
                   <bpmn:process id="draft_process">
                     <bpmn:userTask id="task-1" name="审批" camunda:assignee="admin" />
                   </bpmn:process>

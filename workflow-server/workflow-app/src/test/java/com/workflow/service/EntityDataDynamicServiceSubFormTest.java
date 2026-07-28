@@ -455,7 +455,8 @@ class EntityDataDynamicServiceSubFormTest {
                     dynamicMapper, definitionMapper, entityStatusMapper,
                     dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
                     multiValueRuntimeService, null, null, snapshotService,
-                    entityRecordTeamService, workflowRuntime);
+                    entityRecordTeamService, workflowRuntime,
+                    new com.workflow.entity.data.application.RichTextSanitizer());
         }
 
         /** 构造指定实体编码的空字段发布快照 */

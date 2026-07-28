@@ -24,6 +24,18 @@ compose() {
 
 compose config --quiet
 
+if ! compose up -d mysql --wait --wait-timeout "$WAIT_TIMEOUT"; then
+    compose ps mysql
+    compose logs --tail=200 mysql
+    exit 1
+fi
+
+# Docker entrypoint initialization only runs for an empty data directory.
+# Re-apply the idempotent grants on every deployment so upgrades of existing
+# volumes receive the dedicated schema identity as well.
+compose exec -T mysql sh \
+    /docker-entrypoint-initdb.d/10-database-users.sh
+
 if ! compose up -d --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"; then
     compose ps
     compose logs --tail=200 server web

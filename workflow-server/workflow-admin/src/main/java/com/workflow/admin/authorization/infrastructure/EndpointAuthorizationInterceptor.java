@@ -67,7 +67,11 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        if (findAnnotation(handlerMethod, AuthenticatedApi.class) != null) {
+        AuthenticatedApi authenticated = findAnnotation(handlerMethod, AuthenticatedApi.class);
+        if (authenticated != null) {
+            if (isStateChanging(request) && !authenticated.objectAuthorization()) {
+                throw new ForbiddenException("写接口未配置功能权限或对象级授权");
+            }
             return true;
         }
 
@@ -97,6 +101,14 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
         if (!allowed) {
             throw new ForbiddenException("没有权限访问该接口");
         }
+    }
+
+    private boolean isStateChanging(HttpServletRequest request) {
+        String method = request.getMethod();
+        return "POST".equals(method)
+                || "PUT".equals(method)
+                || "PATCH".equals(method)
+                || "DELETE".equals(method);
     }
 
     private <A extends java.lang.annotation.Annotation> A findAnnotation(

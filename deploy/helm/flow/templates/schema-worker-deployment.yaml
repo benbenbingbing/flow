@@ -22,6 +22,10 @@ spec:
         {{- include "flow.componentLabels" (dict "root" . "component" "schema-worker") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "flow.fullname" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 40
       securityContext:

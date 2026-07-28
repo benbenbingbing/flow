@@ -19,6 +19,10 @@ spec:
         {{- include "flow.componentLabels" (dict "root" . "component" "migration") | nindent 8 }}
     spec:
       serviceAccountName: default
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       restartPolicy: OnFailure
       securityContext:

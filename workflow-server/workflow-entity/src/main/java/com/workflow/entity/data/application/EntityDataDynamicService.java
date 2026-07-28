@@ -55,6 +55,7 @@ public class EntityDataDynamicService implements EntityRecordPort {
     private final EntityPublishedSnapshotService snapshotService;
     private final EntityRecordTeamService entityRecordTeamService;
     private final EntityWorkflowRuntimeService workflowRuntime;
+    private final RichTextSanitizer richTextSanitizer;
 
     /**
      * 查询某实体的所有数据（带数据权限过滤）
@@ -402,8 +403,15 @@ public class EntityDataDynamicService implements EntityRecordPort {
         dto.setData(parentData);
         Map<String, Object> data = recordMapper.toStorageMap(dto);
         dto.setData(originalData);
-        validatePublishedRequiredFields(entityCode, data);
-        validatePublishedUniqueFields(entityCode, data, data.get("id") != null ? data.get("id").toString() : null);
+        EntityPublishedSnapshot publishedSnapshot =
+                snapshotService.getLatestByEntityCode(entityCode);
+        PublishedEntityDataValidator.sanitizeAndValidate(
+                publishedSnapshot, data, recordMapper, richTextSanitizer);
+        validatePublishedUniqueFields(
+                entityCode,
+                publishedSnapshot,
+                data,
+                data.get("id") != null ? data.get("id").toString() : null);
 
         if (dto.getId() == null || dto.getId().isEmpty()) {
             // ========== 新增数据 ==========
@@ -589,8 +597,13 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 updateData.put(key, value);
             }
         });
-        validatePublishedRequiredFields(entityCode, updateData);
-        validatePublishedUniqueFields(entityCode, updateData, id);
+        PublishedEntityDataValidator.sanitizeAndValidate(
+                publishedSnapshot, updateData, recordMapper, richTextSanitizer);
+        validatePublishedUniqueFields(
+                entityCode,
+                publishedSnapshot,
+                updateData,
+                id);
 
         dynamicMapper.update(tableName, updateData);
         entityRecordTeamService.record(
@@ -927,30 +940,16 @@ public class EntityDataDynamicService implements EntityRecordPort {
         return dataPermissionEngine.calculatePermission(entityCode, listKey, user);
     }
 
-    private void validatePublishedRequiredFields(String entityCode, Map<String, Object> storageData) {
-        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
-        if (snapshot.getFields() == null || snapshot.getFields().isEmpty()) {
-            return;
-        }
-        for (EntityField field : snapshot.getFields()) {
-            if (!Boolean.TRUE.equals(field.getIsRequired()) || isRelationField(field)) {
-                continue;
-            }
-            String columnName = recordMapper.toColumnName(field.getFieldCode());
-            Object value = storageData.get(columnName);
-            if (isBlankValue(value)) {
-                throw new RuntimeException("字段必填: " + field.getFieldName());
-            }
-        }
-    }
-
     private boolean isRelationField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SUB_FORM
                 || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
     }
 
-    private void validatePublishedUniqueFields(String entityCode, Map<String, Object> storageData, String excludeId) {
-        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+    private void validatePublishedUniqueFields(
+            String entityCode,
+            EntityPublishedSnapshot snapshot,
+            Map<String, Object> storageData,
+            String excludeId) {
         if (snapshot.getFields() == null || snapshot.getFields().isEmpty()) {
             return;
         }

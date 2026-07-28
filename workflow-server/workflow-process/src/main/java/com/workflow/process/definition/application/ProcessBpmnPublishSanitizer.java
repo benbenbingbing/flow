@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,7 +40,6 @@ import java.util.regex.Pattern;
 public class ProcessBpmnPublishSanitizer {
 
     private static final String FLOWABLE_NAMESPACE = "http://flowable.org/bpmn";
-
     /** JSON 序列化工具，用于解析节点配置 JSON */
     private final ObjectMapper objectMapper;
 
@@ -80,6 +80,7 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredCallActivities(result);
         result = fixConfiguredReceiveTasks(result);
         result = fixScriptTasks(result);
+        BpmnExecutableContentValidator.validate(result);
 
         return result;
     }

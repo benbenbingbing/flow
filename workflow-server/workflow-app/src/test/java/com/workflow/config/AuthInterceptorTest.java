@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.auth.infrastructure.JwtUtil;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -89,6 +90,7 @@ class AuthInterceptorTest {
     void validTokenSetsCurrentUserForProtectedEndpoint() throws Exception {
         initJwtUtil();
         String token = JwtUtil.generateToken("1", "admin");
+        when(userService.getById("1")).thenReturn(activeUser("admin", 0L, false));
         AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/current");
         request.addHeader("Authorization", "Bearer " + token);
@@ -107,7 +109,7 @@ class AuthInterceptorTest {
     void temporaryPasswordOnlyAllowsPasswordRecoveryEndpoints() throws Exception {
         initJwtUtil();
         String token = JwtUtil.generateToken("1", "alice");
-        when(userService.requiresPasswordReset("1")).thenReturn(true);
+        when(userService.getById("1")).thenReturn(activeUser("alice", 0L, true));
         AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/process/task/todo");
         request.addHeader("Authorization", "Bearer " + token);
@@ -120,6 +122,21 @@ class AuthInterceptorTest {
         assertEquals(
                 "首次登录或密码重置后，请先修改密码",
                 objectMapper.readTree(response.getContentAsString()).get("message").asText());
+    }
+
+    @Test
+    void revokedTokenVersionReturnsUnauthorized() throws Exception {
+        initJwtUtil();
+        String token = JwtUtil.generateToken("1", "alice", 3L);
+        when(userService.getById("1")).thenReturn(activeUser("alice", 4L, false));
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/auth/current");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
     }
 
     @Test
@@ -149,5 +166,19 @@ class AuthInterceptorTest {
                 "auth-interceptor-test-secret-with-adequate-entropy");
         ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
         jwtUtil.init();
+    }
+
+    private SysUser activeUser(
+            String username,
+            long tokenVersion,
+            boolean passwordResetRequired) {
+        SysUser user = new SysUser();
+        user.setId("1");
+        user.setUsername(username);
+        user.setStatus(SysUser.Status.ENABLED.getValue());
+        user.setDeleted(0);
+        user.setTokenVersion(tokenVersion);
+        user.setPasswordResetRequired(passwordResetRequired);
+        return user;
     }
 }

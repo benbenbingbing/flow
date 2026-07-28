@@ -1,6 +1,7 @@
 global:
   existingSecret: flow-production-secrets
   allowMutableImages: false
+  imagePullSecrets: []
 
 server:
   image:

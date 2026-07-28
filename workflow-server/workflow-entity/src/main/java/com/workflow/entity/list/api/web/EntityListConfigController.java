@@ -26,7 +26,7 @@ import java.util.Map;
 /**
  * 实体列表配置控制器
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-list-config")
 @RequiredArgsConstructor

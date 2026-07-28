@@ -31,7 +31,7 @@ import java.util.List;
 /**
  * 系统审计日志只读接口。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/system/audit-logs")
 @RequiredArgsConstructor

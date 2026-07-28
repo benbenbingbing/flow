@@ -54,7 +54,20 @@ docker run --rm --interactive "$kubeconform_image" \
   -kubernetes-version 1.32.0 \
   -strict \
   -summary \
+  <"$temporary_directory/production.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
   <"$temporary_directory/local.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -ignore-missing-schemas \
+  -summary \
+  <"$temporary_directory/monitoring.yaml"
 
 CONFIG_MIGRATION_SIGNING_KEY=test-signing-key \
 DB_PASSWORD=test-db-password \

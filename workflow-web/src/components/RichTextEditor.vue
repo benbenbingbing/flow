@@ -133,7 +133,7 @@
     <div
       ref="editorRef"
       class="editor-content"
-      contenteditable="true"
+      :contenteditable="!disabled"
       v-html="innerValue"
       @input="onInput"
       @blur="onBlur"
@@ -146,6 +146,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import DOMPurify from 'dompurify'
 import {
   List, ScaleToOriginal, Right, Menu, Sort,
   DArrowLeft, DArrowRight, Link, Picture, Minus,
@@ -170,7 +171,13 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change'])
 
 const editorRef = ref(null)
-const innerValue = ref(props.modelValue)
+const sanitizeRichText = value => DOMPurify.sanitize(value || '', {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form'],
+  FORBID_ATTR: ['srcdoc']
+})
+
+const innerValue = ref(sanitizeRichText(props.modelValue))
 const color = ref('#000000')
 const bgColor = ref('#ffffff')
 const headingValue = ref('p')
@@ -178,23 +185,33 @@ const fontSizeValue = ref('3')
 const isFullscreen = ref(false)
 
 watch(() => props.modelValue, (val) => {
-  if (val !== editorRef.value?.innerHTML) {
-    innerValue.value = val
+  const sanitized = sanitizeRichText(val)
+  if (sanitized !== editorRef.value?.innerHTML) {
+    innerValue.value = sanitized
   }
 })
 
 const onInput = () => {
-  const html = editorRef.value.innerHTML
+  if (props.disabled || !editorRef.value) return
+  const html = sanitizeRichText(editorRef.value.innerHTML)
+  if (html !== editorRef.value.innerHTML) {
+    editorRef.value.innerHTML = html
+  }
   emit('update:modelValue', html)
   emit('change', html)
 }
 
 const onBlur = () => {
-  const html = editorRef.value.innerHTML
+  if (!editorRef.value) return
+  const html = sanitizeRichText(editorRef.value.innerHTML)
   emit('update:modelValue', html)
 }
 
 const onKeydown = (e) => {
+  if (props.disabled) {
+    e.preventDefault()
+    return
+  }
   // Tab 键插入 4 个空格
   if (e.key === 'Tab') {
     e.preventDefault()

@@ -22,8 +22,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * 流程动作 BPMN 兼容清理器。
  *
- * <p>流程动作已改为全局 Flowable 事件分发。发布时只移除平台历史注入的监听器，
- * 不修改用户自行配置的其他监听器。</p>
+ * <p>流程动作已改为全局 Flowable 事件分发。发布时移除顺序流上的全部监听器，
+ * 防止历史或用户配置绕过平台动作白名单。</p>
  */
 @Slf4j
 @Service
@@ -87,7 +87,7 @@ public class ProcessFlowActionBpmnInjector {
             }
             Element element = (Element) child;
             if ("executionListener".equals(element.getLocalName())
-                    && LISTENER_BEAN_EXPRESSION.equals(element.getAttribute("delegateExpression"))) {
+                    || "taskListener".equals(element.getLocalName())) {
                 extensionElements.removeChild(child);
                 changed = true;
             }

@@ -183,15 +183,10 @@ export function useFormField(props, emit) {
     return ''
   }
 
-  // 执行事件脚本
+  // Production builds do not execute configuration-provided JavaScript.
   function executeEvent(code, value) {
     if (!code) return
-    try {
-      const func = new Function('value', 'field', code)
-      func(value, props.field)
-    } catch (e) {
-      console.error('字段事件执行失败:', e)
-    }
+    console.warn('字段事件脚本已禁用，请使用声明式联动规则')
   }
 
   // 标准事件处理器

@@ -5,6 +5,7 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.process.task.api.request.ReceiveTaskTriggerRequest;
@@ -23,7 +24,7 @@ import java.util.Map;
  * 流程实例控制器
  * 提供流程实例查询、进度追踪等接口
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-instance")
 @RequiredArgsConstructor
@@ -76,7 +77,7 @@ public class ProcessInstanceController {
             userId = UserContext.getUsername();
         }
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
         return Result.success(processInstanceService.getMyStartedList(
                 userId, pageNum, pageSize, processName, startDate, endDate));
@@ -98,7 +99,7 @@ public class ProcessInstanceController {
             userId = UserContext.getUsername();
         }
         if (userId == null || userId.isEmpty()) {
-            userId = "admin"; // 默认用户，用于测试
+            throw new ForbiddenException("用户未登录");
         }
         
         String reason = requestBody != null ? requestBody.get("reason") : null;

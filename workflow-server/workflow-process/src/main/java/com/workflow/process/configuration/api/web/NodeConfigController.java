@@ -1,6 +1,6 @@
 package com.workflow.process.configuration.api.web;
 
-import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.configuration.api.model.NodeConfigDTO;
@@ -18,7 +18,7 @@ import java.util.List;
  * @author Workflow Team
  * @version 1.0.0
  */
-@AuthenticatedApi
+@RequiresPermission("process:definition:manage")
 @RestController
 @RequestMapping("/api/process/{processId}/nodes")
 @RequiredArgsConstructor

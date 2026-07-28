@@ -1,6 +1,6 @@
 package com.workflow.admin.extension.person.api.web;
 
-import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.admin.extension.person.api.request.PersonResolverDefinitionRequest;
 import com.workflow.admin.extension.person.api.response.PersonResolverOption;
@@ -21,7 +21,7 @@ import java.util.List;
 /**
  * 受控人员解析器目录接口。
  */
-@AuthenticatedApi
+@RequiresPermission("system:extension:list")
 @RestController
 @RequestMapping("/api/person-resolvers")
 @RequiredArgsConstructor
@@ -43,6 +43,7 @@ public class PersonResolverCatalogController {
     }
 
     @PostMapping("/configs/{resolverCode}")
+    @RequiresPermission("system:extension:update")
     public Result<PersonResolverOption> save(
             @PathVariable String resolverCode,
             @Valid @RequestBody PersonResolverDefinitionRequest request) {

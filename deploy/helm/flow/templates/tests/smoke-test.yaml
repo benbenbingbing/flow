@@ -10,6 +10,10 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   serviceAccountName: default
+  {{- with .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   automountServiceAccountToken: false
   restartPolicy: Never
   securityContext:

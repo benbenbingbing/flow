@@ -2,11 +2,13 @@ package com.workflow.controller;
 
 import com.workflow.process.instance.api.web.ProcessInstanceController;
 
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.process.instance.application.ProcessInstanceService;
 import com.workflow.process.workbench.api.response.MyStartedProcessVO;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -68,6 +70,11 @@ public class ProcessInstanceControllerTest {
         testProgress.setNodeAssigneeMap(assigneeMap);
     }
 
+    @AfterEach
+    void clearUserContext() {
+        UserContext.clear();
+    }
+
     /** 测试查询运行中流程进度接口，断言返回 200 且进度数据含已完成节点、活动节点与处理人 */
     @Test
     void testGetProcessProgress() throws Exception {
@@ -105,6 +112,7 @@ public class ProcessInstanceControllerTest {
 
     @Test
     void myStartedPassesInclusiveDateFiltersToService() throws Exception {
+        UserContext.setCurrentUser("user-1", "alice");
         when(processInstanceService.getMyStartedList(
                 anyString(), eq(2), eq(20), eq("请假"), any(), any()))
                 .thenReturn(new PageResult<>(Collections.emptyList(), 0, 2, 20));

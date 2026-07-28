@@ -41,7 +41,7 @@ import java.util.Map;
  * <p>提供配置迁移资产查询/标记、导出包生成与下载、导入批次上传/分析/比较/发布/回滚等 HTTP 接口，
  * 统一在入口处进行权限校验。</p>
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/config-migration")
 @RequiredArgsConstructor

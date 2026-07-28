@@ -31,11 +31,14 @@ escape_sql_literal() {
 }
 
 runtime_user=$(escape_sql_literal "$MYSQL_USER")
+runtime_password=$(escape_sql_literal "$MYSQL_PASSWORD")
 schema_user=$(escape_sql_literal "$SCHEMA_DB_USERNAME")
 schema_password=$(escape_sql_literal "$SCHEMA_DB_PASSWORD")
 
 MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql --protocol=socket -uroot <<SQL
 SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES';
+CREATE USER IF NOT EXISTS '${runtime_user}'@'%' IDENTIFIED BY '${runtime_password}';
+ALTER USER '${runtime_user}'@'%' IDENTIFIED BY '${runtime_password}';
 REVOKE ALL PRIVILEGES, GRANT OPTION FROM '${runtime_user}'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON \`${MYSQL_DATABASE}\`.* TO '${runtime_user}'@'%';
 CREATE USER IF NOT EXISTS '${schema_user}'@'%' IDENTIFIED BY '${schema_password}';

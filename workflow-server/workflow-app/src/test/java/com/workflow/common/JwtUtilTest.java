@@ -31,11 +31,12 @@ class JwtUtilTest {
         ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
         jwtUtil.init();
 
-        String token = JwtUtil.generateToken("u1", "admin");
+        String token = JwtUtil.generateToken("u1", "admin", 7L);
 
         assertTrue(JwtUtil.validateToken(token));
         assertEquals("u1", JwtUtil.getUserIdFromToken(token));
         assertEquals("admin", JwtUtil.getUsernameFromToken(token));
+        assertEquals(7L, JwtUtil.getTokenVersionFromToken(token));
     }
 
     @Test

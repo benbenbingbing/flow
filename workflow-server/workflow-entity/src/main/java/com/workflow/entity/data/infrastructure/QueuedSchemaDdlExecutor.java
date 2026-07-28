@@ -67,14 +67,15 @@ public class QueuedSchemaDdlExecutor implements SchemaDdlExecutor {
                 jdbcTemplate.update(
                         """
                         INSERT INTO workflow_schema_change
-                            (id, ddl_hash, ddl_statement, status,
+                            (id, ddl_hash, active_hash, ddl_statement, status,
                              attempt, lease_token, next_attempt_at,
                              create_time, update_time)
-                        VALUES (?, ?, ?, 'PENDING',
+                        VALUES (?, ?, ?, ?, 'PENDING',
                                 0, 0, UTC_TIMESTAMP(6),
                                 UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
                         """,
                         requestId,
+                        hash,
                         hash,
                         ddl);
             } catch (DuplicateKeyException exception) {
@@ -127,7 +128,10 @@ public class QueuedSchemaDdlExecutor implements SchemaDdlExecutor {
                 """
                 SELECT id
                 FROM workflow_schema_change
-                WHERE ddl_hash = ?
+                WHERE active_hash = ?
+                  AND status IN ('PENDING', 'RUNNING')
+                ORDER BY create_time DESC
+                LIMIT 1
                 """,
                 resultSet -> resultSet.next()
                         ? resultSet.getString("id")

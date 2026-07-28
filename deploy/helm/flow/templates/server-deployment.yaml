@@ -28,6 +28,10 @@ spec:
         checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application) | sha256sum }}
     spec:
       serviceAccountName: {{ include "flow.fullname" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 40
       securityContext:

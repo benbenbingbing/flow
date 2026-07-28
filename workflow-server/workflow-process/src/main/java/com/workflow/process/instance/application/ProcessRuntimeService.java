@@ -124,7 +124,14 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private EntityProcessLink reserveLink(
             ProcessStartRequest request,
             ProcessDefinitionConfig processConfig) {
-        int generation = 1;
+        EntityProcessLink latest = entityProcessLinkMapper.selectLatestForUpdate(
+                request.entityCode(),
+                request.entityRecordId());
+        int generation = latest == null
+                ? 1
+                : ("ENDED".equals(latest.getState())
+                    ? latest.getGeneration() + 1
+                    : latest.getGeneration());
         String requestId = stableRequestId(
                 request.entityCode(), request.entityRecordId(), generation);
         EntityProcessLink candidate = new EntityProcessLink();

@@ -27,7 +27,7 @@ import java.util.List;
  * <p>针对单个列表配置维护其行级动作（action）与场景（scene），
  * 所有操作均需通过列表访问权限校验。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-list-config/{listId}")
 @RequiredArgsConstructor

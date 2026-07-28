@@ -116,6 +116,12 @@ class ProductionArtifactSecurityTest {
         String deploymentWorkflow = Files.readString(
                 Path.of("../../.github/workflows/deploy.yml"));
         assertTrue(deploymentWorkflow.contains(
-                "deploy/mysql-init/10-database-users.sh"));
+                "steps.server-image.outputs.digest"));
+        assertTrue(deploymentWorkflow.contains(
+                "helm upgrade --install"));
+        assertTrue(deploymentWorkflow.contains(
+                "--atomic"));
+        assertFalse(deploymentWorkflow.contains(
+                "docker compose"));
     }
 }

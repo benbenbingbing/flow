@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * 实体表单管理控制器
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-form")
 @RequiredArgsConstructor

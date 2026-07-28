@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.workflow.storage.api.web.FileController;
+import com.workflow.storage.application.StoredFileAccessService;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.storage.application.FileStorageStrategy;
 import com.workflow.storage.application.StoredFile;
@@ -33,7 +34,8 @@ class FileControllerTest {
         MockHttpServletResponse response =
                 new MockHttpServletResponse();
 
-        new FileController(factory).previewFile(
+        StoredFileAccessService accessService = mock(StoredFileAccessService.class);
+        new FileController(factory, accessService).previewFile(
                 "s3://files/key",
                 response);
 
@@ -58,7 +60,8 @@ class FileControllerTest {
                 .thenThrow(new FileNotFoundException());
         when(strategy.open("outage"))
                 .thenThrow(new IllegalStateException("S3 unavailable"));
-        FileController controller = new FileController(factory);
+        StoredFileAccessService accessService = mock(StoredFileAccessService.class);
+        FileController controller = new FileController(factory, accessService);
         MockHttpServletResponse missing =
                 new MockHttpServletResponse();
         MockHttpServletResponse outage =

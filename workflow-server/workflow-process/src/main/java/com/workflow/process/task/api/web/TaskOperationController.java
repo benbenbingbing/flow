@@ -20,7 +20,7 @@ import java.util.Map;
  *
  * <p>提供任务加签（预览、新增、撤销）与人工知会等扩展操作的 RESTful 接口。</p>
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequiredArgsConstructor
 public class TaskOperationController {

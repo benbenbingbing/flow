@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.api.web;
 
-import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.Result;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * 实体编码规则管理Controller
  */
-@AuthenticatedApi
+@RequiresPermission("entity:definition:manage")
 @RestController
 @RequestMapping("/api/entity-code-rule")
 @RequiredArgsConstructor

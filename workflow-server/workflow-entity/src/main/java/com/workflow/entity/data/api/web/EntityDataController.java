@@ -21,7 +21,7 @@ import java.util.Map;
  * 实体数据控制器
  * 管理实体对应的数据（使用独立表结构）
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-data")
 @RequiredArgsConstructor

@@ -103,6 +103,7 @@ class SysUserServiceTest {
         SysUser existing = new SysUser();
         existing.setId("user-1");
         when(userMapper.selectById("user-1")).thenReturn(existing);
+        when(userMapper.incrementTokenVersion("user-1")).thenReturn(1);
 
         userService.resetPassword("user-1", "TemporaryPass9");
 
@@ -130,6 +131,7 @@ class SysUserServiceTest {
         existing.setPassword(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
                 .encode(currentPassword));
         when(userMapper.selectById("user-1")).thenReturn(existing);
+        when(userMapper.incrementTokenVersion("user-1")).thenReturn(1);
 
         userService.changePassword("user-1", currentPassword, "NextPassword2");
 

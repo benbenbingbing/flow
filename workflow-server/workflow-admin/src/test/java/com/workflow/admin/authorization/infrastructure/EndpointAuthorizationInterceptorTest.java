@@ -73,6 +73,17 @@ class EndpointAuthorizationInterceptorTest {
     }
 
     @Test
+    void stateChangingAuthenticatedEndpointFailsClosedWithoutObjectAuthorization() {
+        UserContext.setCurrentUser("user-1", "reader");
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> authorize(interceptor, "authenticatedEndpoint", "POST"));
+        assertDoesNotThrow(
+                () -> authorize(interceptor, "objectAuthorizedEndpoint", "POST"));
+    }
+
+    @Test
     void missingAuthorizationDependenciesFailClosed() {
         UserContext.setCurrentUser("user-1", "reader");
         EndpointAuthorizationInterceptor unavailable =
@@ -92,9 +103,18 @@ class EndpointAuthorizationInterceptorTest {
     private boolean authorize(
             EndpointAuthorizationInterceptor candidate,
             String methodName) throws Exception {
+        return authorize(candidate, methodName, "GET");
+    }
+
+    private boolean authorize(
+            EndpointAuthorizationInterceptor candidate,
+            String methodName,
+            String httpMethod) throws Exception {
         Method method = FixtureController.class.getDeclaredMethod(methodName);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setMethod(httpMethod);
         return candidate.preHandle(
-                new MockHttpServletRequest(),
+                request,
                 new MockHttpServletResponse(),
                 new HandlerMethod(new FixtureController(), method));
     }
@@ -107,6 +127,10 @@ class EndpointAuthorizationInterceptorTest {
 
         @AuthenticatedApi
         public void authenticatedEndpoint() {
+        }
+
+        @AuthenticatedApi(objectAuthorization = true)
+        public void objectAuthorizedEndpoint() {
         }
 
         @RequiresPermission("system:user:view")

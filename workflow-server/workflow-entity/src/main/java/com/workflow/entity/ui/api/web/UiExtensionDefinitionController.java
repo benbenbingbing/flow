@@ -22,7 +22,7 @@ import java.util.List;
  * UI 扩展定义管理控制器。
  * <p>提供扩展定义的查询、新增、更新接口，所有写操作需全局配置权限。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/ui-extensions")
 @RequiredArgsConstructor

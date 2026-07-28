@@ -41,6 +41,15 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      */
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND deleted = 0")
     SysUser selectByUsername(@Param("username") String username);
+
+    @Update("""
+            UPDATE sys_user
+            SET token_version = token_version + 1,
+                update_time = CURRENT_TIMESTAMP
+            WHERE id = #{id}
+              AND deleted = 0
+            """)
+    int incrementTokenVersion(@Param("id") String id);
     
     /**
      * 检查用户名是否存在

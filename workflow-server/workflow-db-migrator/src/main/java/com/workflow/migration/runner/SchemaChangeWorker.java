@@ -9,6 +9,10 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -130,7 +134,7 @@ final class SchemaChangeWorker {
     }
 
     private void apply(Claim claim) {
-        try {
+        try (LeaseHeartbeat heartbeat = new LeaseHeartbeat(claim)) {
             validate(claim.ddl());
             try (Connection connection = connection();
                  Statement statement =
@@ -155,6 +159,7 @@ final class SchemaChangeWorker {
                 """
                 UPDATE workflow_schema_change
                 SET status = 'APPLIED',
+                    active_hash = NULL,
                     lease_until = NULL,
                     last_error = NULL,
                     completed_time = UTC_TIMESTAMP(6),
@@ -177,6 +182,8 @@ final class SchemaChangeWorker {
                 """
                 UPDATE workflow_schema_change
                 SET status = ?,
+                    active_hash = CASE WHEN ? = 'FAILED'
+                                       THEN NULL ELSE active_hash END,
                     lease_until = NULL,
                     last_error = ?,
                     next_attempt_at = DATE_ADD(
@@ -214,6 +221,9 @@ final class SchemaChangeWorker {
                         failureValues.status());
                 update.setString(
                         offset++,
+                        failureValues.status());
+                update.setString(
+                        offset++,
                         failureValues.error());
                 update.setInt(
                         offset++,
@@ -232,6 +242,67 @@ final class SchemaChangeWorker {
             System.err.println(
                     "Schema worker could not persist result: "
                             + safeMessage(exception));
+        }
+    }
+
+    private final class LeaseHeartbeat implements AutoCloseable {
+
+        private final Claim claim;
+        private final AtomicBoolean open = new AtomicBoolean(true);
+        private final ScheduledExecutorService scheduler;
+
+        private LeaseHeartbeat(Claim claim) {
+            this.claim = claim;
+            this.scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
+                Thread thread = new Thread(
+                        task,
+                        "schema-worker-lease-heartbeat");
+                thread.setDaemon(true);
+                return thread;
+            });
+            scheduler.scheduleAtFixedRate(
+                    this::renew,
+                    30,
+                    30,
+                    TimeUnit.SECONDS);
+        }
+
+        private void renew() {
+            if (!open.get()) {
+                return;
+            }
+            try (Connection connection = connection();
+                 PreparedStatement update = connection.prepareStatement("""
+                         UPDATE workflow_schema_change
+                         SET lease_until = DATE_ADD(
+                               UTC_TIMESTAMP(6),
+                               INTERVAL 120 SECOND),
+                             update_time = UTC_TIMESTAMP(6)
+                         WHERE id = ?
+                           AND owner_id = ?
+                           AND lease_token = ?
+                           AND status = 'RUNNING'
+                         """)) {
+                update.setString(1, claim.id());
+                update.setString(2, ownerId);
+                update.setLong(3, claim.token());
+                if (update.executeUpdate() != 1) {
+                    open.set(false);
+                    System.err.println(
+                            "Schema worker lost lease during DDL: id="
+                                    + claim.id());
+                }
+            } catch (SQLException exception) {
+                System.err.println(
+                        "Schema worker could not renew lease: "
+                                + safeMessage(exception));
+            }
+        }
+
+        @Override
+        public void close() {
+            open.set(false);
+            scheduler.shutdownNow();
         }
     }
 

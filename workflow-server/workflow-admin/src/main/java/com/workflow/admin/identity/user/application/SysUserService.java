@@ -415,6 +415,7 @@ public class SysUserService {
         update.setPasswordResetRequired(true);
         update.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(update);
+        revokeSessions(id);
     }
     
     /**
@@ -447,6 +448,7 @@ public class SysUserService {
         update.setPasswordResetRequired(false);
         update.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(update);
+        revokeSessions(id);
     }
 
     /**
@@ -467,6 +469,13 @@ public class SysUserService {
         update.setPassword(passwordEncoder.encode(rawPassword));
         update.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(update);
+        revokeSessions(id);
+    }
+
+    public void revokeSessions(String id) {
+        if (userMapper.incrementTokenVersion(id) != 1) {
+            throw new IllegalArgumentException("用户不存在");
+        }
     }
 
     public boolean passwordMatches(String rawPassword, String storedPassword) {

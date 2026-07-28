@@ -26,7 +26,7 @@ import java.util.List;
  * <p>针对单个表单维护其节点树：查询、创建、增量更新（patch）、排序、删除及整包替换，
  * 所有操作均需通过表单访问权限校验。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-forms/{formId}/nodes")
 @RequiredArgsConstructor

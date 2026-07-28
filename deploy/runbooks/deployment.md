@@ -3,6 +3,10 @@
 ## Preflight
 
 - Confirm the target context, namespace, release name, and image digests.
+- Keep the environment-specific settings in
+  `/opt/flow/values.production.yaml`; CI never uploads or rewrites secrets.
+- For private GHCR packages, configure `global.imagePullSecrets` in that values
+  file and create the referenced registry credential in the target namespace.
 - Confirm at least two schedulable failure domains for production replicas.
 - Verify the runtime database user cannot run `CREATE`, `ALTER`, or `DROP`.
 - Verify only migration and schema-worker egress can reach the schema endpoint.
@@ -15,6 +19,8 @@
 The Helm pre-upgrade sequence is migration first, then bootstrap. Existing
 runtime Pods continue serving until both hooks succeed. The Deployment uses
 `maxUnavailable: 0`, readiness probes, graceful Spring shutdown, and a PDB.
+The production workflow publishes both images to GHCR, pins their returned
+digests in Helm, and uses `--atomic --wait`; it does not run Compose.
 
 Watch the release:
 

@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  *
  * <p>提供登录、当前用户信息、改密、退出和权限码查询；登录与退出事件显式写入系统审计。</p>
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -111,13 +111,15 @@ public class AuthController {
             userService.migrateLegacyPassword(
                     user.getId(),
                     loginDTO.getPassword());
+            user = userService.getById(user.getId());
         }
         loginThrottleService.recordSuccess(
                 loginDTO.getUsername());
 
         String token = JwtUtil.generateToken(
                 user.getId(),
-                user.getUsername());
+                user.getUsername(),
+                user.getTokenVersion() == null ? 0L : user.getTokenVersion());
         LoginUserVO loginUser = toLoginUser(user);
         loginUser.setToken(token);
 
@@ -178,6 +180,9 @@ public class AuthController {
         String username = validToken
                 ? JwtUtil.getUsernameFromToken(token)
                 : null;
+        if (validToken && userId != null) {
+            userService.revokeSessions(userId);
+        }
         auditPort.record(SystemAuditEvent.builder()
                 .module(AuditModule.SECURITY)
                 .action(AuditAction.LOGOUT)

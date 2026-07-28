@@ -26,7 +26,7 @@ import java.util.Map;
  * <p>提供数据源目录查询、增删改、预览/执行及绑定校验接口；
  * 除执行接口（面向运行态）外，其余写操作与配置查询需全局配置权限。
  */
-@AuthenticatedApi
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/ui-data-sources")
 @RequiredArgsConstructor
