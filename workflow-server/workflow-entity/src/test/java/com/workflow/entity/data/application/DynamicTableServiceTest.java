@@ -73,6 +73,25 @@ class DynamicTableServiceTest {
     }
 
     @Test
+    void shouldRejectReservedUnicodeControlAndOversizedIdentifiers() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.quoteIdentifier("select"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.quoteIdentifier("na\u00efve"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.quoteIdentifier("line\nbreak"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.quoteIdentifier("a".repeat(64)));
+        assertEquals(
+                "`" + "a".repeat(63) + "`",
+                DynamicTableService.quoteIdentifier("a".repeat(63)));
+    }
+
+    @Test
     void shouldEnforceTypeDimensionLimits() {
         EntityField oversizedString = new EntityField();
         oversizedString.setFieldCode("payload");

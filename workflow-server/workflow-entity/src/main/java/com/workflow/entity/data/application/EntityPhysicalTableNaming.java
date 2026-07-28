@@ -8,7 +8,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * 实体物理业务表命名规则。
@@ -18,10 +17,9 @@ public class EntityPhysicalTableNaming {
 
     /** 新版实体业务表前缀。 */
     public static final String BUSINESS_PREFIX = "biz_";
-    private static final int MYSQL_IDENTIFIER_LIMIT = 64;
+    private static final int DYNAMIC_TABLE_NAME_LIMIT =
+            SqlIdentifierPolicy.MAX_LENGTH - "_multi".length();
     private static final int HASH_LENGTH = 8;
-    private static final Pattern IDENTIFIER_PATTERN =
-            Pattern.compile("^[a-z][a-z0-9_]{0,63}$");
 
     /**
      * 根据实体编码生成物理业务表名，超长时截断并追加哈希后缀。
@@ -33,11 +31,11 @@ public class EntityPhysicalTableNaming {
     public String generate(String entityCode) {
         String normalizedCode = normalizeEntityCode(entityCode);
         String candidate = BUSINESS_PREFIX + normalizedCode;
-        if (candidate.length() <= MYSQL_IDENTIFIER_LIMIT) {
+        if (candidate.length() <= DYNAMIC_TABLE_NAME_LIMIT) {
             return candidate;
         }
         String hash = sha256(candidate).substring(0, HASH_LENGTH);
-        int bodyLength = MYSQL_IDENTIFIER_LIMIT - HASH_LENGTH - 1;
+        int bodyLength = DYNAMIC_TABLE_NAME_LIMIT - HASH_LENGTH - 1;
         return candidate.substring(0, bodyLength) + "_" + hash;
     }
 
@@ -53,6 +51,9 @@ public class EntityPhysicalTableNaming {
         if (!normalized.startsWith(BUSINESS_PREFIX)) {
             throw new IllegalArgumentException("实体物理业务表必须使用 biz_ 前缀: " + tableName);
         }
+        if (normalized.length() > DYNAMIC_TABLE_NAME_LIMIT) {
+            throw new IllegalArgumentException("实体物理业务表名未预留多值表后缀空间: " + tableName);
+        }
         return normalized;
     }
 
@@ -61,10 +62,13 @@ public class EntityPhysicalTableNaming {
             throw new IllegalArgumentException("实体物理表名不能为空");
         }
         String normalized = tableName.trim().toLowerCase(Locale.ROOT);
-        if (!IDENTIFIER_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("实体物理表名不合法: " + tableName);
+        try {
+            return SqlIdentifierPolicy.validate(normalized);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "实体物理表名不合法: " + tableName,
+                    exception);
         }
-        return normalized;
     }
 
     /**

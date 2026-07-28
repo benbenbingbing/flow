@@ -26,7 +26,7 @@ class EntityPhysicalTableNamingTest {
         assertEquals("biz_expense_application", naming.generate("expense_application"));
     }
 
-    /** 测试在 MySQL 标识符长度限制（64）内生成稳定表名：验证重复生成结果一致且不超长 */
+    /** 测试在平台标识符长度限制内生成稳定表名：验证重复生成结果一致且不超长 */
     @Test
     void shouldGenerateStableNameWithinMysqlIdentifierLimit() {
         String entityCode = "very_long_entity_code_".repeat(5);
@@ -36,7 +36,8 @@ class EntityPhysicalTableNamingTest {
 
         assertEquals(first, second);
         assertTrue(first.startsWith("biz_"));
-        assertTrue(first.length() <= 64);
+        assertTrue(first.length() <= 57);
+        assertTrue((first + "_multi").length() <= 63);
     }
 
     /** 测试拒绝保留的配置表名：验证对系统配置表名校验抛出 IllegalArgumentException */

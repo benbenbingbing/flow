@@ -15,7 +15,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * 动态表管理服务
@@ -26,14 +25,11 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class DynamicTableService {
 
-    private static final int MYSQL_IDENTIFIER_LIMIT = 64;
+    private static final int MYSQL_IDENTIFIER_LIMIT = SqlIdentifierPolicy.MAX_LENGTH;
     private static final int MAX_VARCHAR_LENGTH = 4096;
     private static final int MAX_DECIMAL_PRECISION = 65;
     private static final int MAX_DECIMAL_SCALE = 30;
     private static final int MAX_DEFAULT_LENGTH = 4096;
-    private static final Pattern SQL_IDENTIFIER =
-            Pattern.compile("^[a-z][a-z0-9_]{0,63}$");
-
     private final JdbcTemplate jdbcTemplate;
     private final EntityFieldMapper entityFieldMapper;
     private final EntityPhysicalTableResolver tableResolver;
@@ -542,10 +538,7 @@ public class DynamicTableService {
     }
 
     static String validateIdentifier(String identifier) {
-        if (identifier == null || !SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("SQL 标识符不合法: " + identifier);
-        }
-        return identifier;
+        return SqlIdentifierPolicy.validate(identifier);
     }
 
     private static String escapeSqlLiteral(String value) {
