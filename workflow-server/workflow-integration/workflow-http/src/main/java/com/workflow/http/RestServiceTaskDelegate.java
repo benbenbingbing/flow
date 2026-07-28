@@ -2,7 +2,6 @@ package com.workflow.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.BaseElement;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;
@@ -16,6 +15,7 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * REST 服务任务委托。
@@ -36,7 +37,6 @@ import java.util.regex.Pattern;
  * 以及响应结果字段映射。</p>
  */
 @Component("restServiceTaskDelegate")
-@RequiredArgsConstructor
 public class RestServiceTaskDelegate implements JavaDelegate {
 
     /** 变量模板正则，匹配 ${variable} 形式的占位符 */
@@ -44,6 +44,29 @@ public class RestServiceTaskDelegate implements JavaDelegate {
 
     /** JSON 序列化器 */
     private final ObjectMapper objectMapper;
+    private final RestEndpointPolicy endpointPolicy;
+    private final WorkflowHttpProperties properties;
+    private final HttpClient httpClient;
+
+    @Autowired
+    public RestServiceTaskDelegate(
+            ObjectMapper objectMapper,
+            RestEndpointPolicy endpointPolicy,
+            WorkflowHttpProperties properties) {
+        this.objectMapper = objectMapper;
+        this.endpointPolicy = endpointPolicy;
+        this.properties = properties;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(
+                        bounded(
+                                properties
+                                        .getConnectTimeoutSeconds(),
+                                1,
+                                30)))
+                .followRedirects(
+                        HttpClient.Redirect.NEVER)
+                .build();
+    }
 
     /**
      * Flowable 调用入口：执行已配置的 REST 任务。
@@ -86,22 +109,30 @@ public class RestServiceTaskDelegate implements JavaDelegate {
             throw new IllegalArgumentException("REST 服务任务暂不支持 multipart/form-data，请使用自定义连接器");
         }
 
-        int timeout = Math.max(1, config.path("timeout").asInt(30));
+        int timeout = bounded(
+                config.path("timeout").asInt(30),
+                1,
+                bounded(
+                        properties
+                                .getMaxRequestTimeoutSeconds(),
+                        1,
+                        120));
         int retryCount = Math.max(0, Math.min(5, config.path("retryCount").asInt(0)));
         String errorHandling = config.path("errorHandling").asText("throw");
         Exception lastError = null;
         // 按 retryCount 重试调用，成功则立即返回
         for (int attempt = 0; attempt <= retryCount; attempt++) {
             try {
-                HttpResponse<String> response = executeRequest(
+                HttpCallResult response = executeRequest(
                         config,
                         execution,
                         url,
                         contentType,
                         timeout);
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IllegalStateException(
-                            "HTTP " + response.statusCode() + ": " + response.body());
+                if (response.statusCode() < 200
+                        || response.statusCode() >= 300) {
+                    throw new HttpStatusException(
+                            response.statusCode());
                 }
                 mapResult(config.path("resultMapping").asText(""), response.body(), execution);
                 execution.setVariable(execution.getCurrentActivityId() + "_httpStatus", response.statusCode());
@@ -109,6 +140,10 @@ public class RestServiceTaskDelegate implements JavaDelegate {
                 return;
             } catch (Exception exception) {
                 lastError = exception;
+                if (attempt >= retryCount
+                        || !isRetryable(exception)) {
+                    break;
+                }
             }
         }
 
@@ -134,7 +169,7 @@ public class RestServiceTaskDelegate implements JavaDelegate {
      * @return HTTP 响应
      * @throws Exception 当请求构建或发送失败时抛出
      */
-    private HttpResponse<String> executeRequest(
+    private HttpCallResult executeRequest(
             JsonNode config,
             DelegateExecution execution,
             String url,
@@ -146,7 +181,9 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         HttpRequest.BodyPublisher publisher = "GET".equals(method) || "DELETE".equals(method)
                 ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(body);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+        URI uri = URI.create(url);
+        endpointPolicy.validate(uri);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(timeout))
                 .method(method, publisher)
                 .header("Content-Type", contentType)
@@ -154,10 +191,24 @@ public class RestServiceTaskDelegate implements JavaDelegate {
                 .header("X-Workflow-Activity-Id", execution.getCurrentActivityId());
         readObject(config.path("headers").asText("")).forEach((name, value) ->
                 builder.header(name, resolveTemplate(String.valueOf(value), execution)));
-        return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(timeout))
-                .build()
-                .send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<InputStream> response = httpClient.send(
+                builder.build(),
+                HttpResponse.BodyHandlers.ofInputStream());
+        int maxBytes = bounded(
+                properties.getMaxResponseBytes(),
+                1024,
+                16 * 1024 * 1024);
+        try (InputStream responseBodyStream = response.body()) {
+            byte[] bytes =
+                    responseBodyStream.readNBytes(maxBytes + 1);
+            if (bytes.length > maxBytes) {
+                throw new IllegalStateException(
+                        "REST 服务任务响应超过大小限制");
+            }
+            return new HttpCallResult(
+                    response.statusCode(),
+                    new String(bytes, StandardCharsets.UTF_8));
+        }
     }
 
     /**
@@ -327,5 +378,39 @@ public class RestServiceTaskDelegate implements JavaDelegate {
             }
         }
         return null;
+    }
+
+    private static int bounded(
+            int value,
+            int minimum,
+            int maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private boolean isRetryable(Exception exception) {
+        if (exception instanceof IllegalArgumentException
+                || exception instanceof InterruptedException) {
+            if (exception instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return false;
+        }
+        return !(exception instanceof HttpStatusException status)
+                || status.statusCode == 429
+                || status.statusCode >= 500;
+    }
+
+    private record HttpCallResult(int statusCode, String body) {
+    }
+
+    private static final class HttpStatusException
+            extends IllegalStateException {
+
+        private final int statusCode;
+
+        private HttpStatusException(int statusCode) {
+            super("HTTP " + statusCode);
+            this.statusCode = statusCode;
+        }
     }
 }

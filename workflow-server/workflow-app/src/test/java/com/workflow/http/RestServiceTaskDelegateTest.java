@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,7 +70,7 @@ class RestServiceTaskDelegateTest {
         when(execution.getProcessInstanceId()).thenReturn("instance-1");
         when(execution.getCurrentActivityId()).thenReturn("rest-task-1");
 
-        new RestServiceTaskDelegate(new ObjectMapper()).execute(execution);
+        newDelegate().execute(execution);
 
         assertEquals("POST", requestMethod.get());
         assertEquals("businessNo=BX+1001", requestQuery.get());
@@ -83,8 +84,64 @@ class RestServiceTaskDelegateTest {
                 "{\"data\":{\"id\":42},\"status\":\"accepted\"}");
     }
 
+    @Test
+    void rejectsResponsesAboveConfiguredLimit()
+            throws Exception {
+        server = HttpServer.create(
+                new InetSocketAddress("127.0.0.1", 0),
+                0);
+        server.createContext("/large", exchange ->
+                respond(exchange, 200, "x".repeat(1025)));
+        server.start();
+        String config = """
+                {
+                  "url":"http://127.0.0.1:%d/large",
+                  "method":"GET",
+                  "timeout":5
+                }
+                """.formatted(server.getAddress().getPort());
+        DelegateExecution execution =
+                mock(DelegateExecution.class);
+        when(execution.getCurrentFlowElement())
+                .thenReturn(serviceTask("restConfig", config));
+        when(execution.getProcessInstanceId())
+                .thenReturn("instance-1");
+        when(execution.getCurrentActivityId())
+                .thenReturn("rest-task-large");
+        WorkflowHttpProperties properties =
+                testProperties();
+        properties.setMaxResponseBytes(1024);
+        RestServiceTaskDelegate delegate =
+                new RestServiceTaskDelegate(
+                        new ObjectMapper(),
+                        new RestEndpointPolicy(properties),
+                        properties);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> delegate.execute(execution));
+    }
+
     private String readBody(HttpExchange exchange) throws IOException {
         return new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    private RestServiceTaskDelegate newDelegate() {
+        WorkflowHttpProperties properties = testProperties();
+        return new RestServiceTaskDelegate(
+                new ObjectMapper(),
+                new RestEndpointPolicy(properties),
+                properties);
+    }
+
+    private WorkflowHttpProperties testProperties() {
+        WorkflowHttpProperties properties =
+                new WorkflowHttpProperties();
+        properties.setAllowedHosts(
+                java.util.List.of("127.0.0.1"));
+        properties.setAllowHttp(true);
+        properties.setAllowPrivateAddresses(true);
+        return properties;
     }
 
     private void respond(HttpExchange exchange, int status, String body) throws IOException {

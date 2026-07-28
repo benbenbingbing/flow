@@ -158,6 +158,13 @@ file:
 workflow:
   metrics:
     queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}
+  http:
+    allowed-hosts: ${WORKFLOW_HTTP_ALLOWED_HOSTS:}
+    allow-http: ${WORKFLOW_HTTP_ALLOW_HTTP:false}
+    allow-private-addresses: ${WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES:false}
+    connect-timeout-seconds: ${WORKFLOW_HTTP_CONNECT_TIMEOUT_SECONDS:5}
+    max-request-timeout-seconds: ${WORKFLOW_HTTP_MAX_REQUEST_TIMEOUT_SECONDS:30}
+    max-response-bytes: ${WORKFLOW_HTTP_MAX_RESPONSE_BYTES:1048576}
   bootstrap:
     admin:
       password: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:}
