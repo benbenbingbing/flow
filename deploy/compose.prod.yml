@@ -9,10 +9,14 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-workflow}
       MYSQL_USER: ${DB_USERNAME:-workflow}
       MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MYSQL_INITDB_SKIP_TZINFO: "1"
       TZ: Asia/Shanghai
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=50
+      - --performance-schema=OFF
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -39,6 +43,7 @@ services:
       FILE_STORAGE_ACCESS_URL: /uploads
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       LOGGING_LEVEL_COM_WORKFLOW: ${APP_LOG_LEVEL:-INFO}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms128m -Xmx384m -XX:MaxMetaspaceSize=160m}
     volumes:
       - uploads:/app/uploads
     healthcheck:
@@ -59,11 +64,11 @@ services:
     ports:
       - "${WEB_PORT:-80}:80"
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1/"]
+      test: ["CMD-SHELL", "test -s /usr/share/nginx/html/index.html && nginx -t"]
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 60s
 
 volumes:
   mysql-data:
