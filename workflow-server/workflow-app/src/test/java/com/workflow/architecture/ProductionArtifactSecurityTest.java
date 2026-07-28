@@ -35,4 +35,13 @@ class ProductionArtifactSecurityTest {
                 "../workflow-devtools/src/main/java/com/workflow/devtools/"
                         + "script/application/ScriptTestService.java")));
     }
+
+    @Test
+    void datasourceDoesNotEnableMultipleStatements() throws Exception {
+        String applicationConfig = Files.readString(
+                Path.of("src/main/resources/application.yml"));
+
+        assertFalse(applicationConfig.contains("allowMultiQueries=true"));
+        assertTrue(applicationConfig.contains("serverTimezone=UTC"));
+    }
 }

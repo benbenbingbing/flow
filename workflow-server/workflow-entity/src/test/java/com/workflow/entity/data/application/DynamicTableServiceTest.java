@@ -4,6 +4,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DynamicTableServiceTest {
@@ -40,6 +41,56 @@ class DynamicTableServiceTest {
 
         assertEquals(" DEFAULT 'O''Reilly'", DynamicTableService.buildDefaultClause(stringField));
         assertEquals(" DEFAULT NULL", DynamicTableService.buildDefaultClause(emptyField));
+    }
+
+    @Test
+    void shouldIgnoreClientSuppliedDatabaseType() {
+        EntityField field = new EntityField();
+        field.setFieldCode("display_name");
+        field.setFieldType(EntityField.FieldType.STRING);
+        field.setFieldLength(32);
+        field.setDbType("VARCHAR(32)); DROP TABLE sys_user; --");
+
+        String definition = DynamicTableService.buildColumnDefinition(field);
+
+        assertEquals("`display_name` VARCHAR(32) DEFAULT NULL COMMENT 'display_name'", definition);
+        assertFalse(definition.contains("DROP TABLE"));
+    }
+
+    @Test
+    void shouldRejectMaliciousColumnIdentifiers() {
+        EntityField field = new EntityField();
+        field.setFieldCode("safe_name");
+        field.setDbColumnName("name` VARCHAR(1); DROP TABLE sys_user; --");
+        field.setFieldType(EntityField.FieldType.STRING);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.buildColumnDefinition(field));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.quoteIdentifier("valid;DROP_TABLE"));
+    }
+
+    @Test
+    void shouldEnforceTypeDimensionLimits() {
+        EntityField oversizedString = new EntityField();
+        oversizedString.setFieldCode("payload");
+        oversizedString.setFieldType(EntityField.FieldType.STRING);
+        oversizedString.setFieldLength(4097);
+
+        EntityField invalidDecimal = new EntityField();
+        invalidDecimal.setFieldCode("amount");
+        invalidDecimal.setFieldType(EntityField.FieldType.DECIMAL);
+        invalidDecimal.setFieldLength(2);
+        invalidDecimal.setFieldPrecision(3);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.getDbType(oversizedString));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DynamicTableService.getDbType(invalidDecimal));
     }
 
     private EntityField booleanField(String defaultValue) {

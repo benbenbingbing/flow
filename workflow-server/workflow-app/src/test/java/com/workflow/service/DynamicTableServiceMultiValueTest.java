@@ -37,7 +37,7 @@ class DynamicTableServiceMultiValueTest {
 
         ArgumentCaptor<String> ddl = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).execute(ddl.capture());
-        assertTrue(ddl.getValue().contains("CREATE TABLE IF NOT EXISTS biz_expense_multi"));
+        assertTrue(ddl.getValue().contains("CREATE TABLE IF NOT EXISTS `biz_expense_multi`"));
         assertTrue(ddl.getValue().contains("target_entity_id"));
         assertTrue(ddl.getValue().contains("target_record_id"));
         assertTrue(ddl.getValue().contains("COLLATE=utf8mb4_unicode_ci"));
