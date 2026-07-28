@@ -355,7 +355,14 @@ public class EntityDataDynamicService implements EntityRecordPort {
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(EntityDataDTO dto) {
-        log.info("保存数据: entityCode={}, id={}, data={}", dto.getEntityCode(), dto.getId(), dto.getData());
+        log.info(
+                "保存实体数据: entityCode={}, id={}, fieldCount={}, startProcess={}",
+                dto.getEntityCode(),
+                dto.getId(),
+                dto.getData() == null
+                        ? 0
+                        : dto.getData().size(),
+                Boolean.TRUE.equals(dto.getStartProcess()));
         String entityCode = dto.getEntityCode();
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
                 .orElseThrow(() -> new RuntimeException("实体不存在: " + entityCode));
