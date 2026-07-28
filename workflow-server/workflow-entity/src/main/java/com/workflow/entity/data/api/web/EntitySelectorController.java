@@ -1,5 +1,7 @@
 package com.workflow.entity.data.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -18,6 +20,7 @@ import java.util.stream.Collectors;
  * 实体选择器控制器
  * 提供通用接口用于选择实体数据（支持用户实体和系统实体）
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-selector")
 @RequiredArgsConstructor

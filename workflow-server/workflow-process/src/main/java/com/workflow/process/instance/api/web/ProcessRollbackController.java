@@ -1,5 +1,7 @@
 package com.workflow.process.instance.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.process.instance.application.ProcessRollbackService;
@@ -12,6 +14,7 @@ import java.util.Map;
  * 流程退回控制器
  * 处理驳回、重新提交等操作
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/process-rollback")
 @RequiredArgsConstructor

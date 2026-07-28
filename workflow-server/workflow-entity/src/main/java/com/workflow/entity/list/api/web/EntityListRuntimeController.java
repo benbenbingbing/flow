@@ -1,5 +1,7 @@
 package com.workflow.entity.list.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.list.api.request.EntityListQueryRequest;
 import com.workflow.entity.list.api.response.EntityListSchemaDTO;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
  * 实体列表运行态控制器。
  * <p>面向运行态提供列表 schema 获取、列表数据查询及数据范围模拟接口。
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-lists")
 @RequiredArgsConstructor

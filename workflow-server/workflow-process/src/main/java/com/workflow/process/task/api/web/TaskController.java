@@ -1,5 +1,7 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.process.task.application.TaskService;
@@ -14,6 +16,7 @@ import java.util.Map;
 /**
  * 任务管理控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/task")
 @RequiredArgsConstructor

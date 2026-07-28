@@ -1,5 +1,7 @@
 package com.workflow.process.form.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
@@ -13,6 +15,7 @@ import java.util.List;
 /**
  * 流程节点表单绑定控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/process-node-form")
 @RequiredArgsConstructor

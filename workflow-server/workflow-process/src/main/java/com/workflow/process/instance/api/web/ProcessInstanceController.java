@@ -1,5 +1,7 @@
 package com.workflow.process.instance.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
@@ -21,6 +23,7 @@ import java.util.Map;
  * 流程实例控制器
  * 提供流程实例查询、进度追踪等接口
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/process-instance")
 @RequiredArgsConstructor

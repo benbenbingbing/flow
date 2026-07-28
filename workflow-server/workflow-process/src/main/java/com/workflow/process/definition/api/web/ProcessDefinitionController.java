@@ -1,5 +1,7 @@
 package com.workflow.process.definition.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
@@ -21,10 +23,10 @@ import java.util.Map;
  * @author Workflow Team
  * @version 1.0.0
  */
+@RequiresPermission("process:definition:view")
 @RestController
 @RequestMapping("/api/process")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ProcessDefinitionController {
 
     /**
@@ -106,6 +108,7 @@ public class ProcessDefinitionController {
      * @return 创建后的流程定义
      */
     @PostMapping
+    @RequiresPermission("process:definition:manage")
     public ApiResponse<ProcessDefinitionDTO> create(@RequestBody ProcessDefinitionDTO dto) {
         return ApiResponse.success(processService.save(dto));
     }
@@ -118,6 +121,7 @@ public class ProcessDefinitionController {
      * @return 更新后的流程定义
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("process:definition:manage")
     public ApiResponse<ProcessDefinitionDTO> update(@PathVariable String id, @RequestBody ProcessDefinitionDTO dto) {
         return ApiResponse.success(processService.update(id, dto));
     }
@@ -129,6 +133,7 @@ public class ProcessDefinitionController {
      * @return 操作结果
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("process:definition:manage")
     public ApiResponse<Void> delete(@PathVariable String id) {
         processService.delete(id);
         return ApiResponse.success();
@@ -143,6 +148,7 @@ public class ProcessDefinitionController {
      * @return 发布后的流程定义
      */
     @PostMapping("/{id}/publish")
+    @RequiresPermission("process:definition:publish")
     public ApiResponse<ProcessDefinitionDTO> publish(
             @PathVariable String id,
             @RequestBody(required = false) ConfigMigrationPublishRequest request) {
@@ -157,6 +163,7 @@ public class ProcessDefinitionController {
      * @return 禁用后的流程定义
      */
     @PostMapping("/{id}/disable")
+    @RequiresPermission("process:definition:publish")
     public ApiResponse<ProcessDefinitionDTO> disable(@PathVariable String id) {
         return ApiResponse.success(processService.disable(id));
     }
@@ -195,6 +202,7 @@ public class ProcessDefinitionController {
      * @return 更新后的流程定义
      */
     @PostMapping("/{processId}/rollback/{versionId}")
+    @RequiresPermission("process:definition:publish")
     public ApiResponse<ProcessDefinitionDTO> rollbackToVersion(
             @PathVariable String processId,
             @PathVariable String versionId,
@@ -210,6 +218,7 @@ public class ProcessDefinitionController {
      * @return 操作结果
      */
     @PostMapping("/versions/{versionId}")
+    @RequiresPermission("process:definition:manage")
     public ApiResponse<Void> deleteVersion(@PathVariable String versionId) {
         processService.deleteVersion(versionId);
         return ApiResponse.success();
@@ -219,6 +228,7 @@ public class ProcessDefinitionController {
      * 测试节点解析（开发测试用）
      */
     @PostMapping("/{processId}/test-parse")
+    @RequiresPermission("process:definition:manage")
     public ApiResponse<String> testParseNodes(@PathVariable String processId) {
         try {
             processService.testParseNodes(processId);

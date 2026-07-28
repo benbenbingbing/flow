@@ -1,6 +1,7 @@
 package com.workflow.config;
 
 import com.workflow.admin.auth.infrastructure.AuthInterceptor;
+import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +20,9 @@ public class CorsConfig {
 
     @Autowired
     private AuthInterceptor authInterceptor;
+
+    @Autowired
+    private EndpointAuthorizationInterceptor endpointAuthorizationInterceptor;
 
     /**
      * 配置CORS跨域规则和拦截器
@@ -44,10 +48,13 @@ public class CorsConfig {
             
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                // 注册认证拦截器，排除登录相关接口
+                // Authentication always runs first; only login is intentionally anonymous.
                 registry.addInterceptor(authInterceptor)
                         .addPathPatterns("/api/**")
-                        .excludePathPatterns("/api/auth/login", "/api/auth/logout");
+                        .excludePathPatterns("/api/auth/login");
+                // Every mapped API must then declare an explicit access policy.
+                registry.addInterceptor(endpointAuthorizationInterceptor)
+                        .addPathPatterns("/api/**");
             }
         };
     }

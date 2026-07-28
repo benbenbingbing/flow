@@ -54,9 +54,9 @@ public class AuthInterceptor implements HandlerInterceptor {
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 登录、退出接口放行
+        // Login is the only anonymous authentication endpoint.
         String uri = request.getRequestURI();
-        if (uri.equals("/api/auth/login") || uri.equals("/api/auth/logout")) {
+        if (uri.equals("/api/auth/login")) {
             return true;
         }
         

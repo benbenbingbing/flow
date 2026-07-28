@@ -1,5 +1,7 @@
 package com.workflow.process.action.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.action.api.request.FlowActionSaveRequest;
 import com.workflow.contracts.action.FlowActionTimingOption;
@@ -15,6 +17,7 @@ import java.util.List;
 /**
  * 流程动作管理接口
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/process-actions")
 @RequiredArgsConstructor

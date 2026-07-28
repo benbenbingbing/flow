@@ -1,5 +1,7 @@
 package com.workflow.entity.definition.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import com.workflow.entity.definition.application.EntityStatusService;
@@ -11,6 +13,7 @@ import java.util.List;
 /**
  * 实体状态控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-status")
 @RequiredArgsConstructor

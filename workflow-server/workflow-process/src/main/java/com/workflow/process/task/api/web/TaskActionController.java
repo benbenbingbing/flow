@@ -1,5 +1,7 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
@@ -15,6 +17,7 @@ import java.util.Map;
  * 任务动作控制器
  * 处理任务完成、流程撤回、历史查询等操作
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/task-action")
 @RequiredArgsConstructor

@@ -1,5 +1,7 @@
 package com.workflow.entity.definition.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import com.workflow.entity.definition.api.response.EntityVersionDiffDTO;
 import com.workflow.entity.definition.application.EntityVersionDiffService;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * 实体版本差异对比控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-version-diff")
 @RequiredArgsConstructor

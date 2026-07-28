@@ -1,5 +1,7 @@
 package com.workflow.admin.identity.group.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -17,6 +19,7 @@ import java.util.List;
  * 提供用户组的增删改查、状态切换、组用户保存及用户列表查询接口。
  * </p>
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/system/group")
 @RequiredArgsConstructor

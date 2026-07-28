@@ -1,5 +1,7 @@
 package com.workflow.admin.organization.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.organization.application.SysOrganizationService;
@@ -14,6 +16,7 @@ import java.util.List;
  * 提供组织部门的树形查询、增删改、状态切换及完整路径名称查询接口。
  * </p>
  */
+@RequiresPermission("system:organization:view")
 @RestController
 @RequestMapping("/api/system/org")
 @RequiredArgsConstructor
@@ -61,6 +64,7 @@ public class SysOrganizationController {
      * @return 保存后的组织部门对象
      */
     @PostMapping
+    @RequiresPermission("system:organization:manage")
     public Result<SysOrganization> save(@RequestBody SysOrganization org) {
         return Result.success(orgService.saveOrg(org));
     }
@@ -73,6 +77,7 @@ public class SysOrganizationController {
      * @return 更新后的组织部门对象
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("system:organization:manage")
     public Result<SysOrganization> update(@PathVariable String id, @RequestBody SysOrganization org) {
         org.setId(id);
         return Result.success(orgService.saveOrg(org));
@@ -85,6 +90,7 @@ public class SysOrganizationController {
      * @return 操作结果
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("system:organization:manage")
     public Result<Void> delete(@PathVariable String id) {
         orgService.deleteOrg(id);
         return Result.success();
@@ -99,6 +105,7 @@ public class SysOrganizationController {
      * @return 操作结果
      */
     @PostMapping("/{id}/status")
+    @RequiresPermission("system:organization:manage")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {

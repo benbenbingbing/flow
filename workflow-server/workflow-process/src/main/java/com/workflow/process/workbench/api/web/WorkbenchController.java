@@ -1,5 +1,7 @@
 package com.workflow.process.workbench.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -9,6 +11,7 @@ import java.util.*;
 /**
  * 工作台控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/workbench")
 @RequiredArgsConstructor

@@ -1,5 +1,7 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
@@ -25,6 +27,7 @@ import java.util.stream.Collectors;
 /**
  * 流程待办控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/process-task")
 @RequiredArgsConstructor

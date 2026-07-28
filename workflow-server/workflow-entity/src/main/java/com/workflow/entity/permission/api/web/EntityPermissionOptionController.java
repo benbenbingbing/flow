@@ -1,5 +1,7 @@
 package com.workflow.entity.permission.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.permission.api.response.EntityPermissionOptionDTO;
 import com.workflow.entity.permission.application.EntityPermissionCatalogService;
@@ -14,6 +16,7 @@ import java.util.List;
 /**
  * 实体权限选项目录接口。
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/system/menu")
 @RequiredArgsConstructor

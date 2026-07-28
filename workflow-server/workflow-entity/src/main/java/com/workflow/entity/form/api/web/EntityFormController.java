@@ -1,5 +1,7 @@
 package com.workflow.entity.form.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -21,6 +23,7 @@ import java.util.Map;
 /**
  * 实体表单管理控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-form")
 @RequiredArgsConstructor

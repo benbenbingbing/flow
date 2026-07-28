@@ -1,5 +1,7 @@
 package com.workflow.admin.extension.person.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.admin.extension.person.api.request.PersonResolverDefinitionRequest;
 import com.workflow.admin.extension.person.api.response.PersonResolverOption;
 import com.workflow.admin.extension.person.application.PersonResolverCatalogService;
@@ -19,6 +21,7 @@ import java.util.List;
 /**
  * 受控人员解析器目录接口。
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/person-resolvers")
 @RequiredArgsConstructor

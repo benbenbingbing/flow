@@ -1,5 +1,8 @@
 package com.workflow.admin.auth.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.PublicApi;
+
 import com.workflow.admin.auth.infrastructure.JwtUtil;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.Result;
@@ -35,6 +38,7 @@ import java.util.stream.Collectors;
  *
  * <p>提供登录、当前用户信息、改密、退出和权限码查询；登录与退出事件显式写入系统审计。</p>
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -47,6 +51,7 @@ public class AuthController {
     /**
      * 用户登录。
      */
+    @PublicApi
     @PostMapping("/login")
     public Result<LoginUserVO> login(
             @Validated @RequestBody LoginDTO loginDTO) {

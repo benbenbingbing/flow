@@ -1,5 +1,7 @@
 package com.workflow.storage.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.Result;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import com.workflow.contracts.audit.AuditAction;
@@ -26,6 +28,7 @@ import java.util.Map;
  * 当前使用本地文件存储策略。
  */
 @Slf4j
+@RequiresPermission("storage:file:read")
 @RestController
 @RequestMapping("/api/file")
 @RequiredArgsConstructor
@@ -43,6 +46,7 @@ public class FileController {
      * @return 文件信息（url、filename 等）或错误信息
      */
     @PostMapping("/upload")
+    @RequiresPermission("storage:file:write")
     @SystemAudit(
             module = AuditModule.STORAGE,
             action = AuditAction.UPLOAD,
@@ -72,6 +76,7 @@ public class FileController {
      * @return 文件信息或错误信息
      */
     @PostMapping("/upload-image")
+    @RequiresPermission("storage:file:write")
     public Result<Map<String, String>> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "maxWidth", defaultValue = "1920") int maxWidth,
@@ -92,6 +97,7 @@ public class FileController {
      * @return 删除成功返回成功结果，否则返回错误信息
      */
     @PostMapping
+    @RequiresPermission("storage:file:delete")
     @SystemAudit(
             module = AuditModule.STORAGE,
             action = AuditAction.DELETE,

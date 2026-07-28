@@ -1,5 +1,7 @@
 package com.workflow.entity.definition.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import com.workflow.entity.definition.api.response.EntityPublishHistoryDTO;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
@@ -11,6 +13,7 @@ import java.util.List;
 /**
  * 实体发布版本历史控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-publish-history")
 @RequiredArgsConstructor

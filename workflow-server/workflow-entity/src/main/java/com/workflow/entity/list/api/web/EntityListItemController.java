@@ -1,5 +1,7 @@
 package com.workflow.entity.list.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.list.api.request.EntityListActionDeleteRequest;
 import com.workflow.entity.list.api.request.EntityListActionSaveRequest;
@@ -25,6 +27,7 @@ import java.util.List;
  * <p>针对单个列表配置维护其行级动作（action）与场景（scene），
  * 所有操作均需通过列表访问权限校验。
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-list-config/{listId}")
 @RequiredArgsConstructor
