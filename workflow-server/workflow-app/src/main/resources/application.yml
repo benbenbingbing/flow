@@ -142,10 +142,18 @@ cors:
 # 文件上传配置
 file:
   storage:
-    type: local
+    type: ${FILE_STORAGE_TYPE:local}
     local:
       path: ${FILE_STORAGE_PATH:./uploads}
       access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
+    s3:
+      endpoint: ${FILE_STORAGE_S3_ENDPOINT:}
+      region: ${FILE_STORAGE_S3_REGION:us-east-1}
+      bucket: ${FILE_STORAGE_S3_BUCKET:}
+      access-key: ${FILE_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${FILE_STORAGE_S3_SECRET_KEY:}
+      access-url: ${FILE_STORAGE_S3_ACCESS_URL:}
+      path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
 
 workflow:
   metrics:

@@ -37,6 +37,7 @@
         <jjwt.version>0.13.0</jjwt.version>
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <lombok.version>1.18.30</lombok.version>
+        <aws-sdk.version>2.47.6</aws-sdk.version>
     </properties>
 
     <dependencyManagement>
@@ -131,6 +132,16 @@
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>s3</artifactId>
+                <version>${aws-sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>apache5-client</artifactId>
+                <version>${aws-sdk.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

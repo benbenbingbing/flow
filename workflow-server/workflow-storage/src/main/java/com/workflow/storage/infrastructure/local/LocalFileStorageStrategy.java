@@ -1,13 +1,16 @@
 package com.workflow.storage.infrastructure.local;
 
 import com.workflow.storage.application.FileStorageStrategy;
+import com.workflow.storage.application.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -24,6 +27,10 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(
+        name = "file.storage.type",
+        havingValue = "local",
+        matchIfMissing = true)
 @RequiredArgsConstructor
 public class LocalFileStorageStrategy implements FileStorageStrategy {
 
@@ -106,6 +113,29 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             log.error("本地文件删除失败", e);
             return false;
         }
+    }
+
+    @Override
+    public StoredFile open(String fileUrl) throws IOException {
+        String filename = extractSafeFilename(fileUrl);
+        if (filename == null) {
+            throw new FileNotFoundException("文件路径无效");
+        }
+        Path uploadDir = Path.of(properties.getLocal().getPath())
+                .toAbsolutePath()
+                .normalize();
+        Path file = uploadDir.resolve(filename).normalize();
+        if (!file.startsWith(uploadDir) || !Files.isRegularFile(file)) {
+            throw new FileNotFoundException("文件不存在");
+        }
+        String contentType = Files.probeContentType(file);
+        return new StoredFile(
+                Files.newInputStream(file),
+                filename,
+                contentType == null
+                        ? "application/octet-stream"
+                        : contentType,
+                Files.size(file));
     }
 
     /**

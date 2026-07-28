@@ -6,6 +6,7 @@ import java.nio.file.Path;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -15,6 +16,10 @@ import lombok.RequiredArgsConstructor;
  * Web MVC 配置
  */
 @Configuration
+@ConditionalOnProperty(
+        name = "file.storage.type",
+        havingValue = "local",
+        matchIfMissing = true)
 @RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
 

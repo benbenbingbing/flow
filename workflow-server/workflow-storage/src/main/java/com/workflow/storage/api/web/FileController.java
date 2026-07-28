@@ -3,21 +3,20 @@ package com.workflow.storage.api.web;
 import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.Result;
-import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.storage.application.FileStorageStrategy;
+import com.workflow.storage.application.StoredFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -36,9 +35,6 @@ public class FileController {
 
     /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
-    /** 当前文件存储配置 */
-    private final FileStorageProperties storageProperties;
-
     /**
      * 上传文件
      *
@@ -129,77 +125,40 @@ public class FileController {
      */
     @GetMapping("/preview")
     public void previewFile(@RequestParam("url") String fileUrl, HttpServletResponse response) {
-        try {
-            String filename = extractSafeFilename(fileUrl);
-            if (filename == null) {
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                return;
-            }
-
-            // 本地存储模式下直接读取文件
-            String uploadPath = storageProperties.getLocal().getPath();
-            File file = new File(uploadPath, filename);
-            if (!isFileInsideDirectory(file, uploadPath)) {
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                return;
-            }
-
-            if (!file.exists()) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                return;
-            }
-
-            response.setContentType("application/octet-stream");
+        FileStorageStrategy strategy = storageFactory.getStrategy();
+        try (StoredFile file = strategy.open(fileUrl)) {
+            response.setContentType(file.contentType());
+            response.setHeader("X-Content-Type-Options", "nosniff");
             response.setHeader("Content-Disposition", "attachment; filename="
-                    + URLEncoder.encode(filename, StandardCharsets.UTF_8));
-            response.setContentLength((int) file.length());
-
-            // 以缓冲流方式写出文件内容
-            try (FileInputStream fis = new FileInputStream(file)) {
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = fis.read(buffer)) != -1) {
-                    response.getOutputStream().write(buffer, 0, bytesRead);
-                }
+                    + URLEncoder.encode(
+                            file.filename(),
+                            StandardCharsets.UTF_8));
+            if (file.contentLength() >= 0) {
+                response.setContentLengthLong(file.contentLength());
+            }
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead =
+                    file.inputStream().read(buffer)) != -1) {
+                response.getOutputStream()
+                        .write(buffer, 0, bytesRead);
+            }
+        } catch (FileNotFoundException e) {
+            if (!response.isCommitted()) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             }
         } catch (IOException e) {
             log.error("文件预览失败", e);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
-     * 从访问 URL 中提取安全的文件名，过滤路径穿越字符。
-     *
-     * @param fileUrl 文件访问URL
-     * @return 安全的文件名；包含 ..、/、\ 或为空时返回 null
-     */
-    private String extractSafeFilename(String fileUrl) {
-        if (fileUrl == null || fileUrl.isEmpty()) {
-            return null;
-        }
-        String filename = fileUrl.substring(fileUrl.lastIndexOf("/") + 1);
-        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
-            return null;
-        }
-        return filename;
-    }
-
-    /**
-     * 判断文件是否位于指定目录内（规范化路径后比较）。
-     *
-     * @param file      待检查文件
-     * @param directory 目录路径
-     * @return 文件在目录内返回 true
-     */
-    private boolean isFileInsideDirectory(File file, String directory) {
-        try {
-            File canonicalFile = file.getCanonicalFile();
-            File canonicalDir = new File(directory).getCanonicalFile();
-            return canonicalFile.getPath().startsWith(canonicalDir.getPath());
-        } catch (IOException e) {
-            log.error("文件路径安全检查失败", e);
-            return false;
+            if (!response.isCommitted()) {
+                response.setStatus(
+                        HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            }
+        } catch (RuntimeException e) {
+            log.error("文件存储后端不可用", e);
+            if (!response.isCommitted()) {
+                response.setStatus(
+                        HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            }
         }
     }
 }
