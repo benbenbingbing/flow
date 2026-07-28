@@ -23,6 +23,15 @@ services:
   mysql:
     image: mysql:8.4
     restart: unless-stopped
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        cp /opt/flow/mysql-init/10-database-users.sh \
+          /docker-entrypoint-initdb.d/10-database-users.sh
+        chmod 0755 /docker-entrypoint-initdb.d/10-database-users.sh
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+      - --
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
       MYSQL_DATABASE: ${DB_NAME:-workflow}
@@ -36,7 +45,7 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+      - ./mysql-init/10-database-users.sh:/opt/flow/mysql-init/10-database-users.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s

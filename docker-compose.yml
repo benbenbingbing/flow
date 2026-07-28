@@ -1,55 +1,159 @@
+name: flow-local
+
+x-server-image: &server-image
+  image: flow-server:local
+  build:
+    context: ./workflow-server
+
+x-runtime-environment: &runtime-environment
+  SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+  DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+  SPRING_FLYWAY_ENABLED: "false"
+  FLOWABLE_SCHEMA_UPDATE: "false"
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+  CONFIG_MIGRATION_SIGNING_KEY: ${CONFIG_MIGRATION_SIGNING_KEY:?CONFIG_MIGRATION_SIGNING_KEY is required}
+  FILE_STORAGE_TYPE: local
+  FILE_STORAGE_PATH: /app/uploads
+  FILE_STORAGE_ACCESS_URL: /uploads
+
 services:
   mysql:
     image: mysql:8.4
-    container_name: flow-mysql
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        cp /opt/flow/mysql-init/10-database-users.sh \
+          /docker-entrypoint-initdb.d/10-database-users.sh
+        chmod 0755 /docker-entrypoint-initdb.d/10-database-users.sh
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+      - --
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-workflow}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
       MYSQL_DATABASE: ${DB_NAME:-workflow}
+      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME is required}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      SCHEMA_DB_USERNAME: ${SCHEMA_DB_USERNAME:?SCHEMA_DB_USERNAME is required}
+      SCHEMA_DB_PASSWORD: ${SCHEMA_DB_PASSWORD:?SCHEMA_DB_PASSWORD is required}
       TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     ports:
       - "${DB_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./deploy/mysql-init/10-database-users.sh:/opt/flow/mysql-init/10-database-users.sh:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-workflow}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 30s
 
-  server:
-    build:
-      context: ./workflow-server
-    container_name: flow-server
+  migration:
+    <<: *server-image
+    restart: "no"
+    healthcheck:
+      disable: true
     depends_on:
       mysql:
         condition: service_healthy
+    entrypoint:
+      - java
+      - -jar
+      - /app/workflow-db-migrator.jar
     environment:
-      DB_USERNAME: root
-      DB_PASSWORD: ${DB_PASSWORD:-workflow}
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
       SCHEMA_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
       SCHEMA_DB_USERNAME: ${SCHEMA_DB_USERNAME:?SCHEMA_DB_USERNAME is required}
       SCHEMA_DB_PASSWORD: ${SCHEMA_DB_PASSWORD:?SCHEMA_DB_PASSWORD is required}
-      SERVER_PORT: 8080
-      FLOWABLE_SCHEMA_UPDATE: ${FLOWABLE_SCHEMA_UPDATE:-true}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      CONFIG_MIGRATION_SIGNING_KEY: ${CONFIG_MIGRATION_SIGNING_KEY:?CONFIG_MIGRATION_SIGNING_KEY is required}
+
+  schema-worker:
+    <<: *server-image
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    entrypoint:
+      - java
+      - -jar
+      - /app/workflow-db-migrator.jar
+    environment:
+      MIGRATION_COMMAND: schema-worker
+      SCHEMA_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+      SCHEMA_DB_USERNAME: ${SCHEMA_DB_USERNAME:?SCHEMA_DB_USERNAME is required}
+      SCHEMA_DB_PASSWORD: ${SCHEMA_DB_PASSWORD:?SCHEMA_DB_PASSWORD is required}
+
+  bootstrap:
+    <<: *server-image
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    environment:
+      <<: *runtime-environment
+      SPRING_MAIN_WEB_APPLICATION_TYPE: none
+      FLOWABLE_ASYNC_EXECUTOR_ACTIVATE: "false"
+      WORKFLOW_DEPLOYMENT_ROLE: bootstrap
+      WORKFLOW_BOOTSTRAP_ENABLED: "true"
+      WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE: "true"
+      WORKFLOW_SCHEDULING_ENABLED: "false"
+      WORKFLOW_SCHEMA_PUBLISHER_MODE: queue
       WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:?WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD is required}
-      FILE_STORAGE_PATH: /app/uploads
-      FILE_STORAGE_ACCESS_URL: /uploads
+    volumes:
+      - uploads:/app/uploads
+
+  server:
+    <<: *server-image
+    restart: unless-stopped
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      schema-worker:
+        condition: service_started
+    environment:
+      <<: *runtime-environment
+      SERVER_PORT: 8080
+      WORKFLOW_DEPLOYMENT_ROLE: server
+      WORKFLOW_BOOTSTRAP_ENABLED: "false"
+      WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE: "false"
+      WORKFLOW_SCHEDULING_ENABLED: "true"
+      WORKFLOW_SCHEMA_PUBLISHER_MODE: queue
     ports:
       - "${SERVER_PORT:-8080}:8080"
     volumes:
       - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    stop_grace_period: 30s
 
   web:
+    image: flow-web:local
     build:
       context: ./workflow-web
-    container_name: flow-web
+    restart: unless-stopped
     depends_on:
-      - server
+      server:
+        condition: service_healthy
+    environment:
+      SERVER_UPSTREAM: server:8080
     ports:
-      - "${WEB_PORT:-3000}:80"
+      - "${WEB_PORT:-3000}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   mysql-data:

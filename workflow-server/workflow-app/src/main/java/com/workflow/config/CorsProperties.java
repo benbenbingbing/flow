@@ -28,6 +28,7 @@ public class CorsProperties {
             List.of(
                     "Authorization",
                     "Content-Type",
-                    "X-Trace-Id"));
+                    "X-Trace-Id",
+                    "X-Business-Trace-Key"));
     private Duration maxAge = Duration.ofHours(1);
 }

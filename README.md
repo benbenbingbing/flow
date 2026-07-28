@@ -96,7 +96,8 @@ docs/                  领域设计、数据库、测试和历史资料
 - JDK 21
 - Maven 3.9+
 - Node.js 22 和 npm
-- MySQL 8.4
+- Docker（使用脚本自动启动本地 MySQL 时需要）
+- MySQL 8.4（也可使用已有实例）
 
 后端需要两个不同的数据库身份：
 
@@ -111,31 +112,35 @@ docs/                  领域设计、数据库、测试和历史资料
 cp .env.example .env
 ```
 
-在当前终端加载配置：
+推荐使用根目录脚本启动。默认情况下，当 `DB_HOST` 为 `localhost` 时，脚本会通过
+Compose 启动 MySQL、重放数据库授权、构建前后端、执行独立迁移器，并依次启动
+schema worker、后端和 Vite：
 
 ```bash
-set -a
-. ./.env
-set +a
+./start.sh
+./start.sh status
 ```
 
-构建并启动后端：
+停止应用进程：
 
 ```bash
-cd workflow-server
-mvn -pl workflow-app -am clean package -DskipTests
-java -jar workflow-app/target/workflow-server-1.0.0.jar
+./start.sh stop
 ```
 
-另开一个终端启动前端：
+使用已有 MySQL 时，在 `.env` 中设置连接和账号，并配置：
+
+```text
+START_LOCAL_MYSQL=false
+```
+
+也可以将所有组件运行在容器中：
 
 ```bash
-cd workflow-web
-npm ci
-npm run dev
+docker compose --env-file .env up -d --build --wait
+docker compose --env-file .env ps
 ```
 
-默认访问地址：
+两种启动方式会占用相同的默认端口，不要同时运行。默认访问地址：
 
 - 前端：`http://localhost:3000`
 - 后端 API：`http://localhost:8080/api`
@@ -143,11 +148,12 @@ npm run dev
 - 就绪检查：`http://localhost:8080/healthz`
 - 管理与指标端口：`http://localhost:9090`
 
-Vite 默认把 `/api` 代理到 `http://localhost:8080`。需要使用其他后端地址时设置
+手工运行 Vite 时，`/api` 默认代理到 `http://localhost:8080`。`start.sh` 会根据
+`SERVER_PORT` 自动设置代理目标；需要代理到其他地址时可显式设置
 `VITE_API_PROXY_TARGET`。
 
-根目录的 `start.sh` 是本地进程管理脚本，会按端口停止旧进程并在后台启动服务。它不
-参与 CI，也不是生产部署入口；共享开发机上使用前应先确认端口和 PID 文件归属。
+`start.sh` 只管理本地应用进程，不参与 CI，也不是生产部署入口。它会核对 PID 对应
+的进程命令，发现端口属于其他程序时会中止启动并报错，不会直接终止无关进程。
 
 ### 初始管理员
 
