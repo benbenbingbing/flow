@@ -12,14 +12,13 @@ public class ProductionCorsConfigurationGuard {
 
     public ProductionCorsConfigurationGuard(
             CorsProperties properties) {
-        if (properties.getAllowedOrigins().isEmpty()
-                || properties.getAllowedOrigins().stream()
+        if (properties.getAllowedOrigins().stream()
                         .anyMatch(origin ->
                                 origin == null
                                         || origin.isBlank()
                                         || origin.contains("*"))) {
             throw new IllegalStateException(
-                    "Production CORS origins must be explicit");
+                    "Production CORS origins cannot use wildcards");
         }
     }
 }

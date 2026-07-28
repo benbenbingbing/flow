@@ -4,6 +4,8 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.PublicApi;
 
 import com.workflow.admin.auth.infrastructure.JwtUtil;
+import com.workflow.admin.auth.infrastructure.ClientAddressResolver;
+import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
@@ -43,8 +45,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AuthController {
 
+    private static final String DUMMY_PASSWORD_HASH =
+            "$2y$10$KVN3n7mW3JkwqTki/svFdOxdOdcp8M3vicjVv."
+                    + "yd6jGqw.zyTV9OK";
+
     private final SysUserService userService;
     private final SystemAuditPort auditPort;
+    private final LoginThrottleService loginThrottleService;
+    private final ClientAddressResolver clientAddressResolver;
 
     /**
      * 用户登录。
@@ -52,9 +60,24 @@ public class AuthController {
     @PublicApi
     @PostMapping("/login")
     public Result<LoginUserVO> login(
-            @Validated @RequestBody LoginDTO loginDTO) {
+            @Validated @RequestBody LoginDTO loginDTO,
+            HttpServletRequest request) {
+        String clientAddress =
+                clientAddressResolver.resolve(request);
+        loginThrottleService.assertAllowed(
+                loginDTO.getUsername(),
+                clientAddress);
         SysUser user = userService.getByUsername(loginDTO.getUsername());
+        boolean passwordMatches =
+                userService.passwordMatches(
+                        loginDTO.getPassword(),
+                        user == null
+                                ? DUMMY_PASSWORD_HASH
+                                : user.getPassword());
         if (user == null) {
+            loginThrottleService.recordFailure(
+                    loginDTO.getUsername(),
+                    clientAddress);
             recordLogin(
                     loginDTO.getUsername(),
                     null,
@@ -63,16 +86,20 @@ public class AuthController {
             return Result.error("用户名或密码错误");
         }
         if ("1".equals(user.getStatus())) {
+            loginThrottleService.recordFailure(
+                    loginDTO.getUsername(),
+                    clientAddress);
             recordLogin(
                     loginDTO.getUsername(),
                     user,
                     AuditResult.FAILURE,
                     "用户已被禁用");
-            return Result.error("用户已被禁用");
+            return Result.error("用户名或密码错误");
         }
-        if (!userService.passwordMatches(
-                loginDTO.getPassword(),
-                user.getPassword())) {
+        if (!passwordMatches) {
+            loginThrottleService.recordFailure(
+                    loginDTO.getUsername(),
+                    clientAddress);
             recordLogin(
                     loginDTO.getUsername(),
                     user,
@@ -85,6 +112,8 @@ public class AuthController {
                     user.getId(),
                     loginDTO.getPassword());
         }
+        loginThrottleService.recordSuccess(
+                loginDTO.getUsername());
 
         String token = JwtUtil.generateToken(
                 user.getId(),

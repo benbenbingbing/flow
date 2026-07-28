@@ -9,19 +9,14 @@ import org.junit.jupiter.api.Test;
 class ProductionCorsConfigurationGuardTest {
 
     @Test
-    void productionRejectsWildcardAndEmptyOrigins() {
+    void productionRejectsWildcardOrigins() {
         CorsProperties wildcard = new CorsProperties();
         wildcard.setAllowedOrigins(List.of("*"));
-        CorsProperties empty = new CorsProperties();
 
         assertThrows(
                 IllegalStateException.class,
                 () -> new ProductionCorsConfigurationGuard(
                         wildcard));
-        assertThrows(
-                IllegalStateException.class,
-                () -> new ProductionCorsConfigurationGuard(
-                        empty));
     }
 
     @Test
@@ -33,5 +28,12 @@ class ProductionCorsConfigurationGuardTest {
         assertDoesNotThrow(
                 () -> new ProductionCorsConfigurationGuard(
                         properties));
+    }
+
+    @Test
+    void productionAcceptsDenyAllOrigins() {
+        assertDoesNotThrow(
+                () -> new ProductionCorsConfigurationGuard(
+                        new CorsProperties()));
     }
 }
