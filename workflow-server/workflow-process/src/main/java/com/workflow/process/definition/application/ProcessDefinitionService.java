@@ -358,7 +358,8 @@ public class ProcessDefinitionService {
             captureArguments = true,
             captureResult = true)
     public ProcessDefinitionDTO publish(String id, ConfigMigrationPublishRequest request) {
-        ProcessDefinitionConfig config = processMapper.selectById(id);
+        ProcessDefinitionConfig config =
+                processMapper.selectByIdForUpdate(id);
         if (config == null) {
             throw new RuntimeException("Process not found: " + id);
         }

@@ -16,6 +16,15 @@ import java.util.Optional;
 public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinitionConfig> {
 
     /**
+     * Lock one process definition for a serialized publish transaction.
+     */
+    @Select("SELECT * FROM process_definition_config "
+            + "WHERE id = #{id} "
+            + "AND (deleted = 0 OR deleted IS NULL) FOR UPDATE")
+    ProcessDefinitionConfig selectByIdForUpdate(
+            @Param("id") String id);
+
+    /**
      * 根据流程标识查询（排除已删除）
      */
     @Select("SELECT * FROM process_definition_config WHERE process_key = #{processKey} AND (deleted = 0 OR deleted IS NULL)")

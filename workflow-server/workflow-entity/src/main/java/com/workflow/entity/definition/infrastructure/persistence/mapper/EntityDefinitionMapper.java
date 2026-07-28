@@ -28,6 +28,15 @@ public interface EntityDefinitionMapper extends BaseMapper<EntityDefinition> {
     Optional<EntityDefinition> findByEntityCode(@Param("code") String code);
 
     /**
+     * Lock one entity definition for a serialized publish transaction.
+     */
+    @Select("SELECT " + SELECT_COLUMNS
+            + " FROM entity_definition "
+            + "WHERE entity_code = #{code} FOR UPDATE")
+    Optional<EntityDefinition> findByEntityCodeForUpdate(
+            @Param("code") String code);
+
+    /**
      * 查询所有实体及其字段
      */
     @Select("SELECT " + SELECT_COLUMNS
