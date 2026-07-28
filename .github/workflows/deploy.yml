@@ -1,0 +1,113 @@
+name: Build and Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy production
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: 阿里云flow
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '8.145.54.70' }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/flow' }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build server image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./workflow-server
+          load: true
+          tags: flow-server:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+      - name: Build web image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./workflow-web
+          load: true
+          tags: flow-web:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Package images
+        run: |
+          docker save \
+            "flow-server:$IMAGE_TAG" \
+            "flow-web:$IMAGE_TAG" |
+            gzip -1 > "flow-images-$IMAGE_TAG.tar.gz"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            printf '%s\n' \
+              '8.145.54.70 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJo4ztiHhsKgHHVhcF9W2ULkGpZoZ0QjITkmzsy9b19Z' \
+              > ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Prepare deployment directory
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "mkdir -p '$DEPLOY_PATH'"
+
+      - name: Upload deployment files
+        run: |
+          scp -o BatchMode=yes -o ConnectTimeout=15 -P "$DEPLOY_PORT" \
+            deploy/compose.prod.yml \
+            deploy/deploy.sh \
+            "flow-images-$IMAGE_TAG.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+      - name: Deploy tested images
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -eu; \
+             gzip -dc '$DEPLOY_PATH/flow-images-$IMAGE_TAG.tar.gz' | docker load; \
+             rm -f '$DEPLOY_PATH/flow-images-$IMAGE_TAG.tar.gz'; \
+             chmod +x '$DEPLOY_PATH/deploy.sh'; \
+             cd '$DEPLOY_PATH' && \
+             DEPLOY_DIR='$DEPLOY_PATH' \
+             IMAGE_TAG='$IMAGE_TAG' \
+             SERVER_IMAGE='flow-server:$IMAGE_TAG' \
+             WEB_IMAGE='flow-web:$IMAGE_TAG' \
+             ./deploy.sh"

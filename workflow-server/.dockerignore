@@ -1,4 +1,6 @@
-target
-logs
-uploads
+.git
+.idea
+**/target
+**/logs
+**/uploads
 .DS_Store

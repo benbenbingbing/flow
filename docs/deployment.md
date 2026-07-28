@@ -1,5 +1,8 @@
 # 部署说明
 
+云服务器上的 GitHub Actions 自动部署见
+[`cloud-deployment.md`](cloud-deployment.md)。
+
 ## 环境要求
 
 - JDK 21
