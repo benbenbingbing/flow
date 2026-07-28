@@ -87,7 +87,7 @@ jobs:
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=15 \
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "mkdir -p '$DEPLOY_PATH'"
+            "mkdir -p '$DEPLOY_PATH/mysql-init'"
 
       - name: Upload deployment files
         run: |
@@ -96,6 +96,9 @@ jobs:
             deploy/deploy.sh \
             "flow-images-$IMAGE_TAG.tar.gz" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          scp -o BatchMode=yes -o ConnectTimeout=15 -P "$DEPLOY_PORT" \
+            deploy/mysql-init/10-database-users.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/mysql-init/"
 
       - name: Deploy tested images
         run: |

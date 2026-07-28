@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.EntityRecordTeamService;
+import com.workflow.entity.data.application.SchemaDdlExecutor;
 
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -27,9 +28,11 @@ class EntityRecordTeamServiceTest {
     private final EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
     private final EntityPublishedSnapshotService snapshotService =
             mock(EntityPublishedSnapshotService.class);
+    private final SchemaDdlExecutor schemaDdlExecutor = mock(SchemaDdlExecutor.class);
     /** 被测团队服务 */
     private final EntityRecordTeamService service =
-            new EntityRecordTeamService(jdbcTemplate, tableResolver, snapshotService);
+            new EntityRecordTeamService(
+                    jdbcTemplate, tableResolver, snapshotService, schemaDdlExecutor);
 
     /** 清理用户上下文，避免用例间污染 */
     @AfterEach
@@ -46,7 +49,7 @@ class EntityRecordTeamServiceTest {
 
         service.ensureTeamTable(definition);
 
-        verify(jdbcTemplate).execute(argThat((String sql) ->
+        verify(schemaDdlExecutor).execute(argThat((String sql) ->
                 sql.contains("CREATE TABLE IF NOT EXISTS `wf_expense_team`")
                         && sql.contains("`record_id`")
                         && sql.contains("idx_team_user_record")

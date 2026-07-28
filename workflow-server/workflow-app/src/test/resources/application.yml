@@ -24,6 +24,13 @@ flowable:
   database-schema-update: true
   async-executor-activate: false
 
+workflow:
+  schema-publisher:
+    datasource:
+      url: jdbc:h2:mem:schema_publisher;MODE=MySQL;DB_CLOSE_DELAY=-1
+      username: sa
+      password: schema-publisher-test-password
+
 jwt:
   secret: workflow-test-only-jwt-secret-32-bytes-minimum
   expiration: 900000

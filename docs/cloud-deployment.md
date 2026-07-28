@@ -105,6 +105,18 @@ ssh-keyscan -p YOUR_SSH_PORT -H YOUR_SERVER_HOST
 
 ## 4. 首次部署
 
+生产环境使用两个数据库身份：
+
+- `DB_USERNAME` 仅授予业务表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 权限。
+- `SCHEMA_DB_USERNAME` 用于 Flyway 和显式实体发布，授予迁移所需的
+  `CREATE`、`ALTER`、`DROP`、`INDEX` 及 Flyway 历史表读写权限。
+
+首次初始化 Flowable 表时，在单独的迁移阶段临时使用结构账号运行一个实例，
+并设置 `FLOWABLE_SCHEMA_UPDATE=true`；完成后立即停止该实例。日常部署必须恢复
+`FLOWABLE_SCHEMA_UPDATE=false`，所有业务实例使用无 DDL 权限的运行账号。
+新建 MySQL 数据卷时，`mysql-init/10-database-users.sh` 会自动落实上述授权。
+已有数据卷不会重复执行初始化脚本，升级前需由 DBA 按相同授权策略调整账号。
+
 把这些文件提交并推送到 `main`。现有 `CI` 工作流通过后，
 `Build and Deploy` 会自动：
 

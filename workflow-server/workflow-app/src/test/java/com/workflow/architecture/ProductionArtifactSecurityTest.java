@@ -48,11 +48,41 @@ class ProductionArtifactSecurityTest {
         assertTrue(applicationConfig.contains("serverTimezone=UTC"));
         assertFalse(applicationConfig.contains("zhoudawei"));
         assertTrue(applicationConfig.contains("password: ${DB_PASSWORD}"));
+        assertTrue(applicationConfig.contains("url: ${SCHEMA_DATASOURCE_URL}"));
+        assertTrue(applicationConfig.contains("user: ${SCHEMA_DB_USERNAME}"));
+        assertTrue(applicationConfig.contains("password: ${SCHEMA_DB_PASSWORD}"));
         assertTrue(applicationConfig.contains("secret: ${JWT_SECRET}"));
         assertTrue(applicationConfig.contains(
                 "log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl"));
         assertTrue(applicationConfig.contains(
                 "com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}"));
         assertFalse(jwtSource.contains("${jwt.secret:"));
+    }
+
+    @Test
+    void productionComposeKeepsRuntimeAndSchemaCredentialsSeparate() throws Exception {
+        String compose = Files.readString(Path.of("../../deploy/compose.prod.yml"));
+
+        assertTrue(compose.contains("DB_USERNAME: ${DB_USERNAME:-workflow}"));
+        assertTrue(compose.contains(
+                "SCHEMA_DB_USERNAME: ${SCHEMA_DB_USERNAME:?SCHEMA_DB_USERNAME is required}"));
+        assertTrue(compose.contains(
+                "SCHEMA_DB_PASSWORD: ${SCHEMA_DB_PASSWORD:?SCHEMA_DB_PASSWORD is required}"));
+        assertTrue(compose.contains(
+                "FLOWABLE_SCHEMA_UPDATE: ${FLOWABLE_SCHEMA_UPDATE:-false}"));
+
+        String databaseUsers = Files.readString(
+                Path.of("../../deploy/mysql-init/10-database-users.sh"));
+        assertTrue(databaseUsers.contains(
+                "GRANT SELECT, INSERT, UPDATE, DELETE"));
+        assertTrue(databaseUsers.contains(
+                "runtime and schema database users must differ"));
+        assertFalse(databaseUsers.contains("GRANT ALL PRIVILEGES ON"
+                + " \\`${MYSQL_DATABASE}\\`.* TO '${runtime_user}'"));
+
+        String deploymentWorkflow = Files.readString(
+                Path.of("../../.github/workflows/deploy.yml"));
+        assertTrue(deploymentWorkflow.contains(
+                "deploy/mysql-init/10-database-users.sh"));
     }
 }

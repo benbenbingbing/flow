@@ -27,6 +27,9 @@ services:
       DB_USERNAME: root
       DB_PASSWORD: ${DB_PASSWORD:-workflow}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+      SCHEMA_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+      SCHEMA_DB_USERNAME: ${SCHEMA_DB_USERNAME:?SCHEMA_DB_USERNAME is required}
+      SCHEMA_DB_PASSWORD: ${SCHEMA_DB_PASSWORD:?SCHEMA_DB_PASSWORD is required}
       SERVER_PORT: 8080
       FLOWABLE_SCHEMA_UPDATE: ${FLOWABLE_SCHEMA_UPDATE:-true}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}

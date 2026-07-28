@@ -4,15 +4,14 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * 实体数据参与团队服务，负责维护记录级参与事件表与团队可见性权限范围。
@@ -22,14 +21,31 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EntityRecordTeamService {
-
-    private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
 
     private final JdbcTemplate jdbcTemplate;
     private final EntityPhysicalTableResolver tableResolver;
     private final EntityPublishedSnapshotService snapshotService;
+    private final SchemaDdlExecutor schemaDdlExecutor;
+
+    @Autowired
+    public EntityRecordTeamService(
+            JdbcTemplate jdbcTemplate,
+            EntityPhysicalTableResolver tableResolver,
+            EntityPublishedSnapshotService snapshotService,
+            SchemaDdlExecutor schemaDdlExecutor) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.tableResolver = tableResolver;
+        this.snapshotService = snapshotService;
+        this.schemaDdlExecutor = schemaDdlExecutor;
+    }
+
+    public EntityRecordTeamService(
+            JdbcTemplate jdbcTemplate,
+            EntityPhysicalTableResolver tableResolver,
+            EntityPublishedSnapshotService snapshotService) {
+        this(jdbcTemplate, tableResolver, snapshotService, jdbcTemplate::execute);
+    }
 
     /**
      * 解析实体定义对应的参与团队表名。
@@ -59,7 +75,7 @@ public class EntityRecordTeamService {
     @Transactional(rollbackFor = Exception.class)
     public void ensureTeamTable(EntityDefinition definition) {
         String tableName = teamTableName(definition);
-        jdbcTemplate.execute("""
+        schemaDdlExecutor.execute("""
                 CREATE TABLE IF NOT EXISTS `%s` (
                   `id` VARCHAR(64) NOT NULL COMMENT '参与事件ID',
                   `record_id` VARCHAR(64) NOT NULL COMMENT '业务记录ID',
@@ -164,10 +180,7 @@ public class EntityRecordTeamService {
     }
 
     private String checkedIdentifier(String value) {
-        if (!IDENTIFIER.matcher(value).matches()) {
-            throw new IllegalArgumentException("非法参与团队表名: " + value);
-        }
-        return value;
+        return SqlIdentifierPolicy.validate(value);
     }
 
     private String normalizedAction(String value) {

@@ -20,6 +20,9 @@ spring:
 
   flyway:
     enabled: true
+    url: ${SCHEMA_DATASOURCE_URL}
+    user: ${SCHEMA_DB_USERNAME}
+    password: ${SCHEMA_DB_PASSWORD}
     locations: classpath:db/migration
     encoding: UTF-8
     sql-migration-prefix: V
@@ -85,6 +88,11 @@ workflow:
   bootstrap:
     admin:
       password: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:}
+  schema-publisher:
+    datasource:
+      url: ${SCHEMA_DATASOURCE_URL}
+      username: ${SCHEMA_DB_USERNAME}
+      password: ${SCHEMA_DB_PASSWORD}
   outbox:
     delay-ms: ${OUTBOX_DELAY_MS:3000}
     batch-size: ${OUTBOX_BATCH_SIZE:100}
