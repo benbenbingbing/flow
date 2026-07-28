@@ -823,87 +823,15 @@
         </SettingsSection>
       </section>
       
-      <!-- ========== 脚本配置（脚本任务） ========== -->
+      <!-- Historical script nodes are read-only and cannot be published. -->
       <section v-if="isScriptTask && activeTab === 'basic'" class="config-section">
-        <SettingsSection
-          title="脚本执行"
-          description="执行 Groovy 脚本并写入流程变量"
-          :collapsible="false"
-          primary
-        >
-          <el-form :model="scriptForm" label-width="100px" size="small">
-          <el-form-item label="脚本类型">
-            <el-radio-group v-model="scriptForm.scriptFormat">
-              <el-radio-button value="groovy">Groovy</el-radio-button>
-            </el-radio-group>
-            <div class="form-tip">当前运行时仅支持 Groovy</div>
-          </el-form-item>
-          
-          <el-form-item>
-            <template #label>
-              <span>脚本内容</span>
-              <el-tooltip placement="top" :content="scriptHintText" max-width="280">
-                <el-icon class="hint-icon"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </template>
-            <div class="script-toolbar">
-              <el-button size="small" type="primary" text @click="insertScriptExample">
-                <el-icon><Plus /></el-icon> 插入示例代码
-              </el-button>
-              <el-button size="small" type="success" text :loading="scriptTestLoading" @click="testScriptCode">
-                <el-icon><VideoPlay /></el-icon> 测试执行
-              </el-button>
-            </div>
-            <el-input 
-              v-model="scriptForm.script" 
-              type="textarea"
-              :rows="10"
-              :placeholder="scriptPlaceholder"
-              class="code-input"
-            />
-            <!-- 脚本测试结果 -->
-            <div v-if="scriptTestResult" class="script-test-result">
-              <el-alert 
-                :type="scriptTestResult.success ? 'success' : 'error'" 
-                :closable="false"
-                :title="scriptTestResult.success ? '执行成功' : '执行失败'"
-              >
-                <div v-if="scriptTestResult.success" class="test-result-content">
-                  <div v-if="scriptTestResult.result !== undefined && scriptTestResult.result !== null" class="result-item">
-                    <span class="result-label">返回值：</span>
-                    <el-tag size="small" type="primary">{{ scriptTestResult.result }}</el-tag>
-                  </div>
-                  <div v-if="scriptTestResult.resultVariableValue !== undefined && scriptTestResult.resultVariableValue !== null" class="result-item">
-                    <span class="result-label">结果变量 ({{ scriptForm.resultVariable }})：</span>
-                    <el-tag size="small" type="success">{{ scriptTestResult.resultVariableValue }}</el-tag>
-                  </div>
-                  <div v-if="scriptTestResult.variables && Object.keys(scriptTestResult.variables).length > 0" class="result-item">
-                    <span class="result-label">流程变量：</span>
-                    <div class="result-vars">
-                      <el-tag v-for="(val, key) in scriptTestResult.variables" :key="key" size="small" type="info" class="var-tag">
-                        {{ key }}={{ val }}
-                      </el-tag>
-                    </div>
-                  </div>
-                </div>
-                <div v-else class="test-error">{{ scriptTestResult.message }}</div>
-              </el-alert>
-            </div>
-          </el-form-item>
-          
-          <el-form-item label="结果变量">
-            <el-input 
-              v-model="scriptForm.resultVariable" 
-              placeholder="存储脚本执行结果"
-            />
-          </el-form-item>
-          
-          <el-form-item label="自动存储">
-            <el-switch v-model="scriptForm.autoStoreVariables" />
-            <div class="form-tip">脚本变量写入流程上下文</div>
-          </el-form-item>
-          </el-form>
-        </SettingsSection>
+        <el-alert
+          type="error"
+          :closable="false"
+          title="脚本任务已禁用"
+          description="生产运行时不会执行脚本。请将该节点替换为已注册的服务任务或流程动作后再发布。"
+          show-icon
+        />
       </section>
       
       <!-- ========== 调用活动配置（调用活动） ========== -->
@@ -1422,7 +1350,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Delete, QuestionFilled, VideoPlay, View, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, Delete, View, WarningFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { deleteStatusMappings, getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import { processApi } from '@/api/process'
@@ -1467,65 +1395,6 @@ const isReceiveTask = computed(() => props.element?.type === 'bpmn:ReceiveTask')
 const isManualTask = computed(() => props.element?.type === 'bpmn:ManualTask')
 const isBusinessRuleTask = computed(() => props.element?.type === 'bpmn:BusinessRuleTask')
 const isScriptTask = computed(() => props.element?.type === 'bpmn:ScriptTask')
-
-// 脚本类型对应的占位符提示
-const scriptPlaceholder = computed(() => {
-  return '// Groovy: 输入脚本代码，支持 ?: Elvis 运算符'
-})
-
-// 问号 tooltip 提示文本
-const scriptHintText = computed(() => {
-  return 'Groovy: 支持 ?: Elvis 运算符，最后一行表达式返回给结果变量，也可直接调用 execution.setVariable()'
-})
-
-// 各脚本类型的默认示例代码（有区分度且保证能执行）
-const SCRIPT_EXAMPLES = {
-  groovy: `// Groovy: 支持 def 声明和 ?: Elvis 运算符
-def price = execution.getVariable("price") ?: 100
-def qty = execution.getVariable("qty") ?: 2
-price * qty`
-}
-
-// 插入示例代码到脚本编辑器
-function insertScriptExample() {
-  scriptForm.value.script = SCRIPT_EXAMPLES.groovy
-}
-
-// 测试脚本代码
-async function testScriptCode() {
-  if (!scriptForm.value.script || !scriptForm.value.script.trim()) {
-    ElMessage.warning('请先输入脚本内容')
-    return
-  }
-  scriptTestLoading.value = true
-  scriptTestResult.value = null
-  try {
-    const res = await request({
-      url: '/script/test',
-      method: 'post',
-      data: {
-        scriptFormat: scriptForm.value.scriptFormat,
-        script: scriptForm.value.script,
-        resultVariable: scriptForm.value.resultVariable,
-        testVariables: { price: 100, qty: 2 }
-      }
-    })
-    if (res.code === 200) {
-      scriptTestResult.value = res.data
-      if (res.data.success) {
-        ElMessage.success('脚本测试通过')
-      } else {
-        ElMessage.error(res.data.message || '脚本执行失败')
-      }
-    } else {
-      ElMessage.error(res.message || '测试请求失败')
-    }
-  } catch (e) {
-    ElMessage.error('测试请求异常: ' + (e.message || '未知错误'))
-  } finally {
-    scriptTestLoading.value = false
-  }
-}
 
 const isCallActivity = computed(() => props.element?.type === 'bpmn:CallActivity')
 const isSubProcess = computed(() => props.element?.type === 'bpmn:SubProcess')
@@ -1670,17 +1539,6 @@ const sendForm = ref({ channels: ['message'], to: '', subject: '', content: '', 
 const receiveForm = ref({ messageRef: '', hasTimeout: false, timeout: 30, timeoutUnit: 'MINUTE', timeoutAction: 'error' })
 const manualForm = ref({ description: '', completionCriteria: '', responsible: '', estimatedHours: 0 })
 const ruleForm = ref({ decisionRef: '', inputVariables: '', resultVariable: '', mapDecisionResult: true })
-const scriptForm = ref({ scriptFormat: 'groovy', script: '', resultVariable: '', autoStoreVariables: false })
-
-// 监听脚本类型切换，自动联动脚本内容
-watch(() => scriptForm.value.scriptFormat, (newType, oldType) => {
-  if (!newType || newType === oldType) return
-  // 切换类型时直接替换为对应语言的示例代码
-  scriptForm.value.script = SCRIPT_EXAMPLES[newType] || SCRIPT_EXAMPLES.groovy
-})
-
-const scriptTestLoading = ref(false)
-const scriptTestResult = ref(null)
 
 const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParameters: '', outputParameters: '', businessKey: '' })
 const conditionForm = ref({ type: '', expression: '' })
@@ -2427,18 +2285,6 @@ watch(() => props.element, async (newElement) => {
         }
       }
     }
-    if (isScriptTask.value) {
-      // 加载脚本任务配置
-      const scriptConfigStr = extProps['scriptConfig']
-      if (scriptConfigStr) {
-        try {
-          const scriptConfig = JSON.parse(scriptConfigStr)
-          scriptForm.value = { ...scriptForm.value, ...scriptConfig }
-        } catch (e) {
-          console.error('解析 scriptConfig 失败:', e)
-        }
-      }
-    }
     if (isCallActivity.value) {
       // 加载调用活动配置
       const callConfigStr = extProps['callConfig']
@@ -3086,7 +2932,6 @@ function getConfigurationSections() {
   if (isReceiveTask.value) sections.push('receive')
   if (isManualTask.value) sections.push('manual')
   if (isBusinessRuleTask.value) sections.push('rule')
-  if (isScriptTask.value) sections.push('script')
   if (isCallActivity.value) sections.push('call')
   if (isSequenceFlow.value) sections.push('condition')
   if (isStartEvent.value) sections.push('form')
@@ -3270,17 +3115,6 @@ function applyConfigurationSection(section) {
           return
         }
         updateExtensionProperty('ruleConfig', JSON.stringify(ruleForm.value))
-        break
-      case 'script':
-        if (scriptForm.value.scriptFormat !== 'groovy') {
-          ElMessage.warning('脚本任务当前仅支持 Groovy')
-          return
-        }
-        if (!scriptForm.value.script?.trim()) {
-          ElMessage.warning('请填写脚本内容')
-          return
-        }
-        updateExtensionProperty('scriptConfig', JSON.stringify(scriptForm.value))
         break
       case 'call':
         if (!callForm.value.calledElement?.trim()) {

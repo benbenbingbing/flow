@@ -79,9 +79,6 @@ class ProcessBpmnPublishSanitizerTest {
                 <bpmn:callActivity id="call">
                   %s
                 </bpmn:callActivity>
-                <bpmn:scriptTask id="script">
-                  %s
-                </bpmn:scriptTask>
                 <bpmn:endEvent id="end" />
                 """.formatted(
                 properties(
@@ -97,9 +94,6 @@ class ProcessBpmnPublishSanitizerTest {
                         """)),
                 properties(property("callConfig", """
                         {"calledElement":"child_process","callActivityType":"bpmn","inputParameters":"{\\"childAmount\\":\\"${amount}\\"}","outputParameters":"{\\"result\\":\\"${childResult}\\"}","businessKey":"${businessKey}"}
-                        """)),
-                properties(property("scriptConfig", """
-                        {"scriptFormat":"groovy","script":"def total = 1 + 2\\ntotal","resultVariable":"total","autoStoreVariables":false}
                         """))));
 
         String result = sanitizer.sanitize(input, "runtime_process");
@@ -116,11 +110,6 @@ class ProcessBpmnPublishSanitizerTest {
         assertTrue(result.contains("flowable:businessKey=\"${businessKey}\""));
         assertTrue(result.contains("<flowable:in sourceExpression=\"${amount}\" target=\"childAmount\" />"));
         assertTrue(result.contains("<flowable:out sourceExpression=\"${childResult}\" target=\"result\" />"));
-        assertTrue(result.contains("<bpmn:serviceTask id=\"script\""));
-        assertTrue(result.contains(
-                "flowable:delegateExpression=\"${configuredScriptTaskDelegate}\""));
-        assertFalse(result.contains("<bpmn:scriptTask"));
-
         BpmnModel model = new BpmnXMLConverter().convertToBpmnModel(
                 () -> new ByteArrayInputStream(result.getBytes(StandardCharsets.UTF_8)),
                 true,
@@ -128,7 +117,6 @@ class ProcessBpmnPublishSanitizerTest {
         assertTrue(model.getFlowElement("send") instanceof ServiceTask);
         assertTrue(model.getFlowElement("rule") instanceof ServiceTask);
         assertTrue(model.getFlowElement("call") instanceof CallActivity);
-        assertTrue(model.getFlowElement("script") instanceof ServiceTask);
         assertEquals("child_process", ((CallActivity) model.getFlowElement("call")).getCalledElement());
     }
 
@@ -190,7 +178,7 @@ class ProcessBpmnPublishSanitizerTest {
                                         "{\"scriptFormat\":\"javascript\",\"script\":\"\"}"))
                                 + "</bpmn:scriptTask>"),
                         "runtime_process"));
-        assertTrue(scriptError.getMessage().contains("脚本内容"));
+        assertTrue(scriptError.getMessage().contains("SCRIPT_TASK_DISABLED"));
 
         IllegalArgumentException unsupportedScriptError = assertThrows(
                 IllegalArgumentException.class,
@@ -202,7 +190,8 @@ class ProcessBpmnPublishSanitizerTest {
                                                 + "\"script\":\"1 + 1\"}"))
                                 + "</bpmn:scriptTask>"),
                         "runtime_process"));
-        assertTrue(unsupportedScriptError.getMessage().contains("仅支持 Groovy"));
+        assertTrue(unsupportedScriptError.getMessage().contains(
+                "SCRIPT_TASK_DISABLED"));
     }
 
     /**

@@ -37,7 +37,6 @@
         <jjwt.version>0.13.0</jjwt.version>
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <lombok.version>1.18.30</lombok.version>
-        <workflow.groovy.version>3.0.19</workflow.groovy.version>
     </properties>
 
     <dependencyManagement>
@@ -104,11 +103,6 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.workflow</groupId>
-                <artifactId>workflow-devtools</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
@@ -170,4 +164,5 @@
             </plugins>
         </pluginManagement>
     </build>
+
 </project>

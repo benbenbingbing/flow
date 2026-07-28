@@ -1017,55 +1017,14 @@ public class ProcessBpmnPublishSanitizer {
     }
 
     private String fixScriptTasks(String bpmnXml) {
-        return rewriteConfiguredElements(
-                bpmnXml,
-                "scriptTask",
-                "scriptConfig",
-                (element, config) -> {
-                    String script = config.path("script").asText("")
-                            .replaceAll("(?i)<script[^>]*>", "")
-                            .replaceAll("(?i)</script>", "")
-                            .trim();
-                    if (script.isEmpty()) {
-                        throw new IllegalArgumentException(
-                                "脚本任务必须配置脚本内容: " + element.id());
-                    }
-                    String scriptFormat = config.path("scriptFormat")
-                            .asText("")
-                            .trim();
-                    if (scriptFormat.isEmpty()) {
-                        throw new IllegalArgumentException(
-                                "脚本任务必须配置脚本类型: " + element.id());
-                    }
-                    if (!"groovy".equalsIgnoreCase(scriptFormat)) {
-                        throw new IllegalArgumentException(
-                                "脚本任务当前仅支持 Groovy: " + element.id());
-                    }
-                    String newContent = element.content().replaceAll(
-                            "(?is)<(?:bpmn:)?script\\b[^>]*>.*?</(?:bpmn:)?script>",
-                            "");
-                    String startTag = element.startTag()
-                            .replaceFirst(
-                                    "(?i)<(bpmn:)?scriptTask\\b",
-                                    "<$1serviceTask");
-                    startTag = removeAttributes(
-                            startTag,
-                            "type",
-                            "class",
-                            "expression",
-                            "delegateExpression",
-                            "scriptFormat",
-                            "resultVariable",
-                            "autoStoreVariables");
-                    startTag = setQualifiedAttribute(
-                            startTag,
-                            "delegateExpression",
-                            "${configuredScriptTaskDelegate}");
-                    return element
-                            .withTagName("serviceTask")
-                            .withStartTag(startTag)
-                            .withContent(newContent);
-                });
+        if (Pattern.compile("(?i)<(?:bpmn:)?scriptTask\\b")
+                .matcher(bpmnXml)
+                .find()) {
+            throw new IllegalArgumentException(
+                    "SCRIPT_TASK_DISABLED: 生产环境禁止发布脚本任务，"
+                            + "请迁移为已注册的流程动作");
+        }
+        return bpmnXml;
     }
 
     private String processSkipNodeTasks(String bpmnXml) {

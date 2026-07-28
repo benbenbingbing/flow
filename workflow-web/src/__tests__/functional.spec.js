@@ -444,7 +444,6 @@ for (const validationText of [
   '请至少选择一个发送渠道',
   '接收任务超时时间必须是正整数',
   '请填写业务规则任务的决策表 Key',
-  '请填写脚本内容',
   '请选择或填写子流程 Key'
 ]) {
   assert.ok(
@@ -458,13 +457,13 @@ assert.equal(
   'REST 节点不应提供运行时尚未支持的 multipart/form-data 选项'
 )
 assert.ok(
-  nodeConfigPanelSource.includes('当前运行时仅支持 Groovy'),
-  '脚本任务应明确展示真实可运行的语言范围'
+  nodeConfigPanelSource.includes('脚本任务已禁用'),
+  '历史脚本任务应明确展示禁用状态'
 )
 assert.equal(
-  /<el-radio-button value="(?:javascript|python)">/.test(nodeConfigPanelSource),
+  nodeConfigPanelSource.includes('/script/test'),
   false,
-  '脚本任务不应提供服务器未安装执行引擎的语言'
+  '前端不应保留服务端脚本测试入口'
 )
 assert.ok(
   nodeConfigPanelSource.includes('当前运行时仅支持站内信'),
