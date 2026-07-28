@@ -1,17 +1,16 @@
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q -pl workflow-app -am -Dmaven.test.skip=true package
 
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:21-jre-alpine@sha256:3f08b13888f595cc49edabea7250ba69499ba25602b267da591720769400e08c
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system workflow \
-    && useradd --system --gid workflow --home-dir /app --shell /usr/sbin/nologin workflow \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache curl \
+    && addgroup -S workflow \
+    && adduser -S -D -H -h /app -s /sbin/nologin -G workflow workflow \
     && mkdir -p /app/logs /app/uploads \
     && chown -R workflow:workflow /app
 
