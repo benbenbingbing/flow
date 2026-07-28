@@ -874,7 +874,7 @@ defineExpose({
 
 <style>
 /* 节点徽章动画 */
-:deep(.node-badge) {
+.node-badge {
   animation: fadeIn 0.3s ease-in-out;
 }
 
@@ -889,7 +889,7 @@ defineExpose({
   }
 }
 
-:deep(.bjs-powered-by) {
+.bjs-powered-by {
   display: none !important;
 }
 </style>
