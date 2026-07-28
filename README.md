@@ -1,121 +1,133 @@
 # Flow
 
-Flow 是一个低代码流程平台，包含流程设计、实体建模、动态表单与列表、菜单权限、流程动作、配置迁移和任务处理能力。
+Flow 是一个面向企业内部业务的流程配置平台。它将实体建模、动态表单与列表、BPMN
+流程、任务处理、权限控制和配置迁移放在同一套运行时中，适合承载审批类和流程驱动的
+业务应用。
 
-## 技术栈
+仓库包含前后端代码、数据库迁移、容器镜像、Helm Chart、CI 检查和生产运维基线。
+环境相关的容量、网络、备份、密钥和可观测性配置仍需在部署时落实，不能只依赖默认值。
 
-- 后端：Java 17、Spring Boot 3.5、Flowable 7、MyBatis-Plus、Flyway、MySQL
-- 前端：Vue 3、Vite、Element Plus
-- 架构：多 Maven 模块的模块化单体，单应用部署
+## 能力范围
 
-## 项目目录
+- 实体定义、字段关系、状态、编码规则及动态业务表发布
+- 表单、列表、联动规则、数据源和 UI 配置发布
+- BPMN 流程设计、版本发布、节点配置和表单绑定
+- 待办、审批、驳回、撤回、重提、加签、知会和流程进度
+- 用户、角色、组织、用户组、菜单、权限码和数据范围
+- 流程动作、异步执行、重试、死信、Outbox 和状态补偿
+- 文件上传与访问控制，支持本地存储和 S3 兼容对象存储
+- 带签名的 `.wfpack` 配置导入、差异分析、发布与回滚
+- 系统操作审计、健康检查、Prometheus 指标和部署告警规则
 
-```text
-workflow-server/   后端 Maven 父工程
-workflow-web/      前端应用
-docs/              架构、部署、数据库和测试资料
-start.sh           本地编译和重启脚本
-```
+`workflow-project` 提供了一组软件项目研发管理配置和少量跨实体扩展，用于验证平台在
+真实业务流程中的组合能力。它不是平台内核的一部分。
 
-## 后端模块
+## 技术基线
 
-后端代码按照功能拆分，最终由 `workflow-app` 聚合为一个可执行 Spring Boot JAR。
+| 范围 | 当前实现 |
+| --- | --- |
+| 后端 | Spring Boot 3.5、Flowable 7.2、MyBatis-Plus、Flyway |
+| 前端 | Vue 3、Vite 8、Element Plus、Pinia、bpmn-js |
+| 数据库 | MySQL 8.4，字符集 `utf8mb4` |
+| 文件存储 | 本地文件系统或 S3 兼容对象存储 |
+| 构建环境 | JDK 21、Maven 3.9、Node.js 22、npm |
+| Java 兼容级别 | Maven 当前编译目标为 Java 17；CI 和容器统一使用 JDK/JRE 21 |
+| 部署 | Docker Compose 单机部署；Helm/Kubernetes 多副本部署 |
 
-| 模块 | 主要职责 |
-|---|---|
-| `workflow-common` | 统一响应、分页结果、通用异常和无业务语义的纯工具类 |
-| `workflow-contracts` | 跨模块端口、稳定 DTO、发布记录接口、流程动作设计接口和第三方连接器 SPI |
-| `workflow-system` | 登录认证、JWT、当前用户、用户、角色、用户组、组织、菜单和字典 |
-| `workflow-storage` | 文件上传、文件访问和可替换的存储策略 |
-| `workflow-entity` | 实体定义、字段、关系、状态、编码规则、动态表、表单、列表和数据权限 |
-| `workflow-process` | 流程定义、发布、Flowable 部署、节点配置、节点表单、实例、任务、抄送、撤回和终止 |
-| `workflow-action` | 流程动作配置、触发时机、执行器、Outbox、重试、死信、执行日志和 Handler 管理 |
-| `workflow-integration` | 第三方对接扩展，当前包含通知 Handler，并预留 HTTP、Webhook、邮件和消息连接器 |
-| `workflow-migration` | 发布快照、`.wfpack` 导出导入、环境映射、差异分析、发布和回滚 |
-| `workflow-devtools` | Demo Handler、Flowable Delegate、脚本测试和代码生成 |
-| `workflow-app` | 应用启动、全局异常、CORS、MyBatis、Flowable 监听器组装、Flyway 和最终打包 |
-
-模块依赖方向：
-
-```text
-workflow-common
-       ↑
-workflow-contracts
-       ↑
-workflow-system / workflow-storage / workflow-entity / workflow-process
-workflow-action / workflow-integration / workflow-migration / workflow-devtools
-       ↑
-workflow-app
-```
-
-### 模块边界规则
-
-- `workflow-common` 不允许依赖 Spring Web、MyBatis、Flowable 或业务模块。
-- 跨模块查询和操作优先通过 `workflow-contracts` 中的端口完成。
-- 实体模块通过 `ProcessCatalogPort` 查询流程信息，不直接访问流程 Mapper。
-- 流程发布通过 `FlowActionDesignPort` 调用动作模块，不直接依赖动作 Service。
-- 实体和流程发布通过 `MigrationAssetRecorder` 记录迁移资产，不直接依赖迁移实现。
-- 第三方 SDK、外部 URL、密钥解析和 HTTP Client 只能放在 `workflow-integration`。
-- Flyway 迁移集中在 `workflow-app/src/main/resources/db/migration`，禁止调整历史版本号和校验和。
-
-## 接口命名
-
-项目尚未正式上线，流程相关接口直接使用最终规范名称，不保留旧接口兼容层：
-
-- 流程动作：`/api/process-actions`
-- 流程动作处理器：`/api/process-action-handlers`
-- 流程动作执行记录：`/api/process-action-executions`
-- 流程实体状态映射：`/api/process-entity-status-mappings`
-
-请求和响应 JSON、权限码及认证 Header 不因数据库表名调整而改变。新增或调整接口时必须运行 Controller 映射和前端 API 审计测试。
-
-## 构建
-
-后端完整构建：
-
-```bash
-cd workflow-server
-mvn clean package
-```
-
-跳过测试构建：
-
-```bash
-cd workflow-server
-mvn clean package -DskipTests
-```
-
-最终产物：
+后端是模块化单体，业务模块最终聚合为一个 `workflow-server` 进程。生产部署不会把
+数据库迁移、初始化和运行时写入混在同一生命周期中。
 
 ```text
-workflow-server/workflow-app/target/workflow-server-1.0.0.jar
+Browser
+  |
+  v
+flow-web (Nginx, stateless)
+  |
+  v
+flow-server (2+ replicas, runtime database identity)
+  |                         \
+  v                          v
+MySQL                     S3-compatible storage
+  ^
+  |
+migration job / schema worker (schema database identity)
 ```
 
-单独验证某个模块及其依赖：
+数据库迁移由一次性 Job 执行；系统目录和初始管理员由独立 Bootstrap Job 初始化；
+运行时 Pod 使用只具备 DML 权限的数据库账号；动态实体发布产生的 DDL 由
+`schema-worker` 串行化处理。
+
+## 仓库结构
+
+```text
+workflow-server/       后端 Maven reactor
+workflow-web/          Vue 前端
+deploy/                Compose、Helm、k3s 验证配置和运维手册
+docs/                  领域设计、数据库、测试和历史资料
+.github/workflows/     CI 与生产发布流程
+```
+
+主要后端模块：
+
+| 模块 | 职责 |
+| --- | --- |
+| `workflow-core` | 统一结果、异常、安全注解和无业务语义的基础能力 |
+| `workflow-contracts` | 跨模块端口、事件和稳定契约 |
+| `workflow-admin` | 认证、用户、角色、组织、菜单、权限和系统审计 |
+| `workflow-storage` | 文件元数据、访问控制和存储策略 |
+| `workflow-db-migrator` | Flyway、Flowable 建表迁移和 DDL 队列 Worker |
+| `workflow-entity` | 实体、表单、列表、数据权限、发布和运行态数据 |
+| `workflow-process` | 流程定义、部署、实例、任务、抄送和状态同步 |
+| `workflow-project` | 软件项目研发管理配置和领域扩展 |
+| `workflow-integration` | Outbox、受控 HTTP 调用和通知集成 |
+| `workflow-migration` | 配置包、差异分析、环境映射和发布 |
+| `workflow-devtools` | 仅用于测试和开发的辅助实现 |
+| `workflow-app` | Spring Boot 入口和最终运行制品 |
+
+模块间共享能力应通过 `workflow-contracts` 暴露，不能直接访问其他模块的内部 Mapper。
+新数据库变更统一放在
+`workflow-server/workflow-db-migrator/src/main/resources/db/migration/`。已经发布的迁移
+文件不得修改或重排版本。
+
+## 本地开发
+
+### 前置条件
+
+- JDK 21
+- Maven 3.9+
+- Node.js 22 和 npm
+- MySQL 8.4
+
+后端需要两个不同的数据库身份：
+
+- 运行账号：只授予业务库的 `SELECT`、`INSERT`、`UPDATE`、`DELETE`
+- 结构账号：供 Flyway、Flowable 初始化和实体发布使用，具备所需 DDL 权限
+
+授权逻辑可参考
+[`deploy/mysql-init/10-database-users.sh`](deploy/mysql-init/10-database-users.sh)。
+复制环境变量模板后，必须替换其中的示例密码和密钥：
+
+```bash
+cp .env.example .env
+```
+
+在当前终端加载配置：
+
+```bash
+set -a
+. ./.env
+set +a
+```
+
+构建并启动后端：
 
 ```bash
 cd workflow-server
-mvn -pl workflow-entity -am test
-mvn -pl workflow-action -am test
-```
-
-## 启动
-
-一键编译并重启：
-
-```bash
-./start.sh
-```
-
-手工启动：
-
-```bash
-cd workflow-server
-mvn clean package -DskipTests
+mvn -pl workflow-app -am clean package -DskipTests
 java -jar workflow-app/target/workflow-server-1.0.0.jar
 ```
 
-前端：
+另开一个终端启动前端：
 
 ```bash
 cd workflow-web
@@ -123,53 +135,130 @@ npm ci
 npm run dev
 ```
 
-默认地址：
+默认访问地址：
 
 - 前端：`http://localhost:3000`
-- 后端：`http://localhost:8080`
+- 后端 API：`http://localhost:8080/api`
+- 存活检查：`http://localhost:8080/livez`
+- 就绪检查：`http://localhost:8080/healthz`
+- 管理与指标端口：`http://localhost:9090`
 
-## 测试
+Vite 默认把 `/api` 代理到 `http://localhost:8080`。需要使用其他后端地址时设置
+`VITE_API_PROXY_TARGET`。
 
-后端：
+根目录的 `start.sh` 是本地进程管理脚本，会按端口停止旧进程并在后台启动服务。它不
+参与 CI，也不是生产部署入口；共享开发机上使用前应先确认端口和 PID 文件归属。
+
+### 初始管理员
+
+系统不存在可用于生产的默认密码。新库中的 `admin` 账号初始处于禁用状态，必须通过
+`WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD` 激活。密码长度为 14 到 72 个字符，且至少包含
+大写字母、小写字母和数字；不能包含 `admin`、`password` 或模板占位词。
+
+Helm 部署从外部 Secret 的 `bootstrap-admin-password` 键读取该值。Bootstrap 只负责
+首次激活，不会覆盖已经修改过的管理员密码。
+
+## 构建与验证
+
+后端完整验证：
 
 ```bash
 cd workflow-server
-mvn test
+mvn verify
 ```
 
-前端：
+前端完整验证：
 
 ```bash
 cd workflow-web
-npm run test:page-config
-npm run test:functional
+npm ci
+npm test
 npm run build
 ```
 
-提交模块调整前至少验证：
+部署清单验证：
 
-1. 父工程 reactor 构建成功。
-2. 后端完整测试通过。
-3. Controller 映射与主分支一致。
-4. `./start.sh` 能正常启动。
-5. 前端登录、实体列表、流程设计、任务审批和配置迁移页面能够正常访问。
+```bash
+./deploy/scripts/validate-manifests.sh
+```
 
-## 数据库
+该脚本会检查生产和本地 Helm 渲染结果、Kubernetes Schema 以及生产 Compose 配置，
+需要本机安装 Helm 和 Docker。GitHub Actions 还会执行依赖审计、镜像构建、Trivy
+高危漏洞门禁并生成 CycloneDX SBOM。
 
-- 业务数据库由 Flyway 管理。
-- Flowable 引擎表由 Flowable 管理。
-- `entity_*`：实体配置和元数据。
-- `biz_*`：实体发布后自动生成的独立业务表。
-- 历史 `entity_data_*` 在启动时迁移为 `biz_*`；孤立旧表保留数据后
-  按后缀迁移，禁止覆盖已存在的目标表。
-- `runtime_*`：跨实体运行记录，例如 `runtime_entity_record`。
-- `process_*`：平台自有流程配置、运行记录和流程动作。
-- `sys_*`：用户、角色、组织、菜单和字典。
-- `config_*`：配置迁移资产、导入导出和环境映射。
-- Flowable 的 `ACT_*` 表保持引擎原始命名。
-- 实体物理业务表名由 `entity_definition.table_name` 登记，运行时代码禁止自行拼接表名。
-- V017 将当前开发库一次性迁移到最终命名；项目不保留旧表名和旧 API 运行兼容。
+## 生产部署
 
-## 贡献
+多 Pod 环境使用 [`deploy/helm/flow`](deploy/helm/flow)。生产值文件至少需要完成以下
+配置：
 
-提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 使用镜像 digest，而不是可变标签
+- 通过外部 Secret 提供数据库、JWT、配置包签名、管理员和对象存储凭据
+- 分离运行数据库账号和结构数据库账号
+- 使用持久化的 S3 兼容对象存储；多 Pod 不支持本地文件系统
+- 配置真实的 Ingress 域名、TLS、CORS 来源和可信代理
+- 按实际依赖网络填写 NetworkPolicy CIDR
+- 根据数据库连接上限校准副本数和连接池
+- 接入 ServiceMonitor、PrometheusRule、日志、告警和备份恢复流程
+
+部署前先阅读：
+
+- [生产部署说明](deploy/README.md)
+- [发布与回滚](deploy/runbooks/deployment.md)
+- [备份与恢复](deploy/runbooks/backup-restore.md)
+- [容量与故障恢复](deploy/runbooks/capacity-resilience.md)
+- [事件响应](deploy/runbooks/incident-response.md)
+
+典型发布命令：
+
+```bash
+helm upgrade --install flow deploy/helm/flow \
+  --namespace flow --create-namespace \
+  --values values.production.yaml \
+  --atomic --wait --timeout 15m
+
+helm test flow --namespace flow
+```
+
+数据库迁移是前向操作。Helm 回滚只能回滚工作负载，不能撤销已经执行的数据库变更；
+发布前必须确认备份可恢复，并保证新迁移对上一版本应用的回滚窗口兼容。
+
+单机环境可使用 [`deploy/compose.prod.yml`](deploy/compose.prod.yml)，但它不提供
+Kubernetes 的多副本、PodDisruptionBudget、HPA 和 NetworkPolicy 能力，不能作为多
+Pod 生产拓扑的等价替代。
+
+## CI/CD
+
+每次 push 和 Pull Request 都会执行：
+
+1. 后端 `mvn verify`
+2. 前端依赖审计、完整测试和生产构建
+3. Helm、Kubernetes 和 Compose 清单校验
+4. server/web 镜像构建与高危漏洞扫描
+5. CycloneDX SBOM 生成
+
+`main` 分支 CI 成功后，生产工作流构建并推送不可变镜像，再通过 SSH 在目标集群执行
+Helm 发布、Rollout 检查和 Helm smoke test。具体环境变量和审批规则由 GitHub
+Environment 管理。
+
+## 安全约束
+
+- 不提供 `admin/admin` 或其他公开默认凭据
+- JWT、数据库密码、配置包签名密钥和对象存储密钥不得提交到仓库
+- 生产 CORS 不允许通配来源
+- 只有明确标注访问策略的 API 才能通过架构测试
+- 外部 HTTP 调用受协议、主机、私网地址、超时和响应大小限制
+- 运行时不开放任意脚本执行接口
+- 富文本、BPMN 可执行内容、动态 SQL 标识符和文件访问均在服务端校验
+- 多副本任务通过数据库租约、幂等键或唯一约束协调，不能依赖进程内锁
+
+发现安全问题时不要提交公开 Issue，应先通过仓库维护方认可的私密渠道报告。
+
+## 相关文档
+
+- [管理与审计模块](workflow-server/workflow-admin/README.md)
+- [实体模块](workflow-server/workflow-entity/README.md)
+- [流程模块](workflow-server/workflow-process/README.md)
+- [软件项目研发管理配置](workflow-server/workflow-project/README.md)
+
+`docs/` 中同时存在当前设计资料和历史验收记录；`docs/archive/` 明确为历史实现。
+涉及启动、迁移和生产运维时，以代码、Helm Chart、`deploy/runbooks/` 和 CI 配置为准。
