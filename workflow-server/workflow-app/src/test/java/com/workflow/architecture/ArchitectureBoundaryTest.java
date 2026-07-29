@@ -75,6 +75,16 @@ class ArchitectureBoundaryTest {
                             ".*\\.Sys(User|Group|UserGroup)(Service|Mapper)");
 
     @ArchTest
+    static final ArchRule OPEN_API_DOES_NOT_DEPEND_ON_INTERNAL_MODULES =
+            noClasses()
+                    .that().resideInAPackage("com.workflow.openapi..")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "com.workflow.admin..",
+                            "com.workflow.entity..",
+                            "com.workflow.process..",
+                            "com.workflow.project..");
+
+    @ArchTest
     static final ArchRule PRODUCTION_CODE_AVOIDS_GLOBAL_TECHNICAL_PACKAGES =
             noClasses()
                     .should().resideInAnyPackage(

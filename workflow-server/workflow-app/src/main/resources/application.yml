@@ -154,6 +154,19 @@ file:
       path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
 
 workflow:
+  open-api:
+    enabled: ${WORKFLOW_OPEN_API_ENABLED:false}
+    issuer: ${WORKFLOW_OPEN_API_ISSUER:https://flow.invalid}
+    audience: ${WORKFLOW_OPEN_API_AUDIENCE:flow-open-api}
+    access-token-ttl: ${WORKFLOW_OPEN_API_ACCESS_TOKEN_TTL:10m}
+    key-id: ${WORKFLOW_OPEN_API_KEY_ID:}
+    private-key-location: ${WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION:}
+    public-key-location: ${WORKFLOW_OPEN_API_PUBLIC_KEY_LOCATION:}
+    previous-public-keys: ${WORKFLOW_OPEN_API_PREVIOUS_PUBLIC_KEYS:}
+    token-client-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_CLIENT_LIMIT:30}
+    token-address-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_ADDRESS_LIMIT:300}
+    trust-forwarded-headers: ${WORKFLOW_OPEN_API_TRUST_FORWARDED_HEADERS:false}
+    trusted-proxy-cidrs: ${WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS:}
   metrics:
     queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}
   http:

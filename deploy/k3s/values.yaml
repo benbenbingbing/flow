@@ -75,6 +75,11 @@ application:
   logLevel: INFO
   shutdownTimeout: 30s
 
+openApi:
+  enabled: false
+  trustForwardedHeaders: false
+  trustedProxyCidrs: []
+
 monitoring:
   serviceMonitor:
     enabled: false

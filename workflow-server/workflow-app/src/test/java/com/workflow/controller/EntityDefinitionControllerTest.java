@@ -12,6 +12,7 @@ import com.workflow.entity.definition.application.EntityDefinitionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 实体定义控制器单元测试
  */
 @WebMvcTest(EntityDefinitionController.class)
+@AutoConfigureMockMvc(addFilters = false)
 public class EntityDefinitionControllerTest {
 
     @Autowired

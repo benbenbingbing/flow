@@ -82,6 +82,20 @@ application:
   logLevel: INFO
   shutdownTimeout: 30s
 
+openApi:
+  enabled: false
+  issuer: https://flow.example.com
+  audience: flow-open-api
+  accessTokenTtl: 10m
+  keyId: ""
+  privateKeySecretKey: open-api-private-key
+  publicKeySecretKey: open-api-public-key
+  previousPublicKeys: []
+  tokenClientLimitPerMinute: 30
+  tokenAddressLimitPerMinute: 300
+  trustForwardedHeaders: false
+  trustedProxyCidrs: []
+
 monitoring:
   serviceMonitor:
     enabled: false

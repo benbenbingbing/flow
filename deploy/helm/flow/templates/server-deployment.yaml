@@ -25,7 +25,7 @@ spec:
       labels:
         {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 8 }}
       annotations:
-        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application) | sha256sum }}
+        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application "openApi" .Values.openApi) | sha256sum }}
     spec:
       serviceAccountName: {{ include "flow.fullname" . }}
       {{- with .Values.global.imagePullSecrets }}
@@ -93,6 +93,32 @@ spec:
               value: {{ .Values.application.logLevel | quote }}
             - name: SHUTDOWN_TIMEOUT
               value: {{ .Values.application.shutdownTimeout | quote }}
+            - name: WORKFLOW_OPEN_API_ENABLED
+              value: {{ .Values.openApi.enabled | quote }}
+            - name: WORKFLOW_OPEN_API_ISSUER
+              value: {{ .Values.openApi.issuer | quote }}
+            - name: WORKFLOW_OPEN_API_AUDIENCE
+              value: {{ .Values.openApi.audience | quote }}
+            - name: WORKFLOW_OPEN_API_ACCESS_TOKEN_TTL
+              value: {{ .Values.openApi.accessTokenTtl | quote }}
+            - name: WORKFLOW_OPEN_API_KEY_ID
+              value: {{ .Values.openApi.keyId | quote }}
+            - name: WORKFLOW_OPEN_API_TOKEN_CLIENT_LIMIT
+              value: {{ .Values.openApi.tokenClientLimitPerMinute | quote }}
+            - name: WORKFLOW_OPEN_API_TOKEN_ADDRESS_LIMIT
+              value: {{ .Values.openApi.tokenAddressLimitPerMinute | quote }}
+            - name: WORKFLOW_OPEN_API_TRUST_FORWARDED_HEADERS
+              value: {{ .Values.openApi.trustForwardedHeaders | quote }}
+            - name: WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS
+              value: {{ join "," .Values.openApi.trustedProxyCidrs | quote }}
+            {{- if .Values.openApi.enabled }}
+            - name: WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION
+              value: file:/var/run/flow-open-api-keys/current-private.pem
+            - name: WORKFLOW_OPEN_API_PUBLIC_KEY_LOCATION
+              value: file:/var/run/flow-open-api-keys/current-public.pem
+            - name: WORKFLOW_OPEN_API_PREVIOUS_PUBLIC_KEYS
+              value: {{ include "flow.openApiPreviousPublicKeys" . | quote }}
+            {{- end }}
             - name: DB_POOL_MAX_SIZE
               value: {{ .Values.server.pool.databaseMax | quote }}
             - name: SERVER_TOMCAT_THREADS_MAX
@@ -143,9 +169,29 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.openApi.enabled }}
+            - name: open-api-signing-keys
+              mountPath: /var/run/flow-open-api-keys
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.openApi.enabled }}
+        - name: open-api-signing-keys
+          secret:
+            secretName: {{ .Values.global.existingSecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.openApi.privateKeySecretKey }}
+                path: current-private.pem
+              - key: {{ .Values.openApi.publicKeySecretKey }}
+                path: current-public.pem
+              {{- range .Values.openApi.previousPublicKeys }}
+              - key: {{ .secretKey }}
+                path: {{ .fileName }}
+              {{- end }}
+        {{- end }}
       {{- if .Values.topologySpread.enabled }}
       topologySpreadConstraints:
         - maxSkew: 1
