@@ -44,7 +44,7 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("016", currentVersion());
+        assertEquals("017", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
@@ -80,6 +80,20 @@ class IntegrationApplicationMigrationTest {
         assertEquals(4, countRows(
                 "SELECT COUNT(*) FROM sys_menu "
                         + "WHERE id LIKE 'integration_perm_%'"));
+        assertEquals(1, countRows(
+                "SELECT COUNT(*) FROM sys_menu "
+                        + "WHERE id = 'integration_management_menu_001' "
+                        + "AND path = '/system/open-integration' "
+                        + "AND perm = 'system:integration:view'"));
+        assertEquals(4, countRows(
+                "SELECT COUNT(*) FROM sys_menu "
+                        + "WHERE parent_id = "
+                        + "'integration_management_menu_001' "
+                        + "AND id LIKE 'integration_perm_%'"));
+        assertEquals(1, countRows(
+                "SELECT COUNT(*) FROM sys_role_menu "
+                        + "WHERE role_id = '1' AND menu_id = "
+                        + "'integration_management_menu_001'"));
         for (String table : integrationTables()) {
             assertTrue(columnExists(table, "create_time"));
             assertTrue(columnExists(table, "update_time"));
@@ -125,7 +139,7 @@ class IntegrationApplicationMigrationTest {
 
         flyway().migrate();
 
-        assertEquals("016", currentVersion());
+        assertEquals("017", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "

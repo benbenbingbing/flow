@@ -9,8 +9,10 @@ import com.workflow.openapi.api.request.ReplayWebhookDeliveryRequest;
 import com.workflow.openapi.api.response.IssuedWebhookSecretView;
 import com.workflow.openapi.api.response.WebhookEndpointView;
 import com.workflow.openapi.api.response.WebhookDeliveryView;
+import com.workflow.openapi.api.response.WebhookValidationView;
 import com.workflow.openapi.webhook.application.WebhookAdministrationService;
 import com.workflow.openapi.webhook.application.WebhookDeliveryAdministrationService;
+import com.workflow.openapi.webhook.application.WebhookValidationService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +36,7 @@ public class WebhookAdministrationController {
     private final WebhookAdministrationService service;
     private final WebhookDeliveryAdministrationService
             deliveryService;
+    private final WebhookValidationService validationService;
 
     @GetMapping
     @RequiresPermission("system:integration:view")
@@ -77,6 +80,16 @@ public class WebhookAdministrationController {
                 applicationId,
                 endpointId,
                 request));
+    }
+
+    @PostMapping("/{endpointId}/validate")
+    @RequiresPermission("system:integration:manage")
+    public Result<WebhookValidationView> validate(
+            @PathVariable String applicationId,
+            @PathVariable String endpointId) {
+        return Result.success(validationService.send(
+                applicationId,
+                endpointId));
     }
 
     @GetMapping("/deliveries")

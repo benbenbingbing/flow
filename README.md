@@ -278,6 +278,12 @@ Environment `阿里云flow` 管理。
 
 ## 相关文档
 
+- [开放集成 V1 接入指南](docs/api/open-integration-onboarding.md)
+- [开放集成 OpenAPI 契约](docs/api/openapi-v1.yaml)
+- [开放集成兼容与发布策略](docs/api/compatibility-policy.md)
+- [开放集成客户端示例](examples/open-integration/README.md)
+- [开放 API 故障处理](deploy/runbooks/open-api-client-incident.md)
+- [开放集成密钥轮换](deploy/runbooks/integration-secret-rotation.md)
 - [管理与审计模块](workflow-server/workflow-admin/README.md)
 - [实体模块](workflow-server/workflow-entity/README.md)
 - [流程模块](workflow-server/workflow-process/README.md)

@@ -37,4 +37,20 @@ class WebhookAdministrationControllerConditionTest {
                 new String[]{"system:integration:delivery-replay"},
                 permission.value());
     }
+
+    @Test
+    void validationRequiresIntegrationManagementPermission()
+            throws Exception {
+        RequiresPermission permission =
+                WebhookAdministrationController.class
+                        .getMethod(
+                                "validate",
+                                String.class,
+                                String.class)
+                        .getAnnotation(RequiresPermission.class);
+
+        assertArrayEquals(
+                new String[]{"system:integration:manage"},
+                permission.value());
+    }
 }
