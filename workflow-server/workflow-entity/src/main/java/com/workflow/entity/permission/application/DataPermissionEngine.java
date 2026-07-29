@@ -1,5 +1,6 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
@@ -127,7 +128,8 @@ public class DataPermissionEngine {
         try {
             snapshot = scopeService.getActiveSnapshot(entityCode);
         } catch (RuntimeException exception) {
-            log.error("读取数据范围发布快照失败: entityCode={}", entityCode, exception);
+            log.error("读取数据范围发布快照失败: entityCode={}, failureType={}",
+                    LogValue.safe(entityCode), LogValue.failureType(exception));
             return denied("数据范围发布快照损坏", null, List.of());
         }
         if (snapshot == null) {
@@ -188,15 +190,15 @@ public class DataPermissionEngine {
                 }
             } catch (RuntimeException exception) {
                 if ("DENY".equalsIgnoreCase(binding.getRuleEffect())) {
-                    log.error("DENY 数据范围方案无效，按拒绝全部处理: policyKey={}",
-                            policy.getPolicyKey(), exception);
+                    log.error("DENY 数据范围方案无效，按拒绝全部处理: policyKey={}, failureType={}",
+                            LogValue.safe(policy.getPolicyKey()), LogValue.failureType(exception));
                     return denied(
                             "拒绝方案配置损坏: " + policy.getPolicyName(),
                             snapshot.getVersion(),
                             matched);
                 }
-                log.error("ALLOW 数据范围方案无效，按不授权处理: policyKey={}",
-                        policy.getPolicyKey(), exception);
+                log.error("ALLOW 数据范围方案无效，按不授权处理: policyKey={}, failureType={}",
+                        LogValue.safe(policy.getPolicyKey()), LogValue.failureType(exception));
             }
         }
 
@@ -261,7 +263,9 @@ public class DataPermissionEngine {
 
         DataPermissionResult result = "1=1".equals(finalSql)
                 ? DataPermissionResult.allowAll()
-                : DataPermissionResult.withCondition(finalSql);
+                : DataPermissionResult.withCondition(
+                        finalSql,
+                        teamPermission.enabled() ? teamPermission.sqlParameters() : Map.of());
         result.setMatchedRuleNames(matched.stream()
                 .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
                 .toList());
@@ -304,8 +308,8 @@ public class DataPermissionEngine {
                     parts.add(sql);
                 }
             } catch (RuntimeException exception) {
-                log.error("数据范围委托配置无效，已忽略: delegationId={}",
-                        delegation.getId(), exception);
+                log.error("数据范围委托配置无效，已忽略: delegationId={}, failureType={}",
+                        LogValue.safe(delegation.getId()), LogValue.failureType(exception));
             }
         }
         return or(parts);

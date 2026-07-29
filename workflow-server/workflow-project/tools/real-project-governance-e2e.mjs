@@ -35,14 +35,10 @@ async function api(method, endpoint, body) {
   try {
     payload = text ? JSON.parse(text) : null
   } catch {
-    throw new Error(`${method} ${endpoint} returned non-json: ${text.slice(0, 500)}`)
+    throw new Error(`${method} ${endpoint} returned non-json: HTTP ${response.status}`)
   }
   if (!response.ok || payload?.code !== 200) {
-    const error = new Error(
-      `${method} ${endpoint} failed: HTTP ${response.status}, body=${text.slice(0, 2000)}`
-    )
-    error.payload = payload
-    throw error
+    throw new Error(`${method} ${endpoint} failed: HTTP ${response.status}`)
   }
   return payload.data
 }
@@ -447,20 +443,25 @@ async function main() {
   }
 
   assert.ok(removalError, '存在有效系统级角色时，F06 REMOVE 必须被拦截')
-  const removalMessage = JSON.stringify(removalError.payload || removalError.message)
+  const removalMessage = String(removalError.message)
   assert.match(removalMessage, /PROJECT_SYSTEM_REMOVAL_BLOCKED|有效系统级项目角色/)
 
   evidence.crossEntityChecks.F06_REMOVE_BLOCKED = {
     blockingRoleId: blockingRole.id,
     effectiveLinkId: effectiveLink.id,
     result: 'BLOCKED',
-    error: removalError.payload || removalError.message
+    error: removalError instanceof Error ? removalError.name : 'UnknownError'
   }
 
   evidence.conclusion =
     'PASS: F03/F06 配置流程真实运行，批准后跨实体动作生效，移除关系代码门禁正确阻断。'
   const evidencePath = path.join(evidenceDir, `project-governance-${runId}.json`)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+  writeFileSync(evidencePath, JSON.stringify({
+    result: 'PASS',
+    conclusion: evidence.conclusion,
+    runId,
+    completed: true
+  }, null, 2), { mode: 0o600 })
   console.log(JSON.stringify({
     result: 'PASS',
     evidencePath,
@@ -472,10 +473,14 @@ async function main() {
 }
 
 main().catch(error => {
-  evidence.error = error.stack || String(error)
+  evidence.error = error instanceof Error ? error.name : 'UnknownError'
   const evidencePath = path.join(evidenceDir, `project-governance-${runId}-failed.json`)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
-  console.error(error)
+  writeFileSync(evidencePath, JSON.stringify({
+    result: 'FAIL',
+    error: evidence.error,
+    runId
+  }, null, 2), { mode: 0o600 })
+  console.error(`project governance e2e failed: ${evidence.error}`)
   console.error(`evidence written: ${evidencePath}`)
   process.exit(1)
 })

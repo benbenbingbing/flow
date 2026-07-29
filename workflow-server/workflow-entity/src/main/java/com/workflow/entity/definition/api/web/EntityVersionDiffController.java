@@ -47,6 +47,9 @@ public class EntityVersionDiffController {
     public ApiResponse<EntityVersionDiffDTO> compareWithPrevious(
             @PathVariable String entityId,
             @PathVariable Integer version) {
+        if (version == null || version < 2) {
+            throw new IllegalArgumentException("版本号必须大于等于 2 才能比较上一版本");
+        }
         return ApiResponse.success(versionDiffService.compareVersions(entityId, version - 1, version));
     }
 }

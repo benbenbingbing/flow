@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -6,7 +7,7 @@ const baseUrl = process.env.API_BASE || process.env.WORKFLOW_API_BASE || 'http:/
 const adminUsername = process.env.TEST_USERNAME || 'admin'
 const adminPassword = process.env.TEST_PASSWORD || 'admin'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
-const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
+const suffix = `${stamp}${randomUUID().replaceAll('-', '').slice(0, 8)}`
 const processKey = `cfg_${suffix}`
 const entityCode = `cfg_entity_${suffix}`
 const firstApprover = `cfg_l1_${suffix}`
@@ -42,10 +43,10 @@ async function api(method, url, body, username = currentUser) {
   try {
     json = text ? JSON.parse(text) : null
   } catch {
-    throw new Error(`${method} ${url} returned non-json: ${text.slice(0, 200)}`)
+    throw new Error(`${method} ${url} returned non-json: HTTP ${response.status}`)
   }
   if (!response.ok || (json && json.code != null && json.code !== 200)) {
-    throw new Error(`${method} ${url} failed: HTTP ${response.status}, body=${text.slice(0, 1000)}`)
+    throw new Error(`${method} ${url} failed: HTTP ${response.status}`)
   }
   return json?.data ?? json
 }
@@ -411,15 +412,25 @@ async function main() {
 
   const evidencePath = path.join(evidenceDir, `config-closure-${suffix}.json`)
   evidence.conclusion = 'PASS: BPMN执行人、实体绑定、状态字典、节点状态映射、跨用户待办和审批历史全部按配置生效'
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+  writeFileSync(evidencePath, JSON.stringify({
+    result: 'PASS',
+    conclusion: evidence.conclusion,
+    entityCode,
+    stepNames: evidence.steps.map(step => step.name)
+  }, null, 2), { mode: 0o600 })
   console.log(`real workflow config closure passed: ${evidencePath}`)
 }
 
 main().catch(error => {
-  evidence.error = error.stack || String(error)
+  evidence.error = error instanceof Error ? error.name : 'UnknownError'
   const evidencePath = path.join(evidenceDir, `config-closure-${suffix}-failed.json`)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
-  console.error(error)
+  writeFileSync(evidencePath, JSON.stringify({
+    result: 'FAIL',
+    error: evidence.error,
+    entityCode,
+    stepNames: evidence.steps.map(step => step.name)
+  }, null, 2), { mode: 0o600 })
+  console.error(`real workflow config closure failed: ${evidence.error}`)
   console.error(`evidence written: ${evidencePath}`)
   process.exit(1)
 })

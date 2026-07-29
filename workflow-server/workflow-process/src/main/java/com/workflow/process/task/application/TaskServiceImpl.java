@@ -1,7 +1,9 @@
 package com.workflow.process.task.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
+import com.workflow.core.result.PageRequest;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
@@ -134,15 +136,14 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
 
     @Override
     public PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
         // 先处理所有标记为跳过的任务
         autoCompleteSkipTasks();
-        
         // 查询所有活跃任务（不限于当前用户，用于演示）
         TaskQuery query = flowableTaskService.createTaskQuery()
                 .active()
                 .orderByTaskCreateTime()
                 .desc();
-        
         // 时间范围过滤
         if (StringUtils.hasText(timeRange)) {
             Date startDate = getStartDateByRange(timeRange);
@@ -152,7 +153,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         long total = query.count();
-        List<Task> tasks = query.listPage((pageNum - 1) * pageSize, pageSize);
+        List<Task> tasks = page.offset() <= Integer.MAX_VALUE ? query.listPage((int) page.offset(), page.pageSize()) : List.of();
         
         List<TaskVO> records = tasks.stream()
                 .map(this::convertToTodoVO)
@@ -172,11 +173,12 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 })
                 .collect(Collectors.toList());
         
-        return new PageResult<>(records, total, pageNum, pageSize);
+        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
     }
 
     @Override
     public PageResult<TaskVO> getDoneList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
         HistoricTaskInstanceQuery query = historyService.createHistoricTaskInstanceQuery()
                 .taskAssignee(UserContext.requireUsernameOrId())
                 .finished()
@@ -192,7 +194,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         long total = query.count();
-        List<HistoricTaskInstance> tasks = query.listPage((pageNum - 1) * pageSize, pageSize);
+        List<HistoricTaskInstance> tasks = page.offset() <= Integer.MAX_VALUE ? query.listPage((int) page.offset(), page.pageSize()) : List.of();
         
         List<TaskVO> records = tasks.stream()
                 .map(this::convertToDoneVO)
@@ -210,7 +212,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 })
                 .collect(Collectors.toList());
         
-        return new PageResult<>(records, total, pageNum, pageSize);
+        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
     }
 
     @Override
@@ -549,7 +551,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 }
             }
         } catch (Exception e) {
-            log.warn("获取表单配置失败: taskId={}", taskId, e);
+            log.warn("获取表单配置失败: taskId={}, failureType={}", LogValue.safe(taskId), LogValue.failureType(e));
         }
         
         return vo;

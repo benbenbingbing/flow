@@ -1,5 +1,6 @@
 package com.workflow.admin.dictionary.application;
 
+import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -105,10 +106,10 @@ public class SysDictItemService {
         if (!StringUtils.hasText(item.getId())) {
             item.setCreateTime(LocalDateTime.now());
             dictItemMapper.insert(item);
-            log.info("新增字典项：{} - {}" , item.getItemCode(), item.getItemLabel());
+            log.info("新增字典项：{} - {}" , LogValue.safe(item.getItemCode()), LogValue.safe(item.getItemLabel()));
         } else {
             dictItemMapper.updateById(item);
-            log.info("更新字典项：{} - {}", item.getItemCode(), item.getItemLabel());
+            log.info("更新字典项：{} - {}", LogValue.safe(item.getItemCode()), LogValue.safe(item.getItemLabel()));
         }
 
         dictCacheService.reload();

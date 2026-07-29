@@ -1,5 +1,8 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.core.result.PageRequest;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
@@ -11,6 +14,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -39,35 +43,20 @@ public class SystemEntityService {
      * @return 分页结果
      */
     public Map<String, Object> selectList(String entityType, String keyword, int pageNum, int pageSize) {
-        List<Map<String, Object>> list = new ArrayList<>();
-        long total = 0;
-
-        switch (entityType.toUpperCase()) {
-            case "USER":
-                list = selectUserList(keyword, pageNum, pageSize);
-                total = countUsers(keyword);
-                break;
-            case "DEPT":
-                list = selectDeptList(keyword, pageNum, pageSize);
-                total = countDepts(keyword);
-                break;
-            case "ROLE":
-                list = selectRoleList(keyword, pageNum, pageSize);
-                total = countRoles(keyword);
-                break;
-            case "GROUP":
-                list = selectGroupList(keyword, pageNum, pageSize);
-                total = countGroups(keyword);
-                break;
-            default:
-                throw new RuntimeException("未知的系统实体类型: " + entityType);
-        }
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
+        Selection selection = switch (entityType.toUpperCase(Locale.ROOT)) {
+            case "USER" -> selectUserList(keyword, page);
+            case "DEPT" -> selectDeptList(keyword, page);
+            case "ROLE" -> selectRoleList(keyword, page);
+            case "GROUP" -> selectGroupList(keyword, page);
+            default -> throw new IllegalArgumentException("未知的系统实体类型: " + entityType);
+        };
 
         Map<String, Object> result = new HashMap<>();
-        result.put("records", list);
-        result.put("total", total);
-        result.put("pageNum", pageNum);
-        result.put("pageSize", pageSize);
+        result.put("records", selection.records());
+        result.put("total", selection.total());
+        result.put("pageNum", page.pageNumber());
+        result.put("pageSize", page.pageSize());
         return result;
     }
 
@@ -117,126 +106,51 @@ public class SystemEntityService {
 
     // ========== 私有方法 ==========
 
-    private List<Map<String, Object>> selectUserList(String keyword, int pageNum, int pageSize) {
-        // 查询所有用户，然后手动分页和过滤
-        List<SysUser> users = userMapper.selectList(null);
-        
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            users = users.stream()
-                    .filter(u -> (u.getUsername() != null && u.getUsername().toLowerCase().contains(lowerKeyword))
-                            || (u.getNickname() != null && u.getNickname().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
+    private Selection selectUserList(String keyword, PageRequest page) {
+        LambdaQueryWrapper<SysUser> query = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            query.and(wrapper -> wrapper.like(SysUser::getUsername, keyword)
+                    .or()
+                    .like(SysUser::getNickname, keyword));
         }
-        
-        // 手动分页
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, users.size());
-        List<SysUser> pageUsers = start < users.size() ? users.subList(start, end) : new ArrayList<>();
-        
-        return pageUsers.stream().map(this::convertUser).collect(Collectors.toList());
+        Page<SysUser> result = userMapper.selectPage(new Page<>(page.pageNumber(), page.pageSize()), query);
+        return new Selection(result.getRecords().stream().map(this::convertUser).toList(), result.getTotal());
     }
 
-    private long countUsers(String keyword) {
-        List<SysUser> users = userMapper.selectList(null);
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            users = users.stream()
-                    .filter(u -> (u.getUsername() != null && u.getUsername().toLowerCase().contains(lowerKeyword))
-                            || (u.getNickname() != null && u.getNickname().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
+    private Selection selectDeptList(String keyword, PageRequest page) {
+        LambdaQueryWrapper<SysOrganization> query = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            query.and(wrapper -> wrapper.like(SysOrganization::getOrgName, keyword)
+                    .or()
+                    .like(SysOrganization::getOrgCode, keyword));
         }
-        return users.size();
+        Page<SysOrganization> result = organizationMapper.selectPage(new Page<>(page.pageNumber(), page.pageSize()), query);
+        return new Selection(result.getRecords().stream().map(this::convertDept).toList(), result.getTotal());
     }
 
-    private List<Map<String, Object>> selectDeptList(String keyword, int pageNum, int pageSize) {
-        List<SysOrganization> depts = organizationMapper.selectList(null);
-        
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            depts = depts.stream()
-                    .filter(d -> (d.getOrgName() != null && d.getOrgName().toLowerCase().contains(lowerKeyword))
-                            || (d.getOrgCode() != null && d.getOrgCode().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
+    private Selection selectRoleList(String keyword, PageRequest page) {
+        LambdaQueryWrapper<SysRole> query = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            query.and(wrapper -> wrapper.like(SysRole::getRoleName, keyword)
+                    .or()
+                    .like(SysRole::getRoleCode, keyword));
         }
-        
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, depts.size());
-        List<SysOrganization> pageDepts = start < depts.size() ? depts.subList(start, end) : new ArrayList<>();
-        
-        return pageDepts.stream().map(this::convertDept).collect(Collectors.toList());
+        Page<SysRole> result = roleMapper.selectPage(new Page<>(page.pageNumber(), page.pageSize()), query);
+        return new Selection(result.getRecords().stream().map(this::convertRole).toList(), result.getTotal());
     }
 
-    private long countDepts(String keyword) {
-        List<SysOrganization> depts = organizationMapper.selectList(null);
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            depts = depts.stream()
-                    .filter(d -> (d.getOrgName() != null && d.getOrgName().toLowerCase().contains(lowerKeyword))
-                            || (d.getOrgCode() != null && d.getOrgCode().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
+    private Selection selectGroupList(String keyword, PageRequest page) {
+        LambdaQueryWrapper<SysGroup> query = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            query.and(wrapper -> wrapper.like(SysGroup::getGroupName, keyword)
+                    .or()
+                    .like(SysGroup::getGroupCode, keyword));
         }
-        return depts.size();
+        Page<SysGroup> result = groupMapper.selectPage(new Page<>(page.pageNumber(), page.pageSize()), query);
+        return new Selection(result.getRecords().stream().map(this::convertGroup).toList(), result.getTotal());
     }
 
-    private List<Map<String, Object>> selectRoleList(String keyword, int pageNum, int pageSize) {
-        List<SysRole> roles = roleMapper.selectList(null);
-        
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            roles = roles.stream()
-                    .filter(r -> (r.getRoleName() != null && r.getRoleName().toLowerCase().contains(lowerKeyword))
-                            || (r.getRoleCode() != null && r.getRoleCode().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
-        }
-        
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, roles.size());
-        List<SysRole> pageRoles = start < roles.size() ? roles.subList(start, end) : new ArrayList<>();
-        
-        return pageRoles.stream().map(this::convertRole).collect(Collectors.toList());
-    }
-
-    private long countRoles(String keyword) {
-        List<SysRole> roles = roleMapper.selectList(null);
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            roles = roles.stream()
-                    .filter(r -> (r.getRoleName() != null && r.getRoleName().toLowerCase().contains(lowerKeyword))
-                            || (r.getRoleCode() != null && r.getRoleCode().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
-        }
-        return roles.size();
-    }
-
-    private List<Map<String, Object>> selectGroupList(String keyword, int pageNum, int pageSize) {
-        List<SysGroup> groups = groupMapper.selectList(null);
-        
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            groups = groups.stream()
-                    .filter(g -> (g.getGroupName() != null && g.getGroupName().toLowerCase().contains(lowerKeyword))
-                            || (g.getGroupCode() != null && g.getGroupCode().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
-        }
-        
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, groups.size());
-        List<SysGroup> pageGroups = start < groups.size() ? groups.subList(start, end) : new ArrayList<>();
-        
-        return pageGroups.stream().map(this::convertGroup).collect(Collectors.toList());
-    }
-
-    private long countGroups(String keyword) {
-        List<SysGroup> groups = groupMapper.selectList(null);
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String lowerKeyword = keyword.toLowerCase();
-            groups = groups.stream()
-                    .filter(g -> (g.getGroupName() != null && g.getGroupName().toLowerCase().contains(lowerKeyword))
-                            || (g.getGroupCode() != null && g.getGroupCode().toLowerCase().contains(lowerKeyword)))
-                    .collect(Collectors.toList());
-        }
-        return groups.size();
+    private record Selection(List<Map<String, Object>> records, long total) {
     }
 
     // ========== 转换方法 ==========

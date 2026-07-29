@@ -1,5 +1,6 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.process.task.application.TaskService;
 
 import com.workflow.core.error.BusinessConflictException;
@@ -112,7 +113,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         processTaskService.syncTasksFromFlowable(processInstance.getId());
 
         log.info("实体数据 {} 发起流程 {}，流程实例ID: {}",
-                request.entityRecordId(), processConfig.getProcessKey(), processInstance.getId());
+                LogValue.safe(request.entityRecordId()), LogValue.safe(processConfig.getProcessKey()),
+                LogValue.safe(processInstance.getId()));
         return new ProcessStartResult(
                 processInstance.getId(),
                 request.processingStatus(),

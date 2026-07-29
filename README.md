@@ -182,6 +182,15 @@ npm test
 npm run build
 ```
 
+真实环境验收使用单独的环境变量，不会从本地文件读取业务对象标识。执行
+`npm run test:acceptance:real` 前，除 `TEST_USERNAME`、`TEST_PASSWORD` 和
+`WORKFLOW_WEB_BASE` 外，还必须提供已发布且可访问的
+`VISUAL_ENTITY_ID`、`VISUAL_ENTITY_CODE`、`VISUAL_PROCESS_ID`、`VISUAL_FORM_ID` 和
+`VISUAL_LIST_CONFIG_ID`。可选的 `VISUAL_LIST_KEY`、`VISUAL_ENTITY_NAME`、
+`VISUAL_PROCESS_NAME`、`VISUAL_PROJECT_NAME` 只影响验收页面的预期文案。
+验收账户和这些资源标识应由受控的 CI Secret 或测试环境注入，不能写入源码、日志或
+验收产物。
+
 部署清单验证：
 
 ```bash

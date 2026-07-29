@@ -2,7 +2,9 @@ package com.workflow.entity.permission.api.response;
 
 import lombok.Data;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 数据权限计算结果
@@ -30,6 +32,9 @@ public class DataPermissionResult {
 
     /** 权限结果解释（人类可读说明，用于调试/提示） */
     private String explanation;
+
+    /** Bound values referenced by the generated permission SQL fragment. */
+    private Map<String, Object> sqlParameters = new LinkedHashMap<>();
 
     /**
      * 构造"全部放行"结果：有权限且无需过滤。
@@ -70,13 +75,24 @@ public class DataPermissionResult {
         return r;
     }
 
+    public static DataPermissionResult withCondition(String sql, Map<String, Object> parameters) {
+        DataPermissionResult result = withCondition(sql);
+        result.mergeSqlParameters(parameters);
+        return result;
+    }
+
     /**
      * 与另一个条件取并集（OR）
      */
     public DataPermissionResult union(String sql) {
+        return union(sql, Map.of());
+    }
+
+    public DataPermissionResult union(String sql, Map<String, Object> parameters) {
         if (sql == null || sql.isBlank()) {
             return this;
         }
+        mergeSqlParameters(parameters);
         if (!this.needFilter) {
             // 当前无过滤条件，直接采用新条件
             this.needFilter = true;
@@ -91,9 +107,14 @@ public class DataPermissionResult {
      * 与另一个条件取交集（AND）
      */
     public DataPermissionResult intersect(String sql) {
+        return intersect(sql, Map.of());
+    }
+
+    public DataPermissionResult intersect(String sql, Map<String, Object> parameters) {
         if (sql == null || sql.isBlank()) {
             return this;
         }
+        mergeSqlParameters(parameters);
         if (!this.needFilter) {
             this.needFilter = true;
             this.sqlCondition = sql;
@@ -101,5 +122,17 @@ public class DataPermissionResult {
         }
         this.sqlCondition = "(" + this.sqlCondition + ") AND (" + sql + ")";
         return this;
+    }
+
+    private void mergeSqlParameters(Map<String, Object> parameters) {
+        if (parameters == null || parameters.isEmpty()) {
+            return;
+        }
+        parameters.forEach((key, value) -> {
+            Object existing = sqlParameters.putIfAbsent(key, value);
+            if (existing != null && !java.util.Objects.equals(existing, value)) {
+                throw new IllegalArgumentException("数据权限参数冲突: " + key);
+            }
+        });
     }
 }

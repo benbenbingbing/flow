@@ -1,5 +1,6 @@
 package com.workflow.process.cc.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
@@ -117,7 +118,7 @@ public class ProcessCcService {
         if (ccRecordMapper.markAsRead(ccId, userId) == 0) {
             throw new com.workflow.core.error.ForbiddenException("无权读取该知会记录");
         }
-        log.info("抄送记录标记为已读: {}", ccId);
+        log.info("抄送记录标记为已读: {}", LogValue.safe(ccId));
     }
     
     /**

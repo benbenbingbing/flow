@@ -85,6 +85,7 @@ class EntityRecordTeamServiceTest {
         assertTrue(permission.enabled());
         assertEquals(EntityDefinition.TeamVisibilityLevel.OVERRIDE_SCOPE, permission.level());
         assertTrue(permission.sqlCondition().contains("team.record_id = `wf_expense`.id"));
-        assertTrue(permission.sqlCondition().contains("team.user_id = 'user-1'"));
+        assertTrue(permission.sqlCondition().contains("team.user_id = #{permissionParameters.teamUserId}"));
+        assertEquals("user-1", permission.sqlParameters().get("teamUserId"));
     }
 }

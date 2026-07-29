@@ -1,5 +1,6 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
@@ -1818,11 +1819,10 @@ public class UiConfigReleaseService {
                     log.error(
                             "热修复运行时解析失败: "
                                     + "formId={}, historyId={}, targetId={}, error={}",
-                            formId,
-                            context.processVersionHistoryId(),
-                            target.getId(),
-                            exception.getMessage(),
-                            exception);
+                            LogValue.safe(formId),
+                            LogValue.safe(context.processVersionHistoryId()),
+                            LogValue.safe(target.getId()),
+                            LogValue.failureType(exception));
                     throw new IllegalStateException(
                             "热修复运行时快照解析失败",
                             exception);

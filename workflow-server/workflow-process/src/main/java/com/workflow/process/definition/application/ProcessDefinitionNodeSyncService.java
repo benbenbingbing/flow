@@ -1,5 +1,6 @@
 package com.workflow.process.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.configuration.api.model.NodeConfigDTO;
@@ -142,7 +143,7 @@ public class ProcessDefinitionNodeSyncService {
                 }
                 if (!entityFormIds.isEmpty()) {
                     log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formIds={}",
-                            processConfigId, nodeId, entityFormIds);
+                            LogValue.safe(processConfigId), LogValue.safe(nodeId), LogValue.safe(entityFormIds));
                 }
             }
         } catch (Exception e) {
@@ -203,7 +204,8 @@ public class ProcessDefinitionNodeSyncService {
                         approvalOptionService.replaceFromDocument(
                                 nodeApproval.getId(), optionsJson);
                     }
-                    log.debug("同步节点审批配置: processConfigId={}, nodeId={}", processConfigId, nodeId);
+                    log.debug("同步节点审批配置: processConfigId={}, nodeId={}",
+                            LogValue.safe(processConfigId), LogValue.safe(nodeId));
                 } else {
                     ProcessNodeApproval existing = nodeApprovalMapper.selectByNodeId(processConfigId, nodeId);
                     if (existing != null) {
@@ -230,7 +232,7 @@ public class ProcessDefinitionNodeSyncService {
     public void syncStatusMappingsFromBpmn(String processConfigId, String processKey, String bpmnXml) {
         String entityCode = getEntityCodeByProcessId(processConfigId);
         if (entityCode == null || entityCode.isEmpty()) {
-            log.debug("流程未绑定实体，跳过状态映射提取: processConfigId={}", processConfigId);
+            log.debug("流程未绑定实体，跳过状态映射提取: processConfigId={}", LogValue.safe(processConfigId));
             return;
         }
 
@@ -258,7 +260,7 @@ public class ProcessDefinitionNodeSyncService {
             }
 
             entityFlowStatusService.replaceStatusMappings(processConfigId, processKey, entityCode, mappings);
-            log.info("同步流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
+            log.info("同步流程状态映射: processConfigId={}, count={}", LogValue.safe(processConfigId), mappings.size());
         } catch (Exception e) {
             throw new IllegalStateException("同步流程状态映射失败: processConfigId=" + processConfigId, e);
         }
@@ -290,9 +292,9 @@ public class ProcessDefinitionNodeSyncService {
         savedCount += parseNodesByType(processConfigId, bpmnXml, "eventBasedGateway", NodeConfig.NodeType.EVENT_BASED_GATEWAY);
         savedCount += parseNodesByType(processConfigId, bpmnXml, "callActivity", NodeConfig.NodeType.CALL_ACTIVITY);
         savedCount += parseNodesByType(processConfigId, bpmnXml, "subProcess", NodeConfig.NodeType.SUB_PROCESS);
-        log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, processConfigId);
+        log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, LogValue.safe(processConfigId));
         if (savedCount == 0) {
-            log.warn("未解析到节点: processConfigId={}", processConfigId);
+            log.warn("未解析到节点: processConfigId={}", LogValue.safe(processConfigId));
         }
     }
 

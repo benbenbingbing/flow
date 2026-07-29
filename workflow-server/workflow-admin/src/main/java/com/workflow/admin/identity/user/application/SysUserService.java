@@ -1,5 +1,6 @@
 package com.workflow.admin.identity.user.application;
 
+import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
@@ -258,13 +259,13 @@ public class SysUserService {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
             user.setPasswordResetRequired(true);
             userMapper.insert(user);
-            log.info("新增用户：{}", user.getUsername());
+            log.info("新增用户：{}", LogValue.safe(user.getUsername()));
         } else {
             // 更新 - 不更新密码
             user.setPassword(null);
             user.setPasswordResetRequired(null);
             userMapper.updateById(user);
-            log.info("更新用户：{}", user.getUsername());
+            log.info("更新用户：{}", LogValue.safe(user.getUsername()));
         }
         
         // 保存角色关联

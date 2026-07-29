@@ -1,5 +1,6 @@
 package com.workflow.entity.form.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
@@ -174,7 +175,7 @@ public class EntityFormService {
         desired.setUpdateTime(now);
         if (isNew) {
             formMapper.insert(desired);
-            log.info("新增实体表单：{}", desired.getFormName());
+            log.info("新增实体表单：{}", LogValue.safe(desired.getFormName()));
         } else {
             int currentRevision = revisionOf(current);
             desired.setRevision(currentRevision + 1);
@@ -190,7 +191,7 @@ public class EntityFormService {
                         desired.getId(),
                         "表单已被其他人修改，请刷新后重试");
             }
-            log.info("更新实体表单：{}", desired.getFormName());
+            log.info("更新实体表单：{}", LogValue.safe(desired.getFormName()));
         }
 
         if (Boolean.TRUE.equals(desired.getIsDefault())) {
@@ -889,7 +890,6 @@ public class EntityFormService {
         fillFormDetails(newForm);
         newForm.setFields(getFormFields(newForm.getId()));
         newForm.setNodes(formNodeMapper.findByFormId(newForm.getId()));
-        
         return newForm;
     }
 }

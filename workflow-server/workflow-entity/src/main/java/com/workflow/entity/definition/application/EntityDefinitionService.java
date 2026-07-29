@@ -1,5 +1,6 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.application.EntityPhysicalTableNaming;
@@ -325,7 +326,7 @@ public class EntityDefinitionService {
         fieldMapper.insert(createSystemField(entityId, "currentTaskAssignee", "当前任务办理人",
                 EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
 
-        log.info("已为实体 [{}] 添加系统标准字段", entityId);
+        log.info("已为实体 [{}] 添加系统标准字段", LogValue.safe(entityId));
     }
     
     /**

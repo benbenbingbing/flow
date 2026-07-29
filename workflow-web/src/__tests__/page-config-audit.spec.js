@@ -24,7 +24,7 @@ viewFiles.forEach((viewFile) => {
   assert.equal(existsSync(fullPath), true, `路由组件不存在: ${viewFile}`)
   const source = readFileSync(fullPath, 'utf8')
   assert.match(source, /<template>[\s\S]*<\/template>/, `页面缺少 template: ${viewFile}`)
-  assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/, `页面缺少 script: ${viewFile}`)
+  assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/i, `页面缺少 script: ${viewFile}`)
 })
 
 collectFiles(path.join(root, 'src'), '.vue').forEach((vueFile) => {
@@ -1364,8 +1364,9 @@ const visualAcceptanceSource = readFileSync(
   'utf8'
 )
 assert.ok(
-  visualAcceptanceSource.includes('docs/dynamic-extension-demo/latest.json'),
-  '真实视觉验收必须读取当轮动态扩展真实夹具'
+  visualAcceptanceSource.includes("VISUAL_ENTITY_ID")
+    && visualAcceptanceSource.includes("VISUAL_PROCESS_ID"),
+  '真实视觉验收必须通过显式环境变量接收当轮受控夹具标识'
 )
 assert.doesNotMatch(
   visualAcceptanceSource,

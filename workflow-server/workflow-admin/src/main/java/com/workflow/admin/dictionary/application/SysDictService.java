@@ -1,5 +1,6 @@
 package com.workflow.admin.dictionary.application;
 
+import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
@@ -138,7 +139,7 @@ public class SysDictService {
         if (!StringUtils.hasText(dict.getId())) {
             dict.setCreateTime(LocalDateTime.now());
             dictMapper.insert(dict);
-            log.info("新增字典类型：{} - {}", dict.getDictCode(), dict.getDictName());
+            log.info("新增字典类型：{} - {}", LogValue.safe(dict.getDictCode()), LogValue.safe(dict.getDictName()));
         } else {
             SysDict oldDict = dictMapper.selectById(dict.getId());
             if (oldDict == null) {
@@ -150,7 +151,7 @@ public class SysDictService {
                 dictCacheService.reload();
             }
             dictMapper.updateById(dict);
-            log.info("更新字典类型：{} - {}", dict.getDictCode(), dict.getDictName());
+            log.info("更新字典类型：{} - {}", LogValue.safe(dict.getDictCode()), LogValue.safe(dict.getDictName()));
         }
 
         return dict;

@@ -370,7 +370,12 @@ async function main() {
   assert.deepEqual(restoreErrors, [], '测试结束后必须恢复动作处理器目录配置')
 
   const evidenceFile = path.join(outputDir, `flow-action-timing-${suffix}.json`)
-  writeFileSync(evidenceFile, JSON.stringify(evidence, null, 2))
+  writeFileSync(evidenceFile, JSON.stringify({
+    result: 'PASS',
+    processKey,
+    entityCode,
+    expectedTimings: standardTimings
+  }, null, 2), { mode: 0o600 })
   console.log(JSON.stringify({
     processId: workflowProcess.id,
     processKey,

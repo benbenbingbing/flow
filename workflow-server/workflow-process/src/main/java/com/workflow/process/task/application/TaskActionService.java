@@ -1,5 +1,6 @@
 package com.workflow.process.task.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
 import com.workflow.process.form.application.NodeFormSubmissionService;
@@ -170,10 +171,12 @@ public class TaskActionService {
                     if (transferredTask != null) {
                         Map<String, Object> variables = runtimeService.getVariables(transferredTask.getProcessInstanceId());
                         processTaskService.createTask(transferredTask, variables);
-                        log.info("已为转办人 {} 创建新待办: taskId={}", transferTo, taskId);
+                        log.info("已为转办人 {} 创建新待办: taskId={}",
+                                LogValue.safe(transferTo), LogValue.safe(taskId));
                     }
                 } catch (Exception e) {
-                    log.warn("为转办人创建待办失败: taskId={}, transferTo={}", taskId, transferTo, e);
+                    log.warn("为转办人创建待办失败: taskId={}, transferTo={}, failureType={}",
+                            LogValue.safe(taskId), LogValue.safe(transferTo), LogValue.failureType(e));
                 }
                 
                 // 记录转办日志到 process_operation_log
@@ -196,7 +199,7 @@ public class TaskActionService {
                     log.warn("记录转办日志失败", e);
                 }
                 
-                log.info("任务 {} 已转办给 {}", taskId, transferTo);
+                log.info("任务 {} 已转办给 {}", LogValue.safe(taskId), LogValue.safe(transferTo));
                 break;
 
             default:
@@ -227,7 +230,8 @@ public class TaskActionService {
                 taskService.complete(taskId, customVars);
                 processTaskService.completeTask(taskId, normalizedAction, comment, actionLabel);
 
-                log.info("任务 {} 已通过自定义操作完成: action={}, user={}", taskId, normalizedAction, userId);
+                log.info("任务 {} 已通过自定义操作完成: action={}, user={}",
+                        LogValue.safe(taskId), LogValue.safe(normalizedAction), LogValue.safe(userId));
                 break;
         }
 
@@ -569,9 +573,11 @@ public class TaskActionService {
             // 清理本地待办
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
 
-            log.info("流程实例 {} 已被用户 {} 撤回，原因: {}", processInstanceId, userId, reason);
+            log.info("流程实例 {} 已被用户 {} 撤回，原因: {}",
+                    LogValue.safe(processInstanceId), LogValue.safe(userId), LogValue.safe(reason));
         } catch (Exception e) {
-            log.error("撤回流程失败: {}", processInstanceId, e);
+            log.error("撤回流程失败: processInstanceId={}, failureType={}",
+                    LogValue.safe(processInstanceId), LogValue.failureType(e));
             throw new RuntimeException("撤回失败: " + e.getMessage());
         }
     }

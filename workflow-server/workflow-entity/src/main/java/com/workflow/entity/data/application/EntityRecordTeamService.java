@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.UUID;
+import java.util.Map;
 
 /**
  * 实体数据参与团队服务，负责维护记录级参与事件表与团队可见性权限范围。
@@ -165,10 +167,10 @@ public class EntityRecordTeamService {
                 Integer.class,
                 tableName);
         if (count == null || count == 0) {
-            log.error("实体参与团队表不存在: entityCode={}, tableName={}", entityCode, tableName);
+            log.error("实体参与团队表不存在: entityCode={}, tableName={}",
+                    LogValue.safe(entityCode), LogValue.safe(tableName));
             return TeamPermission.disabled();
         }
-        String escapedUserId = userId.replace("'", "''");
         return new TeamPermission(
                 true,
                 snapshot.getTeamVisibilityLevel() == null
@@ -176,7 +178,8 @@ public class EntityRecordTeamService {
                         : snapshot.getTeamVisibilityLevel(),
                 "EXISTS (SELECT 1 FROM `" + tableName + "` team "
                         + "WHERE team.record_id = `" + tableResolver.resolve(entityCode)
-                        + "`.id AND team.user_id = '" + escapedUserId + "')");
+                        + "`.id AND team.user_id = #{permissionParameters.teamUserId})",
+                Map.of("teamUserId", userId));
     }
 
     private String checkedIdentifier(String value) {
@@ -210,12 +213,14 @@ public class EntityRecordTeamService {
     public record TeamPermission(
             boolean enabled,
             EntityDefinition.TeamVisibilityLevel level,
-            String sqlCondition) {
+            String sqlCondition,
+            Map<String, Object> sqlParameters) {
         public static TeamPermission disabled() {
             return new TeamPermission(
                     false,
                     EntityDefinition.TeamVisibilityLevel.ADDITIVE,
-                    null);
+                    null,
+                    Map.of());
         }
     }
 }

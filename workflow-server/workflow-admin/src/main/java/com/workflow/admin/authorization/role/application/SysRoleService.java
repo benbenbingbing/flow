@@ -1,5 +1,6 @@
 package com.workflow.admin.authorization.role.application;
 
+import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -126,11 +127,11 @@ public class SysRoleService {
             // 新增
             role.setCreateTime(LocalDateTime.now());
             roleMapper.insert(role);
-            log.info("新增角色：{}", role.getRoleName());
+            log.info("新增角色：{}", LogValue.safe(role.getRoleName()));
         } else {
             // 更新
             roleMapper.updateById(role);
-            log.info("更新角色：{}", role.getRoleName());
+            log.info("更新角色：{}", LogValue.safe(role.getRoleName()));
         }
         
         // 保存菜单权限

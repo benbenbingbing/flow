@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
@@ -79,7 +80,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
         } else if (!permission.isNeedFilter()) {
             dataList = dynamicMapper.selectList(tableName);
         } else {
-            dataList = dynamicMapper.selectListWithPermission(tableName, permission.getSqlCondition());
+            dataList = dynamicMapper.selectListWithPermission(
+                    tableName, permission.getSqlCondition(), permission.getSqlParameters());
         }
 
         List<EntityField> runtimeFields = getRuntimeFields(entityCode);
@@ -111,7 +113,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
         } else if (!permission.isNeedFilter()) {
             return dynamicMapper.selectList(tableName);
         } else {
-            return dynamicMapper.selectListWithPermission(tableName, permission.getSqlCondition());
+            return dynamicMapper.selectListWithPermission(
+                    tableName, permission.getSqlCondition(), permission.getSqlParameters());
         }
     }
 
@@ -234,11 +237,13 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 total = dynamicMapper.countByConditionWithPermission(
                         tableName,
                         condition,
-                        permission.getSqlCondition());
+                        permission.getSqlCondition(),
+                        permission.getSqlParameters());
                 rows = dynamicMapper.selectPageByConditionWithPermission(
                         tableName,
                         condition,
                         permission.getSqlCondition(),
+                        permission.getSqlParameters(),
                         offset,
                         pageSize);
             } else {
@@ -252,10 +257,12 @@ public class EntityDataDynamicService implements EntityRecordPort {
         } else if (permission.isNeedFilter()) {
             total = dynamicMapper.countWithPermission(
                     tableName,
-                    permission.getSqlCondition());
+                    permission.getSqlCondition(),
+                    permission.getSqlParameters());
             rows = dynamicMapper.selectPageWithPermission(
                     tableName,
                     permission.getSqlCondition(),
+                    permission.getSqlParameters(),
                     offset,
                     pageSize);
         } else {
@@ -301,7 +308,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
             throw new ForbiddenException("数据不存在或无权访问");
         }
         Map<String, Object> data = permission.isNeedFilter()
-                ? dynamicMapper.selectByIdWithPermission(tableName, id, permission.getSqlCondition())
+                ? dynamicMapper.selectByIdWithPermission(
+                        tableName, id, permission.getSqlCondition(), permission.getSqlParameters())
                 : dynamicMapper.selectById(tableName, id);
         if (data == null) {
             throw new ForbiddenException("数据不存在或不在当前数据权限范围内");
@@ -355,8 +363,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
     public EntityDataDTO save(EntityDataDTO dto) {
         log.info(
                 "保存实体数据: entityCode={}, id={}, fieldCount={}, startProcess={}",
-                dto.getEntityCode(),
-                dto.getId(),
+                LogValue.safe(dto.getEntityCode()),
+                LogValue.safe(dto.getId()),
                 dto.getData() == null
                         ? 0
                         : dto.getData().size(),
@@ -586,8 +594,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
                     } else {
                         log.warn(
                                 "忽略实体更新请求中的未发布字段: entityCode={}, field={}",
-                                entityCode,
-                                column);
+                                LogValue.safe(entityCode),
+                                LogValue.safe(column));
                     }
                 });
 
@@ -711,7 +719,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
         } else if (!permission.isNeedFilter()) {
             dataList = dynamicMapper.selectByCondition(tableName, condition);
         } else {
-            dataList = dynamicMapper.selectByConditionWithPermission(tableName, condition, permission.getSqlCondition());
+            dataList = dynamicMapper.selectByConditionWithPermission(
+                    tableName, condition, permission.getSqlCondition(), permission.getSqlParameters());
         }
 
         List<EntityField> runtimeFields = getRuntimeFields(entityCode);
@@ -743,7 +752,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
         } else if (!permission.isNeedFilter()) {
             return dynamicMapper.count(tableName);
         } else {
-            return dynamicMapper.countWithPermission(tableName, permission.getSqlCondition());
+            return dynamicMapper.countWithPermission(
+                    tableName, permission.getSqlCondition(), permission.getSqlParameters());
         }
     }
 
@@ -990,8 +1000,8 @@ public class EntityDataDynamicService implements EntityRecordPort {
             EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
             return snapshot.getFields() != null ? snapshot.getFields() : List.of();
         } catch (RuntimeException exception) {
-            log.debug("读取实体发布字段失败，使用兼容字段映射: entityCode={}, reason={}",
-                    entityCode, exception.getMessage());
+            log.debug("读取实体发布字段失败，使用兼容字段映射: entityCode={}, failureType={}",
+                    LogValue.safe(entityCode), LogValue.failureType(exception));
             return List.of();
         }
     }
@@ -1011,10 +1021,9 @@ public class EntityDataDynamicService implements EntityRecordPort {
                 return statuses.get(0).getStatusCode();
             }
         } catch (Exception e) {
-            log.warn("获取实体[{}]默认状态失败: {}", entityCode, e.getMessage());
+            log.warn("获取实体[{}]默认状态失败: failureType={}", LogValue.safe(entityCode), LogValue.failureType(e));
         }
         // 默认返回 DRAFT
         return "DRAFT";
     }
-
 }

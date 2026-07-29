@@ -1,5 +1,6 @@
 package com.workflow.process.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.process.definition.api.request.ProcessDefinitionQueryDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
@@ -322,7 +323,7 @@ public class ProcessDefinitionService {
         config.setUpdatedAt(java.time.LocalDateTime.now());
         processMapper.updateById(config);
         
-        log.info("Logic deleted process {}", id);
+        log.info("Logic deleted process {}", LogValue.safe(id));
     }
     
     /**
@@ -443,7 +444,7 @@ public class ProcessDefinitionService {
         processMapper.updateById(config);
         
         log.info("Process {} rolled back to version {} for reason: {}", 
-                processId, targetVersion.getVersion(), reason);
+                LogValue.safe(processId), targetVersion.getVersion(), LogValue.safe(reason));
         
         return convertToDTO(config);
     }
@@ -502,7 +503,7 @@ public class ProcessDefinitionService {
         version.setDeleted(1);
         versionHistoryMapper.updateById(version);
         
-        log.info("Logic deleted version {}", versionId);
+        log.info("Logic deleted version {}", LogValue.safe(versionId));
     }
     
     // Convert methods
@@ -565,7 +566,7 @@ public class ProcessDefinitionService {
             throw new RuntimeException("Process not found");
         }
         String bpmnXml = config.getBpmnXml();
-        log.info("测试解析流程 {}, BPMN XML长度: {}", processConfigId, bpmnXml.length());
+        log.info("测试解析流程 {}, BPMN XML长度: {}", LogValue.safe(processConfigId), bpmnXml.length());
         nodeSyncService.parseAndSaveNodeConfigs(processConfigId, bpmnXml);
     }
 }

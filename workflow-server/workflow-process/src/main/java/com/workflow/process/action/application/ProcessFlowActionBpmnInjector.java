@@ -1,5 +1,6 @@
 package com.workflow.process.action.application;
 
+import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -67,7 +68,8 @@ public class ProcessFlowActionBpmnInjector {
 
             return toXmlString(doc);
         } catch (Exception e) {
-            log.warn("清理历史流程动作监听器失败: processConfigId={}", processConfigId, e);
+            log.warn("清理历史流程动作监听器失败: processConfigId={}, failureType={}",
+                    LogValue.safe(processConfigId), LogValue.failureType(e));
             return bpmnXml;
         }
     }

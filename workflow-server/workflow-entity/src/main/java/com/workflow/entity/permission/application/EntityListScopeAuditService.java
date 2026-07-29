@@ -1,5 +1,6 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.core.logging.LogValue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeAuditLog;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeAuditLogMapper;
@@ -56,8 +57,8 @@ public class EntityListScopeAuditService {
             logEntry.setCreateTime(LocalDateTime.now());
             auditLogMapper.insert(logEntry);
         } catch (Exception exception) {
-            log.warn("记录实体列表数据范围审计日志失败: entityCode={}, operation={}",
-                    entityCode, operation, exception);
+            log.warn("记录实体列表数据范围审计日志失败: entityCode={}, operation={}, failureType={}",
+                    LogValue.safe(entityCode), LogValue.safe(operation), LogValue.failureType(exception));
         }
     }
 }

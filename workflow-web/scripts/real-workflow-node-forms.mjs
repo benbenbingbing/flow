@@ -41,10 +41,10 @@ async function api(method, url, body) {
   try {
     json = text ? JSON.parse(text) : null
   } catch {
-    throw new Error(`${method} ${url} returned non-json: ${text.slice(0, 300)}`)
+    throw new Error(`${method} ${url} returned non-json: HTTP ${response.status}`)
   }
   if (!response.ok || (json?.code != null && ![0, 200].includes(Number(json.code)))) {
-    throw new Error(`${method} ${url} failed: HTTP ${response.status}, body=${text.slice(0, 1200)}`)
+    throw new Error(`${method} ${url} failed: HTTP ${response.status}`)
   }
   return json?.data ?? json
 }
@@ -150,9 +150,16 @@ async function currentTodo(processInstanceId) {
 function writeEvidence(result) {
   const name = `node-form-matrix-${suffix}${result === 'PASS' ? '' : '-failed'}.json`
   const evidencePath = path.join(evidenceDir, name)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+  const report = {
+    result,
+    conclusion: evidence.conclusion,
+    error: evidence.error,
+    entityCode,
+    stepNames: evidence.steps.map(step => step.name)
+  }
+  writeFileSync(evidencePath, JSON.stringify(report, null, 2), { mode: 0o600 })
   const latestName = stopAt ? 'latest-fixture.json' : 'latest.json'
-  writeFileSync(path.join(evidenceDir, latestName), JSON.stringify(evidence, null, 2))
+  writeFileSync(path.join(evidenceDir, latestName), JSON.stringify(report, null, 2), { mode: 0o600 })
   return evidencePath
 }
 
@@ -406,10 +413,10 @@ async function main() {
 }
 
 main().catch(error => {
-  evidence.error = error.stack || String(error)
+  evidence.error = error instanceof Error ? error.name : 'UnknownError'
   evidence.conclusion = 'FAIL'
   const evidencePath = writeEvidence('FAIL')
-  console.error(error)
+  console.error(`real node form matrix failed: ${evidence.error}`)
   console.error(`evidence written: ${evidencePath}`)
   process.exit(1)
 })

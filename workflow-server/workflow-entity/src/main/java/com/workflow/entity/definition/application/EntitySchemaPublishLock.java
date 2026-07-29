@@ -1,5 +1,6 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,14 +35,14 @@ public class EntitySchemaPublishLock {
             if (!Integer.valueOf(1).equals(released)) {
                 log.warn(
                         "Entity schema publish lock was not owned when released: entityId={}",
-                        entityId);
+                        LogValue.safe(entityId));
             }
         } catch (RuntimeException exception) {
             // Connection loss releases MySQL named locks; do not mask the publish result.
             log.warn(
                     "Failed to explicitly release entity schema publish lock: entityId={}",
-                    entityId,
-                    exception);
+                    LogValue.safe(entityId),
+                    LogValue.failureType(exception));
         }
     }
 }

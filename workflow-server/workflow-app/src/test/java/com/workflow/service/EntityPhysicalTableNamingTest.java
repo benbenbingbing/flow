@@ -19,6 +19,16 @@ class EntityPhysicalTableNamingTest {
     /** 被测命名服务 */
     private final EntityPhysicalTableNaming naming = new EntityPhysicalTableNaming();
 
+    @Test
+    void normalizesSeparatorsWithoutRegularExpressions() {
+        assertEquals("biz_order_item", naming.generate(" OrderItem___ "));
+    }
+
+    @Test
+    void rejectsOverlongEntityCodesBeforeNormalization() {
+        assertThrows(IllegalArgumentException.class, () -> naming.generate("a".repeat(129)));
+    }
+
     /** 测试生成 biz 前缀的蛇形表名：验证驼峰与下划线输入产出一致 */
     @Test
     void shouldGenerateBizPrefixedSnakeCaseName() {

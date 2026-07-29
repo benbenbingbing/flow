@@ -1,5 +1,6 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.process.task.application.ProcessTaskService;
 
 import com.workflow.core.result.Result;
@@ -114,7 +115,7 @@ public class ProcessRollbackService {
             // 这里简化处理：直接创建一个新任务
 
             log.info("任务 {} 被 {} 驳回，将重新分配给发起人 {}", 
-                    taskId, userId, startUserId);
+                    LogValue.safe(taskId), LogValue.safe(userId), LogValue.safe(startUserId));
 
             // 7. 同步待办状态
             processTaskService.syncTasksFromFlowable(processInstanceId);
@@ -125,7 +126,8 @@ public class ProcessRollbackService {
             return Result.success(null);
 
         } catch (Exception e) {
-            log.error("驳回任务失败: taskId={}, userId={}", taskId, userId, e);
+            log.error("驳回任务失败: taskId={}, userId={}, failureType={}",
+                    LogValue.safe(taskId), LogValue.safe(userId), LogValue.failureType(e));
             return Result.error(500, "驳回失败: " + e.getMessage());
         }
     }
@@ -202,7 +204,7 @@ public class ProcessRollbackService {
             // 6. 完成任务（继续流程）
             taskService.complete(currentTask.getId(), variables);
 
-            log.info("流程 {} 被发起人 {} 重新提交", processInstanceId, userId);
+            log.info("流程 {} 被发起人 {} 重新提交", LogValue.safe(processInstanceId), LogValue.safe(userId));
 
             // 7. 同步待办状态
             processTaskService.syncTasksFromFlowable(processInstanceId);
@@ -211,7 +213,7 @@ public class ProcessRollbackService {
 
         } catch (Exception e) {
             log.error("重新提交失败: processInstanceId={}, userId={}", 
-                    processInstanceId, userId, e);
+                    LogValue.safe(processInstanceId), LogValue.safe(userId), LogValue.failureType(e));
             return Result.error(500, "重新提交失败: " + e.getMessage());
         }
     }

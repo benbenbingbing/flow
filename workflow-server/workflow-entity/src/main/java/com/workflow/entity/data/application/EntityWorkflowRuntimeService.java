@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.process.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
@@ -134,9 +135,9 @@ public class EntityWorkflowRuntimeService {
         } catch (Exception exception) {
             log.warn(
                     "获取实体[{}]状态分类[{}]失败: {}",
-                    entityCode,
-                    category,
-                    exception.getMessage());
+                    LogValue.safe(entityCode),
+                    LogValue.safe(category),
+                    LogValue.failureType(exception));
         }
         return fallback;
     }

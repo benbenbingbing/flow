@@ -1,5 +1,6 @@
 package com.workflow.process.form.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.contracts.audit.AuditAction;
@@ -82,13 +83,13 @@ public class ProcessNodeFormService {
             nodeForm.setId(existing.getId());
             nodeFormMapper.updateById(nodeForm);
             log.info("更新节点表单绑定：process={}, node={}", 
-                nodeForm.getProcessConfigId(), nodeForm.getNodeId());
+                LogValue.safe(nodeForm.getProcessConfigId()), LogValue.safe(nodeForm.getNodeId()));
         } else {
             // 新增
             nodeForm.setCreateTime(LocalDateTime.now());
             nodeFormMapper.insert(nodeForm);
             log.info("新增节点表单绑定：process={}, node={}", 
-                nodeForm.getProcessConfigId(), nodeForm.getNodeId());
+                LogValue.safe(nodeForm.getProcessConfigId()), LogValue.safe(nodeForm.getNodeId()));
         }
         
         return nodeForm;

@@ -1,5 +1,6 @@
 package com.workflow.entity.list.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.ui.application.UiDataSourceService;
 
@@ -198,7 +199,8 @@ public class EntityDataListConfigService {
                 try {
                     provider.enrich(records, fields, context);
                 } catch (Exception e) {
-                    log.error("列表字段数据补充失败: type={}, entityCode={}", dataSourceType, entityCode, e);
+                    log.error("列表字段数据补充失败: type={}, entityCode={}, failureType={}",
+                            LogValue.safe(dataSourceType), LogValue.safe(entityCode), LogValue.failureType(e));
                     throw new IllegalStateException("列表扩展字段计算失败: " + dataSourceType, e);
                 }
             }

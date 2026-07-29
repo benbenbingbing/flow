@@ -1,5 +1,6 @@
 package com.workflow.storage.infrastructure.local;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.storage.application.FileStorageStrategy;
 import com.workflow.storage.application.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
@@ -78,7 +79,7 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             result.put("originalName", originalFilename);
             result.put("size", String.valueOf(file.getSize()));
 
-            log.info("本地文件上传成功: {}", newFilename);
+            log.info("本地文件上传成功: {}", LogValue.safe(newFilename));
             return result;
         } catch (IOException e) {
             log.error("本地文件上传失败", e);
@@ -105,7 +106,7 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
                 return false;
             }
             if (file.exists() && file.delete()) {
-                log.info("本地文件删除成功: {}", filename);
+                log.info("本地文件删除成功: {}", LogValue.safe(filename));
                 return true;
             }
             return false;

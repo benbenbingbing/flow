@@ -1,5 +1,6 @@
 package com.workflow.process.form.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.entity.EntityFormBinding;
 import com.workflow.contracts.entity.EntityFormRuntimeContext;
 import com.workflow.contracts.entity.EntityFormRuntimePort;
@@ -61,7 +62,7 @@ public class EntityFormResolveService {
         EntityFormRuntimeContext context =
                 entityFormRuntimePort.findContext(entityCode).orElse(null);
         if (context == null) {
-            log.debug("未找到实体定义[{}]", entityCode);
+            log.debug("未找到实体定义[{}]", LogValue.safe(entityCode));
             return null;
         }
         if (context.defaultForm() != null) {
@@ -107,7 +108,7 @@ public class EntityFormResolveService {
         EntityFormRuntimeContext context =
                 entityFormRuntimePort.findContext(entityCode).orElse(null);
         if (context == null) {
-            log.debug("未找到实体定义[{}]", entityCode);
+            log.debug("未找到实体定义[{}]", LogValue.safe(entityCode));
             return null;
         }
         if (!context.workflowEnabled()) {

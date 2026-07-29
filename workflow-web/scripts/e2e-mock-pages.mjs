@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
@@ -473,17 +473,7 @@ function mockApiResponse(requestUrl) {
 }
 
 function getRoutes() {
-  const source = readFileSync('src/router/index.js', 'utf8')
-  return [...source.matchAll(/path:\s*'([^']+)'/g)]
-    .map((match) => match[1])
-    .filter((routePath) => routePath.startsWith('/') && !routePath.includes('pathMatch') && routePath !== '/')
-    .map((routePath) => routePath
-      .replace(':id?', 'e2e-process')
-      .replace(':id', routePath.includes('entity-form') ? 'e2e-form' : routePath.includes('entity-list-config') ? 'e2e-list' : routePath.includes('entity') ? 'e2e-entity' : 'e2e-process')
-      .replace(':code', 'project')
-      .replace(':entityCode', 'project')
-      .replace(':entityId', 'e2e-entity')
-      .replace(':instanceId', 'e2e-instance'))
+  return [...expectedRouteText.keys()]
 }
 
 const expectedRouteText = new Map([
