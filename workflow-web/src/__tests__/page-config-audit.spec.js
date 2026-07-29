@@ -1404,6 +1404,12 @@ assert.doesNotMatch(
 )
 
 const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8')
+const nginxSource = readFileSync(path.join(root, 'nginx.conf'), 'utf8')
+assert.match(
+  nginxSource,
+  /location\s+\/oauth2\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/\$\{SERVER_UPSTREAM\}\/oauth2\/;/,
+  '生产 Web 入口必须代理 OAuth2 令牌端点'
+)
 ;[
   '"test:acceptance:preflight"',
   '"test:acceptance:real"',
