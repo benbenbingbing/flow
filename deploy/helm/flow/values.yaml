@@ -82,6 +82,36 @@ application:
   logLevel: INFO
   shutdownTimeout: 30s
 
+openApi:
+  enabled: false
+  issuer: https://flow.example.com
+  audience: flow-open-api
+  accessTokenTtl: 10m
+  keyId: ""
+  privateKeySecretKey: open-api-private-key
+  publicKeySecretKey: open-api-public-key
+  previousPublicKeys: []
+  tokenClientLimitPerMinute: 30
+  tokenAddressLimitPerMinute: 300
+  trustForwardedHeaders: false
+  trustedProxyCidrs: []
+  webhook:
+    enabled: false
+    masterKeySecretKey: webhook-master-key
+    workerConcurrency: 4
+    workerQueueCapacity: 200
+    workerBatchSize: 100
+    workerLeaseSeconds: 30
+    workerDelayMs: 1000
+    metricsRefreshMs: 15000
+
+connector:
+  http:
+    enabled: false
+    masterKeyVersion: ""
+    masterKeySecretKey: integration-connector-master-key
+    previousMasterKeysSecretKey: ""
+
 monitoring:
   serviceMonitor:
     enabled: false
@@ -94,6 +124,11 @@ monitoring:
     minimumReadyReplicas: 2
     http5xxRatio: 0.05
     queueOldestReadySeconds: 300
+    webhookOldestPendingSeconds: 300
+    webhookSuccessRatio: 0.95
+    webhookMinimumAttempts: 10
+    connectorSuccessRatio: 0.95
+    connectorMinimumAttempts: 10
 
 ingress:
   enabled: false

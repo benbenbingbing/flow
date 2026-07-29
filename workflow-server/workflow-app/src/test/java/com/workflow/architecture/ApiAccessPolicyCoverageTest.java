@@ -23,6 +23,7 @@ class ApiAccessPolicyCoverageTest {
             "com.workflow.admin",
             "com.workflow.entity",
             "com.workflow.migration",
+            "com.workflow.openapi",
             "com.workflow.process",
             "com.workflow.storage");
 

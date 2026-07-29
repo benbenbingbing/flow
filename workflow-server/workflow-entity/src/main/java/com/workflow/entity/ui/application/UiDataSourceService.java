@@ -471,6 +471,8 @@ public class UiDataSourceService {
                                     authorization,
                                     input))
                             .operation(text(config.get("operation")))
+                            .connectorConfigId(text(
+                                    config.get("connectorConfigId")))
                             .parameters(Collections.unmodifiableMap(
                                     new LinkedHashMap<>(input)))
                             .runtimeContext(integrationRuntimeContext(
@@ -538,10 +540,8 @@ public class UiDataSourceService {
         }
         validateNoForbiddenKeys(request.getConfig(), "config");
         validateExecutionPolicy(request.getExecutionPolicy());
-        if (Set.of("REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR").contains(sourceType)
-                && !StringUtils.hasText(request.getProviderCode())) {
-            throw new IllegalArgumentException("Provider/Connector编码不能为空");
-        }
+        UiDataSourceProviderPolicy.validate(
+                sourceType, request.getProviderCode(), request.getConfig());
         requireScopeAccess(scopeType, request.getScopeId());
     }
 

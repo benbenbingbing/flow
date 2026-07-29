@@ -52,10 +52,13 @@ public class CorsConfig {
                 // Authentication always runs first; only login is intentionally anonymous.
                 registry.addInterceptor(authInterceptor)
                         .addPathPatterns("/api/**")
-                        .excludePathPatterns("/api/auth/login");
+                        .excludePathPatterns(
+                                "/api/auth/login",
+                                "/api/open/**");
                 // Every mapped API must then declare an explicit access policy.
                 registry.addInterceptor(endpointAuthorizationInterceptor)
-                        .addPathPatterns("/api/**");
+                        .addPathPatterns("/api/**")
+                        .excludePathPatterns("/api/open/**");
             }
         };
     }

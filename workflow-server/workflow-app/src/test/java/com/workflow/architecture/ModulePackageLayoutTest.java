@@ -30,6 +30,7 @@ class ModulePackageLayoutTest {
                 "workflow-storage",
                 "workflow-entity",
                 "workflow-process",
+                "workflow-open-api",
                 "workflow-integration",
                 "workflow-migration",
                 "workflow-devtools",
@@ -62,6 +63,9 @@ class ModulePackageLayoutTest {
                 new ModuleLayout("workflow-storage", "com.workflow.storage"),
                 new ModuleLayout("workflow-entity", "com.workflow.entity"),
                 new ModuleLayout("workflow-process", "com.workflow.process"),
+                new ModuleLayout(
+                        "workflow-open-api",
+                        "com.workflow.openapi"),
                 new ModuleLayout(
                         "workflow-migration",
                         "com.workflow.migration"),

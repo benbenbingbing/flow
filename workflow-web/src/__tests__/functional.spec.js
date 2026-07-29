@@ -355,7 +355,16 @@ const apiExpectations = {
   'src/api/system/role.ts': ['getRoleList', 'createRole', 'updateRole', 'deleteRole', 'getRoleUsers', 'saveRoleMenus'],
   'src/api/system/group.ts': ['getGroupList', 'createGroup', 'updateGroup', 'deleteGroup', 'saveGroupUsers'],
   'src/api/system/dict.ts': ['getDictList', 'createDict', 'updateDict', 'deleteDict'],
-  'src/api/system/audit.ts': ['getSystemAuditLogs', 'getSystemAuditLogDetail', 'exportSystemAuditLogs']
+  'src/api/system/audit.ts': ['getSystemAuditLogs', 'getSystemAuditLogDetail', 'exportSystemAuditLogs'],
+  'src/api/system/openIntegration.js': [
+    'integrationApplicationApi',
+    'integrationWebhookApi',
+    'integrationSecretApi',
+    'integrationConnectorApi',
+    'validate',
+    'rotateCredential',
+    'replay'
+  ]
 }
 
 for (const [file, names] of Object.entries(apiExpectations)) {
@@ -414,7 +423,12 @@ const pageFeatureExpectations = {
   'src/views/system/Menu.vue': ['handleAddTopLevel', 'handleAddChild', 'handleEdit', 'handleDelete', 'handleStatusChange', 'handleVisibleChange', 'handleSortChange'],
   'src/views/system/User.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleResetPassword'],
   'src/views/system/Role.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleAssignMenu', 'handleSaveMenus'],
-  'src/views/system/Dict.vue': ['handleAddDict', 'handleEditDict', 'handleDeleteDict', 'handleAddItem', 'handleEditItem', 'handleDeleteItem']
+  'src/views/system/Dict.vue': ['handleAddDict', 'handleEditDict', 'handleDeleteDict', 'handleAddItem', 'handleEditItem', 'handleDeleteItem'],
+  'src/views/system/OpenIntegration.vue': ['loadApplications', 'createApplication', 'selectedId'],
+  'src/views/system/open-integration/IntegrationApplicationPanel.vue': ['saveAccess', 'saveContracts', 'rotateCredential', 'revokeCredential'],
+  'src/views/system/open-integration/IntegrationWebhookPanel.vue': ['validateEndpoint', 'rotate', 'replay'],
+  'src/views/system/open-integration/IntegrationSecretPanel.vue': ['openRotate', 'revoke', 'destroy'],
+  'src/views/system/open-integration/IntegrationConnectorPanel.vue': ['openCreate', 'openEdit', 'save', 'openTest', 'runTest']
 }
 
 for (const [file, names] of Object.entries(pageFeatureExpectations)) {

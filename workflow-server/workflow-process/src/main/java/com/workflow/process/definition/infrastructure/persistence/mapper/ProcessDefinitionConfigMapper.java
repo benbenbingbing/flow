@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,6 +36,23 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
      */
     @Select("SELECT * FROM process_definition_config WHERE status = #{status} AND (deleted = 0 OR deleted IS NULL)")
     List<ProcessDefinitionConfig> findByStatus(@Param("status") String status);
+
+    @Select("""
+            <script>
+            SELECT *
+              FROM process_definition_config
+             WHERE status = 'PUBLISHED'
+               AND (deleted = 0 OR deleted IS NULL)
+               AND process_key IN
+               <foreach collection="processKeys" item="processKey"
+                        open="(" separator="," close=")">
+                 #{processKey}
+               </foreach>
+             ORDER BY process_key
+            </script>
+            """)
+    List<ProcessDefinitionConfig> findPublishedByKeys(
+            @Param("processKeys") Collection<String> processKeys);
 
     /**
      * 检查流程标识是否存在（排除已删除）

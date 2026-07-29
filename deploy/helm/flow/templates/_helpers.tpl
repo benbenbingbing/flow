@@ -2,6 +2,14 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "flow.openApiPreviousPublicKeys" -}}
+{{- $keys := list -}}
+{{- range .Values.openApi.previousPublicKeys -}}
+{{- $keys = append $keys (printf "%s=file:/var/run/flow-open-api-keys/%s" .keyId .fileName) -}}
+{{- end -}}
+{{- join "," $keys -}}
+{{- end -}}
+
 {{- define "flow.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}

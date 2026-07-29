@@ -154,6 +154,36 @@ file:
       path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
 
 workflow:
+  integration:
+    connector:
+      http:
+        enabled: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED:false}
+        master-key: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY:}
+        master-key-version: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION:}
+        previous-master-keys: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_PREVIOUS_MASTER_KEYS:}
+  open-api:
+    enabled: ${WORKFLOW_OPEN_API_ENABLED:false}
+    issuer: ${WORKFLOW_OPEN_API_ISSUER:https://flow.invalid}
+    audience: ${WORKFLOW_OPEN_API_AUDIENCE:flow-open-api}
+    access-token-ttl: ${WORKFLOW_OPEN_API_ACCESS_TOKEN_TTL:10m}
+    key-id: ${WORKFLOW_OPEN_API_KEY_ID:}
+    private-key-location: ${WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION:}
+    public-key-location: ${WORKFLOW_OPEN_API_PUBLIC_KEY_LOCATION:}
+    previous-public-keys: ${WORKFLOW_OPEN_API_PREVIOUS_PUBLIC_KEYS:}
+    token-client-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_CLIENT_LIMIT:30}
+    token-address-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_ADDRESS_LIMIT:300}
+    trust-forwarded-headers: ${WORKFLOW_OPEN_API_TRUST_FORWARDED_HEADERS:false}
+    trusted-proxy-cidrs: ${WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS:}
+    webhook:
+      enabled: ${WORKFLOW_OPEN_API_WEBHOOK_ENABLED:false}
+      master-key: ${WORKFLOW_OPEN_API_WEBHOOK_MASTER_KEY:}
+      metrics-refresh-ms: ${WORKFLOW_OPEN_API_WEBHOOK_METRICS_REFRESH_MS:15000}
+      worker:
+        concurrency: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_CONCURRENCY:4}
+        queue-capacity: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_QUEUE_CAPACITY:200}
+        batch-size: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_BATCH_SIZE:100}
+        lease-seconds: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_LEASE_SECONDS:30}
+        delay-ms: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_DELAY_MS:1000}
   metrics:
     queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}
   http:
@@ -162,6 +192,7 @@ workflow:
     allow-private-addresses: ${WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES:false}
     connect-timeout-seconds: ${WORKFLOW_HTTP_CONNECT_TIMEOUT_SECONDS:5}
     max-request-timeout-seconds: ${WORKFLOW_HTTP_MAX_REQUEST_TIMEOUT_SECONDS:30}
+    max-request-bytes: ${WORKFLOW_HTTP_MAX_REQUEST_BYTES:262144}
     max-response-bytes: ${WORKFLOW_HTTP_MAX_RESPONSE_BYTES:1048576}
   security:
     trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}

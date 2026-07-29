@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flow.example/schemas/events/task-completed-v1.schema.json",
+  "title": "Flow task completed event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specversion",
+    "id",
+    "source",
+    "type",
+    "subject",
+    "time",
+    "datacontenttype",
+    "dataschema",
+    "traceid",
+    "data"
+  ],
+  "properties": {
+    "specversion": { "const": "1.0" },
+    "id": { "type": "string", "minLength": 8, "maxLength": 128 },
+    "source": { "const": "/flow/process" },
+    "type": { "const": "com.flow.task.completed.v1" },
+    "subject": {
+      "type": "string",
+      "pattern": "^task/[A-Za-z0-9][A-Za-z0-9_-]{7,127}$"
+    },
+    "time": { "type": "string", "format": "date-time" },
+    "datacontenttype": { "const": "application/json" },
+    "dataschema": { "const": "/schemas/events/task-completed-v1.schema.json" },
+    "traceid": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "taskDefinitionKey",
+        "processInstanceId",
+        "processKey",
+        "status",
+        "businessReference",
+        "outcome",
+        "completedAt"
+      ],
+      "properties": {
+        "taskId": { "$ref": "#/$defs/publicId" },
+        "taskDefinitionKey": { "$ref": "#/$defs/key" },
+        "processInstanceId": { "$ref": "#/$defs/publicId" },
+        "processKey": { "$ref": "#/$defs/key" },
+        "status": { "const": "COMPLETED" },
+        "businessReference": { "$ref": "#/$defs/businessReference" },
+        "outcome": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$"
+        },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "$defs": {
+    "publicId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$"
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+    },
+    "businessReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "type", "id"],
+      "properties": {
+        "system": { "$ref": "#/$defs/key" },
+        "type": { "$ref": "#/$defs/key" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    }
+  }
+}

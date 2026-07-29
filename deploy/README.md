@@ -26,9 +26,56 @@ through External Secrets, Sealed Secrets, or the platform secret manager:
 | `config-migration-signing-key` | Configuration package signing |
 | `bootstrap-admin-password` | Initial administrator activation |
 | `s3-access-key`, `s3-secret-key` | Shared object storage |
+| `open-api-private-key`, `open-api-public-key` | Current Open Integration RSA signing pair when `openApi.enabled=true` |
+| `webhook-master-key` | Base64-encoded 32-byte AES key used to encrypt Webhook signing secrets |
 
 Do not reuse the runtime and schema database users. Rotate application secrets
 through the secret manager and a controlled rolling deployment.
+
+The Open Integration keys must be PKCS#8 private and X.509 public PEM files
+from the same RSA key pair, with a minimum size of 2048 bits. Configure a
+stable, versioned `openApi.keyId`. Historical verification public keys are
+optional and are projected from the same external Secret:
+
+```yaml
+openApi:
+  enabled: true
+  issuer: https://flow.example.com
+  keyId: signing-2026-07
+  privateKeySecretKey: open-api-private-key
+  publicKeySecretKey: open-api-public-key
+  previousPublicKeys:
+    - keyId: signing-2026-06
+      secretKey: open-api-public-key-2026-06
+      fileName: signing-2026-06.pem
+```
+
+Never place PEM data in a Helm values file. Keep at most three historical
+public keys and remove each one after the maximum access-token lifetime plus
+the rollout safety margin.
+
+Webhook delivery is independently disabled by default. Before enabling
+`openApi.webhook.enabled`, add every approved destination hostname to
+`application.httpAllowedHosts`, add its stable destination CIDRs to
+`networkPolicy.outboundHttpsCIDRs`, and place a randomly generated 32-byte
+Base64 master key in the external Secret:
+
+```bash
+openssl rand -base64 32
+```
+
+The Helm release references that value by Secret key name and never places the
+key in rendered manifests. Rotating the master key requires re-encrypting
+stored Webhook secrets first; replacing it directly makes existing deliveries
+undecryptable. Webhook signing-secret rotation is a separate application-level
+operation and supports a 48-hour overlap.
+
+Open Integration ignores forwarded client-address headers by default. When it
+runs behind a trusted ingress, set `openApi.trustForwardedHeaders=true` and
+list only the ingress or load-balancer networks in
+`openApi.trustedProxyCidrs`. The service walks `X-Forwarded-For` from the
+nearest hop toward the client and ignores the header entirely when the direct
+peer is not trusted.
 
 ## Release gates
 

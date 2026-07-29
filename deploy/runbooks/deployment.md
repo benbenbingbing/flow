@@ -51,3 +51,21 @@ Rotate one boundary at a time. For database credentials, create the new
 identity/grants first, update the external Secret, roll workloads, verify old
 connections drain, then revoke the old identity. JWT rotation currently
 invalidates active tokens and must be communicated as a user sign-in event.
+
+Open Integration signing keys use a two-phase rollout so Pods never disagree
+about a valid token:
+
+1. Add the future public key to `openApi.previousPublicKeys` under its future
+   `keyId`, then roll every server Pod. Keep the current signing pair unchanged.
+2. Verify all ready Pods accept a test token carrying the future `kid`.
+3. Replace the current private/public pair and `openApi.keyId`. Move the former
+   current public key into `previousPublicKeys`, then roll every server Pod.
+4. Verify tokens signed before and after the switch across every ready Pod.
+5. Starting when the final Pod switches to the new signing key, retain the old
+   public key for at least 35 minutes: 30 minutes for the maximum token TTL,
+   one minute for verifier clock skew, and four minutes of operational margin.
+   Then remove the retired key and roll the server Pods once more.
+
+Abort the switch if any Pod has a different mounted Secret resource version or
+cannot validate both key IDs. A private key is never configured as a historical
+verification key.

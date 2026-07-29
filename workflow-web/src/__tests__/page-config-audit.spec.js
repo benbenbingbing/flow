@@ -59,7 +59,7 @@ assert.deepEqual(
   assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -1404,6 +1404,12 @@ assert.doesNotMatch(
 )
 
 const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8')
+const nginxSource = readFileSync(path.join(root, 'nginx.conf'), 'utf8')
+assert.match(
+  nginxSource,
+  /location\s+\/oauth2\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/\$\{SERVER_UPSTREAM\}\/oauth2\/;/,
+  '生产 Web 入口必须代理 OAuth2 令牌端点'
+)
 ;[
   '"test:acceptance:preflight"',
   '"test:acceptance:real"',

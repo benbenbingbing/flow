@@ -4,3 +4,59 @@
 {{- if and .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.objectStorageCIDRs) 0) }}
 {{- fail "networkPolicy.objectStorageCIDRs is required for external production object storage" }}
 {{- end }}
+{{- if and .Values.openApi.enabled (not (regexMatch "^https://[^[:space:]]+$" .Values.openApi.issuer)) }}
+{{- fail "openApi.issuer must be an HTTPS URL when openApi is enabled" }}
+{{- end }}
+{{- if and .Values.openApi.enabled (not (regexMatch "^[A-Za-z0-9._-]{1,64}$" .Values.openApi.keyId)) }}
+{{- fail "openApi.keyId is required when openApi is enabled" }}
+{{- end }}
+{{- if and .Values.openApi.enabled (eq .Values.openApi.privateKeySecretKey .Values.openApi.publicKeySecretKey) }}
+{{- fail "openApi private and public keys must use different Secret keys" }}
+{{- end }}
+{{- if and .Values.openApi.enabled .Values.openApi.trustForwardedHeaders (eq (len .Values.openApi.trustedProxyCidrs) 0) }}
+{{- fail "openApi.trustedProxyCidrs is required when forwarded headers are trusted" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled (not .Values.openApi.enabled) }}
+{{- fail "openApi must be enabled before Webhook delivery can be enabled" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled (not (regexMatch "^[A-Za-z0-9._-]{1,253}$" .Values.openApi.webhook.masterKeySecretKey)) }}
+{{- fail "openApi.webhook.masterKeySecretKey is invalid" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled (eq .Values.application.httpAllowedHosts "") }}
+{{- fail "application.httpAllowedHosts is required when Webhook delivery is enabled" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.outboundHttpsCIDRs) 0) }}
+{{- fail "networkPolicy.outboundHttpsCIDRs is required when Webhook delivery is enabled" }}
+{{- end }}
+{{- if and .Values.connector.http.enabled (not (regexMatch "^[A-Za-z0-9._-]{1,64}$" .Values.connector.http.masterKeyVersion)) }}
+{{- fail "connector.http.masterKeyVersion is required when HTTP Connector is enabled" }}
+{{- end }}
+{{- if and .Values.connector.http.enabled (not (regexMatch "^[A-Za-z0-9._-]{1,253}$" .Values.connector.http.masterKeySecretKey)) }}
+{{- fail "connector.http.masterKeySecretKey is invalid" }}
+{{- end }}
+{{- if and .Values.connector.http.enabled (ne .Values.connector.http.previousMasterKeysSecretKey "") (not (regexMatch "^[A-Za-z0-9._-]{1,253}$" .Values.connector.http.previousMasterKeysSecretKey)) }}
+{{- fail "connector.http.previousMasterKeysSecretKey is invalid" }}
+{{- end }}
+{{- if and .Values.connector.http.enabled (eq .Values.connector.http.masterKeySecretKey .Values.connector.http.previousMasterKeysSecretKey) }}
+{{- fail "connector.http current and previous master key Secret entries must differ" }}
+{{- end }}
+{{- if and .Values.connector.http.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.outboundHttpsCIDRs) 0) }}
+{{- fail "networkPolicy.outboundHttpsCIDRs is required when HTTP Connector is enabled" }}
+{{- end }}
+{{- $openApiKeyIds := dict }}
+{{- $openApiFileNames := dict }}
+{{- $openApiSecretKeys := dict .Values.openApi.privateKeySecretKey true .Values.openApi.publicKeySecretKey true }}
+{{- range .Values.openApi.previousPublicKeys }}
+{{- if or (eq .keyId $.Values.openApi.keyId) (hasKey $openApiKeyIds .keyId) }}
+{{- fail "openApi key IDs must be unique" }}
+{{- end }}
+{{- if or (eq .fileName "current-private.pem") (eq .fileName "current-public.pem") (hasKey $openApiFileNames .fileName) }}
+{{- fail "openApi key file names must be unique and must not use reserved current key names" }}
+{{- end }}
+{{- if hasKey $openApiSecretKeys .secretKey }}
+{{- fail "openApi Secret keys must be unique" }}
+{{- end }}
+{{- $_ := set $openApiKeyIds .keyId true }}
+{{- $_ := set $openApiFileNames .fileName true }}
+{{- $_ := set $openApiSecretKeys .secretKey true }}
+{{- end }}

@@ -7,6 +7,16 @@ import com.workflow.admin.auth.infrastructure.JwtUtil;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.time.Instant;
+import java.util.Date;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -136,6 +146,53 @@ class AuthInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void machineRsaTokenCannotEnterInternalUserApi()
+            throws Exception {
+        initJwtUtil();
+        KeyPairGenerator generator =
+                KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        RSAPrivateKey privateKey = (RSAPrivateKey)
+                generator.generateKeyPair().getPrivate();
+        Instant now = Instant.now();
+        SignedJWT machineToken = new SignedJWT(
+                new JWSHeader.Builder(JWSAlgorithm.RS256)
+                        .type(new JOSEObjectType("at+jwt"))
+                        .keyID("machine-test-key")
+                        .build(),
+                new JWTClaimsSet.Builder()
+                        .issuer("https://flow.test")
+                        .subject("flow_machine")
+                        .audience("flow-open-api")
+                        .issueTime(Date.from(now))
+                        .expirationTime(Date.from(
+                                now.plusSeconds(300)))
+                        .claim(
+                                "scope",
+                                java.util.Set.of(
+                                        "process.instance.read"))
+                        .build());
+        machineToken.sign(new RSASSASigner(privateKey));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(userService);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest(
+                        "GET",
+                        "/api/process/task/todo");
+        request.addHeader(
+                "Authorization",
+                "Bearer " + machineToken.serialize());
+        MockHttpServletResponse response =
+                new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(
+                request,
+                response,
+                new Object()));
         assertEquals(401, response.getStatus());
     }
 

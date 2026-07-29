@@ -25,7 +25,7 @@ spec:
       labels:
         {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 8 }}
       annotations:
-        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application) | sha256sum }}
+        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application "openApi" .Values.openApi) | sha256sum }}
     spec:
       serviceAccountName: {{ include "flow.fullname" . }}
       {{- with .Values.global.imagePullSecrets }}
@@ -89,10 +89,75 @@ spec:
               value: {{ .Values.application.trustForwardedHeaders | quote }}
             - name: WORKFLOW_HTTP_ALLOWED_HOSTS
               value: {{ .Values.application.httpAllowedHosts | quote }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED
+              value: {{ .Values.connector.http.enabled | quote }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION
+              value: {{ .Values.connector.http.masterKeyVersion | quote }}
+            {{- if .Values.connector.http.enabled }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.connector.http.masterKeySecretKey }}
+            {{- if ne .Values.connector.http.previousMasterKeysSecretKey "" }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_PREVIOUS_MASTER_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.connector.http.previousMasterKeysSecretKey }}
+            {{- end }}
+            {{- end }}
             - name: WORKFLOW_LOG_LEVEL
               value: {{ .Values.application.logLevel | quote }}
             - name: SHUTDOWN_TIMEOUT
               value: {{ .Values.application.shutdownTimeout | quote }}
+            - name: WORKFLOW_OPEN_API_ENABLED
+              value: {{ .Values.openApi.enabled | quote }}
+            - name: WORKFLOW_OPEN_API_ISSUER
+              value: {{ .Values.openApi.issuer | quote }}
+            - name: WORKFLOW_OPEN_API_AUDIENCE
+              value: {{ .Values.openApi.audience | quote }}
+            - name: WORKFLOW_OPEN_API_ACCESS_TOKEN_TTL
+              value: {{ .Values.openApi.accessTokenTtl | quote }}
+            - name: WORKFLOW_OPEN_API_KEY_ID
+              value: {{ .Values.openApi.keyId | quote }}
+            - name: WORKFLOW_OPEN_API_TOKEN_CLIENT_LIMIT
+              value: {{ .Values.openApi.tokenClientLimitPerMinute | quote }}
+            - name: WORKFLOW_OPEN_API_TOKEN_ADDRESS_LIMIT
+              value: {{ .Values.openApi.tokenAddressLimitPerMinute | quote }}
+            - name: WORKFLOW_OPEN_API_TRUST_FORWARDED_HEADERS
+              value: {{ .Values.openApi.trustForwardedHeaders | quote }}
+            - name: WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS
+              value: {{ join "," .Values.openApi.trustedProxyCidrs | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_ENABLED
+              value: {{ .Values.openApi.webhook.enabled | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_CONCURRENCY
+              value: {{ .Values.openApi.webhook.workerConcurrency | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_QUEUE_CAPACITY
+              value: {{ .Values.openApi.webhook.workerQueueCapacity | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_BATCH_SIZE
+              value: {{ .Values.openApi.webhook.workerBatchSize | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_LEASE_SECONDS
+              value: {{ .Values.openApi.webhook.workerLeaseSeconds | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_DELAY_MS
+              value: {{ .Values.openApi.webhook.workerDelayMs | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_METRICS_REFRESH_MS
+              value: {{ .Values.openApi.webhook.metricsRefreshMs | quote }}
+            {{- if .Values.openApi.webhook.enabled }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.openApi.webhook.masterKeySecretKey }}
+            {{- end }}
+            {{- if .Values.openApi.enabled }}
+            - name: WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION
+              value: file:/var/run/flow-open-api-keys/current-private.pem
+            - name: WORKFLOW_OPEN_API_PUBLIC_KEY_LOCATION
+              value: file:/var/run/flow-open-api-keys/current-public.pem
+            - name: WORKFLOW_OPEN_API_PREVIOUS_PUBLIC_KEYS
+              value: {{ include "flow.openApiPreviousPublicKeys" . | quote }}
+            {{- end }}
             - name: DB_POOL_MAX_SIZE
               value: {{ .Values.server.pool.databaseMax | quote }}
             - name: SERVER_TOMCAT_THREADS_MAX
@@ -143,9 +208,29 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.openApi.enabled }}
+            - name: open-api-signing-keys
+              mountPath: /var/run/flow-open-api-keys
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.openApi.enabled }}
+        - name: open-api-signing-keys
+          secret:
+            secretName: {{ .Values.global.existingSecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.openApi.privateKeySecretKey }}
+                path: current-private.pem
+              - key: {{ .Values.openApi.publicKeySecretKey }}
+                path: current-public.pem
+              {{- range .Values.openApi.previousPublicKeys }}
+              - key: {{ .secretKey }}
+                path: {{ .fileName }}
+              {{- end }}
+        {{- end }}
       {{- if .Values.topologySpread.enabled }}
       topologySpreadConstraints:
         - maxSkew: 1

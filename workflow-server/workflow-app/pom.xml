@@ -14,6 +14,7 @@
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-entity</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-process</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-project</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-open-api</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-outbox</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-http</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-notification</artifactId></dependency>
@@ -40,6 +41,23 @@
             <version>1.4.1</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>${json-schema-validator.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.swagger.parser.v3</groupId>
+            <artifactId>swagger-parser</artifactId>
+            <version>${swagger-parser.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openapitools.openapidiff</groupId>
+            <artifactId>openapi-diff-core</artifactId>
+            <version>${openapi-diff.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
     </dependencies>
     <build>
@@ -54,6 +72,18 @@
                         <exclude><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId></exclude>
                     </excludes>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

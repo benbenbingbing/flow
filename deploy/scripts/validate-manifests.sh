@@ -11,6 +11,27 @@ production_args="
   --set server.image.digest=$server_digest
   --set web.image.digest=$web_digest
 "
+open_api_args="
+  --set openApi.enabled=true
+  --set openApi.keyId=current-2026-07
+  --set openApi.previousPublicKeys[0].keyId=previous-2026-06
+  --set openApi.previousPublicKeys[0].secretKey=open-api-previous-public-key
+  --set openApi.previousPublicKeys[0].fileName=previous-public.pem
+  --set openApi.trustForwardedHeaders=true
+  --set openApi.trustedProxyCidrs[0]=10.42.0.0/16
+"
+webhook_args="
+  --set openApi.webhook.enabled=true
+  --set-string application.httpAllowedHosts=hooks.example.com
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
+"
+connector_args="
+  --set connector.http.enabled=true
+  --set connector.http.masterKeyVersion=current-2026-07
+  --set connector.http.masterKeySecretKey=integration-connector-master-key
+  --set connector.http.previousMasterKeysSecretKey=integration-connector-previous-master-keys
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
+"
 
 # shellcheck disable=SC2086
 helm lint "$repository_root/deploy/helm/flow" --strict $production_args
@@ -28,6 +49,89 @@ helm template flow-local "$repository_root/deploy/helm/flow" \
   --namespace flow-hardening \
   --values "$repository_root/deploy/k3s/values.yaml" \
   >"$temporary_directory/local.yaml"
+
+# shellcheck disable=SC2086
+helm template flow-open-api "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  >"$temporary_directory/open-api.yaml"
+
+# shellcheck disable=SC2086
+helm template flow-webhook "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  $webhook_args \
+  >"$temporary_directory/webhook.yaml"
+
+# shellcheck disable=SC2086
+helm template flow-connector "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $connector_args \
+  >"$temporary_directory/connector.yaml"
+
+if helm template flow-connector "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  --set connector.http.enabled=true \
+  --set connector.http.masterKeyVersion=current-2026-07 \
+  >"$temporary_directory/invalid-connector-egress.yaml" 2>/dev/null; then
+  printf 'HTTP Connector must reject an empty outbound HTTPS CIDR list\n' >&2
+  exit 1
+fi
+
+if helm template flow-connector "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  --set connector.http.enabled=true \
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32 \
+  >"$temporary_directory/invalid-connector-key-version.yaml" 2>/dev/null; then
+  printf 'HTTP Connector must require a master key version\n' >&2
+  exit 1
+fi
+
+if helm template flow-webhook "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set openApi.webhook.enabled=true \
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32 \
+  >"$temporary_directory/invalid-webhook-hosts.yaml" 2>/dev/null; then
+  printf 'Webhook must reject an empty destination host allowlist\n' >&2
+  exit 1
+fi
+
+if helm template flow-open-api "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set-string openApi.publicKeySecretKey=open-api-private-key \
+  >"$temporary_directory/invalid-same-key.yaml" 2>/dev/null; then
+  printf 'openApi must reject identical private/public Secret keys\n' >&2
+  exit 1
+fi
+
+if helm template flow-open-api "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set-string openApi.previousPublicKeys[0].secretKey=open-api-public-key \
+  >"$temporary_directory/invalid-reused-key.yaml" 2>/dev/null; then
+  printf 'openApi must reject reused historical Secret keys\n' >&2
+  exit 1
+fi
+
+if helm template flow-open-api "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set-string openApi.previousPublicKeys[0].fileName=..data \
+  >"$temporary_directory/invalid-file-name.yaml" 2>/dev/null; then
+  printf 'openApi must reject reserved projected file names\n' >&2
+  exit 1
+fi
 
 # shellcheck disable=SC2086
 helm template flow-monitoring "$repository_root/deploy/helm/flow" \
@@ -61,6 +165,24 @@ docker run --rm --interactive "$kubeconform_image" \
   -strict \
   -summary \
   <"$temporary_directory/local.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
+  <"$temporary_directory/open-api.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
+  <"$temporary_directory/webhook.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
+  <"$temporary_directory/connector.yaml"
 
 docker run --rm --interactive "$kubeconform_image" \
   -kubernetes-version 1.32.0 \
