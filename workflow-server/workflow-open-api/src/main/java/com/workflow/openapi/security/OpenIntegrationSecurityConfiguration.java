@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -55,6 +56,8 @@ public class OpenIntegrationSecurityConfiguration {
 
     @Bean
     @Order(1000)
+    @ConditionalOnWebApplication(
+            type = ConditionalOnWebApplication.Type.SERVLET)
     SecurityFilterChain existingApplicationSecurity(HttpSecurity http)
             throws Exception {
         http
@@ -68,6 +71,8 @@ public class OpenIntegrationSecurityConfiguration {
     }
 
     @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(
+            type = ConditionalOnWebApplication.Type.SERVLET)
     @ConditionalOnProperty(
             name = "workflow.open-api.enabled",
             havingValue = "true")
