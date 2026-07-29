@@ -1,13 +1,7 @@
-name: Build and Deploy
+name: 生产部署
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
-    branches:
-      - main
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,10 +13,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Build and deploy production
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push'
+    name: 构建并部署生产环境
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: 阿里云flow
@@ -31,11 +22,11 @@ jobs:
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/flow' }}
-      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+      IMAGE_TAG: ${{ github.sha }}
       K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'flow-production' }}
       HELM_RELEASE: ${{ vars.HELM_RELEASE || 'flow' }}
     steps:
-      - name: Validate deployment configuration
+      - name: 验证部署配置
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
@@ -46,15 +37,16 @@ jobs:
           test -n "$DEPLOY_SSH_KEY"
           test -n "$DEPLOY_KNOWN_HOSTS"
 
-      - name: Check out tested commit
+      - name: 检出已验证的提交
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Set up Docker Buildx
+      - name: 配置容器构建环境
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      - name: Resolve image repositories
+      - name: 解析镜像仓库地址
         id: images
         shell: bash
         run: |
@@ -62,14 +54,14 @@ jobs:
           echo "server=ghcr.io/$owner/flow-server" >> "$GITHUB_OUTPUT"
           echo "web=ghcr.io/$owner/flow-web" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
+      - name: 登录容器镜像仓库
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build server image
+      - name: 构建并推送后端镜像
         id: server-image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
@@ -79,7 +71,7 @@ jobs:
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
 
-      - name: Build web image
+      - name: 构建并推送前端镜像
         id: web-image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
@@ -89,7 +81,7 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      - name: Scan server image
+      - name: 检查后端镜像漏洞
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -98,7 +90,7 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - name: Scan web image
+      - name: 检查前端镜像漏洞
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -107,7 +99,7 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - name: Generate server SBOM
+      - name: 生成后端软件物料清单
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -115,7 +107,7 @@ jobs:
           format: cyclonedx
           output: server-sbom.cdx.json
 
-      - name: Generate web SBOM
+      - name: 生成前端软件物料清单
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -123,7 +115,7 @@ jobs:
           format: cyclonedx
           output: web-sbom.cdx.json
 
-      - name: Upload production SBOMs
+      - name: 保存生产镜像软件物料清单
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: production-sbom-${{ env.IMAGE_TAG }}
@@ -131,11 +123,11 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Package Helm chart
+      - name: 打包 Helm Chart
         run: |
           tar -C deploy/helm -czf "flow-chart-$IMAGE_TAG.tar.gz" flow
 
-      - name: Configure SSH
+      - name: 配置 SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
@@ -147,19 +139,19 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Prepare deployment directory
+      - name: 准备远程部署目录
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=15 \
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "mkdir -p '$DEPLOY_PATH'"
 
-      - name: Upload deployment files
+      - name: 上传部署文件
         run: |
           scp -o BatchMode=yes -o ConnectTimeout=15 -P "$DEPLOY_PORT" \
             "flow-chart-$IMAGE_TAG.tar.gz" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
 
-      - name: Deploy immutable images with Helm
+      - name: 使用不可变镜像执行 Helm 部署
         env:
           SERVER_IMAGE: ${{ steps.images.outputs.server }}
           SERVER_DIGEST: ${{ steps.server-image.outputs.digest }}

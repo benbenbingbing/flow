@@ -10,4 +10,5 @@ ENV SERVER_UPSTREAM=server:8080
 ENV NGINX_ENVSUBST_FILTER=SERVER_UPSTREAM
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
+USER 101:101
 EXPOSE 8080

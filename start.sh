@@ -46,7 +46,7 @@ require_command() {
 load_environment() {
     if [[ -f "$environment_file" ]]; then
         set -a
-        # shellcheck disable=SC1091
+        # shellcheck disable=SC1090
         source "$environment_file"
         set +a
     elif [[ "$action" == "start" ]]; then

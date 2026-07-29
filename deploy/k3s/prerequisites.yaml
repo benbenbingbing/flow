@@ -36,10 +36,23 @@ spec:
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: mysql
           image: flow-hardening/mysql:8.4
           imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
           args:
             - --character-set-server=utf8mb4
             - --collation-server=utf8mb4_unicode_ci
@@ -87,10 +100,20 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+            - name: mysql-runtime
+              mountPath: /var/run/mysqld
+            - name: temporary-files
+              mountPath: /tmp
       volumes:
         - name: data
           emptyDir:
             sizeLimit: 2Gi
+        - name: mysql-runtime
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: temporary-files
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: batch/v1
 kind: Job
@@ -111,10 +134,22 @@ spec:
     spec:
       automountServiceAccountToken: false
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: initialize-users
           image: flow-hardening/mysql:8.4
           imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
           command:
             - sh
             - -c
@@ -165,6 +200,13 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+          volumeMounts:
+            - name: temporary-files
+              mountPath: /tmp
+      volumes:
+        - name: temporary-files
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: batch/v1
 kind: Job
@@ -185,10 +227,22 @@ spec:
     spec:
       automountServiceAccountToken: false
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: initialize-bucket
           image: minio/minio:RELEASE.2025-04-22T22-12-26Z
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
           command:
             - sh
             - -c
@@ -200,6 +254,8 @@ spec:
               done
               mc mb --ignore-existing flow/workflow-files
           env:
+            - name: MC_CONFIG_DIR
+              value: /tmp/.mc
             - name: MINIO_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
@@ -217,3 +273,10 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+          volumeMounts:
+            - name: temporary-files
+              mountPath: /tmp
+      volumes:
+        - name: temporary-files
+          emptyDir:
+            sizeLimit: 64Mi

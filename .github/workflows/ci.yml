@@ -1,4 +1,6 @@
-name: CI
+name: 持续集成
+
+run-name: 持续集成 · ${{ github.ref_name }} · ${{ github.actor }}
 
 on:
   pull_request:
@@ -13,69 +15,75 @@ concurrency:
 
 jobs:
   server:
-    name: Server
+    name: 后端测试与校验
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
       run:
         working-directory: workflow-server
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
-      - name: Set up Java
+      - name: 配置 Java 构建环境
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
-      - name: Verify
+      - name: 执行测试与架构校验
         run: mvn -B -ntp verify
 
   web:
-    name: Web
+    name: 前端测试与构建
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
         working-directory: workflow-web
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
-      - name: Set up Node
+      - name: 配置 Node.js 构建环境
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.23.1'
           cache: npm
           cache-dependency-path: workflow-web/package-lock.json
 
-      - name: Install
+      - name: 安装依赖
         run: npm ci --registry=https://registry.npmjs.org
 
-      - name: Audit dependencies
+      - name: 检查依赖安全公告
         run: npm audit --registry=https://registry.npmjs.org --audit-level=high
 
-      - name: Test
+      - name: 执行测试
         run: npm test
 
-      - name: Build
+      - name: 构建生产版本
         run: npm run build
 
   manifests:
-    name: Deployment manifests
+    name: 部署清单校验
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
-      - name: Validate production and local manifests
+      - name: 验证生产与本地部署清单
         run: deploy/scripts/validate-manifests.sh
 
   images:
-    name: Build and scan images
+    name: 镜像构建与安全检查
     needs:
       - server
       - web
@@ -83,13 +91,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
-      - name: Set up Docker Buildx
+      - name: 配置容器构建环境
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      - name: Build server image
+      - name: 构建后端镜像
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./workflow-server
@@ -98,7 +108,7 @@ jobs:
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
 
-      - name: Build web image
+      - name: 构建前端镜像
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./workflow-web
@@ -107,7 +117,7 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      - name: Scan server image
+      - name: 检查后端镜像漏洞
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -116,7 +126,7 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - name: Scan web image
+      - name: 检查前端镜像漏洞
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -125,7 +135,7 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - name: Generate server SBOM
+      - name: 生成后端软件物料清单
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -133,7 +143,7 @@ jobs:
           format: cyclonedx
           output: server-sbom.cdx.json
 
-      - name: Generate web SBOM
+      - name: 生成前端软件物料清单
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -141,10 +151,20 @@ jobs:
           format: cyclonedx
           output: web-sbom.cdx.json
 
-      - name: Upload SBOMs
+      - name: 保存软件物料清单
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-${{ github.sha }}
           path: '*-sbom.cdx.json'
           if-no-files-found: error
           retention-days: 30
+
+  production-deploy:
+    name: 生产部署
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - images
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/deploy.yml
