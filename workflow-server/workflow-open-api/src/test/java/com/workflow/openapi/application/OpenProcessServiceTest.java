@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,7 +16,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
+import com.workflow.contracts.process.open.OpenProcessEvent;
+import com.workflow.contracts.process.open.OpenProcessEventPort;
 import com.workflow.contracts.process.open.OpenProcessRuntimePort;
+import com.workflow.contracts.process.open.OpenProcessView;
+import com.workflow.contracts.process.open.OpenTaskView;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenBusinessReferenceRequest;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
@@ -28,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.SimpleTransactionStatus;
@@ -40,6 +47,7 @@ class OpenProcessServiceTest {
     private OpenProcessRuntimePort runtimePort;
     private IntegrationVariableSchemaService schemaService;
     private OpenIdempotencyService idempotencyService;
+    private OpenProcessEventPort eventPort;
     private OpenProcessService service;
 
     @BeforeEach
@@ -49,6 +57,7 @@ class OpenProcessServiceTest {
         catalogPort = mock(OpenProcessCatalogPort.class);
         runtimePort = mock(OpenProcessRuntimePort.class);
         idempotencyService = mock(OpenIdempotencyService.class);
+        eventPort = mock(OpenProcessEventPort.class);
         ObjectMapper objectMapper =
                 new ObjectMapper().findAndRegisterModules();
         schemaService = new IntegrationVariableSchemaService(
@@ -66,6 +75,7 @@ class OpenProcessServiceTest {
                 schemaService,
                 idempotencyService,
                 new OpenCursorCodec(),
+                eventPort,
                 objectMapper,
                 transactionManager,
                 Clock.fixed(
@@ -164,6 +174,81 @@ class OpenProcessServiceTest {
                 exception.getErrorCode());
         verify(idempotencyService, never())
                 .claim(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void startPublishesProcessAndInitialTaskAfterBinding()
+            throws Exception {
+        when(grantMapper.findContract(
+                "application-01",
+                "change_process")).thenReturn(contract());
+        when(idempotencyService.claim(
+                anyString(),
+                anyString(),
+                anyString(),
+                any())).thenReturn(
+                new OpenIdempotencyService.Claim(
+                        "idempotency-01",
+                        3,
+                        true,
+                        false,
+                        false,
+                        0,
+                        null));
+        when(runtimePort.start(any())).thenReturn(
+                new OpenProcessView(
+                        "process-instance-01",
+                        "change_process",
+                        "RUNNING",
+                        Instant.parse("2026-07-29T08:30:00Z"),
+                        null));
+        when(runtimePort.listActiveTasks(
+                "process-instance-01",
+                0,
+                1000,
+                actor())).thenReturn(List.of(
+                new OpenTaskView(
+                        "task-01",
+                        "review",
+                        "Review",
+                        "ACTIVE",
+                        Instant.parse(
+                                "2026-07-29T08:30:01Z"))));
+        ArgumentCaptor<OpenProcessEvent> events =
+                ArgumentCaptor.forClass(OpenProcessEvent.class);
+
+        var result = service.start(
+                actor(),
+                "request-01",
+                startRequest());
+
+        assertEquals(201, result.status());
+        verify(bindingMapper).insert(
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                any());
+        verify(eventPort, times(2)).publish(events.capture());
+        assertEquals(
+                "com.flow.process.started.v1",
+                events.getAllValues().get(0).eventType());
+        assertEquals(
+                "com.flow.task.created.v1",
+                events.getAllValues().get(1).eventType());
+        assertEquals(
+                "task-01",
+                events.getAllValues().get(1).taskId());
+        verify(idempotencyService)
+                .completeInBusinessTransaction(
+                        any(),
+                        anyString(),
+                        eq("process-instance-01"),
+                        eq(201),
+                        any());
     }
 
     private IntegrationProcessGrantRecord contract() {

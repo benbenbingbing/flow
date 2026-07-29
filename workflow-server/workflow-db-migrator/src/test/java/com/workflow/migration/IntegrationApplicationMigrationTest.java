@@ -44,7 +44,7 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("014", currentVersion());
+        assertEquals("015", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
@@ -56,6 +56,13 @@ class IntegrationApplicationMigrationTest {
                         "integration_process_grant",
                         "integration_rate_limit_bucket"),
                 integrationTables());
+        assertEquals(
+                Set.of(
+                        "webhook_delivery",
+                        "webhook_endpoint",
+                        "webhook_event",
+                        "webhook_subscription"),
+                webhookTables());
         assertTrue(indexExists(
                 "integration_application_credential",
                 "uk_integration_credential_active"));
@@ -72,10 +79,14 @@ class IntegrationApplicationMigrationTest {
             assertTrue(columnExists(table, "create_time"));
             assertTrue(columnExists(table, "update_time"));
         }
+        for (String table : webhookTables()) {
+            assertTrue(columnExists(table, "create_time"));
+            assertTrue(columnExists(table, "update_time"));
+        }
     }
 
     @Test
-    void versionThirteenUpgradePreservesExistingBusinessData()
+    void versionFourteenUpgradePreservesExistingBusinessData()
             throws Exception {
         Flyway.configure()
                 .dataSource(
@@ -84,7 +95,7 @@ class IntegrationApplicationMigrationTest {
                         MYSQL.getPassword())
                 .locations("classpath:db/migration")
                 .cleanDisabled(false)
-                .target(MigrationVersion.fromVersion("13"))
+                .target(MigrationVersion.fromVersion("14"))
                 .load()
                 .migrate();
 
@@ -100,31 +111,27 @@ class IntegrationApplicationMigrationTest {
                 )
                 """);
         insertApplication("upgrade-app", "upgrade-client");
-        execute("""
-                INSERT INTO integration_process_grant (
-                  application_id, process_key, granted_by
-                ) VALUES (
-                  'upgrade-app', 'upgrade_process', 'migration-test'
-                )
-                """);
-        assertFalse(tableExists("integration_idempotency_record"));
+        insertBinding(
+                "upgrade-binding",
+                "upgrade-app",
+                "upgrade-business",
+                "upgrade-process-instance");
+        assertFalse(tableExists("webhook_endpoint"));
 
         flyway().migrate();
 
-        assertEquals("014", currentVersion());
+        assertEquals("015", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "
                         + "AND dict_code = 'upgrade_sentinel'"));
-        assertTrue(tableExists("integration_idempotency_record"));
+        assertTrue(tableExists("webhook_endpoint"));
         assertEquals(1, countRows("""
                 SELECT COUNT(*)
-                  FROM integration_process_grant
+                  FROM integration_process_binding
                  WHERE application_id = 'upgrade-app'
-                   AND process_key = 'upgrade_process'
-                   AND JSON_EXTRACT(
-                     input_schema_json, '$.maxProperties') = 0
-                   AND JSON_LENGTH(allowed_message_keys) = 0
+                   AND process_instance_id =
+                     'upgrade-process-instance'
                 """));
     }
 
@@ -249,11 +256,52 @@ class IntegrationApplicationMigrationTest {
                 "app-a",
                 "business-2",
                 "process-instance-a"));
-        insertBinding(
+        assertThrows(SQLException.class, () -> insertBinding(
                 "binding-b",
                 "app-b",
                 "business-1",
-                "process-instance-a");
+                "process-instance-a"));
+    }
+
+    @Test
+    void databaseEnforcesWebhookApplicationOwnershipAndReplayUniqueness()
+            throws Exception {
+        flyway().migrate();
+        insertApplication("webhook-app-a", "webhook-client-a");
+        insertApplication("webhook-app-b", "webhook-client-b");
+        insertWebhookEndpoint("endpoint-a", "webhook-app-a");
+        insertWebhookEndpoint("endpoint-b", "webhook-app-b");
+        insertWebhookSubscription(
+                "subscription-a",
+                "webhook-app-a",
+                "endpoint-a");
+        assertThrows(SQLException.class, () ->
+                insertWebhookSubscription(
+                        "cross-app-subscription",
+                        "webhook-app-b",
+                        "endpoint-a"));
+        insertWebhookEvent("event-a", "webhook-app-a");
+        insertWebhookEvent("event-b", "webhook-app-b");
+        insertWebhookDelivery(
+                "delivery-a",
+                "webhook-app-a",
+                "subscription-a",
+                "event-a",
+                0);
+        assertThrows(SQLException.class, () ->
+                insertWebhookDelivery(
+                        "delivery-duplicate",
+                        "webhook-app-a",
+                        "subscription-a",
+                        "event-a",
+                        0));
+        assertThrows(SQLException.class, () ->
+                insertWebhookDelivery(
+                        "delivery-cross-app-event",
+                        "webhook-app-a",
+                        "subscription-a",
+                        "event-b",
+                        1));
     }
 
     @Test
@@ -304,12 +352,20 @@ class IntegrationApplicationMigrationTest {
     }
 
     private Set<String> integrationTables() throws Exception {
+        return tablesMatching("integration_%");
+    }
+
+    private Set<String> webhookTables() throws Exception {
+        return tablesMatching("webhook_%");
+    }
+
+    private Set<String> tablesMatching(String pattern) throws Exception {
         Set<String> tables = new TreeSet<>();
         try (Connection connection = MYSQL.createConnection("");
                 ResultSet result = connection.getMetaData().getTables(
                         MYSQL.getDatabaseName(),
                         null,
-                        "integration_%",
+                        pattern,
                         new String[]{"TABLE"})) {
             while (result.next()) {
                 tables.add(result.getString("TABLE_NAME"));
@@ -443,5 +499,85 @@ class IntegrationApplicationMigrationTest {
                         applicationId,
                         businessId,
                         processInstanceId));
+    }
+
+    private void insertWebhookEndpoint(
+            String id,
+            String applicationId) throws Exception {
+        execute("""
+                INSERT INTO webhook_endpoint (
+                  id, application_id, endpoint_name, endpoint_url,
+                  endpoint_hash, status, secret_ciphertext,
+                  secret_version, secret_hint, created_by, updated_by
+                ) VALUES (
+                  '%s', '%s', 'Migration endpoint',
+                  'https://example.com/webhook/%s',
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  'ACTIVE', 'encrypted-secret', 1, '12345678',
+                  'migration-test', 'migration-test'
+                )
+                """.formatted(id, applicationId, id));
+    }
+
+    private void insertWebhookSubscription(
+            String id,
+            String applicationId,
+            String endpointId) throws Exception {
+        execute("""
+                INSERT INTO webhook_subscription (
+                  id, application_id, endpoint_id, event_type,
+                  status, created_by, updated_by
+                ) VALUES (
+                  '%s', '%s', '%s',
+                  'com.flow.process.started.v1',
+                  'ACTIVE', 'migration-test', 'migration-test'
+                )
+                """.formatted(id, applicationId, endpointId));
+    }
+
+    private void insertWebhookEvent(
+            String id,
+            String applicationId) throws Exception {
+        execute("""
+                INSERT INTO webhook_event (
+                  event_id, source_event_key, application_id,
+                  event_type, subject, process_instance_id,
+                  trace_id, payload_document, occurred_at, expires_at
+                ) VALUES (
+                  '%s', 'source-%s', '%s',
+                  'com.flow.process.started.v1',
+                  'process-instance/process-1', 'process-1',
+                  'trace-1', JSON_OBJECT('specversion', '1.0'),
+                  CURRENT_TIMESTAMP(6),
+                  TIMESTAMPADD(DAY, 30, CURRENT_TIMESTAMP(6))
+                )
+                """.formatted(id, id, applicationId));
+    }
+
+    private void insertWebhookDelivery(
+            String id,
+            String applicationId,
+            String subscriptionId,
+            String eventId,
+            int replaySequence) throws Exception {
+        execute("""
+                INSERT INTO webhook_delivery (
+                  id, application_id, subscription_id, event_id,
+                  replay_sequence, status, attempt_count,
+                  max_attempts, next_attempt_at,
+                  signing_secret_ciphertext,
+                  signing_secret_version, created_by
+                ) VALUES (
+                  '%s', '%s', '%s', '%s',
+                  %d, 'PENDING', 0, 8,
+                  CURRENT_TIMESTAMP(6),
+                  'encrypted-secret', 1, 'migration-test'
+                )
+                """.formatted(
+                        id,
+                        applicationId,
+                        subscriptionId,
+                        eventId,
+                        replaySequence));
     }
 }

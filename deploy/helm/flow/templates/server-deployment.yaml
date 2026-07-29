@@ -111,6 +111,27 @@ spec:
               value: {{ .Values.openApi.trustForwardedHeaders | quote }}
             - name: WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS
               value: {{ join "," .Values.openApi.trustedProxyCidrs | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_ENABLED
+              value: {{ .Values.openApi.webhook.enabled | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_CONCURRENCY
+              value: {{ .Values.openApi.webhook.workerConcurrency | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_QUEUE_CAPACITY
+              value: {{ .Values.openApi.webhook.workerQueueCapacity | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_BATCH_SIZE
+              value: {{ .Values.openApi.webhook.workerBatchSize | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_LEASE_SECONDS
+              value: {{ .Values.openApi.webhook.workerLeaseSeconds | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_DELAY_MS
+              value: {{ .Values.openApi.webhook.workerDelayMs | quote }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_METRICS_REFRESH_MS
+              value: {{ .Values.openApi.webhook.metricsRefreshMs | quote }}
+            {{- if .Values.openApi.webhook.enabled }}
+            - name: WORKFLOW_OPEN_API_WEBHOOK_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.openApi.webhook.masterKeySecretKey }}
+            {{- end }}
             {{- if .Values.openApi.enabled }}
             - name: WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION
               value: file:/var/run/flow-open-api-keys/current-private.pem

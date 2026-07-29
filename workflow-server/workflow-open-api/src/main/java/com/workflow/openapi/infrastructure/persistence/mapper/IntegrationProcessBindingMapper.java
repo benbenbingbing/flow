@@ -56,4 +56,13 @@ public interface IntegrationProcessBindingMapper {
             @Param("externalSystem") String externalSystem,
             @Param("businessType") String businessType,
             @Param("businessId") String businessId);
+
+    @Select("""
+            SELECT *
+              FROM integration_process_binding
+             WHERE process_instance_id = #{processInstanceId}
+             LIMIT 1
+            """)
+    IntegrationProcessBindingRecord findOwnerByProcessInstance(
+            @Param("processInstanceId") String processInstanceId);
 }

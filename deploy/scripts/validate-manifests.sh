@@ -20,6 +20,11 @@ open_api_args="
   --set openApi.trustForwardedHeaders=true
   --set openApi.trustedProxyCidrs[0]=10.42.0.0/16
 "
+webhook_args="
+  --set openApi.webhook.enabled=true
+  --set-string application.httpAllowedHosts=hooks.example.com
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
+"
 
 # shellcheck disable=SC2086
 helm lint "$repository_root/deploy/helm/flow" --strict $production_args
@@ -44,6 +49,25 @@ helm template flow-open-api "$repository_root/deploy/helm/flow" \
   $production_args \
   $open_api_args \
   >"$temporary_directory/open-api.yaml"
+
+# shellcheck disable=SC2086
+helm template flow-webhook "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  $webhook_args \
+  >"$temporary_directory/webhook.yaml"
+
+if helm template flow-webhook "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set openApi.webhook.enabled=true \
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32 \
+  >"$temporary_directory/invalid-webhook-hosts.yaml" 2>/dev/null; then
+  printf 'Webhook must reject an empty destination host allowlist\n' >&2
+  exit 1
+fi
 
 if helm template flow-open-api "$repository_root/deploy/helm/flow" \
   --namespace flow-production \
@@ -113,6 +137,12 @@ docker run --rm --interactive "$kubeconform_image" \
   -strict \
   -summary \
   <"$temporary_directory/open-api.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
+  <"$temporary_directory/webhook.yaml"
 
 docker run --rm --interactive "$kubeconform_image" \
   -kubernetes-version 1.32.0 \

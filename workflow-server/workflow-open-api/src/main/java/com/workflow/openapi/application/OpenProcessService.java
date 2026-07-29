@@ -10,6 +10,8 @@ import com.workflow.contracts.process.open.OpenBusinessReference;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
+import com.workflow.contracts.process.open.OpenProcessEvent;
+import com.workflow.contracts.process.open.OpenProcessEventPort;
 import com.workflow.contracts.process.open.OpenProcessNotFoundException;
 import com.workflow.contracts.process.open.OpenProcessRuntimePort;
 import com.workflow.contracts.process.open.OpenProcessStartCommand;
@@ -67,6 +69,7 @@ public class OpenProcessService {
     private final IntegrationVariableSchemaService variableSchemaService;
     private final OpenIdempotencyService idempotencyService;
     private final OpenCursorCodec cursorCodec;
+    private final OpenProcessEventPort eventPort;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
@@ -80,6 +83,7 @@ public class OpenProcessService {
             IntegrationVariableSchemaService variableSchemaService,
             OpenIdempotencyService idempotencyService,
             OpenCursorCodec cursorCodec,
+            OpenProcessEventPort eventPort,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager) {
         this(
@@ -90,6 +94,7 @@ public class OpenProcessService {
                 variableSchemaService,
                 idempotencyService,
                 cursorCodec,
+                eventPort,
                 objectMapper,
                 transactionManager,
                 Clock.systemUTC());
@@ -103,6 +108,7 @@ public class OpenProcessService {
             IntegrationVariableSchemaService variableSchemaService,
             OpenIdempotencyService idempotencyService,
             OpenCursorCodec cursorCodec,
+            OpenProcessEventPort eventPort,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager,
             Clock clock) {
@@ -113,6 +119,7 @@ public class OpenProcessService {
         this.variableSchemaService = variableSchemaService;
         this.idempotencyService = idempotencyService;
         this.cursorCodec = cursorCodec;
+        this.eventPort = eventPort;
         this.objectMapper = objectMapper;
         this.transactionTemplate =
                 new TransactionTemplate(transactionManager);
@@ -211,6 +218,9 @@ public class OpenProcessService {
                                 process.processInstanceId(),
                                 process.processKey(),
                                 now());
+                        publishInitialEvents(
+                                actor,
+                                process);
                         OpenProcessInstanceView view = toInstanceView(
                                 process,
                                 request.businessReference().system(),
@@ -249,6 +259,39 @@ public class OpenProcessService {
             idempotencyService.failRetryable(claim);
             throw unavailable(exception);
         }
+    }
+
+    private void publishInitialEvents(
+            OpenApplicationActor actor,
+            OpenProcessView process) {
+        eventPort.publish(new OpenProcessEvent(
+                "OPEN_PROCESS_STARTED:"
+                        + process.processInstanceId(),
+                "com.flow.process.started.v1",
+                process.processInstanceId(),
+                null,
+                null,
+                null,
+                actor.traceId(),
+                process.createdAt()));
+        runtimePort.listActiveTasks(
+                        process.processInstanceId(),
+                        0,
+                        1000,
+                        actor)
+                .forEach(task -> eventPort.publish(
+                        new OpenProcessEvent(
+                                "OPEN_TASK_CREATED:"
+                                        + process.processInstanceId()
+                                        + ":"
+                                        + task.taskId(),
+                                "com.flow.task.created.v1",
+                                process.processInstanceId(),
+                                task.taskId(),
+                                task.taskDefinitionKey(),
+                                task.name(),
+                                actor.traceId(),
+                                task.createdAt())));
     }
 
     public OpenProcessInstanceView get(

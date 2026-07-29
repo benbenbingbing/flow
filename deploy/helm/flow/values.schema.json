@@ -90,7 +90,8 @@
         "tokenClientLimitPerMinute",
         "tokenAddressLimitPerMinute",
         "trustForwardedHeaders",
-        "trustedProxyCidrs"
+        "trustedProxyCidrs",
+        "webhook"
       ],
       "properties": {
         "enabled": {
@@ -166,6 +167,59 @@
             "minLength": 3,
             "maxLength": 64
           }
+        },
+        "webhook": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "masterKeySecretKey",
+            "workerConcurrency",
+            "workerQueueCapacity",
+            "workerBatchSize",
+            "workerLeaseSeconds",
+            "workerDelayMs",
+            "metricsRefreshMs"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "masterKeySecretKey": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,253}$"
+            },
+            "workerConcurrency": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32
+            },
+            "workerQueueCapacity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            },
+            "workerBatchSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "workerLeaseSeconds": {
+              "type": "integer",
+              "minimum": 15,
+              "maximum": 300
+            },
+            "workerDelayMs": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 60000
+            },
+            "metricsRefreshMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 300000
+            }
+          },
+          "additionalProperties": false
         }
       }
     }

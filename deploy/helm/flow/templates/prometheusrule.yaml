@@ -70,4 +70,70 @@ spec:
           annotations:
             summary: Flow requests are waiting for database connections
             runbook_url: deploy/runbooks/incident-response.md#database
+    - name: {{ include "flow.fullname" . }}.webhook
+      rules:
+        - alert: FlowWebhookDeadLetters
+          expr: |
+            max(flow_webhook_dead{
+              application="workflow-server"}) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Flow has Webhook deliveries requiring manual review
+            runbook_url: deploy/runbooks/webhook-delivery.md#dead-letters
+        - alert: FlowWebhookDeliveryStalled
+          expr: |
+            max(flow_webhook_oldest_pending_seconds{
+              application="workflow-server"})
+              > {{ .Values.monitoring.prometheusRule.webhookOldestPendingSeconds }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Flow Webhook delivery backlog is stalled
+            runbook_url: deploy/runbooks/webhook-delivery.md#backlog
+        - alert: FlowWebhookSuccessRatioLow
+          expr: |
+            (
+              sum by (application) (
+                rate(flow_webhook_deliveries_total{
+                  status="succeeded"}[15m])
+              )
+              /
+              clamp_min(
+                sum by (application) (
+                  rate(flow_webhook_deliveries_total[15m])
+                ),
+                0.001
+              )
+            ) < {{ .Values.monitoring.prometheusRule.webhookSuccessRatio }}
+            and
+            sum by (application) (
+              increase(flow_webhook_deliveries_total[15m])
+            ) >= {{ .Values.monitoring.prometheusRule.webhookMinimumAttempts }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Webhook success ratio is below the production objective
+            runbook_url: deploy/runbooks/webhook-delivery.md#failure-rate
+        - alert: FlowWebhookLeaseRecoverySustained
+          expr: |
+            increase(flow_webhook_lease_recovered_total[10m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Webhook workers are repeatedly recovering expired leases
+            runbook_url: deploy/runbooks/webhook-delivery.md#lease-recovery
+        - alert: FlowWebhookExecutorRejected
+          expr: |
+            increase(flow_webhook_executor_rejected_total[5m]) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Webhook worker execution queue is saturated
+            runbook_url: deploy/runbooks/webhook-delivery.md#worker-saturation
 {{- end }}

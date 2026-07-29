@@ -1,6 +1,7 @@
 package com.workflow.openapi.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -18,6 +19,7 @@ import com.workflow.contracts.identity.CurrentActor;
 import com.workflow.contracts.identity.CurrentActorProvider;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessRuntimePort;
+import com.workflow.contracts.process.open.OpenProcessEventPort;
 import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.openapi.api.error.OpenApiExceptionHandler;
 import com.workflow.openapi.api.request.IntegrationProcessContractRequest;
@@ -36,6 +38,7 @@ import com.workflow.openapi.application.IntegrationVariableSchemaService;
 import com.workflow.openapi.application.OpenIdempotencyService;
 import com.workflow.openapi.application.OpenCursorCodec;
 import com.workflow.openapi.application.OpenProcessService;
+import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookDeliveryMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,6 +75,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -93,10 +97,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
                 "workflow.open-api.key-id=database-e2e-key",
                 "workflow.open-api.token-client-limit-per-minute=30",
                 "workflow.open-api.token-address-limit-per-minute=300",
+                "flowable.async-executor-activate=false",
                 "spring.flyway.locations=classpath:db/migration",
                 "mybatis-plus.configuration.map-underscore-to-camel-case=true"
         })
 @AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OpenIntegrationDatabaseEndToEndTest {
 
     @Container
@@ -135,6 +141,9 @@ class OpenIntegrationDatabaseEndToEndTest {
 
     @Autowired
     private OpenProcessRuntimePort processRuntimePort;
+
+    @Autowired
+    private WebhookDeliveryMapper webhookDeliveryMapper;
 
     @BeforeAll
     static void createKeys() throws Exception {
@@ -269,6 +278,194 @@ class OpenIntegrationDatabaseEndToEndTest {
                 new UpdateIntegrationStatusRequest("REVOKED", 4L));
         assertTokenRejected(clientId, thirdSecret);
         assertCredentialCounts(applicationId, 0, 3);
+    }
+
+    @Test
+    void expiredWebhookWorkerIsFencedAfterAnotherNodeTakesOver() {
+        String applicationId = createApplication(
+                "Webhook fencing",
+                2).application().id();
+        String suffix = UUID.randomUUID().toString();
+        String endpointId = "endpoint-" + suffix;
+        String subscriptionId = "subscription-" + suffix;
+        String eventId = "event-" + suffix;
+        String deliveryId = "delivery-" + suffix;
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_endpoint (
+                  id, application_id, endpoint_name, endpoint_url,
+                  endpoint_hash, status, secret_ciphertext,
+                  secret_version, secret_hint, version,
+                  created_by, updated_by
+                ) VALUES (?, ?, 'E2E', 'https://hooks.example.com/flow',
+                  ?, 'ACTIVE', 'ciphertext', 1, 'hint0001', 0,
+                  'e2e', 'e2e')
+                """,
+                endpointId,
+                applicationId,
+                "a".repeat(64));
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_subscription (
+                  id, application_id, endpoint_id, event_type,
+                  status, created_by, updated_by
+                ) VALUES (?, ?, ?, 'com.flow.process.started.v1',
+                  'ACTIVE', 'e2e', 'e2e')
+                """,
+                subscriptionId,
+                applicationId,
+                endpointId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_event (
+                  event_id, source_event_key, application_id,
+                  event_type, subject, process_instance_id,
+                  trace_id, payload_document, occurred_at, expires_at
+                ) VALUES (?, ?, ?,
+                  'com.flow.process.started.v1',
+                  'process-instance/process-e2e', 'process-e2e',
+                  'trace-e2e', '{}', UTC_TIMESTAMP(6),
+                  TIMESTAMPADD(DAY, 30, UTC_TIMESTAMP(6)))
+                """,
+                eventId,
+                "source-" + suffix,
+                applicationId);
+        webhookDeliveryMapper.insert(
+                deliveryId,
+                applicationId,
+                subscriptionId,
+                eventId,
+                0,
+                8,
+                "ciphertext",
+                1,
+                "e2e",
+                java.time.LocalDateTime.now(
+                        java.time.ZoneOffset.UTC)
+                        .minusSeconds(1));
+
+        assertTrue(webhookDeliveryMapper.findReadyIds(100)
+                .contains(deliveryId));
+        assertEquals(
+                1,
+                webhookDeliveryMapper.claim(
+                        deliveryId,
+                        "worker-a",
+                        30));
+        long firstToken = webhookDeliveryMapper.selectClaimed(
+                deliveryId,
+                "worker-a").leaseToken();
+        jdbcTemplate.update(
+                """
+                UPDATE webhook_delivery
+                   SET lease_until = TIMESTAMPADD(
+                     SECOND, -1, UTC_TIMESTAMP(6))
+                 WHERE id = ?
+                """,
+                deliveryId);
+
+        assertTrue(
+                webhookDeliveryMapper.recoverExpiredLeases() >= 1);
+        assertEquals(
+                1,
+                webhookDeliveryMapper.claim(
+                        deliveryId,
+                        "worker-b",
+                        30));
+        long secondToken = webhookDeliveryMapper.selectClaimed(
+                deliveryId,
+                "worker-b").leaseToken();
+        assertTrue(secondToken > firstToken);
+        assertEquals(
+                0,
+                webhookDeliveryMapper.markSucceeded(
+                        deliveryId,
+                        "worker-a",
+                        firstToken,
+                        1,
+                        204,
+                        null));
+        assertEquals(
+                1,
+                webhookDeliveryMapper.markSucceeded(
+                        deliveryId,
+                        "worker-b",
+                        secondToken,
+                        1,
+                        204,
+                        null));
+        String expiredDeliveryId = "expired-" + suffix;
+        webhookDeliveryMapper.insert(
+                expiredDeliveryId,
+                applicationId,
+                subscriptionId,
+                eventId,
+                1,
+                8,
+                "ciphertext",
+                1,
+                "e2e",
+                java.time.LocalDateTime.now(
+                        java.time.ZoneOffset.UTC)
+                        .minusSeconds(1));
+        jdbcTemplate.update(
+                """
+                UPDATE webhook_event
+                   SET expires_at = TIMESTAMPADD(
+                     SECOND, -1, UTC_TIMESTAMP(6))
+                 WHERE event_id = ?
+                """,
+                eventId);
+
+        assertFalse(webhookDeliveryMapper.findReadyIds(100)
+                .contains(expiredDeliveryId));
+        assertTrue(
+                webhookDeliveryMapper.expireOutstandingDeliveries(
+                        java.time.LocalDateTime.now(
+                                java.time.ZoneOffset.UTC),
+                        500) >= 1);
+        assertEquals(
+                "DEAD",
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT status
+                          FROM webhook_delivery
+                         WHERE id = ?
+                        """,
+                        String.class,
+                        expiredDeliveryId));
+    }
+
+    @Test
+    void webhookReadyBatchIncludesDifferentApplicationsBeforeOneBacklog()
+            throws Exception {
+        String firstApplication = createApplication(
+                "Webhook fairness A",
+                2).application().id();
+        String secondApplication = createApplication(
+                "Webhook fairness B",
+                2).application().id();
+        String firstA = insertReadyWebhook(
+                firstApplication,
+                UUID.randomUUID().toString());
+        String secondA = insertReadyWebhook(
+                firstApplication,
+                UUID.randomUUID().toString());
+        String firstB = insertReadyWebhook(
+                secondApplication,
+                UUID.randomUUID().toString());
+
+        List<String> ready =
+                webhookDeliveryMapper.findReadyIds(2);
+
+        assertEquals(2, ready.size());
+        assertTrue(ready.contains(firstB));
+        assertEquals(
+                1,
+                ready.stream()
+                        .filter(id -> id.equals(firstA)
+                                || id.equals(secondA))
+                        .count());
     }
 
     @Test
@@ -625,6 +822,71 @@ class OpenIntegrationDatabaseEndToEndTest {
                         null));
     }
 
+    private String insertReadyWebhook(
+            String applicationId,
+            String suffix) {
+        String compact = suffix.replace("-", "");
+        String endpointId = "endpoint-" + suffix;
+        String subscriptionId = "subscription-" + suffix;
+        String eventId = "event-" + suffix;
+        String deliveryId = "delivery-" + suffix;
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_endpoint (
+                  id, application_id, endpoint_name, endpoint_url,
+                  endpoint_hash, status, secret_ciphertext,
+                  secret_version, secret_hint, version,
+                  created_by, updated_by
+                ) VALUES (?, ?, 'Fairness',
+                  'https://hooks.example.com/flow',
+                  ?, 'ACTIVE', 'ciphertext', 1, 'hint0001', 0,
+                  'e2e', 'e2e')
+                """,
+                endpointId,
+                applicationId,
+                compact + compact);
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_subscription (
+                  id, application_id, endpoint_id, event_type,
+                  status, created_by, updated_by
+                ) VALUES (?, ?, ?, 'com.flow.process.started.v1',
+                  'ACTIVE', 'e2e', 'e2e')
+                """,
+                subscriptionId,
+                applicationId,
+                endpointId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_event (
+                  event_id, source_event_key, application_id,
+                  event_type, subject, process_instance_id,
+                  trace_id, payload_document, occurred_at, expires_at
+                ) VALUES (?, ?, ?,
+                  'com.flow.process.started.v1',
+                  'process-instance/process-e2e', 'process-e2e',
+                  'trace-e2e', '{}', UTC_TIMESTAMP(6),
+                  TIMESTAMPADD(DAY, 30, UTC_TIMESTAMP(6)))
+                """,
+                eventId,
+                "source-" + suffix,
+                applicationId);
+        webhookDeliveryMapper.insert(
+                deliveryId,
+                applicationId,
+                subscriptionId,
+                eventId,
+                0,
+                8,
+                "ciphertext",
+                1,
+                "e2e",
+                java.time.LocalDateTime.now(
+                        java.time.ZoneOffset.UTC)
+                        .minusSeconds(1));
+        return deliveryId;
+    }
+
     private List<OpenIdempotencyService.Claim> awaitClaims(
             List<Future<OpenIdempotencyService.Claim>> futures)
             throws InterruptedException,
@@ -718,8 +980,10 @@ class OpenIntegrationDatabaseEndToEndTest {
 
     @SpringBootConfiguration
     @EnableAutoConfiguration
-    @MapperScan(
-            "com.workflow.openapi.infrastructure.persistence.mapper")
+    @MapperScan({
+            "com.workflow.openapi.infrastructure.persistence.mapper",
+            "com.workflow.openapi.webhook.infrastructure.persistence.mapper"
+    })
     @Import({
             IntegrationApplicationService.class,
             IntegrationSecretGenerator.class,
@@ -767,6 +1031,11 @@ class OpenIntegrationDatabaseEndToEndTest {
         @Bean
         OpenProcessRuntimePort openProcessRuntimePort() {
             return Mockito.mock(OpenProcessRuntimePort.class);
+        }
+
+        @Bean
+        OpenProcessEventPort openProcessEventPort() {
+            return Mockito.mock(OpenProcessEventPort.class);
         }
     }
 

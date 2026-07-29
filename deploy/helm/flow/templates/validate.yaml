@@ -16,6 +16,18 @@
 {{- if and .Values.openApi.enabled .Values.openApi.trustForwardedHeaders (eq (len .Values.openApi.trustedProxyCidrs) 0) }}
 {{- fail "openApi.trustedProxyCidrs is required when forwarded headers are trusted" }}
 {{- end }}
+{{- if and .Values.openApi.webhook.enabled (not .Values.openApi.enabled) }}
+{{- fail "openApi must be enabled before Webhook delivery can be enabled" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled (not (regexMatch "^[A-Za-z0-9._-]{1,253}$" .Values.openApi.webhook.masterKeySecretKey)) }}
+{{- fail "openApi.webhook.masterKeySecretKey is invalid" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled (eq .Values.application.httpAllowedHosts "") }}
+{{- fail "application.httpAllowedHosts is required when Webhook delivery is enabled" }}
+{{- end }}
+{{- if and .Values.openApi.webhook.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.outboundHttpsCIDRs) 0) }}
+{{- fail "networkPolicy.outboundHttpsCIDRs is required when Webhook delivery is enabled" }}
+{{- end }}
 {{- $openApiKeyIds := dict }}
 {{- $openApiFileNames := dict }}
 {{- $openApiSecretKeys := dict .Values.openApi.privateKeySecretKey true .Values.openApi.publicKeySecretKey true }}
