@@ -2,6 +2,18 @@ name: 生产部署
 
 on:
   workflow_call:
+    secrets:
+      DEPLOY_HOST:
+        required: true
+      DEPLOY_PORT:
+        required: false
+      DEPLOY_USER:
+        required: true
+      DEPLOY_SSH_KEY:
+        required: true
+      DEPLOY_KNOWN_HOSTS:
+        required: true
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -242,9 +242,16 @@ Pod 生产拓扑的等价替代。
 4. server/web 镜像构建与高危漏洞扫描
 5. CycloneDX SBOM 生成
 
-`main` 分支 CI 成功后，生产工作流构建并推送不可变镜像，再通过 SSH 在目标集群执行
-Helm 发布、Rollout 检查和 Helm smoke test。具体环境变量和审批规则由 GitHub
-Environment 管理。
+生产部署可以在 Actions 中手动触发。仓库变量 `PRODUCTION_DEPLOY_ENABLED` 设置为
+`true` 后，`main` 分支 CI 成功时也会自动部署。工作流构建并推送不可变镜像，再通过
+SSH 在目标集群执行 Helm 发布、Rollout 检查和 Helm smoke test。
+
+部署前必须配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` 和
+`DEPLOY_KNOWN_HOSTS` 密钥；`DEPLOY_PORT` 可选，默认使用 `22`。
+`DEPLOY_KNOWN_HOSTS` 必须保存预先核验的目标主机公钥记录，工作流不会在运行时信任
+临时扫描到的主机密钥。部署路径、命名空间和 Helm release 可分别通过
+`DEPLOY_PATH`、`K8S_NAMESPACE` 和 `HELM_RELEASE` 变量调整。审批规则由 GitHub
+Environment `阿里云flow` 管理。
 
 ## 安全约束
 
