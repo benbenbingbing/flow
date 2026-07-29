@@ -45,7 +45,6 @@
             <groupId>com.networknt</groupId>
             <artifactId>json-schema-validator</artifactId>
             <version>${json-schema-validator.version}</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.swagger.parser.v3</groupId>
@@ -73,6 +72,18 @@
                         <exclude><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId></exclude>
                     </excludes>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -37,9 +37,16 @@ class WebhookSecretCipherTest {
                 true,
                 new SecureRandom());
         String encrypted = cipher.encrypt("signing-secret");
-        String tampered = encrypted.substring(
-                0,
-                encrypted.length() - 1) + "A";
+        String[] parts = encrypted.split("\\.");
+        byte[] ciphertext = Base64.getUrlDecoder().decode(parts[2]);
+        ciphertext[0] ^= 1;
+        String tampered = parts[0]
+                + "."
+                + parts[1]
+                + "."
+                + Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(ciphertext);
 
         assertThrows(
                 IllegalStateException.class,
