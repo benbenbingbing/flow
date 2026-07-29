@@ -122,6 +122,8 @@ class TokenEndpointRateLimitFilterTest {
 
         assertEquals(429, response.getStatus());
         assertEquals("17", response.getHeader("Retry-After"));
+        assertEquals("no-store", response.getHeader("Cache-Control"));
+        assertEquals("no-cache", response.getHeader("Pragma"));
         assertEquals(
                 "temporarily_unavailable",
                 objectMapper.readTree(
@@ -164,6 +166,60 @@ class TokenEndpointRateLimitFilterTest {
                 .doFilter(any(), any());
         verify(credentialUsageService, org.mockito.Mockito.never())
                 .recordSuccessfulUse(anyString());
+    }
+
+    @Test
+    void policyStorageFailureReturnsStableUnavailableOauthError()
+            throws Exception {
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(rateLimitService)
+                .acquire(
+                        "token-client",
+                        "flow_client",
+                        30);
+        MockHttpServletResponse response =
+                new MockHttpServletResponse();
+
+        filter.doFilter(
+                request("flow_client", "secret"),
+                response,
+                mock(FilterChain.class));
+
+        assertEquals(503, response.getStatus());
+        assertEquals("no-store", response.getHeader("Cache-Control"));
+        assertEquals(
+                "temporarily_unavailable",
+                objectMapper.readTree(
+                                response.getContentAsByteArray())
+                        .path("error")
+                        .asText());
+    }
+
+    @Test
+    void auditStorageFailureDoesNotCorruptSuccessfulResponse()
+            throws Exception {
+        doThrow(new IllegalStateException("audit unavailable"))
+                .when(auditPort)
+                .record(any());
+        FilterChain chain = mock(FilterChain.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    ((jakarta.servlet.http.HttpServletResponse)
+                            invocation.getArgument(1)).setStatus(200);
+                    return null;
+                })
+                .when(chain)
+                .doFilter(any(), any());
+        MockHttpServletResponse response =
+                new MockHttpServletResponse();
+
+        filter.doFilter(
+                request("flow_client", "secret"),
+                response,
+                chain);
+
+        assertEquals(200, response.getStatus());
+        verify(credentialUsageService)
+                .recordSuccessfulUse("flow_client");
     }
 
     private MockHttpServletRequest request(

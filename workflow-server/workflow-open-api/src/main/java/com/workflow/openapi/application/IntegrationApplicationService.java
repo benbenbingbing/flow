@@ -18,8 +18,10 @@ import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;
 import com.workflow.openapi.api.request.RevokeIntegrationCredentialRequest;
 import com.workflow.openapi.api.request.RotateIntegrationCredentialRequest;
 import com.workflow.openapi.api.request.UpdateIntegrationAccessRequest;
+import com.workflow.openapi.api.request.UpdateIntegrationProcessContractsRequest;
 import com.workflow.openapi.api.request.UpdateIntegrationStatusRequest;
 import com.workflow.openapi.api.response.IntegrationApplicationView;
+import com.workflow.openapi.api.response.IntegrationProcessContractView;
 import com.workflow.openapi.api.response.IssuedIntegrationCredentialView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationCredentialMapper;
@@ -28,6 +30,7 @@ import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationScopeMa
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationCredentialRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationGrantValueRecord;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessGrantRecord;
 import com.workflow.openapi.network.IpNetwork;
 import java.time.Clock;
 import java.time.Instant;
@@ -52,7 +55,7 @@ public class IntegrationApplicationService {
     private static final int DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
     private static final int DEFAULT_MAX_CONCURRENCY = 10;
     private static final Pattern PROCESS_KEY = Pattern.compile(
-            "[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}");
+            "[A-Za-z][A-Za-z0-9._-]{0,99}");
     private static final TypeReference<List<String>> STRING_LIST =
             new TypeReference<>() {
             };
@@ -63,6 +66,7 @@ public class IntegrationApplicationService {
     private final IntegrationProcessGrantMapper processGrantMapper;
     private final IntegrationSecretGenerator secretGenerator;
     private final IntegrationSecretHasher secretHasher;
+    private final IntegrationVariableSchemaService variableSchemaService;
     private final CurrentActorProvider actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
@@ -76,6 +80,7 @@ public class IntegrationApplicationService {
             IntegrationProcessGrantMapper processGrantMapper,
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
+            IntegrationVariableSchemaService variableSchemaService,
             CurrentActorProvider actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
@@ -86,6 +91,7 @@ public class IntegrationApplicationService {
                 processGrantMapper,
                 secretGenerator,
                 secretHasher,
+                variableSchemaService,
                 actorProvider,
                 auditPort,
                 objectMapper,
@@ -99,6 +105,7 @@ public class IntegrationApplicationService {
             IntegrationProcessGrantMapper processGrantMapper,
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
+            IntegrationVariableSchemaService variableSchemaService,
             CurrentActorProvider actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
@@ -109,6 +116,7 @@ public class IntegrationApplicationService {
         this.processGrantMapper = processGrantMapper;
         this.secretGenerator = secretGenerator;
         this.secretHasher = secretHasher;
+        this.variableSchemaService = variableSchemaService;
         this.actorProvider = actorProvider;
         this.auditPort = auditPort;
         this.objectMapper = objectMapper;
@@ -283,6 +291,80 @@ public class IntegrationApplicationService {
                 actor,
                 true);
         return toView(application);
+    }
+
+    @Transactional(readOnly = true)
+    public List<IntegrationProcessContractView> listProcessContracts(
+            String applicationId) {
+        if (applicationMapper.selectById(applicationId) == null) {
+            throw new IllegalArgumentException("接入应用不存在");
+        }
+        return processGrantMapper
+                .findContractsByApplicationId(applicationId)
+                .stream()
+                .map(this::toProcessContractView)
+                .toList();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public List<IntegrationProcessContractView> updateProcessContracts(
+            String applicationId,
+            UpdateIntegrationProcessContractsRequest request) {
+        CurrentActor actor = requireActor();
+        IntegrationApplicationRecord application =
+                requireLockedApplication(applicationId);
+        requireNotRevoked(application);
+        requireExpectedVersion(application, request.expectedVersion());
+        Set<String> granted = processGrantMapper
+                .findByApplicationId(applicationId);
+        Set<String> requested = request.contracts().stream()
+                .map(contract -> contract.processKey().trim())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (requested.size() != request.contracts().size()
+                || !requested.equals(granted)) {
+            throw new IllegalArgumentException(
+                    "流程契约必须与当前授权流程完整对应");
+        }
+        LocalDateTime now = now();
+        for (var contract : request.contracts()) {
+            String schema = variableSchemaService.validateConfiguration(
+                    contract.inputSchema());
+            Set<String> messages = contract.allowedMessageKeys().stream()
+                    .map(String::trim)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (messages.size()
+                    != contract.allowedMessageKeys().size()) {
+                throw new IllegalArgumentException(
+                        "消息标识不能重复");
+            }
+            int updated = processGrantMapper.updateContract(
+                    applicationId,
+                    contract.processKey().trim(),
+                    schema,
+                    writeStringSet(messages),
+                    actor.userId(),
+                    now);
+            if (updated != 1) {
+                throw new IllegalStateException(
+                        "流程契约更新失败");
+            }
+        }
+        advanceApplicationVersion(
+                application,
+                request.expectedVersion(),
+                actor.userId(),
+                now);
+        recordAudit(
+                AuditAction.CONFIGURE,
+                "更新开放流程契约",
+                application,
+                actor,
+                true);
+        return processGrantMapper
+                .findContractsByApplicationId(applicationId)
+                .stream()
+                .map(this::toProcessContractView)
+                .toList();
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -480,6 +562,32 @@ public class IntegrationApplicationService {
             return objectMapper.writeValueAsString(cidrs);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("无法序列化来源 CIDR", exception);
+        }
+    }
+
+    private String writeStringSet(Set<String> values) {
+        try {
+            return objectMapper.writeValueAsString(values);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "无法序列化流程消息白名单",
+                    exception);
+        }
+    }
+
+    private IntegrationProcessContractView toProcessContractView(
+            IntegrationProcessGrantRecord contract) {
+        try {
+            return new IntegrationProcessContractView(
+                    contract.processKey(),
+                    objectMapper.readTree(contract.inputSchemaJson()),
+                    Set.copyOf(objectMapper.readValue(
+                            contract.allowedMessageKeys(),
+                            STRING_LIST)));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "流程契约配置损坏",
+                    exception);
         }
     }
 

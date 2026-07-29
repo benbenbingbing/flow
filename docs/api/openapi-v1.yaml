@@ -40,7 +40,7 @@ paths:
         '401':
           $ref: '#/components/responses/OAuthInvalidClient'
         '429':
-          $ref: '#/components/responses/RateLimited'
+          $ref: '#/components/responses/OAuthRateLimited'
   /api/open/v1/process-definitions:
     get:
       tags:
@@ -63,7 +63,7 @@ paths:
         '401':
           $ref: '#/components/responses/InvalidAccessToken'
         '403':
-          $ref: '#/components/responses/InsufficientScope'
+          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -109,9 +109,11 @@ paths:
         '401':
           $ref: '#/components/responses/InvalidAccessToken'
         '403':
-          $ref: '#/components/responses/ProcessNotGranted'
+          $ref: '#/components/responses/Forbidden'
         '409':
-          $ref: '#/components/responses/IdempotencyConflict'
+          $ref: '#/components/responses/IntegrationConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '422':
           $ref: '#/components/responses/VariableValidationFailed'
         '429':
@@ -139,7 +141,7 @@ paths:
         '401':
           $ref: '#/components/responses/InvalidAccessToken'
         '403':
-          $ref: '#/components/responses/InsufficientScope'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/ResourceNotFound'
         '429':
@@ -169,7 +171,7 @@ paths:
         '401':
           $ref: '#/components/responses/InvalidAccessToken'
         '403':
-          $ref: '#/components/responses/InsufficientScope'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/ResourceNotFound'
         '429':
@@ -219,11 +221,13 @@ paths:
         '401':
           $ref: '#/components/responses/InvalidAccessToken'
         '403':
-          $ref: '#/components/responses/InsufficientScope'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/ResourceNotFound'
         '409':
-          $ref: '#/components/responses/ProcessStateConflict'
+          $ref: '#/components/responses/IntegrationConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '422':
           $ref: '#/components/responses/VariableValidationFailed'
         '429':
@@ -329,6 +333,36 @@ components:
                 errorCode: INSUFFICIENT_SCOPE
                 data: null
                 traceId: 01J0TRACE
+    Forbidden:
+      description: |
+        The token lacks the required scope, the source address is not allowed,
+        or the application is not granted the requested process capability.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            insufficientScope:
+              value:
+                code: 403
+                message: Required scope is not granted
+                errorCode: INSUFFICIENT_SCOPE
+                data: null
+                traceId: 01J0TRACE
+            sourceAddressNotAllowed:
+              value:
+                code: 403
+                message: Source address is not allowed
+                errorCode: SOURCE_ADDRESS_NOT_ALLOWED
+                data: null
+                traceId: 01J0TRACE
+            processNotGranted:
+              value:
+                code: 403
+                message: Process is not granted to this application
+                errorCode: PROCESS_NOT_GRANTED
+                data: null
+                traceId: 01J0TRACE
     ProcessNotGranted:
       description: The application is not granted access to the process
       content:
@@ -383,6 +417,56 @@ components:
                 code: 409
                 message: Process state does not allow this operation
                 errorCode: PROCESS_STATE_CONFLICT
+                data: null
+                traceId: 01J0TRACE
+    IntegrationConflict:
+      description: |
+        The request is already in progress, an idempotency key was reused for
+        different input, or the current process state rejects the operation.
+      headers:
+        Retry-After:
+          description: Present when the same idempotent request is still running
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            requestInProgress:
+              value:
+                code: 409
+                message: Request with this idempotency key is in progress
+                errorCode: REQUEST_IN_PROGRESS
+                data: null
+                traceId: 01J0TRACE
+            keyReused:
+              value:
+                code: 409
+                message: Idempotency key was reused with different input
+                errorCode: IDEMPOTENCY_KEY_REUSED
+                data: null
+                traceId: 01J0TRACE
+            processStateConflict:
+              value:
+                code: 409
+                message: Process state does not allow this operation
+                errorCode: PROCESS_STATE_CONFLICT
+                data: null
+                traceId: 01J0TRACE
+    PayloadTooLarge:
+      description: Request body exceeds the one mebibyte limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            payloadTooLarge:
+              value:
+                code: 413
+                message: Request body exceeds 1 MiB
+                errorCode: PAYLOAD_TOO_LARGE
                 data: null
                 traceId: 01J0TRACE
     VariableValidationFailed:
@@ -448,6 +532,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/OAuthErrorResponse'
+    OAuthRateLimited:
+      description: Token endpoint rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the client may retry
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthErrorResponse'
   schemas:
     PublicId:
       type: string
@@ -501,6 +597,7 @@ components:
             - invalid_client
             - invalid_scope
             - unauthorized_client
+            - temporarily_unavailable
         error_description:
           type: string
           maxLength: 512
@@ -542,7 +639,7 @@ components:
       properties:
         processKey:
           type: string
-          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,127}$'
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,99}$'
         businessReference:
           $ref: '#/components/schemas/BusinessReference'
         initiator:
@@ -568,6 +665,7 @@ components:
         - processKey
         - name
         - version
+        - inputSchema
         - publishedAt
       properties:
         processKey:
@@ -582,9 +680,7 @@ components:
             - string
             - 'null'
         inputSchema:
-          type:
-            - object
-            - 'null'
+          type: object
           additionalProperties: true
         publishedAt:
           type: string

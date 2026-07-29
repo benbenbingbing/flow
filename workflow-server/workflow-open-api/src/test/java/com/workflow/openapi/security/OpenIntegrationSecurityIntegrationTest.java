@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.openapi.application.IntegrationSecretHasher;
 import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -279,6 +281,32 @@ class OpenIntegrationSecurityIntegrationTest {
                 .andExpect(jsonPath("$.subject", is(CLIENT_ID)));
     }
 
+    @Test
+    void actualResourcePathRequiresItsDedicatedScope()
+            throws Exception {
+        String token = issueToken("process.instance.read");
+
+        mockMvc.perform(get("/api/open/v1/process-definitions")
+                        .header(
+                                "Authorization",
+                                "Bearer " + token)
+                        .header("X-Trace-Id", "trace-scope-denied"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string(
+                        "X-Trace-Id",
+                        "trace-scope-denied"))
+                .andExpect(header().string(
+                        "Cache-Control",
+                        org.hamcrest.Matchers.containsString(
+                                "no-store")))
+                .andExpect(jsonPath(
+                        "$.errorCode",
+                        is("INSUFFICIENT_SCOPE")))
+                .andExpect(jsonPath(
+                        "$.traceId",
+                        is("trace-scope-denied")));
+    }
+
     private String issueToken(String scopes) throws Exception {
         MvcResult result = mockMvc.perform(post("/oauth2/token")
                         .with(httpBasic(CLIENT_ID, CLIENT_SECRET))
@@ -368,6 +396,37 @@ class OpenIntegrationSecurityIntegrationTest {
                                     "app-test-1",
                                     true));
             return policy;
+        }
+
+        @Bean
+        IntegrationApplicationMapper integrationApplicationMapper() {
+            IntegrationApplicationMapper mapper =
+                    Mockito.mock(IntegrationApplicationMapper.class);
+            IntegrationApplicationRecord application =
+                    new IntegrationApplicationRecord();
+            application.setId("app-test-1");
+            application.setClientId(CLIENT_ID);
+            application.setStatus("ACTIVE");
+            application.setRateLimitPerMinute(60);
+            application.setMaxConcurrency(10);
+            Mockito.when(mapper.selectById("app-test-1"))
+                    .thenReturn(application);
+            return mapper;
+        }
+
+        @Bean
+        OpenApiConcurrencyLeaseService
+                openApiConcurrencyLeaseService() {
+            OpenApiConcurrencyLeaseService service =
+                    Mockito.mock(
+                            OpenApiConcurrencyLeaseService.class);
+            Mockito.when(service.acquire(
+                            Mockito.anyString(),
+                            Mockito.anyInt()))
+                    .thenReturn(
+                            new OpenApiConcurrencyLeaseService.Lease(
+                                    "lease-test"));
+            return service;
         }
 
         @Bean

@@ -85,6 +85,7 @@ class IntegrationApplicationServiceTest {
                 processGrantMapper,
                 new IntegrationSecretGenerator(),
                 secretHasher,
+                new IntegrationVariableSchemaService(objectMapper),
                 actorProvider,
                 auditPort,
                 objectMapper,

@@ -99,6 +99,8 @@ public class TokenEndpointRateLimitFilter
         } catch (RateLimitExceededException exception) {
             response.setStatus(429);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("Pragma", "no-cache");
             response.setHeader(
                     "Retry-After",
                     Long.toString(exception.getRetryAfterSeconds()));
@@ -108,6 +110,25 @@ public class TokenEndpointRateLimitFilter
                             "error", "temporarily_unavailable",
                             "error_description",
                             "Token endpoint rate limit exceeded"));
+            completed = true;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "Token endpoint policy check failed for client {}",
+                    clientId,
+                    exception);
+            if (response.isCommitted()) {
+                throw exception;
+            }
+            response.setStatus(503);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("Pragma", "no-cache");
+            objectMapper.writeValue(
+                    response.getOutputStream(),
+                    Map.of(
+                            "error", "temporarily_unavailable",
+                            "error_description",
+                            "Token service is temporarily unavailable"));
             completed = true;
         } finally {
             recordAudit(
@@ -140,34 +161,41 @@ public class TokenEndpointRateLimitFilter
             boolean completed,
             int status) {
         boolean success = completed && status >= 200 && status < 300;
-        auditPort.record(SystemAuditEvent.builder()
-                .module(AuditModule.INTEGRATION)
-                .action(AuditAction.LOGIN)
-                .operationName("机器令牌签发")
-                .riskLevel(success
-                        ? AuditRiskLevel.LOW
-                        : AuditRiskLevel.HIGH)
-                .result(success
-                        ? AuditResult.SUCCESS
-                        : AuditResult.FAILURE)
-                .operatorName(clientId)
-                .operatorIp(clientAddress)
-                .requestMethod(request.getMethod())
-                .requestPath(request.getRequestURI())
-                .targetType(applicationId == null
-                        ? "INTEGRATION_CLIENT"
-                        : "INTEGRATION_APPLICATION")
-                .targetId(applicationId == null
-                        ? clientId
-                        : applicationId)
-                .summary(success
-                        ? "机器令牌签发成功"
-                        : "机器令牌签发失败")
-                .errorCode(success
-                        ? null
-                        : "TOKEN_ISSUANCE_FAILED")
-                .createdAt(LocalDateTime.now(ZoneOffset.UTC))
-                .build());
+        try {
+            auditPort.record(SystemAuditEvent.builder()
+                    .module(AuditModule.INTEGRATION)
+                    .action(AuditAction.LOGIN)
+                    .operationName("机器令牌签发")
+                    .riskLevel(success
+                            ? AuditRiskLevel.LOW
+                            : AuditRiskLevel.HIGH)
+                    .result(success
+                            ? AuditResult.SUCCESS
+                            : AuditResult.FAILURE)
+                    .operatorName(clientId)
+                    .operatorIp(clientAddress)
+                    .requestMethod(request.getMethod())
+                    .requestPath(request.getRequestURI())
+                    .targetType(applicationId == null
+                            ? "INTEGRATION_CLIENT"
+                            : "INTEGRATION_APPLICATION")
+                    .targetId(applicationId == null
+                            ? clientId
+                            : applicationId)
+                    .summary(success
+                            ? "机器令牌签发成功"
+                            : "机器令牌签发失败")
+                    .errorCode(success
+                            ? null
+                            : "TOKEN_ISSUANCE_FAILED")
+                    .createdAt(LocalDateTime.now(ZoneOffset.UTC))
+                    .build());
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "Token endpoint audit write failed for client {}",
+                    clientId,
+                    exception);
+        }
     }
 
     private void writeInvalidClient(HttpServletResponse response)

@@ -44,11 +44,14 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("013", currentVersion());
+        assertEquals("014", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
                         "integration_application_credential",
+                        "integration_api_request_lease",
+                        "integration_idempotency_record",
+                        "integration_process_binding",
                         "integration_application_scope",
                         "integration_process_grant",
                         "integration_rate_limit_bucket"),
@@ -72,7 +75,7 @@ class IntegrationApplicationMigrationTest {
     }
 
     @Test
-    void versionTwelveUpgradePreservesExistingBusinessData()
+    void versionThirteenUpgradePreservesExistingBusinessData()
             throws Exception {
         Flyway.configure()
                 .dataSource(
@@ -81,7 +84,7 @@ class IntegrationApplicationMigrationTest {
                         MYSQL.getPassword())
                 .locations("classpath:db/migration")
                 .cleanDisabled(false)
-                .target(MigrationVersion.fromVersion("12"))
+                .target(MigrationVersion.fromVersion("13"))
                 .load()
                 .migrate();
 
@@ -96,16 +99,33 @@ class IntegrationApplicationMigrationTest {
                   0
                 )
                 """);
-        assertFalse(tableExists("integration_application"));
+        insertApplication("upgrade-app", "upgrade-client");
+        execute("""
+                INSERT INTO integration_process_grant (
+                  application_id, process_key, granted_by
+                ) VALUES (
+                  'upgrade-app', 'upgrade_process', 'migration-test'
+                )
+                """);
+        assertFalse(tableExists("integration_idempotency_record"));
 
         flyway().migrate();
 
-        assertEquals("013", currentVersion());
+        assertEquals("014", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "
                         + "AND dict_code = 'upgrade_sentinel'"));
-        assertTrue(tableExists("integration_application"));
+        assertTrue(tableExists("integration_idempotency_record"));
+        assertEquals(1, countRows("""
+                SELECT COUNT(*)
+                  FROM integration_process_grant
+                 WHERE application_id = 'upgrade-app'
+                   AND process_key = 'upgrade_process'
+                   AND JSON_EXTRACT(
+                     input_schema_json, '$.maxProperties') = 0
+                   AND JSON_LENGTH(allowed_message_keys) = 0
+                """));
     }
 
     @Test
@@ -189,6 +209,72 @@ class IntegrationApplicationMigrationTest {
                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
                    AND window_epoch = 29772000
                 """));
+    }
+
+    @Test
+    void databaseEnforcesApplicationScopedIdempotencyAndBindings()
+            throws Exception {
+        flyway().migrate();
+        insertApplication("app-a", "client-a");
+        insertApplication("app-b", "client-b");
+
+        insertIdempotency(
+                "idem-a",
+                "app-a",
+                "start-process",
+                "request-1");
+        assertThrows(SQLException.class, () -> insertIdempotency(
+                "idem-a-duplicate",
+                "app-a",
+                "start-process",
+                "request-1"));
+        insertIdempotency(
+                "idem-b",
+                "app-b",
+                "start-process",
+                "request-1");
+
+        insertBinding(
+                "binding-a",
+                "app-a",
+                "business-1",
+                "process-instance-a");
+        assertThrows(SQLException.class, () -> insertBinding(
+                "binding-a-duplicate-business",
+                "app-a",
+                "business-1",
+                "process-instance-other"));
+        assertThrows(SQLException.class, () -> insertBinding(
+                "binding-a-duplicate-instance",
+                "app-a",
+                "business-2",
+                "process-instance-a"));
+        insertBinding(
+                "binding-b",
+                "app-b",
+                "business-1",
+                "process-instance-a");
+    }
+
+    @Test
+    void integrationRowsCannotReferenceUnknownApplications()
+            throws Exception {
+        flyway().migrate();
+
+        assertThrows(SQLException.class, () -> execute("""
+                INSERT INTO integration_application_scope (
+                  application_id, scope, granted_by
+                ) VALUES (
+                  'missing-app',
+                  'process.instance.read',
+                  'migration-test'
+                )
+                """));
+        assertThrows(SQLException.class, () -> insertBinding(
+                "binding-orphan",
+                "missing-app",
+                "business-1",
+                "process-instance-1"));
     }
 
     private Flyway flyway() {
@@ -316,5 +402,46 @@ class IntegrationApplicationMigrationTest {
                 ON DUPLICATE KEY UPDATE
                   request_count = request_count + 1
                 """);
+    }
+
+    private void insertIdempotency(
+            String id,
+            String applicationId,
+            String operation,
+            String key) throws Exception {
+        execute("""
+                INSERT INTO integration_idempotency_record (
+                  id, application_id, operation, idempotency_key,
+                  request_hash, status, fencing_token,
+                  processing_started_at, expires_at
+                ) VALUES (
+                  '%s', '%s', '%s', '%s',
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  'PROCESSING', 1,
+                  CURRENT_TIMESTAMP(6),
+                  TIMESTAMPADD(DAY, 7, CURRENT_TIMESTAMP(6))
+                )
+                """.formatted(id, applicationId, operation, key));
+    }
+
+    private void insertBinding(
+            String id,
+            String applicationId,
+            String businessId,
+            String processInstanceId) throws Exception {
+        execute("""
+                INSERT INTO integration_process_binding (
+                  id, application_id, external_system, business_type,
+                  business_id, process_instance_id,
+                  process_definition_key
+                ) VALUES (
+                  '%s', '%s', 'project-system', 'change-request',
+                  '%s', '%s', 'project_change_process'
+                )
+                """.formatted(
+                        id,
+                        applicationId,
+                        businessId,
+                        processInstanceId));
     }
 }

@@ -1,6 +1,7 @@
 package com.workflow.openapi.infrastructure.persistence.mapper;
 
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationGrantValueRecord;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessGrantRecord;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -9,6 +10,7 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface IntegrationProcessGrantMapper {
@@ -21,6 +23,28 @@ public interface IntegrationProcessGrantMapper {
             """)
     Set<String> findByApplicationId(
             @Param("applicationId") String applicationId);
+
+    @Select("""
+            SELECT application_id, process_key, input_schema_json,
+                   allowed_message_keys
+              FROM integration_process_grant
+             WHERE application_id = #{applicationId}
+             ORDER BY process_key
+            """)
+    List<IntegrationProcessGrantRecord> findContractsByApplicationId(
+            @Param("applicationId") String applicationId);
+
+    @Select("""
+            SELECT application_id, process_key, input_schema_json,
+                   allowed_message_keys
+              FROM integration_process_grant
+             WHERE application_id = #{applicationId}
+               AND process_key = #{processKey}
+             LIMIT 1
+            """)
+    IntegrationProcessGrantRecord findContract(
+            @Param("applicationId") String applicationId,
+            @Param("processKey") String processKey);
 
     @Select("""
             <script>
@@ -56,4 +80,21 @@ public interface IntegrationProcessGrantMapper {
             """)
     int deleteByApplicationId(
             @Param("applicationId") String applicationId);
+
+    @Update("""
+            UPDATE integration_process_grant
+               SET input_schema_json = #{inputSchemaJson},
+                   allowed_message_keys = #{allowedMessageKeys},
+                   granted_by = #{operatorId},
+                   update_time = #{now}
+             WHERE application_id = #{applicationId}
+               AND process_key = #{processKey}
+            """)
+    int updateContract(
+            @Param("applicationId") String applicationId,
+            @Param("processKey") String processKey,
+            @Param("inputSchemaJson") String inputSchemaJson,
+            @Param("allowedMessageKeys") String allowedMessageKeys,
+            @Param("operatorId") String operatorId,
+            @Param("now") LocalDateTime now);
 }

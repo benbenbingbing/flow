@@ -3,6 +3,8 @@ package com.workflow.openapi.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.openapi.application.IntegrationSecretHasher;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
+import com.workflow.openapi.web.OpenApiRequestGuardFilter;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.jwk.JWK;
@@ -24,6 +26,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -43,6 +46,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 @Configuration(proxyBeanMethods = false)
@@ -250,8 +254,17 @@ public class OpenIntegrationSecurityConfiguration {
         SecurityFilterChain openApiResourceSecurity(
                 HttpSecurity http,
                 @Qualifier("machineJwtDecoder")
-                JwtDecoder machineJwtDecoder)
+                JwtDecoder machineJwtDecoder,
+                ObjectMapper objectMapper,
+                IntegrationApplicationMapper applicationMapper,
+                IntegrationClientNetworkPolicy networkPolicy,
+                OpenIntegrationClientAddressResolver addressResolver,
+                IntegrationRateLimitService rateLimitService,
+                OpenApiConcurrencyLeaseService concurrencyService,
+                SystemAuditPort auditPort)
                 throws Exception {
+            OpenApiSecurityResponseWriter responseWriter =
+                    new OpenApiSecurityResponseWriter(objectMapper);
             http
                     .securityMatcher("/api/open/**")
                     .csrf(csrf -> csrf.disable())
@@ -260,9 +273,71 @@ public class OpenIntegrationSecurityConfiguration {
                             session.sessionCreationPolicy(
                                     SessionCreationPolicy.STATELESS))
                     .authorizeHttpRequests(authorize -> authorize
+                            .requestMatchers(
+                                    HttpMethod.GET,
+                                    "/api/open/v1/process-definitions")
+                            .hasAuthority(
+                                    "SCOPE_process.definition.read")
+                            .requestMatchers(
+                                    HttpMethod.POST,
+                                    "/api/open/v1/process-instances")
+                            .hasAuthority(
+                                    "SCOPE_process.instance.start")
+                            .requestMatchers(
+                                    HttpMethod.GET,
+                                    "/api/open/v1/process-instances/*/tasks")
+                            .hasAuthority(
+                                    "SCOPE_process.task.read")
+                            .requestMatchers(
+                                    HttpMethod.GET,
+                                    "/api/open/v1/process-instances/*")
+                            .hasAuthority(
+                                    "SCOPE_process.instance.read")
+                            .requestMatchers(
+                                    HttpMethod.POST,
+                                    "/api/open/v1/process-instances/*"
+                                            + "/messages/*")
+                            .hasAuthority(
+                                    "SCOPE_process.message.correlate")
                             .anyRequest().authenticated())
                     .oauth2ResourceServer(resource -> resource
-                            .jwt(jwt -> jwt.decoder(machineJwtDecoder)));
+                            .jwt(jwt -> jwt.decoder(machineJwtDecoder))
+                            .authenticationEntryPoint(
+                                    (request, response, exception) -> {
+                                        response.setHeader(
+                                                HttpHeaders.WWW_AUTHENTICATE,
+                                                "Bearer error=\"invalid_token\"");
+                                        responseWriter.write(
+                                                request,
+                                                response,
+                                                401,
+                                                "INVALID_ACCESS_TOKEN",
+                                                "Access token is invalid",
+                                                null);
+                                    })
+                            .accessDeniedHandler(
+                                    (request, response, exception) ->
+                                            responseWriter.write(
+                                                    request,
+                                                    response,
+                                                    403,
+                                                    "INSUFFICIENT_SCOPE",
+                                                    "Required scope is not granted",
+                                                    null)))
+                    .addFilterBefore(
+                            new OpenApiRequestGuardFilter(
+                                    objectMapper),
+                            BearerTokenAuthenticationFilter.class)
+                    .addFilterAfter(
+                            new OpenApiApplicationPolicyFilter(
+                                    applicationMapper,
+                                    networkPolicy,
+                                    addressResolver,
+                                    rateLimitService,
+                                    concurrencyService,
+                                    responseWriter,
+                                    auditPort),
+                            BearerTokenAuthenticationFilter.class);
             return http.build();
         }
     }
