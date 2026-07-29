@@ -13,6 +13,7 @@ import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,6 +40,7 @@ public class OpenIntegrationProcessEventListener
     private final OpenProcessEventPort eventPort;
     private final Clock clock;
 
+    @Autowired
     public OpenIntegrationProcessEventListener(
             OpenProcessEventPort eventPort) {
         this(eventPort, Clock.systemUTC());

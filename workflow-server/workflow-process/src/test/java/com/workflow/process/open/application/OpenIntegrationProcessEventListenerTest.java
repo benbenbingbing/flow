@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class OpenIntegrationProcessEventListenerTest {
 
@@ -104,5 +105,23 @@ class OpenIntegrationProcessEventListenerTest {
         verify(eventPort, never()).publish(
                 org.mockito.ArgumentMatchers.any());
         assertTrue(listener.isFailOnException());
+    }
+
+    @Test
+    void springSelectsTheProductionConstructor() {
+        try (AnnotationConfigApplicationContext context =
+                new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                    OpenProcessEventPort.class,
+                    () -> eventPort);
+            context.register(
+                    OpenIntegrationProcessEventListener.class);
+
+            context.refresh();
+
+            assertTrue(context.getBean(
+                    OpenIntegrationProcessEventListener.class)
+                    instanceof OpenIntegrationProcessEventListener);
+        }
     }
 }
