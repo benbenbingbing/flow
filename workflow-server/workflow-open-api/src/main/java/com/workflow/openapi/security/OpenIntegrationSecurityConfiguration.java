@@ -61,7 +61,7 @@ public class OpenIntegrationSecurityConfiguration {
     SecurityFilterChain existingApplicationSecurity(HttpSecurity http)
             throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
                 .requestCache(cache -> cache.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(
                         SessionCreationPolicy.STATELESS))
@@ -272,7 +272,8 @@ public class OpenIntegrationSecurityConfiguration {
                     new OpenApiSecurityResponseWriter(objectMapper);
             http
                     .securityMatcher("/api/open/**")
-                    .csrf(csrf -> csrf.disable())
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(
+                            "/api/open/**"))
                     .requestCache(cache -> cache.disable())
                     .sessionManagement(session ->
                             session.sessionCreationPolicy(

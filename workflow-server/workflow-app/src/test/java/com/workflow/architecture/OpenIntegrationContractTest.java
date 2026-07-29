@@ -31,6 +31,7 @@ class OpenIntegrationContractTest {
             "docs/api/openapi-v1.yaml";
     private static final String EVENT_SCHEMA_PATH =
             "docs/api/events";
+    private static final String GIT_EXECUTABLE = "/usr/bin/git";
 
     @Test
     void openApiContractIsValidAndContainsTheV1Boundary()
@@ -153,7 +154,7 @@ class OpenIntegrationContractTest {
             Path root,
             String baseRef) throws IOException, InterruptedException {
         Process process = new ProcessBuilder(
-                "git",
+                GIT_EXECUTABLE,
                 "show",
                 baseRef + ":" + OPEN_API_PATH)
                 .directory(root.toFile())

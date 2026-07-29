@@ -8,6 +8,7 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.core.error.RateLimitExceededException;
+import com.workflow.core.logging.LogValue;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -114,7 +115,7 @@ public class TokenEndpointRateLimitFilter
         } catch (RuntimeException exception) {
             LOG.warn(
                     "Token endpoint policy check failed for client {}",
-                    clientId,
+                    LogValue.safe(clientId),
                     exception);
             if (response.isCommitted()) {
                 throw exception;
@@ -148,7 +149,7 @@ public class TokenEndpointRateLimitFilter
             LOG.warn(
                     "Unable to update integration credential usage metadata"
                             + " for client {}",
-                    clientId,
+                    LogValue.safe(clientId),
                     exception);
         }
     }
@@ -193,7 +194,7 @@ public class TokenEndpointRateLimitFilter
         } catch (RuntimeException exception) {
             LOG.warn(
                     "Token endpoint audit write failed for client {}",
-                    clientId,
+                    LogValue.safe(clientId),
                     exception);
         }
     }

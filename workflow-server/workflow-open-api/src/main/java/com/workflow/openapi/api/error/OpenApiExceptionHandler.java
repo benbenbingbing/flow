@@ -1,5 +1,6 @@
 package com.workflow.openapi.api.error;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.openapi.api.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import com.workflow.openapi.web.OpenRequestTrace;
@@ -112,8 +113,8 @@ public class OpenApiExceptionHandler {
             HttpServletRequest request) {
         log.error(
                 "开放接口处理失败: traceId={}, path={}",
-                OpenRequestTrace.get(request),
-                request.getRequestURI(),
+                LogValue.safe(OpenRequestTrace.get(request)),
+                LogValue.safe(request.getRequestURI()),
                 exception);
         return ResponseEntity.status(503)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
