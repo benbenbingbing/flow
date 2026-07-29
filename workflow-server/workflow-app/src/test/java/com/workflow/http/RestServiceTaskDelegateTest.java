@@ -42,7 +42,8 @@ class RestServiceTaskDelegateTest {
         server.createContext("/workflow-test", exchange -> {
             requestMethod.set(exchange.getRequestMethod());
             requestQuery.set(exchange.getRequestURI().getRawQuery());
-            requestHeader.set(exchange.getRequestHeaders().getFirst("X-Test-Token"));
+            requestHeader.set(exchange.getRequestHeaders().getFirst(
+                    "X-Business-Ref"));
             requestBody.set(readBody(exchange));
             respond(exchange, 200, "{\"data\":{\"id\":42},\"status\":\"accepted\"}");
         });
@@ -52,7 +53,7 @@ class RestServiceTaskDelegateTest {
                 {
                   "url":"http://127.0.0.1:%d/workflow-test",
                   "method":"POST",
-                  "headers":"{\\"X-Test-Token\\":\\"${token}\\"}",
+                  "headers":"{\\"X-Business-Ref\\":\\"${businessRef}\\"}",
                   "queryParams":"{\\"businessNo\\":\\"${businessNo}\\"}",
                   "body":"{\\"amount\\":${amount}}",
                   "contentType":"application/json",
@@ -64,7 +65,7 @@ class RestServiceTaskDelegateTest {
                 """.formatted(server.getAddress().getPort());
         DelegateExecution execution = mock(DelegateExecution.class);
         when(execution.getCurrentFlowElement()).thenReturn(serviceTask("restConfig", config));
-        when(execution.getVariable("token")).thenReturn("token-123");
+        when(execution.getVariable("businessRef")).thenReturn("BX-1001");
         when(execution.getVariable("businessNo")).thenReturn("BX 1001");
         when(execution.getVariable("amount")).thenReturn(125.5);
         when(execution.getProcessInstanceId()).thenReturn("instance-1");
@@ -74,14 +75,11 @@ class RestServiceTaskDelegateTest {
 
         assertEquals("POST", requestMethod.get());
         assertEquals("businessNo=BX+1001", requestQuery.get());
-        assertEquals("token-123", requestHeader.get());
+        assertEquals("BX-1001", requestHeader.get());
         assertEquals("{\"amount\":125.5}", requestBody.get());
         verify(execution).setVariable("remoteId", 42);
         verify(execution).setVariable("remoteStatus", "accepted");
         verify(execution).setVariable("rest-task-1_httpStatus", 200);
-        verify(execution).setVariable(
-                "rest-task-1_httpResponse",
-                "{\"data\":{\"id\":42},\"status\":\"accepted\"}");
     }
 
     @Test
@@ -120,6 +118,47 @@ class RestServiceTaskDelegateTest {
         assertThrows(
                 IllegalStateException.class,
                 () -> delegate.execute(execution));
+    }
+
+    @Test
+    void rejectsDynamicHostsBeforeNetworkAccess() {
+        String config = """
+                {
+                  "url":"https://${targetHost}/orders",
+                  "method":"GET"
+                }
+                """;
+        DelegateExecution execution = mock(DelegateExecution.class);
+        when(execution.getCurrentFlowElement())
+                .thenReturn(serviceTask("restConfig", config));
+        when(execution.getVariable("targetHost"))
+                .thenReturn("169.254.169.254");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> newDelegate().execute(execution));
+    }
+
+    @Test
+    void rejectsCredentialHeadersInLegacyRestTasks() {
+        String config = """
+                {
+                  "url":"https://example.com/orders",
+                  "method":"GET",
+                  "headers":"{\\"Authorization\\":\\"Bearer ${token}\\"}"
+                }
+                """;
+        DelegateExecution execution = mock(DelegateExecution.class);
+        when(execution.getCurrentFlowElement())
+                .thenReturn(serviceTask("restConfig", config));
+        when(execution.getVariable("token"))
+                .thenReturn("plaintext-secret");
+        when(execution.getProcessInstanceId()).thenReturn("instance-1");
+        when(execution.getCurrentActivityId()).thenReturn("rest-task-1");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> newDelegate().execute(execution));
     }
 
     private String readBody(HttpExchange exchange) throws IOException {

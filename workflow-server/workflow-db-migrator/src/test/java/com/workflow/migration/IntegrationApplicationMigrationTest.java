@@ -44,14 +44,16 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("015", currentVersion());
+        assertEquals("016", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
                         "integration_application_credential",
                         "integration_api_request_lease",
+                        "integration_connector_config",
                         "integration_idempotency_record",
                         "integration_process_binding",
+                        "integration_secret",
                         "integration_application_scope",
                         "integration_process_grant",
                         "integration_rate_limit_bucket"),
@@ -66,6 +68,9 @@ class IntegrationApplicationMigrationTest {
         assertTrue(indexExists(
                 "integration_application_credential",
                 "uk_integration_credential_active"));
+        assertTrue(indexExists(
+                "integration_secret",
+                "uk_integration_secret_active"));
         assertFalse(columnExists(
                 "integration_application_credential",
                 "client_secret"));
@@ -120,12 +125,14 @@ class IntegrationApplicationMigrationTest {
 
         flyway().migrate();
 
-        assertEquals("015", currentVersion());
+        assertEquals("016", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "
                         + "AND dict_code = 'upgrade_sentinel'"));
         assertTrue(tableExists("webhook_endpoint"));
+        assertTrue(tableExists("integration_secret"));
+        assertTrue(tableExists("integration_connector_config"));
         assertEquals(1, countRows("""
                 SELECT COUNT(*)
                   FROM integration_process_binding
@@ -323,6 +330,93 @@ class IntegrationApplicationMigrationTest {
                 "missing-app",
                 "business-1",
                 "process-instance-1"));
+        assertThrows(SQLException.class, () -> insertSecret(
+                "secret-orphan",
+                "missing-app",
+                "api-token",
+                1));
+    }
+
+    @Test
+    void databaseEnforcesSecretLifecycleAndSingleActiveVersion()
+            throws Exception {
+        flyway().migrate();
+        insertApplication("secret-app", "secret-client");
+        insertSecret("secret-v1", "secret-app", "api-token", 1);
+
+        assertThrows(SQLException.class, () -> insertSecret(
+                "secret-v2-active",
+                "secret-app",
+                "api-token",
+                2));
+        execute("""
+                UPDATE integration_secret
+                   SET status = 'REVOKED',
+                       revoked_by = 'migration-test',
+                       revoked_at = CURRENT_TIMESTAMP(6)
+                 WHERE id = 'secret-v1'
+                """);
+        insertSecret("secret-v2", "secret-app", "api-token", 2);
+        assertThrows(SQLException.class, () -> execute("""
+                UPDATE integration_secret
+                   SET status = 'DESTROYED',
+                       key_version = NULL,
+                       encrypted_data_key = NULL,
+                       data_key_nonce = NULL,
+                       secret_ciphertext = NULL,
+                       secret_nonce = NULL
+                 WHERE id = 'secret-v1'
+                """));
+        execute("""
+                UPDATE integration_secret
+                   SET status = 'DESTROYED',
+                       key_version = NULL,
+                       encrypted_data_key = NULL,
+                       data_key_nonce = NULL,
+                       secret_ciphertext = NULL,
+                       secret_nonce = NULL,
+                       destroyed_by = 'migration-test',
+                       destroyed_at = CURRENT_TIMESTAMP(6)
+                 WHERE id = 'secret-v1'
+                """);
+    }
+
+    @Test
+    void databaseRejectsInvalidConnectorConfiguration()
+            throws Exception {
+        flyway().migrate();
+        insertApplication("connector-app", "connector-client");
+        insertConnectorConfig(
+                "connector-valid",
+                "connector-app",
+                "Primary ERP",
+                JSON_OBJECT_PLACEHOLDER,
+                "JSON_ARRAY('erp.example.com')");
+        assertThrows(SQLException.class, () -> insertConnectorConfig(
+                "connector-invalid-json",
+                "connector-app",
+                "Invalid JSON",
+                "'not-json'",
+                "JSON_ARRAY('erp.example.com')"));
+        assertThrows(SQLException.class, () -> insertConnectorConfig(
+                "connector-empty-hosts",
+                "connector-app",
+                "Empty hosts",
+                JSON_OBJECT_PLACEHOLDER,
+                "JSON_ARRAY()"));
+        assertThrows(SQLException.class, () -> execute("""
+                INSERT INTO integration_connector_config (
+                  id, application_id, config_name, connector_code,
+                  status, configuration_document,
+                  allowed_hosts_document, version,
+                  created_by, updated_by
+                ) VALUES (
+                  'connector-orphan', 'missing-app', 'Orphan',
+                  'http-json', 'ACTIVE', JSON_OBJECT(),
+                  JSON_ARRAY('erp.example.com'), 0,
+                  'migration-test', 'migration-test'
+                )
+                """));
     }
 
     private Flyway flyway() {
@@ -444,6 +538,53 @@ class IntegrationApplicationMigrationTest {
                   'migration-test', 'migration-test'
                 )
                 """.formatted(id, clientId));
+    }
+
+    private static final String JSON_OBJECT_PLACEHOLDER = "JSON_OBJECT()";
+
+    private void insertSecret(
+            String id,
+            String applicationId,
+            String name,
+            long version) throws Exception {
+        execute("""
+                INSERT INTO integration_secret (
+                  id, application_id, secret_name, secret_version,
+                  status, key_version, encrypted_data_key,
+                  data_key_nonce, secret_ciphertext, secret_nonce,
+                  secret_hint, created_by
+                ) VALUES (
+                  '%s', '%s', '%s', %d,
+                  'ACTIVE', 'master-v1', 'encrypted-data-key',
+                  'data-key-nonce', 'encrypted-secret', 'secret-nonce',
+                  '12345678', 'migration-test'
+                )
+                """.formatted(id, applicationId, name, version));
+    }
+
+    private void insertConnectorConfig(
+            String id,
+            String applicationId,
+            String name,
+            String configurationExpression,
+            String hostsExpression) throws Exception {
+        execute("""
+                INSERT INTO integration_connector_config (
+                  id, application_id, config_name, connector_code,
+                  status, configuration_document,
+                  allowed_hosts_document, version,
+                  created_by, updated_by
+                ) VALUES (
+                  '%s', '%s', '%s', 'http-json',
+                  'ACTIVE', %s, %s, 0,
+                  'migration-test', 'migration-test'
+                )
+                """.formatted(
+                        id,
+                        applicationId,
+                        name,
+                        configurationExpression,
+                        hostsExpression));
     }
 
     private void incrementRateLimitBucket() throws Exception {

@@ -471,6 +471,8 @@ public class UiDataSourceService {
                                     authorization,
                                     input))
                             .operation(text(config.get("operation")))
+                            .connectorConfigId(text(
+                                    config.get("connectorConfigId")))
                             .parameters(Collections.unmodifiableMap(
                                     new LinkedHashMap<>(input)))
                             .runtimeContext(integrationRuntimeContext(
@@ -542,7 +544,28 @@ public class UiDataSourceService {
                 && !StringUtils.hasText(request.getProviderCode())) {
             throw new IllegalArgumentException("Provider/Connector编码不能为空");
         }
+        if ("INTEGRATION_CONNECTOR".equals(sourceType)
+                && "http-json".equalsIgnoreCase(request.getProviderCode())) {
+            validateHttpConnectorReference(request.getConfig());
+        }
         requireScopeAccess(scopeType, request.getScopeId());
+    }
+
+    private void validateHttpConnectorReference(
+            Map<String, Object> configuration) {
+        if (configuration == null
+                || !configuration.keySet().equals(
+                        Set.of("connectorConfigId", "operation"))) {
+            throw new IllegalArgumentException(
+                    "HTTP Connector 数据源只能配置 connectorConfigId 和 operation");
+        }
+        for (String field : List.of("connectorConfigId", "operation")) {
+            String value = text(configuration.get(field));
+            if (!value.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")) {
+                throw new IllegalArgumentException(
+                        "HTTP Connector 数据源字段无效: " + field);
+            }
+        }
     }
 
     private void validateExecutionPolicy(Map<String, Object> policy) {

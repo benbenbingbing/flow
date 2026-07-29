@@ -154,6 +154,13 @@ file:
       path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
 
 workflow:
+  integration:
+    connector:
+      http:
+        enabled: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED:false}
+        master-key: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY:}
+        master-key-version: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION:}
+        previous-master-keys: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_PREVIOUS_MASTER_KEYS:}
   open-api:
     enabled: ${WORKFLOW_OPEN_API_ENABLED:false}
     issuer: ${WORKFLOW_OPEN_API_ISSUER:https://flow.invalid}
@@ -185,6 +192,7 @@ workflow:
     allow-private-addresses: ${WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES:false}
     connect-timeout-seconds: ${WORKFLOW_HTTP_CONNECT_TIMEOUT_SECONDS:5}
     max-request-timeout-seconds: ${WORKFLOW_HTTP_MAX_REQUEST_TIMEOUT_SECONDS:30}
+    max-request-bytes: ${WORKFLOW_HTTP_MAX_REQUEST_BYTES:262144}
     max-response-bytes: ${WORKFLOW_HTTP_MAX_RESPONSE_BYTES:1048576}
   security:
     trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}

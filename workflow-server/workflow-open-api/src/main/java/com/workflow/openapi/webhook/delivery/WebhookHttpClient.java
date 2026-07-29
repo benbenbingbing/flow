@@ -1,15 +1,14 @@
 package com.workflow.openapi.webhook.delivery;
 
-import com.workflow.http.RestEndpointPolicy;
+import com.workflow.http.HttpTransportRequest;
+import com.workflow.http.HttpTransportResult;
+import com.workflow.http.PinnedHttpTransport;
+import com.workflow.http.WorkflowHttpProperties;
 import com.workflow.openapi.webhook.infrastructure.persistence.record.WebhookDeliveryWorkRecord;
 import com.workflow.openapi.webhook.security.WebhookSecretCipher;
 import com.workflow.openapi.webhook.security.WebhookSignatureService;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -17,6 +16,9 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Map;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -27,56 +29,54 @@ public class WebhookHttpClient {
     private static final int MAX_STORED_RESPONSE_CHARS = 4096;
     private static final long MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60;
 
-    private final RestEndpointPolicy endpointPolicy;
     private final WebhookSecretCipher secretCipher;
     private final WebhookSignatureService signatureService;
-    private final HttpClient httpClient;
+    private final PinnedHttpTransport httpTransport;
+    private final WorkflowHttpProperties httpProperties;
     private final Clock clock;
     private final Duration requestTimeout;
 
+    @Autowired
     public WebhookHttpClient(
-            RestEndpointPolicy endpointPolicy,
             WebhookSecretCipher secretCipher,
-            WebhookSignatureService signatureService) {
+            WebhookSignatureService signatureService,
+            PinnedHttpTransport httpTransport,
+            WorkflowHttpProperties httpProperties) {
         this(
-                endpointPolicy,
                 secretCipher,
                 signatureService,
-                HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(3))
-                        .followRedirects(
-                                HttpClient.Redirect.NEVER)
-                        .build(),
+                httpTransport,
+                httpProperties,
                 Clock.systemUTC(),
                 Duration.ofSeconds(10));
     }
 
     WebhookHttpClient(
-            RestEndpointPolicy endpointPolicy,
             WebhookSecretCipher secretCipher,
             WebhookSignatureService signatureService,
-            HttpClient httpClient,
+            PinnedHttpTransport httpTransport,
+            WorkflowHttpProperties httpProperties,
             Clock clock) {
         this(
-                endpointPolicy,
                 secretCipher,
                 signatureService,
-                httpClient,
+                httpTransport,
+                httpProperties,
                 clock,
                 Duration.ofSeconds(10));
     }
 
     WebhookHttpClient(
-            RestEndpointPolicy endpointPolicy,
             WebhookSecretCipher secretCipher,
             WebhookSignatureService signatureService,
-            HttpClient httpClient,
+            PinnedHttpTransport httpTransport,
+            WorkflowHttpProperties httpProperties,
             Clock clock,
             Duration requestTimeout) {
-        this.endpointPolicy = endpointPolicy;
         this.secretCipher = secretCipher;
         this.signatureService = signatureService;
-        this.httpClient = httpClient;
+        this.httpTransport = httpTransport;
+        this.httpProperties = httpProperties;
         this.clock = clock;
         if (requestTimeout == null
                 || requestTimeout.isZero()
@@ -97,7 +97,6 @@ public class WebhookHttpClient {
                     "Webhook 请求体超过 256 KiB");
         }
         URI endpoint = URI.create(delivery.endpointUrl());
-        endpointPolicy.validate(endpoint);
         String secret = secretCipher.decrypt(
                 delivery.signingSecretCiphertext());
         long timestamp = clock.instant().getEpochSecond();
@@ -106,58 +105,36 @@ public class WebhookHttpClient {
                 timestamp,
                 body,
                 secret);
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-                .timeout(requestTimeout)
-                .header(
-                        "Content-Type",
-                        "application/cloudevents+json")
-                .header(
-                        "Flow-Webhook-Id",
-                        delivery.eventId())
-                .header(
-                        "Flow-Webhook-Timestamp",
-                        Long.toString(timestamp))
-                .header(
-                        "Flow-Webhook-Signature",
-                        signature)
-                .header(
-                        "X-Trace-Id",
-                        delivery.traceId() == null
-                                || delivery.traceId().isBlank()
-                                ? delivery.eventId()
-                                : delivery.traceId())
-                .header("User-Agent", "Flow-Webhook/1")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-                .build();
-        HttpResponse<InputStream> response = httpClient.send(
-                request,
-                HttpResponse.BodyHandlers.ofInputStream());
-        byte[] responseBytes;
-        try (InputStream stream = response.body()) {
-            responseBytes = stream.readNBytes(
-                    MAX_RESPONSE_BYTES + 1);
-        }
-        boolean truncated =
-                responseBytes.length > MAX_RESPONSE_BYTES;
-        int storedBytes = Math.min(
-                responseBytes.length,
-                MAX_RESPONSE_BYTES);
+        Map<String, String> headers = Map.of(
+                "Content-Type", "application/cloudevents+json",
+                "Flow-Webhook-Id", delivery.eventId(),
+                "Flow-Webhook-Timestamp", Long.toString(timestamp),
+                "Flow-Webhook-Signature", signature,
+                "X-Trace-Id", delivery.traceId() == null
+                        || delivery.traceId().isBlank()
+                        ? delivery.eventId()
+                        : delivery.traceId(),
+                "User-Agent", "Flow-Webhook/1");
+        HttpTransportResult response = httpTransport.execute(
+                new HttpTransportRequest(
+                        "POST",
+                        endpoint,
+                        headers,
+                        new String(body, StandardCharsets.UTF_8),
+                        Math.toIntExact(requestTimeout.toMillis()),
+                        Set.copyOf(httpProperties.getAllowedHosts()),
+                        MAX_RESPONSE_BYTES,
+                        true));
         String excerpt = response.statusCode() >= 200
                 && response.statusCode() < 300
                 ? null
-                : sanitize(new String(
-                        responseBytes,
-                        0,
-                        storedBytes,
-                        StandardCharsets.UTF_8));
+                : sanitize(response.body());
         return new WebhookHttpResult(
                 response.statusCode(),
                 excerpt,
-                truncated,
+                response.responseTruncated(),
                 parseRetryAfter(
-                        response.headers()
-                                .firstValue("Retry-After")
-                                .orElse(null)));
+                        response.retryAfter()));
     }
 
     private Long parseRetryAfter(String value) {

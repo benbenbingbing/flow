@@ -19,5 +19,6 @@ public class WorkflowHttpProperties {
     private boolean allowPrivateAddresses;
     private int connectTimeoutSeconds = 5;
     private int maxRequestTimeoutSeconds = 30;
+    private int maxRequestBytes = 262_144;
     private int maxResponseBytes = 1_048_576;
 }

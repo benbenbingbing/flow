@@ -105,6 +105,13 @@ openApi:
     workerDelayMs: 1000
     metricsRefreshMs: 15000
 
+connector:
+  http:
+    enabled: false
+    masterKeyVersion: ""
+    masterKeySecretKey: integration-connector-master-key
+    previousMasterKeysSecretKey: ""
+
 monitoring:
   serviceMonitor:
     enabled: false
@@ -120,6 +127,8 @@ monitoring:
     webhookOldestPendingSeconds: 300
     webhookSuccessRatio: 0.95
     webhookMinimumAttempts: 10
+    connectorSuccessRatio: 0.95
+    connectorMinimumAttempts: 10
 
 ingress:
   enabled: false

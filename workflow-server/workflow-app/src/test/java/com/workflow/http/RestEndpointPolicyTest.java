@@ -3,6 +3,7 @@ package com.workflow.http;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.net.InetAddress;
 import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,10 @@ class RestEndpointPolicyTest {
         properties.setAllowedHosts(List.of("*.example.test"));
         properties.setAllowPrivateAddresses(true);
         RestEndpointPolicy policy =
-                new RestEndpointPolicy(properties);
+                new RestEndpointPolicy(
+                        properties,
+                        host -> new InetAddress[]{
+                                InetAddress.getLoopbackAddress()});
 
         assertDoesNotThrow(() -> policy.validate(
                 URI.create("https://api.example.test/hook")));

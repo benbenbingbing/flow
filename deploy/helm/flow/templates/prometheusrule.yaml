@@ -136,4 +136,41 @@ spec:
           annotations:
             summary: Webhook worker execution queue is saturated
             runbook_url: deploy/runbooks/webhook-delivery.md#worker-saturation
+    - name: {{ include "flow.fullname" . }}.connector
+      rules:
+        - alert: FlowConnectorSuccessRatioLow
+          expr: |
+            (
+              sum by (connector, operation) (
+                rate(flow_connector_calls_total{
+                  status="success"}[15m])
+              )
+              /
+              clamp_min(
+                sum by (connector, operation) (
+                  rate(flow_connector_calls_total[15m])
+                ),
+                0.001
+              )
+            ) < {{ .Values.monitoring.prometheusRule.connectorSuccessRatio }}
+            and
+            sum by (connector, operation) (
+              increase(flow_connector_calls_total[15m])
+            ) >= {{ .Values.monitoring.prometheusRule.connectorMinimumAttempts }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: HTTP Connector success ratio is below the production objective
+            runbook_url: deploy/runbooks/http-connector.md#failure-rate
+        - alert: FlowConnectorAuditWriteFailure
+          expr: |
+            increase(flow_connector_audit_failures_total{
+              application="workflow-server"}[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: HTTP Connector audit outcome could not be persisted
+            runbook_url: deploy/runbooks/http-connector.md#audit-failure
 {{- end }}

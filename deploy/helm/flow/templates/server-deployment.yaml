@@ -89,6 +89,24 @@ spec:
               value: {{ .Values.application.trustForwardedHeaders | quote }}
             - name: WORKFLOW_HTTP_ALLOWED_HOSTS
               value: {{ .Values.application.httpAllowedHosts | quote }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED
+              value: {{ .Values.connector.http.enabled | quote }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION
+              value: {{ .Values.connector.http.masterKeyVersion | quote }}
+            {{- if .Values.connector.http.enabled }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.connector.http.masterKeySecretKey }}
+            {{- if ne .Values.connector.http.previousMasterKeysSecretKey "" }}
+            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_PREVIOUS_MASTER_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.connector.http.previousMasterKeysSecretKey }}
+            {{- end }}
+            {{- end }}
             - name: WORKFLOW_LOG_LEVEL
               value: {{ .Values.application.logLevel | quote }}
             - name: SHUTDOWN_TIMEOUT

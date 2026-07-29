@@ -25,6 +25,13 @@ webhook_args="
   --set-string application.httpAllowedHosts=hooks.example.com
   --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
 "
+connector_args="
+  --set connector.http.enabled=true
+  --set connector.http.masterKeyVersion=current-2026-07
+  --set connector.http.masterKeySecretKey=integration-connector-master-key
+  --set connector.http.previousMasterKeysSecretKey=integration-connector-previous-master-keys
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
+"
 
 # shellcheck disable=SC2086
 helm lint "$repository_root/deploy/helm/flow" --strict $production_args
@@ -57,6 +64,33 @@ helm template flow-webhook "$repository_root/deploy/helm/flow" \
   $open_api_args \
   $webhook_args \
   >"$temporary_directory/webhook.yaml"
+
+# shellcheck disable=SC2086
+helm template flow-connector "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $connector_args \
+  >"$temporary_directory/connector.yaml"
+
+if helm template flow-connector "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  --set connector.http.enabled=true \
+  --set connector.http.masterKeyVersion=current-2026-07 \
+  >"$temporary_directory/invalid-connector-egress.yaml" 2>/dev/null; then
+  printf 'HTTP Connector must reject an empty outbound HTTPS CIDR list\n' >&2
+  exit 1
+fi
+
+if helm template flow-connector "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  --set connector.http.enabled=true \
+  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32 \
+  >"$temporary_directory/invalid-connector-key-version.yaml" 2>/dev/null; then
+  printf 'HTTP Connector must require a master key version\n' >&2
+  exit 1
+fi
 
 if helm template flow-webhook "$repository_root/deploy/helm/flow" \
   --namespace flow-production \
@@ -143,6 +177,12 @@ docker run --rm --interactive "$kubeconform_image" \
   -strict \
   -summary \
   <"$temporary_directory/webhook.yaml"
+
+docker run --rm --interactive "$kubeconform_image" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary \
+  <"$temporary_directory/connector.yaml"
 
 docker run --rm --interactive "$kubeconform_image" \
   -kubernetes-version 1.32.0 \
