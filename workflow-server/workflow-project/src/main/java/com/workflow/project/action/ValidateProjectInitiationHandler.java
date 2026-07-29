@@ -43,7 +43,9 @@ public class ValidateProjectInitiationHandler implements FlowActionHandler {
             throw new IllegalStateException("Project initiation data is unavailable.");
         }
         Map<String, Object> result =
-                governanceService.validateProjectInitiation(project);
+                governanceService.validateProjectInitiation(
+                        project,
+                        context);
         context.setExecutionResult(result);
         context.addExecutionTrace(
                 "CROSS_ENTITY_VALIDATED",

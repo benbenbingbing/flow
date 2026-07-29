@@ -1,11 +1,14 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
-import com.workflow.entity.data.application.DynamicTableService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
@@ -18,7 +21,6 @@ import org.flowable.task.service.impl.persistence.entity.TaskEntity;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -32,10 +34,8 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
     
     /** Flowable 运行时服务，查询流程实例与变量 */
     private final RuntimeService runtimeService;
-    /** 动态实体数据 Mapper，读取/更新实体状态 */
-    private final EntityDataDynamicMapper entityDataDynamicMapper;
-    /** 动态表服务，获取实体对应动态表名 */
-    private final DynamicTableService dynamicTableService;
+    /** 实体统一变更端口 */
+    private final EntityMutationPort entityMutationPort;
     /** 流程状态映射 Mapper，查询节点到实体状态的映射 */
     private final EntityFlowStatusMappingMapper statusMappingMapper;
     /** 流程定义配置 Mapper，查询流程配置 */
@@ -122,33 +122,60 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
                     return; // 映射存在但没有配置具体状态，保持原状态不变
                 }
                 
-                // 更新实体数据状态
-                String tableName = dynamicTableService.getTableName(entityCode);
-                Map<String, Object> entityData = entityDataDynamicMapper.selectById(tableName, entityDataId);
-                if (entityData != null) {
-                    String oldStatus = entityData.get("status") != null
-                            ? String.valueOf(entityData.get("status"))
-                            : null;
-                    
-                    // 获取新状态编码
-                    String newStatusCode = mapping.getEntityStatusCode();
-                    String newStatus = parseStatus(newStatusCode);
-                    if (newStatus != null && !newStatus.equals(oldStatus)) {
-                        Map<String, Object> updateData = new HashMap<>();
-                        updateData.put("id", entityDataId);
-                        updateData.put("status", newStatus);
-                        entityDataDynamicMapper.update(tableName, updateData);
-                        
-                        log.info("实体数据状态已更新: entityDataId={}, fromStatus={}, toStatus={}, processNode={}, sourceNode={}, targetNode={}",
-                                entityDataId, oldStatus, newStatus, taskDefinitionKey, 
-                                mapping.getSourceNodeName(), mapping.getTargetNodeName());
-                    } else if (newStatus == null) {
-                        log.debug("状态值为空，不更新: processConfigId={}, sourceNodeId={}",
-                                processConfig.getId(), taskDefinitionKey);
-                    } else {
-                        log.debug("状态未变化，不更新: entityDataId={}, status={}", entityDataId, newStatus);
-                    }
+                String newStatus =
+                        parseStatus(
+                                mapping.getEntityStatusCode());
+                if (newStatus == null) {
+                    log.debug(
+                            "状态值为空，不更新: processConfigId={}, sourceNodeId={}",
+                            processConfig.getId(),
+                            taskDefinitionKey);
+                    return;
                 }
+                String idempotencyKey = String.join(
+                        ":",
+                        "process-status",
+                        processInstanceId,
+                        task.getId(),
+                        newStatus);
+                EntityMutationContext context =
+                        EntityMutationContext.builder(
+                                        EntityMutationSourceType.PROCESS_RUNTIME,
+                                        "PROCESS_STATUS_SYNC",
+                                        "流程状态同步")
+                                .sourceId(taskDefinitionKey)
+                                .sourceRecord(
+                                        entityCode,
+                                        entityDataId)
+                                .process(
+                                        processInstance
+                                                .getProcessDefinitionId(),
+                                        processInstanceId,
+                                        task.getId())
+                                .trace(
+                                        processInstanceId,
+                                        idempotencyKey)
+                                .extraParams(Map.of(
+                                        "sourceNodeName",
+                                        String.valueOf(
+                                                mapping.getSourceNodeName()),
+                                        "targetNodeName",
+                                        String.valueOf(
+                                                mapping.getTargetNodeName())))
+                                .build();
+                entityMutationPort.execute(
+                        new EntityMutationCommand(
+                                idempotencyKey,
+                                entityCode,
+                                entityDataId,
+                                EntityMutationOperationType.STATUS_CHANGE,
+                                Map.of("status", newStatus),
+                                context));
+                log.info(
+                        "实体数据状态已通过变更管道同步: entityDataId={}, toStatus={}, processNode={}",
+                        entityDataId,
+                        newStatus,
+                        taskDefinitionKey);
                 
             } catch (Exception e) {
                 log.error("更新实体状态失败: processInstanceId={}, taskId={}", processInstanceId, task.getId(), e);

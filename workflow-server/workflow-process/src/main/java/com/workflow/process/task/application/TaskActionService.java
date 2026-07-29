@@ -12,11 +12,9 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
+import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataMapper;
 import com.workflow.entity.data.application.EntityDataDynamicService;
-import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
@@ -57,13 +55,12 @@ public class TaskActionService {
     private final HistoryService historyService;
     private final ProcessTaskService processTaskService;
     private final org.flowable.engine.RepositoryService repositoryService;
-    private final EntityDataMapper entityDataMapper;
     private final com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper operationLogMapper;
     private final SysUserService sysUserService;
     private final NodeFormSubmissionService nodeFormSubmissionService;
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService entityActionCapabilityService;
-    private final EntityRecordTeamService entityRecordTeamService;
+    private final EntityRecordPort entityRecordPort;
     /** 抄送/知会服务：用于统计未读抄送数等 */
     private final ProcessCcService processCcService;
 
@@ -238,7 +235,7 @@ public class TaskActionService {
             // 不需要在这里手动更新，避免重复更新
         }
         if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
-            entityRecordTeamService.record(
+            entityRecordPort.recordActivity(
                     entityCode,
                     entityDataId,
                     normalizedAction.toUpperCase(Locale.ROOT),
@@ -348,7 +345,7 @@ public class TaskActionService {
         String entityCode = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityCode"));
         String entityDataId = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId"));
         if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
-            entityRecordTeamService.record(
+            entityRecordPort.recordActivity(
                     entityCode,
                     entityDataId,
                     "CLAIM",
@@ -553,8 +550,12 @@ public class TaskActionService {
             String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
             String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
-                entityDataDynamicService.markWithdrawn(entityCode, entityDataId);
-                entityRecordTeamService.record(
+                entityRecordPort.markProcessEnded(
+                        entityCode,
+                        entityDataId,
+                        "WITHDRAWN",
+                        "WITHDRAWN");
+                entityRecordPort.recordActivity(
                         entityCode,
                         entityDataId,
                         "WITHDRAW",

@@ -138,8 +138,13 @@ public class EntityDataController {
     public ApiResponse<EntityDataDTO> getById(
             @PathVariable String entityCode,
             @PathVariable String id,
-            @RequestParam(required = false) String listKey) {
-        return ApiResponse.success(entityDataActionService.getDetail(entityCode, id, listKey));
+            @RequestParam(required = false) String listKey,
+            @RequestParam(required = false) String formId) {
+        return ApiResponse.success(entityDataActionService.getDetail(
+                entityCode,
+                id,
+                listKey,
+                formId));
     }
     
     /**

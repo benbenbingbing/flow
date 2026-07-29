@@ -10,6 +10,7 @@ import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceColl
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -17,6 +18,7 @@ import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.Map;
 
@@ -76,6 +78,9 @@ class ProcessRuntimeServiceTest {
                 mock(WorkflowAutoSkipService.class);
         final MultiInstanceCollectionListener multiInstanceCollectionListener =
                 mock(MultiInstanceCollectionListener.class);
+        @SuppressWarnings("unchecked")
+        final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
+                mock(ObjectProvider.class);
 
         Fixture() {
             ProcessDefinitionConfig config = new ProcessDefinitionConfig();
@@ -109,7 +114,8 @@ class ProcessRuntimeServiceTest {
                     taskService,
                     processTaskService,
                     workflowAutoSkipService,
-                    multiInstanceCollectionListener);
+                    multiInstanceCollectionListener,
+                    changeTargetPortProvider);
         }
     }
 }

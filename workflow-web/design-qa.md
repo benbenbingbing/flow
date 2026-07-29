@@ -1,3 +1,237 @@
+# 列表顶部预览入口恢复验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-e199ad84-4ce5-4bef-ab43-d0e4d9546937.png`
+- Source pixels: `3170 x 1500`
+- Implementation screenshot: unavailable because browser access to the local page remains blocked
+- Intended state: list configuration designer header with the action buttons visible
+
+## Implemented Interaction
+
+- Restored the `预览` button between `版本` and `发布生效`.
+- The preview opens in a wide dialog instead of restoring the removed right-side panel.
+- The dialog uses current field, query, table, and pagination configuration.
+- Query, reset, page change, page-size change, retry, desktop/tablet width, and close actions are available.
+- Preview data continues to load through the controlled list runtime API.
+
+## Findings
+
+- Fonts and typography: the restored button follows existing Element Plus header-action typography.
+- Spacing and layout rhythm: the button fills the intended header gap without changing the configuration-panel width.
+- Colors and visual tokens: the button uses the existing default action style.
+- Image quality and assets: no image assets are involved.
+- Copy and content: `预览` and `列表预览` clearly distinguish the entry and dialog.
+
+## Verification
+
+- `npm run test:page-config`: passed
+- `npm run test:functional`: passed
+- `npm run build`: passed
+- `git diff --check`: passed
+- Browser rendering, preview interaction, console inspection, and screenshot comparison: blocked by the existing browser access restriction
+
+final result: blocked
+
+---
+
+# 列表与字段配置页签换位验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-bdfd6df5-acec-4c37-a976-480158eff7f5.png`
+- Source pixels: `3426 x 2004`
+- Implementation screenshot: unavailable because browser access to the local page remains blocked
+- Intended state: list configuration designer with the primary configuration tabs visible
+
+## Implemented Layout
+
+- Moved `字段配置` to the first tab position.
+- Moved `列表设置` to the second tab position.
+- Changed the initial active tab from `列表设置` to `字段配置`.
+- Preserved each tab's original content, actions, and model name.
+
+## Findings
+
+- Fonts and typography: unchanged.
+- Spacing and layout rhythm: only the first two tab positions changed.
+- Colors and visual tokens: unchanged.
+- Image quality and assets: no image assets are involved.
+- Copy and content: unchanged.
+
+## Verification
+
+- `npm run test:page-config`: passed
+- `npm run test:functional`: passed
+- `npm run build`: passed
+- `git diff --check`: passed
+- Browser rendering, tab interaction, and source-to-implementation screenshot comparison: blocked by the existing browser access restriction
+
+final result: blocked
+
+---
+
+# 列表设计器冗余标题移除验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-bcb59084-e94d-4d97-b802-bf76c5894cd2.png`
+- Source pixels: `3352 x 1666`
+- Implementation screenshot: unavailable because browser access to the local page remains blocked
+- Intended state: list configuration designer with `字段配置` selected
+
+## Implemented Layout
+
+- Removed the outer card header containing `字段配置`.
+- Removed the accompanying `拖拽排序，勾选控制显示和查询` description.
+- Preserved the four functional tabs and all configuration content.
+- The reclaimed vertical space now moves the active tab and field table closer to the page header.
+
+## Findings
+
+- Fonts and typography: no remaining duplicate heading is introduced by this change.
+- Spacing and layout rhythm: the redundant full-width header row is removed.
+- Colors and visual tokens: unchanged.
+- Image quality and assets: no image assets are involved.
+- Copy and content: only the duplicate heading and explanatory copy were removed.
+
+## Verification
+
+- `npm run test:page-config`: passed
+- `npm run build`: passed
+- `git diff --check`: passed
+- Browser rendering and source-to-implementation screenshot comparison: blocked by the existing browser access restriction
+
+final result: blocked
+
+---
+
+# 字段用途列单行显示验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-662a0bb3-b624-429e-82f7-471a56d3f4f1.png`
+- Source pixels: `2854 x 1308`
+- Implementation screenshot: unavailable because browser access to the local page remains blocked
+- Intended state: list configuration designer with `字段配置` selected
+
+## Implemented Layout
+
+- Increased the `用途` column from `104px` to `144px`.
+- Changed the `列表` and `查询` controls from vertical stacking to a horizontal row.
+- Added a no-wrap constraint so the two purpose options remain on one line.
+- Kept `当前配置` as the flexible column that fills the remaining table width.
+
+## Findings
+
+- Fonts and typography: unchanged; purpose labels retain the existing Element Plus checkbox typography.
+- Spacing and layout rhythm: source showed unwanted vertical stacking; source code and compiled output now provide sufficient fixed width and a horizontal `12px` gap.
+- Colors and visual tokens: unchanged.
+- Image quality and assets: no image assets are involved.
+- Copy and content: unchanged.
+
+## Verification
+
+- `npm run test:page-config`: passed
+- `npm run build`: passed
+- `git diff --check`: passed
+- Browser rendering and source-to-implementation screenshot comparison: blocked by the existing browser access restriction
+
+final result: blocked
+
+---
+
+# 列表设置宽屏平铺验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-3b21d625-f4b6-48e0-a0a2-1093d22379fd.png`
+- Source pixels: `3016 x 1740`
+- Implementation screenshot: unavailable because browser access to `localhost:3000` was explicitly blocked
+- Intended state: list configuration designer with `列表设置` selected
+
+## Implemented Layout
+
+- Removed the `760px` maximum width from the list settings form.
+- The form and every settings section now use the complete configuration-panel width.
+- At viewports of `1440px` and wider, section bodies use two equal columns.
+- Scene selection, return-mapping JSON, and component parameters span both columns.
+- Below `1440px`, settings keep the existing single-column layout.
+
+## Findings
+
+- Fonts and typography: unchanged.
+- Spacing and layout rhythm: code and build output establish a full-width form with a `32px` desktop column gap, but browser-rendered spacing could not be inspected.
+- Colors and visual tokens: unchanged.
+- Image quality and assets: no image assets are involved.
+- Copy and content: unchanged.
+
+## Verification
+
+- `npm run test:functional`: passed
+- `npm run test:page-config`: passed
+- `npm run build`: passed
+- `git diff --check`: passed
+- Browser rendering, interaction, console, and source-to-implementation comparison: blocked by the browser access restriction
+
+final result: blocked
+
+---
+
+# 列表设计器字段配置扩宽验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-e350d104-fb8a-4492-b120-660000c4c4a8.png`
+- Final list settings screenshot: `/private/tmp/entity-list-design-final-list-settings-normalized.png`
+- Final field configuration screenshot: `/private/tmp/entity-list-design-final-field-config.png`
+- Side-by-side comparison: `/private/tmp/entity-list-design-qa-comparison.png`
+- Source pixels: `3302 x 1716`; cropped browser chrome to `3302 x 1655`, then normalized to `1651 x 828`
+- Implementation capture: `1800 x 903`, normalized to `1651 x 828` for comparison
+- Browser CSS viewport during final inspection: `1800 x 1000`
+- Responsive inspection viewport: `900 x 800`
+- State: list settings selected for full-view comparison; field configuration selected for focused verification
+
+## Full-View Comparison
+
+- The right-side draft preview and its header action are absent.
+- The configuration panel expands across the complete available content width.
+- Existing header, tabs, cards, spacing, typography, colors, borders, and controls remain consistent with the source page.
+- No page-level horizontal overflow was present at `900 x 800`; the field table keeps its own horizontal scrolling behavior.
+
+## Focused Region Comparison
+
+- Field configuration table width measured `1482px` inside a `1556px` configuration panel at the final desktop viewport.
+- No `.preview-panel` node or `草稿预览` copy remains.
+- Switching between `列表设置` and `字段配置` works.
+- Browser console errors: none.
+
+## Findings
+
+- No remaining P0, P1, or P2 visual or interaction issues.
+- Fonts and typography: unchanged from the existing Element Plus design system.
+- Spacing and layout rhythm: configuration width is reclaimed without introducing nested cards or new spacing patterns.
+- Colors and visual tokens: unchanged.
+- Image quality and assets: no image assets are involved in this interface change.
+- Copy and content: the stale “在预览中确认” description was replaced with “在实际列表页面确认”.
+
+## Comparison History
+
+1. Initial comparison found a P2 copy issue: the preview panel was removed, but the list settings description still referred to preview confirmation.
+2. Updated the description to point users to the actual list page.
+3. Rebuilt, reran audits, refreshed the authenticated page, and confirmed the updated copy with no console errors.
+
+## Verification
+
+- `npm run test:functional`
+- `npm run test:page-config`
+- `npm run build`
+- `git diff --check`
+
+final result: passed
+
+---
+
 # Entity List Field Table Fill Design QA
 
 final result: passed
@@ -118,3 +352,128 @@ No actionable P0, P1, or P2 findings remain.
 - [x] Keep each long tree independently scrollable.
 - [x] Keep the bottom action bar visible at a `690px` viewport height.
 - [x] Verify tree search, selection, transfer, hierarchy preservation, cancel, and reopen behavior.
+
+---
+
+# List Button Drag Sorting Design QA
+
+final result: blocked
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-96d949a1-8637-436a-a5cc-b88524873cee.png`
+- Target state: both `工具栏按钮` and `操作列按钮` use the same drag-handle sorting interaction as `字段配置`; numeric sort inputs are removed.
+- Static implementation review: passed.
+- Production build: passed with `npm run build`.
+- Page configuration audit: passed with `npm run test:page-config`.
+- Functional test suite: passed with `npm run test:functional`.
+
+## Blocking Reason
+
+The current task inherits the existing restriction against opening or controlling the browser. A same-viewport implementation screenshot and side-by-side visual comparison could not be captured, so rendered interaction and pixel-level alignment remain unverified.
+
+## Static Findings
+
+- The numeric sort control was replaced by the existing Element Plus `Rank` icon and a stable `48px` sort column.
+- Both button tabs share the same `Sortable` implementation and emit the same reorder event contract.
+- Dragging a persisted button calls the existing POST order endpoint with optimistic revision and neighboring button IDs.
+- Runtime rendering now prefers `orderKey`, while legacy configurations without it continue to fall back to `sort`.
+- No P0, P1, or P2 issue was found in code, audit, functional, or build verification.
+
+---
+
+# 列表查询折叠预览一致性验收
+
+final result: blocked
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-55af6eef-7ef4-470e-8eaa-b8e16baf3702.png`
+- Target state: `收起时显示条件数`、`启用查询区折叠`在设计预览和实际列表中使用相同逻辑。
+- Implementation approach: preview and runtime both render `EntityDataSearchForm`.
+
+## Verification
+
+- `npm run test:page-config`: passed.
+- `npm run test:functional`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Regression audit checks configured visible count, disabled folding, field slicing, and expanded-state branches.
+
+## Blocking Reason
+
+The existing restriction against opening or controlling the browser remains active. A rendered preview/runtime comparison and direct expand/collapse interaction test could not be captured, so visual design QA remains blocked.
+
+---
+
+# 列表配置页面宽度约束验收
+
+final result: blocked
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-a732b831-e637-4764-8a2b-19ebd27e2ab8.png`
+- Reported state: the list configuration page exceeds the browser's available width and clips the header actions and configuration panel on the right.
+
+## Implemented Layout
+
+- Added `min-width: 0` to the layout main content flex item.
+- Constrained the list designer root, header, content area, card, tabs, tab content, and tab panes to the available `100%` width.
+- Kept wide tab navigation horizontally scrollable.
+- Moved header and field-toolbar wrapping to the `1280px` desktop breakpoint.
+- Kept page-level overflow inside the configuration content area instead of expanding the browser viewport.
+
+## Verification
+
+- `npm run test:page-config`: passed.
+- `npm run test:functional`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+
+## Blocking Reason
+
+The existing restriction against opening or controlling the browser remains active. The corrected width could not be captured at the reported viewport, so rendered visual comparison remains blocked.
+# 列表配置首次刷新宽度重算
+
+## Design intent
+- 列表配置页首次刷新时，应在侧栏和主内容区域完成布局后按真实可用宽度绘制字段表格。
+- 浏览器宽度变化、配置容器宽度变化以及重新进入字段配置页签时，应使用同一套表格重算逻辑。
+
+## Implemented
+- 配置面板增加 `ResizeObserver`，容器宽度变化后调用 Element Plus 表格 `doLayout()`。
+- 首次数据加载完成和字段配置页签重新显示后，主动重新计算固定列与主体列宽。
+- 字段拖拽初始化改为从当前表格实例查找表体，避免页面中其他表格干扰。
+- 页面销毁时清理尺寸监听、动画帧和拖拽实例。
+
+## QA status
+- Browser verification: `blocked`。当前任务约束不允许打开或控制浏览器。
+- `npm run test:page-config`: passed.
+- `npm run test:functional`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+
+final result: blocked
+# 列表设置文案与未保存明细验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-8f87bd12-4f46-47b5-a50d-0d88dde5fcb9.png`
+- Intended state: 查询区宽度配置含义明确，顶部未保存数量可悬停查看具体项目。
+
+## Implemented
+
+- `标签宽度` 调整为 `查询区标签宽度`。
+- 顶部未保存数量增加悬停明细，并支持键盘聚焦查看。
+- 列表设置按具体配置项展示，字段和按钮按中文名称展示。
+- 未保存数量直接由明细列表计算，保证数量与提示内容一致。
+- 提示内容较多时在固定高度内滚动。
+
+## Verification
+
+- `npm run test:page-config`: passed.
+- `npm run test:functional`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Browser rendering and screenshot comparison: blocked by the existing browser access restriction.
+
+final result: blocked

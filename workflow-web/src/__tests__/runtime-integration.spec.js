@@ -403,5 +403,11 @@ const validationRules = buildRuntimeFieldRules(
   '邮箱'
 )
 assert.equal(validationRules.length, 3)
+const entityValidationRules = buildRuntimeFieldRules(
+  { validateRules: JSON.stringify({ min: 0, max: 100 }) },
+  false,
+  '完成比例'
+)
+assert.equal(entityValidationRules.length, 1)
 
 console.log('runtime integration tests passed')

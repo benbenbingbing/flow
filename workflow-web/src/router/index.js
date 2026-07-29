@@ -179,6 +179,24 @@ const routes = [
         }
       },
       {
+        path: '/system/interface-services',
+        name: 'InterfaceServices',
+        component: () => import('@/views/system/InterfaceServices.vue'),
+        meta: {
+          title: '接口服务',
+          requiredPermissions: ['system:interface-service:list']
+        }
+      },
+      {
+        path: '/system/entity-versions',
+        name: 'EntityVersionManagement',
+        component: () => import('@/views/system/EntityVersionManagement.vue'),
+        meta: {
+          title: '数据版本',
+          requiredPermissions: ['entity:version:config:list']
+        }
+      },
+      {
         path: '/system/config-migration',
         name: 'ConfigMigration',
         component: () => import('@/views/system/ConfigMigration.vue'),

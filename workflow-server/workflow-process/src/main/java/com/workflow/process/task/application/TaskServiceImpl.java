@@ -43,7 +43,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     private final RepositoryService repositoryService;
     private final com.workflow.process.task.application.ProcessTaskService processTaskService;
     private final com.workflow.entity.form.application.EntityFormService entityFormService;
-    private final com.workflow.process.instance.application.EntityDataService entityDataService;
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
@@ -475,7 +474,10 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         if (entityDataId != null) {
             vo.setEntityDataId(entityDataId);
             try {
-                com.workflow.entity.data.api.response.EntityDataDTO entityData = entityDataService.findById(entityDataId);
+                com.workflow.entity.data.api.response.EntityDataDTO entityData =
+                        entityDataDynamicService.findById(
+                                entityCode,
+                                entityDataId);
                 if (entityData != null && entityData.getData() != null) {
                     vo.setEntityData(entityData.getData());
                 }
@@ -600,9 +602,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                         // fallback to entityDataService
                     }
                 }
-                if (entityData == null) {
-                    entityData = entityDataService.findById(entityDataId);
-                }
                 if (entityData != null) {
                     if (entityData.getData() != null) {
                         vo.setDataName((String) entityData.getData().get("name"));
@@ -675,9 +674,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                     } catch (Exception ex) {
                         // fallback to entityDataService
                     }
-                }
-                if (entityData == null) {
-                    entityData = entityDataService.findById(entityDataId);
                 }
                 if (entityData != null) {
                     if (entityData.getData() != null) {

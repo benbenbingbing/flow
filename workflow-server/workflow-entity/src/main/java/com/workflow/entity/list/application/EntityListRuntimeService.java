@@ -13,7 +13,9 @@ import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeSimulationDTO;
 import com.workflow.entity.permission.api.response.PermissionPreviewDTO;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiEventRuntimeService;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +66,7 @@ public class EntityListRuntimeService {
     private final EntityListRelationalConfigService relationalConfigService;
     private final EntityListPublishedRuntimeService publishedRuntimeService;
     private final UiDataSourceService uiDataSourceService;
+    private final UiEventRuntimeService uiEventRuntimeService;
     private final CurrentUserRoleService currentUserRoleService;
     private final List<EntityListContextResolver> contextResolvers;
     private final List<EntityListDataProvider> dataProviders;
@@ -150,6 +153,62 @@ public class EntityListRuntimeService {
         mergeTrusted(filters, resolveContextFilters(
                 entityCode, listKey, scene, safeRequest.getContext()));
 
+        UiEventExecuteRequest event = new UiEventExecuteRequest();
+        event.setEventCode("LIST_LOAD");
+        event.setConfigType("LIST");
+        event.setConfigId(config.getId());
+        event.setReleaseId(config.getActiveReleaseId());
+        event.setEntityCode(entityCode);
+        event.setListKey(listKey);
+        event.setContext(safeRequest.getContext() == null
+                ? Map.of()
+                : objectMapper.convertValue(
+                        safeRequest.getContext(),
+                        new TypeReference<Map<String, Object>>() {}));
+        Map<String, Object> eventInput = new LinkedHashMap<>();
+        eventInput.put("filters", filters);
+        eventInput.put("pageNum", Math.max(1, safeRequest.getPageNum()));
+        eventInput.put(
+                "pageSize",
+                Math.max(1, Math.min(200, safeRequest.getPageSize())));
+        eventInput.put("scene", scene);
+        event.setInput(eventInput);
+        return uiEventRuntimeService.execute(
+                event,
+                input -> queryDefault(
+                        config,
+                        entityCode,
+                        listKey,
+                        scene,
+                        safeRequest,
+                        input)).getData();
+    }
+
+    private Object queryDefault(
+            EntityListConfig config,
+            String entityCode,
+            String listKey,
+            String scene,
+            EntityListQueryRequest safeRequest,
+            Map<String, Object> eventInput) {
+        Map<String, Object> filters =
+                eventInput.get("filters") instanceof Map<?, ?> map
+                        ? objectMapper.convertValue(
+                                map,
+                                new TypeReference<Map<String, Object>>() {})
+                        : Map.of();
+        int pageNum = positiveInt(
+                eventInput.get("pageNum"),
+                (int) Math.max(1, safeRequest.getPageNum()));
+        int pageSize = Math.max(
+                1,
+                Math.min(
+                        200,
+                        positiveInt(
+                                eventInput.get("pageSize"),
+                                (int) Math.max(
+                                        1,
+                                        safeRequest.getPageSize()))));
         if (StringUtils.hasText(config.getQueryDataSourceId())) {
             UiDataSourceExecuteRequest dataSourceRequest =
                     new UiDataSourceExecuteRequest();
@@ -159,10 +218,8 @@ public class EntityListRuntimeService {
             dataSourceRequest.setReleaseId(config.getActiveReleaseId());
             dataSourceRequest.setEntityCode(entityCode);
             dataSourceRequest.setListKey(listKey);
-            dataSourceRequest.setPageNum((int) Math.max(
-                    1, Math.min(Integer.MAX_VALUE, safeRequest.getPageNum())));
-            dataSourceRequest.setPageSize((int) Math.max(
-                    1, Math.min(200, safeRequest.getPageSize())));
+            dataSourceRequest.setPageNum(pageNum);
+            dataSourceRequest.setPageSize(pageSize);
             dataSourceRequest.setContext(safeRequest.getContext() == null
                     ? Map.of()
                     : objectMapper.convertValue(
@@ -193,8 +250,8 @@ public class EntityListRuntimeService {
                     permission.getExplanation(),
                     permission.getReleaseVersion());
             Map<String, Object> query = new LinkedHashMap<>();
-            query.put("pageNum", Math.max(1, safeRequest.getPageNum()));
-            query.put("pageSize", Math.max(1, Math.min(200, safeRequest.getPageSize())));
+            query.put("pageNum", pageNum);
+            query.put("pageSize", pageSize);
             query.put("filters", filters);
             return provider.query(
                     runtimeContext(entityCode, listKey, scene, safeRequest.getContext()),
@@ -206,8 +263,23 @@ public class EntityListRuntimeService {
                 entityCode,
                 listKey,
                 filters,
-                safeRequest.getPageNum(),
-                safeRequest.getPageSize());
+                pageNum,
+                pageSize);
+    }
+
+    private int positiveInt(
+            Object value,
+            int fallback) {
+        if (value instanceof Number number) {
+            return Math.max(1, number.intValue());
+        }
+        try {
+            return value == null
+                    ? fallback
+                    : Math.max(1, Integer.parseInt(String.valueOf(value)));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     @Transactional(readOnly = true)

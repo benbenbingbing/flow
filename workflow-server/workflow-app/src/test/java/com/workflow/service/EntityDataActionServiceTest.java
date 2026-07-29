@@ -5,7 +5,16 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.ui.application.UiEventRuntimeService;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
@@ -16,13 +25,17 @@ import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -44,6 +57,9 @@ class EntityDataActionServiceTest {
     private EntityDataDynamicService dynamicService;
 
     @Mock
+    private EntityMutationPort mutationPort;
+
+    @Mock
     private EntityListActionConfigService actionConfigService;
 
     @Mock
@@ -57,6 +73,18 @@ class EntityDataActionServiceTest {
 
     @Mock
     private FormSubmissionTraceService formSubmissionTraceService;
+
+    @Mock
+    private UiEventRuntimeService eventRuntimeService;
+
+    @Mock
+    private EntityDefinitionMapper definitionMapper;
+
+    @Mock
+    private EntityFormMapper formMapper;
+
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private EntityDataActionService service;
@@ -105,12 +133,12 @@ class EntityDataActionServiceTest {
                 ForbiddenException.class,
                 () -> service.batchDelete("asset", List.of("1", "2"), null));
 
-        verify(dynamicService, never()).delete("asset", "1");
-        verify(dynamicService, never()).delete("asset", "2");
+        verify(mutationPort, never()).executeBatch(
+                any(EntityMutationBatchCommand.class));
     }
 
     /**
-     * 测试批量删除在校验通过后逐行执行删除：验证两行均被 delete 调用一次。
+     * 测试批量删除在校验通过后进入同一个原子变更批次。
      */
     @Test
     void batchDeleteDeletesAllAfterValidation() {
@@ -125,13 +153,29 @@ class EntityDataActionServiceTest {
 
         service.batchDelete("asset", List.of("1", "2"), null);
 
-        verify(dynamicService).delete("asset", "1");
-        verify(dynamicService).delete("asset", "2");
+        ArgumentCaptor<EntityMutationBatchCommand> captor =
+                ArgumentCaptor.forClass(
+                        EntityMutationBatchCommand.class);
+        verify(mutationPort).executeBatch(captor.capture());
+        EntityMutationBatchCommand command = captor.getValue();
+        assertEquals(true, command.atomic());
+        assertEquals(List.of("1", "2"), command.commands()
+                .stream()
+                .map(EntityMutationCommand::recordId)
+                .toList());
+        assertEquals(
+                List.of(
+                        EntityMutationOperationType.DELETE,
+                        EntityMutationOperationType.DELETE),
+                command.commands()
+                        .stream()
+                        .map(EntityMutationCommand::operationType)
+                        .toList());
     }
 
     /**
      * 测试创建数据时服务端 beforeSubmit 钩子恰好执行一次：
-     * 验证默认表单处理与底层 save 各被调用一次。
+     * 验证默认表单处理与统一新增命令各执行一次。
      */
     @Test
     void createExecutesServerBeforeSubmitExactlyOnce() {
@@ -155,7 +199,16 @@ class EntityDataActionServiceTest {
                                 "Laptop",
                                 "normalized",
                                 true));
-        when(dynamicService.save(dto)).thenReturn(dto);
+        when(mutationPort.execute(
+                any(EntityMutationCommand.class)))
+                .thenReturn(mutationResult(
+                        "1",
+                        EntityMutationOperationType.CREATE,
+                        Map.of(
+                                "name",
+                                "Laptop",
+                                "normalized",
+                                true)));
 
         service.create(dto);
 
@@ -166,12 +219,30 @@ class EntityDataActionServiceTest {
                         "create",
                         Map.of("name", "Laptop"),
                         context);
-        verify(dynamicService, times(1)).save(dto);
+        ArgumentCaptor<EntityMutationCommand> captor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(mutationPort, times(1))
+                .execute(captor.capture());
+        EntityMutationCommand command = captor.getValue();
+        assertEquals(EntityMutationOperationType.CREATE,
+                command.operationType());
+        assertEquals("CREATE_RECORD",
+                command.context().businessIntentCode());
+        assertEquals("create-trace",
+                command.context().idempotencyKey());
+        assertEquals(
+                Map.of(
+                        "name",
+                        "Laptop",
+                        "normalized",
+                        true),
+                command.payload().get("data"));
     }
 
     /**
      * 测试更新数据时服务端 beforeSubmit 钩子恰好执行一次：
-     * 验证默认表单处理与底层 update 各被调用一次，且更新入参为表单处理后的规范化数据。
+     * 验证默认表单处理与统一更新命令各执行一次，且载荷为规范化后的数据。
      */
     @Test
     void updateExecutesServerBeforeSubmitExactlyOnce() {
@@ -201,6 +272,16 @@ class EntityDataActionServiceTest {
                                 "Laptop",
                                 "normalized",
                                 true));
+        when(mutationPort.execute(
+                any(EntityMutationCommand.class)))
+                .thenReturn(mutationResult(
+                        "1",
+                        EntityMutationOperationType.UPDATE,
+                        Map.of(
+                                "name",
+                                "Laptop",
+                                "normalized",
+                                true)));
 
         service.update(
                 "asset",
@@ -233,9 +314,20 @@ class EntityDataActionServiceTest {
                                 "amount",
                                 12),
                         context);
-        verify(dynamicService, times(1)).update(
-                "asset",
-                "1",
+        ArgumentCaptor<EntityMutationCommand> captor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(mutationPort, times(1))
+                .execute(captor.capture());
+        EntityMutationCommand command = captor.getValue();
+        assertEquals(EntityMutationOperationType.UPDATE,
+                command.operationType());
+        assertEquals("1", command.recordId());
+        assertEquals("EDIT_RECORD",
+                command.context().businessIntentCode());
+        assertEquals("update-trace",
+                command.context().idempotencyKey());
+        assertEquals(
                 Map.of(
                         "data",
                         Map.of(
@@ -244,7 +336,8 @@ class EntityDataActionServiceTest {
                                 "normalized",
                                 true),
                         "startProcess",
-                        true));
+                        true),
+                command.payload());
     }
 
     /** 构造一条包含 id 与 dataNo 的实体数据 DTO */
@@ -263,5 +356,27 @@ class EntityDataActionServiceTest {
                 traceKey,
                 operation,
                 Map.of());
+    }
+
+    private EntityMutationResult mutationResult(
+            String id,
+            EntityMutationOperationType operationType,
+            Map<String, Object> data) {
+        return new EntityMutationResult(
+                "operation-1",
+                "asset",
+                id,
+                operationType,
+                Map.of(
+                        "id",
+                        id,
+                        "entityCode",
+                        "asset",
+                        "data",
+                        data),
+                null,
+                null,
+                true,
+                false);
     }
 }

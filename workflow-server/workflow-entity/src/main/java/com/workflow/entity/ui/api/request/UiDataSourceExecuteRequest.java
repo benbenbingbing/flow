@@ -14,6 +14,8 @@ public class UiDataSourceExecuteRequest {
 
     /** 用途（如 LIST_FIELD_OPTIONS） */
     private String usage;
+    /** 接口服务操作编码；为空时执行历史默认操作 */
+    private String operationCode;
     /** 配置类型（如 ENTITY_LIST） */
     private String configType;
     /** 配置 ID */

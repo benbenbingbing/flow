@@ -90,6 +90,14 @@
       </template>
       <el-table-column v-if="hasVisibleRowActions" label="操作" min-width="180" fixed="right">
         <template #default="{ row }">
+          <el-button
+            v-if="showVersionAction"
+            type="primary"
+            link
+            @click="emit('versions', row)"
+          >
+            版本
+          </el-button>
           <template v-for="btn in visibleRowButtons(row)" :key="btn.key">
             <component
               v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
@@ -115,7 +123,7 @@
               {{ btn.label }}
             </el-button>
           </template>
-          <span v-if="visibleRowButtons(row).length === 0">-</span>
+          <span v-if="!showVersionAction && visibleRowButtons(row).length === 0">-</span>
         </template>
       </el-table-column>
     </el-table>
@@ -185,6 +193,7 @@ const props = defineProps<{
   refEntityNameMap: Record<string, string>
   refresh: () => void
   viewConfig?: any
+  showVersionAction?: boolean
 }>()
 
 const tableConfig = computed(() => props.viewConfig?.table || {})
@@ -199,9 +208,11 @@ const emit = defineEmits<{
   edit: [row: any]
   approve: [row: any]
   delete: [row: any]
+  versions: [row: any]
   'selection-change': [rows: any[]]
   'size-change': [val: number]
   'page-change': [val: number]
+  'event-action': [payload: { button: any, row?: any, selectedRows: any[] }]
 }>()
 
 // 图标映射
@@ -271,6 +282,13 @@ const onToolbarClick = (btn: any) => {
   if (btn.type === 'built-in') {
     BUILTIN_TOOLBAR_ACTIONS[btn.key]?.(btn)
   } else if (btn.type === 'custom') {
+    if (btn.customMode === 'event') {
+      emit('event-action', {
+        button: btn,
+        selectedRows: selectedRows.value
+      })
+      return
+    }
     if (btn.customMode === 'open-list') {
       openConfiguredList(btn)
       return
@@ -307,6 +325,14 @@ const onRowActionClick = (btn: any, row: any) => {
   if (btn.type === 'built-in') {
     BUILTIN_ROW_ACTIONS[btn.key]?.(row)
   } else if (btn.type === 'custom') {
+    if (btn.customMode === 'event') {
+      emit('event-action', {
+        button: btn,
+        row,
+        selectedRows: selectedRows.value
+      })
+      return
+    }
     if (btn.customMode === 'open-list') {
       openConfiguredList(btn, row)
       return
@@ -383,7 +409,8 @@ function handleOpenListConfirm(rows: any[]) {
 }
 
 const hasVisibleRowActions = computed(() =>
-  props.dataList.some(row => visibleRowButtons(row).length > 0)
+  props.showVersionAction
+  || props.dataList.some(row => visibleRowButtons(row).length > 0)
 )
 
 const visibleRowButtons = (row: any) => {

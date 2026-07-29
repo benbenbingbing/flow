@@ -6,6 +6,7 @@ import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldOptionService;
+import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -99,6 +100,9 @@ public class EntityDefinitionServiceTest {
     @Mock
     private EntityFieldOptionService fieldOptionService;
 
+    @Mock
+    private EntityFieldValidationRuleService fieldValidationRuleService;
+
     @InjectMocks
     private EntityDefinitionService entityService;
 
@@ -127,6 +131,9 @@ public class EntityDefinitionServiceTest {
         testField.setFieldName("名称");
         testField.setFieldType(EntityField.FieldType.STRING);
 
+        lenient().when(fieldValidationRuleService.validateAndNormalize(
+                        any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(processCatalogPort.findNamesByIds(anyCollection()))
                 .thenAnswer(invocation -> {
                     java.util.Collection<String> ids = invocation.getArgument(0);
@@ -341,6 +348,36 @@ public class EntityDefinitionServiceTest {
         assertNotNull(result);
         verify(entityMapper, times(1)).selectById("1");
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
+    }
+
+    /** 已存在字段更新时应持久化验证规则，而不是只在新字段创建时保存。 */
+    @Test
+    void testUpdatePersistsValidationRulesForExistingField() {
+        EntityFieldDTO fieldDTO = new EntityFieldDTO();
+        fieldDTO.setFieldCode("name");
+        fieldDTO.setFieldName("名称");
+        fieldDTO.setFieldType(EntityField.FieldType.STRING);
+        fieldDTO.setValidateRules(
+                """
+                {"minLength":2,"maxLength":20}
+                """);
+
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityName("测试实体");
+        dto.setFields(List.of(fieldDTO));
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1"))
+                .thenReturn(List.of(testField));
+
+        entityService.update("1", dto);
+
+        ArgumentCaptor<EntityField> fieldCaptor =
+                ArgumentCaptor.forClass(EntityField.class);
+        verify(fieldMapper).updateById(fieldCaptor.capture());
+        assertEquals(
+                fieldDTO.getValidateRules(),
+                fieldCaptor.getValue().getValidateRules());
     }
 
     /** 测试更新时同步子表单关系：验证旧关系被删除并按 DTO 重新插入正确的关系记录 */

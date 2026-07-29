@@ -131,9 +131,12 @@ export const entityDataApi = {
   /**
    * 获取实体数据详情
    */
-  getDetail(entityCode, id, listKey) {
+  getDetail(entityCode, id, listKey, formId) {
+    const params = {}
+    if (listKey) params.listKey = listKey
+    if (formId) params.formId = formId
     return request.get(`/entity-data/entity/${entityCode}/detail/${id}`, {
-      params: listKey ? { listKey } : {}
+      params
     })
   },
 

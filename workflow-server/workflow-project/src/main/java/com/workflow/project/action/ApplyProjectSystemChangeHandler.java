@@ -48,7 +48,9 @@ public class ApplyProjectSystemChangeHandler implements FlowActionHandler {
             throw new IllegalStateException("Project-system change data is unavailable.");
         }
         Map<String, Object> result =
-                governanceService.applyProjectSystemChange(request);
+                governanceService.applyProjectSystemChange(
+                        request,
+                        context);
         context.setExecutionResult(result);
         context.addExecutionTrace(
                 "RELATIONSHIP_APPLIED",

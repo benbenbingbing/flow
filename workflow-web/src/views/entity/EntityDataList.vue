@@ -1,6 +1,5 @@
 <template>
   <div class="entity-data-list">
-    <!-- 加载中 -->
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
     </div>
@@ -14,10 +13,7 @@
       @retry="loadEntityDefinition"
     />
     
-    <!-- 实体未配置提示 -->
     <el-empty v-else-if="!entityCode" description="未配置实体编码" />
-    
-    <!-- 实体不存在提示 -->
     <el-empty v-else-if="!entityDefinition.id" description="实体不存在或未发布" />
     
     <template v-else>
@@ -31,7 +27,6 @@
         @retry="loadDataList"
       />
 
-      <!-- 自定义列表组件 -->
       <component
         v-if="!dataError && customListComponent && hasCustomListComponent(customListComponent)"
         :is="getCustomListComponent(customListComponent)"
@@ -60,6 +55,7 @@
         @edit="handleEdit"
         @delete="handleDelete"
         @approve="handleApprove"
+        @versions="handleVersions"
         :canAction="canAction"
         :getActionReason="getActionReason"
         :getStatusType="getStatusType"
@@ -95,15 +91,18 @@
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
           :viewConfig="viewConfig"
+          :showVersionAction="!selectionScene"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
           @edit="handleEdit"
           @delete="handleDelete"
           @approve="handleApprove"
+          @versions="handleVersions"
           @batch-delete="handleBatchDelete"
           @export-selected="() => handleExport('SELECTED')"
           @export-all="() => handleExport('ALL')"
+          @event-action="handleEventAction"
           @size-change="handleSizeChange"
           @page-change="handlePageChange"
         />
@@ -141,15 +140,22 @@
       :listKey="listConfig?.listKey"
       @success="loadDataList"
     />
+
+    <EntityRecordVersionDrawer
+      ref="versionDrawerRef"
+      :entityCode="entityCode"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
+import { uiEventBindingApi } from '@/api/uiConfig'
+import { applySelectionReturnMappings } from '@/utils/selectionReturnMappings'
 import { getFormForNewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { getEntityStatusList } from '@/api/entityStatus'
@@ -165,9 +171,11 @@ import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
 import EntityDataFormDialog from './components/EntityDataFormDialog.vue'
 import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue'
+import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
 import PageState from '@/components/PageState.vue'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 const props = withDefaults(defineProps<{
@@ -179,7 +187,6 @@ const props = withDefaults(defineProps<{
 }>(), {
   entityCode: '',
   listKey: '',
-  scene: 'PAGE',
   context: () => ({}),
   selectionMode: 'NONE'
 })
@@ -214,17 +221,14 @@ const selectionScene = computed(() =>
   )
 )
 
-// 状态
 const loading = ref(false)
 const tableLoading = ref(false)
 const loadError = ref('')
 const dataError = ref('')
 
-// 实体定义
 const entityDefinition = ref<any>({})
 const entityFields = ref<any[]>([])
 
-// 列表配置（entity_list_config）
 const listConfig = ref<any>(null)
 const listConfigFields = ref<any[]>([])
 
@@ -247,25 +251,21 @@ const viewConfig = computed(() => {
   }
 })
 
-// 表格选中行
 const selectedRows = ref<any[]>([])
 
-// 数据列表
 const dataList = ref<any[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 
-// 查询条件
 const queryForm = reactive<Record<string, any>>({})
 
-// 默认表单配置（用于自定义表单组件）
 const defaultForm = ref<any>(null)
 const createFormLoading = ref(false)
 
-// 弹窗组件 ref
 const formDialogRef = ref<InstanceType<typeof EntityDataFormDialog>>()
 const approvalDialogRef = ref<InstanceType<typeof EntityApprovalDialog>>()
+const versionDrawerRef = ref<InstanceType<typeof EntityRecordVersionDrawer>>()
 
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
@@ -334,6 +334,7 @@ const customListRuntime = computed(() => ({
   edit: handleEdit,
   delete: handleDelete,
   approve: handleApprove,
+  versions: handleVersions,
   exportData: handleExport,
   canAction,
   getActionReason
@@ -347,6 +348,14 @@ function safeJsonParse(text: any) {
   } catch (e) {
     return null
   }
+}
+
+function buttonOrder(button: any) {
+  const orderKey = Number(button?.orderKey)
+  if (Number.isFinite(orderKey) && orderKey > 0) {
+    return orderKey
+  }
+  return Number(button?.sort || 0) * 1000000
 }
 
 // 工具栏按钮（按配置 + 权限过滤）
@@ -366,7 +375,7 @@ const toolbarButtons = computed(() => {
       if (b.key === 'batchDelete' || b.key === 'exportSelected') return true
       return listConfig.value?.toolbarCapabilities?.[b.key]?.visible !== false
     })
-    .sort((a: any, b: any) => (a.sort || 0) - (b.sort || 0))
+    .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
   return buttons
 })
 
@@ -383,7 +392,7 @@ const rowActionButtons = computed(() => {
   const buttons = (config && config.length > 0 ? config : DEFAULT_ROW_ACTION_BUTTONS.map((b: any) => ({ ...b })))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
-    .sort((a: any, b: any) => (a.sort || 0) - (b.sort || 0))
+    .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
   return buttons
 })
 
@@ -748,6 +757,73 @@ const handleExport = async (exportType: string) => {
   }
 }
 
+const handleEventAction = async ({
+  button,
+  row,
+  selectedRows: actionRows = []
+}: {
+  button: any
+  row?: any
+  selectedRows?: any[]
+}) => {
+  if (!listConfig.value?.id || !button?.key) {
+    ElMessage.warning('按钮缺少可执行的事件绑定来源')
+    return
+  }
+  const eventCode = row ? 'ROW_BUTTON_CLICK' : 'TOOLBAR_BUTTON_CLICK'
+  try {
+    const result = await uiEventBindingApi.execute(eventCode, {
+      configType: 'LIST',
+      configId: String(listConfig.value.id),
+      entityCode: entityCode.value,
+      listKey: listConfig.value.listKey,
+      targetType: 'BUTTON',
+      targetKey: String(button.key),
+      recordId: row?.id,
+      selectedIds: actionRows.map(item => item.id).filter(Boolean),
+      input: {
+        button,
+        row: row || null,
+        selectedRows: actionRows
+      },
+      context: {
+        listId: String(listConfig.value.id),
+        scene: runtimeScene.value
+      }
+    })
+    await applyButtonEffects(result?.effects || [])
+    if (result?.message) {
+      ElMessage.success(result.message)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '按钮操作执行失败')
+  }
+}
+
+async function applyButtonEffects(effects: any[]) {
+  for (const effect of effects) {
+    const type = String(effect?.type || '').toUpperCase()
+    if (type === 'REFRESH_LIST') {
+      await loadDataList()
+      continue
+    }
+    if (type === 'MESSAGE' && effect.message) {
+      ElMessage({
+        type: effect.level || 'success',
+        message: effect.message
+      })
+      continue
+    }
+    if (type === 'OPEN_ROUTE' && effect.route) {
+      await router.push(effect.route)
+      continue
+    }
+    if (type === 'DOWNLOAD_TASK') {
+      ElMessage.success(effect.message || '下载任务已创建')
+    }
+  }
+}
+
 // 判断是否可审批
 const canAction = (row: any, buttonKey: string) => {
   return canExecuteAction(row, buttonKey)
@@ -786,11 +862,19 @@ const handleApprove = (row: any) => {
   approvalDialogRef.value?.openApprove(row)
 }
 
+const handleVersions = (row: any) => {
+  versionDrawerRef.value?.open(row)
+}
+
 const confirmSelection = () => {
   const rows = effectiveSelectionMode.value === 'SINGLE'
     ? selectedRows.value.slice(0, 1)
     : selectedRows.value
-  emit('confirm', rows)
+  const mappings = safeParseConfig(
+    listConfig.value?.selectionConfig
+  )?.returnMappings
+  emit('confirm', rows.map(row =>
+    applySelectionReturnMappings(row, mappings)))
 }
 
 // 监听实体编码变化

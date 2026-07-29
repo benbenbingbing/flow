@@ -59,7 +59,7 @@ const searchExpanded = ref(false)
 const searchConfig = computed(() => props.viewConfig?.search || {})
 const visibleCount = computed(() => Math.max(1, Number(searchConfig.value.defaultVisibleCount) || 4))
 
-// 可见的查询字段（默认只显示前4个，展开后显示全部）
+// 收起时按配置数量展示查询字段，展开后显示全部。
 const visibleQueryFields = computed(() => {
   if (searchExpanded.value || searchConfig.value.collapsible === false || props.fields.length <= visibleCount.value) {
     return props.fields

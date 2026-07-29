@@ -120,6 +120,25 @@ public class UiDataSourceController {
         return Result.success(service.preview(id, request));
     }
 
+    @GetMapping("/{id}/operations")
+    public Result<List<Map<String, Object>>> operations(
+            @PathVariable String id) {
+        accessService.requireGlobalConfigurationAccess();
+        return Result.success(service.operations(id));
+    }
+
+    @PostMapping("/{id}/operations/{operationCode}/preview")
+    public Result<Object> previewOperation(
+            @PathVariable String id,
+            @PathVariable String operationCode,
+            @RequestBody UiDataSourceExecuteRequest request) {
+        accessService.requireGlobalConfigurationAccess();
+        return Result.success(service.previewOperation(
+                id,
+                operationCode,
+                request));
+    }
+
     /**
      * 运行态执行数据源。POST /api/ui-data-sources/{id}/execute
      *

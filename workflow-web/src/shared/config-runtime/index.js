@@ -100,7 +100,9 @@ export function buildRuntimeFieldRules(field, required, label) {
     rules.push({ required: true, message: `请输入${displayLabel}`, trigger: ['blur', 'change'] })
   }
 
-  const config = safeParseConfig(field?.validationRules)
+  const config = safeParseConfig(
+    field?.validationRules ?? field?.validateRules
+  )
   if (config.minLength !== undefined || config.maxLength !== undefined) {
     const rule = { trigger: 'blur' }
     if (config.minLength !== undefined && config.minLength !== '') rule.min = Number(config.minLength)

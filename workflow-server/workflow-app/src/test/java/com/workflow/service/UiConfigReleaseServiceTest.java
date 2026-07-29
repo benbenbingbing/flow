@@ -5,7 +5,10 @@ import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.list.application.EntityListConfigService;
+import com.workflow.entity.ui.application.UiConfigDataSourceReferenceValidator;
+import com.workflow.entity.ui.application.UiConfigSnapshotSupport;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.entity.ui.application.UiConfigSemanticPatchService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
@@ -29,6 +32,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
@@ -37,6 +41,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTa
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import org.junit.jupiter.api.Test;
 
@@ -84,7 +89,13 @@ class UiConfigReleaseServiceTest {
                 releaseMapper,
                 mock(UiConfigHotfixTargetMapper.class),
                 mock(UiConfigReleaseAuditMapper.class),
-                mock(UiDataSourceDefinitionMapper.class),
+                new UiConfigDataSourceReferenceValidator(
+                        mock(UiDataSourceDefinitionMapper.class),
+                        codec),
+                new UiEventBindingSnapshotService(
+                        mock(UiEventBindingMapper.class),
+                        codec),
+                new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
                 mock(UiComponentTemplateVersionMapper.class),
                 mock(EntityFormMapper.class),
@@ -360,7 +371,13 @@ class UiConfigReleaseServiceTest {
                 releaseMapper,
                 mock(UiConfigHotfixTargetMapper.class),
                 mock(UiConfigReleaseAuditMapper.class),
-                mock(UiDataSourceDefinitionMapper.class),
+                new UiConfigDataSourceReferenceValidator(
+                        mock(UiDataSourceDefinitionMapper.class),
+                        codec),
+                new UiEventBindingSnapshotService(
+                        mock(UiEventBindingMapper.class),
+                        codec),
+                new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
                 mock(UiComponentTemplateVersionMapper.class),
                 mock(EntityFormMapper.class),
@@ -1018,6 +1035,159 @@ class UiConfigReleaseServiceTest {
         assertTrue(exception.getMessage().contains("模板版本不存在"));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void formDraftSnapshotContainsFormScopedEntitySelectionBinding() {
+        TestContext context = context();
+        when(context.formService().getById("form-1"))
+                .thenReturn(form());
+        UiEventBinding binding = new UiEventBinding();
+        binding.setId("binding-1");
+        binding.setOwnerType("FORM");
+        binding.setOwnerId("form-1");
+        binding.setTargetType("FIELD");
+        binding.setTargetKey("name");
+        binding.setEventCode("ENTITY_SELECTED");
+        binding.setInheritanceMode("INHERIT");
+        binding.setStepsDocument(context.codec().write(
+                List.of(Map.of(
+                        "stepCode",
+                        "ENTITY_SELECTION_FILL",
+                        "strategy",
+                        "AFTER",
+                        "outputMapping",
+                        List.of(Map.of(
+                                "sourcePath",
+                                "selection.data.phone",
+                                "targetPath",
+                                "form.phone")))),
+                "测试选择后回填步骤"));
+        binding.setRevision(3);
+        when(context.eventBindingMapper().findForSnapshot(
+                "FORM",
+                "form-1",
+                "entity-1"))
+                .thenReturn(List.of(binding));
+
+        Map<String, Object> snapshot =
+                context.service().draftSnapshot(
+                        UiConfigReleaseService.FORM,
+                        "form-1");
+        Map<String, Object> saved =
+                (Map<String, Object>) ((List<?>) snapshot.get(
+                        "eventBindings")).get(0);
+
+        assertEquals("FORM", saved.get("ownerType"));
+        assertEquals("form-1", saved.get("ownerId"));
+        assertEquals("ENTITY_SELECTED", saved.get("eventCode"));
+        assertEquals(
+                "ENTITY_SELECTION_FILL",
+                ((Map<String, Object>) ((List<?>) saved.get(
+                        "steps")).get(0)).get("stepCode"));
+    }
+
+    @Test
+    void eventSnapshotTracksHotfixAndRollbackForReusedProcessForm() {
+        TestContext context = context();
+        Map<String, Object> pinnedSnapshot =
+                formSnapshot(List.of(labelNode("原始标题")));
+        pinnedSnapshot.put(
+                "eventBindings",
+                List.of(eventBindingSnapshot("form.originalPhone")));
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-2",
+                pinnedSnapshot);
+        pinned.setVersion(2);
+        when(context.releaseMapper().selectById("release-2"))
+                .thenReturn(pinned);
+
+        Map<String, Object> effectiveSnapshot =
+                formSnapshot(List.of(labelNode("热修复标题")));
+        effectiveSnapshot.put(
+                "eventBindings",
+                List.of(eventBindingSnapshot("form.hotfixPhone")));
+        UiConfigHotfixTarget target = target(
+                context.codec(),
+                "target-1",
+                "hotfix-3",
+                "release-2",
+                2,
+                effectiveSnapshot);
+        when(context.hotfixTargetMapper().selectById("target-1"))
+                .thenReturn(target);
+        when(context.hotfixTargetMapper().findActiveTarget(
+                "FORM",
+                "form-1",
+                "history-1"))
+                .thenReturn(target, target, null);
+        when(context.resolutionTokenService().verify("task-a-token"))
+                .thenReturn(tokenClaims("Task_A"));
+        when(context.resolutionTokenService().verify("task-b-token"))
+                .thenReturn(tokenClaims("Task_B"));
+        when(context.resolutionTokenService().verify("rolled-back-token"))
+                .thenReturn(tokenClaims("Task_A"));
+
+        UiConfigReleaseService.ResolvedUiEventSnapshot taskA =
+                context.service().resolveRuntimeEventSnapshot(
+                        "form-1",
+                        "release-2",
+                        2,
+                        "task-a-token");
+        UiConfigReleaseService.ResolvedUiEventSnapshot taskB =
+                context.service().resolveRuntimeEventSnapshot(
+                        "form-1",
+                        "release-2",
+                        2,
+                        "task-b-token");
+        UiConfigReleaseService.ResolvedUiEventSnapshot rolledBack =
+                context.service().resolveRuntimeEventSnapshot(
+                        "form-1",
+                        "release-2",
+                        2,
+                        "rolled-back-token");
+
+        assertTrue(taskA.hotfixApplied());
+        assertTrue(taskB.hotfixApplied());
+        assertEquals(
+                "form.hotfixPhone",
+                firstSelectionTarget(taskA.snapshot()));
+        assertEquals(
+                firstSelectionTarget(taskA.snapshot()),
+                firstSelectionTarget(taskB.snapshot()));
+        assertFalse(rolledBack.hotfixApplied());
+        assertEquals(
+                "form.originalPhone",
+                firstSelectionTarget(rolledBack.snapshot()));
+    }
+
+    @Test
+    void standaloneEventRejectsClientSelectedHistoricalRelease() {
+        TestContext context = context();
+        UiConfigRelease active = release(
+                context.codec(),
+                "release-active",
+                formSnapshot(List.of(labelNode("当前标题"))));
+        active.setStatus("ACTIVE");
+        when(context.releaseMapper().findActive(
+                "FORM",
+                "form-1"))
+                .thenReturn(active);
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> context.service()
+                        .resolveRuntimeEventSnapshot(
+                                "form-1",
+                                "release-history",
+                                1,
+                                null));
+
+        assertEquals(
+                "UI_EVENT_RELEASE_CONFLICT",
+                exception.getErrorCode());
+    }
+
     /** 构造测试上下文，装配被测服务与各 Mock 依赖 */
     private TestContext context() {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -1035,13 +1205,23 @@ class UiConfigReleaseServiceTest {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         UiHotfixProcessImpactPort processImpactPort =
                 mock(UiHotfixProcessImpactPort.class);
+        UiEventBindingMapper eventBindingMapper =
+                mock(UiEventBindingMapper.class);
+        UiReleaseResolutionTokenService resolutionTokenService =
+                mock(UiReleaseResolutionTokenService.class);
         when(formMapper.selectByIdForUpdate("form-1"))
                 .thenReturn(form());
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
                 hotfixTargetMapper,
                 mock(UiConfigReleaseAuditMapper.class),
-                mock(UiDataSourceDefinitionMapper.class),
+                new UiConfigDataSourceReferenceValidator(
+                        mock(UiDataSourceDefinitionMapper.class),
+                        codec),
+                new UiEventBindingSnapshotService(
+                        eventBindingMapper,
+                        codec),
+                new UiConfigSnapshotSupport(codec, objectMapper),
                 templateMapper,
                 templateVersionMapper,
                 formMapper,
@@ -1054,7 +1234,7 @@ class UiConfigReleaseServiceTest {
                 new UiConfigSemanticPatchService(codec),
                 processImpactPort,
                 mock(UiConfigurationAccessService.class),
-                mock(UiReleaseResolutionTokenService.class),
+                resolutionTokenService,
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper);
@@ -1067,7 +1247,62 @@ class UiConfigReleaseServiceTest {
                 formService,
                 listConfigService,
                 processImpactPort,
+                eventBindingMapper,
+                resolutionTokenService,
                 codec);
+    }
+
+    private Map<String, Object> eventBindingSnapshot(
+            String targetPath) {
+        return Map.of(
+                "id", "binding-1",
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "FIELD",
+                "targetKey", "customerId",
+                "eventCode", "ENTITY_SELECTED",
+                "inheritanceMode", "INHERIT",
+                "steps", List.of(Map.of(
+                        "stepCode",
+                        "ENTITY_SELECTION_FILL",
+                        "strategy",
+                        "AFTER",
+                        "outputMapping",
+                        List.of(Map.of(
+                                "sourcePath",
+                                "selection.data.phone",
+                                "targetPath",
+                                targetPath)))));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String firstSelectionTarget(
+            Map<String, Object> snapshot) {
+        Map<String, Object> binding =
+                (Map<String, Object>) ((List<?>) snapshot.get(
+                        "eventBindings")).get(0);
+        Map<String, Object> step =
+                (Map<String, Object>) ((List<?>) binding.get(
+                        "steps")).get(0);
+        Map<String, Object> mapping =
+                (Map<String, Object>) ((List<?>) step.get(
+                        "outputMapping")).get(0);
+        return String.valueOf(mapping.get("targetPath"));
+    }
+
+    private UiReleaseResolutionTokenService.Claims tokenClaims(
+            String nodeId) {
+        return new UiReleaseResolutionTokenService.Claims(
+                UiRuntimePurpose.ACTIVE_TASK,
+                "history-1",
+                nodeId,
+                "form-1",
+                "release-2",
+                2,
+                0,
+                "user-1",
+                1L,
+                Long.MAX_VALUE);
     }
 
     /** 构造一个带完整性哈希的发布记录用于激活/解析测试 */
@@ -1199,6 +1434,8 @@ class UiConfigReleaseServiceTest {
             EntityFormService formService,
             EntityListConfigService listConfigService,
             UiHotfixProcessImpactPort processImpactPort,
+            UiEventBindingMapper eventBindingMapper,
+            UiReleaseResolutionTokenService resolutionTokenService,
             JsonDocumentCodec codec) {
     }
 

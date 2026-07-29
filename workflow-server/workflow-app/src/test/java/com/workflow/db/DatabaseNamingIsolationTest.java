@@ -39,7 +39,6 @@ class DatabaseNamingIsolationTest {
         String sql = Files.readString(Path.of(
                 "src/main/resources/db/migration/V001__business_schema.sql"));
         for (String table : List.of(
-                "runtime_entity_record",
                 "process_node_config",
                 "process_node_assignee",
                 "process_form_config",

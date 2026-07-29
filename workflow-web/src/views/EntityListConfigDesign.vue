@@ -11,18 +11,46 @@
         <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
           {{ diffInfo.changed ? '草稿有未发布修改' : '已发布' }}
         </el-tag>
-        <el-tag v-if="isDirty" type="danger" effect="plain">
-          {{ unsavedSummary }}
-        </el-tag>
+        <el-tooltip
+          v-if="isDirty"
+          placement="bottom-start"
+          :show-after="200"
+          :popper-style="{ maxWidth: '360px' }"
+        >
+          <template #content>
+            <div class="unsaved-items-tooltip">
+              <div class="unsaved-items-tooltip__title">以下内容尚未保存</div>
+              <div
+                v-for="item in unsavedItems"
+                :key="item.key"
+                class="unsaved-items-tooltip__item"
+              >
+                {{ item.label }}
+              </div>
+            </div>
+          </template>
+          <el-tag class="unsaved-status-tag" type="danger" effect="plain" tabindex="0">
+            {{ unsavedSummary }}
+          </el-tag>
+        </el-tooltip>
       </div>
       <div class="header-actions">
+        <el-button
+          :disabled="!configInfo.id"
+          @click="openListEventBindings"
+        >
+          事件绑定
+        </el-button>
         <el-button :loading="savingAll" type="primary" @click="saveAll">
           保存全部
         </el-button>
-        <el-button @click="previewExpanded = !previewExpanded">
-          {{ previewExpanded ? '返回配置' : '全宽预览' }}
-        </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
+        <el-button
+          :disabled="!entityCode || !configInfo.listKey"
+          @click="openPreview"
+        >
+          预览
+        </el-button>
         <el-button type="success" plain @click="handlePublish">发布生效</el-button>
       </div>
     </div>
@@ -40,20 +68,82 @@
       </template>
     </el-alert>
 
-    <div
-      v-loading="pageLoading"
-      class="design-container"
-      :class="{ 'preview-expanded': previewExpanded }"
-    >
-      <!-- 左侧：配置区 -->
-      <div class="config-panel">
+    <div v-loading="pageLoading" class="design-container">
+      <div ref="configPanelRef" class="config-panel">
         <el-card shadow="never">
-          <template #header>
-            <span>字段配置</span>
-            <el-text type="info" size="small">拖拽排序，勾选控制显示和查询</el-text>
-          </template>
-
           <el-tabs v-model="activeConfigTab" type="border-card" class="config-tabs">
+            <el-tab-pane label="字段配置" name="fields">
+              <div class="field-toolbar">
+                <el-alert
+                  title="查询字段可以不显示在列表；虚拟列必须选择支持虚拟字段的数据源。"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+                <el-button type="primary" plain @click="addVirtualField">
+                  <el-icon><Plus /></el-icon>添加虚拟列
+                </el-button>
+              </div>
+              <el-table
+                ref="fieldTableRef"
+                :data="fieldConfigList"
+                row-key="fieldId"
+                class="field-config-table"
+                size="small"
+                border
+              >
+                <el-table-column label="排序" width="48" align="center">
+                  <template #default>
+                    <el-icon class="drag-handle"><Rank /></el-icon>
+                  </template>
+                </el-table-column>
+                <el-table-column label="字段名称" width="148">
+                  <template #default="{ row }">
+                    <el-input v-model="row.fieldName" size="small" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="字段编码" width="168">
+                  <template #default="{ row }">
+                    <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="用途" width="144">
+                  <template #default="{ row }">
+                    <div class="field-purpose-controls">
+                      <el-checkbox v-model="row.showInList">列表</el-checkbox>
+                      <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row)">查询</el-checkbox>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="当前配置" min-width="320">
+                  <template #default="{ row }">
+                    <span class="field-config-summary" :title="fieldConfigSummary(row)">
+                      {{ fieldConfigSummary(row) }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="138" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="openFieldConfig(row)">设置</el-button>
+                    <el-button
+                      link
+                      type="success"
+                      :loading="row._saving"
+                      @click="saveCurrentField(row)"
+                    >保存</el-button>
+                    <el-button
+                      v-if="isVirtualField(row)"
+                      link
+                      type="danger"
+                      :icon="Delete"
+                      aria-label="删除虚拟列"
+                      title="删除虚拟列"
+                      @click="removeVirtualField(row)"
+                    />
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
             <el-tab-pane label="列表设置" name="view">
               <div class="field-toolbar">
                 <el-alert
@@ -69,17 +159,17 @@
               <el-form label-width="120px" size="small" class="view-config-form">
                 <SettingsSection
                   title="常用体验"
-                  description="查询区域、表格样式和分页设置保存后即可在预览中确认"
+                  description="查询区域、表格样式和分页设置保存后可在实际列表页面确认"
                   :collapsible="false"
                   primary
                 >
-                  <el-form-item label="默认显示条件">
+                  <el-form-item label="收起时显示条件数">
                     <el-input-number v-model="viewConfig.search.defaultVisibleCount" :min="1" :max="20" />
                   </el-form-item>
-                  <el-form-item label="允许展开收起">
+                  <el-form-item label="启用查询区折叠">
                     <el-switch v-model="viewConfig.search.collapsible" />
                   </el-form-item>
-                  <el-form-item label="标签宽度">
+                  <el-form-item label="查询区标签宽度">
                     <el-input-number v-model="viewConfig.search.labelWidth" :min="60" :max="240" />
                     <span class="unit-text">px</span>
                   </el-form-item>
@@ -129,7 +219,7 @@
                       style="width: 420px"
                     />
                   </el-form-item>
-                  <el-form-item label="允许场景">
+                  <el-form-item label="允许场景" class="view-config-item--full">
                     <div class="scene-options">
                       <el-checkbox
                         v-for="scene in sceneOptions"
@@ -171,7 +261,11 @@
                       />
                     </el-select>
                   </el-form-item>
-                  <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回映射 JSON">
+                  <el-form-item
+                    v-if="configInfo.selectionMode !== 'NONE'"
+                    label="返回映射 JSON"
+                    class="view-config-item--full"
+                  >
                     <el-input
                       v-model="configInfo.selectionReturnMappingsText"
                       type="textarea"
@@ -247,7 +341,11 @@
                       style="width: 420px"
                     />
                   </el-form-item>
-                  <el-form-item v-if="selectedCustomListSchema.length" label="组件参数">
+                  <el-form-item
+                    v-if="selectedCustomListSchema.length"
+                    label="组件参数"
+                    class="view-config-item--full"
+                  >
                     <ConfigSchemaEditor
                       v-model="viewConfig.customComponentProps"
                       :schema="selectedCustomListSchema"
@@ -256,85 +354,16 @@
                 </SettingsSection>
               </el-form>
             </el-tab-pane>
-            <el-tab-pane label="字段配置" name="fields">
-              <div class="field-toolbar">
-                <el-alert
-                  title="查询字段可以不显示在列表；虚拟列必须选择支持虚拟字段的数据源。"
-                  type="info"
-                  :closable="false"
-                  show-icon
-                />
-                <el-button type="primary" plain @click="addVirtualField">
-                  <el-icon><Plus /></el-icon>添加虚拟列
-                </el-button>
-              </div>
-              <el-table
-                :data="fieldConfigList"
-                row-key="fieldId"
-                class="field-config-table"
-                size="small"
-                border
-              >
-                <el-table-column label="排序" width="48" align="center">
-                  <template #default>
-                    <el-icon class="drag-handle"><Rank /></el-icon>
-                  </template>
-                </el-table-column>
-                <el-table-column label="字段名称" width="148">
-                  <template #default="{ row }">
-                    <el-input v-model="row.fieldName" size="small" />
-                  </template>
-                </el-table-column>
-                <el-table-column label="字段编码" width="168">
-                  <template #default="{ row }">
-                    <el-input v-model="row.fieldCode" size="small" :disabled="!isVirtualField(row)" />
-                  </template>
-                </el-table-column>
-                <el-table-column label="用途" width="104">
-                  <template #default="{ row }">
-                    <div class="field-purpose-controls">
-                      <el-checkbox v-model="row.showInList">列表</el-checkbox>
-                      <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row)">查询</el-checkbox>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column label="当前配置" min-width="320">
-                  <template #default="{ row }">
-                    <span class="field-config-summary" :title="fieldConfigSummary(row)">
-                      {{ fieldConfigSummary(row) }}
-                    </span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="138" fixed="right">
-                  <template #default="{ row }">
-                    <el-button link type="primary" @click="openFieldConfig(row)">设置</el-button>
-                    <el-button
-                      link
-                      type="success"
-                      :loading="row._saving"
-                      @click="saveCurrentField(row)"
-                    >保存</el-button>
-                    <el-button
-                      v-if="isVirtualField(row)"
-                      link
-                      type="danger"
-                      :icon="Delete"
-                      aria-label="删除虚拟列"
-                      title="删除虚拟列"
-                      @click="removeVirtualField(row)"
-                    />
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-tab-pane>
             <el-tab-pane label="工具栏按钮" name="toolbar">
               <ListButtonConfigPanel
                 type="toolbar"
                 v-model="toolbarButtons"
                 :entityCode="entityCode"
                 :entityFields="entityFields"
+                :owner-id="configInfo.id || configId"
                 :templates="buttonTemplates"
                 @save="saveListAction($event, 'TOOLBAR')"
+                @reorder="reorderListAction($event, 'TOOLBAR')"
                 @upgrade-template="upgradeButtonTemplate($event, 'TOOLBAR')"
                 @remove="removeListAction($event, 'TOOLBAR')"
               />
@@ -345,8 +374,10 @@
                 v-model="rowActionButtons"
                 :entityCode="entityCode"
                 :entityFields="entityFields"
+                :owner-id="configInfo.id || configId"
                 :templates="buttonTemplates"
                 @save="saveListAction($event, 'ROW')"
+                @reorder="reorderListAction($event, 'ROW')"
                 @upgrade-template="upgradeButtonTemplate($event, 'ROW')"
                 @remove="removeListAction($event, 'ROW')"
               />
@@ -354,128 +385,64 @@
           </el-tabs>
         </el-card>
       </div>
+    </div>
 
-      <!-- 右侧：预览区 -->
-      <div class="preview-panel">
-        <el-card shadow="never">
-          <template #header>
-            <div class="preview-header">
-              <div>
-                <span>草稿预览</span>
-                <el-text type="info" size="small">包含本页尚未保存的显示配置</el-text>
-              </div>
-              <el-radio-group v-model="previewViewport" size="small">
-                <el-radio-button value="desktop">桌面</el-radio-button>
-                <el-radio-button value="tablet">平板</el-radio-button>
-              </el-radio-group>
-            </div>
-          </template>
+    <el-dialog
+      v-model="previewDialogVisible"
+      title="列表预览"
+      width="92%"
+      top="5vh"
+      destroy-on-close
+    >
+      <div class="preview-content">
+        <div class="preview-toolbar">
+          <el-text type="info">
+            使用当前页面的字段与显示配置，数据通过列表运行时接口加载。
+          </el-text>
+          <el-radio-group v-model="previewViewport" size="small">
+            <el-radio-button value="desktop">桌面</el-radio-button>
+            <el-radio-button value="tablet">平板</el-radio-button>
+          </el-radio-group>
+        </div>
 
-          <div class="preview-viewport" :class="`is-${previewViewport}`">
-            <el-alert
-              v-if="previewError"
-              :title="previewError"
-              type="error"
-              :closable="false"
-              show-icon
-              class="preview-error"
-            >
-              <template #default>
-                <el-button size="small" type="danger" plain @click="loadPreviewData">重试预览</el-button>
-              </template>
-            </el-alert>
+        <div class="preview-viewport" :class="`is-${previewViewport}`">
+          <el-alert
+            v-if="previewError"
+            :title="previewError"
+            type="error"
+            :closable="false"
+            show-icon
+            class="preview-error"
+          >
+            <template #default>
+              <el-button size="small" type="danger" plain @click="loadPreviewData">
+                重试预览
+              </el-button>
+            </template>
+          </el-alert>
 
-            <!-- 查询条件 -->
-            <div class="preview-query" v-if="previewQueryFields.length > 0">
-            <el-form :model="previewQueryForm" inline size="small">
-              <el-form-item
-                v-for="field in previewQueryFields"
-                :key="field.fieldCode"
-                :label="field.fieldName"
-              >
-                <!-- BETWEEN 范围查询 -->
-                <template v-if="field.queryType === 'BETWEEN'">
-                  <el-date-picker
-                    v-if="field.fieldType === 'DATE'"
-                    v-model="previewQueryForm[field.fieldCode + '_start']"
-                    type="date"
-                    :placeholder="`开始${field.fieldName}`"
-                    style="width: 130px"
-                  />
-                  <el-input
-                    v-else
-                    v-model="previewQueryForm[field.fieldCode + '_start']"
-                    :placeholder="`开始${field.fieldName}`"
-                    clearable
-                    style="width: 130px"
-                  />
-                  <span style="margin: 0 4px">~</span>
-                  <el-date-picker
-                    v-if="field.fieldType === 'DATE'"
-                    v-model="previewQueryForm[field.fieldCode + '_end']"
-                    type="date"
-                    :placeholder="`结束${field.fieldName}`"
-                    style="width: 130px"
-                  />
-                  <el-input
-                    v-else
-                    v-model="previewQueryForm[field.fieldCode + '_end']"
-                    :placeholder="`结束${field.fieldName}`"
-                    clearable
-                    style="width: 130px"
-                  />
-                </template>
-                <!-- 普通查询 -->
-                <template v-else>
-                  <el-input
-                    v-if="field.fieldType === 'STRING' || field.fieldType === 'TEXT'"
-                    v-model="previewQueryForm[field.fieldCode]"
-                    :placeholder="`请输入${field.fieldName}`"
-                    clearable
-                  />
-                  <el-select
-                    v-else-if="field.fieldType === 'SELECT'"
-                    v-model="previewQueryForm[field.fieldCode]"
-                    :placeholder="`请选择${field.fieldName}`"
-                    clearable
-                  >
-                    <el-option
-                      v-for="opt in parseOptions(field.optionsJson)"
-                      :key="opt.value"
-                      :label="opt.label"
-                      :value="opt.value"
-                    />
-                  </el-select>
-                  <el-date-picker
-                    v-else-if="field.fieldType === 'DATE'"
-                    v-model="previewQueryForm[field.fieldCode]"
-                    type="date"
-                    :placeholder="`选择${field.fieldName}`"
-                  />
-                  <el-input
-                    v-else
-                    v-model="previewQueryForm[field.fieldCode]"
-                    :placeholder="`请输入${field.fieldName}`"
-                    clearable
-                  />
-                </template>
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="handlePreviewSearch">查询</el-button>
-                <el-button @click="handlePreviewReset">重置</el-button>
-              </el-form-item>
-            </el-form>
-            </div>
+          <EntityDataSearchForm
+            v-if="previewQueryFields.length > 0"
+            v-model:form="previewQueryForm"
+            :fields="previewQueryFields"
+            :use-list-config="true"
+            :view-config="viewConfig"
+            @search="handlePreviewSearch"
+            @reset="handlePreviewReset"
+          />
 
-            <!-- 数据表格 -->
-            <el-table
-            :data="previewDataList"
+          <el-table
             v-loading="previewLoading"
+            :data="previewDataList"
             :stripe="viewConfig.table.stripe !== false"
             :border="viewConfig.table.border === true"
             :size="viewConfig.table.size || 'small'"
           >
-            <el-table-column v-if="viewConfig.table.showIndex !== false" type="index" width="50" />
+            <el-table-column
+              v-if="viewConfig.table.showIndex !== false"
+              type="index"
+              width="50"
+            />
             <el-table-column
               v-for="field in previewListFields"
               :key="field.fieldCode"
@@ -483,42 +450,53 @@
               :width="field.width > 0 ? field.width : undefined"
               :align="field.align"
               :fixed="safeParseConfig(field.columnConfig).fixed || undefined"
-              :min-width="field.width > 0 ? undefined : (safeParseConfig(field.columnConfig).minWidth || 100)"
-              :show-overflow-tooltip="safeParseConfig(field.columnConfig).showOverflowTooltip !== false"
+              :min-width="field.width > 0
+                ? undefined
+                : (safeParseConfig(field.columnConfig).minWidth || 100)"
+              :show-overflow-tooltip="
+                safeParseConfig(field.columnConfig).showOverflowTooltip !== false
+              "
             >
               <template #default="{ row }">
                 <ListCellRenderer
-                  v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+                  v-if="
+                    field.renderComponent
+                    || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')
+                  "
                   :row="row"
                   :field="field"
                 />
-                <span v-else>{{ row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-' }}</span>
+                <span v-else>
+                  {{ row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-' }}
+                </span>
               </template>
             </el-table-column>
-            </el-table>
+          </el-table>
 
-            <!-- 分页 -->
-            <div class="preview-pagination" v-if="previewTotal > 0">
+          <div v-if="previewTotal > 0" class="preview-pagination">
             <el-pagination
               v-model:current-page="previewPageNum"
               v-model:page-size="previewPageSize"
               :total="previewTotal"
               :page-sizes="viewConfig.pagination.pageSizes"
               layout="total, sizes, prev, pager, next"
+              small
               @size-change="loadPreviewData"
               @current-change="loadPreviewData"
-              small
-            />
-            </div>
-
-            <el-empty
-              v-if="!previewLoading && !previewError && previewDataList.length === 0"
-              description="当前条件下暂无预览数据"
             />
           </div>
-        </el-card>
+
+          <el-empty
+            v-if="!previewLoading && !previewError && previewDataList.length === 0"
+            description="当前条件下暂无预览数据"
+          />
+        </div>
       </div>
-    </div>
+
+      <template #footer>
+        <el-button @click="previewDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="fieldConfigDialogVisible"
@@ -758,54 +736,25 @@
       @published="handlePublished"
     />
 
-    <el-dialog v-model="releaseDialogVisible" title="列表发布版本" width="920px">
-      <el-table :data="releases" size="small">
-        <el-table-column type="expand">
-          <template #default="{ row }">
-            <el-descriptions :column="2" border size="small" class="release-technical-details">
-              <el-descriptions-item label="内容校验值">{{ row.contentHash || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="热修复状态">{{ row.rolloutStatus || '-' }}</el-descriptions-item>
-            </el-descriptions>
-          </template>
-        </el-table-column>
-        <el-table-column prop="version" label="版本" width="80" />
-        <el-table-column prop="releaseMode" label="方式" width="100">
-          <template #default="{ row }">
-            {{ row.releaseMode === 'HOTFIX' ? '兼容热修复' : '普通发布' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="riskLevel" label="风险" width="90" />
-        <el-table-column prop="description" label="版本说明" min-width="180">
-          <template #default="{ row }">{{ row.description || '未填写' }}</template>
-        </el-table-column>
-        <el-table-column prop="publishedBy" label="发布人" width="120" />
-        <el-table-column prop="publishedAt" label="发布时间" width="180" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.releaseMode !== 'HOTFIX'"
-              link
-              type="primary"
-              :disabled="row.status === 'ACTIVE'"
-              @click="activateRelease(row)"
-            >激活</el-button>
-            <el-button
-              v-else
-              link
-              type="danger"
-              :disabled="row.rolloutStatus !== 'ACTIVE'"
-              @click="rollbackHotfixRelease(row)"
-            >撤回热修复</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
+    <EventBindingDialog
+      ref="eventBindingDialogRef"
+      owner-type="LIST"
+      :owner-id="String(configInfo.id || configId)"
+      owner-label="列表"
+      :field-options="eventFieldOptions"
+    />
+    <UiConfigReleaseHistoryDialog
+      ref="releaseHistoryDialogRef"
+      config-type="LIST"
+      :config-id="configId"
+      config-label="列表"
+      @changed="handleReleaseChanged"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Rank, Plus } from '@element-plus/icons-vue'
@@ -815,10 +764,13 @@ import { entityApi } from '@/api/entity'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
+import EntityDataSearchForm from '@/views/entity/components/EntityDataSearchForm.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
+import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
+import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
 import { getFormFieldComponentOptions } from '@/components/form-fields'
@@ -844,16 +796,30 @@ const entityId = ref('')
 const entityFields = ref([])
 const entityDefinition = ref({})
 const publishDialogVisible = ref(false)
-const releaseDialogVisible = ref(false)
-const releases = ref([])
+const eventBindingDialogRef = ref(null)
+const releaseHistoryDialogRef = ref(null)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const pageLoading = ref(false)
 const loadError = ref('')
+const previewDialogVisible = ref(false)
 const previewError = ref('')
-const previewExpanded = ref(false)
 const previewViewport = ref('desktop')
+const previewQueryForm = ref({})
+const previewDataList = ref([])
+const previewLoading = ref(false)
+const previewPageNum = ref(1)
+const previewPageSize = ref(10)
+const previewTotal = ref(0)
 const savingAll = ref(false)
 const unifiedDataSources = ref([])
+const eventFieldOptions = computed(() =>
+  entityFields.value
+    .filter(field => !field.isSystem)
+    .map(field => ({
+      label: field.fieldName || field.fieldCode,
+      value: field.fieldCode
+    }))
+)
 const listTemplates = ref([])
 const buttonTemplates = ref([])
 const dataSourceOptions = ref([
@@ -903,10 +869,15 @@ const viewConfig = ref(createDefaultViewConfig())
 
 // 字段配置列表
 const fieldConfigList = ref([])
+const configPanelRef = ref(null)
+const fieldTableRef = ref(null)
 let sortableInstance = null
+let configResizeObserver = null
+let fieldLayoutFrame = 0
+let observedConfigWidth = 0
 
 // 配置 Tab
-const activeConfigTab = ref('view')
+const activeConfigTab = ref('fields')
 
 const selectedCustomListSchema = computed(() =>
   getCustomListDescriptor(configInfo.value.customComponent)?.configSchema || []
@@ -946,6 +917,7 @@ const sceneSavingCodes = ref(new Set())
 const sceneSortCache = new Map()
 const baselinesReady = ref(false)
 const metadataBaseline = ref('')
+const metadataDetailBaselines = ref(new Map())
 const fieldBaselines = ref(new Map())
 const actionBaselines = ref(new Map())
 const sceneOptions = [
@@ -958,34 +930,25 @@ const sceneOptions = [
   { value: 'SUB_TABLE', label: '子表选择' }
 ]
 
-// 预览相关
-const previewQueryForm = ref({})
-const previewDataList = ref([])
-const previewAllData = ref([])
-const previewLoading = ref(false)
-const previewPageNum = ref(1)
-const previewPageSize = ref(10)
-const previewTotal = ref(0)
-
-const previewQueryFields = computed(() => {
-  return fieldConfigList.value
-    .filter(f => f.isQuery)
-    .map(f => {
-      const originField = entityFields.value.find(ef => ef.id === f.fieldId)
-      const queryConfig = safeParseConfig(f.queryConfig)
+const previewQueryFields = computed(() =>
+  fieldConfigList.value
+    .filter(field => field.isQuery)
+    .map(field => {
+      const originField = entityFields.value.find(item => item.id === field.fieldId)
+      const queryConfig = safeParseConfig(field.queryConfig)
       return {
-        ...f,
-        componentType: queryConfig.componentType || f.componentType,
-        placeholder: queryConfig.placeholder || f.placeholder,
-        fieldType: originField?.fieldType || f.fieldType || 'STRING',
-        optionsJson: originField?.optionsJson || f.optionsJson
+        ...field,
+        componentType: queryConfig.componentType || field.componentType,
+        placeholder: queryConfig.placeholder || field.placeholder,
+        fieldType: originField?.fieldType || field.fieldType || 'STRING',
+        optionsJson: originField?.optionsJson || field.optionsJson
       }
     })
-})
+)
 
-const previewListFields = computed(() => {
-  return fieldConfigList.value.filter(f => f.showInList)
-})
+const previewListFields = computed(() =>
+  fieldConfigList.value.filter(field => field.showInList)
+)
 
 function metadataFingerprint() {
   return JSON.stringify({
@@ -1004,6 +967,89 @@ function metadataFingerprint() {
     queryProviderCode: configInfo.value.queryProviderCode || '',
     queryDataSourceId: configInfo.value.queryDataSourceId || null
   })
+}
+
+function metadataDetailEntries() {
+  return [
+    { key: 'listName', label: '列表设置：列表名称', value: configInfo.value.listName || '' },
+    { key: 'description', label: '列表设置：列表说明', value: configInfo.value.description || '' },
+    { key: 'isDefault', label: '列表设置：默认列表', value: Boolean(configInfo.value.isDefault) },
+    { key: 'dataScopeMode', label: '列表设置：数据范围模式', value: configInfo.value.dataScopeMode || 'INHERIT' },
+    { key: 'accessPermissionCode', label: '列表设置：访问权限码', value: configInfo.value.accessPermissionCode || '' },
+    { key: 'selectionMode', label: '列表设置：选择模式', value: configInfo.value.selectionMode || 'NONE' },
+    { key: 'selectionValueField', label: '列表设置：返回值字段', value: configInfo.value.selectionValueField || 'id' },
+    {
+      key: 'selectionReturnMappingsText',
+      label: '列表设置：返回映射',
+      value: configInfo.value.selectionReturnMappingsText || ''
+    },
+    { key: 'fixedFilterConfig', label: '列表设置：固定条件', value: configInfo.value.fixedFilterConfig || '' },
+    {
+      key: 'contextBindingConfig',
+      label: '列表设置：上下文绑定',
+      value: configInfo.value.contextBindingConfig || ''
+    },
+    {
+      key: 'search.defaultVisibleCount',
+      label: '列表设置：收起时显示条件数',
+      value: viewConfig.value.search.defaultVisibleCount
+    },
+    {
+      key: 'search.collapsible',
+      label: '列表设置：启用查询区折叠',
+      value: viewConfig.value.search.collapsible
+    },
+    {
+      key: 'search.labelWidth',
+      label: '列表设置：查询区标签宽度',
+      value: viewConfig.value.search.labelWidth
+    },
+    { key: 'table.stripe', label: '列表设置：斑马纹', value: viewConfig.value.table.stripe },
+    { key: 'table.border', label: '列表设置：表格边框', value: viewConfig.value.table.border },
+    { key: 'table.showIndex', label: '列表设置：序号列', value: viewConfig.value.table.showIndex },
+    { key: 'table.size', label: '列表设置：表格尺寸', value: viewConfig.value.table.size },
+    {
+      key: 'pagination.pageSize',
+      label: '列表设置：默认每页',
+      value: viewConfig.value.pagination.pageSize
+    },
+    {
+      key: 'pagination.pageSizes',
+      label: '列表设置：分页选项',
+      value: viewConfig.value.pagination.pageSizes
+    },
+    {
+      key: 'customComponent',
+      label: '列表设置：自定义列表组件',
+      value: configInfo.value.customComponent || ''
+    },
+    {
+      key: 'customComponentProps',
+      label: '列表设置：组件参数',
+      value: viewConfig.value.customComponentProps
+    },
+    {
+      key: 'queryProviderCode',
+      label: '列表设置：安全查询提供者',
+      value: configInfo.value.queryProviderCode || ''
+    },
+    {
+      key: 'queryDataSourceId',
+      label: '列表设置：统一查询数据源',
+      value: configInfo.value.queryDataSourceId || null
+    }
+  ]
+}
+
+function metadataDetailFingerprint(value) {
+  return JSON.stringify(value)
+}
+
+function rememberMetadataBaseline() {
+  metadataBaseline.value = metadataFingerprint()
+  metadataDetailBaselines.value = new Map(
+    metadataDetailEntries().map(item => [item.key, metadataDetailFingerprint(item.value)])
+  )
 }
 
 function fieldFingerprint(field) {
@@ -1032,7 +1078,7 @@ function rememberActionBaseline(button, position) {
 }
 
 function rememberAllBaselines() {
-  metadataBaseline.value = metadataFingerprint()
+  rememberMetadataBaseline()
   fieldBaselines.value = new Map()
   fieldConfigList.value.forEach(rememberFieldBaseline)
   actionBaselines.value = new Map()
@@ -1044,6 +1090,17 @@ function rememberAllBaselines() {
 const metadataDirty = computed(() =>
   baselinesReady.value && metadataBaseline.value !== metadataFingerprint()
 )
+const dirtyMetadataItems = computed(() => {
+  if (!metadataDirty.value) return []
+  const items = metadataDetailEntries()
+    .filter(item =>
+      metadataDetailBaselines.value.get(item.key) !== metadataDetailFingerprint(item.value)
+    )
+    .map(item => ({ key: `metadata:${item.key}`, label: item.label }))
+  return items.length > 0
+    ? items
+    : [{ key: 'metadata:other', label: '列表设置：其他配置' }]
+})
 const dirtyFields = computed(() =>
   baselinesReady.value
     ? fieldConfigList.value.filter(field =>
@@ -1064,19 +1121,76 @@ const dirtyActions = computed(() => {
 const isDirty = computed(() =>
   metadataDirty.value || dirtyFields.value.length > 0 || dirtyActions.value.length > 0
 )
+const unsavedItems = computed(() => [
+  ...dirtyMetadataItems.value,
+  ...dirtyFields.value.map(field => ({
+    key: `field:${field.fieldId}`,
+    label: `字段配置：${field.fieldName || field.fieldCode || '未命名字段'}`
+  })),
+  ...dirtyActions.value.map(({ button, position }) => ({
+    key: `action:${actionBaselineKey(button, position)}`,
+    label: `${position === 'TOOLBAR' ? '工具栏按钮' : '操作列按钮'}：${button.label || button.key || '未命名按钮'}`
+  }))
+])
 const unsavedSummary = computed(() => {
-  const count = Number(metadataDirty.value)
-    + dirtyFields.value.length
-    + dirtyActions.value.length
-  return `${count} 项未保存`
+  return `${unsavedItems.value.length} 项未保存`
 })
 
 useUnsavedChangesGuard(isDirty, {
   message: '列表设置、字段或按钮有未保存修改，离开后这些修改将丢失。'
 })
 
-onMounted(() => {
-  loadData()
+function refreshFieldTableLayout() {
+  if (fieldLayoutFrame && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(fieldLayoutFrame)
+  }
+  const runLayout = () => {
+    fieldLayoutFrame = 0
+    fieldTableRef.value?.doLayout?.()
+  }
+  fieldLayoutFrame = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame(runLayout)
+    : 0
+  if (!fieldLayoutFrame) {
+    runLayout()
+  }
+}
+
+function observeConfigPanelWidth() {
+  configResizeObserver?.disconnect()
+  configResizeObserver = null
+  observedConfigWidth = 0
+  if (!configPanelRef.value || typeof ResizeObserver === 'undefined') return
+
+  configResizeObserver = new ResizeObserver(([entry]) => {
+    const nextWidth = Math.round(entry?.contentRect?.width || 0)
+    if (!nextWidth || nextWidth === observedConfigWidth) return
+    observedConfigWidth = nextWidth
+    refreshFieldTableLayout()
+  })
+  configResizeObserver.observe(configPanelRef.value)
+}
+
+onMounted(async () => {
+  await loadData()
+  await nextTick()
+  observeConfigPanelWidth()
+  refreshFieldTableLayout()
+})
+
+onBeforeUnmount(() => {
+  configResizeObserver?.disconnect()
+  if (fieldLayoutFrame && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(fieldLayoutFrame)
+  }
+  sortableInstance?.destroy()
+})
+
+watch(activeConfigTab, async (tab) => {
+  if (tab !== 'fields') return
+  await nextTick()
+  refreshFieldTableLayout()
+  initSortable()
 })
 
 async function loadData() {
@@ -1134,7 +1248,6 @@ async function loadData() {
       entityId.value = configRes.entityId
       entityCode.value = configRes.entityCode
       viewConfig.value = mergeViewConfig(safeParseConfig(configRes.viewConfig))
-      previewPageSize.value = viewConfig.value.pagination.pageSize
       await loadDiff()
     }
 
@@ -1159,14 +1272,9 @@ async function loadData() {
     parseButtonConfig(configRes)
     await nextTick()
     rememberAllBaselines()
+    refreshFieldTableLayout()
+    initSortable()
 
-    // 初始化拖拽
-    nextTick(() => {
-      initSortable()
-    })
-
-    // 加载预览数据
-    await loadPreviewData()
   } catch (e) {
     console.error('加载数据失败:', e)
     loadError.value = e?.message || '列表配置加载失败，请重试'
@@ -1451,10 +1559,14 @@ function safeJsonParse(text) {
 
 function parseButtonConfig(configRes) {
   const toolbar = safeJsonParse(configRes?.toolbarConfig)
-  toolbarButtons.value = toolbar && toolbar.length > 0 ? toolbar : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b }))
+  toolbarButtons.value = toolbar && toolbar.length > 0
+    ? toolbar
+    : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b }))
 
   const rowActions = safeJsonParse(configRes?.rowActionConfig)
-  rowActionButtons.value = rowActions && rowActions.length > 0 ? rowActions : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b }))
+  rowActionButtons.value = rowActions && rowActions.length > 0
+    ? rowActions
+    : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b }))
 }
 
 function isSceneEnabled(sceneCode) {
@@ -1523,7 +1635,8 @@ function normalizeActionForSave(button, position) {
     enabled: button.enabled !== false,
     unavailableBehavior: button.availabilityRule?.unavailableBehavior || '',
     sortOrder: Number(button.sort || 0),
-    orderKey: (Number(button.sort || 0) + 1) * 1000000,
+    orderKey: button.orderKey
+      || (Number(button.sort || 0) + 1) * 1000000,
     actionParams,
     availabilityRule: button.availabilityRule || {},
     templateId: button.templateId || null,
@@ -1644,6 +1757,79 @@ async function saveListAction(button, position, options = {}) {
   }
 }
 
+async function reorderListAction({ oldIndex, newIndex }, position) {
+  const target = position === 'TOOLBAR' ? toolbarButtons : rowActionButtons
+  if (
+    oldIndex == null
+    || newIndex == null
+    || oldIndex === newIndex
+    || !target.value[oldIndex]
+  ) {
+    return
+  }
+
+  const reordered = [...target.value]
+  const [button] = reordered.splice(oldIndex, 1)
+  reordered.splice(newIndex, 0, button)
+  target.value = reordered
+
+  if (!button.id || button.revision <= 0) {
+    button.sort = newIndex + 1
+    button.orderKey = localActionOrderKey(reordered, newIndex)
+    return
+  }
+
+  button._saving = true
+  try {
+    const previousId = reordered
+      .slice(0, newIndex)
+      .reverse()
+      .find(item => item.id)?.id || null
+    const nextId = reordered
+      .slice(newIndex + 1)
+      .find(item => item.id)?.id || null
+    const saved = await entityListConfigApi.reorderAction(
+      configId,
+      button.id,
+      {
+        expectedRevision: button.revision,
+        previousId,
+        nextId
+      }
+    )
+    button.revision = saved.revision
+    button.orderKey = saved.orderKey
+    await refreshConfigRevision()
+    rememberActionBaseline(button, position)
+    await loadDiff()
+    ElMessage.success('按钮顺序已调整，尚未发布')
+  } catch (error) {
+    handleRevisionConflict(error, button)
+    await refreshListActions().catch(() => {})
+  } finally {
+    button._saving = false
+  }
+}
+
+function localActionOrderKey(buttons, index) {
+  const previous = buttons
+    .slice(0, index)
+    .reverse()
+    .map(item => Number(item.orderKey))
+    .find(orderKey => Number.isFinite(orderKey) && orderKey > 0)
+  const next = buttons
+    .slice(index + 1)
+    .map(item => Number(item.orderKey))
+    .find(orderKey => Number.isFinite(orderKey) && orderKey > 0)
+
+  if (previous && next && next - previous > 1) {
+    return previous + Math.floor((next - previous) / 2)
+  }
+  if (previous) return previous + 1000000
+  if (next) return Math.max(1, Math.floor(next / 2))
+  return (index + 1) * 1000000
+}
+
 async function removeListAction(button, position) {
   try {
     await ElMessageBox.confirm(
@@ -1675,7 +1861,7 @@ async function removeListAction(button, position) {
 }
 
 function initSortable() {
-  const tableEl = document.querySelector('.field-config-table .el-table__body-wrapper tbody')
+  const tableEl = fieldTableRef.value?.$el?.querySelector('.el-table__body-wrapper tbody')
   if (!tableEl) return
 
   if (sortableInstance) {
@@ -1860,7 +2046,7 @@ async function saveListMetadata(options = {}) {
       queryDataSourceId: configInfo.value.queryDataSourceId || null
     })
     configInfo.value.revision = saved.revision
-    metadataBaseline.value = metadataFingerprint()
+    rememberMetadataBaseline()
     await loadDiff()
     if (!options.silent) {
       ElMessage.success('列表设置已保存，尚未发布')
@@ -1922,7 +2108,58 @@ async function handlePublish() {
 async function handlePublished() {
   await refreshConfigRevision()
   await loadDiff()
+}
+
+async function openPreview() {
+  previewPageSize.value = viewConfig.value.pagination.pageSize || 10
+  previewDialogVisible.value = true
+  await nextTick()
   await loadPreviewData()
+}
+
+async function loadPreviewData() {
+  if (!entityCode.value || !configInfo.value?.listKey) return
+  previewLoading.value = true
+  previewError.value = ''
+  try {
+    const filters = { ...previewQueryForm.value }
+    previewQueryFields.value.forEach((field) => {
+      const code = field.fieldCode
+      if (code && filters[code] !== undefined && field.queryType) {
+        filters[`${code}_op`] = field.queryType
+      }
+    })
+    const result = await entityListRuntimeApi.query(
+      entityCode.value,
+      configInfo.value.listKey,
+      {
+        pageNum: previewPageNum.value,
+        pageSize: previewPageSize.value,
+        scene: 'PAGE',
+        filters
+      }
+    )
+    previewDataList.value = result?.records || result?.list || []
+    previewTotal.value = Number(result?.total || previewDataList.value.length)
+  } catch (error) {
+    console.error('加载列表预览失败:', error)
+    previewDataList.value = []
+    previewTotal.value = 0
+    previewError.value = error?.message || '预览数据加载失败，请重试'
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function handlePreviewSearch() {
+  previewPageNum.value = 1
+  loadPreviewData()
+}
+
+function handlePreviewReset() {
+  previewQueryForm.value = {}
+  previewPageNum.value = 1
+  loadPreviewData()
 }
 
 function describePublishChanges(diff) {
@@ -1946,102 +2183,16 @@ function changeTypeLabel(changeType) {
 }
 
 async function showReleaseHistory() {
-  releases.value = await entityListConfigApi.getReleases(configId)
-  releaseDialogVisible.value = true
+  await releaseHistoryDialogRef.value?.open()
 }
 
-async function activateRelease(release) {
-  await ElMessageBox.confirm(
-    `确认激活历史版本 v${release.version}？`,
-    '回滚发布版本',
-    { type: 'warning' }
-  )
-  await entityListConfigApi.activateRelease(configId, release.id)
-  await showReleaseHistory()
-  await loadDiff()
-  await loadPreviewData()
-  ElMessage.success('历史版本已激活')
+function openListEventBindings() {
+  eventBindingDialogRef.value?.openOwner(configInfo.value.listName || '')
 }
 
-async function rollbackHotfixRelease(release) {
-  const { value } = await ElMessageBox.prompt(
-    `确认按发布顺序撤回热修复 v${release.version}？`,
-    '撤回兼容热修复',
-    {
-      type: 'warning',
-      inputPlaceholder: '请输入撤回原因',
-      inputValidator: text => Boolean(String(text || '').trim())
-        || '撤回原因不能为空'
-    }
-  )
-  await entityListConfigApi.rollbackHotfix(
-    configId,
-    release.id,
-    value
-  )
-  await showReleaseHistory()
+async function handleReleaseChanged() {
   await refreshConfigRevision()
   await loadDiff()
-  await loadPreviewData()
-  ElMessage.success('列表热修复已撤回')
-}
-
-async function loadPreviewData() {
-  if (!entityCode.value) return
-  previewLoading.value = true
-  previewError.value = ''
-  try {
-    // 只传查询条件，不传分页参数（后端不分页，返回全部数据）
-    const params = { ...previewQueryForm.value }
-    // 添加查询方式参数（EQ/LIKE/GT/LT 等）
-    previewQueryFields.value.forEach((field) => {
-      const code = field.fieldCode
-      if (code && params[code] !== undefined && field.queryType) {
-        params[code + '_op'] = field.queryType
-      }
-    })
-    const res = await entityListRuntimeApi.query(
-      entityCode.value,
-      configInfo.value?.listKey,
-      {
-        pageNum: previewPageNum.value,
-        pageSize: previewPageSize.value,
-        scene: 'PAGE',
-        filters: params
-      }
-    )
-    previewDataList.value = res?.records || res?.list || []
-    previewAllData.value = previewDataList.value
-    previewTotal.value = Number(res?.total || previewDataList.value.length)
-  } catch (e) {
-    console.error('加载预览数据失败:', e)
-    previewAllData.value = []
-    previewDataList.value = []
-    previewTotal.value = 0
-    previewError.value = e?.message || '预览数据加载失败，请重试'
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-function handlePreviewSearch() {
-  previewPageNum.value = 1
-  loadPreviewData()
-}
-
-function handlePreviewReset() {
-  previewQueryForm.value = {}
-  previewPageNum.value = 1
-  loadPreviewData()
-}
-
-function parseOptions(optionsJson) {
-  if (!optionsJson) return []
-  try {
-    return JSON.parse(optionsJson)
-  } catch {
-    return []
-  }
 }
 
 function goBack() {
@@ -2052,24 +2203,50 @@ function goBack() {
 <style scoped>
 .entity-list-config-design {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
 }
 .page-header {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 12px 20px;
   border-bottom: 1px solid #e4e7ed;
   background-color: #fff;
+}
+
+.unsaved-status-tag {
+  cursor: help;
+}
+
+.unsaved-items-tooltip {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.unsaved-items-tooltip__title {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.unsaved-items-tooltip__item {
+  line-height: 22px;
+  overflow-wrap: anywhere;
 }
 
 .page-error {
   margin: 12px 12px 0;
 }
 
-.page-error :deep(.el-alert__content),
-.preview-error :deep(.el-alert__content) {
+.page-error :deep(.el-alert__content) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2078,12 +2255,31 @@ function goBack() {
 }
 
 .view-config-form {
-  max-width: 760px;
+  width: 100%;
 }
 
 .view-config-form :deep(.settings-section__body > .el-form-item:last-child),
 .field-config-tabs :deep(.settings-section__body > .el-form:last-child .el-form-item:last-child) {
   margin-bottom: 10px;
+}
+
+@media (min-width: 1440px) {
+  .view-config-form > :deep(.settings-section > .settings-section__body) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    column-gap: 32px;
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .view-config-form > :deep(.settings-section > .settings-section__body > .el-form-item) {
+    min-width: 0;
+  }
+
+  .view-config-form > :deep(.settings-section > .settings-section__body > .view-config-item--full) {
+    grid-column: 1 / -1;
+  }
 }
 
 .template-selector {
@@ -2124,9 +2320,9 @@ function goBack() {
 
 .field-purpose-controls {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
 }
 
 .field-purpose-controls :deep(.el-checkbox) {
@@ -2144,9 +2340,52 @@ function goBack() {
   white-space: nowrap;
 }
 
+.preview-content {
+  min-height: 320px;
+  max-height: 72vh;
+  overflow: auto;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.preview-viewport {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.preview-viewport.is-tablet {
+  max-width: 820px;
+}
+
+.preview-error {
+  margin-bottom: 12px;
+}
+
+.preview-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .config-tabs :deep(.el-tabs__nav-scroll) {
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+.config-tabs,
+.config-tabs :deep(.el-tabs__content),
+.config-tabs :deep(.el-tab-pane),
+.config-panel :deep(.el-card),
+.config-panel :deep(.el-card__body) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .config-tabs :deep(.el-tabs__nav) {
@@ -2174,6 +2413,7 @@ function goBack() {
 }
 .header-left {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 12px;
   font-size: 16px;
@@ -2186,61 +2426,19 @@ function goBack() {
 }
 
 .design-container {
-  display: flex;
   flex: 1;
-  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 12px;
-  overflow: hidden;
+  overflow: auto;
 }
 .config-panel {
-  flex: 1.3;
-  min-width: 0;
-  overflow-y: auto;
-}
-.preview-panel {
-  flex: 0.7;
-  min-width: 0;
-  overflow-y: auto;
-}
-
-.preview-expanded .config-panel {
-  display: none;
-}
-
-.preview-expanded .preview-panel {
-  flex: 1;
-}
-
-.preview-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.preview-header > div:first-child {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.preview-viewport {
   width: 100%;
-  margin: 0 auto;
-  transition: max-width 0.2s ease;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.preview-viewport.is-tablet {
-  max-width: 820px;
-}
-
-.preview-error {
-  margin-bottom: 12px;
-}
-
-.release-technical-details {
-  margin: 8px 16px;
-}
 .drag-handle {
   cursor: move;
   color: #909399;
@@ -2248,19 +2446,7 @@ function goBack() {
 .drag-handle:hover {
   color: #409eff;
 }
-.preview-query {
-  margin-bottom: 12px;
-  padding: 12px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-}
-.preview-pagination {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-@media (max-width: 960px) {
+@media (max-width: 1280px) {
   .page-header,
   .header-left,
   .header-actions,
@@ -2270,23 +2456,25 @@ function goBack() {
 
   .design-container {
     display: block;
-    overflow-y: auto;
+    overflow: auto;
     padding: 8px;
   }
 
-  .config-panel,
-  .preview-panel {
+  .config-panel {
     width: 100%;
     min-width: 0;
     overflow: visible;
   }
 
-  .preview-panel {
-    margin-top: 12px;
-  }
-
   .field-toolbar {
     align-items: stretch;
+  }
+}
+
+@media (max-width: 960px) {
+  .header-left,
+  .header-actions {
+    width: 100%;
   }
 
   .view-config-form :deep(.el-form-item__content) {

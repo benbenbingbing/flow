@@ -7,6 +7,8 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetFreezeCommand;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import com.workflow.contracts.process.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
@@ -22,6 +24,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -43,6 +46,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final ProcessTaskService processTaskService;
     private final WorkflowAutoSkipService workflowAutoSkipService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
+    private final ObjectProvider<EntityChangeTargetPort>
+            changeTargetPortProvider;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -80,6 +85,18 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 processConfig.getProcessKey(),
                 request.entityRecordId(),
                 variables);
+        EntityChangeTargetPort changeTargetPort =
+                changeTargetPortProvider.getIfAvailable();
+        if (changeTargetPort != null) {
+            changeTargetPort.freeze(
+                    new EntityChangeTargetFreezeCommand(
+                            request.entityCode(),
+                            request.entityRecordId(),
+                            processConfig.getId(),
+                            processInstance.getId(),
+                            request.submitterId(),
+                            request.variables()));
+        }
         workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfig.getId());
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())

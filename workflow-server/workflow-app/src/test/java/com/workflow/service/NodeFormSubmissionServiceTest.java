@@ -1,6 +1,7 @@
 package com.workflow.service;
 
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
@@ -49,14 +50,14 @@ class NodeFormSubmissionServiceTest {
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityDataDynamicService dataService = mock(EntityDataDynamicService.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
                 mock(FormSubmissionTraceService.class);
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
-                runtimeFormService, dataService, submissionService,
+                runtimeFormService, mutationPort, submissionService,
                 traceService);
         FormSubmissionExecutionContext executionContext =
                 executionContext();
@@ -100,9 +101,14 @@ class NodeFormSubmissionServiceTest {
                 "amount", 88,
                 "lockedNote", "tampered"));
 
-        ArgumentCaptor<Map<String, Object>> updateCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(dataService).update(eq("expense"), eq("data-1"), updateCaptor.capture());
-        assertEquals(Map.of("data", Map.of("amount", 88)), updateCaptor.getValue());
+        ArgumentCaptor<EntityMutationCommand> updateCaptor =
+                ArgumentCaptor.forClass(EntityMutationCommand.class);
+        verify(mutationPort).execute(updateCaptor.capture());
+        assertEquals("expense", updateCaptor.getValue().entityCode());
+        assertEquals("data-1", updateCaptor.getValue().recordId());
+        assertEquals(
+                Map.of("data", Map.of("amount", 88)),
+                updateCaptor.getValue().payload());
         verify(runtimeService).setVariables("instance-1", Map.of("amount", 88));
         verify(submissionService, times(1))
                 .applyForm(
@@ -126,14 +132,14 @@ class NodeFormSubmissionServiceTest {
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityDataDynamicService dataService = mock(EntityDataDynamicService.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
                 mock(FormSubmissionTraceService.class);
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
-                runtimeFormService, dataService, submissionService,
+                runtimeFormService, mutationPort, submissionService,
                 traceService);
 
         Task task = task();
@@ -149,7 +155,9 @@ class NodeFormSubmissionServiceTest {
 
         service.applyEditableData(task, Map.of("amount", 99));
 
-        verify(dataService, never()).update(eq("expense"), eq("data-1"), org.mockito.ArgumentMatchers.anyMap());
+        verify(mutationPort, never()).execute(
+                org.mockito.ArgumentMatchers.any(
+                        EntityMutationCommand.class));
         verify(runtimeService, never()).setVariables(eq("instance-1"), org.mockito.ArgumentMatchers.anyMap());
         verify(submissionService, never()).applyForm(
                 org.mockito.ArgumentMatchers.anyString(),
@@ -176,7 +184,7 @@ class NodeFormSubmissionServiceTest {
                         snapshotService,
                         mock(EntityFormService.class),
                         mock(EntityFormRuntimeService.class),
-                        mock(EntityDataDynamicService.class),
+                        mock(EntityMutationPort.class),
                         mock(PublishedFormSubmissionService.class),
                         mock(FormSubmissionTraceService.class));
         Task task = task();

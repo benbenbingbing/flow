@@ -99,6 +99,10 @@ export const entityListConfigApi = {
     return request.post(`/entity-list-config/${id}/actions/${actionId}/patch`, data)
   },
 
+  reorderAction(id, actionId, data) {
+    return request.post(`/entity-list-config/${id}/actions/${actionId}/order`, data)
+  },
+
   deleteAction(id, actionId, expectedRevision) {
     return request.post(`/entity-list-config/${id}/actions/${actionId}/delete`, {
       expectedRevision

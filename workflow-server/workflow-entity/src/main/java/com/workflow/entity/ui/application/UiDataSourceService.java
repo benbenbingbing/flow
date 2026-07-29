@@ -33,8 +33,6 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
@@ -68,12 +66,13 @@ public class UiDataSourceService {
             Set.of("GLOBAL", "ENTITY", "FORM", "LIST");
     private static final Set<String> USAGES = Set.of(
             "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
-            "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
-    /** 配置中禁止的危险字段名，防止注入任意 SQL/脚本/URL。 */
-    private static final Set<String> FORBIDDEN_KEYS =
-            Set.of("sql", "script", "url", "jdbcUrl", "command", "expression");
-    private static final Set<String> SCHEMA_TYPES =
-            Set.of("object", "array", "string", "number", "integer", "boolean");
+            "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT",
+            "LIST_LOAD", "LIST_EXPORT", "DETAIL_LOAD",
+            "DATA_CREATE", "DATA_UPDATE", "DATA_DELETE", "DATA_BATCH_DELETE",
+            "FORM_OPEN", "FORM_SAVE", "FORM_RESET",
+            "FIELD_CHANGE", "ENTITY_SELECTED", "FIELD_BUTTON_CLICK",
+            "SUBFORM_LOAD", "SUBFORM_SAVE",
+            "TOOLBAR_BUTTON_CLICK", "ROW_BUTTON_CLICK", "FORM_BUTTON_CLICK");
     private final UiDataSourceDefinitionMapper mapper;
     private final EntityFormMapper formMapper;
     private final EntityListConfigMapper listMapper;
@@ -81,6 +80,7 @@ public class UiDataSourceService {
     private final EntityDataDynamicService dynamicService;
     private final SysDictItemService dictItemService;
     private final UiDataSourceExecutionAccessService executionAccessService;
+    private final UiDataSourceDefinitionValidator definitionValidator;
     private final List<UiDataSourceProvider> providers;
     private final List<IntegrationConnector> connectors;
     private final JsonDocumentCodec codec;
@@ -99,6 +99,7 @@ public class UiDataSourceService {
      * @param dynamicService           实体数据动态服务
      * @param dictItemService          字典项服务
      * @param executionAccessService   数据源执行访问控制服务
+     * @param definitionValidator      接口服务定义与 Schema 校验器
      * @param providers                注册的数据源提供器集合
      * @param connectors               集成连接器集合
      * @param codec                    JSON 文档编解码器
@@ -112,6 +113,7 @@ public class UiDataSourceService {
             EntityDataDynamicService dynamicService,
             SysDictItemService dictItemService,
             UiDataSourceExecutionAccessService executionAccessService,
+            UiDataSourceDefinitionValidator definitionValidator,
             List<UiDataSourceProvider> providers,
             List<IntegrationConnector> connectors,
             JsonDocumentCodec codec,
@@ -123,6 +125,7 @@ public class UiDataSourceService {
         this.dynamicService = dynamicService;
         this.dictItemService = dictItemService;
         this.executionAccessService = executionAccessService;
+        this.definitionValidator = definitionValidator;
         this.providers = providers;
         this.connectors = connectors;
         this.codec = codec;
@@ -180,8 +183,12 @@ public class UiDataSourceService {
     @Transactional(rollbackFor = Exception.class)
     public UiDataSourceDefinition save(UiDataSourceSaveRequest request) {
         validateRequest(request);
-        validateSchemaDefinition(request.getInputSchema(), "数据源输入Schema");
-        validateSchemaDefinition(request.getOutputSchema(), "数据源输出Schema");
+        definitionValidator.validateSchemaDefinition(
+                request.getInputSchema(),
+                "数据源输入Schema");
+        definitionValidator.validateSchemaDefinition(
+                request.getOutputSchema(),
+                "数据源输出Schema");
         UiDataSourceDefinition current = StringUtils.hasText(request.getId())
                 ? mapper.selectById(request.getId())
                 : null;
@@ -204,6 +211,8 @@ public class UiDataSourceService {
         value.setOutputSchemaDocument(write(request.getOutputSchema(), "数据源输出Schema"));
         value.setExecutionPolicyDocument(
                 write(request.getExecutionPolicy(), "数据源执行策略"));
+        value.setOperationsDocument(writeList(
+                request.getOperations(), "接口服务操作定义"));
         value.setEnabled(request.getEnabled() == null || request.getEnabled());
         value.setUpdatedAt(LocalDateTime.now());
         value.setDeleted(0);
@@ -227,6 +236,7 @@ public class UiDataSourceService {
                     .set("input_schema_document", value.getInputSchemaDocument())
                     .set("output_schema_document", value.getOutputSchemaDocument())
                     .set("execution_policy_document", value.getExecutionPolicyDocument())
+                    .set("operations_document", value.getOperationsDocument())
                     .set("enabled", value.getEnabled())
                     .set("revision", value.getRevision())
                     .set("update_time", value.getUpdatedAt());
@@ -286,6 +296,105 @@ public class UiDataSourceService {
                 authorization);
     }
 
+    /**
+     * 执行接口服务中的指定操作；历史单操作数据源在 operationCode 为空时保持原行为。
+     */
+    public Object executeOperation(
+            String id,
+            String operationCode,
+            UiDataSourceExecuteRequest request) {
+        UiDataSourceDefinition definition = requireExecutableDefinition(id);
+        UiDataSourceDefinition operationDefinition =
+                resolveOperationDefinition(definition, operationCode);
+        if (request != null) {
+            request.setOperationCode(blankToNull(operationCode));
+        }
+        requireUsage(request == null ? null : request.getUsage());
+        UiDataSourceExecutionAuthorization authorization =
+                executionAccessService.authorizePublished(
+                        operationDefinition,
+                        request);
+        return executeAuthorized(
+                operationDefinition,
+                request,
+                authorization);
+    }
+
+    /**
+     * 实体变更管道 PREPARE 阶段执行受管理接口操作。
+     *
+     * <p>此入口只供服务端版本策略调用，不要求接口先绑定某个表单或列表发布版本。</p>
+     */
+    public Object executeManagedMutationOperation(
+            String id,
+            String operationCode,
+            UiDataSourceExecuteRequest request) {
+        UiDataSourceDefinition definition =
+                requireExecutableDefinition(id);
+        UiDataSourceDefinition operationDefinition =
+                resolveOperationDefinition(
+                        definition,
+                        operationCode);
+        if (request == null) {
+            request = new UiDataSourceExecuteRequest();
+        }
+        request.setUsage("ENTITY_MUTATION_PREPARE");
+        request.setOperationCode(
+                blankToNull(operationCode));
+        UiDataSourceExecutionAuthorization authorization =
+                executionAccessService
+                        .authorizeEntityMutation(
+                                operationDefinition,
+                                request);
+        requireMutationScope(
+                operationDefinition,
+                authorization);
+        return executeAuthorized(
+                operationDefinition,
+                request,
+                authorization);
+    }
+
+    /**
+     * 在管理端调试接口服务中的指定操作，不要求该操作已经绑定到发布页面。
+     */
+    public Object previewOperation(
+            String id,
+            String operationCode,
+            UiDataSourceExecuteRequest request) {
+        UiDataSourceDefinition definition = requireExecutableDefinition(id);
+        UiDataSourceDefinition operationDefinition =
+                resolveOperationDefinition(definition, operationCode);
+        if (request != null) {
+            request.setOperationCode(blankToNull(operationCode));
+        }
+        requireUsage(request == null ? null : request.getUsage());
+        UiDataSourceExecutionAuthorization authorization =
+                executionAccessService.authorizeManagementPreview(
+                        operationDefinition,
+                        request);
+        return executeAuthorized(
+                operationDefinition,
+                request,
+                authorization);
+    }
+
+    /**
+     * 返回接口服务操作目录，供事件绑定校验和设计器选择。
+     */
+    public List<Map<String, Object>> operations(String id) {
+        UiDataSourceDefinition definition = requireExecutableDefinition(id);
+        List<Map<String, Object>> operations = readList(
+                definition.getOperationsDocument(), "接口服务操作定义");
+        if (!operations.isEmpty()) {
+            return operations;
+        }
+        return List.of(Map.of(
+                "code", "default",
+                "name", definition.getSourceName(),
+                "kind", "READ"));
+    }
+
     private UiDataSourceDefinition requireExecutableDefinition(String id) {
         UiDataSourceDefinition definition = mapper.selectById(id);
         if (definition == null
@@ -296,6 +405,29 @@ public class UiDataSourceService {
                     "数据源不存在、已删除或未启用");
         }
         return definition;
+    }
+
+    private void requireMutationScope(
+            UiDataSourceDefinition definition,
+            UiDataSourceExecutionAuthorization authorization) {
+        String scopeType = normalize(
+                definition.getScopeType());
+        if ("GLOBAL".equals(scopeType)
+                || scopeType.isEmpty()) {
+            return;
+        }
+        if ("ENTITY".equals(scopeType)
+                && (Objects.equals(
+                        definition.getScopeId(),
+                        authorization.entityId())
+                || Objects.equals(
+                        definition.getScopeId(),
+                        authorization.entityCode()))) {
+            return;
+        }
+        throw new BusinessForbiddenException(
+                "ENTITY_MUTATION_SOURCE_SCOPE_MISMATCH",
+                "受管理接口的作用域与目标实体不一致");
     }
 
     private Object executeAuthorized(
@@ -310,9 +442,16 @@ public class UiDataSourceService {
                 definition.getInputSchemaDocument(), "数据源输入Schema");
         Map<String, Object> outputSchema = read(
                 definition.getOutputSchemaDocument(), "数据源输出Schema");
-        validateSchemaDefinition(inputSchema, "数据源输入Schema");
-        validateSchemaDefinition(outputSchema, "数据源输出Schema");
-        validateSchemaValue(inputSchema, input, "数据源输入");
+        definitionValidator.validateSchemaDefinition(
+                inputSchema,
+                "数据源输入Schema");
+        definitionValidator.validateSchemaDefinition(
+                outputSchema,
+                "数据源输出Schema");
+        definitionValidator.validateSchemaValue(
+                inputSchema,
+                input,
+                "数据源输入");
         Map<String, Object> policy = read(
                 definition.getExecutionPolicyDocument(), "数据源执行策略");
         String cacheKey = cacheKey(
@@ -322,7 +461,10 @@ public class UiDataSourceService {
         int cacheSeconds = integer(policy.get("cacheSeconds"), 0);
         CacheEntry cached = cache.get(cacheKey);
         if (cacheSeconds > 0 && cached != null && cached.expiresAt() > System.currentTimeMillis()) {
-            validateSchemaValue(outputSchema, cached.value(), "数据源输出");
+            definitionValidator.validateSchemaValue(
+                    outputSchema,
+                    cached.value(),
+                    "数据源输出");
             return cached.value();
         }
         try {
@@ -342,7 +484,10 @@ public class UiDataSourceService {
                     UserContext.clear();
                 }
             }, taskExecutor).get(timeoutMs, TimeUnit.MILLISECONDS);
-            validateSchemaValue(outputSchema, result, "数据源输出");
+            definitionValidator.validateSchemaValue(
+                    outputSchema,
+                    result,
+                    "数据源输出");
             if (cacheSeconds > 0) {
                 cache.put(cacheKey, new CacheEntry(
                         result,
@@ -355,7 +500,10 @@ public class UiDataSourceService {
                 throw failure;
             }
             Object fallback = handleFailure(policy, failure);
-            validateSchemaValue(outputSchema, fallback, "数据源输出");
+            definitionValidator.validateSchemaValue(
+                    outputSchema,
+                    fallback,
+                    "数据源输出");
             return fallback;
         }
     }
@@ -536,8 +684,12 @@ public class UiDataSourceService {
         if (!"GLOBAL".equals(scopeType) && !StringUtils.hasText(request.getScopeId())) {
             throw new IllegalArgumentException("非全局数据源必须指定 scopeId");
         }
-        validateNoForbiddenKeys(request.getConfig(), "config");
-        validateExecutionPolicy(request.getExecutionPolicy());
+        definitionValidator.validateNoForbiddenKeys(
+                request.getConfig(),
+                "config");
+        definitionValidator.validateExecutionPolicy(
+                request.getExecutionPolicy());
+        validateOperations(request.getOperations());
         if (Set.of("REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR").contains(sourceType)
                 && !StringUtils.hasText(request.getProviderCode())) {
             throw new IllegalArgumentException("Provider/Connector编码不能为空");
@@ -545,25 +697,121 @@ public class UiDataSourceService {
         requireScopeAccess(scopeType, request.getScopeId());
     }
 
-    private void validateExecutionPolicy(Map<String, Object> policy) {
-        if (policy == null) {
+    private void validateOperations(
+            List<Map<String, Object>> operations) {
+        if (operations == null || operations.isEmpty()) {
             return;
         }
-        int timeout = policy.get("timeoutMs") instanceof Number number
-                ? number.intValue() : 3000;
-        if (timeout < 100 || timeout > 30000) {
-            throw new IllegalArgumentException("数据源超时必须在 100 到 30000 毫秒之间");
+        Set<String> codes = new java.util.LinkedHashSet<>();
+        for (int index = 0; index < operations.size(); index++) {
+            Map<String, Object> operation = operations.get(index);
+            String code = text(operation.get("code"));
+            String name = text(operation.get("name"));
+            String kind = normalize(text(operation.getOrDefault("kind", "READ")));
+            if (!StringUtils.hasText(code) || !StringUtils.hasText(name)) {
+                throw new IllegalArgumentException(
+                        "接口服务第 " + (index + 1) + " 个操作缺少编码或名称");
+            }
+            if (!codes.add(code.trim())) {
+                throw new IllegalArgumentException("接口服务操作编码重复: " + code);
+            }
+            if (!Set.of("READ", "WRITE").contains(kind)) {
+                throw new IllegalArgumentException(
+                        "接口服务操作类型仅支持 READ/WRITE: " + code);
+            }
+            Map<String, Object> config =
+                    operation.get("config") instanceof Map<?, ?> map
+                            ? stringMap(map) : Map.of();
+            Map<String, Object> inputSchema =
+                    operation.get("inputSchema") instanceof Map<?, ?> map
+                            ? stringMap(map) : Map.of();
+            Map<String, Object> outputSchema =
+                    operation.get("outputSchema") instanceof Map<?, ?> map
+                            ? stringMap(map) : Map.of();
+            Map<String, Object> policy =
+                    operation.get("executionPolicy") instanceof Map<?, ?> map
+                            ? stringMap(map) : Map.of();
+            definitionValidator.validateNoForbiddenKeys(
+                    config,
+                    "operations." + code + ".config");
+            definitionValidator.validateSchemaDefinition(
+                    inputSchema, "接口操作 " + code + " 输入Schema");
+            definitionValidator.validateSchemaDefinition(
+                    outputSchema, "接口操作 " + code + " 输出Schema");
+            definitionValidator.validateExecutionPolicy(policy);
         }
-        int cacheSeconds = policy.get("cacheSeconds") instanceof Number number
-                ? number.intValue() : 0;
-        if (cacheSeconds < 0 || cacheSeconds > 86400) {
-            throw new IllegalArgumentException("数据源缓存时间必须在 0 到 86400 秒之间");
+    }
+
+    private UiDataSourceDefinition resolveOperationDefinition(
+            UiDataSourceDefinition definition,
+            String operationCode) {
+        List<Map<String, Object>> operations = readList(
+                definition.getOperationsDocument(), "接口服务操作定义");
+        if (operations.isEmpty()) {
+            if (StringUtils.hasText(operationCode)
+                    && !"default".equalsIgnoreCase(operationCode)) {
+                throw new IllegalArgumentException(
+                        "历史单操作接口服务仅支持 default 操作");
+            }
+            return definition;
         }
-        String failure = normalize(
-                String.valueOf(policy.getOrDefault("failurePolicy", "FAIL")));
-        if (!Set.of("FAIL", "EMPTY", "NULL").contains(failure)) {
-            throw new IllegalArgumentException("不支持的数据源失败策略: " + failure);
+        String expected = StringUtils.hasText(operationCode)
+                ? operationCode.trim() : null;
+        Map<String, Object> operation = operations.stream()
+                .filter(item -> Objects.equals(
+                        expected,
+                        text(item.get("code"))))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "接口服务操作不存在: " + operationCode));
+        UiDataSourceDefinition resolved = copyDefinition(definition);
+        Map<String, Object> baseConfig = read(
+                definition.getConfigDocument(), "接口服务基础配置");
+        if (operation.get("config") instanceof Map<?, ?> map) {
+            baseConfig.putAll(stringMap(map));
         }
+        baseConfig.put("operation", expected);
+        resolved.setConfigDocument(write(baseConfig, "接口操作配置"));
+        if (operation.get("inputSchema") instanceof Map<?, ?> map) {
+            resolved.setInputSchemaDocument(write(
+                    stringMap(map), "接口操作输入Schema"));
+        }
+        if (operation.get("outputSchema") instanceof Map<?, ?> map) {
+            resolved.setOutputSchemaDocument(write(
+                    stringMap(map), "接口操作输出Schema"));
+        }
+        if (operation.get("executionPolicy") instanceof Map<?, ?> map) {
+            Map<String, Object> policy = read(
+                    definition.getExecutionPolicyDocument(),
+                    "接口服务执行策略");
+            policy.putAll(stringMap(map));
+            resolved.setExecutionPolicyDocument(write(
+                    policy, "接口操作执行策略"));
+        }
+        return resolved;
+    }
+
+    private UiDataSourceDefinition copyDefinition(
+            UiDataSourceDefinition source) {
+        UiDataSourceDefinition target = new UiDataSourceDefinition();
+        target.setId(source.getId());
+        target.setSourceCode(source.getSourceCode());
+        target.setSourceName(source.getSourceName());
+        target.setSourceType(source.getSourceType());
+        target.setProviderCode(source.getProviderCode());
+        target.setScopeType(source.getScopeType());
+        target.setScopeId(source.getScopeId());
+        target.setConfigDocument(source.getConfigDocument());
+        target.setInputSchemaDocument(source.getInputSchemaDocument());
+        target.setOutputSchemaDocument(source.getOutputSchemaDocument());
+        target.setExecutionPolicyDocument(source.getExecutionPolicyDocument());
+        target.setOperationsDocument(source.getOperationsDocument());
+        target.setRevision(source.getRevision());
+        target.setEnabled(source.getEnabled());
+        target.setCreatedAt(source.getCreatedAt());
+        target.setUpdatedAt(source.getUpdatedAt());
+        target.setDeleted(source.getDeleted());
+        return target;
     }
 
     private Object handleFailure(
@@ -682,281 +930,6 @@ public class UiDataSourceService {
         }
     }
 
-    private void validateSchemaDefinition(
-            Map<String, Object> schema,
-            String label) {
-        if (schema == null || schema.isEmpty()) {
-            return;
-        }
-        validateSchemaNode(schema, label, "$");
-    }
-
-    private void validateSchemaNode(
-            Map<?, ?> schema,
-            String label,
-            String path) {
-        String type = schemaType(schema, label, path);
-        Object required = schema.get("required");
-        if (required != null) {
-            if (!(required instanceof List<?> requiredFields)) {
-                throw schemaError(
-                        label,
-                        path + ".required 必须为字符串数组");
-            }
-            for (int index = 0; index < requiredFields.size(); index++) {
-                Object field = requiredFields.get(index);
-                if (!(field instanceof String text)
-                        || !StringUtils.hasText(text)) {
-                    throw schemaError(
-                            label,
-                            path + ".required[" + index + "] 必须为非空字符串");
-                }
-            }
-            if (StringUtils.hasText(type) && !"object".equals(type)) {
-                throw schemaError(
-                        label,
-                        path + ".required 只能用于 object");
-            }
-        }
-        Object properties = schema.get("properties");
-        if (properties != null) {
-            if (!(properties instanceof Map<?, ?> propertySchemas)) {
-                throw schemaError(
-                        label,
-                        path + ".properties 必须为对象");
-            }
-            if (StringUtils.hasText(type) && !"object".equals(type)) {
-                throw schemaError(
-                        label,
-                        path + ".properties 只能用于 object");
-            }
-            for (Map.Entry<?, ?> entry : propertySchemas.entrySet()) {
-                if (!(entry.getValue() instanceof Map<?, ?> childSchema)) {
-                    throw schemaError(
-                            label,
-                            path + ".properties." + entry.getKey()
-                                    + " 必须为 Schema 对象");
-                }
-                validateSchemaNode(
-                        childSchema,
-                        label,
-                        path + ".properties." + entry.getKey());
-            }
-        }
-        Object items = schema.get("items");
-        if (items != null) {
-            if (!(items instanceof Map<?, ?> itemSchema)) {
-                throw schemaError(
-                        label,
-                        path + ".items 必须为 Schema 对象");
-            }
-            if (StringUtils.hasText(type) && !"array".equals(type)) {
-                throw schemaError(
-                        label,
-                        path + ".items 只能用于 array");
-            }
-            validateSchemaNode(
-                    itemSchema,
-                    label,
-                    path + ".items");
-        }
-    }
-
-    private String schemaType(
-            Map<?, ?> schema,
-            String label,
-            String path) {
-        Object configured = schema.get("type");
-        if (configured == null) {
-            return "";
-        }
-        if (!(configured instanceof String text)
-                || !StringUtils.hasText(text)) {
-            throw schemaError(
-                    label,
-                    path + ".type 必须为非空字符串");
-        }
-        String type = text.trim().toLowerCase(Locale.ROOT);
-        if (!SCHEMA_TYPES.contains(type)) {
-            throw schemaError(
-                    label,
-                    path + ".type 不支持: " + text);
-        }
-        return type;
-    }
-
-    private void validateSchemaValue(
-            Map<String, Object> schema,
-            Object value,
-            String label) {
-        if (schema == null || schema.isEmpty()) {
-            return;
-        }
-        validateSchemaValueNode(
-                schema,
-                jsonCompatibleValue(value, label),
-                label,
-                "$");
-    }
-
-    private Object jsonCompatibleValue(
-            Object value,
-            String label) {
-        if (value == null
-                || value instanceof Map<?, ?>
-                || value instanceof List<?>
-                || value instanceof String
-                || value instanceof Number
-                || value instanceof Boolean) {
-            return value;
-        }
-        return codec.read(
-                codec.write(value, label + " JSON转换"),
-                label + " JSON转换");
-    }
-
-    private void validateSchemaValueNode(
-            Map<?, ?> schema,
-            Object value,
-            String label,
-            String path) {
-        String type = schemaType(schema, label, path);
-        if (!StringUtils.hasText(type)) {
-            if (schema.containsKey("properties")
-                    || schema.containsKey("required")) {
-                type = "object";
-            } else if (schema.containsKey("items")) {
-                type = "array";
-            }
-        }
-        if (StringUtils.hasText(type)
-                && !matchesSchemaType(type, value)) {
-            throw schemaError(
-                    label,
-                    path + " 类型应为 " + type
-                            + "，实际为 " + actualType(value));
-        }
-        if ("object".equals(type)) {
-            Map<?, ?> object = (Map<?, ?>) value;
-            Object required = schema.get("required");
-            if (required instanceof List<?> requiredFields) {
-                for (Object field : requiredFields) {
-                    if (!object.containsKey(String.valueOf(field))) {
-                        throw schemaError(
-                                label,
-                                path + "." + field + " 为必填字段");
-                    }
-                }
-            }
-            if (schema.get("properties") instanceof Map<?, ?> properties) {
-                for (Map.Entry<?, ?> entry : properties.entrySet()) {
-                    String property = String.valueOf(entry.getKey());
-                    if (object.containsKey(property)) {
-                        validateSchemaValueNode(
-                                (Map<?, ?>) entry.getValue(),
-                                object.get(property),
-                                label,
-                                path + "." + property);
-                    }
-                }
-            }
-        } else if ("array".equals(type)
-                && schema.get("items") instanceof Map<?, ?> itemSchema) {
-            List<?> values = (List<?>) value;
-            for (int index = 0; index < values.size(); index++) {
-                validateSchemaValueNode(
-                        itemSchema,
-                        values.get(index),
-                        label,
-                        path + "[" + index + "]");
-            }
-        }
-    }
-
-    private boolean matchesSchemaType(
-            String type,
-            Object value) {
-        return switch (type) {
-            case "object" -> value instanceof Map<?, ?>;
-            case "array" -> value instanceof List<?>;
-            case "string" -> value instanceof String;
-            case "number" -> value instanceof Number number
-                    && isFiniteNumber(number);
-            case "integer" -> value instanceof Number number
-                    && isInteger(number);
-            case "boolean" -> value instanceof Boolean;
-            default -> false;
-        };
-    }
-
-    private boolean isFiniteNumber(Number number) {
-        if (number instanceof Double value) {
-            return Double.isFinite(value);
-        }
-        if (number instanceof Float value) {
-            return Float.isFinite(value);
-        }
-        return true;
-    }
-
-    private boolean isInteger(Number number) {
-        if (!isFiniteNumber(number)) {
-            return false;
-        }
-        if (number instanceof Byte
-                || number instanceof Short
-                || number instanceof Integer
-                || number instanceof Long
-                || number instanceof BigInteger) {
-            return true;
-        }
-        if (number instanceof BigDecimal decimal) {
-            return decimal.stripTrailingZeros().scale() <= 0;
-        }
-        if (number instanceof Double value) {
-            return value == Math.rint(value);
-        }
-        if (number instanceof Float value) {
-            return value == Math.rint(value);
-        }
-        try {
-            return new BigDecimal(number.toString())
-                    .stripTrailingZeros()
-                    .scale() <= 0;
-        } catch (NumberFormatException exception) {
-            return false;
-        }
-    }
-
-    private String actualType(Object value) {
-        if (value == null) {
-            return "null";
-        }
-        if (value instanceof Map<?, ?>) {
-            return "object";
-        }
-        if (value instanceof List<?>) {
-            return "array";
-        }
-        if (value instanceof String) {
-            return "string";
-        }
-        if (value instanceof Boolean) {
-            return "boolean";
-        }
-        if (value instanceof Number) {
-            return "number";
-        }
-        return value.getClass().getSimpleName();
-    }
-
-    private DataSourceValidationException schemaError(
-            String label,
-            String detail) {
-        return new DataSourceValidationException(
-                label + " 校验失败: " + detail);
-    }
-
     private RuntimeException executionFailure(
             Exception exception) {
         if (exception instanceof java.util.concurrent.TimeoutException) {
@@ -985,27 +958,11 @@ public class UiDataSourceService {
 
     private boolean isNonRecoverable(
             RuntimeException exception) {
-        return exception instanceof DataSourceValidationException
+        return exception
+                instanceof UiDataSourceDefinitionValidator.ValidationException
                 || exception instanceof BusinessForbiddenException
                 || exception instanceof BusinessConflictException
                 || exception instanceof SecurityException;
-    }
-
-    private void validateNoForbiddenKeys(Object value, String path) {
-        if (value instanceof Map<?, ?> map) {
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                String key = String.valueOf(entry.getKey());
-                if (FORBIDDEN_KEYS.contains(key)) {
-                    throw new IllegalArgumentException(
-                            "数据源配置禁止使用键: " + path + "." + key);
-                }
-                validateNoForbiddenKeys(entry.getValue(), path + "." + key);
-            }
-        } else if (value instanceof List<?> list) {
-            for (int index = 0; index < list.size(); index++) {
-                validateNoForbiddenKeys(list.get(index), path + "[" + index + "]");
-            }
-        }
     }
 
     private void requireScopeAccess(String scopeType, String scopeId) {
@@ -1087,10 +1044,29 @@ public class UiDataSourceService {
         return value == null || value.isEmpty() ? null : codec.write(value, label);
     }
 
+    private String writeList(
+            List<Map<String, Object>> value,
+            String label) {
+        return value == null || value.isEmpty()
+                ? null : codec.write(value, label);
+    }
+
     private Map<String, Object> read(String value, String label) {
         return StringUtils.hasText(value)
                 ? codec.readObject(value, label)
                 : new LinkedHashMap<>();
+    }
+
+    private List<Map<String, Object>> readList(
+            String value,
+            String label) {
+        if (!StringUtils.hasText(value)) {
+            return List.of();
+        }
+        return codec.readArray(value, label).stream()
+                .filter(Map.class::isInstance)
+                .map(item -> stringMap((Map<?, ?>) item))
+                .toList();
     }
 
     private String normalize(String value) {
@@ -1119,14 +1095,6 @@ public class UiDataSourceService {
     }
 
     private record CacheEntry(Object value, long expiresAt) {
-    }
-
-    private static final class DataSourceValidationException
-            extends IllegalArgumentException {
-
-        private DataSourceValidationException(String message) {
-            super(message);
-        }
     }
 
 }

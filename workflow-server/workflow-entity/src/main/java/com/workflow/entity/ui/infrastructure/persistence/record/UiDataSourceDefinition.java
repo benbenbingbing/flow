@@ -41,6 +41,8 @@ public class UiDataSourceDefinition {
     private String outputSchemaDocument;
     /** 执行策略配置（JSON，如缓存、分页等） */
     private String executionPolicyDocument;
+    /** 接口服务操作定义 JSON 数组；为空时按历史单操作数据源执行 */
+    private String operationsDocument;
     /** 草稿元数据修订号 */
     private Integer revision;
     /** 是否启用 */

@@ -1,6 +1,5 @@
 package com.workflow.entity;
 
-import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
 import com.workflow.entity.form.infrastructure.persistence.record.FormFieldConfig;
@@ -30,7 +29,7 @@ class VarcharTableIdStrategyTest {
     /**
      * 所有 varchar 主键实体类的 id 字段应使用 ASSIGN_ID 策略。
      *
-     * <p>覆盖 FormFieldConfig、AssigneeConfig、EntityData 等 8 个实体类，
+     * <p>覆盖 FormFieldConfig、AssigneeConfig 等 varchar 主键实体类，
      * 逐一反射读取 @TableId 注解并断言 type 为 ASSIGN_ID。</p>
      */
     @Test
@@ -38,7 +37,6 @@ class VarcharTableIdStrategyTest {
         List<Class<?>> entities = List.of(
                 FormFieldConfig.class,
                 AssigneeConfig.class,
-                EntityData.class,
                 ProcessVersionHistory.class,
                 FormConfig.class,
                 NodeConfig.class,

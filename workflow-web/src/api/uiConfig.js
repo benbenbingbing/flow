@@ -26,6 +26,40 @@ export const uiDataSourceApi = {
   },
   validateBinding(id, usage) {
     return request.post(`/ui-data-sources/${id}/bindings/${usage}/validate`)
+  },
+  operations(id) {
+    return request.get(`/ui-data-sources/${id}/operations`)
+  },
+  previewOperation(id, operationCode, data) {
+    return request.post(
+      `/ui-data-sources/${id}/operations/${operationCode}/preview`,
+      data
+    )
+  }
+}
+
+export const uiEventBindingApi = {
+  catalog() {
+    return request.get('/ui-event-bindings/catalog')
+  },
+  list(ownerType, ownerId) {
+    return request.get('/ui-event-bindings', {
+      params: { ownerType, ownerId }
+    })
+  },
+  create(data) {
+    return request.post('/ui-event-bindings', data)
+  },
+  update(id, data) {
+    return request.post(`/ui-event-bindings/${id}/update`, data)
+  },
+  remove(id, expectedRevision) {
+    return request.post(`/ui-event-bindings/${id}/delete`, {
+      expectedRevision
+    })
+  },
+  execute(eventCode, data) {
+    return request.post(`/ui-runtime/events/${eventCode}/execute`, data)
   }
 }
 

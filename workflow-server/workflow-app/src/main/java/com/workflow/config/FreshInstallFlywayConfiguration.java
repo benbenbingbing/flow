@@ -16,7 +16,8 @@ public class FreshInstallFlywayConfiguration {
             MigrationVersion.fromVersion("1");
 
     @Bean
-    FlywayMigrationStrategy freshInstallOnlyMigrationStrategy() {
+    FlywayMigrationStrategy freshInstallOnlyMigrationStrategy(
+            CurrentBaselineSchemaUpgrade baselineSchemaUpgrade) {
         return flyway -> {
             MigrationInfo current = flyway.info().current();
             if (current != null
@@ -29,6 +30,10 @@ public class FreshInstallFlywayConfiguration {
                                 + currentVersion
                                 + "。当前版本统一使用 V001 基线，"
                                 + "请先备份数据库并执行一次性基线接管。");
+            }
+            if (current != null) {
+                baselineSchemaUpgrade.apply(flyway);
+                flyway.repair();
             }
             flyway.migrate();
         };

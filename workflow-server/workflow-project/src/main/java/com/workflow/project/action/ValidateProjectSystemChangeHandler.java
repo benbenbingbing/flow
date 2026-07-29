@@ -43,7 +43,9 @@ public class ValidateProjectSystemChangeHandler implements FlowActionHandler {
             throw new IllegalStateException("Project-system change data is unavailable.");
         }
         Map<String, Object> result =
-                governanceService.validateProjectSystemChange(request);
+                governanceService.validateProjectSystemChange(
+                        request,
+                        context);
         context.setExecutionResult(result);
         context.addExecutionTrace(
                 "CROSS_ENTITY_VALIDATED",

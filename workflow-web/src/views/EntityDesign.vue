@@ -190,6 +190,7 @@
                   v-model="selectedField.fieldType"
                   placeholder="选择类型"
                   style="width: 100%"
+                  @change="handleFieldTypeChange"
                 >
                   <el-option
                     v-for="type in fieldTypes"
@@ -302,14 +303,10 @@
               </el-form-item>
             </template>
 
-            <el-form-item label="验证规则">
-              <el-input
-                v-model="selectedField.validateRules"
-                type="textarea"
-                rows="2"
-                placeholder="JSON格式验证规则"
-              />
-            </el-form-item>
+            <EntityValidationRuleEditor
+              v-model="selectedField.validateRules"
+              :field-type="selectedField.fieldType"
+            />
           </SettingsSection>
 
           <SettingsSection
@@ -900,8 +897,14 @@
         <el-table-column prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
       </el-table>
     </div>
-    <div v-else class="preview-section">
+    <div v-else-if="permissionSqlPreview.hasPermission === false" class="preview-section">
       <el-alert type="warning" :closable="false">没有命中任何允许方案，运行时将拒绝全部数据。</el-alert>
+    </div>
+    <div v-else-if="permissionSqlPreview.needFilter === false" class="preview-section">
+      <el-alert type="success" :closable="false">当前用户无需数据过滤，可以查看全部数据。</el-alert>
+    </div>
+    <div v-else class="preview-section">
+      <el-alert type="info" :closable="false">当前可见范围未返回规则明细，请以最终生效 SQL 和说明为准。</el-alert>
     </div>
 
     <div class="preview-section">
@@ -951,6 +954,7 @@ import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
 import { getDictList, createDictWithItems } from '@/api/system/dict'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
+import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import PageState from '@/components/PageState.vue'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
@@ -961,6 +965,9 @@ import {
   getEntityFieldTypeLabel,
   getEntityFieldTypeTag
 } from '@/shared/entity-design'
+import {
+  validateEntityValidationRules
+} from '@/shared/entity-validation-rules'
 
 const route = useRoute()
 const router = useRouter()
@@ -1148,6 +1155,22 @@ const isAttachment = computed(() => {
 const isReference = computed(() => {
   return selectedField.value && ['REFERENCE', 'MULTI_REFERENCE'].includes(selectedField.value.fieldType)
 })
+
+const handleFieldTypeChange = (fieldType) => {
+  if (!selectedField.value?.validateRules) return
+
+  const result = validateEntityValidationRules(
+    fieldType,
+    selectedField.value.validateRules
+  )
+  if (result.valid) {
+    selectedField.value.validateRules = result.normalized
+    return
+  }
+
+  selectedField.value.validateRules = ''
+  ElMessage.info('字段类型已变化，原验证规则不再适用，已自动清空')
+}
 
 // 可选的实体列表（排除当前实体）
 const availableEntities = ref([])
@@ -1521,6 +1544,15 @@ const handleSave = async (options = {}) => {
       ElMessage.warning(`请选择关联实体：${field.fieldName}`)
       return false
     }
+    const validationResult = validateEntityValidationRules(
+      field.fieldType,
+      field.validateRules
+    )
+    if (!validationResult.valid) {
+      ElMessage.warning(`${field.fieldName}：${validationResult.error}`)
+      return false
+    }
+    field.validateRules = validationResult.normalized
   }
 
   try {

@@ -6,7 +6,6 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
@@ -71,6 +70,7 @@ public class UiDataSourceExecutionAccessService {
             "publishedreleaseid");
 
     private final UiConfigReleaseMapper releaseMapper;
+    private final UiDataSourceBindingMatcher bindingMatcher;
     private final EntityFormMapper formMapper;
     private final EntityFormNodeMapper formNodeMapper;
     private final EntityFormFieldMapper formFieldMapper;
@@ -82,7 +82,6 @@ public class UiDataSourceExecutionAccessService {
     private final DataPermissionEngine dataPermissionEngine;
     private final UiConfigurationAccessService configurationAccessService;
     private final UiConfigReleaseService releaseService;
-    private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
     /**
@@ -103,6 +102,7 @@ public class UiDataSourceExecutionAccessService {
         ConfigTarget target = requireTarget(origin);
         String bindingPath = findDraftBinding(
                 origin,
+                target,
                 normalize(request.getUsage()),
                 definition.getId());
         if (!StringUtils.hasText(bindingPath)) {
@@ -117,6 +117,29 @@ public class UiDataSourceExecutionAccessService {
                 null,
                 null,
                 bindingPath,
+                target,
+                request);
+    }
+
+    /**
+     * 接口服务中心调试入口。管理员必须明确选择一个 FORM/LIST 业务上下文，
+     * 但不要求先把待调试操作绑定到该草稿。
+     */
+    public UiDataSourceExecutionAuthorization authorizeManagementPreview(
+            UiDataSourceDefinition definition,
+            UiDataSourceExecuteRequest request) {
+        configurationAccessService.requireGlobalConfigurationAccess();
+        Origin origin = resolveOrigin(request);
+        requirePreviewAccess(origin);
+        rejectTrustedMetadata(definition, request);
+        ConfigTarget target = requireTarget(origin);
+        requireScopeCompatibility(definition, origin, target);
+        return authorization(
+                true,
+                origin,
+                null,
+                null,
+                "INTERFACE_SERVICE_TEST",
                 target,
                 request);
     }
@@ -162,6 +185,51 @@ public class UiDataSourceExecutionAccessService {
                 bindingPath,
                 target,
                 request);
+    }
+
+    /**
+     * 为实体变更 PREPARE 阶段创建受信授权。
+     *
+     * <p>该入口不依赖表单或列表绑定，但仍使用当前用户、目标实体和数据权限计划，
+     * 且会清洗客户端不能伪造的运行时上下文。</p>
+     */
+    public UiDataSourceExecutionAuthorization authorizeEntityMutation(
+            UiDataSourceDefinition definition,
+            UiDataSourceExecuteRequest request) {
+        if (request == null
+                || !StringUtils.hasText(
+                        request.getEntityCode())) {
+            throw conflict(
+                    "ENTITY_MUTATION_SOURCE_REQUIRED",
+                    "实体变更接口执行必须声明目标实体");
+        }
+        rejectTrustedMetadata(definition, request);
+        EntityDefinition entity = definitionMapper
+                .findByEntityCode(request.getEntityCode())
+                .orElseThrow(() -> conflict(
+                        "ENTITY_MUTATION_ENTITY_NOT_FOUND",
+                        "实体不存在: "
+                                + request.getEntityCode()));
+        SysUser user = currentUser();
+        DataScopePlan plan = permissionPlan(
+                entity.getEntityCode(),
+                null,
+                user);
+        return new UiDataSourceExecutionAuthorization(
+                false,
+                "ENTITY_MUTATION",
+                entity.getId(),
+                null,
+                null,
+                "ENTITY_MUTATION_PREPARE",
+                "ENTITY_MUTATION_PREPARE",
+                entity.getId(),
+                entity.getEntityCode(),
+                null,
+                user,
+                plan,
+                sanitizeContext(request.getContext()),
+                request.getServerIdempotencyKey());
     }
 
     private UiConfigRelease resolvePublishedRelease(
@@ -360,8 +428,18 @@ public class UiDataSourceExecutionAccessService {
 
     private String findDraftBinding(
             Origin origin,
+            ConfigTarget target,
             String usage,
             String sourceId) {
+        String eventBinding = bindingMatcher.findDraftEvent(
+                origin.configType(),
+                origin.configId(),
+                target.entityId(),
+                usage,
+                sourceId);
+        if (StringUtils.hasText(eventBinding)) {
+            return eventBinding;
+        }
         if (FORM.equals(origin.configType())) {
             EntityForm form = formMapper.selectById(origin.configId());
             List<Map<String, Object>> owners = new ArrayList<>();
@@ -378,12 +456,16 @@ public class UiDataSourceExecutionAccessService {
                         field,
                         new TypeReference<Map<String, Object>>() {}));
             }
-            return findFormBinding(owners, usage, sourceId, "$.draft.form");
+            return bindingMatcher.findForm(
+                    owners,
+                    usage,
+                    sourceId,
+                    "$.draft.form");
         }
         EntityListConfig list = listMapper.selectById(origin.configId());
         List<EntityListField> fields =
                 listFieldMapper.findByListConfigId(origin.configId());
-        return findListBinding(
+        return bindingMatcher.findList(
                 objectMapper.convertValue(
                         list,
                         new TypeReference<Map<String, Object>>() {}),
@@ -406,153 +488,11 @@ public class UiDataSourceExecutionAccessService {
                     "UI_DATA_SOURCE_RELEASE_CONFLICT",
                     "ACTIVE 发布快照类型与请求来源不一致");
         }
-        if (FORM.equals(origin.configType())) {
-            List<Map<String, Object>> owners = new ArrayList<>();
-            addMap(owners, snapshot.get("form"));
-            addMaps(owners, snapshot.get("nodes"));
-            addMaps(owners, snapshot.get("legacyFields"));
-            return findFormBinding(owners, usage, sourceId, "$.release.form");
-        }
-        Map<String, Object> list = stringMap(snapshot.get("list"));
-        return findListBinding(
-                list,
-                mapList(list.get("fields")),
+        return bindingMatcher.findPublished(
+                origin.configType(),
+                snapshot,
                 usage,
-                sourceId,
-                "$.release.list");
-    }
-
-    private String findFormBinding(
-            List<Map<String, Object>> owners,
-            String usage,
-            String sourceId,
-            String basePath) {
-        for (int index = 0; index < owners.size(); index++) {
-            Map<String, Object> owner = owners.get(index);
-            String ownerPath = basePath + "[" + index + "]";
-            String bindingPath = findOwnerBinding(
-                    owner,
-                    usage,
-                    sourceId,
-                    ownerPath);
-            if (StringUtils.hasText(bindingPath)) {
-                return bindingPath;
-            }
-            Object initConfig = owner.get("initConfig");
-            Map<String, Object> init = parseObject(
-                    initConfig,
-                    "表单初始化配置");
-            if (!init.isEmpty()) {
-                bindingPath = findConfiguredBinding(
-                        init,
-                        usage,
-                        sourceId,
-                        ownerPath + ".initConfig");
-                if (StringUtils.hasText(bindingPath)) {
-                    return bindingPath;
-                }
-            }
-        }
-        return null;
-    }
-
-    private String findListBinding(
-            Map<String, Object> list,
-            List<Map<String, Object>> fields,
-            String usage,
-            String sourceId,
-            String basePath) {
-        if ("LIST_QUERY".equals(usage)
-                && sourceId.equals(text(list.get("queryDataSourceId")))) {
-            return basePath + ".queryDataSourceId";
-        }
-        String ownerBinding = findOwnerBinding(
-                list,
-                usage,
-                sourceId,
-                basePath);
-        if (StringUtils.hasText(ownerBinding)) {
-            return ownerBinding;
-        }
-        for (int index = 0; index < fields.size(); index++) {
-            Map<String, Object> field = fields.get(index);
-            if ("LIST_COLUMN".equals(usage)
-                    && sourceId.equals(text(field.get("dataSourceId")))) {
-                return basePath + ".fields[" + index + "].dataSourceId";
-            }
-            String bindingPath = findOwnerBinding(
-                    field,
-                    usage,
-                    sourceId,
-                    basePath + ".fields[" + index + "]");
-            if (StringUtils.hasText(bindingPath)) {
-                return bindingPath;
-            }
-        }
-        return null;
-    }
-
-    private String findOwnerBinding(
-            Map<String, Object> owner,
-            String usage,
-            String sourceId,
-            String ownerPath) {
-        Map<String, Object> bindings = parseObject(
-                firstNonNull(
-                        owner.get("dataSourceBindings"),
-                        owner.get("dataSourceBindingsDocument")),
-                "数据源绑定");
-        return findConfiguredBinding(
-                bindings,
-                usage,
-                sourceId,
-                ownerPath + ".dataSourceBindings");
-    }
-
-    private String findConfiguredBinding(
-            Map<String, Object> bindings,
-            String usage,
-            String sourceId,
-            String path) {
-        if (bindings == null || bindings.isEmpty()) {
-            return null;
-        }
-        Object configured = null;
-        String matchedKey = usage;
-        for (Map.Entry<String, Object> entry : bindings.entrySet()) {
-            if (usage.equals(normalize(entry.getKey()))) {
-                configured = entry.getValue();
-                matchedKey = entry.getKey();
-                break;
-            }
-        }
-        if (configured == null) {
-            if (usage.equals(normalize(text(bindings.get("usage"))))
-                    && sourceId.equals(sourceId(bindings))) {
-                return path;
-            }
-            return null;
-        }
-        return containsSource(configured, sourceId)
-                ? path + "." + matchedKey
-                : null;
-    }
-
-    private boolean containsSource(Object configured, String sourceId) {
-        if (configured instanceof String text) {
-            return sourceId.equals(text);
-        }
-        if (configured instanceof Map<?, ?> map) {
-            return sourceId.equals(sourceId(map));
-        }
-        if (configured instanceof List<?> list) {
-            return list.stream().anyMatch(item -> containsSource(item, sourceId));
-        }
-        return false;
-    }
-
-    private String sourceId(Map<?, ?> binding) {
-        return firstText(binding.get("sourceId"), binding.get("id"));
+                sourceId);
     }
 
     private void requirePreviewAccess(Origin origin) {
@@ -750,69 +690,6 @@ public class UiDataSourceExecutionAccessService {
             }
         });
         return Map.copyOf(result);
-    }
-
-    private Map<String, Object> parseObject(
-            Object value,
-            String label) {
-        if (value instanceof Map<?, ?> map) {
-            return stringMap(map);
-        }
-        if (value instanceof String document
-                && StringUtils.hasText(document)) {
-            return codec.readObject(document, label);
-        }
-        return Map.of();
-    }
-
-    private Map<String, Object> stringMap(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return Map.of();
-        }
-        return stringMap(map);
-    }
-
-    private Map<String, Object> stringMap(Map<?, ?> map) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        map.forEach((key, value) ->
-                result.put(String.valueOf(key), value));
-        return result;
-    }
-
-    private List<Map<String, Object>> mapList(Object value) {
-        if (!(value instanceof List<?> list)) {
-            return List.of();
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        addMaps(result, list);
-        return result;
-    }
-
-    private void addMap(
-            List<Map<String, Object>> target,
-            Object value) {
-        Map<String, Object> map = stringMap(value);
-        if (!map.isEmpty()) {
-            target.add(map);
-        }
-    }
-
-    private void addMaps(
-            List<Map<String, Object>> target,
-            Object value) {
-        if (!(value instanceof List<?> list)) {
-            return;
-        }
-        list.forEach(item -> addMap(target, item));
-    }
-
-    private Object firstNonNull(Object... values) {
-        for (Object value : values) {
-            if (value != null) {
-                return value;
-            }
-        }
-        return null;
     }
 
     private String firstText(Object... values) {

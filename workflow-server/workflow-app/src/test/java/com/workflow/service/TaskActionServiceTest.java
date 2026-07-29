@@ -1,7 +1,6 @@
 package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataDynamicService;
-import com.workflow.entity.data.application.EntityRecordTeamService;
 
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.form.application.NodeFormSubmissionService;
@@ -11,8 +10,8 @@ import com.workflow.process.task.application.TaskActionService;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataMapper;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
@@ -71,9 +70,6 @@ class TaskActionServiceTest {
     private RepositoryService repositoryService;
 
     @Mock
-    private EntityDataMapper entityDataMapper;
-
-    @Mock
     private ProcessOperationLogMapper operationLogMapper;
 
     @Mock
@@ -89,7 +85,7 @@ class TaskActionServiceTest {
     private EntityActionCapabilityService entityActionCapabilityService;
 
     @Mock
-    private EntityRecordTeamService entityRecordTeamService;
+    private EntityRecordPort entityRecordPort;
 
     @Mock
     private TaskQuery taskQuery;
@@ -120,13 +116,12 @@ class TaskActionServiceTest {
                 historyService,
                 processTaskService,
                 repositoryService,
-                entityDataMapper,
                 operationLogMapper,
                 sysUserService,
                 nodeFormSubmissionService,
                 entityDataDynamicService,
                 entityActionCapabilityService,
-                entityRecordTeamService,
+                entityRecordPort,
                 processCcService
         );
         UserContext.setCurrentUser("admin-id", "admin");
@@ -195,7 +190,7 @@ class TaskActionServiceTest {
                 "expense", null, "approve", entityData);
         ordered.verify(taskService).complete(eq("task-1"), anyMap());
         verify(operationLogMapper).insert(any(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog.class));
-        verify(entityRecordTeamService).record(
+        verify(entityRecordPort).recordActivity(
                 "expense", "record-1", "CLAIM", "认领任务", "proc-1", "task-1");
     }
 

@@ -1,6 +1,13 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
-import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetApplyCommand;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.EntityMutationSystemFields;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
@@ -9,7 +16,10 @@ import org.flowable.engine.HistoryService;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 /**
  * 流程结束监听器。
@@ -23,7 +33,9 @@ import org.springframework.stereotype.Component;
 public class ProcessEndListener implements FlowableEventListener {
 
     private final HistoryService historyService;
-    private final EntityRecordPort entityRecordPort;
+    private final EntityMutationPort entityMutationPort;
+    private final ObjectProvider<EntityChangeTargetPort>
+            changeTargetPortProvider;
 
     @Override
     public void onEvent(FlowableEvent event) {
@@ -73,11 +85,62 @@ public class ProcessEndListener implements FlowableEventListener {
                     ? "WITHDRAWN"
                     : (terminated ? "TERMINATED" : "COMPLETED");
 
-            entityRecordPort.markProcessEnded(
-                    entityCode,
-                    entityDataId,
-                    statusCategory,
-                    defaultEndStatus(statusCategory));
+            String intentCode =
+                    "COMPLETED".equals(statusCategory)
+                            ? "INITIAL_EFFECTIVE"
+                            : ("WITHDRAWN".equals(statusCategory)
+                                    ? "PROCESS_WITHDRAWN"
+                                    : "PROCESS_TERMINATED");
+            String intentName =
+                    "COMPLETED".equals(statusCategory)
+                            ? "初始审批生效"
+                            : ("WITHDRAWN".equals(statusCategory)
+                                    ? "流程撤回"
+                                    : "流程终止");
+            String idempotencyKey = String.join(
+                    ":",
+                    "process-end",
+                    processInstanceId,
+                    statusCategory);
+            entityMutationPort.execute(
+                    new EntityMutationCommand(
+                            idempotencyKey,
+                            entityCode,
+                            entityDataId,
+                            EntityMutationOperationType.STATUS_CHANGE,
+                            Map.of(
+                                    EntityMutationSystemFields.MODE_KEY,
+                                    EntityMutationSystemFields.PROCESS_END,
+                                    "statusCategory",
+                                    statusCategory,
+                                    "fallbackStatus",
+                                    defaultEndStatus(
+                                            statusCategory)),
+                            EntityMutationContext.builder(
+                                            EntityMutationSourceType.PROCESS_RUNTIME,
+                                            intentCode,
+                                            intentName)
+                                    .sourceId(eventType)
+                                    .sourceRecord(
+                                            entityCode,
+                                            entityDataId)
+                                    .process(
+                                            processInstance
+                                                    .getProcessDefinitionId(),
+                                            processInstanceId,
+                                            null)
+                                    .trace(
+                                            processInstanceId,
+                                            idempotencyKey)
+                                    .build()));
+            if ("COMPLETED".equals(statusCategory)) {
+                applyChangeTargets(
+                        processInstance,
+                        historicInstance,
+                        entityCode,
+                        entityDataId,
+                        idempotencyKey);
+            }
             log.info(
                     "流程结束，已更新实体数据: entityCode={}, entityDataId={}, "
                             + "processInstanceId={}, statusCategory={}",
@@ -91,6 +154,35 @@ public class ProcessEndListener implements FlowableEventListener {
                     processInstanceId,
                     exception);
         }
+    }
+
+    private void applyChangeTargets(
+            ProcessInstance processInstance,
+            HistoricProcessInstance historicInstance,
+            String entityCode,
+            String entityDataId,
+            String processEndIdempotencyKey) {
+        EntityChangeTargetPort port =
+                changeTargetPortProvider.getIfAvailable();
+        if (port == null) {
+            return;
+        }
+        port.apply(new EntityChangeTargetApplyCommand(
+                entityCode,
+                entityDataId,
+                processInstance.getProcessDefinitionId(),
+                processInstance.getId(),
+                null,
+                historicInstance == null
+                        ? null
+                        : historicInstance.getStartUserId(),
+                null,
+                EntityMutationSourceType.PROCESS_RUNTIME,
+                "CHANGE_EFFECTIVE",
+                "变更审批生效",
+                processEndIdempotencyKey
+                        + ":change-targets",
+                Map.of()));
     }
 
     private String defaultEndStatus(String category) {

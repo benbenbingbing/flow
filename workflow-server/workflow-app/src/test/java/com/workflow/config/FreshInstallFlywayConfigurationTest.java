@@ -16,8 +16,12 @@ import static org.mockito.Mockito.when;
 
 class FreshInstallFlywayConfigurationTest {
 
+    private final CurrentBaselineSchemaUpgrade baselineSchemaUpgrade =
+            mock(CurrentBaselineSchemaUpgrade.class);
     private final FlywayMigrationStrategy strategy =
-            new FreshInstallFlywayConfiguration().freshInstallOnlyMigrationStrategy();
+            new FreshInstallFlywayConfiguration()
+                    .freshInstallOnlyMigrationStrategy(
+                            baselineSchemaUpgrade);
 
     @Test
     void migratesAnEmptyDatabase() {
@@ -28,6 +32,7 @@ class FreshInstallFlywayConfigurationTest {
 
         strategy.migrate(flyway);
 
+        verify(baselineSchemaUpgrade, never()).apply(flyway);
         verify(flyway).migrate();
     }
 
@@ -42,6 +47,8 @@ class FreshInstallFlywayConfigurationTest {
 
         strategy.migrate(flyway);
 
+        verify(baselineSchemaUpgrade).apply(flyway);
+        verify(flyway).repair();
         verify(flyway).migrate();
     }
 
@@ -60,6 +67,8 @@ class FreshInstallFlywayConfigurationTest {
         assertTrue(exception.getMessage().contains("历史数据库版本 42"));
         assertTrue(exception.getMessage().contains("V001 基线"));
         assertTrue(exception.getMessage().contains("一次性基线接管"));
+        verify(baselineSchemaUpgrade, never()).apply(flyway);
+        verify(flyway, never()).repair();
         verify(flyway, never()).migrate();
     }
 }
