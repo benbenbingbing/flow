@@ -1,6 +1,7 @@
 package com.workflow.entity.data.infrastructure;
 
 import com.workflow.entity.data.application.SchemaDdlExecutor;
+import com.workflow.entity.data.application.SchemaDdlPolicy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -38,6 +39,9 @@ public class JdbcSchemaDdlExecutor implements SchemaDdlExecutor {
 
     @Override
     public void execute(String ddl) {
+        SchemaDdlPolicy.requireSafe(ddl);
+        // The policy permits only one generated schema DDL statement before this sink.
+        // codeql[java/concatenated-sql-query]
         jdbcTemplate.execute(ddl);
     }
 

@@ -177,17 +177,12 @@ async function currentTodo(processInstanceId) {
   return toList(page).find(task => task.processInstanceId === processInstanceId)
 }
 
-function writeEvidence(result, error) {
-  evidence.result = result
-  if (error) evidence.error = error instanceof Error ? error.name : 'UnknownError'
+function writeEvidence(result) {
   const fileName = `dynamic-extension-demo-${suffix}${result === 'PASS' ? '' : '-failed'}.json`
   const evidencePath = path.join(evidenceDir, fileName)
   const report = {
     result,
-    conclusion: evidence.conclusion,
-    error: evidence.error,
-    entityCode,
-    stepNames: evidence.steps.map(step => step.name)
+    conclusion: result === 'PASS' ? 'PASS: 动态扩展真实验收通过' : 'FAIL: 动态扩展真实验收失败'
   }
   writeFileSync(evidencePath, JSON.stringify(report, null, 2), { mode: 0o600 })
   writeFileSync(path.join(evidenceDir, 'latest.json'), JSON.stringify(report, null, 2), { mode: 0o600 })
@@ -477,7 +472,7 @@ async function main() {
 }
 
 main().catch(error => {
-  const evidencePath = writeEvidence('FAIL', error)
+  const evidencePath = writeEvidence('FAIL')
   console.error(`dynamic extension demo failed: ${evidencePath}`)
   console.error('dynamic extension demo failed; see the sanitized evidence file')
   process.exitCode = 1

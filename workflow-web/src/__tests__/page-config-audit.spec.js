@@ -24,7 +24,8 @@ viewFiles.forEach((viewFile) => {
   assert.equal(existsSync(fullPath), true, `路由组件不存在: ${viewFile}`)
   const source = readFileSync(fullPath, 'utf8')
   assert.match(source, /<template>[\s\S]*<\/template>/, `页面缺少 template: ${viewFile}`)
-  assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/i, `页面缺少 script: ${viewFile}`)
+  assert.match(source, /<script\b[^>]*>/i, `页面缺少 script 开始标签: ${viewFile}`)
+  assert.match(source, /<\/script\s*>/i, `页面缺少 script 结束标签: ${viewFile}`)
 })
 
 collectFiles(path.join(root, 'src'), '.vue').forEach((vueFile) => {

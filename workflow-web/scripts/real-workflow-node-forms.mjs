@@ -152,10 +152,7 @@ function writeEvidence(result) {
   const evidencePath = path.join(evidenceDir, name)
   const report = {
     result,
-    conclusion: evidence.conclusion,
-    error: evidence.error,
-    entityCode,
-    stepNames: evidence.steps.map(step => step.name)
+    conclusion: result === 'PASS' ? 'PASS: 节点表单矩阵验收通过' : 'FAIL: 节点表单矩阵验收失败'
   }
   writeFileSync(evidencePath, JSON.stringify(report, null, 2), { mode: 0o600 })
   const latestName = stopAt ? 'latest-fixture.json' : 'latest.json'

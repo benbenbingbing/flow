@@ -474,13 +474,6 @@ async function main() {
 
 main().catch(error => {
   evidence.error = error instanceof Error ? error.name : 'UnknownError'
-  const evidencePath = path.join(evidenceDir, `project-governance-${runId}-failed.json`)
-  writeFileSync(evidencePath, JSON.stringify({
-    result: 'FAIL',
-    error: evidence.error,
-    runId
-  }, null, 2), { mode: 0o600 })
   console.error(`project governance e2e failed: ${evidence.error}`)
-  console.error(`evidence written: ${evidencePath}`)
   process.exit(1)
 })

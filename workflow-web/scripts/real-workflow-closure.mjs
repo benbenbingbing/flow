@@ -232,14 +232,6 @@ async function main() {
 
 main().catch(error => {
   evidence.error = error instanceof Error ? error.name : 'UnknownError'
-  const evidencePath = path.join(evidenceDir, `closure-${suffix}-failed.json`)
-  writeFileSync(evidencePath, JSON.stringify({
-    result: 'FAIL',
-    error: evidence.error,
-    entityCode,
-    stepNames: evidence.steps.map(step => step.name)
-  }, null, 2), { mode: 0o600 })
   console.error(`real workflow closure failed: ${evidence.error}`)
-  console.error(`evidence written: ${evidencePath}`)
   process.exit(1)
 })

@@ -46,13 +46,6 @@ public class DynamicTableService {
         this.schemaDdlExecutor = schemaDdlExecutor;
     }
 
-    public DynamicTableService(
-            JdbcTemplate jdbcTemplate,
-            EntityFieldMapper entityFieldMapper,
-            EntityPhysicalTableResolver tableResolver) {
-        this(jdbcTemplate, entityFieldMapper, tableResolver, jdbcTemplate::execute);
-    }
-    
     /**
      * 获取当前数据库中表的列信息
      */

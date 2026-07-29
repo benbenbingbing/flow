@@ -124,9 +124,9 @@ public class ProcessTerminationService {
             }
             log.info(
                     "流程终止成功: processInstanceId={}, userId={}, reason={}",
-                    processInstanceId,
-                    userId,
-                    deleteReason);
+                    LogValue.safe(processInstanceId),
+                    LogValue.safe(userId),
+                    LogValue.safe(deleteReason));
             return Result.success(null);
         } catch (Exception exception) {
             log.error(
