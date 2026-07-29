@@ -4,6 +4,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.error.RateLimitExceededException;
 import com.workflow.core.result.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,20 @@ import java.sql.SQLException;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRateLimit(
+            RateLimitExceededException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(
+                        "Retry-After",
+                        String.valueOf(
+                                exception.getRetryAfterSeconds()))
+                .body(ApiResponse.error(
+                        429,
+                        "RATE_LIMIT_EXCEEDED",
+                        exception.getMessage()));
+    }
 
     /**
      * 处理业务状态冲突异常，返回 409 状态码。

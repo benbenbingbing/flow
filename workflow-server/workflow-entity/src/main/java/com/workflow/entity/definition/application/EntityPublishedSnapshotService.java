@@ -48,9 +48,23 @@ public class EntityPublishedSnapshotService {
      */
     @Transactional(readOnly = true)
     public EntityPublishedSnapshot getLatestByEntityCode(String entityCode) {
+        EntityPublishedSnapshot snapshot =
+                findLatestByEntityCode(entityCode);
+        if (snapshot == null) {
+            throw new RuntimeException("实体未发布: " + entityCode);
+        }
+        return snapshot;
+    }
+
+    /**
+     * 按实体编码查找最新发布快照，不存在时返回 null。
+     */
+    @Transactional(readOnly = true)
+    public EntityPublishedSnapshot findLatestByEntityCode(
+            String entityCode) {
         EntityPublishHistory history = historyMapper.findLatestByEntityCode(entityCode);
         if (history == null) {
-            throw new RuntimeException("实体未发布: " + entityCode);
+            return null;
         }
         return toSnapshot(history);
     }

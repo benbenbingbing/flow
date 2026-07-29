@@ -63,7 +63,10 @@ class ProcessDefinitionServicePublishTest {
         config.setProcessKey("expense_flow");
         config.setProcessName("费用流程");
         config.setBpmnXml(designXml);
-        when(processMapper.selectById("process-1")).thenReturn(config);
+        when(processMapper.selectByIdForUpdate("process-1"))
+                .thenReturn(config);
+        when(processMapper.selectById("process-1"))
+                .thenReturn(config);
         when(historyService.nextVersion("process-1")).thenReturn(2);
         when(sanitizer.sanitize(designXml, "expense_flow"))
                 .thenReturn(sanitizedXml);
@@ -92,6 +95,7 @@ class ProcessDefinitionServicePublishTest {
 
         service.publish("process-1", "脚本节点版本");
 
+        verify(processMapper).selectByIdForUpdate("process-1");
         verify(deploymentService).deploy(config, deployedXml, 2);
         verify(historyService).recordPublish(
                 config,

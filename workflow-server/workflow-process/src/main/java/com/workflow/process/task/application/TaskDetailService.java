@@ -1,5 +1,6 @@
 package com.workflow.process.task.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -305,8 +306,8 @@ public class TaskDetailService {
                     .collect(Collectors.toList());
             Set<String> dataKeys = dto.getEntityData().keySet();
             log.info("任务详情数据匹配检查: taskId={}, fieldCodes={}, dataKeys={}, matched={}", 
-                    taskId, fieldCodes, dataKeys, 
-                    fieldCodes.stream().filter(dataKeys::contains).collect(Collectors.toList()));
+                    LogValue.safe(taskId), LogValue.safe(fieldCodes), LogValue.safe(dataKeys),
+                    LogValue.safe(fieldCodes.stream().filter(dataKeys::contains).collect(Collectors.toList())));
         }
         
         return dto;

@@ -1,7 +1,8 @@
 package com.workflow.config;
 
 import com.workflow.admin.auth.infrastructure.AuthInterceptor;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -15,10 +16,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * @author Workflow Team
  */
 @Configuration
+@RequiredArgsConstructor
 public class CorsConfig {
 
-    @Autowired
-    private AuthInterceptor authInterceptor;
+    private final AuthInterceptor authInterceptor;
+    private final EndpointAuthorizationInterceptor
+            endpointAuthorizationInterceptor;
+    private final CorsProperties corsProperties;
 
     /**
      * 配置CORS跨域规则和拦截器
@@ -30,24 +34,31 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
-                // 对所有API路径应用CORS配置
-                registry.addMapping("/**")
-                        // 允许所有来源（生产环境应限制具体域名）
-                        .allowedOrigins("*")
-                        // 允许的HTTP方法
-                        .allowedMethods("GET", "POST", "OPTIONS")
-                        // 允许所有请求头
-                        .allowedHeaders("*")
-                        // 预检请求缓存时间（秒）
-                        .maxAge(3600);
+                registry.addMapping("/api/**")
+                        .allowedOrigins(
+                                corsProperties.getAllowedOrigins()
+                                        .toArray(String[]::new))
+                        .allowedMethods(
+                                corsProperties.getAllowedMethods()
+                                        .toArray(String[]::new))
+                        .allowedHeaders(
+                                corsProperties.getAllowedHeaders()
+                                        .toArray(String[]::new))
+                        .maxAge(corsProperties.getMaxAge().toSeconds());
             }
             
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                // 注册认证拦截器，排除登录相关接口
+                // Authentication always runs first; only login is intentionally anonymous.
                 registry.addInterceptor(authInterceptor)
                         .addPathPatterns("/api/**")
-                        .excludePathPatterns("/api/auth/login", "/api/auth/logout");
+                        .excludePathPatterns(
+                                "/api/auth/login",
+                                "/api/open/**");
+                // Every mapped API must then declare an explicit access policy.
+                registry.addInterceptor(endpointAuthorizationInterceptor)
+                        .addPathPatterns("/api/**")
+                        .excludePathPatterns("/api/open/**");
             }
         };
     }

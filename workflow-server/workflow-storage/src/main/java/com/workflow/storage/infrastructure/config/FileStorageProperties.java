@@ -22,6 +22,8 @@ public class FileStorageProperties {
      */
     private LocalConfig local = new LocalConfig();
 
+    private S3Config s3 = new S3Config();
+
     /**
      * 本地存储相关配置。
      */
@@ -36,5 +38,19 @@ public class FileStorageProperties {
          * 文件访问URL前缀
          */
         private String accessUrl = "/uploads";
+    }
+
+    /**
+     * S3-compatible shared object storage configuration.
+     */
+    @Data
+    public static class S3Config {
+        private String endpoint;
+        private String region = "us-east-1";
+        private String bucket;
+        private String accessKey;
+        private String secretKey;
+        private String accessUrl;
+        private boolean pathStyleAccess;
     }
 }

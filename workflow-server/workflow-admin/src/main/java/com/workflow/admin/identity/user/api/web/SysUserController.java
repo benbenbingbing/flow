@@ -1,9 +1,12 @@
 package com.workflow.admin.identity.user.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.admin.identity.user.api.request.ResetPasswordDTO;
 import com.workflow.admin.authorization.role.application.SysRoleService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +22,7 @@ import java.util.Map;
  * 提供用户的增删改查、状态切换、密码重置及角色列表查询接口。
  * </p>
  */
+@RequiresPermission("system:user:view")
 @RestController
 @RequestMapping("/api/system/user")
 @RequiredArgsConstructor
@@ -70,6 +74,7 @@ public class SysUserController {
      * @return 保存后的用户对象
      */
     @PostMapping
+    @RequiresPermission("system:user:manage")
     public Result<SysUser> save(@Validated @RequestBody SysUser user) {
         return Result.success(userService.saveUser(user));
     }
@@ -82,6 +87,7 @@ public class SysUserController {
      * @return 更新后的用户对象
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("system:user:manage")
     public Result<SysUser> update(@PathVariable String id, @RequestBody SysUser user) {
         user.setId(id);
         return Result.success(userService.saveUser(user));
@@ -94,6 +100,7 @@ public class SysUserController {
      * @return 操作结果
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("system:user:manage")
     public Result<Void> delete(@PathVariable String id) {
         userService.deleteUser(id);
         return Result.success();
@@ -108,6 +115,7 @@ public class SysUserController {
      * @return 操作结果
      */
     @PostMapping("/{id}/status")
+    @RequiresPermission("system:user:manage")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -120,6 +128,7 @@ public class SysUserController {
     }
 
     @PostMapping("/batch/status")
+    @RequiresPermission("system:user:manage")
     public Result<Void> batchUpdateStatus(@RequestBody Map<String, Object> body) {
         Object requestedStatus = body.get("status");
         if (requestedStatus == null) {
@@ -130,6 +139,7 @@ public class SysUserController {
     }
 
     @PostMapping("/batch/roles")
+    @RequiresPermission("system:user:manage")
     public Result<Void> batchAssignRoles(@RequestBody Map<String, Object> body) {
         userService.batchAssignRoles(stringList(body.get("userIds")), stringList(body.get("roleIds")));
         return Result.success();
@@ -142,10 +152,12 @@ public class SysUserController {
      * @return 操作结果
      */
     @PostMapping("/{id}/reset-password")
-    public Result<Map<String, Object>> resetPassword(@PathVariable String id) {
-        return Result.success(Map.of(
-                "temporaryPassword", userService.resetPassword(id),
-                "passwordResetRequired", true));
+    @RequiresPermission("system:user:reset-password")
+    public Result<Void> resetPassword(
+            @PathVariable String id,
+            @Validated @RequestBody ResetPasswordDTO request) {
+        userService.resetPassword(id, request.getNewPassword());
+        return Result.success();
     }
     
     /**

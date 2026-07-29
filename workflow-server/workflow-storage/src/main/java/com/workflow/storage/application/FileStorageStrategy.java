@@ -2,6 +2,7 @@ package com.workflow.storage.application;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -25,6 +26,11 @@ public interface FileStorageStrategy {
      * @return 是否删除成功
      */
     boolean delete(String fileUrl);
+
+    /**
+     * Open a stored object for streaming.
+     */
+    StoredFile open(String fileUrl) throws IOException;
 
     /**
      * 获取文件的访问URL

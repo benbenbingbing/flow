@@ -1,5 +1,6 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -125,7 +126,7 @@ public class EntityCodeGeneratorService {
             throw new RuntimeException("生成编码失败，重试次数耗尽");
         }
         
-        log.debug("生成编码成功：entityCode={}, code={}", entityCode, code);
+        log.debug("生成编码成功：entityCode={}, code={}", LogValue.safe(entityCode), LogValue.safe(code));
         return code;
     }
     
@@ -148,7 +149,7 @@ public class EntityCodeGeneratorService {
     private EntityCodeRule createDefaultRule(String entityCode) {
         EntityCodeRule rule = EntityCodeRule.getDefault(entityCode);
         codeRuleMapper.insert(rule);
-        log.info("创建默认编码规则：entityCode={}", entityCode);
+        log.info("创建默认编码规则：entityCode={}", LogValue.safe(entityCode));
         return rule;
     }
     
@@ -238,7 +239,7 @@ public class EntityCodeGeneratorService {
             codeRuleMapper.insert(rule);
         }
         
-        log.info("保存编码规则：entityCode={}", rule.getEntityCode());
+        log.info("保存编码规则：entityCode={}", LogValue.safe(rule.getEntityCode()));
     }
     
     /**

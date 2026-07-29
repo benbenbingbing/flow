@@ -50,7 +50,8 @@ public interface EntityDataDynamicMapper {
     Map<String, Object> selectByIdWithPermission(
             @Param("tableName") String tableName,
             @Param("id") String id,
-            @Param("permissionSql") String permissionSql);
+            @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 根据流程实例ID查询
@@ -138,7 +139,8 @@ public interface EntityDataDynamicMapper {
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectListWithPermission")
     @Options(statementType = StatementType.PREPARED)
     List<Map<String, Object>> selectListWithPermission(@Param("tableName") String tableName,
-                                                        @Param("permissionSql") String permissionSql);
+                                                        @Param("permissionSql") String permissionSql,
+                                                        @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 分页查询（不带条件），按创建时间倒序。
@@ -169,6 +171,7 @@ public interface EntityDataDynamicMapper {
     List<Map<String, Object>> selectPageWithPermission(
             @Param("tableName") String tableName,
             @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters,
             @Param("offset") long offset,
             @Param("limit") long limit);
 
@@ -179,7 +182,8 @@ public interface EntityDataDynamicMapper {
     @Options(statementType = StatementType.PREPARED)
     List<Map<String, Object>> selectByConditionWithPermission(@Param("tableName") String tableName,
                                                                @Param("condition") Map<String, Object> condition,
-                                                               @Param("permissionSql") String permissionSql);
+                                                               @Param("permissionSql") String permissionSql,
+                                                               @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 分页条件查询（不带权限过滤），按创建时间倒序。
@@ -214,6 +218,7 @@ public interface EntityDataDynamicMapper {
             @Param("tableName") String tableName,
             @Param("condition") Map<String, Object> condition,
             @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters,
             @Param("offset") long offset,
             @Param("limit") long limit);
 
@@ -238,7 +243,8 @@ public interface EntityDataDynamicMapper {
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "countWithPermission")
     @Options(statementType = StatementType.PREPARED)
     long countWithPermission(@Param("tableName") String tableName,
-                             @Param("permissionSql") String permissionSql);
+                             @Param("permissionSql") String permissionSql,
+                             @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 统计数量（根据条件并带数据权限过滤）。
@@ -253,7 +259,8 @@ public interface EntityDataDynamicMapper {
     long countByConditionWithPermission(
             @Param("tableName") String tableName,
             @Param("condition") Map<String, Object> condition,
-            @Param("permissionSql") String permissionSql);
+            @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 统计已关联流程实例（process_instance_id 非空）的记录数量。

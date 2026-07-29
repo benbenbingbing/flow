@@ -1,0 +1,282 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-mysql
+  namespace: flow-hardening
+  labels:
+    app.kubernetes.io/name: local-mysql
+    app.kubernetes.io/part-of: flow-hardening-verification
+spec:
+  selector:
+    app.kubernetes.io/name: local-mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: local-mysql
+  namespace: flow-hardening
+  labels:
+    app.kubernetes.io/name: local-mysql
+    app.kubernetes.io/part-of: flow-hardening-verification
+spec:
+  serviceName: local-mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: local-mysql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-mysql
+        app.kubernetes.io/part-of: flow-hardening-verification
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mysql
+          image: flow-hardening/mysql:8.4
+          imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          args:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+            - --innodb-buffer-pool-size=128M
+            - --performance-schema=OFF
+            - --max-connections=100
+            - --table-open-cache=400
+            - --temptable-max-ram=64M
+          ports:
+            - name: mysql
+              containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-auth
+                  key: root-password
+            - name: MYSQL_DATABASE
+              value: workflow
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD" --silent
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 40
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD" --silent
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: mysql-runtime
+              mountPath: /var/run/mysqld
+            - name: temporary-files
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: mysql-runtime
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: temporary-files
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: local-mysql-users
+  namespace: flow-hardening
+  labels:
+    app.kubernetes.io/name: local-mysql-users
+    app.kubernetes.io/part-of: flow-hardening-verification
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-mysql-users
+        app.kubernetes.io/part-of: flow-hardening-verification
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: initialize-users
+          image: flow-hardening/mysql:8.4
+          imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              until MYSQL_PWD="$ROOT_PASSWORD" mysqladmin ping \
+                -h local-mysql -uroot --silent; do
+                sleep 2
+              done
+              MYSQL_PWD="$ROOT_PASSWORD" mysql -h local-mysql -uroot \
+                --execute="CREATE USER IF NOT EXISTS '$APP_USER'@'%' IDENTIFIED BY '$APP_PASSWORD';
+                ALTER USER '$APP_USER'@'%' IDENTIFIED BY '$APP_PASSWORD';
+                CREATE USER IF NOT EXISTS '$SCHEMA_USER'@'%' IDENTIFIED BY '$SCHEMA_PASSWORD';
+                ALTER USER '$SCHEMA_USER'@'%' IDENTIFIED BY '$SCHEMA_PASSWORD';
+                GRANT SELECT, INSERT, UPDATE, DELETE ON workflow.* TO '$APP_USER'@'%';
+                GRANT ALL PRIVILEGES ON workflow.* TO '$SCHEMA_USER'@'%';
+                FLUSH PRIVILEGES;"
+          env:
+            - name: ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-auth
+                  key: root-password
+            - name: APP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-db-auth
+                  key: username
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-db-auth
+                  key: password
+            - name: SCHEMA_USER
+              valueFrom:
+                secretKeyRef:
+                  name: schema-db-auth
+                  key: username
+            - name: SCHEMA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: schema-db-auth
+                  key: password
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: temporary-files
+              mountPath: /tmp
+      volumes:
+        - name: temporary-files
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: local-minio-bucket
+  namespace: flow-hardening
+  labels:
+    app.kubernetes.io/name: local-minio-bucket
+    app.kubernetes.io/part-of: flow-hardening-verification
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-minio-bucket
+        app.kubernetes.io/part-of: flow-hardening-verification
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: initialize-bucket
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              until mc alias set flow http://minio:9000 \
+                  "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"; do
+                sleep 2
+              done
+              mc mb --ignore-existing flow/workflow-files
+          env:
+            - name: MC_CONFIG_DIR
+              value: /tmp/.mc
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flow-local-secrets
+                  key: s3-access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flow-local-secrets
+                  key: s3-secret-key
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: temporary-files
+              mountPath: /tmp
+      volumes:
+        - name: temporary-files
+          emptyDir:
+            sizeLimit: 64Mi

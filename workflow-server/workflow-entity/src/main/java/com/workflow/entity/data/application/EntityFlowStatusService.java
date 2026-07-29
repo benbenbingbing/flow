@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import org.slf4j.Logger;
@@ -34,7 +35,7 @@ public class EntityFlowStatusService {
                                    List<EntityFlowStatusMapping> mappings) {
         // 如果新配置为空，保留原有配置（避免因 camunda 属性被清理导致数据丢失）
         if (mappings == null || mappings.isEmpty()) {
-            log.info("新配置为空，保留原有状态映射: processConfigId={}", processConfigId);
+            log.info("新配置为空，保留原有状态映射: processConfigId={}", LogValue.safe(processConfigId));
             return;
         }
 
@@ -53,7 +54,7 @@ public class EntityFlowStatusService {
         statusMappingMapper.deleteByProcessConfigId(processConfigId);
 
         if (mappings == null || mappings.isEmpty()) {
-            log.info("清空流程状态映射: processConfigId={}", processConfigId);
+            log.info("清空流程状态映射: processConfigId={}", LogValue.safe(processConfigId));
             return;
         }
 
@@ -68,7 +69,7 @@ public class EntityFlowStatusService {
             statusMappingMapper.insert(mapping);
         }
 
-        log.info("替换流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
+        log.info("替换流程状态映射: processConfigId={}, count={}", LogValue.safe(processConfigId), mappings.size());
     }
     
     /**
@@ -105,6 +106,6 @@ public class EntityFlowStatusService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteByProcessConfigId(String processConfigId) {
         statusMappingMapper.deleteByProcessConfigId(processConfigId);
-        log.info("删除流程状态映射: processConfigId={}", processConfigId);
+        log.info("删除流程状态映射: processConfigId={}", LogValue.safe(processConfigId));
     }
 }

@@ -316,7 +316,8 @@ public class EntityListScopeService {
             captureArguments = true,
             captureResult = true)
     public EntityListScopeRelease publish(String entityCode, String description) {
-        requireEntity(entityCode);
+        entityAccessPolicy.requireDynamicByCodeForUpdate(
+                entityCode);
         List<EntityListScopePolicy> policies = policyMapper.findByEntityCode(entityCode);
         List<EntityListScopeBinding> bindings = bindingMapper.findByEntityCode(entityCode);
         if (policies.stream().anyMatch(policy -> Integer.valueOf(1).equals(policy.getReviewRequired()))) {

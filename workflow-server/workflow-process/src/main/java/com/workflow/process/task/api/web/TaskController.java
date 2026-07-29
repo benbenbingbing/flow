@@ -1,8 +1,14 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.task.application.TaskAddSignService;
 import com.workflow.process.task.application.TaskService;
+import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.workbench.api.response.TaskStatisticsVO;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
@@ -14,12 +20,16 @@ import java.util.Map;
 /**
  * 任务管理控制器
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/task")
 @RequiredArgsConstructor
 public class TaskController {
 
     private final TaskService taskService;
+    private final TaskActionService taskActionService;
+    private final TaskAddSignService taskAddSignService;
+    private final ProcessInstanceAccessService processInstanceAccessService;
 
     /**
      * 获取待办任务统计
@@ -66,7 +76,14 @@ public class TaskController {
         String transferTo = (String) params.get("transferTo");
         String actionLabel = (String) params.get("actionLabel");
         
-        taskService.completeTask(taskId, action, comment, transferTo, actionLabel);
+        String currentUser = UserContext.getUsername();
+        if (taskAddSignService.isAddSignTask(taskId)) {
+            taskAddSignService.completeAddSignTask(taskId, action, comment);
+        } else if (!taskAddSignService.handleSourceCompletion(
+                taskId, currentUser, action, comment, actionLabel, null)) {
+            taskActionService.completeTask(
+                    taskId, currentUser, action, comment, transferTo, actionLabel);
+        }
         return Result.success();
     }
 
@@ -75,6 +92,7 @@ public class TaskController {
      */
     @GetMapping("/{taskId}")
     public Result<TaskVO> getTaskDetail(@PathVariable String taskId) {
+        taskActionService.requireTaskAccess(taskId);
         return Result.success(taskService.getTaskDetail(taskId));
     }
 
@@ -86,7 +104,8 @@ public class TaskController {
     public Result<Void> withdrawProcess(@RequestBody Map<String, String> params) {
         String processInstanceId = params.get("processInstanceId");
         String reason = params.get("reason");
-        taskService.withdrawProcess(processInstanceId, reason);
+        taskActionService.withdrawProcess(
+                processInstanceId, UserContext.getUsername(), reason);
         return Result.success();
     }
 
@@ -95,6 +114,7 @@ public class TaskController {
      */
     @GetMapping("/history/{processInstanceId}")
     public Result<List<TaskVO>> getProcessHistory(@PathVariable String processInstanceId) {
+        processInstanceAccessService.requireReadAccess(processInstanceId);
         return Result.success(taskService.getProcessHistory(processInstanceId));
     }
 
@@ -106,7 +126,14 @@ public class TaskController {
         String taskId = (String) params.get("taskId");
         String comment = (String) params.get("comment");
         Map<String, Object> formData = (Map<String, Object>) params.get("formData");
-        taskService.resubmitTask(taskId, comment, formData);
+        taskActionService.completeTask(
+                taskId,
+                UserContext.getUsername(),
+                "resubmit",
+                comment,
+                null,
+                "重新提交",
+                formData);
         return Result.success();
     }
 }

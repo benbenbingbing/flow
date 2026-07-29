@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "E2E 结果和历史备份中的 UUID 不是访问凭据"
+rules = ["generic-api-key"]
+paths = [
+  '''^workflow-web/docs/flow-action-timing-e2e/.*\.json$''',
+  '''^workflow-web/docs/workflow-closure/.*\.json$''',
+  '''^backups/.*\.sql$''',
+]

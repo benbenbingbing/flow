@@ -1,0 +1,373 @@
+name: 安全与工程规范审查
+
+run-name: 安全与工程规范审查 · ${{ github.ref_name }} · ${{ github.actor }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-governance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repository-security:
+    name: 仓库与依赖安全检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出完整提交历史
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 安装敏感信息检查工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d "$RUNNER_TEMP/security-tools"
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' \
+            "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb" \
+            "$archive" | sha256sum --check
+          tar --extract --gzip --file "$archive" \
+            --directory "$RUNNER_TEMP/security-tools" gitleaks
+          chmod 0755 "$RUNNER_TEMP/security-tools/gitleaks"
+
+      - name: 检查提交历史中的敏感信息
+        id: history-secrets
+        continue-on-error: true
+        shell: bash
+        run: |
+          "$RUNNER_TEMP/security-tools/gitleaks" git \
+            --config .gitleaks.toml \
+            --redact \
+            --report-format sarif \
+            --report-path "$RUNNER_TEMP/sensitive-information.sarif" \
+            .
+
+      - name: 保存敏感信息检查报告
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: 敏感信息检查报告-${{ github.run_id }}
+          path: ${{ runner.temp }}/sensitive-information.sarif
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: 检查依赖漏洞、当前文件和部署配置
+        id: repository-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_HELM_VALUES: ${{ github.workspace }}/deploy/helm/flow/values.security-scan.yaml
+          TRIVY_HELM_KUBE_VERSION: 1.32.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          skip-dirs: .git,.local
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: table
+          timeout: 15m
+          version: v0.70.0
+
+      - name: 配置 Node.js 安全检查环境
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+          cache-dependency-path: workflow-web/package-lock.json
+
+      - name: 检查前端依赖公告
+        id: frontend-audit
+        continue-on-error: true
+        working-directory: workflow-web
+        run: |
+          npm ci --registry=https://registry.npmjs.org
+          npm audit \
+            --registry=https://registry.npmjs.org \
+            --audit-level=high
+
+      - name: 判定仓库安全检查结果
+        if: always()
+        env:
+          HISTORY_RESULT: ${{ steps.history-secrets.outcome }}
+          REPOSITORY_RESULT: ${{ steps.repository-scan.outcome }}
+          FRONTEND_RESULT: ${{ steps.frontend-audit.outcome }}
+        run: |
+          failed=0
+          for result in \
+            "$HISTORY_RESULT" \
+            "$REPOSITORY_RESULT" \
+            "$FRONTEND_RESULT"; do
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "仓库安全检查发现需要处理的问题。" >&2
+            exit 1
+          fi
+
+  image-security:
+    name: 容器镜像安全检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: 配置容器构建环境
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: 构建后端镜像
+        id: server-build
+        continue-on-error: true
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./workflow-server
+          load: true
+          tags: flow-security-server:${{ github.sha }}
+          cache-from: type=gha,scope=security-server
+          cache-to: type=gha,mode=max,scope=security-server
+
+      - name: 构建前端镜像
+        id: web-build
+        continue-on-error: true
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./workflow-web
+          load: true
+          tags: flow-security-web:${{ github.sha }}
+          cache-from: type=gha,scope=security-web
+          cache-to: type=gha,mode=max,scope=security-web
+
+      - name: 检查后端镜像漏洞
+        id: server-image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: flow-security-server:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: table
+          timeout: 15m
+          version: v0.70.0
+
+      - name: 检查前端镜像漏洞
+        id: web-image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: flow-security-web:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: table
+          timeout: 15m
+          version: v0.70.0
+
+      - name: 判定镜像安全检查结果
+        if: always()
+        env:
+          SERVER_BUILD_RESULT: ${{ steps.server-build.outcome }}
+          WEB_BUILD_RESULT: ${{ steps.web-build.outcome }}
+          SERVER_RESULT: ${{ steps.server-image.outcome }}
+          WEB_RESULT: ${{ steps.web-image.outcome }}
+        run: |
+          if [ "$SERVER_BUILD_RESULT" != "success" ] \
+            || [ "$WEB_BUILD_RESULT" != "success" ] \
+            || [ "$SERVER_RESULT" != "success" ] \
+            || [ "$WEB_RESULT" != "success" ]; then
+            echo "容器镜像构建失败，或检查发现高风险及严重漏洞。" >&2
+            exit 1
+          fi
+
+  engineering-standards:
+    name: 工程规范与质量检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: 配置 Java 构建环境
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 验证后端测试与架构约束
+        id: backend-standards
+        continue-on-error: true
+        working-directory: workflow-server
+        run: mvn -B -ntp verify
+
+      - name: 配置 Node.js 构建环境
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+          cache-dependency-path: workflow-web/package-lock.json
+
+      - name: 验证前端测试、规范与生产构建
+        id: frontend-standards
+        continue-on-error: true
+        working-directory: workflow-web
+        run: |
+          npm ci --registry=https://registry.npmjs.org
+          npm test
+          npm run build
+
+      - name: 检查 Shell 脚本
+        id: shell-standards
+        continue-on-error: true
+        shell: bash
+        run: |
+          mapfile -d '' scripts < <(git ls-files -z -- '*.sh')
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "未找到需要检查的 Shell 脚本。" >&2
+            exit 1
+          fi
+          shellcheck "${scripts[@]}"
+
+      - name: 安装工作流语法检查工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' \
+            "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8" \
+            "$archive" | sha256sum --check
+          tar --extract --gzip --file "$archive" \
+            --directory "$RUNNER_TEMP" actionlint
+          chmod 0755 "$RUNNER_TEMP/actionlint"
+
+      - name: 检查工作流语法
+        id: workflow-syntax
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/actionlint" -color
+
+      - name: 安装工作流安全审查工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zizmor.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/zizmorcore/zizmor/releases/download/v1.28.0/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' \
+            "e87b67160194884e375a46a12c57ccc904f762b53845f254fab7f17d98809c09" \
+            "$archive" | sha256sum --check
+          tar --extract --gzip --file "$archive" \
+            --directory "$RUNNER_TEMP" zizmor
+          chmod 0755 "$RUNNER_TEMP/zizmor"
+
+      - name: 检查工作流权限与供应链规范
+        id: workflow-security
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          "$RUNNER_TEMP/zizmor" \
+            --persona regular \
+            --min-severity medium \
+            --format github \
+            .
+
+      - name: 验证部署清单
+        id: manifest-standards
+        continue-on-error: true
+        run: deploy/scripts/validate-manifests.sh
+
+      - name: 判定工程规范检查结果
+        if: always()
+        env:
+          BACKEND_RESULT: ${{ steps.backend-standards.outcome }}
+          FRONTEND_RESULT: ${{ steps.frontend-standards.outcome }}
+          SHELL_RESULT: ${{ steps.shell-standards.outcome }}
+          SYNTAX_RESULT: ${{ steps.workflow-syntax.outcome }}
+          WORKFLOW_RESULT: ${{ steps.workflow-security.outcome }}
+          MANIFEST_RESULT: ${{ steps.manifest-standards.outcome }}
+        run: |
+          failed=0
+          for result in \
+            "$BACKEND_RESULT" \
+            "$FRONTEND_RESULT" \
+            "$SHELL_RESULT" \
+            "$SYNTAX_RESULT" \
+            "$WORKFLOW_RESULT" \
+            "$MANIFEST_RESULT"; do
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "工程规范检查发现需要处理的问题。" >&2
+            exit 1
+          fi
+
+  review-summary:
+    name: 汇总审查结论
+    if: always()
+    needs:
+      - repository-security
+      - image-security
+      - engineering-standards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 生成审查结论
+        env:
+          REPOSITORY_RESULT: ${{ needs.repository-security.result }}
+          IMAGE_RESULT: ${{ needs.image-security.result }}
+          STANDARDS_RESULT: ${{ needs.engineering-standards.result }}
+        shell: bash
+        run: |
+          display_result() {
+            case "$1" in
+              success) printf '通过' ;;
+              failure) printf '未通过' ;;
+              cancelled) printf '已取消' ;;
+              skipped) printf '未执行' ;;
+              *) printf '未知' ;;
+            esac
+          }
+
+          {
+            echo "## 安全与工程规范审查结论"
+            echo
+            echo "| 检查范围 | 结果 |"
+            echo "| --- | --- |"
+            echo "| 仓库与依赖安全 | $(display_result "$REPOSITORY_RESULT") |"
+            echo "| 容器镜像安全 | $(display_result "$IMAGE_RESULT") |"
+            echo "| 工程规范与质量 | $(display_result "$STANDARDS_RESULT") |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for result in \
+            "$REPOSITORY_RESULT" \
+            "$IMAGE_RESULT" \
+            "$STANDARDS_RESULT"; do
+            if [ "$result" != "success" ]; then
+              echo "审查存在未通过项目，请查看对应任务日志和报告。" >&2
+              exit 1
+            fi
+          done

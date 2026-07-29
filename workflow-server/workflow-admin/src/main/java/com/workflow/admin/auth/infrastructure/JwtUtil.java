@@ -26,16 +26,16 @@ import java.util.Date;
 @Component
 public class JwtUtil {
     
-    /** JWT 签名密钥（配置项 jwt.secret，默认 workflow-secret-key-2024） */
-    @Value("${jwt.secret:workflow-secret-key-2024}")
+    private static final int MINIMUM_SECRET_BYTES = 32;
+
+    /** JWT 签名密钥，必须由外部 Secret 提供。 */
+    @Value("${jwt.secret}")
     private String secret;
     
-    /** Token 有效期，单位毫秒（配置项 jwt.expiration，默认 86400000 即 24 小时） */
-    @Value("${jwt.expiration:86400000}")
+    /** Access Token 有效期，默认 15 分钟，最长 1 小时。 */
+    @Value("${jwt.expiration:900000}")
     private Long expiration;
     
-    /** 静态化的签名密钥字符串 */
-    private static String STATIC_SECRET;
     /** 静态化的 Token 有效期 */
     private static Long STATIC_EXPIRATION;
     /** 静态化的签名密钥对象 */
@@ -46,7 +46,7 @@ public class JwtUtil {
      */
     @PostConstruct
     public void init() {
-        STATIC_SECRET = secret;
+        validateConfiguration(secret, expiration);
         STATIC_EXPIRATION = expiration;
         STATIC_KEY = buildSigningKey(secret);
     }
@@ -58,17 +58,25 @@ public class JwtUtil {
      * @param username 用户名（作为 username claim）
      * @return 签名后的 JWT Token 字符串
      */
-    public static String generateToken(String userId, String username) {
+    public static String generateToken(
+            String userId,
+            String username,
+            long tokenVersion) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + STATIC_EXPIRATION);
         
         return Jwts.builder()
                 .subject(userId)
                 .claim("username", username)
+                .claim("tokenVersion", tokenVersion)
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(STATIC_KEY, Jwts.SIG.HS512)
                 .compact();
+    }
+
+    public static String generateToken(String userId, String username) {
+        return generateToken(userId, username, 0L);
     }
     
     /**
@@ -92,6 +100,12 @@ public class JwtUtil {
         Claims claims = parseToken(token);
         return claims != null ? claims.get("username", String.class) : null;
     }
+
+    public static Long getTokenVersionFromToken(String token) {
+        Claims claims = parseToken(token);
+        Object value = claims == null ? null : claims.get("tokenVersion");
+        return value instanceof Number number ? number.longValue() : null;
+    }
     
     /**
      * 解析Token
@@ -107,7 +121,7 @@ public class JwtUtil {
                     .parseSignedClaims(token)
                     .getPayload();
         } catch (Exception e) {
-            log.warn("JWT解析失败: {}", e.getMessage());
+            log.debug("JWT validation failed: {}", e.getClass().getSimpleName());
             return null;
         }
     }
@@ -140,6 +154,24 @@ public class JwtUtil {
             return Keys.hmacShaKeyFor(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JWT签名初始化失败", e);
+        }
+    }
+
+    private static void validateConfiguration(String configuredSecret, Long configuredExpiration) {
+        if (configuredSecret == null
+                || configuredSecret.getBytes(StandardCharsets.UTF_8).length < MINIMUM_SECRET_BYTES) {
+            throw new IllegalStateException("JWT_SECRET 必须至少包含 32 字节");
+        }
+        String normalized = configuredSecret.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("workflow-secret-key")
+                || normalized.contains("replace-with")
+                || normalized.contains("changeme")) {
+            throw new IllegalStateException("JWT_SECRET 不能使用公开示例值");
+        }
+        if (configuredExpiration == null
+                || configuredExpiration < 60_000L
+                || configuredExpiration > 3_600_000L) {
+            throw new IllegalStateException("JWT access token 有效期必须在 1 分钟到 1 小时之间");
         }
     }
 }

@@ -179,6 +179,15 @@ const routes = [
         }
       },
       {
+        path: '/system/open-integration',
+        name: 'OpenIntegration',
+        component: () => import('@/views/system/OpenIntegration.vue'),
+        meta: {
+          title: '开放集成',
+          requiredPermissions: ['system:integration:view']
+        }
+      },
+      {
         path: '/system/interface-services',
         name: 'InterfaceServices',
         component: () => import('@/views/system/InterfaceServices.vue'),

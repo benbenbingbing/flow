@@ -416,7 +416,6 @@
       append-to-body
       destroy-on-close
     >
-      <TemporaryPasswordNotice />
       <el-form
         ref="roleUserFormRef"
         :model="roleUserForm"
@@ -445,6 +444,17 @@
           <el-col :span="12">
             <el-form-item label="手机号" prop="phone">
               <el-input v-model="roleUserForm.phone" placeholder="请输入手机号" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="初始密码" prop="password">
+              <el-input
+                v-model="roleUserForm.password"
+                type="password"
+                show-password
+                autocomplete="new-password"
+                placeholder="10-72位，含大小写字母和数字"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -503,12 +513,6 @@
       </template>
     </el-dialog>
 
-    <TemporaryPasswordDialog
-      v-model="temporaryPasswordDialog.visible"
-      :username="temporaryPasswordDialog.username"
-      :temporary-password="temporaryPasswordDialog.password"
-      @closed="clearTemporaryPassword"
-    />
   </div>
 </template>
 
@@ -528,8 +532,6 @@ import {
 } from '@/api/system/role'
 import { createUser } from '@/api/system/user'
 import request from '@/utils/request'
-import TemporaryPasswordDialog from '@/components/TemporaryPasswordDialog.vue'
-import TemporaryPasswordNotice from '@/components/TemporaryPasswordNotice.vue'
 import RoleTableActions from '@/components/RoleTableActions.vue'
 import PageState from '@/components/PageState.vue'
 import { formatDateColumn } from '@/shared/list-runtime'
@@ -677,6 +679,7 @@ const roleUserOrgOptions = ref<any[]>([])
 const roleUserDeptOptions = ref<any[]>([])
 const roleUserForm = reactive({
   username: '',
+  password: '',
   nickname: '',
   email: '',
   phone: '',
@@ -686,13 +689,17 @@ const roleUserForm = reactive({
   deptId: ''
 })
 const roleUserFormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }]
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: [
+    { required: true, message: '请输入初始密码', trigger: 'blur' },
+    { min: 10, max: 72, message: '密码长度必须为10到72位', trigger: 'blur' },
+    {
+      pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/,
+      message: '密码必须同时包含大写字母、小写字母和数字',
+      trigger: 'blur'
+    }
+  ]
 }
-const temporaryPasswordDialog = reactive({
-  visible: false,
-  username: '',
-  password: ''
-})
 
 // 获取角色列表
 const fetchRoleList = async () => {
@@ -882,6 +889,7 @@ const fetchRoleUserOrgOptions = async () => {
 const resetRoleUserForm = () => {
   Object.assign(roleUserForm, {
     username: '',
+    password: '',
     nickname: '',
     email: '',
     phone: '',
@@ -906,7 +914,7 @@ const handleCreateRoleUser = async () => {
 
   roleUserSubmitLoading.value = true
   try {
-    const createdUser = await createUser({
+    await createUser({
       ...roleUserForm,
       roleIds: [currentRoleId.value]
     })
@@ -915,19 +923,9 @@ const handleCreateRoleUser = async () => {
     roleUserSearch.keyword = ''
     roleUserPage.pageNum = 1
     fetchRoleUsers()
-    if (createdUser?.temporaryPassword) {
-      temporaryPasswordDialog.username = createdUser.username || roleUserForm.username
-      temporaryPasswordDialog.password = createdUser.temporaryPassword
-      temporaryPasswordDialog.visible = true
-    }
   } finally {
     roleUserSubmitLoading.value = false
   }
-}
-
-const clearTemporaryPassword = () => {
-  temporaryPasswordDialog.username = ''
-  temporaryPasswordDialog.password = ''
 }
 
 // 分配权限

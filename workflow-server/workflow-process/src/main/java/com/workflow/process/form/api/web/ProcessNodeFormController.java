@@ -1,5 +1,7 @@
 package com.workflow.process.form.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
@@ -13,6 +15,7 @@ import java.util.List;
 /**
  * 流程节点表单绑定控制器
  */
+@RequiresPermission("process:definition:view")
 @RestController
 @RequestMapping("/api/process-node-form")
 @RequiredArgsConstructor
@@ -43,6 +46,7 @@ public class ProcessNodeFormController {
      * 保存节点表单绑定
      */
     @PostMapping
+    @RequiresPermission("process:definition:manage")
     public Result<ProcessNodeForm> save(@RequestBody ProcessNodeForm nodeForm) {
         return Result.success(nodeFormService.saveNodeForm(nodeForm));
     }
@@ -51,6 +55,7 @@ public class ProcessNodeFormController {
      * 删除节点表单绑定
      */
     @PostMapping("/{id}")
+    @RequiresPermission("process:definition:manage")
     public Result<Void> delete(@PathVariable String id) {
         nodeFormService.deleteNodeForm(id);
         return Result.success();
@@ -60,6 +65,7 @@ public class ProcessNodeFormController {
      * 批量保存节点表单绑定
      */
     @PostMapping("/process/{processConfigId}")
+    @RequiresPermission("process:definition:manage")
     public Result<Void> saveNodeForms(
             @PathVariable String processConfigId,
             @RequestBody List<ProcessNodeForm> nodeForms) {

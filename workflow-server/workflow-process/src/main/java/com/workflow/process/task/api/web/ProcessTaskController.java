@@ -1,5 +1,7 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
@@ -10,6 +12,7 @@ import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskListFilter;
 import com.workflow.process.task.application.TaskDetailService;
 import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,6 +28,7 @@ import java.util.stream.Collectors;
 /**
  * 流程待办控制器
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-task")
 @RequiredArgsConstructor
@@ -34,6 +38,7 @@ public class ProcessTaskController {
     private final ProcessTaskService processTaskService;
     private final TaskDetailService taskDetailService;
     private final TaskActionService taskActionService;
+    private final ProcessInstanceAccessService processInstanceAccessService;
     private final com.workflow.process.task.application.TaskAddSignService taskAddSignService;
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final org.flowable.engine.HistoryService historyService;
@@ -110,6 +115,7 @@ public class ProcessTaskController {
      */
     @PostMapping("/sync/{processInstanceId}")
     public Result<Void> syncTasks(@PathVariable String processInstanceId) {
+        processInstanceAccessService.requireReadAccess(processInstanceId);
         processTaskService.syncTasksFromFlowable(processInstanceId);
         return Result.success();
     }
@@ -197,12 +203,8 @@ public class ProcessTaskController {
      */
     @GetMapping("/history/{processInstanceId}")
     public Result<List<TaskVO>> getProcessHistory(@PathVariable String processInstanceId) {
-        try {
-            List<TaskVO> history = taskActionService.getProcessHistory(processInstanceId);
-            return Result.success(history);
-        } catch (Exception e) {
-            return Result.error("获取历史失败: " + e.getMessage());
-        }
+        processInstanceAccessService.requireReadAccess(processInstanceId);
+        return Result.success(taskActionService.getProcessHistory(processInstanceId));
     }
 
     /**
@@ -225,6 +227,8 @@ public class ProcessTaskController {
             }
             taskActionService.withdrawProcess(processInstanceId, currentUser, reason);
             return Result.success();
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return Result.error("撤回失败: " + e.getMessage());
         }

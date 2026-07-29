@@ -1,5 +1,6 @@
 package com.workflow.admin.authorization.menu.application;
 
+import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
@@ -217,11 +218,11 @@ public class SysMenuService {
             // 新增
             menu.setCreateTime(LocalDateTime.now());
             menuMapper.insert(menu);
-            log.info("新增菜单：{}", menu.getMenuName());
+            log.info("新增菜单：{}", LogValue.safe(menu.getMenuName()));
         } else {
             // 更新
             menuMapper.updateById(menu);
-            log.info("更新菜单：{}", menu.getMenuName());
+            log.info("更新菜单：{}", LogValue.safe(menu.getMenuName()));
         }
         
         return menu;
@@ -508,7 +509,7 @@ public class SysMenuService {
         for (SysMenu menu : menus) {
             // 检查权限标识是否已存在
             if (StringUtils.hasText(menu.getPerm()) && menuMapper.existsPerm(menu.getPerm(), "")) {
-                log.warn("权限标识已存在，跳过导入：{}", menu.getPerm());
+                log.warn("权限标识已存在，跳过导入：{}", LogValue.safe(menu.getPerm()));
                 continue;
             }
             

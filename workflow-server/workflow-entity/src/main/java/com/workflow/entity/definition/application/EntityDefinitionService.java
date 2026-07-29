@@ -1,5 +1,6 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.application.EntityPhysicalTableNaming;
@@ -57,6 +58,7 @@ public class EntityDefinitionService {
     private final EntityRecordTeamService entityRecordTeamService;
     private final EntityPhysicalTableNaming physicalTableNaming;
     private final EntityPublishHistoryService publishHistoryService;
+    private final EntitySchemaPublishLock schemaPublishLock;
     private final EntityFieldFileItemService fileItemService;
     private final EntityFieldOptionService fieldOptionService;
     private final ObjectMapper objectMapper;
@@ -326,7 +328,7 @@ public class EntityDefinitionService {
         fieldMapper.insert(createSystemField(entityId, "currentTaskAssignee", "当前任务办理人",
                 EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
 
-        log.info("已为实体 [{}] 添加系统标准字段", entityId);
+        log.info("已为实体 [{}] 添加系统标准字段", LogValue.safe(entityId));
     }
     
     /**
@@ -471,7 +473,6 @@ public class EntityDefinitionService {
         
         // 检查实体是否已发布
         boolean isPublished = existing.getStatus() == EntityDefinition.Status.PUBLISHED;
-        String entityCode = existing.getEntityCode();
         EntityDefinition.LifecycleMode currentMode = lifecycleMode(existing);
         EntityDefinition.LifecycleMode requestedMode = dto.getLifecycleMode() == null
                 ? currentMode
@@ -608,32 +609,7 @@ public class EntityDefinitionService {
 
             syncRelations(existing, dto.getFields(), fieldMapper.findByEntityId(id));
             
-            // 如果实体已发布，自动同步物理表结构（添加/修改字段）
-            if (isPublished) {
-                try {
-                    // 重新加载完整的实体定义（包含最新字段）
-                    EntityDefinition updatedEntity = entityMapper.selectById(id);
-                    List<EntityField> allFields = fieldMapper.findByEntityId(id);
-                    updatedEntity.setFields(allFields);
-                    
-                    // 同步物理表结构
-                    List<String> ddlStatements = dynamicTableService.syncEntityTableStructure(updatedEntity);
-                    if (!ddlStatements.isEmpty()) {
-                        log.info("实体 [{}] 字段变更后自动同步物理表，执行DDL: {}", entityCode, ddlStatements);
-                    }
-                    
-                    // 将所有未发布的字段标记为已发布
-                    for (EntityField field : allFields) {
-                        if (!Boolean.TRUE.equals(field.getIsSystem()) && !Boolean.TRUE.equals(field.getIsPublished())) {
-                            field.setIsPublished(true);
-                            fieldMapper.updateById(field);
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("实体 [{}] 字段变更后自动同步物理表失败: {}", entityCode, e.getMessage(), e);
-                    // 不抛异常，避免影响字段保存操作
-                }
-            }
+            // Physical schema changes are applied only by the explicitly locked publish flow.
         }
         
         return convertToDTO(existing);
@@ -690,6 +666,23 @@ public class EntityDefinitionService {
                                        String userId,
                                        String userName,
                                        ConfigMigrationPublishRequest request) {
+        if (!schemaPublishLock.tryAcquire(id)) {
+            throw new BusinessConflictException(
+                    "ENTITY_SCHEMA_PUBLISH_BUSY",
+                    "实体结构正在发布，请稍后重试");
+        }
+        try {
+            return publishWithSchemaLock(id, userId, userName, request);
+        } finally {
+            schemaPublishLock.release(id);
+        }
+    }
+
+    private EntityDefinitionDTO publishWithSchemaLock(
+            String id,
+            String userId,
+            String userName,
+            ConfigMigrationPublishRequest request) {
         EntityDefinition entity = entityMapper.selectById(id);
         if (entity == null) {
             throw new RuntimeException("实体不存在: " + id);

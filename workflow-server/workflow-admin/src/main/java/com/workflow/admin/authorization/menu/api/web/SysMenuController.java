@@ -1,5 +1,7 @@
 package com.workflow.admin.authorization.menu.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
@@ -17,6 +19,7 @@ import java.util.Set;
 /**
  * 菜单管理控制器
  */
+@RequiresPermission("system:menu:view")
 @RestController
 @RequestMapping("/api/system/menu")
 @RequiredArgsConstructor
@@ -73,6 +76,7 @@ public class SysMenuController {
      * 新增菜单
      */
     @PostMapping
+    @RequiresPermission("system:menu:manage")
     public Result<SysMenu> save(@Validated @RequestBody SysMenu menu) {
         return Result.success(menuService.saveMenu(menu));
     }
@@ -81,6 +85,7 @@ public class SysMenuController {
      * 更新菜单
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("system:menu:manage")
     public Result<SysMenu> update(@PathVariable String id, @RequestBody SysMenu menu) {
         menu.setId(id);
         return Result.success(menuService.saveMenu(menu));
@@ -90,6 +95,7 @@ public class SysMenuController {
      * 删除菜单
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("system:menu:manage")
     public Result<Void> delete(@PathVariable String id) {
         menuService.deleteMenu(id);
         return Result.success();
@@ -99,6 +105,7 @@ public class SysMenuController {
      * 更新菜单状态
      */
     @PostMapping("/{id}/status")
+    @RequiresPermission("system:menu:manage")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -114,6 +121,7 @@ public class SysMenuController {
      * 更新菜单显示状态
      */
     @PostMapping("/{id}/visible")
+    @RequiresPermission("system:menu:manage")
     public Result<Void> updateVisible(@PathVariable String id, @RequestParam String visible) {
         menuService.updateVisible(id, visible);
         return Result.success();
@@ -123,6 +131,7 @@ public class SysMenuController {
      * 更新菜单排序
      */
     @PostMapping("/sort")
+    @RequiresPermission("system:menu:manage")
     public Result<Void> updateSort(@RequestBody List<String> menuIds) {
         menuService.updateSort(menuIds);
         return Result.success();
@@ -148,6 +157,7 @@ public class SysMenuController {
      * 导入菜单
      */
     @PostMapping("/import")
+    @RequiresPermission("system:menu:manage")
     public Result<Void> importMenus(@RequestBody List<SysMenu> menus) {
         menuService.importMenus(menus);
         return Result.success();

@@ -1,16 +1,11 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { parse as parseSfc } from '@vue/compiler-sfc'
+import { listFiles } from './file-tree.mjs'
 
 const root = process.cwd()
-const vueFiles = execFileSync('rg', ['--files', 'src/views', 'src/components', '-g', '*.vue'], {
-  encoding: 'utf8'
-})
-  .trim()
-  .split('\n')
-  .filter(Boolean)
+const vueFiles = listFiles(['src/views', 'src/components'], '.vue')
 
 const issues = []
 for (const file of vueFiles) {

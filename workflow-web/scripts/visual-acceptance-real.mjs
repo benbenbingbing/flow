@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
@@ -17,27 +17,25 @@ mkdirSync(outDir, { recursive: true })
 assert.ok(testUsername, 'TEST_USERNAME is required')
 assert.ok(testPassword, 'TEST_PASSWORD is required')
 
-const fixtureEvidencePath = path.resolve('docs/dynamic-extension-demo/latest.json')
-const fixtureEvidence = JSON.parse(readFileSync(fixtureEvidencePath, 'utf8'))
-assert.equal(
-  fixtureEvidence.result,
-  'PASS',
-  `visual acceptance requires a passing real fixture: ${fixtureEvidencePath}`
-)
-const fixture = fixtureEvidence.fixture || {}
-;['entityId', 'entityCode', 'processId', 'formId', 'listConfigId'].forEach(key => {
-  assert.ok(fixture[key], `real visual fixture is missing ${key}`)
-})
-const listKey = fixture.listKey || 'demo_cards'
+function requiredFixtureValue(name) {
+  const value = process.env[name]?.trim()
+  assert.ok(value, `${name} is required for real visual acceptance`)
+  assert.match(value, /^[A-Za-z0-9_-]+$/, `${name} contains unsupported characters`)
+  return value
+}
+
+const fixture = {
+  entityId: requiredFixtureValue('VISUAL_ENTITY_ID'),
+  entityCode: requiredFixtureValue('VISUAL_ENTITY_CODE'),
+  processId: requiredFixtureValue('VISUAL_PROCESS_ID'),
+  formId: requiredFixtureValue('VISUAL_FORM_ID'),
+  listConfigId: requiredFixtureValue('VISUAL_LIST_CONFIG_ID')
+}
+const listKey = process.env.VISUAL_LIST_KEY?.trim() || 'demo_cards'
 const listRoute = `/entity-list/${fixture.entityCode}/${listKey}`
-const entityName = fixtureEvidence.entityName
-const processName = fixtureEvidence.processName
-const projectName = fixtureEvidence.steps
-  ?.find(step => step.name === 'queryCustomListData')
-  ?.data?.row?.projectName
-assert.ok(entityName, 'real visual fixture is missing entityName')
-assert.ok(processName, 'real visual fixture is missing processName')
-assert.ok(projectName, 'real visual fixture is missing custom list projectName')
+const entityName = process.env.VISUAL_ENTITY_NAME?.trim() || '流程实体'
+const processName = process.env.VISUAL_PROCESS_NAME?.trim() || '流程配置'
+const projectName = process.env.VISUAL_PROJECT_NAME?.trim() || 'Demo项目'
 
 const preLoginRoute = ['01-login', '/login', ['流程配置系统', 'Workflow Configuration System', '登 录']]
 const routes = [

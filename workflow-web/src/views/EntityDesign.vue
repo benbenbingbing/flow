@@ -496,7 +496,7 @@
         
         <el-form-item label="序列号位数">
           <el-slider v-model="codeRule.seqLength" :min="3" :max="10" show-stops />
-          <div class="form-tip">当前：{{ codeRule.seqLength }}位（格式：{{ '0'.repeat(codeRule.seqLength).replace(/0/g, '0') }}1）</div>
+          <div class="form-tip">当前：{{ codeRule.seqLength }}位（格式：{{ '0'.repeat(codeRule.seqLength) }}1）</div>
         </el-form-item>
         
         <el-form-item label="重置周期">

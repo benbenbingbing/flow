@@ -1,5 +1,7 @@
 package com.workflow.process.action.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.action.api.response.FlowActionExecutionDetail;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
@@ -18,6 +20,7 @@ import java.util.List;
  *
  * <p>面向超级管理员提供流程动作执行详情查询与死信/失败记录的手动重试能力。</p>
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-action-executions")
 @RequiredArgsConstructor

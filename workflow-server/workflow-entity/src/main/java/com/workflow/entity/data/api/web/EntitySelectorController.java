@@ -1,6 +1,9 @@
 package com.workflow.entity.data.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
+import com.workflow.core.result.PageRequest;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.data.application.DynamicTableService;
@@ -18,6 +21,7 @@ import java.util.stream.Collectors;
  * 实体选择器控制器
  * 提供通用接口用于选择实体数据（支持用户实体和系统实体）
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-selector")
 @RequiredArgsConstructor
@@ -212,9 +216,10 @@ public class EntitySelectorController {
         
         // 手动分页
         int total = list.size();
-        int start = (pageNum - 1) * pageSize;
-        int end = Math.min(start + pageSize, total);
-        List<Map<String, Object>> records = start < total ? list.subList(start, end) : new ArrayList<>();
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
+        int start = page.startIndex(total);
+        int end = Math.min(start + page.pageSize(), total);
+        List<Map<String, Object>> records = list.subList(start, end);
         
         // 只保留关键字段
         List<Map<String, Object>> simplified = records.stream()
@@ -224,8 +229,8 @@ public class EntitySelectorController {
         Map<String, Object> result = new HashMap<>();
         result.put("records", simplified);
         result.put("total", total);
-        result.put("pageNum", pageNum);
-        result.put("pageSize", pageSize);
+        result.put("pageNum", page.pageNumber());
+        result.put("pageSize", page.pageSize());
         
         return Result.success(result);
     }

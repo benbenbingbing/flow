@@ -1,5 +1,6 @@
 package com.workflow.process.task.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.contracts.entity.EntityFormRuntimePort;
 import com.workflow.contracts.identity.IdentityDirectoryPort;
@@ -332,7 +333,7 @@ public class ProcessTaskService {
     public void completeTask(String taskId, String action, String comment, String actionLabel) {
         ProcessTask task = taskMapper.selectByTaskId(taskId);
         if (task == null) {
-            log.warn("待办任务不存在: taskId={}", taskId);
+            log.warn("待办任务不存在: taskId={}", LogValue.safe(taskId));
             return;
         }
 
@@ -363,7 +364,8 @@ public class ProcessTaskService {
         taskMapper.updateById(task);
 
         log.info("完成流程待办: id={}, nodeName={}, action={}, actionLabel={}, duration={}ms",
-                task.getId(), task.getNodeName(), action, actionLabel, duration);
+                LogValue.safe(task.getId()), LogValue.safe(task.getNodeName()),
+                LogValue.safe(action), LogValue.safe(actionLabel), duration);
     }
 
     /**
@@ -413,7 +415,8 @@ public class ProcessTaskService {
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
         } else {
-            log.warn("认领任务缺少本地待办记录: taskId={}, processInstanceId={}", taskId, processInstanceId);
+            log.warn("认领任务缺少本地待办记录: taskId={}, processInstanceId={}",
+                    LogValue.safe(taskId), LogValue.safe(processInstanceId));
         }
         updateEntityCurrentTask(processInstanceId);
     }
@@ -435,7 +438,7 @@ public class ProcessTaskService {
                 .list();
         
         if (flowableTasks.isEmpty()) {
-            log.debug("流程实例 {} 没有待同步的任务", processInstanceId);
+            log.debug("流程实例 {} 没有待同步的任务", LogValue.safe(processInstanceId));
         } else {
             Map<String, Object> variables = null;
             for (Task flowableTask : flowableTasks) {
@@ -454,7 +457,8 @@ public class ProcessTaskService {
 
                     createTask(flowableTask, variables);
                 } catch (Exception e) {
-                    log.error("同步任务 {} 失败: {}", flowableTask.getId(), e.getMessage(), e);
+                    log.error("同步任务 {} 失败: failureType={}",
+                            LogValue.safe(flowableTask.getId()), LogValue.failureType(e));
                     // 继续同步其他任务
                 }
             }
@@ -476,7 +480,8 @@ public class ProcessTaskService {
         try {
             variables = runtimeService.getVariables(processInstanceId);
         } catch (Exception e) {
-            log.debug("获取流程变量失败，使用本地待办兜底: processInstanceId={}, message={}", processInstanceId, e.getMessage());
+            log.debug("获取流程变量失败，使用本地待办兜底: processInstanceId={}, failureType={}",
+                    LogValue.safe(processInstanceId), LogValue.failureType(e));
         }
 
         String entityCode = (String) variables.get("entityCode");
@@ -564,7 +569,7 @@ public class ProcessTaskService {
             // 使用 MP 的 deleteById 进行逻辑删除（@TableLogic 字段无法通过 updateById 更新）
             taskMapper.deleteById(task.getId());
             log.info("删除流程待办: taskId={}, processInstanceId={}", 
-                    task.getTaskId(), processInstanceId);
+                    LogValue.safe(task.getTaskId()), LogValue.safe(processInstanceId));
         }
     }
     

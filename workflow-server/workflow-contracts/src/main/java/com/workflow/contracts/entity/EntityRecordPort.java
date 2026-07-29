@@ -12,6 +12,11 @@ public interface EntityRecordPort {
             String currentTaskName,
             String currentTaskAssignee);
 
+    void updateStatus(
+            String entityCode,
+            String entityRecordId,
+            String status);
+
     void markProcessEnded(
             String entityCode,
             String entityRecordId,

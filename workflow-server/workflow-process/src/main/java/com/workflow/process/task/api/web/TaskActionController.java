@@ -1,10 +1,13 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskAddSignService;
+import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +18,7 @@ import java.util.Map;
  * 任务动作控制器
  * 处理任务完成、流程撤回、历史查询等操作
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/task-action")
 @RequiredArgsConstructor
@@ -23,6 +27,7 @@ public class TaskActionController {
 
     private final TaskActionService taskActionService;
     private final TaskAddSignService taskAddSignService;
+    private final ProcessInstanceAccessService processInstanceAccessService;
 
     /**
      * 完成任务
@@ -45,19 +50,15 @@ public class TaskActionController {
         String transferTo = requestBody != null ? (String) requestBody.get("transferTo") : null;
         String actionLabel = requestBody != null ? (String) requestBody.get("actionLabel") : null;
 
-        try {
-            if (taskAddSignService.isAddSignTask(taskId)) {
-                taskAddSignService.completeAddSignTask(taskId, action, comment);
-            } else {
-                if (!taskAddSignService.handleSourceCompletion(
-                        taskId, userId, action, comment, actionLabel, null)) {
-                    taskActionService.completeTask(taskId, userId, action, comment, transferTo, actionLabel);
-                }
+        if (taskAddSignService.isAddSignTask(taskId)) {
+            taskAddSignService.completeAddSignTask(taskId, action, comment);
+        } else {
+            if (!taskAddSignService.handleSourceCompletion(
+                    taskId, userId, action, comment, actionLabel, null)) {
+                taskActionService.completeTask(taskId, userId, action, comment, transferTo, actionLabel);
             }
-            return Result.success(null);
-        } catch (Exception e) {
-            return Result.error(500, e.getMessage());
         }
+        return Result.success(null);
     }
 
     /**
@@ -79,12 +80,8 @@ public class TaskActionController {
 
         String reason = requestBody != null ? requestBody.get("reason") : null;
 
-        try {
-            taskActionService.withdrawProcess(processInstanceId, userId, reason);
-            return Result.success(null);
-        } catch (Exception e) {
-            return Result.error(500, e.getMessage());
-        }
+        taskActionService.withdrawProcess(processInstanceId, userId, reason);
+        return Result.success(null);
     }
 
     /**
@@ -96,12 +93,9 @@ public class TaskActionController {
     @GetMapping("/history/{processInstanceId}")
     public Result<List<Map<String, Object>>> getProcessHistory(
             @PathVariable String processInstanceId) {
-        try {
-            List<?> historyList = taskActionService.getProcessHistory(processInstanceId);
-            return Result.success((List<Map<String, Object>>) (Object) historyList);
-        } catch (Exception e) {
-            return Result.error(500, e.getMessage());
-        }
+        processInstanceAccessService.requireReadAccess(processInstanceId);
+        List<?> historyList = taskActionService.getProcessHistory(processInstanceId);
+        return Result.success((List<Map<String, Object>>) (Object) historyList);
     }
 
     /**
@@ -116,11 +110,7 @@ public class TaskActionController {
             throw new ForbiddenException("用户未登录");
         }
 
-        try {
-            Map<String, Object> statistics = taskActionService.getTaskStatistics(userId);
-            return Result.success(statistics);
-        } catch (Exception e) {
-            return Result.error(500, e.getMessage());
-        }
+        Map<String, Object> statistics = taskActionService.getTaskStatistics(userId);
+        return Result.success(statistics);
     }
 }

@@ -45,10 +45,10 @@ async function api(method, url, body) {
   try {
     json = text ? JSON.parse(text) : null
   } catch {
-    throw new Error(`${method} ${url} returned non-json: ${text.slice(0, 300)}`)
+    throw new Error(`${method} ${url} returned non-json: HTTP ${response.status}`)
   }
   if (!response.ok || (json?.code != null && ![0, 200].includes(Number(json.code)))) {
-    throw new Error(`${method} ${url} failed: HTTP ${response.status}, body=${text.slice(0, 1400)}`)
+    throw new Error(`${method} ${url} failed: HTTP ${response.status}`)
   }
   return json?.data ?? json
 }
@@ -177,13 +177,15 @@ async function currentTodo(processInstanceId) {
   return toList(page).find(task => task.processInstanceId === processInstanceId)
 }
 
-function writeEvidence(result, error) {
-  evidence.result = result
-  if (error) evidence.error = error.stack || error.message || String(error)
+function writeEvidence(result) {
   const fileName = `dynamic-extension-demo-${suffix}${result === 'PASS' ? '' : '-failed'}.json`
   const evidencePath = path.join(evidenceDir, fileName)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
-  writeFileSync(path.join(evidenceDir, 'latest.json'), JSON.stringify(evidence, null, 2))
+  const report = {
+    result,
+    conclusion: result === 'PASS' ? 'PASS: 动态扩展真实验收通过' : 'FAIL: 动态扩展真实验收失败'
+  }
+  writeFileSync(evidencePath, JSON.stringify(report, null, 2), { mode: 0o600 })
+  writeFileSync(path.join(evidenceDir, 'latest.json'), JSON.stringify(report, null, 2), { mode: 0o600 })
   return evidencePath
 }
 
@@ -470,8 +472,8 @@ async function main() {
 }
 
 main().catch(error => {
-  const evidencePath = writeEvidence('FAIL', error)
+  const evidencePath = writeEvidence('FAIL')
   console.error(`dynamic extension demo failed: ${evidencePath}`)
-  console.error(error)
+  console.error('dynamic extension demo failed; see the sanitized evidence file')
   process.exitCode = 1
 })

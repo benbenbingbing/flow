@@ -18,6 +18,8 @@ public class IntegrationRequest {
     String idempotencyKey;
     /** 操作类型标识 */
     String operation;
+    /** 管理端创建的连接器配置 ID */
+    String connectorConfigId;
     /** 调用参数 */
     Map<String, Object> parameters;
     /** 运行时上下文（来源、配置、用户、租户等） */

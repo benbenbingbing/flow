@@ -122,7 +122,8 @@ class EntityListScopeServiceTest {
         entity.setEntityCode("expense");
         entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
         when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(entity));
-        when(accessPolicy.requireDynamicByCode("expense")).thenReturn(entity);
+        when(accessPolicy.requireDynamicByCodeForUpdate("expense"))
+                .thenReturn(entity);
         EntityListScopePolicy policy = new EntityListScopePolicy();
         policy.setReviewRequired(1);
         when(policyMapper.findByEntityCode("expense")).thenReturn(List.of(policy));

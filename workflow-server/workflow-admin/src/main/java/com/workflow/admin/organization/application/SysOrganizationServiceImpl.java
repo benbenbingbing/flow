@@ -1,5 +1,6 @@
 package com.workflow.admin.organization.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.audit.AuditAction;
@@ -124,14 +125,14 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             orgMapper.insert(org);
             calcLevelAndPath(org);
             orgMapper.updateById(org);
-            log.info("新增组织部门：{} ({})", org.getOrgName(), org.getOrgCode());
+            log.info("新增组织部门：{} ({})", LogValue.safe(org.getOrgName()), LogValue.safe(org.getOrgCode()));
         } else {
             SysOrganization oldOrg = orgMapper.selectById(org.getId());
             if (oldOrg != null && !oldOrg.getPath().equals(org.getPath())) {
                 updateChildrenPath(oldOrg.getPath(), org.getPath());
             }
             orgMapper.updateById(org);
-            log.info("更新组织部门：{} ({})", org.getOrgName(), org.getOrgCode());
+            log.info("更新组织部门：{} ({})", LogValue.safe(org.getOrgName()), LogValue.safe(org.getOrgCode()));
         }
         
         return org;
@@ -318,7 +319,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             return;
         }
         orgMapper.updateChildrenPath(oldPath, newPath);
-        log.info("更新子节点path：{} -> {}", oldPath, newPath);
+        log.info("更新子节点path：{} -> {}", LogValue.safe(oldPath), LogValue.safe(newPath));
     }
     
     /**

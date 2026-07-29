@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application.mapping;
 
+import com.workflow.core.logging.LogValue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -265,7 +266,8 @@ public class EntityRuntimeRecordMapper {
             try {
                 return objectMapper.writeValueAsString(value);
             } catch (Exception e) {
-                log.warn("字段 {} 序列化 JSON 失败: {}", key, e.getMessage());
+                log.warn("字段 {} 序列化 JSON 失败: failureType={}",
+                        LogValue.safe(key), LogValue.failureType(e));
             }
         }
         return value;

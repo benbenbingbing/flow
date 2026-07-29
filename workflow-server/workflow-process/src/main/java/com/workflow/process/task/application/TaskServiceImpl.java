@@ -1,6 +1,9 @@
 package com.workflow.process.task.application;
 
+import com.workflow.core.logging.LogValue;
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
+import com.workflow.core.result.PageRequest;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
@@ -47,9 +50,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
-    // 当前用户（模拟，实际应从安全上下文获取）
-    private static final String CURRENT_USER = "admin";
-
     /**
      * 自动完成标记为跳过的任务
      * 检查所有活跃任务，如果节点配置了 skipNode=true，则自动完成
@@ -58,7 +58,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         try {
             // 查询当前用户的所有待办任务
             List<Task> tasks = flowableTaskService.createTaskQuery()
-                    .taskCandidateOrAssigned(CURRENT_USER)
+                    .taskCandidateOrAssigned(UserContext.requireUsernameOrId())
                     .active()
                     .list();
             
@@ -93,7 +93,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         
         // 待办任务数
         long todoCount = flowableTaskService.createTaskQuery()
-                .taskCandidateOrAssigned(CURRENT_USER)
+                .taskCandidateOrAssigned(UserContext.requireUsernameOrId())
                 .active()
                 .count();
         statistics.setTodoCount(todoCount);
@@ -101,7 +101,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         // 已办任务数（本月）
         LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0);
         long doneCount = historyService.createHistoricTaskInstanceQuery()
-                .taskAssignee(CURRENT_USER)
+                .taskAssignee(UserContext.requireUsernameOrId())
                 .finished()
                 .taskCompletedAfter(Date.from(monthStart.atZone(ZoneId.systemDefault()).toInstant()))
                 .count();
@@ -109,14 +109,14 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         
         // 我发起的流程数
         long processCount = runtimeService.createProcessInstanceQuery()
-                .startedBy(CURRENT_USER)
+                .startedBy(UserContext.requireUsernameOrId())
                 .active()
                 .count();
         statistics.setProcessCount(processCount);
         
         // 平均处理时长（小时）
         List<HistoricTaskInstance> completedTasks = historyService.createHistoricTaskInstanceQuery()
-                .taskAssignee(CURRENT_USER)
+                .taskAssignee(UserContext.requireUsernameOrId())
                 .finished()
                 .list();
         
@@ -135,15 +135,14 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
 
     @Override
     public PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
         // 先处理所有标记为跳过的任务
         autoCompleteSkipTasks();
-        
         // 查询所有活跃任务（不限于当前用户，用于演示）
         TaskQuery query = flowableTaskService.createTaskQuery()
                 .active()
                 .orderByTaskCreateTime()
                 .desc();
-        
         // 时间范围过滤
         if (StringUtils.hasText(timeRange)) {
             Date startDate = getStartDateByRange(timeRange);
@@ -153,7 +152,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         long total = query.count();
-        List<Task> tasks = query.listPage((pageNum - 1) * pageSize, pageSize);
+        List<Task> tasks = page.offset() <= Integer.MAX_VALUE ? query.listPage((int) page.offset(), page.pageSize()) : List.of();
         
         List<TaskVO> records = tasks.stream()
                 .map(this::convertToTodoVO)
@@ -173,13 +172,14 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 })
                 .collect(Collectors.toList());
         
-        return new PageResult<>(records, total, pageNum, pageSize);
+        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
     }
 
     @Override
     public PageResult<TaskVO> getDoneList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
         HistoricTaskInstanceQuery query = historyService.createHistoricTaskInstanceQuery()
-                .taskAssignee(CURRENT_USER)
+                .taskAssignee(UserContext.requireUsernameOrId())
                 .finished()
                 .orderByHistoricTaskInstanceEndTime()
                 .desc();
@@ -193,7 +193,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         long total = query.count();
-        List<HistoricTaskInstance> tasks = query.listPage((pageNum - 1) * pageSize, pageSize);
+        List<HistoricTaskInstance> tasks = page.offset() <= Integer.MAX_VALUE ? query.listPage((int) page.offset(), page.pageSize()) : List.of();
         
         List<TaskVO> records = tasks.stream()
                 .map(this::convertToDoneVO)
@@ -211,7 +211,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 })
                 .collect(Collectors.toList());
         
-        return new PageResult<>(records, total, pageNum, pageSize);
+        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
     }
 
     @Override
@@ -264,7 +264,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 // 同步创建下一节点的待办（如果不是多实例或已是最后一人）
                 processTaskService.syncTasksFromFlowable(processInstanceId);
                 
-                log.info("任务审批通过: taskId={}, user={}", taskId, CURRENT_USER);
+                log.info("任务审批通过: taskId={}, user={}", taskId, UserContext.requireUsernameOrId());
                 break;
                 
             case "reject":
@@ -291,7 +291,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 // 驳回时结束该节点的其他待办
                 completeOtherTasksInSameNode(processInstanceId, taskDefinitionKey, taskId, action, comment);
                 
-                log.info("任务审批驳回: taskId={}, user={}", taskId, CURRENT_USER);
+                log.info("任务审批驳回: taskId={}, user={}", taskId, UserContext.requireUsernameOrId());
                 break;
                 
             case "transfer":
@@ -312,7 +312,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 // 更新本地待办的执行人为转办人，保持待办状态
                 processTaskService.transferTask(taskId, transferTo, comment);
                 
-                log.info("任务转办: taskId={}, from={}, to={}", taskId, CURRENT_USER, transferTo);
+                log.info("任务转办: taskId={}, from={}, to={}", taskId, UserContext.requireUsernameOrId(), transferTo);
                 break;
                 
             default:
@@ -324,14 +324,14 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                     flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
                 }
                 runtimeService.setVariable(processInstanceId, "comment", comment);
-                runtimeService.setVariable(processInstanceId, "approver", CURRENT_USER);
+                runtimeService.setVariable(processInstanceId, "approver", UserContext.requireUsernameOrId());
 
                 flowableTaskService.complete(taskId);
 
                 processTaskService.completeTask(taskId, action, comment, actionLabel);
                 processTaskService.syncTasksFromFlowable(processInstanceId);
 
-                log.info("任务审批完成（自定义操作）: taskId={}, action={}, user={}", taskId, action, CURRENT_USER);
+                log.info("任务审批完成（自定义操作）: taskId={}, action={}, user={}", taskId, action, UserContext.requireUsernameOrId());
                 break;
         }
     }
@@ -553,7 +553,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 }
             }
         } catch (Exception e) {
-            log.warn("获取表单配置失败: taskId={}", taskId, e);
+            log.warn("获取表单配置失败: taskId={}, failureType={}", LogValue.safe(taskId), LogValue.failureType(e));
         }
         
         return vo;
@@ -729,7 +729,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         // 2. 检查是否是发起人（当前用户）
-        if (!CURRENT_USER.equals(processInstance.getStartUserId())) {
+        if (!UserContext.requireUsernameOrId().equals(processInstance.getStartUserId())) {
             throw new RuntimeException("只有发起人才能撤回流程");
         }
         
@@ -756,7 +756,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         processTaskService.deleteTasksByProcessInstance(processInstanceId);
         
         log.info("流程撤回成功: processInstanceId={}, user={}, reason={}", 
-                processInstanceId, CURRENT_USER, reason);
+                processInstanceId, UserContext.requireUsernameOrId(), reason);
     }
 
     @Override
@@ -861,6 +861,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         // 6. 同步创建下一节点的待办
         processTaskService.syncTasksFromFlowable(processInstanceId);
         
-        log.info("任务重新提交成功: taskId={}, user={}", taskId, CURRENT_USER);
+        log.info("任务重新提交成功: taskId={}, user={}", taskId, UserContext.requireUsernameOrId());
     }
 }

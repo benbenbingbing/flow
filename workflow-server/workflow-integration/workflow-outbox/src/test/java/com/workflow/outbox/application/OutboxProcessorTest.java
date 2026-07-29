@@ -5,14 +5,17 @@ import com.workflow.outbox.api.OutboxEventHandler;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.TaskScheduler;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.ScheduledFuture;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,17 +29,18 @@ class OutboxProcessorTest {
         OutboxEventHandler handler =
                 handler("TEST");
         OutboxRecord record = processingRecord();
-        when(mapper.selectById(record.getId()))
+        when(mapper.selectClaimed(record.getId(), "worker-1"))
                 .thenReturn(record);
+        when(mapper.markProcessed(record.getId(), "worker-1", 7L))
+                .thenReturn(1);
+        TaskScheduler scheduler = scheduler();
         OutboxProcessor processor =
-                new OutboxProcessor(mapper, List.of(handler));
+                new OutboxProcessor(mapper, List.of(handler), scheduler);
 
-        processor.process(record.getId());
+        processor.process(record.getId(), "worker-1", 7L, 120);
 
         verify(handler).handle(any(OutboxEvent.class));
-        assertEquals("PROCESSED", record.getStatus());
-        assertNotNull(record.getProcessedTime());
-        verify(mapper).updateById(record);
+        verify(mapper).markProcessed(record.getId(), "worker-1", 7L);
     }
 
     @Test
@@ -45,21 +49,70 @@ class OutboxProcessorTest {
                 mock(OutboxRecordMapper.class);
         OutboxEventHandler handler =
                 handler("TEST");
+        when(handler.retryable()).thenReturn(true);
         doThrow(new IllegalStateException("temporary"))
                 .when(handler)
                 .handle(any(OutboxEvent.class));
         OutboxRecord record = processingRecord();
-        when(mapper.selectById(record.getId()))
+        when(mapper.selectClaimed(record.getId(), "worker-1"))
                 .thenReturn(record);
+        when(mapper.markFailed(
+                eq(record.getId()),
+                eq("worker-1"),
+                eq(7L),
+                eq("FAILED"),
+                eq(1),
+                eq(30L),
+                eq("temporary")))
+                .thenReturn(1);
         OutboxProcessor processor =
-                new OutboxProcessor(mapper, List.of(handler));
+                new OutboxProcessor(mapper, List.of(handler), scheduler());
 
-        processor.process(record.getId());
+        processor.process(record.getId(), "worker-1", 7L, 120);
 
-        assertEquals("FAILED", record.getStatus());
-        assertEquals(1, record.getRetryCount());
-        assertNotNull(record.getNextRetryTime());
-        verify(mapper).updateById(record);
+        verify(mapper).markFailed(
+                eq(record.getId()),
+                eq("worker-1"),
+                eq(7L),
+                eq("FAILED"),
+                eq(1),
+                eq(30L),
+                eq("temporary"));
+    }
+
+    @Test
+    void sendsNonIdempotentFailureDirectlyToDeadLetter() throws Exception {
+        OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
+        OutboxEventHandler handler = handler("NOTIFICATION");
+        doThrow(new IllegalStateException("unknown delivery"))
+                .when(handler)
+                .handle(any(OutboxEvent.class));
+        OutboxRecord record = processingRecord();
+        record.setTopic("NOTIFICATION");
+        when(mapper.selectClaimed(record.getId(), "worker-1"))
+                .thenReturn(record);
+        when(mapper.markFailed(
+                eq(record.getId()),
+                eq("worker-1"),
+                eq(7L),
+                eq("DEAD"),
+                eq(1),
+                eq(0L),
+                eq("unknown delivery")))
+                .thenReturn(1);
+        OutboxProcessor processor =
+                new OutboxProcessor(mapper, List.of(handler), scheduler());
+
+        processor.process(record.getId(), "worker-1", 7L, 120);
+
+        verify(mapper).markFailed(
+                record.getId(),
+                "worker-1",
+                7L,
+                "DEAD",
+                1,
+                0L,
+                "unknown delivery");
     }
 
     private OutboxEventHandler handler(String topic) {
@@ -76,10 +129,21 @@ class OutboxProcessorTest {
         record.setEventKey("event-1");
         record.setPayloadDocument("{}");
         record.setStatus("PROCESSING");
+        record.setOwnerId("worker-1");
+        record.setLeaseToken(7L);
         record.setRetryCount(0);
         record.setMaxRetries(3);
         record.setCreateTime(LocalDateTime.now());
         record.setUpdateTime(LocalDateTime.now());
         return record;
+    }
+
+    @SuppressWarnings("unchecked")
+    private TaskScheduler scheduler() {
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        ScheduledFuture<Object> heartbeat = mock(ScheduledFuture.class);
+        doReturn(heartbeat).when(scheduler).scheduleAtFixedRate(
+                any(Runnable.class), any(Duration.class));
+        return scheduler;
     }
 }

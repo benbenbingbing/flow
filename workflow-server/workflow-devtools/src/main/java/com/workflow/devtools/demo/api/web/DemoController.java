@@ -1,5 +1,6 @@
 package com.workflow.devtools.demo.api.web;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +28,8 @@ public class DemoController {
     public ApiResponse<Map<String, Object>> hello(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String userId) {
-        log.info("[DemoController] /api/demo/hello 被调用，name={}, userId={}", name, userId);
+        log.info("[DemoController] /api/demo/hello 被调用，name={}, userId={}",
+                LogValue.safe(name), LogValue.safe(userId));
 
         Map<String, Object> result = new HashMap<>();
         result.put("status", "ok");
@@ -47,7 +49,7 @@ public class DemoController {
      */
     @PostMapping("/process")
     public ApiResponse<Map<String, Object>> process(@RequestBody Map<String, Object> body) {
-        log.info("[DemoController] /api/demo/process 被调用，body={}", body);
+        log.info("[DemoController] /api/demo/process 被调用，body={}", LogValue.safe(body));
 
         Map<String, Object> result = new HashMap<>();
         result.put("status", "ok");

@@ -61,6 +61,14 @@ class ConfigMigrationPackageCodecTest {
         assertThrows(IllegalArgumentException.class, () -> target.decode(data));
     }
 
+    @Test
+    void publicOrWeakSigningKeyIsRejectedAtStartup() {
+        ConfigMigrationPackageCodec codec = codec(
+                "workflow-config-migration-development-key");
+
+        assertThrows(IllegalStateException.class, codec::validateSigningKey);
+    }
+
     /** 构造指定签名密钥的编解码器，通过反射注入密钥与环境名 */
     private ConfigMigrationPackageCodec codec(String signingKey) {
         ConfigMigrationPackageCodec codec = new ConfigMigrationPackageCodec(

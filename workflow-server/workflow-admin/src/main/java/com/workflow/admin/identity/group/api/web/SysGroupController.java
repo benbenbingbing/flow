@@ -1,5 +1,7 @@
 package com.workflow.admin.identity.group.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -17,6 +19,7 @@ import java.util.List;
  * 提供用户组的增删改查、状态切换、组用户保存及用户列表查询接口。
  * </p>
  */
+@RequiresPermission("system:user:view")
 @RestController
 @RequestMapping("/api/system/group")
 @RequiredArgsConstructor
@@ -65,6 +68,7 @@ public class SysGroupController {
      * @return 保存后的用户组对象
      */
     @PostMapping
+    @RequiresPermission("system:user:manage")
     public Result<SysGroup> save(@Validated @RequestBody SysGroup group) {
         return Result.success(groupService.saveGroup(group));
     }
@@ -77,6 +81,7 @@ public class SysGroupController {
      * @return 更新后的用户组对象
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("system:user:manage")
     public Result<SysGroup> update(@PathVariable String id, @RequestBody SysGroup group) {
         group.setId(id);
         return Result.success(groupService.saveGroup(group));
@@ -89,6 +94,7 @@ public class SysGroupController {
      * @return 操作结果
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("system:user:manage")
     public Result<Void> delete(@PathVariable String id) {
         groupService.deleteGroup(id);
         return Result.success();
@@ -103,6 +109,7 @@ public class SysGroupController {
      * @return 操作结果
      */
     @PostMapping("/{id}/status")
+    @RequiresPermission("system:user:manage")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -122,6 +129,7 @@ public class SysGroupController {
      * @return 操作结果
      */
     @PostMapping("/{id}/users")
+    @RequiresPermission("system:user:manage")
     public Result<Void> saveGroupUsers(@PathVariable String id, @RequestBody List<String> userIds) {
         groupService.saveGroupUsers(id, userIds);
         return Result.success();

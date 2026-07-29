@@ -1,5 +1,7 @@
 package com.workflow.entity.data.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import com.workflow.entity.data.application.EntityFieldFileItemService;
@@ -11,6 +13,7 @@ import java.util.List;
 /**
  * 实体字段附件项配置控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-field-file-item")
 @RequiredArgsConstructor

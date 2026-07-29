@@ -17,9 +17,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,6 +44,23 @@ class SysUserServiceTest {
 
     @InjectMocks
     private SysUserService userService;
+
+    @Test
+    void createUserHashesSuppliedPasswordAndResponseCannotSerializeIt() throws Exception {
+        SysUser user = new SysUser();
+        user.setUsername("alice");
+        user.setPassword("InitialPass9");
+
+        SysUser saved = userService.saveUser(user);
+
+        verify(userMapper).insert(argThat((SysUser inserted) ->
+                Boolean.TRUE.equals(inserted.getPasswordResetRequired())
+                        && userService.passwordMatches("InitialPass9", inserted.getPassword())));
+        assertFalse(new ObjectMapper()
+                .findAndRegisterModules()
+                .valueToTree(saved)
+                .has("password"));
+    }
 
     @Test
     void getUsersByRolePageNormalizesPagingAndEnrichesUsers() {
@@ -81,33 +99,28 @@ class SysUserServiceTest {
     }
 
     @Test
-    void resetPasswordGeneratesOneTimePasswordAndRequiresChange() {
+    void resetPasswordStoresSuppliedPasswordWithoutReturningIt() {
+        SysUser existing = new SysUser();
+        existing.setId("user-1");
+        when(userMapper.selectById("user-1")).thenReturn(existing);
+        when(userMapper.incrementTokenVersion("user-1")).thenReturn(1);
+
+        userService.resetPassword("user-1", "TemporaryPass9");
+
+        verify(userMapper).updateById(argThat((SysUser user) ->
+                Boolean.TRUE.equals(user.getPasswordResetRequired())
+                        && userService.passwordMatches("TemporaryPass9", user.getPassword())));
+    }
+
+    @Test
+    void resetPasswordRejectsWeakValues() {
         SysUser existing = new SysUser();
         existing.setId("user-1");
         when(userMapper.selectById("user-1")).thenReturn(existing);
 
-        String temporaryPassword = userService.resetPassword("user-1");
-
-        assertTrue(temporaryPassword.length() >= 10);
-        verify(userMapper).updateById(argThat((SysUser user) ->
-                Boolean.TRUE.equals(user.getPasswordResetRequired())
-                        && userService.passwordMatches(temporaryPassword, user.getPassword())));
-    }
-
-    @Test
-    void generatedTemporaryPasswordsAreNotFixedDefaults() {
-        SysUser first = new SysUser();
-        first.setId("user-1");
-        SysUser second = new SysUser();
-        second.setId("user-2");
-        when(userMapper.selectById("user-1")).thenReturn(first);
-        when(userMapper.selectById("user-2")).thenReturn(second);
-
-        String firstPassword = userService.resetPassword("user-1");
-        String secondPassword = userService.resetPassword("user-2");
-
-        assertNotEquals("123456", firstPassword);
-        assertNotEquals(firstPassword, secondPassword);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.resetPassword("user-1", "123456"));
     }
 
     @Test
@@ -118,6 +131,7 @@ class SysUserServiceTest {
         existing.setPassword(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
                 .encode(currentPassword));
         when(userMapper.selectById("user-1")).thenReturn(existing);
+        when(userMapper.incrementTokenVersion("user-1")).thenReturn(1);
 
         userService.changePassword("user-1", currentPassword, "NextPassword2");
 

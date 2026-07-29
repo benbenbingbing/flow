@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.list.application.EntityDataListConfigService;
 
 import com.workflow.core.error.ForbiddenException;
@@ -143,7 +144,8 @@ public class EntityDataExportService {
             }
             writer.flush();
         } catch (Exception e) {
-            log.error("导出实体数据失败：entityCode={}", entityCode, e);
+            log.error("导出实体数据失败：entityCode={}, failureType={}",
+                    LogValue.safe(entityCode), LogValue.failureType(e));
             throw new RuntimeException("导出失败：" + e.getMessage());
         }
     }

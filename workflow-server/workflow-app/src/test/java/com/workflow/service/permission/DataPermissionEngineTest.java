@@ -113,7 +113,8 @@ class DataPermissionEngineTest {
                 .thenReturn(new com.workflow.entity.data.application.EntityRecordTeamService.TeamPermission(
                         true,
                         com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ABSOLUTE,
-                        "EXISTS (SELECT 1 FROM expense_team)"));
+                        "EXISTS (SELECT 1 FROM expense_team)",
+                        java.util.Map.of()));
 
         var result = engine.calculatePermission("expense", "default", user());
 

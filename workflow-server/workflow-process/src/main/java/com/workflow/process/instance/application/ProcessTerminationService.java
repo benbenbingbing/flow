@@ -1,5 +1,6 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.Result;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -94,8 +95,8 @@ public class ProcessTerminationService {
         } catch (Exception exception) {
             log.warn(
                     "终止前获取流程变量失败: processInstanceId={}",
-                    processInstanceId,
-                    exception);
+                    LogValue.safe(processInstanceId),
+                    LogValue.failureType(exception));
         }
 
         try {
@@ -108,9 +109,9 @@ public class ProcessTerminationService {
             processTaskService.deleteTasksByProcessInstance(
                     processInstanceId);
             writeTerminateLog(
-                    processInstanceId,
-                    userId,
-                    deleteReason);
+                    LogValue.safe(processInstanceId),
+                    LogValue.safe(userId),
+                    LogValue.safe(deleteReason));
             updateEntityStatus(entityCode, entityDataId);
             if (entityCode != null && entityDataId != null) {
                 entityRecordPort.recordActivity(
@@ -123,16 +124,16 @@ public class ProcessTerminationService {
             }
             log.info(
                     "流程终止成功: processInstanceId={}, userId={}, reason={}",
-                    processInstanceId,
-                    userId,
-                    deleteReason);
+                    LogValue.safe(processInstanceId),
+                    LogValue.safe(userId),
+                    LogValue.safe(deleteReason));
             return Result.success(null);
         } catch (Exception exception) {
             log.error(
                     "流程终止失败: processInstanceId={}, userId={}",
-                    processInstanceId,
-                    userId,
-                    exception);
+                    LogValue.safe(processInstanceId),
+                    LogValue.safe(userId),
+                    LogValue.failureType(exception));
             return Result.error(
                     500,
                     "流程终止失败: " + exception.getMessage());

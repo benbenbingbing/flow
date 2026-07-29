@@ -16,6 +16,7 @@ import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionE
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FlowActionExecutionService {
 
     private final FlowActionExecutionMapper executionMapper;
@@ -155,7 +157,7 @@ public class FlowActionExecutionService {
                         "handlerName", valueOrEmpty(execution.getHandlerName()),
                         "triggerTiming", valueOrEmpty(execution.getTriggerTiming())));
         execution.setUpdatedAt(LocalDateTime.now());
-        executionMapper.updateById(execution);
+        persistRunningProgress(execution);
     }
 
     /**
@@ -180,7 +182,7 @@ public class FlowActionExecutionService {
             }
         }
         execution.setUpdatedAt(LocalDateTime.now());
-        executionMapper.updateById(execution);
+        persistRunningProgress(execution);
     }
 
     /**
@@ -205,7 +207,14 @@ public class FlowActionExecutionService {
                 "SUCCESS",
                 "流程动作执行成功",
                 Map.of("durationMs", execution.getDurationMs()));
-        executionMapper.updateById(execution);
+        if (hasLease(execution)) {
+            if (executionMapper.markLeasedSuccess(execution) == 0) {
+                log.warn("流程动作完成结果被 fencing 拒绝: id={}, owner={}, token={}",
+                        execution.getId(), execution.getOwnerId(), execution.getLeaseToken());
+            }
+        } else {
+            executionMapper.updateById(execution);
+        }
     }
 
     /**
@@ -229,7 +238,7 @@ public class FlowActionExecutionService {
                 Map.of(
                         "errorType", error == null ? "Unknown" : error.getClass().getName(),
                         "errorMessage", execution.getErrorMessage()));
-        executionMapper.updateById(execution);
+        persistFailure(execution, 0);
     }
 
     /**
@@ -273,7 +282,11 @@ public class FlowActionExecutionService {
                             "nextRetryTime", execution.getNextRetryTime().toString(),
                             "errorMessage", execution.getErrorMessage()));
         }
-        executionMapper.updateById(execution);
+        persistFailure(
+                execution,
+                FlowActionExecution.Status.DEAD.name().equals(execution.getStatus())
+                        ? 0
+                        : retryDelaySeconds(retryCount));
     }
 
     /**
@@ -293,27 +306,52 @@ public class FlowActionExecutionService {
      * @return 就绪执行记录列表
      */
     public List<FlowActionExecution> findReady(int limit) {
-        return executionMapper.findReady(LocalDateTime.now(), limit);
+        return executionMapper.findReady(limit);
     }
 
     /**
-     * 恢复中断的运行中记录：将超过 10 分钟仍处于 RUNNING 的记录改回 FAILED 以便重新抢占。
+     * 恢复数据库时间已到期的 RUNNING 租约。
      *
      * @return 恢复的记录条数
      */
-    public int recoverStale() {
-        LocalDateTime now = LocalDateTime.now();
-        return executionMapper.recoverStale(now, now.minusMinutes(10));
+    public int recoverExpiredLeases() {
+        return executionMapper.recoverExpiredLeases();
     }
 
     /**
-     * 抢占执行记录：仅当原状态为 PENDING/FAILED 时可成功。
+     * 抢占执行记录并返回带 fencing token 的租约快照。
      *
      * @param id 执行记录 ID
-     * @return 抢占成功返回 true，已被其他线程抢占返回 false
+     * @return 抢占成功返回租约快照，已被其他线程抢占返回 null
      */
-    public boolean claim(String id) {
-        return executionMapper.claim(id, LocalDateTime.now()) == 1;
+    public FlowActionExecution claim(
+            String id,
+            String ownerId,
+            int leaseSeconds) {
+        if (executionMapper.claim(id, ownerId, leaseSeconds) == 0) {
+            return null;
+        }
+        return executionMapper.selectClaimed(id, ownerId);
+    }
+
+    public FlowActionExecution getClaimed(String id, String ownerId) {
+        return executionMapper.selectClaimed(id, ownerId);
+    }
+
+    public boolean heartbeat(
+            String id,
+            String ownerId,
+            long leaseToken,
+            int leaseSeconds) {
+        return executionMapper.heartbeat(
+                id, ownerId, leaseToken, leaseSeconds) == 1;
+    }
+
+    public void releaseClaim(
+            String id,
+            String ownerId,
+            long leaseToken) {
+        executionMapper.releaseClaim(id, ownerId, leaseToken);
     }
 
     /**
@@ -359,6 +397,8 @@ public class FlowActionExecutionService {
         execution.setDurationMs(null);
         execution.setErrorMessage(null);
         execution.setErrorStack(null);
+        execution.setOwnerId(null);
+        execution.setLeaseUntil(null);
         appendTrace(execution, "MANUAL_RETRY", "超级管理员发起手工重试", null);
         execution.setUpdatedAt(LocalDateTime.now());
         executionMapper.updateById(execution);
@@ -542,6 +582,36 @@ public class FlowActionExecutionService {
     private long retryDelaySeconds(int retryCount) {
         long delay = 60L * (long) Math.pow(3, Math.max(0, retryCount - 1));
         return Math.min(delay, 21600L);
+    }
+
+    private void persistRunningProgress(FlowActionExecution execution) {
+        if (!hasLease(execution)) {
+            executionMapper.updateById(execution);
+            return;
+        }
+        if (executionMapper.updateRunningProgress(execution) == 0) {
+            throw new IllegalStateException(
+                    "流程动作执行租约已失效: " + execution.getId());
+        }
+    }
+
+    private void persistFailure(
+            FlowActionExecution execution,
+            long retryDelaySeconds) {
+        if (!hasLease(execution)) {
+            executionMapper.updateById(execution);
+            return;
+        }
+        if (executionMapper.markLeasedFailure(
+                execution, retryDelaySeconds) == 0) {
+            log.warn("流程动作失败结果被 fencing 拒绝: id={}, owner={}, token={}",
+                    execution.getId(), execution.getOwnerId(), execution.getLeaseToken());
+        }
+    }
+
+    private boolean hasLease(FlowActionExecution execution) {
+        return StringUtils.hasText(execution.getOwnerId())
+                && execution.getLeaseToken() != null;
     }
 
     /** 提取异常消息，截断到 4000 字符 */

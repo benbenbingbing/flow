@@ -49,6 +49,7 @@ public class ProcessInstanceService {
     private final SysUserService sysUserService;
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final ProcessProgressRuntimeService processProgressRuntimeService;
+    private final ProcessInstanceAccessService processInstanceAccessService;
     private final ProcessDetailRuntimeService processDetailRuntimeService;
     private final ProcessTerminationService processTerminationService;
     
@@ -68,6 +69,7 @@ public class ProcessInstanceService {
      * @return 流程进度信息
      */
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
+        processInstanceAccessService.requireReadAccess(processInstanceId);
         return processProgressRuntimeService.getProcessProgress(processInstanceId);
     }
     
@@ -78,6 +80,7 @@ public class ProcessInstanceService {
      * @return BPMN XML
      */
     public String getBpmnXmlByProcessInstanceId(String processInstanceId) {
+        processInstanceAccessService.requireReadAccess(processInstanceId);
         return getBpmnXmlByInstanceId(processInstanceId);
     }
 
@@ -92,6 +95,7 @@ public class ProcessInstanceService {
     public String triggerReceiveTask(
             String processInstanceId,
             ReceiveTaskTriggerRequest request) {
+        processInstanceAccessService.requireSignalAccess(processInstanceId);
         if (request == null) {
             throw new IllegalArgumentException("接收任务触发参数不能为空");
         }
@@ -221,6 +225,7 @@ public class ProcessInstanceService {
      * @return 流程详情
      */
     public ProcessDetailVO getProcessDetail(String instanceId) {
+        processInstanceAccessService.requireReadAccess(instanceId);
         return processDetailRuntimeService.getProcessDetail(instanceId);
     }
     

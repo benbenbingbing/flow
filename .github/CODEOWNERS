@@ -1,0 +1,7 @@
+# Security-sensitive paths require review from the repository maintainer.
+/.github/ @iscarson
+/deploy/ @iscarson
+/docker-compose.yml @iscarson
+/start.sh @iscarson
+/workflow-server/Dockerfile @iscarson
+/workflow-web/Dockerfile @iscarson

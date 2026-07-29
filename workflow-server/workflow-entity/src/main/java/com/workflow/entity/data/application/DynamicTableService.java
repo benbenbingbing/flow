@@ -3,9 +3,9 @@ package com.workflow.entity.data.application;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.jdbc.SQL;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,13 +22,30 @@ import java.util.Set;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DynamicTableService {
 
+    private static final int MYSQL_IDENTIFIER_LIMIT = SqlIdentifierPolicy.MAX_LENGTH;
+    private static final int MAX_VARCHAR_LENGTH = 4096;
+    private static final int MAX_DECIMAL_PRECISION = 65;
+    private static final int MAX_DECIMAL_SCALE = 30;
+    private static final int MAX_DEFAULT_LENGTH = 4096;
     private final JdbcTemplate jdbcTemplate;
     private final EntityFieldMapper entityFieldMapper;
     private final EntityPhysicalTableResolver tableResolver;
-    
+    private final SchemaDdlExecutor schemaDdlExecutor;
+
+    @Autowired
+    public DynamicTableService(
+            JdbcTemplate jdbcTemplate,
+            EntityFieldMapper entityFieldMapper,
+            EntityPhysicalTableResolver tableResolver,
+            SchemaDdlExecutor schemaDdlExecutor) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.entityFieldMapper = entityFieldMapper;
+        this.tableResolver = tableResolver;
+        this.schemaDdlExecutor = schemaDdlExecutor;
+    }
+
     /**
      * 获取当前数据库中表的列信息
      */
@@ -90,7 +107,7 @@ public class DynamicTableService {
         String createTableSql = buildCreateTableSql(tableName, fields, entityDefinition.getEntityName());
         
         log.info("创建实体数据表: {}", tableName);
-        jdbcTemplate.execute(createTableSql);
+        schemaDdlExecutor.execute(createTableSql);
         ensureMultiValueTable(tableName);
         
         // 创建索引
@@ -117,7 +134,7 @@ public class DynamicTableService {
         if (!tableExists(entityCode)) {
             // 表不存在，创建新表（包含所有非子表单字段）
             String ddl = buildCreateTableSql(tableName, fields, entityDefinition.getEntityName());
-            jdbcTemplate.execute(ddl);
+            schemaDdlExecutor.execute(ddl);
             ensureMultiValueTable(tableName);
             createIndexes(tableName, fields);
             executedDdls.add(ddl);
@@ -145,16 +162,18 @@ public class DynamicTableService {
                 if (!existingColumnNames.contains(dbColumnName)) {
                     // 字段在数据库中不存在，添加字段（新字段或未发布的字段）
                     String columnDef = buildColumnDefinition(field);
-                    String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
-                    jdbcTemplate.execute(sql);
+                    String sql = "ALTER TABLE " + quoteIdentifier(tableName)
+                            + " ADD COLUMN " + columnDef;
+                    schemaDdlExecutor.execute(sql);
                     executedDdls.add(sql);
                     log.info("为表 {} 添加字段: {}", tableName, dbColumnName);
                 } else if (Boolean.TRUE.equals(field.getIsPublished())) {
                     // 已发布的字段，检查是否需要修改列定义（长度、精度、必填等变更）
                     try {
                         String columnDef = buildColumnDefinition(field);
-                        String sql = "ALTER TABLE " + tableName + " MODIFY COLUMN " + columnDef;
-                        jdbcTemplate.execute(sql);
+                        String sql = "ALTER TABLE " + quoteIdentifier(tableName)
+                                + " MODIFY COLUMN " + columnDef;
+                        schemaDdlExecutor.execute(sql);
                         executedDdls.add(sql);
                         log.info("修改表 {} 字段定义: {}", tableName, dbColumnName);
                     } catch (Exception e) {
@@ -173,9 +192,10 @@ public class DynamicTableService {
     @Transactional(rollbackFor = Exception.class)
     public void dropEntityTable(String entityCode) {
         String tableName = getTableName(entityCode);
-        String sql = "DROP TABLE IF EXISTS " + tableName;
-        jdbcTemplate.execute(sql);
-        jdbcTemplate.execute("DROP TABLE IF EXISTS " + deriveMultiValueTableName(tableName));
+        String sql = "DROP TABLE IF EXISTS " + quoteIdentifier(tableName);
+        schemaDdlExecutor.execute(sql);
+        schemaDdlExecutor.execute("DROP TABLE IF EXISTS "
+                + quoteIdentifier(deriveMultiValueTableName(tableName)));
         log.info("实体数据表 {} 已删除", tableName);
     }
 
@@ -190,9 +210,9 @@ public class DynamicTableService {
         }
 
         String columnDef = buildColumnDefinition(field);
-        String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
+        String sql = "ALTER TABLE " + quoteIdentifier(tableName) + " ADD COLUMN " + columnDef;
         
-        jdbcTemplate.execute(sql);
+        schemaDdlExecutor.execute(sql);
         log.info("为表 {} 添加字段: {}", tableName, field.getFieldCode());
     }
 
@@ -207,9 +227,9 @@ public class DynamicTableService {
         }
 
         String columnDef = buildColumnDefinition(field);
-        String sql = "ALTER TABLE " + tableName + " MODIFY COLUMN " + columnDef;
+        String sql = "ALTER TABLE " + quoteIdentifier(tableName) + " MODIFY COLUMN " + columnDef;
         
-        jdbcTemplate.execute(sql);
+        schemaDdlExecutor.execute(sql);
         log.info("修改表 {} 字段: {}", tableName, field.getFieldCode());
     }
 
@@ -223,8 +243,9 @@ public class DynamicTableService {
             return;
         }
 
-        String sql = "ALTER TABLE " + tableName + " DROP COLUMN " + columnName;
-        jdbcTemplate.execute(sql);
+        String sql = "ALTER TABLE " + quoteIdentifier(tableName)
+                + " DROP COLUMN " + quoteIdentifier(columnName);
+        schemaDdlExecutor.execute(sql);
         log.info("删除表 {} 字段: {}", tableName, columnName);
     }
 
@@ -233,7 +254,7 @@ public class DynamicTableService {
      */
     private String buildCreateTableSql(String tableName, List<EntityField> fields, String entityName) {
         StringBuilder sql = new StringBuilder();
-        sql.append("CREATE TABLE ").append(tableName).append(" (\n");
+        sql.append("CREATE TABLE ").append(quoteIdentifier(tableName)).append(" (\n");
         
         // 基础字段
         sql.append("  `id` VARCHAR(64) NOT NULL COMMENT '主键ID',\n");
@@ -284,7 +305,7 @@ public class DynamicTableService {
         sql.append("  PRIMARY KEY (`id`)\n");
         String comment = entityName != null && !entityName.isEmpty() ? entityName : tableName;
         sql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='")
-                .append(comment)
+                .append(escapeSqlLiteral(comment))
                 .append("';");
         
         return sql.toString();
@@ -293,12 +314,15 @@ public class DynamicTableService {
     /**
      * 构建字段定义
      */
-    private String buildColumnDefinition(EntityField field) {
+    static String buildColumnDefinition(EntityField field) {
+        if (field == null || field.getFieldType() == null) {
+            throw new IllegalArgumentException("动态字段及字段类型不能为空");
+        }
         StringBuilder col = new StringBuilder();
         String columnName = field.getDbColumnName() != null && !field.getDbColumnName().isEmpty() 
             ? field.getDbColumnName() 
             : field.getFieldCode();
-        col.append("`").append(columnName).append("` ");
+        col.append(quoteIdentifier(columnName)).append(" ");
         
         // 根据字段类型确定数据库类型
         String dbType = getDbType(field);
@@ -311,8 +335,7 @@ public class DynamicTableService {
         col.append(" COMMENT '");
         String comment = field.getFieldName() != null ? field.getFieldName() : field.getFieldCode();
         // 处理单引号转义
-        comment = comment.replace("'", "''");
-        col.append(comment);
+        col.append(escapeSqlLiteral(comment));
         col.append("'");
         
         return col.toString();
@@ -322,6 +345,10 @@ public class DynamicTableService {
         String defaultValue = field.getDefaultValue();
         if (defaultValue == null || defaultValue.isBlank()) {
             return " DEFAULT NULL";
+        }
+        if (defaultValue.length() > MAX_DEFAULT_LENGTH) {
+            throw new IllegalArgumentException(
+                    "字段 " + field.getFieldCode() + " 的默认值超过长度限制");
         }
 
         if (field.getFieldType() == EntityField.FieldType.BOOLEAN) {
@@ -336,19 +363,17 @@ public class DynamicTableService {
                     "布尔字段 " + field.getFieldCode() + " 的默认值必须是 true、false、1 或 0");
         }
 
-        return " DEFAULT '" + defaultValue.replace("'", "''") + "'";
+        return " DEFAULT '" + escapeSqlLiteral(defaultValue) + "'";
     }
 
     /**
      * 获取数据库字段类型
      */
-    private String getDbType(EntityField field) {
-        // 优先使用用户指定的db_type
-        if (field.getDbType() != null && !field.getDbType().isEmpty()) {
-            return field.getDbType();
+    static String getDbType(EntityField field) {
+        if (field == null || field.getFieldType() == null) {
+            throw new IllegalArgumentException("动态字段及字段类型不能为空");
         }
-        
-        // 根据字段类型推断
+        // Database types are always derived server-side. Client dbType is metadata only.
         switch (field.getFieldType()) {
             case STRING:
             case SELECT:
@@ -356,7 +381,8 @@ public class DynamicTableService {
             case USER:
             case DEPT:
             case REFERENCE:
-                int length = field.getFieldLength() != null ? field.getFieldLength() : 200;
+                int length = bounded(
+                        field.getFieldLength(), 200, 1, MAX_VARCHAR_LENGTH, "字段长度");
                 return "VARCHAR(" + length + ")";
             case TEXT:
             case RICH_TEXT:
@@ -366,8 +392,13 @@ public class DynamicTableService {
             case LONG:
                 return "BIGINT";
             case DECIMAL:
-                int prec = field.getFieldLength() != null ? field.getFieldLength() : 18;
-                int scale = field.getFieldPrecision() != null ? field.getFieldPrecision() : 2;
+                int prec = bounded(
+                        field.getFieldLength(), 18, 1, MAX_DECIMAL_PRECISION, "DECIMAL 精度");
+                int scale = bounded(
+                        field.getFieldPrecision(), 2, 0, MAX_DECIMAL_SCALE, "DECIMAL 小数位数");
+                if (scale > prec) {
+                    throw new IllegalArgumentException("DECIMAL 小数位数不能大于精度");
+                }
                 return "DECIMAL(" + prec + "," + scale + ")";
             case DATE:
                 return "DATE";
@@ -416,15 +447,15 @@ public class DynamicTableService {
 
     private String deriveMultiValueTableName(String tableName) {
         String multiTableName = tableName + "_multi";
-        if (multiTableName.length() > 64) {
+        if (multiTableName.length() > MYSQL_IDENTIFIER_LIMIT) {
             throw new IllegalArgumentException("实体多值表名超过数据库限制: " + multiTableName);
         }
-        return multiTableName;
+        return validateIdentifier(multiTableName);
     }
 
     private void ensureMultiValueTable(String tableName) {
         String multiTableName = deriveMultiValueTableName(tableName);
-        jdbcTemplate.execute("""
+        schemaDdlExecutor.execute("""
                 CREATE TABLE IF NOT EXISTS %s (
                   `id` VARCHAR(64) NOT NULL COMMENT '主键ID',
                   `record_id` VARCHAR(64) NOT NULL COMMENT '主记录ID',
@@ -442,7 +473,7 @@ public class DynamicTableService {
                   KEY `idx_field_target` (`field_code`,`target_entity_id`,`target_record_id`,`deleted`),
                   KEY `idx_target` (`target_entity_id`,`target_record_id`,`deleted`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体多值引用表'
-                """.formatted(multiTableName));
+                """.formatted(quoteIdentifier(multiTableName)));
     }
 
     /**
@@ -450,10 +481,15 @@ public class DynamicTableService {
      */
     private void createIndexes(String tableName, List<EntityField> fields) {
         // 常用查询字段索引
-        jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_status ON " + tableName + " (`status`)");
-        jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_process ON " + tableName + " (`process_instance_id`)");
-        jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_deleted ON " + tableName + " (`deleted`)");
-        jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_created ON " + tableName + " (`create_time`)");
+        String quotedTable = quoteIdentifier(tableName);
+        schemaDdlExecutor.execute("CREATE INDEX " + quoteIdentifier(indexName(tableName, "status"))
+                + " ON " + quotedTable + " (`status`)");
+        schemaDdlExecutor.execute("CREATE INDEX " + quoteIdentifier(indexName(tableName, "process"))
+                + " ON " + quotedTable + " (`process_instance_id`)");
+        schemaDdlExecutor.execute("CREATE INDEX " + quoteIdentifier(indexName(tableName, "deleted"))
+                + " ON " + quotedTable + " (`deleted`)");
+        schemaDdlExecutor.execute("CREATE INDEX " + quoteIdentifier(indexName(tableName, "created"))
+                + " ON " + quotedTable + " (`create_time`)");
         
         // 唯一性改为程序级动态校验，不再根据 isUnique 创建数据库唯一索引
     }
@@ -463,14 +499,19 @@ public class DynamicTableService {
      */
     private void createIndexForColumn(String tableName, String columnName, boolean unique) {
         try {
-            String indexName = (unique ? "uniq_" : "idx_") + tableName + "_" + columnName;
+            String indexName = indexName(
+                    tableName, (unique ? "uniq_" : "idx_") + columnName);
             String sql;
             if (unique) {
-                sql = "CREATE UNIQUE INDEX " + indexName + " ON " + tableName + " (`" + columnName + "`)";
+                sql = "CREATE UNIQUE INDEX " + quoteIdentifier(indexName)
+                        + " ON " + quoteIdentifier(tableName)
+                        + " (" + quoteIdentifier(columnName) + ")";
             } else {
-                sql = "CREATE INDEX " + indexName + " ON " + tableName + " (`" + columnName + "`)";
+                sql = "CREATE INDEX " + quoteIdentifier(indexName)
+                        + " ON " + quoteIdentifier(tableName)
+                        + " (" + quoteIdentifier(columnName) + ")";
             }
-            jdbcTemplate.execute(sql);
+            schemaDdlExecutor.execute(sql);
         } catch (Exception e) {
             log.warn("创建索引失败: {}.{}, 原因: {}", tableName, columnName, e.getMessage());
         }
@@ -496,11 +537,49 @@ public class DynamicTableService {
                 continue;
             }
             String columnDef = buildColumnDefinition(field);
-            String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnDef;
+            String sql = "ALTER TABLE " + quoteIdentifier(tableName)
+                    + " ADD COLUMN " + columnDef;
             ddls.add(sql);
         }
         
         return ddls;
+    }
+
+    static String quoteIdentifier(String identifier) {
+        return "`" + validateIdentifier(identifier) + "`";
+    }
+
+    static String validateIdentifier(String identifier) {
+        return SqlIdentifierPolicy.validate(identifier);
+    }
+
+    private static String escapeSqlLiteral(String value) {
+        if (value.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("SQL 文本不能包含 NUL 字符");
+        }
+        return value.replace("\\", "\\\\").replace("'", "''");
+    }
+
+    private static int bounded(
+            Integer configured,
+            int defaultValue,
+            int minimum,
+            int maximum,
+            String label) {
+        int value = configured == null ? defaultValue : configured;
+        if (value < minimum || value > maximum) {
+            throw new IllegalArgumentException(
+                    label + "必须在 " + minimum + " 到 " + maximum + " 之间");
+        }
+        return value;
+    }
+
+    private static String indexName(String tableName, String suffix) {
+        String candidate = "idx_" + validateIdentifier(tableName) + "_" + suffix;
+        if (candidate.length() > MYSQL_IDENTIFIER_LIMIT) {
+            candidate = candidate.substring(0, MYSQL_IDENTIFIER_LIMIT);
+        }
+        return validateIdentifier(candidate);
     }
 
     /**

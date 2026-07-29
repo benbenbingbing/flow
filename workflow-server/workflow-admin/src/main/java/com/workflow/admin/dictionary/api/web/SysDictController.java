@@ -1,5 +1,7 @@
 package com.workflow.admin.dictionary.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
@@ -17,6 +19,7 @@ import java.util.List;
  * 提供字典类型的分页/增删改/状态切换，以及字典项的树形查询、增删改、状态切换接口。
  * </p>
  */
+@RequiresPermission("system:dictionary:view")
 @RestController
 @RequestMapping("/api/system/dict")
 @RequiredArgsConstructor
@@ -73,6 +76,7 @@ public class SysDictController {
      * @return 保存后的字典对象
      */
     @PostMapping
+    @RequiresPermission("system:dictionary:manage")
     public Result<SysDict> save(@RequestBody SysDict dict) {
         return Result.success(dictService.saveDict(dict));
     }
@@ -84,6 +88,7 @@ public class SysDictController {
      * @return 保存后的字典类型对象
      */
     @PostMapping("/with-items")
+    @RequiresPermission("system:dictionary:manage")
     public Result<SysDict> createWithItems(@RequestBody DictWithItemsRequest request) {
         return Result.success(dictService.createWithItems(request.dict(), request.items()));
     }
@@ -96,6 +101,7 @@ public class SysDictController {
      * @return 更新后的字典对象
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("system:dictionary:manage")
     public Result<SysDict> update(@PathVariable String id, @RequestBody SysDict dict) {
         dict.setId(id);
         return Result.success(dictService.saveDict(dict));
@@ -108,6 +114,7 @@ public class SysDictController {
      * @return 操作结果
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("system:dictionary:manage")
     public Result<Void> delete(@PathVariable String id) {
         dictService.deleteDict(id);
         return Result.success();
@@ -122,6 +129,7 @@ public class SysDictController {
      * @return 操作结果
      */
     @PostMapping("/{id}/status")
+    @RequiresPermission("system:dictionary:manage")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -164,6 +172,7 @@ public class SysDictController {
      * @return 保存后的字典项对象
      */
     @PostMapping("/item")
+    @RequiresPermission("system:dictionary:manage")
     public Result<SysDictItem> saveItem(@RequestBody SysDictItem item) {
         return Result.success(dictItemService.saveItem(item));
     }
@@ -176,6 +185,7 @@ public class SysDictController {
      * @return 更新后的字典项对象
      */
     @PostMapping("/item/{id}/update")
+    @RequiresPermission("system:dictionary:manage")
     public Result<SysDictItem> updateItem(@PathVariable String id, @RequestBody SysDictItem item) {
         item.setId(id);
         return Result.success(dictItemService.saveItem(item));
@@ -188,6 +198,7 @@ public class SysDictController {
      * @return 操作结果
      */
     @PostMapping("/item/{id}/delete")
+    @RequiresPermission("system:dictionary:manage")
     public Result<Void> deleteItem(@PathVariable String id) {
         dictItemService.deleteItem(id);
         return Result.success();
@@ -202,6 +213,7 @@ public class SysDictController {
      * @return 操作结果
      */
     @PostMapping("/item/{id}/status")
+    @RequiresPermission("system:dictionary:manage")
     public Result<Void> updateItemStatus(@PathVariable String id, 
                                          @RequestParam(required = false) String status,
                                          @RequestBody(required = false) java.util.Map<String, String> body) {

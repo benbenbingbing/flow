@@ -1,5 +1,7 @@
 package com.workflow.admin.audit.api;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.authorization.application.PermissionUtil;
@@ -29,6 +31,7 @@ import java.util.List;
 /**
  * 系统审计日志只读接口。
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/system/audit-logs")
 @RequiredArgsConstructor

@@ -1,5 +1,7 @@
 package com.workflow.admin.extension.action.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.Result;
 import com.workflow.admin.extension.action.api.request.FlowActionDefinitionRequest;
 import com.workflow.admin.extension.action.api.response.FlowActionHandlerOption;
@@ -19,6 +21,7 @@ import java.util.List;
 /**
  * 流程动作处理器查询接口。
  */
+@RequiresPermission("system:extension:list")
 @RestController
 @RequestMapping("/api/process-action-handlers")
 @RequiredArgsConstructor
@@ -56,6 +59,7 @@ public class FlowActionCatalogController {
      * @return 保存后的处理器选项
      */
     @PostMapping("/configs/{beanName}")
+    @RequiresPermission("system:extension:update")
     public Result<FlowActionHandlerOption> saveConfig(
             @PathVariable String beanName,
             @Valid @RequestBody FlowActionDefinitionRequest request) {

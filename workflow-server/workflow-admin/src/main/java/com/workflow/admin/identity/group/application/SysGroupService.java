@@ -1,5 +1,6 @@
 package com.workflow.admin.identity.group.application;
 
+import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -116,11 +117,11 @@ public class SysGroupService {
             // 新增
             group.setCreateTime(LocalDateTime.now());
             groupMapper.insert(group);
-            log.info("新增用户组：{}", group.getGroupName());
+            log.info("新增用户组：{}", LogValue.safe(group.getGroupName()));
         } else {
             // 更新
             groupMapper.updateById(group);
-            log.info("更新用户组：{}", group.getGroupName());
+            log.info("更新用户组：{}", LogValue.safe(group.getGroupName()));
         }
         
         // 保存用户关联

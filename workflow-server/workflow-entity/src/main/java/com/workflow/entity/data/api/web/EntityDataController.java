@@ -1,5 +1,7 @@
 package com.workflow.entity.data.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import com.workflow.entity.data.api.request.EntityBatchDeleteRequest;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -19,6 +21,7 @@ import java.util.Map;
  * 实体数据控制器
  * 管理实体对应的数据（使用独立表结构）
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/entity-data")
 @RequiredArgsConstructor

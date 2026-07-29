@@ -19,22 +19,89 @@ public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
 
     @Select("SELECT * FROM workflow_outbox_event "
             + "WHERE status IN ('PENDING','FAILED') "
-            + "AND (next_retry_time IS NULL OR next_retry_time <= NOW()) "
+            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6)) "
             + "ORDER BY create_time LIMIT #{limit}")
     List<OutboxRecord> findReady(@Param("limit") int limit);
 
     @Update("UPDATE workflow_outbox_event "
-            + "SET status = 'PROCESSING', update_time = NOW() "
+            + "SET status = 'PROCESSING', owner_id = #{ownerId}, "
+            + "lease_token = lease_token + 1, "
+            + "lease_until = TIMESTAMPADD(SECOND, #{leaseSeconds}, UTC_TIMESTAMP(6)), "
+            + "update_time = UTC_TIMESTAMP(6) "
             + "WHERE id = #{id} AND status IN ('PENDING','FAILED') "
-            + "AND (next_retry_time IS NULL OR next_retry_time <= NOW())")
-    int claim(@Param("id") String id);
+            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6))")
+    int claim(
+            @Param("id") String id,
+            @Param("ownerId") String ownerId,
+            @Param("leaseSeconds") int leaseSeconds);
+
+    @Select("SELECT * FROM workflow_outbox_event "
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND owner_id = #{ownerId} "
+            + "AND lease_until > UTC_TIMESTAMP(6)")
+    OutboxRecord selectClaimed(
+            @Param("id") String id,
+            @Param("ownerId") String ownerId);
 
     @Update("UPDATE workflow_outbox_event "
-            + "SET status = 'FAILED', next_retry_time = NOW(), "
-            + "error_message = 'PROCESSING_TIMEOUT', update_time = NOW() "
-            + "WHERE status = 'PROCESSING' AND update_time < #{staleBefore}")
-    int recoverStaleProcessing(
-            @Param("staleBefore") LocalDateTime staleBefore);
+            + "SET lease_until = TIMESTAMPADD(SECOND, #{leaseSeconds}, UTC_TIMESTAMP(6)), "
+            + "update_time = UTC_TIMESTAMP(6) "
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND owner_id = #{ownerId} AND lease_token = #{leaseToken} "
+            + "AND lease_until > UTC_TIMESTAMP(6)")
+    int heartbeat(
+            @Param("id") String id,
+            @Param("ownerId") String ownerId,
+            @Param("leaseToken") long leaseToken,
+            @Param("leaseSeconds") int leaseSeconds);
+
+    @Update("UPDATE workflow_outbox_event "
+            + "SET status = 'PROCESSED', processed_time = UTC_TIMESTAMP(6), "
+            + "next_retry_time = NULL, error_message = NULL, "
+            + "owner_id = NULL, lease_until = NULL, update_time = UTC_TIMESTAMP(6) "
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND owner_id = #{ownerId} AND lease_token = #{leaseToken} "
+            + "AND lease_until > UTC_TIMESTAMP(6)")
+    int markProcessed(
+            @Param("id") String id,
+            @Param("ownerId") String ownerId,
+            @Param("leaseToken") long leaseToken);
+
+    @Update("UPDATE workflow_outbox_event "
+            + "SET status = #{status}, retry_count = #{retryCount}, "
+            + "next_retry_time = CASE WHEN #{status} = 'DEAD' THEN NULL "
+            + "ELSE TIMESTAMPADD(SECOND, #{retryDelaySeconds}, UTC_TIMESTAMP(6)) END, "
+            + "error_message = #{errorMessage}, "
+            + "owner_id = NULL, lease_until = NULL, update_time = UTC_TIMESTAMP(6) "
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND owner_id = #{ownerId} AND lease_token = #{leaseToken} "
+            + "AND lease_until > UTC_TIMESTAMP(6)")
+    int markFailed(
+            @Param("id") String id,
+            @Param("ownerId") String ownerId,
+            @Param("leaseToken") long leaseToken,
+            @Param("status") String status,
+            @Param("retryCount") int retryCount,
+            @Param("retryDelaySeconds") long retryDelaySeconds,
+            @Param("errorMessage") String errorMessage);
+
+    @Update("UPDATE workflow_outbox_event "
+            + "SET status = 'FAILED', next_retry_time = UTC_TIMESTAMP(6), "
+            + "error_message = 'EXECUTOR_REJECTED', owner_id = NULL, "
+            + "lease_until = NULL, update_time = UTC_TIMESTAMP(6) "
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND owner_id = #{ownerId} AND lease_token = #{leaseToken}")
+    int releaseClaim(
+            @Param("id") String id,
+            @Param("ownerId") String ownerId,
+            @Param("leaseToken") long leaseToken);
+
+    @Update("UPDATE workflow_outbox_event "
+            + "SET status = 'FAILED', next_retry_time = UTC_TIMESTAMP(6), "
+            + "error_message = 'LEASE_EXPIRED', owner_id = NULL, "
+            + "lease_until = NULL, update_time = UTC_TIMESTAMP(6) "
+            + "WHERE status = 'PROCESSING' AND lease_until <= UTC_TIMESTAMP(6)")
+    int recoverExpiredLeases();
 
     @Delete("DELETE FROM workflow_outbox_event "
             + "WHERE status = 'PROCESSED' AND processed_time < #{cutoff}")

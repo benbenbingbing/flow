@@ -21,6 +21,18 @@ public interface ProcessCcRecordMapper extends BaseMapper<ProcessCcRecord> {
      */
     @Select("SELECT * FROM process_cc_record WHERE process_instance_id = #{processInstanceId} AND deleted = 0 ORDER BY create_time DESC")
     List<ProcessCcRecord> findByProcessInstanceId(@Param("processInstanceId") String processInstanceId);
+
+    @Select("""
+            SELECT COUNT(*)
+            FROM process_cc_record
+            WHERE process_instance_id = #{processInstanceId}
+              AND deleted = 0
+              AND (cc_user_id = #{userId} OR cc_user_id = #{username})
+            """)
+    long existsForUser(
+            @Param("processInstanceId") String processInstanceId,
+            @Param("userId") String userId,
+            @Param("username") String username);
     
     /**
      * 根据抄送人查询抄送记录（分页）

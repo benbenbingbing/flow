@@ -1,0 +1,71 @@
+name: 代码静态安全分析
+
+run-name: 代码静态安全分析 · ${{ github.ref_name }} · ${{ github.actor }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '23 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-analysis-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  code-analysis:
+    name: 静态安全分析（${{ matrix.display-name }}）
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            display-name: Java
+            build-mode: manual
+          - language: javascript-typescript
+            display-name: JavaScript
+            build-mode: none
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: 初始化静态安全分析
+        uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: 配置 Java 构建环境
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 编译后端分析目标
+        if: matrix.language == 'java-kotlin'
+        working-directory: workflow-server
+        run: mvn -B -ntp -DskipTests package
+
+      - name: 执行静态安全分析
+        uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          category: /language:${{ matrix.language }}

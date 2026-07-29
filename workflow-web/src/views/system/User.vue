@@ -156,7 +156,6 @@
       width="600px"
       :close-on-click-modal="false"
     >
-      <TemporaryPasswordNotice v-if="!formData.id" />
       <el-form
         ref="formRef"
         :model="formData"
@@ -176,6 +175,20 @@
           <el-col :span="12">
             <el-form-item label="昵称" prop="nickname">
               <el-input v-model="formData.nickname" placeholder="请输入昵称" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row v-if="!formData.id" :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="初始密码" prop="password">
+              <el-input
+                v-model="formData.password"
+                type="password"
+                show-password
+                autocomplete="new-password"
+                placeholder="10-72位，含大小写字母和数字"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -278,12 +291,6 @@
       </template>
     </el-dialog>
 
-    <TemporaryPasswordDialog
-      v-model="temporaryPasswordDialog.visible"
-      :username="temporaryPasswordDialog.username"
-      :temporary-password="temporaryPasswordDialog.password"
-      @closed="clearTemporaryPassword"
-    />
   </div>
 </template>
 
@@ -304,8 +311,6 @@ import {
 } from '@/api/system/user'
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
-import TemporaryPasswordDialog from '@/components/TemporaryPasswordDialog.vue'
-import TemporaryPasswordNotice from '@/components/TemporaryPasswordNotice.vue'
 import { formatDateColumn } from '@/shared/list-runtime'
 
 const loading = ref(false)
@@ -328,12 +333,6 @@ const queryParams = reactive({
 const batchRoleDialogVisible = ref(false)
 const batchRoleIds = ref<string[]>([])
 const batchLoading = ref(false)
-const temporaryPasswordDialog = reactive({
-  visible: false,
-  username: '',
-  password: ''
-})
-
 // 对话框
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -343,6 +342,7 @@ const submitLoading = ref(false)
 const formData = reactive({
   id: '',
   username: '',
+  password: '',
   nickname: '',
   email: '',
   phone: '',
@@ -354,6 +354,14 @@ const formData = reactive({
 
 const formRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: [{
+    validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+      if (formData.id) return callback()
+      const error = validateManagedPassword(value)
+      callback(error ? new Error(error) : undefined)
+    },
+    trigger: 'blur'
+  }],
   roleIds: [{ required: true, message: '请选择角色', trigger: 'change', type: 'array' }]
 }
 
@@ -431,6 +439,7 @@ const resetForm = () => {
   Object.assign(formData, {
     id: '',
     username: '',
+    password: '',
     nickname: '',
     email: '',
     phone: '',
@@ -471,21 +480,16 @@ const handleSubmit = async () => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    const isCreating = !formData.id
-    let savedUser: any
     if (formData.id) {
       // 更新用户
-      savedUser = await updateUser(formData.id, formData)
+      await updateUser(formData.id, formData)
     } else {
       // 创建用户（只传 data，不传 id）
-      savedUser = await createUser(formData)
+      await createUser(formData)
     }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
     fetchUserList()
-    if (isCreating && savedUser?.temporaryPassword) {
-      showTemporaryPassword(savedUser.username || formData.username, savedUser.temporaryPassword)
-    }
   } finally {
     submitLoading.value = false
   }
@@ -590,31 +594,32 @@ const submitBatchRoles = async () => {
 // 重置密码
 const handleResetPassword = async (row: any) => {
   try {
-    await ElMessageBox.confirm(
-      `将重置用户「${row.username}」的登录密码。请通过安全渠道通知用户，并要求其尽快修改。`,
+    const { value } = await ElMessageBox.prompt(
+      `为用户「${row.username}」设置一次性密码。密码不会在响应或日志中回显。`,
       '重置密码',
       {
         type: 'warning',
-        confirmButtonText: '确认重置',
-        cancelButtonText: '取消'
+        inputType: 'password',
+        inputPlaceholder: '10-72位，含大小写字母和数字',
+        inputValidator: value => validateManagedPassword(value) || true,
+        confirmButtonText: '设置密码',
+        cancelButtonText: '取消',
+        dangerouslyUseHTMLString: false
       }
     )
-    const result = await resetPassword(row.id)
-    showTemporaryPassword(row.username, result.temporaryPassword)
+    await resetPassword(row.id, value)
+    ElMessage.success('密码已重置，用户下次登录后必须修改')
   } catch {
     // 取消
   }
 }
 
-const showTemporaryPassword = (username: string, password: string) => {
-  temporaryPasswordDialog.username = username
-  temporaryPasswordDialog.password = password
-  temporaryPasswordDialog.visible = true
-}
-
-const clearTemporaryPassword = () => {
-  temporaryPasswordDialog.username = ''
-  temporaryPasswordDialog.password = ''
+const validateManagedPassword = (value: string) => {
+  if (!value || value.length < 10 || value.length > 72) return '密码长度必须为10到72位'
+  if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value)) {
+    return '密码必须同时包含大写字母、小写字母和数字'
+  }
+  return ''
 }
 
 onMounted(() => {

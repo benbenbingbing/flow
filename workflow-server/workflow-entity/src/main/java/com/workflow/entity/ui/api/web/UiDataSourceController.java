@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
@@ -24,6 +26,7 @@ import java.util.Map;
  * <p>提供数据源目录查询、增删改、预览/执行及绑定校验接口；
  * 除执行接口（面向运行态）外，其余写操作与配置查询需全局配置权限。
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/ui-data-sources")
 @RequiredArgsConstructor

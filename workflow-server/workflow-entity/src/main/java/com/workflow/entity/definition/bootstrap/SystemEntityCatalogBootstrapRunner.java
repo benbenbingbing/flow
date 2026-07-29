@@ -1,10 +1,12 @@
 package com.workflow.entity.definition.bootstrap;
 
+import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
 import com.workflow.entity.definition.application.SystemEntityCatalogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -15,12 +17,17 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(
+        name = "workflow.bootstrap.enabled",
+        havingValue = "true",
+        matchIfMissing = true)
 @Order(10)
 @RequiredArgsConstructor
 public class SystemEntityCatalogBootstrapRunner implements ApplicationRunner {
 
     /** 系统实体目录同步服务 */
     private final SystemEntityCatalogService catalogService;
+    private final BootstrapJobCoordinator bootstrapJobCoordinator;
 
     /**
      * 应用启动入口：执行系统实体目录同步，并记录本次同步覆盖的表数量。
@@ -29,7 +36,14 @@ public class SystemEntityCatalogBootstrapRunner implements ApplicationRunner {
      */
     @Override
     public void run(ApplicationArguments args) {
-        int count = catalogService.synchronize();
-        log.info("平台系统实体目录同步完成: tables={}", count);
+        bootstrapJobCoordinator.executeOnce(
+                "system-entity-catalog",
+                1,
+                catalogService::synchronize).ifPresentOrElse(
+                        count -> log.info(
+                                "平台系统实体目录同步完成: tables={}",
+                                count),
+                        () -> log.info(
+                                "平台系统实体目录已由其他Pod完成"));
     }
 }

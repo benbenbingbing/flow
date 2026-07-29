@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class ProcessFlowActionBpmnInjectorTest {
 
     /**
-     * 注入时应移除遗留的 sequenceFlowExecutionListener 但保留自定义监听器。
+     * 注入时应移除顺序流上的全部执行监听器。
      *
      * <p>场景：连线含两个执行监听器，断言输出不含 sequenceFlowExecutionListener，
-     * 仍包含 customListener。</p>
+     * 也不再包含 customListener。</p>
      */
     @Test
     void shouldRemoveLegacyExecutionListener() {
@@ -42,7 +42,7 @@ class ProcessFlowActionBpmnInjectorTest {
 
         assertNotNull(result);
         assertFalse(result.contains("delegateExpression=\"${sequenceFlowExecutionListener}\""));
-        assertTrue(result.contains("delegateExpression=\"${customListener}\""));
+        assertFalse(result.contains("delegateExpression=\"${customListener}\""));
     }
 
     /** 无动作时注入应原样返回 BPMN XML，不做任何改动 */

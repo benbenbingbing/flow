@@ -1,5 +1,7 @@
 package com.workflow.process.form.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.form.application.EntityFormResolveService;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +12,7 @@ import java.util.Map;
 /**
  * 实体表单解析控制器
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/entity-form-resolve")
 @RequiredArgsConstructor

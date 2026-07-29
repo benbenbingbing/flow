@@ -2,7 +2,6 @@ package com.workflow.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.BaseElement;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;
@@ -13,30 +12,29 @@ import org.springframework.util.StringUtils;
 
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * REST 服务任务委托。
  *
  * <p>作为 Flowable {@link JavaDelegate} 实现，从 BPMN 扩展属性中读取
  * REST 配置（url、method、headers、body、queryParams、resultMapping 等），
- * 通过 JDK {@link HttpClient} 发起 HTTP 调用，并将响应映射回流程变量。</p>
+ * 通过受控 HTTP 传输发起调用，并将声明的响应字段映射回流程变量。</p>
  *
  * <p>支持变量模板解析（${var}）、重试、错误处理策略（throw/continue/ignore）
  * 以及响应结果字段映射。</p>
  */
 @Component("restServiceTaskDelegate")
-@RequiredArgsConstructor
 public class RestServiceTaskDelegate implements JavaDelegate {
 
     /** 变量模板正则，匹配 ${variable} 形式的占位符 */
@@ -44,6 +42,32 @@ public class RestServiceTaskDelegate implements JavaDelegate {
 
     /** JSON 序列化器 */
     private final ObjectMapper objectMapper;
+    private final WorkflowHttpProperties properties;
+    private final PinnedHttpTransport transport;
+
+    public RestServiceTaskDelegate(
+            ObjectMapper objectMapper,
+            RestEndpointPolicy endpointPolicy,
+            WorkflowHttpProperties properties) {
+        this(
+                objectMapper,
+                endpointPolicy,
+                properties,
+                new PinnedHttpTransport(
+                        endpointPolicy,
+                        properties));
+    }
+
+    @Autowired
+    RestServiceTaskDelegate(
+            ObjectMapper objectMapper,
+            RestEndpointPolicy endpointPolicy,
+            WorkflowHttpProperties properties,
+            PinnedHttpTransport transport) {
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+        this.transport = transport;
+    }
 
     /**
      * Flowable 调用入口：执行已配置的 REST 任务。
@@ -58,7 +82,7 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("REST 服务任务执行失败: " + exception.getMessage(), exception);
+            throw new IllegalStateException("REST 服务任务执行失败", exception);
         }
     }
 
@@ -74,48 +98,65 @@ public class RestServiceTaskDelegate implements JavaDelegate {
             throw new IllegalArgumentException("REST 服务任务缺少 restConfig");
         }
         JsonNode config = objectMapper.readTree(configDocument);
+        String configuredUrl = config.path("url").asText("");
         String url = appendQueryParameters(
-                resolveTemplate(config.path("url").asText(""), execution),
+                resolveTemplate(configuredUrl, execution),
                 config.path("queryParams").asText(""),
                 execution);
         if (!StringUtils.hasText(url)) {
             throw new IllegalArgumentException("REST 服务任务未配置请求URL");
         }
-        String contentType = config.path("contentType").asText("application/json");
-        if ("multipart/form-data".equalsIgnoreCase(contentType)) {
-            throw new IllegalArgumentException("REST 服务任务暂不支持 multipart/form-data，请使用自定义连接器");
+        URI resolvedUri = URI.create(url);
+        validateStaticAuthority(configuredUrl, resolvedUri);
+        String contentType = config.path("contentType")
+                .asText("application/json");
+        if (!"application/json".equalsIgnoreCase(contentType)) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务仅支持 application/json");
         }
 
-        int timeout = Math.max(1, config.path("timeout").asInt(30));
+        int timeout = bounded(
+                config.path("timeout").asInt(30),
+                1,
+                bounded(
+                        properties
+                                .getMaxRequestTimeoutSeconds(),
+                        1,
+                        120));
         int retryCount = Math.max(0, Math.min(5, config.path("retryCount").asInt(0)));
         String errorHandling = config.path("errorHandling").asText("throw");
         Exception lastError = null;
         // 按 retryCount 重试调用，成功则立即返回
         for (int attempt = 0; attempt <= retryCount; attempt++) {
             try {
-                HttpResponse<String> response = executeRequest(
+                HttpCallResult response = executeRequest(
                         config,
                         execution,
                         url,
                         contentType,
                         timeout);
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IllegalStateException(
-                            "HTTP " + response.statusCode() + ": " + response.body());
+                if (response.statusCode() < 200
+                        || response.statusCode() >= 300) {
+                    throw new HttpStatusException(
+                            response.statusCode());
                 }
                 mapResult(config.path("resultMapping").asText(""), response.body(), execution);
                 execution.setVariable(execution.getCurrentActivityId() + "_httpStatus", response.statusCode());
-                execution.setVariable(execution.getCurrentActivityId() + "_httpResponse", response.body());
                 return;
             } catch (Exception exception) {
                 lastError = exception;
+                if (attempt >= retryCount
+                        || !isRetryable(exception)) {
+                    break;
+                }
+                Thread.sleep(Math.min(1000L, 100L << attempt));
             }
         }
 
         // 全部重试失败后记录错误变量，并按策略决定是否抛出
         execution.setVariable(
                 execution.getCurrentActivityId() + "_httpError",
-                lastError == null ? "未知错误" : lastError.getMessage());
+                "REST_SERVICE_TASK_FAILED");
         if ("continue".equalsIgnoreCase(errorHandling)
                 || "ignore".equalsIgnoreCase(errorHandling)) {
             return;
@@ -134,30 +175,59 @@ public class RestServiceTaskDelegate implements JavaDelegate {
      * @return HTTP 响应
      * @throws Exception 当请求构建或发送失败时抛出
      */
-    private HttpResponse<String> executeRequest(
+    private HttpCallResult executeRequest(
             JsonNode config,
             DelegateExecution execution,
             String url,
             String contentType,
             int timeout) throws Exception {
-        String method = config.path("method").asText("POST").toUpperCase();
+        String method = config.path("method")
+                .asText("POST")
+                .toUpperCase(Locale.ROOT);
+        if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE")
+                .contains(method)) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务请求方法无效");
+        }
         String body = resolveTemplate(config.path("body").asText(""), execution);
-        // GET/DELETE 不发送请求体
-        HttpRequest.BodyPublisher publisher = "GET".equals(method) || "DELETE".equals(method)
-                ? HttpRequest.BodyPublishers.noBody()
-                : HttpRequest.BodyPublishers.ofString(body);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(timeout))
-                .method(method, publisher)
-                .header("Content-Type", contentType)
-                .header("X-Workflow-Instance-Id", execution.getProcessInstanceId())
-                .header("X-Workflow-Activity-Id", execution.getCurrentActivityId());
-        readObject(config.path("headers").asText("")).forEach((name, value) ->
-                builder.header(name, resolveTemplate(String.valueOf(value), execution)));
-        return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(timeout))
-                .build()
-                .send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        URI uri = URI.create(url);
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Content-Type", contentType);
+        headers.put(
+                "X-Workflow-Instance-Id",
+                safeHeaderValue(execution.getProcessInstanceId()));
+        headers.put(
+                "X-Workflow-Activity-Id",
+                safeHeaderValue(execution.getCurrentActivityId()));
+        headers.put(
+                "Idempotency-Key",
+                execution.getProcessInstanceId()
+                        + ":" + execution.getCurrentActivityId());
+        readObject(config.path("headers").asText("")).forEach(
+                (name, value) -> {
+                    validateLegacyHeader(name);
+                    headers.put(
+                            name,
+                            safeHeaderValue(resolveTemplate(
+                                    String.valueOf(value),
+                                    execution)));
+                });
+        HttpTransportResult response = transport.executeLegacy(
+                new HttpTransportRequest(
+                        method,
+                        uri,
+                        Collections.unmodifiableMap(headers),
+                        Set.of("GET", "DELETE").contains(method)
+                                ? null
+                                : body,
+                        timeout * 1000,
+                        Set.copyOf(properties.getAllowedHosts()),
+                        properties.getMaxResponseBytes(),
+                        false),
+                properties.isAllowPrivateAddresses());
+        return new HttpCallResult(
+                response.statusCode(),
+                response.body());
     }
 
     /**
@@ -204,8 +274,16 @@ public class RestServiceTaskDelegate implements JavaDelegate {
             return;
         }
         JsonNode response = objectMapper.readTree(responseBody);
-        mappings.forEach((path, variable) ->
-                execution.setVariable(String.valueOf(variable), jsonPath(response, path)));
+        mappings.forEach((path, variable) -> {
+            String target = String.valueOf(variable);
+            if (!path.matches("[A-Za-z][A-Za-z0-9_.-]{0,255}")
+                    || !target.matches(
+                            "[A-Za-z][A-Za-z0-9_.-]{0,127}")) {
+                throw new IllegalArgumentException(
+                        "REST 服务任务响应映射无效");
+            }
+            execution.setVariable(target, jsonPath(response, path));
+        });
     }
 
     /**
@@ -264,6 +342,75 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         }
         matcher.appendTail(result);
         return result.toString();
+    }
+
+    private void validateStaticAuthority(
+            String configuredUrl,
+            URI resolvedUri) {
+        int schemeEnd = configuredUrl.indexOf("://");
+        if (schemeEnd <= 0) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务 URL 必须包含固定协议和主机");
+        }
+        int authorityEnd = configuredUrl.length();
+        for (char separator : new char[]{'/', '?', '#'}) {
+            int found = configuredUrl.indexOf(
+                    separator,
+                    schemeEnd + 3);
+            if (found >= 0) {
+                authorityEnd = Math.min(authorityEnd, found);
+            }
+        }
+        String authority = configuredUrl.substring(0, authorityEnd);
+        if (authority.contains("${")) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务禁止动态修改目标主机");
+        }
+        URI configuredAuthority = URI.create(authority + "/");
+        if (!java.util.Objects.equals(
+                        configuredAuthority.getScheme(),
+                        resolvedUri.getScheme())
+                || !java.util.Objects.equals(
+                        configuredAuthority.getHost(),
+                        resolvedUri.getHost())
+                || configuredAuthority.getPort()
+                != resolvedUri.getPort()) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务禁止动态修改目标主机");
+        }
+    }
+
+    private void validateLegacyHeader(String name) {
+        String normalized = name == null
+                ? ""
+                : name.toLowerCase(Locale.ROOT);
+        if (!normalized.matches(
+                        "[a-z0-9!#$%&'*+.^_`|~-]{1,64}")
+                || Set.of(
+                        "authorization",
+                        "proxy-authorization",
+                        "cookie",
+                        "host",
+                        "content-length",
+                        "transfer-encoding",
+                        "connection",
+                        "upgrade").contains(normalized)
+                || normalized.matches(
+                        ".*(secret|token|api[-_]?key|credential|password).*")) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务 Header 不允许携带凭据");
+        }
+    }
+
+    private String safeHeaderValue(String value) {
+        if (value == null
+                || value.length() > 8192
+                || value.indexOf('\r') >= 0
+                || value.indexOf('\n') >= 0) {
+            throw new IllegalArgumentException(
+                    "REST 服务任务 Header 值无效");
+        }
+        return value;
     }
 
     /**
@@ -327,5 +474,39 @@ public class RestServiceTaskDelegate implements JavaDelegate {
             }
         }
         return null;
+    }
+
+    private static int bounded(
+            int value,
+            int minimum,
+            int maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private boolean isRetryable(Exception exception) {
+        if (exception instanceof IllegalArgumentException
+                || exception instanceof InterruptedException) {
+            if (exception instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return false;
+        }
+        return !(exception instanceof HttpStatusException status)
+                || status.statusCode == 429
+                || status.statusCode >= 500;
+    }
+
+    private record HttpCallResult(int statusCode, String body) {
+    }
+
+    private static final class HttpStatusException
+            extends IllegalStateException {
+
+        private final int statusCode;
+
+        private HttpStatusException(int statusCode) {
+            super("HTTP " + statusCode);
+            this.statusCode = statusCode;
+        }
     }
 }

@@ -22,9 +22,11 @@
         <module>workflow-contracts</module>
         <module>workflow-admin</module>
         <module>workflow-storage</module>
+        <module>workflow-db-migrator</module>
         <module>workflow-entity</module>
         <module>workflow-process</module>
         <module>workflow-project</module>
+        <module>workflow-open-api</module>
         <module>workflow-integration</module>
         <module>workflow-migration</module>
         <module>workflow-devtools</module>
@@ -33,11 +35,21 @@
 
     <properties>
         <java.version>17</java.version>
+        <flyway.version>11.20.3</flyway.version>
         <flowable.version>7.2.0</flowable.version>
         <jjwt.version>0.13.0</jjwt.version>
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <lombok.version>1.18.30</lombok.version>
-        <workflow.groovy.version>3.0.19</workflow.groovy.version>
+        <aws-sdk.version>2.47.6</aws-sdk.version>
+        <bouncycastle.version>1.85</bouncycastle.version>
+        <jackson-bom.version>2.21.4</jackson-bom.version>
+        <netty.version>4.1.136.Final</netty.version>
+        <tomcat.version>10.1.55</tomcat.version>
+        <jsoup.version>1.22.2</jsoup.version>
+        <json-schema-validator.version>2.0.1</json-schema-validator.version>
+        <openapi-diff.version>2.1.7</openapi-diff.version>
+        <swagger-parser.version>2.1.45</swagger-parser.version>
+        <cloudevents.version>5.0.0</cloudevents.version>
     </properties>
 
     <dependencyManagement>
@@ -64,6 +76,11 @@
             </dependency>
             <dependency>
                 <groupId>com.workflow</groupId>
+                <artifactId>workflow-db-migrator</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
                 <artifactId>workflow-entity</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -75,6 +92,11 @@
             <dependency>
                 <groupId>com.workflow</groupId>
                 <artifactId>workflow-project</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
+                <artifactId>workflow-open-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -101,11 +123,6 @@
             <dependency>
                 <groupId>com.workflow</groupId>
                 <artifactId>workflow-migration</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.workflow</groupId>
-                <artifactId>workflow-devtools</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -137,6 +154,16 @@
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>s3</artifactId>
+                <version>${aws-sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>apache5-client</artifactId>
+                <version>${aws-sdk.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -170,4 +197,5 @@
             </plugins>
         </pluginManagement>
     </build>
+
 </project>

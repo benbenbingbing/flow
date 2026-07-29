@@ -1,0 +1,17 @@
+Flow has been installed with separate migration, bootstrap, runtime, and
+schema-worker identities.
+
+Required post-install checks:
+
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  kubectl --namespace {{ .Release.Namespace }} get pods,pdb,hpa
+  kubectl --namespace {{ .Release.Namespace }} rollout status \
+    deployment/{{ include "flow.fullname" . }}-server
+
+The object-storage bucket must already exist and be durable. Database backups
+and a restore rehearsal are required before upgrades. See deploy/runbooks.
+
+{{- if not .Values.monitoring.serviceMonitor.enabled }}
+Prometheus Operator integration is disabled. Enable monitoring.serviceMonitor
+and monitoring.prometheusRule after installing their CRDs.
+{{- end }}

@@ -1,5 +1,7 @@
 package com.workflow.admin.extension.catalog.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.extension.catalog.api.response.ExtensionCatalogItem;
@@ -18,6 +20,7 @@ import java.util.List;
 /**
  * 统一扩展目录接口。
  */
+@AuthenticatedApi
 @RestController
 @RequestMapping("/api/extension-catalog")
 @RequiredArgsConstructor

@@ -1,5 +1,6 @@
 package com.workflow.process.definition.application;
 
+import com.workflow.core.logging.LogValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.configuration.api.model.NodeConfigDTO;
@@ -27,13 +28,9 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -69,6 +66,7 @@ public class ProcessDefinitionNodeSyncService {
     private final ProcessNodeApprovalOptionService approvalOptionService;
     /** JDBC 模板，用于合并节点配置 JSON */
     private final JdbcTemplate jdbcTemplate;
+    private final ProcessBpmnNodeParser bpmnParser;
 
     /**
      * 同步草稿节点配置（先清空后插入）。
@@ -106,7 +104,7 @@ public class ProcessDefinitionNodeSyncService {
      */
     public void syncNodeFormsFromBpmn(String processConfigId, String bpmnXml) {
         try {
-            Document doc = parseDocument(bpmnXml);
+            Document doc = bpmnParser.parseDocument(bpmnXml);
             NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
             for (int i = 0; i < userTasks.getLength(); i++) {
                 Element userTask = (Element) userTasks.item(i);
@@ -116,16 +114,16 @@ public class ProcessDefinitionNodeSyncService {
                     continue;
                 }
 
-                Map<String, String> extensionProperties = readExtensionProperties(userTask);
-                List<String> entityFormIds = resolveEntityFormIds(extensionProperties);
+                Map<String, String> extensionProperties = bpmnParser.readExtensionProperties(userTask);
+                List<String> entityFormIds = bpmnParser.resolveEntityFormIds(extensionProperties);
                 List<ProcessNodeForm> existingBindings =
                         nodeFormMapper.selectListByNodeId(processConfigId, nodeId);
                 boolean usesExtensionBinding = !entityFormIds.isEmpty();
                 if (!usesExtensionBinding) {
-                    entityFormIds = parseFormIdList(resolveFormKey(userTask));
+                    entityFormIds = bpmnParser.parseFormIdList(bpmnParser.resolveFormKey(userTask));
                 }
                 Integer configuredReadonly =
-                        isTruthy(extensionProperties.get("entityFormReadonly")) ? 1 : 0;
+                        bpmnParser.isTruthy(extensionProperties.get("entityFormReadonly")) ? 1 : 0;
 
                 nodeFormMapper.deleteByProcessConfigIdAndNodeId(processConfigId, nodeId);
                 for (int sortOrder = 0; sortOrder < entityFormIds.size(); sortOrder++) {
@@ -137,7 +135,7 @@ public class ProcessDefinitionNodeSyncService {
                     nodeForm.setFormId(formId);
                     nodeForm.setIsReadonly(usesExtensionBinding
                             ? configuredReadonly
-                            : existingReadonly(existingBindings, formId, configuredReadonly));
+                            : bpmnParser.existingReadonly(existingBindings, formId, configuredReadonly));
                     nodeForm.setSortOrder(sortOrder);
                     nodeForm.setCreateTime(LocalDateTime.now());
                     nodeForm.setUpdateTime(LocalDateTime.now());
@@ -145,7 +143,7 @@ public class ProcessDefinitionNodeSyncService {
                 }
                 if (!entityFormIds.isEmpty()) {
                     log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formIds={}",
-                            processConfigId, nodeId, entityFormIds);
+                            LogValue.safe(processConfigId), LogValue.safe(nodeId), LogValue.safe(entityFormIds));
                 }
             }
         } catch (Exception e) {
@@ -164,7 +162,7 @@ public class ProcessDefinitionNodeSyncService {
      */
     public void syncNodeApprovalsFromBpmn(String processConfigId, String bpmnXml) {
         try {
-            Document doc = parseDocument(bpmnXml);
+            Document doc = bpmnParser.parseDocument(bpmnXml);
             NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
             for (int i = 0; i < userTasks.getLength(); i++) {
                 Element userTask = (Element) userTasks.item(i);
@@ -174,7 +172,7 @@ public class ProcessDefinitionNodeSyncService {
                     continue;
                 }
 
-                String approvalConfigJson = readExtensionProperties(userTask).get("approvalConfig");
+                String approvalConfigJson = bpmnParser.readExtensionProperties(userTask).get("approvalConfig");
                 if (approvalConfigJson != null && !approvalConfigJson.isEmpty()) {
                     JsonNode config = objectMapper.readTree(approvalConfigJson);
                     boolean enabled = !config.has("enabled") || config.get("enabled").asBoolean();
@@ -206,7 +204,8 @@ public class ProcessDefinitionNodeSyncService {
                         approvalOptionService.replaceFromDocument(
                                 nodeApproval.getId(), optionsJson);
                     }
-                    log.debug("同步节点审批配置: processConfigId={}, nodeId={}", processConfigId, nodeId);
+                    log.debug("同步节点审批配置: processConfigId={}, nodeId={}",
+                            LogValue.safe(processConfigId), LogValue.safe(nodeId));
                 } else {
                     ProcessNodeApproval existing = nodeApprovalMapper.selectByNodeId(processConfigId, nodeId);
                     if (existing != null) {
@@ -233,18 +232,18 @@ public class ProcessDefinitionNodeSyncService {
     public void syncStatusMappingsFromBpmn(String processConfigId, String processKey, String bpmnXml) {
         String entityCode = getEntityCodeByProcessId(processConfigId);
         if (entityCode == null || entityCode.isEmpty()) {
-            log.debug("流程未绑定实体，跳过状态映射提取: processConfigId={}", processConfigId);
+            log.debug("流程未绑定实体，跳过状态映射提取: processConfigId={}", LogValue.safe(processConfigId));
             return;
         }
 
         try {
-            Document document = parseDocument(bpmnXml);
+            Document document = bpmnParser.parseDocument(bpmnXml);
             NodeList sequenceFlows = document.getElementsByTagNameNS("*", "sequenceFlow");
             List<EntityFlowStatusMapping> mappings = new ArrayList<>();
 
             for (int i = 0; i < sequenceFlows.getLength(); i++) {
                 Element sequenceFlow = (Element) sequenceFlows.item(i);
-                String statusCode = readExtensionProperties(sequenceFlow).get("entityStatusCode");
+                String statusCode = bpmnParser.readExtensionProperties(sequenceFlow).get("entityStatusCode");
                 if (statusCode == null || statusCode.isBlank()) {
                     continue;
                 }
@@ -253,15 +252,15 @@ public class ProcessDefinitionNodeSyncService {
                 EntityFlowStatusMapping mapping = new EntityFlowStatusMapping();
                 mapping.setSequenceFlowId(sequenceFlow.getAttribute("id"));
                 mapping.setSourceNodeId(sourceRef);
-                mapping.setSourceNodeName(extractNodeName(document, sourceRef));
+                mapping.setSourceNodeName(bpmnParser.extractNodeName(document, sourceRef));
                 mapping.setTargetNodeId(targetRef);
-                mapping.setTargetNodeName(extractNodeName(document, targetRef));
+                mapping.setTargetNodeName(bpmnParser.extractNodeName(document, targetRef));
                 mapping.setEntityStatusCode(statusCode);
                 mappings.add(mapping);
             }
 
             entityFlowStatusService.replaceStatusMappings(processConfigId, processKey, entityCode, mappings);
-            log.info("同步流程状态映射: processConfigId={}, count={}", processConfigId, mappings.size());
+            log.info("同步流程状态映射: processConfigId={}, count={}", LogValue.safe(processConfigId), mappings.size());
         } catch (Exception e) {
             throw new IllegalStateException("同步流程状态映射失败: processConfigId=" + processConfigId, e);
         }
@@ -293,9 +292,9 @@ public class ProcessDefinitionNodeSyncService {
         savedCount += parseNodesByType(processConfigId, bpmnXml, "eventBasedGateway", NodeConfig.NodeType.EVENT_BASED_GATEWAY);
         savedCount += parseNodesByType(processConfigId, bpmnXml, "callActivity", NodeConfig.NodeType.CALL_ACTIVITY);
         savedCount += parseNodesByType(processConfigId, bpmnXml, "subProcess", NodeConfig.NodeType.SUB_PROCESS);
-        log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, processConfigId);
+        log.info("解析保存了 {} 个节点配置: processConfigId={}", savedCount, LogValue.safe(processConfigId));
         if (savedCount == 0) {
-            log.warn("未解析到节点: processConfigId={}", processConfigId);
+            log.warn("未解析到节点: processConfigId={}", LogValue.safe(processConfigId));
         }
     }
 
@@ -310,144 +309,12 @@ public class ProcessDefinitionNodeSyncService {
         return node;
     }
 
-    private Document parseDocument(String bpmnXml) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        return factory.newDocumentBuilder()
-                .parse(new ByteArrayInputStream(bpmnXml.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    private Map<String, String> readExtensionProperties(Element userTask) {
-        Map<String, String> values = new HashMap<>();
-        NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
-        for (int j = 0; j < extElements.getLength(); j++) {
-            Element extElement = (Element) extElements.item(j);
-            NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
-            for (int k = 0; k < properties.getLength(); k++) {
-                Element props = (Element) properties.item(k);
-                NodeList propList = props.getElementsByTagNameNS("*", "property");
-                for (int m = 0; m < propList.getLength(); m++) {
-                    Element prop = (Element) propList.item(m);
-                    String name = prop.getAttribute("name");
-                    String value = prop.getAttribute("value");
-                    if (name != null && !name.isEmpty() && value != null) {
-                        values.put(name, decodeXmlAttributeValue(value));
-                    }
-                }
-            }
-        }
-        return values;
-    }
-
-    private List<String> resolveEntityFormIds(Map<String, String> extensionProperties) {
-        List<String> formIds = parseFormIdList(extensionProperties.get("entityFormIds"));
-        if (!formIds.isEmpty()) {
-            return formIds;
-        }
-        return parseFormIdList(extensionProperties.get("entityFormId"));
-    }
-
-    private String resolveFormKey(Element userTask) {
-        String formKey = userTask.getAttributeNS("http://flowable.org/bpmn", "formKey");
-        if (formKey == null || formKey.isBlank()) {
-            formKey = userTask.getAttribute("formKey");
-        }
-        if (formKey == null || formKey.isBlank()) {
-            formKey = userTask.getAttribute("flowable:formKey");
-        }
-        return decodeXmlAttributeValue(formKey);
-    }
-
-    private Integer existingReadonly(
-            List<ProcessNodeForm> existingBindings,
-            String formId,
-            Integer fallback) {
-        if (existingBindings == null || existingBindings.isEmpty()) {
-            return fallback;
-        }
-        return existingBindings.stream()
-                .filter(binding -> formId.equals(binding.getFormId()))
-                .map(ProcessNodeForm::getIsReadonly)
-                .filter(java.util.Objects::nonNull)
-                .findFirst()
-                .orElse(fallback);
-    }
-
-    private List<String> parseFormIdList(String value) {
-        LinkedHashSet<String> formIds = new LinkedHashSet<>();
-        String normalized = decodeXmlAttributeValue(value);
-        if (normalized == null || normalized.isBlank()) {
-            return new ArrayList<>();
-        }
-
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            try {
-                JsonNode node = objectMapper.readTree(normalized);
-                if (node.isArray()) {
-                    node.forEach(item -> {
-                        if (item.isTextual() && !item.asText().isBlank()) {
-                            formIds.add(item.asText().trim());
-                        }
-                    });
-                }
-            } catch (Exception e) {
-                log.warn("解析 entityFormIds 失败，按列表处理: {}", e.getMessage());
-            }
-        }
-
-        if (formIds.isEmpty()) {
-            for (String part : normalized.split(",")) {
-                String formId = part.trim();
-                if (!formId.isEmpty()) {
-                    formIds.add(formId);
-                }
-            }
-        }
-        return new ArrayList<>(formIds);
-    }
-
-    private boolean isTruthy(String value) {
-        if (value == null) {
-            return false;
-        }
-        String normalized = value.trim();
-        return "true".equalsIgnoreCase(normalized) || "1".equals(normalized);
-    }
-
-    private String decodeXmlAttributeValue(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value
-                .replace("&quot;", "\"")
-                .replace("&#34;", "\"")
-                .replace("&amp;", "&")
-                .replace("&#38;", "&")
-                .replace("&lt;", "<")
-                .replace("&#60;", "<")
-                .replace("&gt;", ">")
-                .replace("&#62;", ">")
-                .replace("&#39;", "'");
-    }
-
     private String getEntityCodeByProcessId(String processConfigId) {
         EntityDefinition entityDef = entityDefinitionMapper.findByProcessDefinitionId(processConfigId).orElse(null);
         if (entityDef != null) {
             return entityDef.getEntityCode();
         }
         return null;
-    }
-
-    private String extractNodeName(Document document, String nodeId) {
-        NodeList elements = document.getElementsByTagNameNS("*", "*");
-        for (int i = 0; i < elements.getLength(); i++) {
-            Element element = (Element) elements.item(i);
-            if (nodeId.equals(element.getAttribute("id"))) {
-                String name = element.getAttribute("name");
-                return name == null || name.isBlank() ? nodeId : name;
-            }
-        }
-        return nodeId;
     }
 
     private int parseNodesByType(String processConfigId, String bpmnXml, String tagName, NodeConfig.NodeType nodeType) {
@@ -659,7 +526,7 @@ public class ProcessDefinitionNodeSyncService {
                     "<(?:flowable|camunda):property\\s+name=\"" + Pattern.quote(propertyName) + "\"\\s+value=\"([^\"]*)\"",
                     Pattern.CASE_INSENSITIVE).matcher(propsContent);
             if (propMatcher.find()) {
-                return decodeXmlAttributeValue(propMatcher.group(1));
+                return bpmnParser.decodeXmlAttributeValue(propMatcher.group(1));
             }
         }
         return null;
@@ -721,7 +588,7 @@ public class ProcessDefinitionNodeSyncService {
                 return;
             }
 
-            boolean isReadonly = formReadonlyMatcher.find() && isTruthy(formReadonlyMatcher.group(1));
+            boolean isReadonly = formReadonlyMatcher.find() && bpmnParser.isTruthy(formReadonlyMatcher.group(1));
             formConfig.setIsReadonly(isReadonly);
             formMapper.insert(formConfig);
         } catch (Exception e) {
@@ -779,7 +646,7 @@ public class ProcessDefinitionNodeSyncService {
                 return;
             }
             Map<String, Object> approvalConfig = objectMapper.readValue(
-                    decodeXmlAttributeValue(approvalConfigJson), HashMap.class);
+                    bpmnParser.decodeXmlAttributeValue(approvalConfigJson), HashMap.class);
             mergeConfigJson(nodeConfigId, approvalConfig);
         } catch (Exception e) {
             throw new IllegalStateException(

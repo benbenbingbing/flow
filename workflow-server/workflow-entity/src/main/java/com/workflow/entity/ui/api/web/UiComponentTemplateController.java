@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.ui.api.request.UiComponentTemplateSaveRequest;
 import com.workflow.entity.ui.api.request.UiComponentTemplateUpgradeRequest;
@@ -23,6 +25,7 @@ import java.util.Map;
  * UI 组件模板管理控制器。
  * <p>提供组件模板的查询、保存、版本列表、创建版本及升级接口，所有操作需全局配置权限。
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/ui-component-templates")
 @RequiredArgsConstructor

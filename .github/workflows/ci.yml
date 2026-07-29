@@ -1,56 +1,182 @@
-name: CI
+name: 持续集成
+
+run-name: 持续集成 · ${{ github.ref_name }} · ${{ github.actor }}
 
 on:
   pull_request:
   push:
-    branches:
-      - main
-      - feat/**
-      - codex/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   server:
-    name: Server
+    name: 后端测试与校验
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: workflow-server
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: 配置 Java 构建环境
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
-      - name: Test
-        run: mvn test
+      - name: 执行测试与架构校验
+        env:
+          OPENAPI_BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: mvn -B -ntp verify
 
   web:
-    name: Web
+    name: 前端测试与构建
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: workflow-web
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          node-version: '22'
+          persist-credentials: false
+
+      - name: 配置 Node.js 构建环境
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
           cache: npm
           cache-dependency-path: workflow-web/package-lock.json
 
-      - name: Install
-        run: npm ci
+      - name: 安装依赖
+        run: npm ci --registry=https://registry.npmjs.org
 
-      - name: Unit Test
-        run: npm run test:unit
+      - name: 检查依赖安全公告
+        run: npm audit --registry=https://registry.npmjs.org --audit-level=high
 
-      - name: Build
+      - name: 执行测试
+        run: npm test
+
+      - name: 构建生产版本
         run: npm run build
+
+  manifests:
+    name: 部署清单校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: 验证生产与本地部署清单
+        run: deploy/scripts/validate-manifests.sh
+
+  images:
+    name: 镜像构建与安全检查
+    needs:
+      - server
+      - web
+      - manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: 配置容器构建环境
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: 构建后端镜像
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./workflow-server
+          load: true
+          tags: flow-server:${{ github.sha }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+      - name: 构建前端镜像
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./workflow-web
+          load: true
+          tags: flow-web:${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: 检查后端镜像漏洞
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: flow-server:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - name: 检查前端镜像漏洞
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: flow-web:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - name: 生成后端软件物料清单
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: flow-server:${{ github.sha }}
+          format: cyclonedx
+          output: server-sbom.cdx.json
+
+      - name: 生成前端软件物料清单
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: flow-web:${{ github.sha }}
+          format: cyclonedx
+          output: web-sbom.cdx.json
+
+      - name: 保存软件物料清单
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ github.sha }}
+          path: '*-sbom.cdx.json'
+          if-no-files-found: error
+          retention-days: 30
+
+  production-deploy:
+    name: 生产部署
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    needs:
+      - images
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/deploy.yml
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

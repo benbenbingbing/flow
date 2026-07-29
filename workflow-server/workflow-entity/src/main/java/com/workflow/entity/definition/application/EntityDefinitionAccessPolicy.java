@@ -51,6 +51,19 @@ public class EntityDefinitionAccessPolicy {
     }
 
     /**
+     * Lock and validate a dynamic entity for a serialized write transaction.
+     */
+    public EntityDefinition requireDynamicByCodeForUpdate(
+            String entityCode) {
+        EntityDefinition entity = definitionMapper
+                .findByEntityCodeForUpdate(entityCode)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "实体不存在: " + entityCode));
+        requireDynamic(entity);
+        return entity;
+    }
+
+    /**
      * 校验给定实体为动态实体，系统实体将抛出业务冲突异常。
      *
      * @param entity 实体定义

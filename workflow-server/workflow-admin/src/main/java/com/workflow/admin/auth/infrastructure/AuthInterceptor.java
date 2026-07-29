@@ -5,6 +5,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +15,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Objects;
 
 /**
  * JWT认证拦截器
@@ -54,9 +56,9 @@ public class AuthInterceptor implements HandlerInterceptor {
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 登录、退出接口放行
+        // Login is the only anonymous authentication endpoint.
         String uri = request.getRequestURI();
-        if (uri.equals("/api/auth/login") || uri.equals("/api/auth/logout")) {
+        if (uri.equals("/api/auth/login")) {
             return true;
         }
         
@@ -75,13 +77,24 @@ public class AuthInterceptor implements HandlerInterceptor {
         // 设置当前用户上下文
         String userId = JwtUtil.getUserIdFromToken(token);
         String username = JwtUtil.getUsernameFromToken(token);
-        UserContext.setCurrentUser(userId, username);
 
         if (userService == null) {
             writeErrorResponse(response, 503, "认证服务暂不可用");
             return false;
         }
-        if (userService.requiresPasswordReset(userId)
+        SysUser user = userService.getById(userId);
+        Long tokenVersion = JwtUtil.getTokenVersionFromToken(token);
+        if (user == null
+                || !SysUser.Status.ENABLED.getValue().equals(user.getStatus())
+                || !Objects.equals(username, user.getUsername())
+                || tokenVersion == null
+                || !tokenVersion.equals(
+                        user.getTokenVersion() == null ? 0L : user.getTokenVersion())) {
+            writeErrorResponse(response, 401, "登录状态已失效");
+            return false;
+        }
+        UserContext.setCurrentUser(userId, username);
+        if (Boolean.TRUE.equals(user.getPasswordResetRequired())
                 && !uri.equals("/api/auth/current")
                 && !uri.equals("/api/auth/change-password")
                 && !uri.equals("/api/auth/logout")) {

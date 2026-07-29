@@ -1,5 +1,6 @@
 package com.workflow.process.action.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -272,7 +273,7 @@ public class FlowActionService {
     public void deleteActionsByVersionId(String versionId) {
         // 逻辑删除该版本的所有动作
         flowActionMapper.logicDeleteByVersionId(versionId);
-        log.info("Logic deleted actions for version {}", versionId);
+        log.info("Logic deleted actions for version {}", LogValue.safe(versionId));
     }
 
     /** 将保存请求转换为动作实体 */

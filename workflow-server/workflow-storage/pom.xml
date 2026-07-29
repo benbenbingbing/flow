@@ -7,7 +7,10 @@
     <dependencies>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-core</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-admin</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+        <dependency><groupId>software.amazon.awssdk</groupId><artifactId>s3</artifactId></dependency>
+        <dependency><groupId>software.amazon.awssdk</groupId><artifactId>apache5-client</artifactId></dependency>
         <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version><scope>provided</scope></dependency>
     </dependencies>
 </project>

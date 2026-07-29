@@ -1,5 +1,7 @@
 package com.workflow.entity.permission.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.entity.permission.api.request.EntityListScopePublishRequest;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
  * <p>管理实体的数据范围策略（policy）与绑定（binding），并提供发布与激活接口；
  * 所有操作均要求管理员权限。
  */
+@RequiresPermission("entity:definition:manage")
 @RestController
 @RequestMapping("/api/entity-list-scopes")
 @RequiredArgsConstructor

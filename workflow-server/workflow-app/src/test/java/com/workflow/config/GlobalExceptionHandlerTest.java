@@ -7,6 +7,7 @@ import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.result.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import com.workflow.core.error.RateLimitExceededException;
 import org.springframework.http.ResponseEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,6 +23,21 @@ class GlobalExceptionHandlerTest {
 
     /** 被测异常处理器实例 */
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+    @Test
+    void returnsRetryAfterForRateLimit() {
+        var response = handler.handleRateLimit(
+                new RateLimitExceededException(
+                        "稍后重试",
+                        42));
+
+        assertEquals(
+                HttpStatus.TOO_MANY_REQUESTS,
+                response.getStatusCode());
+        assertEquals(
+                "42",
+                response.getHeaders().getFirst("Retry-After"));
+    }
 
     /** 非法参数异常应返回 400 BAD_REQUEST 且消息正确 */
     @Test

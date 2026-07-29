@@ -1,5 +1,7 @@
 package com.workflow.entity.data.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.Result;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
 import com.workflow.entity.data.application.EntityFlowStatusService;
@@ -11,6 +13,7 @@ import java.util.List;
 /**
  * 实体流程状态映射控制器
  */
+@RequiresPermission("entity:definition:view")
 @RestController
 @RequestMapping("/api/process-entity-status-mappings")
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class EntityFlowStatusController {
      * 保存流程状态映射配置
      */
     @PostMapping("/process/{processConfigId}/update")
+    @RequiresPermission("entity:definition:manage")
     public Result<Void> saveStatusMappings(
             @PathVariable String processConfigId,
             @RequestBody SaveStatusMappingRequest request) {
@@ -56,6 +60,7 @@ public class EntityFlowStatusController {
      * 删除流程的状态映射配置
      */
     @PostMapping("/process/{processConfigId}/delete")
+    @RequiresPermission("entity:definition:manage")
     public Result<Void> deleteByProcessConfigId(@PathVariable String processConfigId) {
         entityFlowStatusService.deleteByProcessConfigId(processConfigId);
         return Result.success();

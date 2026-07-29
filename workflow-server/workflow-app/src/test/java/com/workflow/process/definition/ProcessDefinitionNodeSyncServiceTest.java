@@ -1,6 +1,7 @@
 package com.workflow.process.definition;
 
 import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
+import com.workflow.process.definition.application.ProcessBpmnNodeParser;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.configuration.api.model.NodeConfigDTO;
@@ -124,6 +125,27 @@ class ProcessDefinitionNodeSyncServiceTest {
         assertEquals("form-assessment", inserted.getFormId());
         assertEquals(1, inserted.getIsReadonly());
         assertEquals(0, inserted.getSortOrder());
+    }
+
+    @Test
+    void syncNodeFormsFromBpmnRejectsDoctypeDeclarations() {
+        ProcessDefinitionNodeSyncService service =
+                service(null, null, null, null, null, null, mock(ProcessNodeFormMapper.class), null);
+        String bpmn = """
+                <?xml version="1.0"?>
+                <!DOCTYPE definitions [
+                  <!ENTITY external SYSTEM "file:///etc/passwd">
+                ]>
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+                  <process id="process-1">
+                    <userTask id="task-1" name="&external;"/>
+                  </process>
+                </definitions>
+                """;
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.syncNodeFormsFromBpmn("process-1", bpmn));
     }
 
     /**
@@ -422,10 +444,15 @@ class ProcessDefinitionNodeSyncServiceTest {
             ProcessNodeFormMapper nodeFormMapper,
             ProcessNodeApprovalMapper nodeApprovalMapper,
             JdbcTemplate jdbcTemplate) {
+        ObjectMapper effectiveMapper =
+                objectMapper == null
+                        ? new ObjectMapper()
+                        : objectMapper;
         return new ProcessDefinitionNodeSyncService(nodeMapper, assigneeMapper, formMapper,
-                objectMapper == null ? new ObjectMapper() : objectMapper,
+                effectiveMapper,
                 entityFlowStatusService, entityDefinitionMapper, nodeFormMapper, nodeApprovalMapper,
-                null, jdbcTemplate);
+                null, jdbcTemplate,
+                new ProcessBpmnNodeParser(effectiveMapper));
     }
 
     private static NodeConfigMapper nodeMapperWithGeneratedIds() {

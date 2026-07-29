@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flow.fullname" . }}-schema-worker
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schema-worker
+spec:
+  replicas: {{ .Values.schemaWorker.replicas }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "flow.componentLabels" (dict "root" . "component" "schema-worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "flow.componentLabels" (dict "root" . "component" "schema-worker") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "flow.fullname" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: schema-worker
+          image: {{ include "flow.image" (dict "root" . "image" .Values.server.image) }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command:
+            - java
+            - -jar
+            - /app/workflow-db-migrator.jar
+          env:
+            - name: MIGRATION_COMMAND
+              value: schema-worker
+            - name: SCHEMA_DATASOURCE_URL
+              value: {{ .Values.database.url | quote }}
+            - name: SCHEMA_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            {{- include "flow.schemaSecretEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.schemaWorker.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

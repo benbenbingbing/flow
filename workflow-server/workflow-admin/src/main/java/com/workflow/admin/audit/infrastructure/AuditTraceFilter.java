@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 为每个请求建立可贯穿业务日志和审计日志的 Trace ID。
@@ -23,6 +24,8 @@ public class AuditTraceFilter extends OncePerRequestFilter {
 
     public static final String TRACE_ID_HEADER = "X-Trace-Id";
     public static final String TRACE_ID_MDC_KEY = "traceId";
+    private static final Pattern SAFE_TRACE_ID =
+            Pattern.compile("[A-Za-z0-9._-]{1,64}");
 
     @Override
     protected void doFilterInternal(
@@ -30,7 +33,8 @@ public class AuditTraceFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         String traceId = request.getHeader(TRACE_ID_HEADER);
-        if (!StringUtils.hasText(traceId) || traceId.length() > 64) {
+        if (!StringUtils.hasText(traceId)
+                || !SAFE_TRACE_ID.matcher(traceId).matches()) {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
         MDC.put(TRACE_ID_MDC_KEY, traceId);

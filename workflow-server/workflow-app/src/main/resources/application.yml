@@ -1,5 +1,13 @@
 server:
   port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: ${SERVER_TOMCAT_THREADS_MAX:100}
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:10}
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
+    max-connections: ${SERVER_TOMCAT_MAX_CONNECTIONS:4096}
+    connection-timeout: ${SERVER_TOMCAT_CONNECTION_TIMEOUT:5s}
   servlet:
     encoding:
       charset: UTF-8
@@ -11,15 +19,45 @@ spring:
     name: workflow-server
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:workflow}?serverTimezone=Asia/Shanghai&allowMultiQueries=true&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:zhoudawei}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}
+      validation-timeout: ${DB_POOL_VALIDATION_TIMEOUT_MS:2000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:1800000}
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION_MS:60000}
+
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
+
+  task:
+    execution:
+      pool:
+        core-size: ${APPLICATION_EXECUTOR_CORE_SIZE:4}
+        max-size: ${APPLICATION_EXECUTOR_MAX_SIZE:16}
+        queue-capacity: ${APPLICATION_EXECUTOR_QUEUE_CAPACITY:100}
+        keep-alive: ${APPLICATION_EXECUTOR_KEEP_ALIVE:60s}
+      shutdown:
+        await-termination: true
+        await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+    scheduling:
+      pool:
+        size: ${APPLICATION_SCHEDULER_POOL_SIZE:4}
+      shutdown:
+        await-termination: true
+        await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
 
   flyway:
     enabled: true
+    url: ${SCHEMA_DATASOURCE_URL}
+    user: ${SCHEMA_DB_USERNAME}
+    password: ${SCHEMA_DB_PASSWORD}
     locations: classpath:db/migration
     encoding: UTF-8
     sql-migration-prefix: V
@@ -32,8 +70,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 100MB
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:50MB}
+      max-request-size: ${MAX_MULTIPART_REQUEST_SIZE:100MB}
 
 # MyBatis-Plus 配置
 mybatis-plus:
@@ -42,7 +80,7 @@ mybatis-plus:
   type-handlers-package: com.workflow.config
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
   global-config:
     db-config:
       id-type: auto
@@ -56,36 +94,137 @@ flowable:
   async-executor-activate: true
   history-level: full
   db-history-used: true
+  task-invoker:
+    core-pool-size: ${FLOWABLE_TASK_INVOKER_CORE_SIZE:4}
+    max-pool-size: ${FLOWABLE_TASK_INVOKER_MAX_SIZE:8}
+    queue-size: ${FLOWABLE_TASK_INVOKER_QUEUE_SIZE:200}
+    await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+
+management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9090}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+    env:
+      show-values: never
+    configprops:
+      show-values: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 # 日志配置
 logging:
-  file:
-    name: logs/workflow-server.log
   level:
     root: INFO
-    com.workflow: DEBUG
+    com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
 
 cors:
-  allowed-origins: "*"
-  allowed-methods: "*"
-  allowed-headers: "*"
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
+  allowed-headers: ${CORS_ALLOWED_HEADERS:Authorization,Content-Type,X-Trace-Id,X-Business-Trace-Key}
+  max-age: ${CORS_MAX_AGE:1h}
 
 # 文件上传配置
 file:
   storage:
-    type: local
+    type: ${FILE_STORAGE_TYPE:local}
     local:
       path: ${FILE_STORAGE_PATH:./uploads}
       access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
+    s3:
+      endpoint: ${FILE_STORAGE_S3_ENDPOINT:}
+      region: ${FILE_STORAGE_S3_REGION:us-east-1}
+      bucket: ${FILE_STORAGE_S3_BUCKET:}
+      access-key: ${FILE_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${FILE_STORAGE_S3_SECRET_KEY:}
+      access-url: ${FILE_STORAGE_S3_ACCESS_URL:}
+      path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
 
 workflow:
+  integration:
+    connector:
+      http:
+        enabled: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED:false}
+        master-key: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY:}
+        master-key-version: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION:}
+        previous-master-keys: ${WORKFLOW_INTEGRATION_CONNECTOR_HTTP_PREVIOUS_MASTER_KEYS:}
+  open-api:
+    enabled: ${WORKFLOW_OPEN_API_ENABLED:false}
+    issuer: ${WORKFLOW_OPEN_API_ISSUER:https://flow.invalid}
+    audience: ${WORKFLOW_OPEN_API_AUDIENCE:flow-open-api}
+    access-token-ttl: ${WORKFLOW_OPEN_API_ACCESS_TOKEN_TTL:10m}
+    key-id: ${WORKFLOW_OPEN_API_KEY_ID:}
+    private-key-location: ${WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION:}
+    public-key-location: ${WORKFLOW_OPEN_API_PUBLIC_KEY_LOCATION:}
+    previous-public-keys: ${WORKFLOW_OPEN_API_PREVIOUS_PUBLIC_KEYS:}
+    token-client-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_CLIENT_LIMIT:30}
+    token-address-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_ADDRESS_LIMIT:300}
+    trust-forwarded-headers: ${WORKFLOW_OPEN_API_TRUST_FORWARDED_HEADERS:false}
+    trusted-proxy-cidrs: ${WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS:}
+    webhook:
+      enabled: ${WORKFLOW_OPEN_API_WEBHOOK_ENABLED:false}
+      master-key: ${WORKFLOW_OPEN_API_WEBHOOK_MASTER_KEY:}
+      metrics-refresh-ms: ${WORKFLOW_OPEN_API_WEBHOOK_METRICS_REFRESH_MS:15000}
+      worker:
+        concurrency: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_CONCURRENCY:4}
+        queue-capacity: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_QUEUE_CAPACITY:200}
+        batch-size: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_BATCH_SIZE:100}
+        lease-seconds: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_LEASE_SECONDS:30}
+        delay-ms: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_DELAY_MS:1000}
+  metrics:
+    queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}
+  http:
+    allowed-hosts: ${WORKFLOW_HTTP_ALLOWED_HOSTS:}
+    allow-http: ${WORKFLOW_HTTP_ALLOW_HTTP:false}
+    allow-private-addresses: ${WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES:false}
+    connect-timeout-seconds: ${WORKFLOW_HTTP_CONNECT_TIMEOUT_SECONDS:5}
+    max-request-timeout-seconds: ${WORKFLOW_HTTP_MAX_REQUEST_TIMEOUT_SECONDS:30}
+    max-request-bytes: ${WORKFLOW_HTTP_MAX_REQUEST_BYTES:262144}
+    max-response-bytes: ${WORKFLOW_HTTP_MAX_RESPONSE_BYTES:1048576}
+  security:
+    trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}
+    login-throttle:
+      account-max-failures: ${LOGIN_ACCOUNT_MAX_FAILURES:5}
+      client-max-failures: ${LOGIN_CLIENT_MAX_FAILURES:30}
+      window-seconds: ${LOGIN_THROTTLE_WINDOW_SECONDS:900}
+      block-seconds: ${LOGIN_THROTTLE_BLOCK_SECONDS:900}
+  bootstrap:
+    enabled: ${WORKFLOW_BOOTSTRAP_ENABLED:true}
+    exit-on-complete: ${WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE:false}
+    admin:
+      password: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:}
+  deployment:
+    role: ${WORKFLOW_DEPLOYMENT_ROLE:development}
+  scheduling:
+    enabled: ${WORKFLOW_SCHEDULING_ENABLED:true}
+  schema-publisher:
+    mode: ${WORKFLOW_SCHEMA_PUBLISHER_MODE:direct}
+    wait-timeout: ${SCHEMA_PUBLISHER_WAIT_TIMEOUT:120s}
+    poll-interval: ${SCHEMA_PUBLISHER_POLL_INTERVAL:500ms}
+    datasource:
+      url: ${SCHEMA_DATASOURCE_URL}
+      username: ${SCHEMA_DB_USERNAME}
+      password: ${SCHEMA_DB_PASSWORD}
   outbox:
     delay-ms: ${OUTBOX_DELAY_MS:3000}
     batch-size: ${OUTBOX_BATCH_SIZE:100}
-    processing-timeout-minutes: ${OUTBOX_PROCESSING_TIMEOUT_MINUTES:10}
+    lease-seconds: ${OUTBOX_LEASE_SECONDS:120}
+    executor:
+      concurrency: ${OUTBOX_EXECUTOR_CONCURRENCY:4}
+      queue-capacity: ${OUTBOX_EXECUTOR_QUEUE_CAPACITY:200}
     retry-initial-seconds: ${OUTBOX_RETRY_INITIAL_SECONDS:30}
     retry-max-seconds: ${OUTBOX_RETRY_MAX_SECONDS:3600}
     retention-days: ${OUTBOX_RETENTION_DAYS:7}
@@ -95,3 +234,21 @@ workflow:
     retention-days: ${AUDIT_RETENTION_DAYS:365}
   flow-action:
     execution-delay-ms: ${FLOW_ACTION_EXECUTION_DELAY_MS:5000}
+    batch-size: ${FLOW_ACTION_BATCH_SIZE:50}
+    lease-seconds: ${FLOW_ACTION_LEASE_SECONDS:300}
+    executor:
+      concurrency: ${FLOW_ACTION_EXECUTOR_CONCURRENCY:4}
+      queue-capacity: ${FLOW_ACTION_EXECUTOR_QUEUE_CAPACITY:100}
+  status-sync:
+    reconciliation-initial-delay-ms: ${STATUS_SYNC_RECONCILIATION_INITIAL_DELAY_MS:60000}
+    reconciliation-delay-ms: ${STATUS_SYNC_RECONCILIATION_DELAY_MS:60000}
+    reconciliation-batch-size: ${STATUS_SYNC_RECONCILIATION_BATCH_SIZE:100}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_ACCESS_TTL_MS:900000}
+
+config:
+  migration:
+    signing-key: ${CONFIG_MIGRATION_SIGNING_KEY}
+    environment-name: ${CONFIG_MIGRATION_ENVIRONMENT_NAME:local}

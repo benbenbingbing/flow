@@ -1,0 +1,932 @@
+openapi: 3.1.0
+info:
+  title: Flow Open Integration API
+  version: 1.0.0
+  description: |
+    Versioned machine-to-machine API for starting and observing authorized
+    Flow process instances. Internal administration and design APIs are not
+    part of this contract.
+servers:
+  - url: /
+    description: Same origin as the Flow server
+tags:
+  - name: Authentication
+  - name: Process definitions
+  - name: Process instances
+paths:
+  /oauth2/token:
+    post:
+      tags:
+        - Authentication
+      operationId: issueClientAccessToken
+      summary: Issue a short-lived application access token
+      security:
+        - clientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientCredentialsTokenRequest'
+      responses:
+        '200':
+          description: Access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessTokenResponse'
+        '400':
+          $ref: '#/components/responses/OAuthInvalidRequest'
+        '401':
+          $ref: '#/components/responses/OAuthInvalidClient'
+        '429':
+          $ref: '#/components/responses/OAuthRateLimited'
+  /api/open/v1/process-definitions:
+    get:
+      tags:
+        - Process definitions
+      operationId: listAuthorizedProcessDefinitions
+      summary: List published process definitions granted to the application
+      security:
+        - clientCredentials:
+            - process.definition.read
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Authorized process definitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessDefinitionPageResponse'
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
+  /api/open/v1/process-instances:
+    post:
+      tags:
+        - Process instances
+      operationId: startProcessInstance
+      summary: Start an authorized process instance idempotently
+      security:
+        - clientCredentials:
+            - process.instance.start
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartProcessRequest'
+      responses:
+        '200':
+          description: The original result of an idempotent replay
+          headers:
+            Idempotent-Replay:
+              description: Indicates that the original result was replayed
+              schema:
+                type: boolean
+                const: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessInstanceResponse'
+        '201':
+          description: Process instance created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessInstanceResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/IntegrationConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/VariableValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
+  /api/open/v1/process-instances/{processInstanceId}:
+    get:
+      tags:
+        - Process instances
+      operationId: getProcessInstance
+      summary: Get an application-owned process instance
+      security:
+        - clientCredentials:
+            - process.instance.read
+      parameters:
+        - $ref: '#/components/parameters/ProcessInstanceId'
+      responses:
+        '200':
+          description: Process instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessInstanceResponse'
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
+  /api/open/v1/process-instances/{processInstanceId}/tasks:
+    get:
+      tags:
+        - Process instances
+      operationId: listProcessInstanceTasks
+      summary: List active task summaries for an application-owned process
+      security:
+        - clientCredentials:
+            - process.task.read
+      parameters:
+        - $ref: '#/components/parameters/ProcessInstanceId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Active task summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPageResponse'
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
+  /api/open/v1/process-instances/{processInstanceId}/messages/{messageKey}:
+    post:
+      tags:
+        - Process instances
+      operationId: correlateProcessMessage
+      summary: Correlate an authorized message to a waiting process instance
+      security:
+        - clientCredentials:
+            - process.message.correlate
+      parameters:
+        - $ref: '#/components/parameters/ProcessInstanceId'
+        - $ref: '#/components/parameters/MessageKey'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CorrelateMessageRequest'
+      responses:
+        '200':
+          description: The original result of an idempotent replay
+          headers:
+            Idempotent-Replay:
+              description: Indicates that the original result was replayed
+              schema:
+                type: boolean
+                const: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageCorrelationResponse'
+        '202':
+          description: Message accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageCorrelationResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '409':
+          $ref: '#/components/responses/IntegrationConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/VariableValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
+components:
+  securitySchemes:
+    clientBasic:
+      type: http
+      scheme: basic
+    clientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            process.definition.read: Read authorized published processes
+            process.instance.start: Start authorized process instances
+            process.instance.read: Read application-owned process instances
+            process.task.read: Read task summaries for owned process instances
+            process.message.correlate: Correlate messages to owned process instances
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by the previous page
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Application-scoped idempotency key for this operation
+      schema:
+        type: string
+        pattern: '^[\x21-\x7E]{1,128}$'
+    ProcessInstanceId:
+      name: processInstanceId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/PublicId'
+    MessageKey:
+      name: messageKey
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[A-Za-z][A-Za-z0-9._-]{0,127}$'
+  responses:
+    InvalidRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidRequest:
+              value:
+                code: 400
+                message: Request validation failed
+                errorCode: INVALID_REQUEST
+                data: null
+                traceId: 01J0TRACE
+    InvalidAccessToken:
+      description: Missing, invalid, expired, or wrong-audience access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidAccessToken:
+              value:
+                code: 401
+                message: Access token is invalid
+                errorCode: INVALID_ACCESS_TOKEN
+                data: null
+                traceId: 01J0TRACE
+    InsufficientScope:
+      description: The token does not grant the required scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            insufficientScope:
+              value:
+                code: 403
+                message: Required scope is not granted
+                errorCode: INSUFFICIENT_SCOPE
+                data: null
+                traceId: 01J0TRACE
+    Forbidden:
+      description: |
+        The token lacks the required scope, the source address is not allowed,
+        or the application is not granted the requested process capability.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            insufficientScope:
+              value:
+                code: 403
+                message: Required scope is not granted
+                errorCode: INSUFFICIENT_SCOPE
+                data: null
+                traceId: 01J0TRACE
+            sourceAddressNotAllowed:
+              value:
+                code: 403
+                message: Source address is not allowed
+                errorCode: SOURCE_ADDRESS_NOT_ALLOWED
+                data: null
+                traceId: 01J0TRACE
+            processNotGranted:
+              value:
+                code: 403
+                message: Process is not granted to this application
+                errorCode: PROCESS_NOT_GRANTED
+                data: null
+                traceId: 01J0TRACE
+    ProcessNotGranted:
+      description: The application is not granted access to the process
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            processNotGranted:
+              value:
+                code: 403
+                message: Process is not granted to this application
+                errorCode: PROCESS_NOT_GRANTED
+                data: null
+                traceId: 01J0TRACE
+    ResourceNotFound:
+      description: Resource does not exist or is not owned by the application
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            resourceNotFound:
+              value:
+                code: 404
+                message: Resource was not found
+                errorCode: RESOURCE_NOT_FOUND
+                data: null
+                traceId: 01J0TRACE
+    IdempotencyConflict:
+      description: Idempotency key is in progress or was reused for different input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            keyReused:
+              value:
+                code: 409
+                message: Idempotency key was reused with different input
+                errorCode: IDEMPOTENCY_KEY_REUSED
+                data: null
+                traceId: 01J0TRACE
+    ProcessStateConflict:
+      description: Process state does not allow this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            processStateConflict:
+              value:
+                code: 409
+                message: Process state does not allow this operation
+                errorCode: PROCESS_STATE_CONFLICT
+                data: null
+                traceId: 01J0TRACE
+    IntegrationConflict:
+      description: |
+        The request is already in progress, an idempotency key was reused for
+        different input, or the current process state rejects the operation.
+      headers:
+        Retry-After:
+          description: Present when the same idempotent request is still running
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            requestInProgress:
+              value:
+                code: 409
+                message: Request with this idempotency key is in progress
+                errorCode: REQUEST_IN_PROGRESS
+                data: null
+                traceId: 01J0TRACE
+            keyReused:
+              value:
+                code: 409
+                message: Idempotency key was reused with different input
+                errorCode: IDEMPOTENCY_KEY_REUSED
+                data: null
+                traceId: 01J0TRACE
+            processStateConflict:
+              value:
+                code: 409
+                message: Process state does not allow this operation
+                errorCode: PROCESS_STATE_CONFLICT
+                data: null
+                traceId: 01J0TRACE
+    PayloadTooLarge:
+      description: Request body exceeds the one mebibyte limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            payloadTooLarge:
+              value:
+                code: 413
+                message: Request body exceeds 1 MiB
+                errorCode: PAYLOAD_TOO_LARGE
+                data: null
+                traceId: 01J0TRACE
+    VariableValidationFailed:
+      description: Input variables do not satisfy the published process schema
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            variableValidationFailed:
+              value:
+                code: 422
+                message: Process variables are invalid
+                errorCode: VARIABLE_VALIDATION_FAILED
+                data:
+                  violations:
+                    - path: /riskLevel
+                      reason: Value is not allowed
+                traceId: 01J0TRACE
+    RateLimited:
+      description: Application request quota exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the client may retry
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            rateLimited:
+              value:
+                code: 429
+                message: Application request quota exceeded
+                errorCode: RATE_LIMIT_EXCEEDED
+                data: null
+                traceId: 01J0TRACE
+    TemporarilyUnavailable:
+      description: Temporary failure; the request may be retried safely
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unavailable:
+              value:
+                code: 503
+                message: Integration capability is temporarily unavailable
+                errorCode: INTEGRATION_TEMPORARILY_UNAVAILABLE
+                data: null
+                traceId: 01J0TRACE
+    OAuthInvalidRequest:
+      description: Invalid OAuth token request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthErrorResponse'
+    OAuthInvalidClient:
+      description: Client authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthErrorResponse'
+    OAuthRateLimited:
+      description: Token endpoint rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the client may retry
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthErrorResponse'
+  schemas:
+    PublicId:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$'
+    TraceId:
+      type: string
+      pattern: '^[A-Za-z0-9._-]{1,64}$'
+    ClientCredentialsTokenRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - grant_type
+      properties:
+        grant_type:
+          type: string
+          const: client_credentials
+        scope:
+          type: string
+          maxLength: 512
+    AccessTokenResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - scope
+      properties:
+        access_token:
+          type: string
+          minLength: 1
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          minimum: 1
+          maximum: 1800
+        scope:
+          type: string
+    OAuthErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_scope
+            - unauthorized_client
+            - temporarily_unavailable
+        error_description:
+          type: string
+          maxLength: 512
+    BusinessReference:
+      type: object
+      additionalProperties: false
+      required:
+        - system
+        - type
+        - id
+      properties:
+        system:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,63}$'
+        type:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,63}$'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ExternalInitiator:
+      type: object
+      additionalProperties: false
+      required:
+        - externalUserId
+      properties:
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    StartProcessRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - processKey
+        - businessReference
+        - variables
+      properties:
+        processKey:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,99}$'
+        businessReference:
+          $ref: '#/components/schemas/BusinessReference'
+        initiator:
+          $ref: '#/components/schemas/ExternalInitiator'
+        variables:
+          type: object
+          maxProperties: 100
+          additionalProperties: true
+    CorrelateMessageRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - variables
+      properties:
+        variables:
+          type: object
+          maxProperties: 100
+          additionalProperties: true
+    ProcessDefinitionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - processKey
+        - name
+        - version
+        - inputSchema
+        - publishedAt
+      properties:
+        processKey:
+          type: string
+        name:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        description:
+          type:
+            - string
+            - 'null'
+        inputSchema:
+          type: object
+          additionalProperties: true
+        publishedAt:
+          type: string
+          format: date-time
+    ProcessInstance:
+      type: object
+      additionalProperties: false
+      required:
+        - processInstanceId
+        - processKey
+        - status
+        - businessReference
+        - createdAt
+      properties:
+        processInstanceId:
+          $ref: '#/components/schemas/PublicId'
+        processKey:
+          type: string
+        status:
+          type: string
+          enum:
+            - RUNNING
+            - COMPLETED
+            - TERMINATED
+            - FAILED
+        businessReference:
+          $ref: '#/components/schemas/BusinessReference'
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    TaskSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - taskId
+        - taskDefinitionKey
+        - name
+        - status
+        - createdAt
+      properties:
+        taskId:
+          $ref: '#/components/schemas/PublicId'
+        taskDefinitionKey:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - SUSPENDED
+        createdAt:
+          type: string
+          format: date-time
+    MessageCorrelation:
+      type: object
+      additionalProperties: false
+      required:
+        - processInstanceId
+        - messageKey
+        - status
+        - acceptedAt
+      properties:
+        processInstanceId:
+          $ref: '#/components/schemas/PublicId'
+        messageKey:
+          type: string
+        status:
+          type: string
+          const: ACCEPTED
+        acceptedAt:
+          type: string
+          format: date-time
+    PageMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - hasMore
+      properties:
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        hasMore:
+          type: boolean
+    ValidationViolation:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - reason
+      properties:
+        path:
+          type: string
+        reason:
+          type: string
+    ErrorData:
+      type:
+        - object
+        - 'null'
+      additionalProperties: true
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          minimum: 400
+          maximum: 599
+        message:
+          type: string
+          minLength: 1
+          maxLength: 512
+        errorCode:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+        data:
+          $ref: '#/components/schemas/ErrorData'
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+    ProcessDefinitionPageData:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ProcessDefinitionSummary'
+        page:
+          $ref: '#/components/schemas/PageMetadata'
+    TaskPageData:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/TaskSummary'
+        page:
+          $ref: '#/components/schemas/PageMetadata'
+    ProcessDefinitionPageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          const: 200
+        message:
+          type: string
+          const: success
+        errorCode:
+          type: 'null'
+        data:
+          $ref: '#/components/schemas/ProcessDefinitionPageData'
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+    ProcessInstanceResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          enum:
+            - 200
+            - 201
+        message:
+          type: string
+        errorCode:
+          type: 'null'
+        data:
+          $ref: '#/components/schemas/ProcessInstance'
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+    TaskPageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          const: 200
+        message:
+          type: string
+          const: success
+        errorCode:
+          type: 'null'
+        data:
+          $ref: '#/components/schemas/TaskPageData'
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+    MessageCorrelationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          enum:
+            - 200
+            - 202
+        message:
+          type: string
+        errorCode:
+          type: 'null'
+        data:
+          $ref: '#/components/schemas/MessageCorrelation'
+        traceId:
+          $ref: '#/components/schemas/TraceId'

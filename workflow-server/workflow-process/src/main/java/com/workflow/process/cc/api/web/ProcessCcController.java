@@ -1,5 +1,7 @@
 package com.workflow.process.cc.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
@@ -27,6 +29,7 @@ import java.util.Map;
  *   <li>GET  /statistics          抄送数量统计（总数 + 未读数）</li>
  * </ul>
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/process-cc")
 @RequiredArgsConstructor

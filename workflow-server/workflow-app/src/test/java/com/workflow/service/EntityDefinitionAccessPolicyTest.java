@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -52,5 +53,24 @@ class EntityDefinitionAccessPolicyTest {
                 () -> policy.requireDynamicByCode("sys_user"));
 
         assertEquals("ENTITY_SYSTEM_DEFINITION_PROTECTED", exception.getErrorCode());
+    }
+
+    @Test
+    void dynamicEntityPublishUsesLockingLookup() {
+        EntityDefinitionMapper mapper =
+                mock(EntityDefinitionMapper.class);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        entity.setStorageMode(
+                EntityDefinition.StorageMode.DYNAMIC);
+        when(mapper.findByEntityCodeForUpdate("expense"))
+                .thenReturn(Optional.of(entity));
+        EntityDefinitionAccessPolicy policy =
+                new EntityDefinitionAccessPolicy(mapper);
+
+        assertSame(
+                entity,
+                policy.requireDynamicByCodeForUpdate("expense"));
+        verify(mapper).findByEntityCodeForUpdate("expense");
     }
 }

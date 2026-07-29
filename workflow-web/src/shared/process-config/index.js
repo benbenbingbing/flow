@@ -30,9 +30,9 @@ export const NODE_TYPE_DESCRIPTIONS = {
     scene: '审批层级、风险等级、自动分支'
   },
   'bpmn:ScriptTask': {
-    title: '脚本任务',
-    desc: '执行脚本处理轻量数据逻辑',
-    scene: '计算、转换、流程变量赋值'
+    title: '脚本任务（已禁用）',
+    desc: '历史节点仅供识别，生产运行时不会执行',
+    scene: '请迁移为已注册的服务任务或流程动作'
   },
   'bpmn:CallActivity': {
     title: '调用活动',
@@ -87,7 +87,7 @@ export const NODE_TYPE_TEXT = {
   'bpmn:UserTask': '用户任务',
   'bpmn:ServiceTask': '服务任务',
   'bpmn:ManualTask': '手动任务',
-  'bpmn:ScriptTask': '脚本任务',
+  'bpmn:ScriptTask': '脚本任务（已禁用）',
   'bpmn:BusinessRuleTask': '业务规则任务',
   'bpmn:SendTask': '发送任务',
   'bpmn:ReceiveTask': '接收任务',

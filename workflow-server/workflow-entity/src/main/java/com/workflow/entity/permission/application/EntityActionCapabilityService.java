@@ -1,5 +1,6 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.security.context.UserContext;
@@ -267,12 +268,12 @@ public class EntityActionCapabilityService {
     private void deny(String entityCode, String action, String dataId, String reason) {
         log.warn(
                 "实体操作被拒绝: userId={}, username={}, entityCode={}, action={}, dataId={}, reason={}",
-                UserContext.getUserId(),
-                UserContext.getUsername(),
-                entityCode,
-                action,
-                dataId,
-                reason);
+                LogValue.safe(UserContext.getUserId()),
+                LogValue.safe(UserContext.getUsername()),
+                LogValue.safe(entityCode),
+                LogValue.safe(action),
+                LogValue.safe(dataId),
+                LogValue.safe(reason));
         throw new ForbiddenException(StringUtils.hasText(reason) ? reason : "没有权限执行该操作");
     }
 

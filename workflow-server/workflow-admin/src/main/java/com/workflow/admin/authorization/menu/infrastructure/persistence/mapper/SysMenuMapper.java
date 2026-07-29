@@ -61,7 +61,9 @@ public interface SysMenuMapper extends BaseMapper<SysMenu> {
     @Select("SELECT DISTINCT m.perm FROM sys_menu m " +
             "JOIN sys_role_menu rm ON m.id = rm.menu_id " +
             "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
+            "JOIN sys_role r ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} " +
+            "AND r.status = '0' AND r.deleted = 0 " +
             "AND m.menu_type = 'F' AND m.status = '0' AND m.deleted = 0 " +
             "AND m.perm IS NOT NULL AND m.perm != ''")
     Set<String> selectPermsByUserId(@Param("userId") String userId);

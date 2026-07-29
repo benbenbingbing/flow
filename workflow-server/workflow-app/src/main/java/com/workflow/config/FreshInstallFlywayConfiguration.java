@@ -1,19 +1,15 @@
 package com.workflow.config;
 
-import org.flywaydb.core.api.MigrationInfo;
-import org.flywaydb.core.api.MigrationVersion;
+import org.flywaydb.core.Flyway;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Enforces the fresh-install-only database contract.
+ * Applies validated, forward-only Flyway migrations.
  */
 @Configuration(proxyBeanMethods = false)
 public class FreshInstallFlywayConfiguration {
-
-    private static final MigrationVersion BUSINESS_BASELINE_VERSION =
-            MigrationVersion.fromVersion("1");
 
     @Bean
     FlywayMigrationStrategy freshInstallOnlyMigrationStrategy(

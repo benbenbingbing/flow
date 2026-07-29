@@ -1,5 +1,7 @@
 package com.workflow.process.task.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
+
 import com.workflow.core.result.Result;
 import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.cc.api.request.TaskCcRequest;
@@ -18,6 +20,7 @@ import java.util.Map;
  *
  * <p>提供任务加签（预览、新增、撤销）与人工知会等扩展操作的 RESTful 接口。</p>
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequiredArgsConstructor
 public class TaskOperationController {

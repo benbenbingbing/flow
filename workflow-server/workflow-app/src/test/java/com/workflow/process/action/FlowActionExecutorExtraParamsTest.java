@@ -17,10 +17,41 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class FlowActionExecutorExtraParamsTest {
+
+    @Test
+    void rejectsServerSideExpressionsInActionParameters() {
+        FlowActionService actionService = mock(FlowActionService.class);
+        ApplicationContext applicationContext = mock(ApplicationContext.class);
+        FlowActionRuntimeAdapter helper = mock(FlowActionRuntimeAdapter.class);
+        FlowActionExecutionService executionService =
+                mock(FlowActionExecutionService.class);
+        when(applicationContext.getBean("sampleAction"))
+                .thenReturn((FlowActionHandler) context -> {});
+        FlowActionExecutor executor = new FlowActionExecutor(
+                actionService,
+                applicationContext,
+                helper,
+                executionService,
+                new ObjectMapper());
+        FlowAction action = new FlowAction();
+        action.setId("action-unsafe");
+        action.setActionName("unsafe");
+        action.setInterfaceName("sampleAction");
+        action.setParamsJson("""
+                {"command":"${T(java.lang.Runtime).getRuntime().exec('id')}"}
+                """);
+        FlowActionTriggerEvent event = new FlowActionTriggerEvent();
+        event.setVariables(Map.of());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> executor.executeAction(action, event, "unsafe-key"));
+    }
 
     @Test
     void exposesResolvedParamsThroughNewAndLegacyNames() {

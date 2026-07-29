@@ -24,7 +24,8 @@ viewFiles.forEach((viewFile) => {
   assert.equal(existsSync(fullPath), true, `路由组件不存在: ${viewFile}`)
   const source = readFileSync(fullPath, 'utf8')
   assert.match(source, /<template>[\s\S]*<\/template>/, `页面缺少 template: ${viewFile}`)
-  assert.match(source, /<script[\s\S]*>[\s\S]*<\/script>/, `页面缺少 script: ${viewFile}`)
+  assert.match(source, /<script\b[^>]*>/i, `页面缺少 script 开始标签: ${viewFile}`)
+  assert.match(source, /<\/script\s*>/i, `页面缺少 script 结束标签: ${viewFile}`)
 })
 
 collectFiles(path.join(root, 'src'), '.vue').forEach((vueFile) => {
@@ -67,7 +68,7 @@ assert.deepEqual(
   assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -1013,12 +1014,11 @@ assert.match(
 
 const userManagement = readFileSync(path.join(root, 'src/views/system/User.vue'), 'utf8')
 const roleManagement = readFileSync(path.join(root, 'src/views/system/Role.vue'), 'utf8')
-const temporaryPasswordNotice = readFileSync(path.join(root, 'src/components/TemporaryPasswordNotice.vue'), 'utf8')
 for (const [name, source] of [['用户管理', userManagement], ['角色管理', roleManagement]]) {
   assert.ok(source.includes(':formatter="formatDateColumn"'), `${name}应格式化创建时间`)
-  assert.ok(source.includes('<TemporaryPasswordNotice'), `${name}的新增用户流程应展示临时密码交付说明`)
+  assert.ok(source.includes('type="password"'), `${name}的新增用户流程应安全输入初始密码`)
+  assert.equal(source.includes('temporaryPassword'), false, `${name}不得从 API 响应回显密码`)
 }
-assert.ok(temporaryPasswordNotice.includes('一次性临时密码'), '新增用户流程应解释临时密码交付方式')
 assert.ok(roleManagement.includes('<RoleTableActions'), '角色列表应收敛为主操作与更多菜单')
 assert.ok(roleManagement.includes('label="操作" width="160"'), '角色列表操作列应适配常见桌面宽度')
 
@@ -1602,8 +1602,9 @@ const visualAcceptanceSource = readFileSync(
   'utf8'
 )
 assert.ok(
-  visualAcceptanceSource.includes('docs/dynamic-extension-demo/latest.json'),
-  '真实视觉验收必须读取当轮动态扩展真实夹具'
+  visualAcceptanceSource.includes("VISUAL_ENTITY_ID")
+    && visualAcceptanceSource.includes("VISUAL_PROCESS_ID"),
+  '真实视觉验收必须通过显式环境变量接收当轮受控夹具标识'
 )
 assert.doesNotMatch(
   visualAcceptanceSource,
@@ -1640,6 +1641,12 @@ assert.doesNotMatch(
 )
 
 const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8')
+const nginxSource = readFileSync(path.join(root, 'nginx.conf'), 'utf8')
+assert.match(
+  nginxSource,
+  /location\s+\/oauth2\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/\$\{SERVER_UPSTREAM\}\/oauth2\/;/,
+  '生产 Web 入口必须代理 OAuth2 令牌端点'
+)
 ;[
   '"test:acceptance:preflight"',
   '"test:acceptance:real"',
@@ -1715,7 +1722,7 @@ assert.ok(
   '节点表单真实验收必须在流程发布前完成全部表单发布'
 )
 ;[
-  'reset?.temporaryPassword',
+  'password: initialPassword',
   "'/auth/change-password'",
   'activateApprover('
 ].forEach((marker) => {

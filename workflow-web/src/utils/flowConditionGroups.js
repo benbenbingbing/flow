@@ -57,6 +57,48 @@ export function parseFlowConditionExpression(expression) {
   return parsed ? normalizeFlowConditionRoot(parsed) : null
 }
 
+export function evaluateFlowConditionExpression(expression, formData = {}) {
+  const normalized = String(expression || '')
+    .replace(/\$\{([A-Za-z_][\w.]*)\}/g, '$1')
+  const root = parseFlowConditionExpression(normalized)
+  return root ? evaluateNode(root, formData) : false
+}
+
+function evaluateNode(node, formData) {
+  if (node.type === 'GROUP') {
+    const values = (node.children || []).map(child => evaluateNode(child, formData))
+    return node.logic === 'OR' ? values.some(Boolean) : values.every(Boolean)
+  }
+  const actual = readProperty(formData, node.property)
+  const expected = coerceExpected(node.value, actual)
+  switch (node.operator) {
+    case '==': return actual === expected
+    case '!=': return actual !== expected
+    case '>': return actual > expected
+    case '<': return actual < expected
+    case '>=': return actual >= expected
+    case '<=': return actual <= expected
+    case 'contains': return String(actual ?? '').includes(String(expected ?? ''))
+    default: return false
+  }
+}
+
+function readProperty(source, path) {
+  return String(path || '').split('.').reduce((value, key) => {
+    if (value == null || !Object.prototype.hasOwnProperty.call(value, key)) {
+      return undefined
+    }
+    return value[key]
+  }, source)
+}
+
+function coerceExpected(value, actual) {
+  if (typeof actual === 'boolean') return String(value).toLowerCase() === 'true'
+  if (typeof actual === 'number') return Number(value)
+  if (value === 'null') return null
+  return value
+}
+
 function normalizeNode(value) {
   if (!value || typeof value !== 'object') return null
   if (value.type === 'GROUP') {

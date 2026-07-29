@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
+import com.workflow.entity.data.application.SchemaDdlExecutor;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class DynamicTableServiceColumnDefinitionTest {
@@ -23,6 +25,7 @@ class DynamicTableServiceColumnDefinitionTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
+        SchemaDdlExecutor schemaDdlExecutor = mock(SchemaDdlExecutor.class);
         when(tableResolver.resolve("acceptance")).thenReturn("biz_acceptance");
         when(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.TABLES "
@@ -40,12 +43,14 @@ class DynamicTableServiceColumnDefinitionTest {
         DynamicTableService service = new DynamicTableService(
                 jdbcTemplate,
                 fieldMapper,
-                tableResolver);
+                tableResolver,
+                schemaDdlExecutor);
 
         service.modifyColumn("acceptance", field);
 
         ArgumentCaptor<String> ddl = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).execute(ddl.capture());
+        verify(schemaDdlExecutor).execute(ddl.capture());
+        verify(jdbcTemplate, never()).execute(org.mockito.ArgumentMatchers.anyString());
         assertTrue(ddl.getValue().contains("DEFAULT 'normal'"));
         assertFalse(ddl.getValue().contains("DEFAULT NULL DEFAULT"));
         assertEquals(1, countOccurrences(ddl.getValue(), " DEFAULT "));

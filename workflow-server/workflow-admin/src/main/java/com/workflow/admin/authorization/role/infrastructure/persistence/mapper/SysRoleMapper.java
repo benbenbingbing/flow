@@ -41,7 +41,7 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
      */
     @Select("SELECT r.* FROM sys_role r " +
             "INNER JOIN sys_user_role ur ON r.id = ur.role_id " +
-            "WHERE ur.user_id = #{userId} AND r.deleted = 0")
+            "WHERE ur.user_id = #{userId} AND r.status = '0' AND r.deleted = 0")
     List<SysRole> selectRolesByUserId(@Param("userId") String userId);
 
     /**
@@ -49,7 +49,8 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
      *
      * @return 管理员角色列表
      */
-    @Select("SELECT * FROM sys_role WHERE role_code IN ('super_admin', 'admin') AND deleted = 0")
+    @Select("SELECT * FROM sys_role WHERE role_code IN ('super_admin', 'admin') " +
+            "AND status = '0' AND deleted = 0")
     List<SysRole> selectAdministratorRoles();
 
     @Select("SELECT COUNT(*) FROM sys_user_role WHERE role_id = #{roleId}")

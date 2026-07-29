@@ -56,14 +56,13 @@ public class SendNotificationHandler implements FlowActionHandler {
         // 读取自定义通知参数
         Object templateCode = ctx.getCustomParams().get("templateCode");
         Object notifyType = ctx.getCustomParams().get("notifyType");
-        Object receiver = ctx.getCustomParams().get("receiverExpr");
-
-        // 读取流程与实体上下文信息
-        Object startUserId = ctx.getVariable("startUserId");
-        Object entityData = ctx.getEntityData();
-
-        log.info("[流程动作] 发送通知, templateCode={}, notifyType={}, receiver={}, processInstanceId={}, entityCode={}, entityDataId={}, startUserId={}",
-                templateCode, notifyType, receiver, ctx.getProcessInstanceId(),
-                ctx.getEntityCode(), ctx.getEntityDataId(), startUserId);
+        log.info(
+                "[流程动作] 发送通知, templateCode={}, notifyType={},"
+                        + " processInstanceId={}, entityCode={}, entityDataId={}",
+                templateCode,
+                notifyType,
+                ctx.getProcessInstanceId(),
+                ctx.getEntityCode(),
+                ctx.getEntityDataId());
     }
 }

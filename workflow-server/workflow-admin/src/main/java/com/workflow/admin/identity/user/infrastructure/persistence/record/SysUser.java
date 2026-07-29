@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.user.infrastructure.persistence.record;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -40,13 +40,18 @@ public class SysUser {
     /**
      * 密码
      */
-    @JsonIgnore
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /**
      * 是否必须在继续使用系统前修改密码
      */
     private Boolean passwordResetRequired;
+
+    /**
+     * Incremented whenever all existing access tokens must be revoked.
+     */
+    private Long tokenVersion;
     
     /**
      * 邮箱
@@ -118,12 +123,6 @@ public class SysUser {
     @TableField(exist = false)
     private List<String> roleIds;
 
-    /**
-     * 创建或重置密码时仅在本次响应中返回的临时密码
-     */
-    @TableField(exist = false)
-    private String temporaryPassword;
-    
     public enum Status {
         /** 启用 */
         ENABLED("0"),

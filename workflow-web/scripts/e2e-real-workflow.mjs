@@ -311,42 +311,14 @@ assert.ok(history.some(item => item.taskName === '财务复核审批' && item.co
 
 const result = {
   runId,
-  process: {
-    id: workflowProcess.id,
-    processKey,
-    version: workflowProcess.version,
-    configuredNodes: nodes,
-    statusMappings: mappings
-  },
-  entity: {
-    id: entity.id,
-    entityCode,
-    dataId: created.id,
-    dataName
-  },
-  runtime: {
-    processInstanceId: created.processInstanceId,
-    initial: {
-      taskName: created.currentTaskName,
-      assignee: created.currentTaskAssignee,
-      status: created.status
-    },
-    afterFirstApproval: {
-      taskName: afterFirstApproval.currentTaskName,
-      assignee: afterFirstApproval.currentTaskAssignee,
-      status: afterFirstApproval.status
-    },
-    completed: {
-      status: completed.status,
-      processEndTime: completed.processEndTime
-    },
-    history,
-    progress
-  }
+  processKey,
+  entityCode,
+  dataName,
+  result: 'PASS'
 }
 
 const resultFile = path.join(outputDir, `workflow-e2e-${runId}.json`)
-writeFileSync(resultFile, JSON.stringify(result, null, 2))
-writeFileSync(path.join(outputDir, 'latest.json'), JSON.stringify(result, null, 2))
+writeFileSync(resultFile, JSON.stringify(result, null, 2), { mode: 0o600 })
+writeFileSync(path.join(outputDir, 'latest.json'), JSON.stringify(result, null, 2), { mode: 0o600 })
 
 console.log(`real workflow e2e passed: ${resultFile}`)

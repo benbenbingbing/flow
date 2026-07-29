@@ -1,0 +1,176 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "flow.fullname" . }}
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: {{ include "flow.fullname" . }}.availability
+      rules:
+        - alert: FlowReadyReplicaShortage
+          expr: |
+            sum(up{service="{{ include "flow.fullname" . }}-server"} == 1)
+              < {{ .Values.monitoring.prometheusRule.minimumReadyReplicas }}
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Flow has fewer ready server replicas than required
+            runbook_url: deploy/runbooks/incident-response.md#availability
+        - alert: FlowHighHttp5xxRatio
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{
+                application="workflow-server",status=~"5.."}[5m]))
+              /
+              clamp_min(sum(rate(http_server_requests_seconds_count{
+                application="workflow-server"}[5m])), 1)
+            ) > {{ .Values.monitoring.prometheusRule.http5xxRatio }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Flow HTTP 5xx ratio is above the configured threshold
+            runbook_url: deploy/runbooks/incident-response.md#http-errors
+    - name: {{ include "flow.fullname" . }}.workers
+      rules:
+        - alert: FlowDurableQueueDeadItems
+          expr: |
+            max(workflow_queue_items{
+              application="workflow-server",state="dead"}) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Flow has dead durable queue items
+            runbook_url: deploy/runbooks/incident-response.md#durable-queues
+        - alert: FlowDurableQueueStalled
+          expr: |
+            max(workflow_queue_oldest_ready_seconds{
+              application="workflow-server"})
+              > {{ .Values.monitoring.prometheusRule.queueOldestReadySeconds }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Flow durable queue processing is stalled
+            runbook_url: deploy/runbooks/incident-response.md#durable-queues
+        - alert: FlowDatabasePoolContention
+          expr: |
+            max(hikaricp_connections_pending{
+              application="workflow-server"}) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Flow requests are waiting for database connections
+            runbook_url: deploy/runbooks/incident-response.md#database
+    - name: {{ include "flow.fullname" . }}.webhook
+      rules:
+        - alert: FlowWebhookDeadLetters
+          expr: |
+            max(flow_webhook_dead{
+              application="workflow-server"}) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Flow has Webhook deliveries requiring manual review
+            runbook_url: deploy/runbooks/webhook-delivery.md#dead-letters
+        - alert: FlowWebhookDeliveryStalled
+          expr: |
+            max(flow_webhook_oldest_pending_seconds{
+              application="workflow-server"})
+              > {{ .Values.monitoring.prometheusRule.webhookOldestPendingSeconds }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Flow Webhook delivery backlog is stalled
+            runbook_url: deploy/runbooks/webhook-delivery.md#backlog
+        - alert: FlowWebhookSuccessRatioLow
+          expr: |
+            (
+              sum by (application) (
+                rate(flow_webhook_deliveries_total{
+                  status="succeeded"}[15m])
+              )
+              /
+              clamp_min(
+                sum by (application) (
+                  rate(flow_webhook_deliveries_total[15m])
+                ),
+                0.001
+              )
+            ) < {{ .Values.monitoring.prometheusRule.webhookSuccessRatio }}
+            and
+            sum by (application) (
+              increase(flow_webhook_deliveries_total[15m])
+            ) >= {{ .Values.monitoring.prometheusRule.webhookMinimumAttempts }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Webhook success ratio is below the production objective
+            runbook_url: deploy/runbooks/webhook-delivery.md#failure-rate
+        - alert: FlowWebhookLeaseRecoverySustained
+          expr: |
+            increase(flow_webhook_lease_recovered_total[10m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Webhook workers are repeatedly recovering expired leases
+            runbook_url: deploy/runbooks/webhook-delivery.md#lease-recovery
+        - alert: FlowWebhookExecutorRejected
+          expr: |
+            increase(flow_webhook_executor_rejected_total[5m]) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Webhook worker execution queue is saturated
+            runbook_url: deploy/runbooks/webhook-delivery.md#worker-saturation
+    - name: {{ include "flow.fullname" . }}.connector
+      rules:
+        - alert: FlowConnectorSuccessRatioLow
+          expr: |
+            (
+              sum by (connector, operation) (
+                rate(flow_connector_calls_total{
+                  status="success"}[15m])
+              )
+              /
+              clamp_min(
+                sum by (connector, operation) (
+                  rate(flow_connector_calls_total[15m])
+                ),
+                0.001
+              )
+            ) < {{ .Values.monitoring.prometheusRule.connectorSuccessRatio }}
+            and
+            sum by (connector, operation) (
+              increase(flow_connector_calls_total[15m])
+            ) >= {{ .Values.monitoring.prometheusRule.connectorMinimumAttempts }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: HTTP Connector success ratio is below the production objective
+            runbook_url: deploy/runbooks/http-connector.md#failure-rate
+        - alert: FlowConnectorAuditWriteFailure
+          expr: |
+            increase(flow_connector_audit_failures_total{
+              application="workflow-server"}[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: HTTP Connector audit outcome could not be persisted
+            runbook_url: deploy/runbooks/http-connector.md#audit-failure
+{{- end }}

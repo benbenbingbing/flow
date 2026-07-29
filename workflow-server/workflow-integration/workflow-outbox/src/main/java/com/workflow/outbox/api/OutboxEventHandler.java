@@ -10,4 +10,11 @@ public interface OutboxEventHandler {
     String topic();
 
     void handle(OutboxEvent event) throws Exception;
+
+    /**
+     * Whether a failed delivery can be retried without duplicating a visible side effect.
+     */
+    default boolean retryable() {
+        return false;
+    }
 }

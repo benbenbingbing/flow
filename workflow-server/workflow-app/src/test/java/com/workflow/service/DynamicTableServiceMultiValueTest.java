@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
+import com.workflow.entity.data.application.SchemaDdlExecutor;
 
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import org.junit.jupiter.api.Test;
@@ -27,17 +28,19 @@ class DynamicTableServiceMultiValueTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
+        SchemaDdlExecutor schemaDdlExecutor = mock(SchemaDdlExecutor.class);
         when(tableResolver.resolve("expense")).thenReturn("biz_expense");
         DynamicTableService service = new DynamicTableService(
                 jdbcTemplate,
                 fieldMapper,
-                tableResolver);
+                tableResolver,
+                schemaDdlExecutor);
 
         service.ensureEntityMultiValueTable("expense");
 
         ArgumentCaptor<String> ddl = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).execute(ddl.capture());
-        assertTrue(ddl.getValue().contains("CREATE TABLE IF NOT EXISTS biz_expense_multi"));
+        verify(schemaDdlExecutor).execute(ddl.capture());
+        assertTrue(ddl.getValue().contains("CREATE TABLE IF NOT EXISTS `biz_expense_multi`"));
         assertTrue(ddl.getValue().contains("target_entity_id"));
         assertTrue(ddl.getValue().contains("target_record_id"));
         assertTrue(ddl.getValue().contains("COLLATE=utf8mb4_unicode_ci"));

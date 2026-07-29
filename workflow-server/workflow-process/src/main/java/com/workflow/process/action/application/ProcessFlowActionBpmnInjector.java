@@ -1,5 +1,6 @@
 package com.workflow.process.action.application;
 
+import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -22,8 +23,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * 流程动作 BPMN 兼容清理器。
  *
- * <p>流程动作已改为全局 Flowable 事件分发。发布时只移除平台历史注入的监听器，
- * 不修改用户自行配置的其他监听器。</p>
+ * <p>流程动作已改为全局 Flowable 事件分发。发布时移除顺序流上的全部监听器，
+ * 防止历史或用户配置绕过平台动作白名单。</p>
  */
 @Slf4j
 @Service
@@ -67,7 +68,8 @@ public class ProcessFlowActionBpmnInjector {
 
             return toXmlString(doc);
         } catch (Exception e) {
-            log.warn("清理历史流程动作监听器失败: processConfigId={}", processConfigId, e);
+            log.warn("清理历史流程动作监听器失败: processConfigId={}, failureType={}",
+                    LogValue.safe(processConfigId), LogValue.failureType(e));
             return bpmnXml;
         }
     }
@@ -87,7 +89,7 @@ public class ProcessFlowActionBpmnInjector {
             }
             Element element = (Element) child;
             if ("executionListener".equals(element.getLocalName())
-                    && LISTENER_BEAN_EXPRESSION.equals(element.getAttribute("delegateExpression"))) {
+                    || "taskListener".equals(element.getLocalName())) {
                 extensionElements.removeChild(child);
                 changed = true;
             }

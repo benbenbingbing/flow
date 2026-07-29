@@ -33,9 +33,9 @@ async function api(method, url, body) {
   })
   const text = await res.text()
   let json
-  try { json = text ? JSON.parse(text) : null } catch { throw new Error(`${method} ${url} returned non-json: ${text.slice(0, 200)}`) }
+  try { json = text ? JSON.parse(text) : null } catch { throw new Error(`${method} ${url} returned non-json: HTTP ${res.status}`) }
   if (!res.ok || (json && json.code != null && json.code !== 200)) {
-    throw new Error(`${method} ${url} failed: HTTP ${res.status}, body=${text.slice(0, 1000)}`)
+    throw new Error(`${method} ${url} failed: HTTP ${res.status}`)
   }
   return json?.data ?? json
 }
@@ -221,15 +221,17 @@ async function main() {
 
   const evidencePath = path.join(evidenceDir, `closure-${suffix}.json`)
   evidence.conclusion = 'PASS: 流程配置、实体绑定、业务数据发起、待办生成、审批完成均按配置生效'
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+  writeFileSync(evidencePath, JSON.stringify({
+    result: 'PASS',
+    conclusion: evidence.conclusion,
+    entityCode,
+    stepNames: evidence.steps.map(step => step.name)
+  }, null, 2), { mode: 0o600 })
   console.log(`real workflow closure passed: ${evidencePath}`)
 }
 
 main().catch(error => {
-  evidence.error = error.stack || String(error)
-  const evidencePath = path.join(evidenceDir, `closure-${suffix}-failed.json`)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
-  console.error(error)
-  console.error(`evidence written: ${evidencePath}`)
+  evidence.error = error instanceof Error ? error.name : 'UnknownError'
+  console.error(`real workflow closure failed: ${evidence.error}`)
   process.exit(1)
 })

@@ -1,5 +1,6 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
@@ -134,7 +135,7 @@ public class ProcessDetailRuntimeService {
                         .singleResult()
                         .getValue();
             } catch (Exception e) {
-                log.debug("获取流程发起人变量失败: instanceId={}", detail.getInstanceId());
+                log.debug("获取流程发起人变量失败: instanceId={}", LogValue.safe(detail.getInstanceId()));
             }
         }
         if ((startUser == null || startUser.isEmpty()) && processKey != null) {

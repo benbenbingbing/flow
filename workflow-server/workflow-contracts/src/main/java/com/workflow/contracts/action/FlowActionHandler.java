@@ -36,6 +36,16 @@ public interface FlowActionHandler {
     }
 
     /**
+     * Whether an AFTER_COMMIT execution can be retried with the same idempotency key.
+     *
+     * <p>Handlers with external side effects must remain non-retryable unless the
+     * downstream system enforces that key.</p>
+     */
+    default boolean retryable() {
+        return false;
+    }
+
+    /**
      * 当前动作允许配置的 extraParams Schema。
      */
     default Map<String, Object> extraParamSchema() {

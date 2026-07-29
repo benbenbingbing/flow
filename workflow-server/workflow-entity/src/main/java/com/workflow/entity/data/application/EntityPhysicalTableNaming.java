@@ -8,7 +8,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * 实体物理业务表命名规则。
@@ -18,10 +17,10 @@ public class EntityPhysicalTableNaming {
 
     /** 新版实体业务表前缀。 */
     public static final String BUSINESS_PREFIX = "biz_";
-    private static final int MYSQL_IDENTIFIER_LIMIT = 64;
+    private static final int DYNAMIC_TABLE_NAME_LIMIT =
+            SqlIdentifierPolicy.MAX_LENGTH - "_multi".length();
     private static final int HASH_LENGTH = 8;
-    private static final Pattern IDENTIFIER_PATTERN =
-            Pattern.compile("^[a-z][a-z0-9_]{0,63}$");
+    private static final int MAX_ENTITY_CODE_LENGTH = 128;
 
     /**
      * 根据实体编码生成物理业务表名，超长时截断并追加哈希后缀。
@@ -33,11 +32,11 @@ public class EntityPhysicalTableNaming {
     public String generate(String entityCode) {
         String normalizedCode = normalizeEntityCode(entityCode);
         String candidate = BUSINESS_PREFIX + normalizedCode;
-        if (candidate.length() <= MYSQL_IDENTIFIER_LIMIT) {
+        if (candidate.length() <= DYNAMIC_TABLE_NAME_LIMIT) {
             return candidate;
         }
         String hash = sha256(candidate).substring(0, HASH_LENGTH);
-        int bodyLength = MYSQL_IDENTIFIER_LIMIT - HASH_LENGTH - 1;
+        int bodyLength = DYNAMIC_TABLE_NAME_LIMIT - HASH_LENGTH - 1;
         return candidate.substring(0, bodyLength) + "_" + hash;
     }
 
@@ -53,6 +52,9 @@ public class EntityPhysicalTableNaming {
         if (!normalized.startsWith(BUSINESS_PREFIX)) {
             throw new IllegalArgumentException("实体物理业务表必须使用 biz_ 前缀: " + tableName);
         }
+        if (normalized.length() > DYNAMIC_TABLE_NAME_LIMIT) {
+            throw new IllegalArgumentException("实体物理业务表名未预留多值表后缀空间: " + tableName);
+        }
         return normalized;
     }
 
@@ -61,10 +63,13 @@ public class EntityPhysicalTableNaming {
             throw new IllegalArgumentException("实体物理表名不能为空");
         }
         String normalized = tableName.trim().toLowerCase(Locale.ROOT);
-        if (!IDENTIFIER_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("实体物理表名不合法: " + tableName);
+        try {
+            return SqlIdentifierPolicy.validate(normalized);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "实体物理表名不合法: " + tableName,
+                    exception);
         }
-        return normalized;
     }
 
     /**
@@ -82,12 +87,33 @@ public class EntityPhysicalTableNaming {
         if (!StringUtils.hasText(entityCode)) {
             throw new IllegalArgumentException("实体编码不能为空");
         }
-        String normalized = entityCode.trim()
-                .replaceAll("([a-z0-9])([A-Z])", "$1_$2")
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9_]+", "_")
-                .replaceAll("_+", "_")
-                .replaceAll("^_+|_+$", "");
+        String source = entityCode.trim();
+        if (source.length() > MAX_ENTITY_CODE_LENGTH) {
+            throw new IllegalArgumentException("实体编码长度不能超过 " + MAX_ENTITY_CODE_LENGTH + " 个字符");
+        }
+        StringBuilder normalizedBuilder = new StringBuilder(source.length());
+        boolean previousWasLowercaseOrDigit = false;
+        for (int index = 0; index < source.length(); index++) {
+            char character = source.charAt(index);
+            if (character >= 'A' && character <= 'Z') {
+                if (previousWasLowercaseOrDigit && endsWithoutSeparator(normalizedBuilder)) {
+                    normalizedBuilder.append('_');
+                }
+                normalizedBuilder.append(Character.toLowerCase(character));
+                previousWasLowercaseOrDigit = false;
+            } else if ((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')) {
+                normalizedBuilder.append(character);
+                previousWasLowercaseOrDigit = true;
+            } else {
+                appendSeparator(normalizedBuilder);
+                previousWasLowercaseOrDigit = false;
+            }
+        }
+        int length = normalizedBuilder.length();
+        if (length > 0 && normalizedBuilder.charAt(length - 1) == '_') {
+            normalizedBuilder.setLength(length - 1);
+        }
+        String normalized = normalizedBuilder.toString();
         if (!StringUtils.hasText(normalized)) {
             throw new IllegalArgumentException("实体编码无法生成物理表名: " + entityCode);
         }
@@ -95,6 +121,16 @@ public class EntityPhysicalTableNaming {
             normalized = "e_" + normalized;
         }
         return normalized;
+    }
+
+    private boolean endsWithoutSeparator(StringBuilder value) {
+        return value.length() > 0 && value.charAt(value.length() - 1) != '_';
+    }
+
+    private void appendSeparator(StringBuilder value) {
+        if (endsWithoutSeparator(value)) {
+            value.append('_');
+        }
     }
 
     private String sha256(String value) {

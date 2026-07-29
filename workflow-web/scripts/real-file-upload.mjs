@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
@@ -12,15 +13,15 @@ const testPassword = process.env.TEST_PASSWORD
 const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const debugPort = Number(process.env.FILE_UPLOAD_DEBUG_PORT || 9444)
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
-const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
+const suffix = `${stamp}${randomUUID().replaceAll('-', '').slice(0, 8)}`
 const entityCode = `upload_entity_${suffix}`
 const entityName = `文件图片上传验收实体${suffix}`
 const listKey = 'upload_records'
 const listName = '文件图片上传验收列表'
 const recordName = `上传验收记录${suffix}`
 const evidenceDir = path.resolve('docs/file-upload-e2e')
-const userDataDir = path.join(tmpdir(), `workflow-upload-${Date.now()}`)
-const fixtureDir = path.join(tmpdir(), `workflow-upload-files-${Date.now()}`)
+const userDataDir = mkdtempSync(path.join(tmpdir(), 'workflow-upload-browser-'))
+const fixtureDir = mkdtempSync(path.join(tmpdir(), 'workflow-upload-files-'))
 const textName = `acceptance-${suffix}.txt`
 const imageName = `acceptance-${suffix}.png`
 const textPath = path.join(fixtureDir, textName)
@@ -36,8 +37,6 @@ const evidence = {
 assert.ok(testUsername, 'TEST_USERNAME is required')
 assert.ok(testPassword, 'TEST_PASSWORD is required')
 mkdirSync(evidenceDir, { recursive: true })
-mkdirSync(userDataDir, { recursive: true })
-mkdirSync(fixtureDir, { recursive: true })
 writeFileSync(textPath, `real file upload acceptance ${suffix}\n`)
 writeFileSync(
   imagePath,
@@ -69,10 +68,10 @@ async function api(method, url, body) {
   try {
     json = text ? JSON.parse(text) : null
   } catch {
-    throw new Error(`${method} ${url} returned non-json: ${text.slice(0, 300)}`)
+    throw new Error(`${method} ${url} returned non-json: HTTP ${response.status}`)
   }
   if (!response.ok || (json?.code != null && ![0, 200].includes(Number(json.code)))) {
-    throw new Error(`${method} ${url} failed: HTTP ${response.status}, body=${text.slice(0, 1400)}`)
+    throw new Error(`${method} ${url} failed: HTTP ${response.status}`)
   }
   return json?.data ?? json
 }
@@ -557,8 +556,7 @@ async function verifySavedData() {
   })
 }
 
-function writeEvidence(result, fixture) {
-  evidence.fixture = fixture
+function writeEvidence(result) {
   evidence.result = result
   evidence.conclusion = result === 'PASS'
     ? 'PASS: FILE 与 IMAGE 已通过浏览器真实上传、保存、编辑回显和静态访问验证'
@@ -567,8 +565,14 @@ function writeEvidence(result, fixture) {
     evidenceDir,
     `file-upload-${suffix}${result === 'PASS' ? '' : '-failed'}.json`
   )
-  writeFileSync(file, JSON.stringify(evidence, null, 2))
-  writeFileSync(path.join(evidenceDir, 'latest.json'), JSON.stringify(evidence, null, 2))
+  const report = {
+    result: evidence.result,
+    conclusion: evidence.conclusion,
+    entityCode,
+    stepNames: evidence.steps.map(step => step.name)
+  }
+  writeFileSync(file, JSON.stringify(report, null, 2), { mode: 0o600 })
+  writeFileSync(path.join(evidenceDir, 'latest.json'), JSON.stringify(report, null, 2), { mode: 0o600 })
   return file
 }
 
@@ -577,10 +581,10 @@ try {
   fixture = await prepareFixture()
   await runBrowser(fixture)
   await verifySavedData()
-  const file = writeEvidence('PASS', fixture)
+  const file = writeEvidence('PASS')
   console.log(`real file/image upload passed: ${file}`)
 } catch (error) {
-  const file = writeEvidence('FAIL', fixture)
+  const file = writeEvidence('FAIL')
   console.error(`real file/image upload failed: ${file}`)
   throw error
 } finally {

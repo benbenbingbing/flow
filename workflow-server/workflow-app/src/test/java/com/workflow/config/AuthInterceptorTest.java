@@ -6,6 +6,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.auth.infrastructure.JwtUtil;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.time.Instant;
+import java.util.Date;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -89,6 +100,7 @@ class AuthInterceptorTest {
     void validTokenSetsCurrentUserForProtectedEndpoint() throws Exception {
         initJwtUtil();
         String token = JwtUtil.generateToken("1", "admin");
+        when(userService.getById("1")).thenReturn(activeUser("admin", 0L, false));
         AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/current");
         request.addHeader("Authorization", "Bearer " + token);
@@ -107,7 +119,7 @@ class AuthInterceptorTest {
     void temporaryPasswordOnlyAllowsPasswordRecoveryEndpoints() throws Exception {
         initJwtUtil();
         String token = JwtUtil.generateToken("1", "alice");
-        when(userService.requiresPasswordReset("1")).thenReturn(true);
+        when(userService.getById("1")).thenReturn(activeUser("alice", 0L, true));
         AuthInterceptor interceptor = new AuthInterceptor(userService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/process/task/todo");
         request.addHeader("Authorization", "Bearer " + token);
@@ -120,6 +132,68 @@ class AuthInterceptorTest {
         assertEquals(
                 "首次登录或密码重置后，请先修改密码",
                 objectMapper.readTree(response.getContentAsString()).get("message").asText());
+    }
+
+    @Test
+    void revokedTokenVersionReturnsUnauthorized() throws Exception {
+        initJwtUtil();
+        String token = JwtUtil.generateToken("1", "alice", 3L);
+        when(userService.getById("1")).thenReturn(activeUser("alice", 4L, false));
+        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/auth/current");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void machineRsaTokenCannotEnterInternalUserApi()
+            throws Exception {
+        initJwtUtil();
+        KeyPairGenerator generator =
+                KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        RSAPrivateKey privateKey = (RSAPrivateKey)
+                generator.generateKeyPair().getPrivate();
+        Instant now = Instant.now();
+        SignedJWT machineToken = new SignedJWT(
+                new JWSHeader.Builder(JWSAlgorithm.RS256)
+                        .type(new JOSEObjectType("at+jwt"))
+                        .keyID("machine-test-key")
+                        .build(),
+                new JWTClaimsSet.Builder()
+                        .issuer("https://flow.test")
+                        .subject("flow_machine")
+                        .audience("flow-open-api")
+                        .issueTime(Date.from(now))
+                        .expirationTime(Date.from(
+                                now.plusSeconds(300)))
+                        .claim(
+                                "scope",
+                                java.util.Set.of(
+                                        "process.instance.read"))
+                        .build());
+        machineToken.sign(new RSASSASigner(privateKey));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(userService);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest(
+                        "GET",
+                        "/api/process/task/todo");
+        request.addHeader(
+                "Authorization",
+                "Bearer " + machineToken.serialize());
+        MockHttpServletResponse response =
+                new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(
+                request,
+                response,
+                new Object()));
+        assertEquals(401, response.getStatus());
     }
 
     @Test
@@ -143,8 +217,25 @@ class AuthInterceptorTest {
     /** 初始化 JwtUtil 实例，通过反射注入密钥与过期时间后调用 init */
     private void initJwtUtil() {
         JwtUtil jwtUtil = new JwtUtil();
-        ReflectionTestUtils.setField(jwtUtil, "secret", "workflow-secret-key-2024");
-        ReflectionTestUtils.setField(jwtUtil, "expiration", 86400000L);
+        ReflectionTestUtils.setField(
+                jwtUtil,
+                "secret",
+                "auth-interceptor-test-secret-with-adequate-entropy");
+        ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
         jwtUtil.init();
+    }
+
+    private SysUser activeUser(
+            String username,
+            long tokenVersion,
+            boolean passwordResetRequired) {
+        SysUser user = new SysUser();
+        user.setId("1");
+        user.setUsername(username);
+        user.setStatus(SysUser.Status.ENABLED.getValue());
+        user.setDeleted(0);
+        user.setTokenVersion(tokenVersion);
+        user.setPasswordResetRequired(passwordResetRequired);
+        return user;
     }
 }

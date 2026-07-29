@@ -1,5 +1,7 @@
 package com.workflow.admin.authorization.role.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
@@ -21,6 +23,7 @@ import java.util.Map;
  * 提供角色的增删改查、状态切换及角色菜单权限的查询与保存接口。
  * </p>
  */
+@RequiresPermission("system:role:view")
 @RestController
 @RequestMapping("/api/system/role")
 @RequiredArgsConstructor
@@ -71,6 +74,7 @@ public class SysRoleController {
      * @return 保存后的角色对象
      */
     @PostMapping
+    @RequiresPermission("system:role:manage")
     public Result<SysRole> save(@Validated @RequestBody SysRole role) {
         return Result.success(roleService.saveRole(role));
     }
@@ -83,6 +87,7 @@ public class SysRoleController {
      * @return 更新后的角色对象
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("system:role:manage")
     public Result<SysRole> update(@PathVariable String id, @RequestBody SysRole role) {
         role.setId(id);
         return Result.success(roleService.saveRole(role));
@@ -95,6 +100,7 @@ public class SysRoleController {
      * @return 操作结果
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("system:role:manage")
     public Result<Void> delete(@PathVariable String id) {
         roleService.deleteRole(id);
         return Result.success();
@@ -109,6 +115,7 @@ public class SysRoleController {
      * @return 操作结果
      */
     @PostMapping("/{id}/status")
+    @RequiresPermission("system:role:manage")
     public Result<Void> updateStatus(@PathVariable String id, 
                                      @RequestParam(required = false) String status,
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
@@ -167,6 +174,7 @@ public class SysRoleController {
      * @return 操作结果
      */
     @PostMapping("/{id}/menus")
+    @RequiresPermission("system:role:manage")
     public Result<Void> saveRoleMenus(@PathVariable String id, @RequestBody List<String> menuIds) {
         roleService.saveRoleMenus(id, menuIds);
         return Result.success();

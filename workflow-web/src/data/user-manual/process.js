@@ -163,7 +163,7 @@ export default {
             {
               type: 'bullets',
               items: [
-                '当前画布明确开放右侧配置的元素：用户、服务、发送、接收、手动、业务规则、脚本任务；开始、结束事件；排他、并行、包容、基于事件网关；顺序流。',
+                '当前画布明确开放右侧配置的元素：用户、服务、发送、接收、手动、业务规则；开始、结束事件；排他、并行、包容、基于事件网关；顺序流。历史脚本节点仅供识别，不能发布或执行。',
                 '调用活动和子流程的专用配置已合并到“常用”，可通过任务“更改类型”后直接配置并保存 XML。',
                 '中间/边界事件、复杂网关、事务、泳池、组、数据对象、数据存储等当前主要提供 BPMN 建模能力，没有平台专用业务配置 Tab。',
                 '点击动作数量徽标会选中对应节点或连线并打开配置面板。',
@@ -238,7 +238,7 @@ export default {
                 { option: '接收任务 ReceiveTask', meaning: '暂停流程，等待外部消息继续。', notes: '消息名称必须与外部系统约定；超时策略要有运维监控。' },
                 { option: '手动任务 ManualTask', meaning: '记录系统外线下工作，不生成待办。', notes: '只用于建模和记录，不能替代需要系统确认的用户任务。' },
                 { option: '业务规则任务 BusinessRuleTask', meaning: '执行 DMN 决策表并映射结果。', notes: '目标环境必须部署同 key 决策表。' },
-                { option: '脚本任务 ScriptTask', meaning: '执行 Groovy 脚本处理轻量逻辑。', notes: '发布时转换为平台脚本代理；复杂业务应使用服务任务或动作处理器。' },
+                { option: '脚本任务 ScriptTask（已禁用）', meaning: '历史节点仅供识别，生产运行时不会执行。', notes: '必须迁移为已注册的服务任务或流程动作后才能发布。' },
                 { option: '调用活动 CallActivity', meaning: '调用独立 BPMN 子流程或 CMMN 案例，支持入参、出参和业务 key。', notes: 'BPMN 候选来自已发布流程并排除当前流程；CMMN 可直接填写已部署案例 key。' },
                 { option: '子流程 SubProcess / 事务 Transaction / 事件子流程', meaning: '在一个流程内封装局部步骤，事务和事件子流程具有更特殊的 BPMN 语义。', notes: '平台无完整专用属性面板时，需要通过 XML 和 Flowable 兼容性验证。' }
               ]
@@ -498,24 +498,21 @@ export default {
         },
         {
           id: 'process-script-task',
-          title: '脚本任务',
+          title: '脚本任务（已禁用）',
           blocks: [
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '脚本类型', meaning: 'JavaScript、Groovy、Python。', defaultLimit: '默认 JavaScript；切换类型会自动替换为对应示例代码。', effect: '决定脚本引擎。', publish: '目标 JVM 必须支持对应引擎；Python 支持通常有限。' },
-                { field: '脚本内容', meaning: '执行的代码。', defaultLimit: '可插入示例；JavaScript 提示避免 var，Groovy 支持 Elvis，Python 注意缩进。', effect: '读取 execution 变量并计算。', publish: '禁止网络、文件或高耗时逻辑；复杂逻辑改用服务。' },
-                { field: '测试执行', meaning: '使用 price=100、qty=2 的测试变量调用服务端脚本测试。', defaultLimit: '脚本不能为空。', effect: '显示返回值、结果变量和流程变量。', publish: '测试环境通过不代表生产引擎和数据完全一致。' },
-                { field: '结果变量', meaning: '保存脚本结果。', defaultLimit: '可选。', effect: '后续节点可读取。', publish: 'JavaScript 最后一行表达式、Groovy 返回值、Python 赋值行为需按提示验证。' },
-                { field: '自动存储', meaning: '把脚本变量写入流程上下文。', defaultLimit: '默认关闭。', effect: '脚本内部变量成为流程变量。', publish: '可能污染变量命名空间，只在明确需要时开启。' }
+                { field: '历史配置', meaning: '旧版本保存的脚本配置只读保留。', defaultLimit: '不能编辑、测试或执行。', effect: '用于识别需要迁移的节点。', publish: '存在 ScriptTask 时发布直接失败。' },
+                { field: '迁移目标', meaning: '已注册的服务任务或流程动作。', defaultLimit: '只允许平台白名单能力。', effect: '替代任意代码执行。', publish: '迁移后重新完成流程测试。' }
               ]
             },
             {
               type: 'callout',
               tone: 'warning',
-              title: '脚本安全',
-              text: '脚本属于高风险可执行配置。生产发布前应代码评审、限制可用引擎和 API、验证超时与异常处理，并避免在脚本中处理凭据、文件和任意外部命令。'
+              title: '生产安全边界',
+              text: '平台不在业务 JVM 内执行用户脚本。历史 ScriptTask 必须迁移为已审核、已注册并具备明确超时与幂等语义的服务任务或流程动作。'
             }
           ]
         },

@@ -1,5 +1,7 @@
 package com.workflow.entity.definition.api.web;
 
+import com.workflow.core.security.RequiresPermission;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.ApiResponse;
@@ -18,10 +20,10 @@ import java.util.List;
  * 实体定义控制器
  * 管理业务实体（对应数据库表）
  */
+@RequiresPermission("entity:definition:view")
 @RestController
 @RequestMapping("/api/entity")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityDefinitionController {
     
     private final EntityDefinitionService entityService;
@@ -54,6 +56,7 @@ public class EntityDefinitionController {
      * 创建实体定义
      */
     @PostMapping
+    @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityDefinitionDTO> create(@RequestBody EntityDefinitionDTO dto) {
         return ApiResponse.success(entityService.save(dto));
     }
@@ -62,6 +65,7 @@ public class EntityDefinitionController {
      * 更新实体定义
      */
     @PostMapping("/{id}/update")
+    @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityDefinitionDTO> update(@PathVariable String id, @RequestBody EntityDefinitionDTO dto) {
         return ApiResponse.success(entityService.update(id, dto));
     }
@@ -70,6 +74,7 @@ public class EntityDefinitionController {
      * 删除实体定义
      */
     @PostMapping("/{id}/delete")
+    @RequiresPermission("entity:definition:manage")
     public ApiResponse<Void> delete(@PathVariable String id) {
         entityService.delete(id);
         return ApiResponse.success();
@@ -79,6 +84,7 @@ public class EntityDefinitionController {
      * 发布实体定义
      */
     @PostMapping("/{id}/publish")
+    @RequiresPermission("entity:definition:publish")
     public ApiResponse<EntityDefinitionDTO> publish(
             @PathVariable String id,
             @RequestBody(required = false) ConfigMigrationPublishRequest request) {
@@ -95,6 +101,7 @@ public class EntityDefinitionController {
      * @return 更新后的实体定义
      */
     @PostMapping("/{entityId}/workflow-binding/update")
+    @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityDefinitionDTO> bindWorkflow(
             @PathVariable String entityId,
             @RequestBody EntityWorkflowBindingRequest request) {
@@ -110,6 +117,7 @@ public class EntityDefinitionController {
      * @return 更新后的实体定义
      */
     @PostMapping("/{entityId}/workflow-binding/delete")
+    @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityDefinitionDTO> unbindWorkflow(@PathVariable String entityId) {
         return ApiResponse.success(entityService.unbindWorkflow(entityId));
     }
@@ -122,6 +130,7 @@ public class EntityDefinitionController {
      * @return 更新后的实体定义
      */
     @PostMapping("/{entityId}/lifecycle-mode")
+    @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityDefinitionDTO> updateLifecycleMode(
             @PathVariable String entityId,
             @RequestBody EntityLifecycleModeRequest request) {

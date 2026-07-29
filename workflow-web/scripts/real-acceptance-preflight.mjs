@@ -40,4 +40,4 @@ if (user.passwordResetRequired) {
   throw new Error(`账号 ${username} 必须先完成密码修改，真实验收尚未开始`)
 }
 
-console.log(`real acceptance preflight passed: ${username} @ ${apiBase}`)
+console.log('real acceptance preflight passed')

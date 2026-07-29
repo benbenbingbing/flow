@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -6,7 +7,7 @@ const baseUrl = process.env.API_BASE || process.env.WORKFLOW_API_BASE || 'http:/
 const adminUsername = process.env.TEST_USERNAME || 'admin'
 const adminPassword = process.env.TEST_PASSWORD || 'admin'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)
-const suffix = `${stamp}${Math.random().toString(36).slice(2, 5)}`
+const suffix = `${stamp}${randomUUID().replaceAll('-', '').slice(0, 8)}`
 const processKey = `cfg_${suffix}`
 const entityCode = `cfg_entity_${suffix}`
 const firstApprover = `cfg_l1_${suffix}`
@@ -42,10 +43,10 @@ async function api(method, url, body, username = currentUser) {
   try {
     json = text ? JSON.parse(text) : null
   } catch {
-    throw new Error(`${method} ${url} returned non-json: ${text.slice(0, 200)}`)
+    throw new Error(`${method} ${url} returned non-json: HTTP ${response.status}`)
   }
   if (!response.ok || (json && json.code != null && json.code !== 200)) {
-    throw new Error(`${method} ${url} failed: HTTP ${response.status}, body=${text.slice(0, 1000)}`)
+    throw new Error(`${method} ${url} failed: HTTP ${response.status}`)
   }
   return json?.data ?? json
 }
@@ -57,23 +58,23 @@ async function login(username, password) {
 }
 
 async function createApprover(username, nickname, roleId) {
+  const initialPassword = `InitialA9!${username}`
   const user = await api('POST', '/system/user', {
     username,
     nickname,
     email: `${username}@example.test`,
+    password: initialPassword,
     status: '0',
     roleIds: [roleId]
   })
-  const reset = await api('POST', `/system/user/${user.id}/reset-password`)
-  assert.ok(reset?.temporaryPassword, `重置 ${username} 密码后应返回一次性临时密码`)
   record(`createApprover:${username}`, { id: user.id, username, nickname })
-  return reset.temporaryPassword
+  return initialPassword
 }
 
-async function activateApprover(username, temporaryPassword, newPassword) {
-  await login(username, temporaryPassword)
+async function activateApprover(username, initialPassword, newPassword) {
+  await login(username, initialPassword)
   await api('POST', '/auth/change-password', {
-    currentPassword: temporaryPassword,
+    currentPassword: initialPassword,
     newPassword
   }, username)
   record(`activateApprover:${username}`, {
@@ -147,24 +148,24 @@ async function main() {
     id: approverRole.id,
     roleCode: approverRole.roleCode
   })
-  const firstTemporaryPassword = await createApprover(
+  const firstInitialPassword = await createApprover(
     firstApprover,
     'Codex一级审批人',
     approverRole.id
   )
-  const secondTemporaryPassword = await createApprover(
+  const secondInitialPassword = await createApprover(
     secondApprover,
     'Codex二级审批人',
     approverRole.id
   )
   await activateApprover(
     firstApprover,
-    firstTemporaryPassword,
+    firstInitialPassword,
     `CodexL1A${suffix}9`
   )
   await activateApprover(
     secondApprover,
-    secondTemporaryPassword,
+    secondInitialPassword,
     `CodexL2A${suffix}9`
   )
 
@@ -411,15 +412,17 @@ async function main() {
 
   const evidencePath = path.join(evidenceDir, `config-closure-${suffix}.json`)
   evidence.conclusion = 'PASS: BPMN执行人、实体绑定、状态字典、节点状态映射、跨用户待办和审批历史全部按配置生效'
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+  writeFileSync(evidencePath, JSON.stringify({
+    result: 'PASS',
+    conclusion: evidence.conclusion,
+    entityCode,
+    stepNames: evidence.steps.map(step => step.name)
+  }, null, 2), { mode: 0o600 })
   console.log(`real workflow config closure passed: ${evidencePath}`)
 }
 
 main().catch(error => {
-  evidence.error = error.stack || String(error)
-  const evidencePath = path.join(evidenceDir, `config-closure-${suffix}-failed.json`)
-  writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
-  console.error(error)
-  console.error(`evidence written: ${evidencePath}`)
+  evidence.error = error instanceof Error ? error.name : 'UnknownError'
+  console.error(`real workflow config closure failed: ${evidence.error}`)
   process.exit(1)
 })

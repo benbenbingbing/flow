@@ -1,0 +1,25 @@
+{
+  "specversion": "1.0",
+  "id": "01K1EVENTTASKDONE01",
+  "source": "/flow/process",
+  "type": "com.flow.task.completed.v1",
+  "subject": "task/01K1TASK0000001",
+  "time": "2026-07-29T09:10:00Z",
+  "datacontenttype": "application/json",
+  "dataschema": "/schemas/events/task-completed-v1.schema.json",
+  "traceid": "project-20260729-001",
+  "data": {
+    "taskId": "01K1TASK0000001",
+    "taskDefinitionKey": "manager_review",
+    "processInstanceId": "01K1PROCESS0001",
+    "processKey": "project_change_process",
+    "status": "COMPLETED",
+    "businessReference": {
+      "system": "project-management-system",
+      "type": "change-request",
+      "id": "20260729-001"
+    },
+    "outcome": "approve",
+    "completedAt": "2026-07-29T09:10:00Z"
+  }
+}
