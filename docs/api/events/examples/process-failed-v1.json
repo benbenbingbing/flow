@@ -1,0 +1,23 @@
+{
+  "specversion": "1.0",
+  "id": "01K1EVENTFAILED01",
+  "source": "/flow/process",
+  "type": "com.flow.process.failed.v1",
+  "subject": "process-instance/01K1PROCESS0001",
+  "time": "2026-07-29T08:45:00Z",
+  "datacontenttype": "application/json",
+  "dataschema": "/schemas/events/process-failed-v1.schema.json",
+  "traceid": "project-20260729-001",
+  "data": {
+    "processInstanceId": "01K1PROCESS0001",
+    "processKey": "project_change_process",
+    "status": "FAILED",
+    "businessReference": {
+      "system": "project-management-system",
+      "type": "change-request",
+      "id": "20260729-001"
+    },
+    "failureCode": "MANUAL_RECOVERY_REQUIRED",
+    "failedAt": "2026-07-29T08:45:00Z"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "specversion": "1.0",
+  "id": "01K1EVENTTERMINATE",
+  "source": "/flow/process",
+  "type": "com.flow.process.terminated.v1",
+  "subject": "process-instance/01K1PROCESS0001",
+  "time": "2026-07-29T09:00:00Z",
+  "datacontenttype": "application/json",
+  "dataschema": "/schemas/events/process-terminated-v1.schema.json",
+  "traceid": "project-20260729-001",
+  "data": {
+    "processInstanceId": "01K1PROCESS0001",
+    "processKey": "project_change_process",
+    "status": "TERMINATED",
+    "businessReference": {
+      "system": "project-management-system",
+      "type": "change-request",
+      "id": "20260729-001"
+    },
+    "reasonCode": "REQUEST_CANCELLED",
+    "terminatedAt": "2026-07-29T09:00:00Z"
+  }
+}
