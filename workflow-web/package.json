@@ -38,7 +38,7 @@
     "axios": "1.18.1",
     "bpmn-auto-layout": "^1.2.0",
     "bpmn-js": "^17.0.0",
-    "bpmn-moddle": "^8.1.0",
+    "bpmn-moddle": "^10.0.0",
     "codemirror": "^6.0.2",
     "dayjs": "^1.11.0",
     "diagram-js": "^14.0.0",
