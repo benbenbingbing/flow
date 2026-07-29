@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import com.workflow.openapi.webhook.infrastructure.persistence.record.WebhookDeliveryWorkRecord;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +14,7 @@ public class WebhookDeliveryMetrics {
 
     private final MeterRegistry registry;
 
+    @Autowired
     public WebhookDeliveryMetrics(
             ObjectProvider<MeterRegistry> provider) {
         this.registry = provider.getIfAvailable();

@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -42,6 +43,7 @@ public class WebhookValidationService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    @Autowired
     public WebhookValidationService(
             IntegrationApplicationMapper applicationMapper,
             WebhookEndpointMapper endpointMapper,

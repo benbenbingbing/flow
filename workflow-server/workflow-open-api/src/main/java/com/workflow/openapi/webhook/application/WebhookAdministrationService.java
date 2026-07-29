@@ -39,6 +39,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +65,7 @@ public class WebhookAdministrationService {
     private final SystemAuditPort auditPort;
     private final Clock clock;
 
+    @Autowired
     public WebhookAdministrationService(
             IntegrationApplicationMapper applicationMapper,
             WebhookEndpointMapper endpointMapper,

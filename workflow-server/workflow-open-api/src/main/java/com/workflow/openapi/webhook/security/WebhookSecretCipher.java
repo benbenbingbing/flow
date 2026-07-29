@@ -8,6 +8,7 @@ import java.util.Base64;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ public class WebhookSecretCipher {
     private final boolean webhookEnabled;
     private final SecureRandom secureRandom;
 
+    @Autowired
     public WebhookSecretCipher(
             @Value("${workflow.open-api.webhook.master-key:}")
             String encodedMasterKey,

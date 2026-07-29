@@ -8,11 +8,18 @@ import com.workflow.process.instance.application.ProcessRuntimeService;
 import com.workflow.process.instance.application.ProcessTerminationService;
 import com.workflow.process.task.application.ProcessTaskService;
 
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
@@ -83,6 +90,35 @@ class ArchitectureBoundaryTest {
                             "com.workflow.entity..",
                             "com.workflow.process..",
                             "com.workflow.project..");
+
+    @ArchTest
+    static final ArchRule OPEN_API_COMPONENTS_SELECT_OVERLOADED_CONSTRUCTORS =
+            classes()
+                    .that().resideInAPackage("com.workflow.openapi..")
+                    .and().areMetaAnnotatedWith(Component.class)
+                    .should(new ArchCondition<>(
+                            "select an injection constructor when overloaded") {
+                        @Override
+                        public void check(
+                                JavaClass item,
+                                ConditionEvents events) {
+                            if (item.getConstructors().size() <= 1
+                                    || item.getConstructors().stream()
+                                    .anyMatch(constructor ->
+                                            constructor.getRawParameterTypes()
+                                                    .isEmpty())
+                                    || item.getConstructors().stream()
+                                    .anyMatch(constructor ->
+                                            constructor.isAnnotatedWith(
+                                                    Autowired.class))) {
+                                return;
+                            }
+                            events.add(SimpleConditionEvent.violated(
+                                    item,
+                                    item.getName()
+                                            + " has ambiguous constructors"));
+                        }
+                    });
 
     @ArchTest
     static final ArchRule PRODUCTION_CODE_AVOIDS_GLOBAL_TECHNICAL_PACKAGES =
