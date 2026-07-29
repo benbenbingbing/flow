@@ -38,10 +38,9 @@ public class JdbcSchemaDdlExecutor implements SchemaDdlExecutor {
     }
 
     @Override
+    @SuppressWarnings("lgtm [java/concatenated-sql-query]")
     public void execute(String ddl) {
         SchemaDdlPolicy.requireSafe(ddl);
-        // The policy permits only one generated schema DDL statement before this sink.
-        // codeql[java/concatenated-sql-query]
         jdbcTemplate.execute(ddl);
     }
 
