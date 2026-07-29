@@ -45,7 +45,7 @@
     "dompurify": "3.4.12",
     "element-plus": "^2.5.0",
     "pinia": "^2.1.0",
-    "sortablejs": "1.14.0",
+    "sortablejs": "1.15.7",
     "vue": "^3.4.0",
     "vue-codemirror": "^6.1.1",
     "vue-router": "^4.2.0",
