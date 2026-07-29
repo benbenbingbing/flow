@@ -67,7 +67,8 @@ public class EntityDataDynamicService {
         } else {
             dataList = dynamicMapper.selectListWithPermission(
                     tableName,
-                    permission.getSqlCondition());
+                    permission.getSqlCondition(),
+                            permission.getSqlParameters());
         }
 
         List<EntityField> runtimeFields = getRuntimeFields(entityCode);
@@ -103,7 +104,8 @@ public class EntityDataDynamicService {
         }
         return dynamicMapper.selectListWithPermission(
                 tableName,
-                permission.getSqlCondition());
+                permission.getSqlCondition(),
+                            permission.getSqlParameters());
     }
 
     @Transactional(readOnly = true)
@@ -242,11 +244,13 @@ public class EntityDataDynamicService {
                     dynamicMapper.countByConditionWithPermission(
                             tableName,
                             condition,
-                            permission.getSqlCondition()),
+                            permission.getSqlCondition(),
+                            permission.getSqlParameters()),
                     dynamicMapper.selectPageByConditionWithPermission(
                             tableName,
                             condition,
                             permission.getSqlCondition(),
+                            permission.getSqlParameters(),
                             offset,
                             pageSize));
         }
@@ -265,10 +269,12 @@ public class EntityDataDynamicService {
             return new PageRows(
                     dynamicMapper.countWithPermission(
                             tableName,
-                            permission.getSqlCondition()),
+                            permission.getSqlCondition(),
+                            permission.getSqlParameters()),
                     dynamicMapper.selectPageWithPermission(
                             tableName,
                             permission.getSqlCondition(),
+                            permission.getSqlParameters(),
                             offset,
                             pageSize));
         }
@@ -311,7 +317,8 @@ public class EntityDataDynamicService {
                         ? dynamicMapper.selectByIdWithPermission(
                                 tableName,
                                 id,
-                                permission.getSqlCondition())
+                                permission.getSqlCondition(),
+                            permission.getSqlParameters())
                         : dynamicMapper.selectById(
                                 tableName,
                                 id);
@@ -392,7 +399,8 @@ public class EntityDataDynamicService {
                     dynamicMapper.selectByConditionWithPermission(
                             tableName,
                             preparedCondition,
-                            permission.getSqlCondition());
+                            permission.getSqlCondition(),
+                            permission.getSqlParameters());
         }
 
         List<EntityField> runtimeFields =
@@ -428,7 +436,8 @@ public class EntityDataDynamicService {
         }
         return dynamicMapper.countWithPermission(
                 tableName,
-                permission.getSqlCondition());
+                permission.getSqlCondition(),
+                            permission.getSqlParameters());
     }
 
     private EntityDefinition requireDefinition(

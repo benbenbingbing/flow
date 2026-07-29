@@ -113,6 +113,33 @@ public class EntityRecordMutationAdapter
     }
 
     @Override
+    public void updateStatus(
+            String entityCode,
+            String entityRecordId,
+            String status) {
+        String key = String.join(
+                ":",
+                "status-sync",
+                entityCode,
+                entityRecordId,
+                status == null ? "none" : status);
+        mutationPort.execute(new EntityMutationCommand(
+                key,
+                entityCode,
+                entityRecordId,
+                EntityMutationOperationType.STATUS_CHANGE,
+                Map.of("status", status == null ? "" : status),
+                EntityMutationContext.builder(
+                                EntityMutationSourceType.PROCESS_RUNTIME,
+                                "ENTITY_STATUS_SYNC",
+                                "实体状态同步")
+                        .sourceId(status)
+                        .sourceRecord(entityCode, entityRecordId)
+                        .trace(key, key)
+                        .build()));
+    }
+
+    @Override
     public void recordActivity(
             String entityCode,
             String entityRecordId,

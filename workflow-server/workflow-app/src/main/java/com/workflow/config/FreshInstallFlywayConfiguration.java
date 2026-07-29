@@ -1,6 +1,8 @@
 package com.workflow.config;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationVersion;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,6 +12,9 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration(proxyBeanMethods = false)
 public class FreshInstallFlywayConfiguration {
+
+    private static final MigrationVersion BUSINESS_BASELINE_VERSION =
+            MigrationVersion.fromVersion("1");
 
     @Bean
     FlywayMigrationStrategy freshInstallOnlyMigrationStrategy(
