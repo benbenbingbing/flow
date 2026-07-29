@@ -4,6 +4,14 @@ run-name: 代码静态安全分析 · ${{ github.ref_name }} · ${{ github.actor
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '23 3 * * 1'
 
 permissions:
   contents: read
