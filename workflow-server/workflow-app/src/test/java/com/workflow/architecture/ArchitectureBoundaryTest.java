@@ -92,10 +92,9 @@ class ArchitectureBoundaryTest {
                             "com.workflow.project..");
 
     @ArchTest
-    static final ArchRule OPEN_API_COMPONENTS_SELECT_OVERLOADED_CONSTRUCTORS =
+    static final ArchRule SPRING_COMPONENTS_SELECT_OVERLOADED_CONSTRUCTORS =
             classes()
-                    .that().resideInAPackage("com.workflow.openapi..")
-                    .and().areMetaAnnotatedWith(Component.class)
+                    .that().areMetaAnnotatedWith(Component.class)
                     .should(new ArchCondition<>(
                             "select an injection constructor when overloaded") {
                         @Override

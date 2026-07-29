@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -21,6 +22,7 @@ public class RestEndpointPolicy {
     private final WorkflowHttpProperties properties;
     private final HostAddressResolver resolver;
 
+    @Autowired
     public RestEndpointPolicy(WorkflowHttpProperties properties) {
         this(properties, InetAddress::getAllByName);
     }
