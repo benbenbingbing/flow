@@ -133,6 +133,9 @@
 
 ### 安全与依赖
 
+- GitHub Dependabot
+  - 结果：已逐项处理 3 个 Jackson Databind 中危告警；后端依赖管理和独立 Java 接入示例均升级到 `2.21.5`，依赖树复核未残留 `2.21.4`。
+  - 验证：升级后重新执行后端 17 模块全量测试，共 939 个测试，0 失败、0 错误、1 个跳过；独立 Java 示例编译及依赖解析通过。
 - `gitleaks detect --source . --no-git --config .gitleaks.toml --redact`
   - 结果：通过，当前工作树未发现泄露；`gitleaks git` 复核 240 个提交历史同样未发现泄露。
 - `npm --prefix workflow-web audit --audit-level=high`

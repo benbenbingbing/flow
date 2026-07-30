@@ -5,6 +5,16 @@ repository_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 temporary_directory=$(mktemp -d)
 trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
 
+# Render third-party charts from an isolated repository configuration so the
+# result does not depend on repositories previously configured on the runner.
+export HELM_REPOSITORY_CONFIG="$temporary_directory/helm-repositories.yaml"
+export HELM_REPOSITORY_CACHE="$temporary_directory/helm-repository-cache"
+mkdir -p "$HELM_REPOSITORY_CACHE"
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm repo add apache-skywalking https://apache.jfrog.io/artifactory/skywalking-helm
+
 server_digest="sha256:1111111111111111111111111111111111111111111111111111111111111111"
 web_digest="sha256:2222222222222222222222222222222222222222222222222222222222222222"
 production_args="
