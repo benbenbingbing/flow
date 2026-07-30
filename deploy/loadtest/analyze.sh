@@ -45,10 +45,23 @@ if [ -s "$observation_file" ]; then
   observation=$(jq -s '{
     samples: length,
     business_health_failures: map(select(.business.health_ok != true)) | length,
+    observability_unavailable_samples: map(select(
+      .observability.prometheus_available != true
+      or .observability.loki_available != true
+      or .observability.tempo_available != true
+      or .observability.otel_collector_available != true
+      or .observability.grafana_available != true
+    )) | length,
     server_restart_delta: ((.[-1].business.server_restarts // 0) - (.[0].business.server_restarts // 0)),
     web_restart_delta: ((.[-1].business.web_restarts // 0) - (.[0].business.web_restarts // 0)),
     worker_restart_delta: ((.[-1].business.schema_worker_restarts // 0) - (.[0].business.schema_worker_restarts // 0)),
     mysql_restart_delta: ((.[-1].business.mysql_restarts // 0) - (.[0].business.mysql_restarts // 0)),
+    prometheus_restart_delta: ((.[-1].observability.prometheus_restarts // 0) - (.[0].observability.prometheus_restarts // 0)),
+    loki_restart_delta: ((.[-1].observability.loki_restarts // 0) - (.[0].observability.loki_restarts // 0)),
+    tempo_restart_delta: ((.[-1].observability.tempo_restarts // 0) - (.[0].observability.tempo_restarts // 0)),
+    otel_collector_restart_delta: ((.[-1].observability.otel_collector_restarts // 0) - (.[0].observability.otel_collector_restarts // 0)),
+    grafana_restart_delta: ((.[-1].observability.grafana_restarts // 0) - (.[0].observability.grafana_restarts // 0)),
+    peak_request_errors_5m: ([.[].prometheus.request_errors_5m | tonumber?] | max // null),
     peak_jvm_memory_bytes: ([.[].prometheus.jvm_memory_used_bytes | tonumber?] | max // null),
     max_memory_limit_ratio: ([.[].resources.max_memory_limit_ratio | tonumber?] | min // null),
     peak_flow_memory_limit_ratio: ([.[].resources.flow_memory_limit_ratio | tonumber?] | max // null),
@@ -72,7 +85,11 @@ if [ -s "$observation_file" ]; then
       else null end),
     database_log_wait_delta: ((.[-1].database.mysql.log_waits | tonumber?) - (.[0].database.mysql.log_waits | tonumber?)),
     peak_otel_queue_size: ([.[].telemetry.otel_exporter_queue_size | tonumber?] | max // null),
-    trace_receiver_failed_delta: ((.[-1].telemetry.otel_receiver_failed_spans // 0 | tonumber) - (.[0].telemetry.otel_receiver_failed_spans // 0 | tonumber))
+    trace_receiver_failed_delta: ((.[-1].telemetry.otel_receiver_failed_spans // 0 | tonumber) - (.[0].telemetry.otel_receiver_failed_spans // 0 | tonumber)),
+    trace_receiver_refused_delta: ((.[-1].telemetry.otel_receiver_refused_spans // 0 | tonumber) - (.[0].telemetry.otel_receiver_refused_spans // 0 | tonumber)),
+    trace_exporter_sent_delta: ((.[-1].telemetry.otel_exporter_sent_spans // 0 | tonumber) - (.[0].telemetry.otel_exporter_sent_spans // 0 | tonumber)),
+    prometheus_rule_failure_delta: ((.[-1].telemetry.prometheus_rule_evaluation_failures_total // 0 | tonumber) - (.[0].telemetry.prometheus_rule_evaluation_failures_total // 0 | tonumber)),
+    prometheus_target_sync_failure_delta: ((.[-1].telemetry.prometheus_target_sync_failed_total // 0 | tonumber) - (.[0].telemetry.prometheus_target_sync_failed_total // 0 | tonumber))
   }' "$observation_file")
 else
   observation='{"samples":0}'
@@ -89,13 +106,22 @@ jq . "$report_file"
 
 if ! jq -e '
   .summary.thresholds_ok == true
+  and (.summary.dropped_iterations // 0) == 0
   and (.summary.cleanup_failures // 0) == 0
+  and (.summary.created_records // 0) == (.summary.deleted_records // 0)
   and (.canary.unavailable_samples == null or .canary.unavailable_samples == 0)
   and (.observation.business_health_failures == null or .observation.business_health_failures == 0)
+  and (.observation.observability_unavailable_samples == null or .observation.observability_unavailable_samples == 0)
   and (.observation.server_restart_delta == null or .observation.server_restart_delta == 0)
   and (.observation.web_restart_delta == null or .observation.web_restart_delta == 0)
   and (.observation.worker_restart_delta == null or .observation.worker_restart_delta == 0)
   and (.observation.mysql_restart_delta == null or .observation.mysql_restart_delta == 0)
+  and (.observation.prometheus_restart_delta == null or .observation.prometheus_restart_delta == 0)
+  and (.observation.loki_restart_delta == null or .observation.loki_restart_delta == 0)
+  and (.observation.tempo_restart_delta == null or .observation.tempo_restart_delta == 0)
+  and (.observation.otel_collector_restart_delta == null or .observation.otel_collector_restart_delta == 0)
+  and (.observation.grafana_restart_delta == null or .observation.grafana_restart_delta == 0)
+  and (.observation.peak_request_errors_5m == null or .observation.peak_request_errors_5m == 0)
   and (.observation.samples == 0 or .observation.resource_metrics_available_samples == .observation.samples)
   and (.observation.samples == 0 or .observation.peak_flow_memory_limit_ratio <= .observation.max_memory_limit_ratio)
   and (.observation.samples == 0 or .observation.peak_observability_memory_limit_ratio <= .observation.max_memory_limit_ratio)
@@ -103,6 +129,12 @@ if ! jq -e '
   and (.observation.samples == 0 or .observation.peak_database_connection_ratio <= .observation.max_database_connection_ratio)
   and (.observation.samples <= 1 or .observation.row_lock_waits_per_minute <= .observation.max_row_lock_waits_per_minute)
   and (.observation.samples <= 1 or .observation.database_log_wait_delta == 0)
+  and (.observation.samples <= 1 or .observation.temporary_disk_tables_delta == 0)
+  and (.observation.samples <= 1 or .observation.trace_receiver_failed_delta == 0)
+  and (.observation.samples <= 1 or .observation.trace_receiver_refused_delta == 0)
+  and (.observation.samples <= 1 or .observation.trace_exporter_sent_delta > 0)
+  and (.observation.samples <= 1 or .observation.prometheus_rule_failure_delta == 0)
+  and (.observation.samples <= 1 or .observation.prometheus_target_sync_failure_delta == 0)
 ' "$report_file" >/dev/null; then
   printf 'load-test acceptance failed: %s\n' "$report_file" >&2
   exit 1

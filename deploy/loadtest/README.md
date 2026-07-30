@@ -141,6 +141,13 @@ LOADTEST_PROFILE=spike deploy/loadtest/run.sh deploy/loadtest/config.env
 结果目录默认被 Git 忽略。正式验收结果应转存到受控对象存储，并设置保留期和
 访问权限。
 
+`analysis.json` 只有在以下条件同时满足时才通过：k6 全部阈值通过、无 dropped
+iteration、创建与删除计数相等、清理和金丝雀零失败；业务及观测组件全程可用且
+无重启；应用指标无请求错误；数据库连接、行锁、内存均未越过配置门限，且没有新增
+日志等待或磁盘临时表；OTel 没有拒绝或接收失败并确实持续导出 Trace；Prometheus
+没有新增规则求值或目标同步失败。历史累计计数使用首尾增量判断，不会把测试前事件
+误算到当前批次。
+
 ## 中断清理
 
 ```bash
