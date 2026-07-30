@@ -89,12 +89,27 @@ kubectl -n flow-observability port-forward svc/flow-prometheus 9090:9090
 
 Tempo 和 Loki 通常通过 Grafana 查询。需要直接排查时可临时 port-forward 对应服务。
 
+启用 SkyWalking OTLP Trace 后，链路会按 Zipkin Trace 存储。使用 SkyWalking UI
+的 `/zipkin/` 页面查询，不应使用原生 Trace GraphQL 页面判断是否有数据：
+
+```sh
+kubectl -n flow-observability port-forward \
+  svc/flow-skywalking-skywalking-helm-ui 8080:80
+# 浏览器访问 http://127.0.0.1:8080/zipkin/
+```
+
 ## 验收脚本
 
 基础联通：
 
 ```sh
 deploy/observability/verify-lite-observability.sh
+```
+
+完整 Helm 栈（安装 SkyWalking 时会同时验证 Zipkin UI、服务和 Trace）：
+
+```sh
+deploy/observability/verify-local-observability.sh
 ```
 
 自动化故障矩阵：
