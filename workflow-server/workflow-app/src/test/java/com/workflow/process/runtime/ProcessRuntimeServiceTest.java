@@ -10,8 +10,7 @@ import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceColl
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
-import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
-import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -19,6 +18,7 @@ import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.Map;
 
@@ -28,8 +28,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.never;
-import static org.mockito.ArgumentMatchers.any;
 
 class ProcessRuntimeServiceTest {
 
@@ -66,45 +64,6 @@ class ProcessRuntimeServiceTest {
         assertEquals("pi-1", result.processInstanceId());
         assertEquals("PENDING", result.entityStatus());
         assertEquals("task-1", result.currentTaskId());
-        verify(fixture.entityProcessLinkMapper).activate(
-                eq("link-1"), any(), eq("pi-1"));
-    }
-
-    @Test
-    void returnsExistingActiveProcessWithoutStartingAnotherInstance() {
-        Fixture fixture = new Fixture();
-        when(fixture.entityProcessLinkMapper.insertPending(any())).thenReturn(0);
-        EntityProcessLink existing = fixture.link("ACTIVE");
-        existing.setProcessInstanceId("pi-1");
-        when(fixture.entityProcessLinkMapper.selectForUpdate(
-                "expense", "data-1", 1)).thenReturn(existing);
-
-        ProcessStartResult result = fixture.service().start(fixture.request());
-
-        assertEquals("pi-1", result.processInstanceId());
-        verify(fixture.runtimeService, never())
-                .startProcessInstanceByKey(any(), any(), anyMap());
-    }
-
-    @Test
-    void startsNextGenerationAfterPreviousProcessEnded() {
-        Fixture fixture = new Fixture();
-        EntityProcessLink ended = fixture.link("ENDED");
-        ended.setGeneration(1);
-        when(fixture.entityProcessLinkMapper.selectLatestForUpdate(
-                "expense", "data-1")).thenReturn(ended);
-        EntityProcessLink pending = fixture.link("PENDING");
-        pending.setGeneration(2);
-        when(fixture.entityProcessLinkMapper.selectForUpdate(
-                "expense", "data-1", 2)).thenReturn(pending);
-
-        fixture.service().start(fixture.request());
-
-        ArgumentCaptor<EntityProcessLink> linkCaptor =
-                ArgumentCaptor.forClass(EntityProcessLink.class);
-        verify(fixture.entityProcessLinkMapper).insertPending(
-                linkCaptor.capture());
-        assertEquals(2, linkCaptor.getValue().getGeneration());
     }
 
     private static class Fixture {
@@ -119,8 +78,9 @@ class ProcessRuntimeServiceTest {
                 mock(WorkflowAutoSkipService.class);
         final MultiInstanceCollectionListener multiInstanceCollectionListener =
                 mock(MultiInstanceCollectionListener.class);
-        final EntityProcessLinkMapper entityProcessLinkMapper =
-                mock(EntityProcessLinkMapper.class);
+        @SuppressWarnings("unchecked")
+        final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
+                mock(ObjectProvider.class);
 
         Fixture() {
             ProcessDefinitionConfig config = new ProcessDefinitionConfig();
@@ -144,37 +104,6 @@ class ProcessRuntimeServiceTest {
             when(taskQuery.processInstanceId("pi-1")).thenReturn(taskQuery);
             when(taskQuery.active()).thenReturn(taskQuery);
             when(taskQuery.singleResult()).thenReturn(task);
-
-            when(entityProcessLinkMapper.insertPending(any())).thenReturn(1);
-            when(entityProcessLinkMapper.selectForUpdate(
-                    "expense", "data-1", 1)).thenReturn(link("PENDING"));
-            when(entityProcessLinkMapper.activate(any(), any(), any())).thenReturn(1);
-        }
-
-        ProcessStartRequest request() {
-            return new ProcessStartRequest(
-                    "process-config-1",
-                    "expense",
-                    "data-1",
-                    "EXP-1",
-                    "admin",
-                    "管理员",
-                    "PENDING",
-                    Map.of("amount", 100),
-                    Map.of());
-        }
-
-        EntityProcessLink link(String state) {
-            EntityProcessLink link = new EntityProcessLink();
-            link.setId("link-1");
-            link.setEntityCode("expense");
-            link.setEntityRecordId("data-1");
-            link.setGeneration(1);
-            link.setProcessDefinitionKey("expense_flow");
-            link.setRequestId("request-1");
-            link.setEntityStatus("PENDING");
-            link.setState(state);
-            return link;
         }
 
         ProcessRuntimeService service() {
@@ -186,7 +115,7 @@ class ProcessRuntimeServiceTest {
                     processTaskService,
                     workflowAutoSkipService,
                     multiInstanceCollectionListener,
-                    entityProcessLinkMapper);
+                    changeTargetPortProvider);
         }
     }
 }

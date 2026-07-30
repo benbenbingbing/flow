@@ -18,17 +18,22 @@
       </el-dropdown>
     </div>
 
-    <el-table :data="sortedButtons" size="small" border>
-      <el-table-column label="排序" width="76" align="center">
-        <template #default="{ row }">
-          <el-input-number
-            v-model="row.sort"
-            :min="0"
-            :max="999"
-            controls-position="right"
-            size="small"
-            class="sort-input"
-          />
+    <el-table
+      ref="buttonTableRef"
+      :data="buttons"
+      size="small"
+      border
+      class="button-config-table"
+    >
+      <el-table-column label="排序" width="48" align="center">
+        <template #default>
+          <el-icon
+            class="button-drag-handle"
+            title="拖拽调整按钮顺序"
+            aria-label="拖拽调整按钮顺序"
+          >
+            <Rank />
+          </el-icon>
         </template>
       </el-table-column>
       <el-table-column label="启用" width="58" align="center">
@@ -66,6 +71,7 @@
                 <el-option label="函数" value="handler" />
                 <el-option label="组件" value="component" />
                 <el-option label="打开列表" value="open-list" />
+                <el-option label="业务接口" value="event" />
               </el-select>
             </div>
             <el-button
@@ -77,6 +83,17 @@
               @click="configureOpenList(row)"
             >
               {{ openListSummary(row) }}
+            </el-button>
+            <el-button
+              v-else-if="row.type === 'custom' && row.customMode === 'event'"
+              size="small"
+              type="primary"
+              text
+              class="execution-config__detail"
+              :disabled="!ownerId || !row.key"
+              @click="configureButtonEvent(row)"
+            >
+              配置事件链
             </el-button>
             <el-input
               v-else-if="row.type === 'custom'"
@@ -281,12 +298,35 @@
         <el-button type="primary" @click="saveOpenListConfig">保存打开列表设置</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="buttonEventDialogVisible"
+      :title="`${buttonEventTarget?.label || '按钮'}事件绑定`"
+      width="1040px"
+      append-to-body
+      destroy-on-close
+    >
+      <EventBindingEditor
+        owner-type="LIST"
+        :owner-id="String(ownerId || '')"
+        target-type="BUTTON"
+        :target-key="buttonEventTarget?.key || ''"
+        :target-name="buttonEventTarget?.label || ''"
+        :allowed-events="type === 'row'
+          ? ['ROW_BUTTON_CLICK']
+          : ['TOOLBAR_BUTTON_CLICK']"
+        :field-options="eventFieldOptions"
+        title="按钮执行链"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Rank } from '@element-plus/icons-vue'
+import Sortable from 'sortablejs'
 import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { entityApi } from '@/api/entity'
@@ -294,6 +334,7 @@ import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
 import { safeParseConfig } from '@/shared/config-runtime'
 
@@ -310,6 +351,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  ownerId: {
+    type: [String, Number],
+    default: ''
+  },
   templates: {
     type: Array,
     default: () => []
@@ -324,7 +369,8 @@ const emit = defineEmits([
   'update:modelValue',
   'save',
   'remove',
-  'upgrade-template'
+  'upgrade-template',
+  'reorder'
 ])
 
 const buttons = computed({
@@ -332,20 +378,28 @@ const buttons = computed({
   set: (val) => emit('update:modelValue', val)
 })
 
-const sortedButtons = computed(() => {
-  return [...buttons.value].sort((a, b) => (a.sort || 0) - (b.sort || 0))
-})
-
 const permissionOptions = ref([])
 const statuses = ref([])
+const buttonTableRef = ref(null)
 const ruleEditorRef = ref()
 const advancedDialogVisible = ref(false)
 const advancedButton = ref(null)
 const openListDialogVisible = ref(false)
+const buttonEventDialogVisible = ref(false)
+const buttonEventTarget = ref(null)
 const openListTargetButton = ref(null)
 const entityOptions = ref([])
 const targetListOptions = ref([])
 const openListForm = ref(createOpenListForm())
+let sortableInstance = null
+const eventFieldOptions = computed(() =>
+  props.entityFields
+    .filter(field => !field.isSystem)
+    .map(field => ({
+      label: field.fieldName || field.fieldCode,
+      value: field.fieldCode
+    }))
+)
 
 const standardPermOptions = computed(() => permissionOptions.value.filter(option => option.category === 'STANDARD'))
 const customPermOptions = computed(() => permissionOptions.value.filter(option => option.category !== 'STANDARD'))
@@ -395,6 +449,15 @@ function addCustom() {
     customHandler: '',
     link: props.type === 'row'
   })
+}
+
+function configureButtonEvent(button) {
+  if (!button.key) {
+    ElMessage.warning('请先填写按钮稳定编码')
+    return
+  }
+  buttonEventTarget.value = button
+  buttonEventDialogVisible.value = true
 }
 
 function openAdvancedSettings(row) {
@@ -509,8 +572,32 @@ async function loadPermOptions() {
   }
 }
 
-onMounted(() => {
-  loadPermOptions()
+function initButtonSortable() {
+  const tableBody = buttonTableRef.value?.$el
+    ?.querySelector('.el-table__body-wrapper tbody')
+  if (!tableBody) return
+
+  sortableInstance?.destroy()
+  sortableInstance = new Sortable(tableBody, {
+    handle: '.button-drag-handle',
+    animation: 150,
+    onEnd: ({ oldIndex, newIndex }) => {
+      if (
+        oldIndex == null
+        || newIndex == null
+        || oldIndex === newIndex
+      ) {
+        return
+      }
+      emit('reorder', { oldIndex, newIndex })
+    }
+  })
+}
+
+onMounted(async () => {
+  await loadPermOptions()
+  await nextTick()
+  initButtonSortable()
 })
 
 watch(() => props.entityCode, () => {
@@ -520,6 +607,15 @@ watch(() => props.entityCode, () => {
 watch(() => props.modelValue, () => {
   normalizeButtons()
 }, { deep: true })
+
+watch(
+  () => buttons.value.map(button => button.id || button.key).join('|'),
+  () => nextTick(initButtonSortable)
+)
+
+onBeforeUnmount(() => {
+  sortableInstance?.destroy()
+})
 
 function standardPermission(key) {
   const actionMap = {
@@ -638,8 +734,21 @@ function ruleSummary(row) {
   }
 }
 
-.sort-input {
-  width: 66px;
+.button-drag-handle {
+  cursor: grab;
+  color: var(--el-text-color-secondary);
+}
+
+.button-drag-handle:hover {
+  color: var(--el-color-primary);
+}
+
+.button-drag-handle:active {
+  cursor: grabbing;
+}
+
+.button-config-table :deep(.sortable-ghost) {
+  opacity: 0.45;
 }
 
 .execution-config {

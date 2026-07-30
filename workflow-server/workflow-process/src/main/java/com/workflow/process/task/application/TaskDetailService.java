@@ -5,12 +5,11 @@ import com.workflow.entity.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.process.task.api.response.TaskDetailDTO;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
@@ -38,7 +37,8 @@ import java.util.stream.Collectors;
 public class TaskDetailService {
     
     private final ProcessTaskMapper processTaskMapper;
-    private final EntityDataMapper entityDataMapper;
+    private final EntityDataDynamicService
+            entityDataDynamicService;
     private final com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper entityDefinitionMapper;
     private final com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper entityFormMapper;
     private final com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper entityFieldMapper;
@@ -238,17 +238,26 @@ public class TaskDetailService {
         log.debug("获取实体数据: entityDataId={}, processInstanceId={}, entityCode={}", 
                 entityDataId, processInstanceId, entityCode);
         
-        // 优先根据流程实例ID查询实体数据
+        // 按流程中冻结的实体编码和记录ID读取动态实体聚合数据
         try {
-            EntityData entityData = entityDataMapper.findByProcessInstanceId(processInstanceId)
-                    .orElse(null);
-            if (entityData != null && entityData.getDataJson() != null) {
-                Map<String, Object> dataMap = objectMapper.readValue(entityData.getDataJson(), Map.class);
+            if (entityCode != null
+                    && entityDataId != null) {
+                var entityData =
+                        entityDataDynamicService.findById(
+                                entityCode,
+                                entityDataId);
+                Map<String, Object> dataMap =
+                        entityData.getData() == null
+                                ? new HashMap<>()
+                                : new HashMap<>(
+                                        entityData.getData());
                 dto.setEntityData(dataMap);
                 log.info("成功获取实体数据: processInstanceId={}, dataKeys={}", 
                         processInstanceId, dataMap.keySet());
             } else {
-                log.warn("实体数据不存在或为空: processInstanceId={}", processInstanceId);
+                log.warn(
+                        "流程缺少实体编码或记录ID: processInstanceId={}",
+                        processInstanceId);
             }
         } catch (Exception e) {
             log.warn("获取实体数据失败: processInstanceId={}, error={}", processInstanceId, e.getMessage());

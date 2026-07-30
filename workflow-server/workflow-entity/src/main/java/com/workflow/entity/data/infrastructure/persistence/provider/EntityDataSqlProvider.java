@@ -28,6 +28,13 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 在当前事务中锁定并读取目标记录。
+     */
+    public String selectByIdForUpdate(Map<String, Object> params) {
+        return selectById(params) + " FOR UPDATE";
+    }
+
+    /**
      * 根据 ID 查询（带数据权限过滤）。
      */
     public String selectByIdWithPermission(Map<String, Object> params) {
@@ -129,9 +136,13 @@ public class EntityDataSqlProvider {
         // 添加所有非空字段（排除 id，驼峰命名转换为下划线命名）
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             String key = entry.getKey();
-            if (!"id".equals(key) && entry.getValue() != null) {
+            if (!"id".equals(key)) {
                 String columnName = columnName(key);
-                sql.SET(columnName + " = #{data." + key + "}");
+                if (entry.getValue() == null) {
+                    sql.SET(columnName + " = NULL");
+                } else {
+                    sql.SET(columnName + " = #{data." + key + "}");
+                }
             }
         }
         

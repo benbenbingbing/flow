@@ -27,6 +27,17 @@ public interface EntityDataDynamicMapper {
     Map<String, Object> selectById(@Param("tableName") String tableName, @Param("id") String id);
 
     /**
+     * 在调用方事务中锁定并读取记录。
+     */
+    @SelectProvider(
+            type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectByIdForUpdate")
+    @Options(statementType = StatementType.PREPARED)
+    Map<String, Object> selectByIdForUpdate(
+            @Param("tableName") String tableName,
+            @Param("id") String id);
+
+    /**
      * 根据ID查询（带数据权限过滤），仅返回权限校验通过且未删除的记录。
      *
      * @param tableName      数据表名

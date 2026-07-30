@@ -89,6 +89,7 @@
           :context="{
             entityCode,
             entityDefinition,
+            form: defaultForm,
             mode: isEdit ? 'edit' : 'create',
             record: formData,
             releaseResolutionToken: defaultForm?.releaseResolutionToken

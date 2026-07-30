@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.stream.IntStream;
 import java.util.regex.Pattern;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -24,14 +23,15 @@ class SchemaRequiredTablesTest {
     private static final String LEGACY_UPDATE_TIME =
             "updated" + "_at";
     private static final Path MIGRATION_DIRECTORY =
-            Path.of("../workflow-db-migrator/src/main/resources/db/migration");
+            Path.of("src/main/resources/db/migration");
     private static final Path BASELINE =
             MIGRATION_DIRECTORY.resolve("V001__business_schema.sql");
-    private static final Path SECURITY_FOUNDATION =
-            MIGRATION_DIRECTORY.resolve("V002__security_foundation.sql");
+    private static final Path CURRENT_BASELINE_PATCH =
+            Path.of("src/main/resources/db/upgrade/"
+                    + "V001__current_baseline_patch.sql");
 
     @Test
-    void flywayUsesContinuousVersionedMigrations() throws Exception {
+    void flywayUsesOneFreshInstallBaseline() throws Exception {
         List<String> files;
         try (var paths = Files.list(MIGRATION_DIRECTORY)) {
             files = paths
@@ -41,22 +41,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertFalse(files.isEmpty());
-        assertEquals("V001__business_schema.sql", files.get(0));
-        Pattern migrationName = Pattern.compile(
-                "^V(\\d{3})__[a-z0-9_]+\\.sql$");
-        List<Integer> versions = files.stream()
-                .map(file -> {
-                    var matcher = migrationName.matcher(file);
-                    assertTrue(matcher.matches(),
-                            "invalid migration name: " + file);
-                    return Integer.parseInt(matcher.group(1));
-                })
-                .toList();
-        assertEquals(
-                IntStream.rangeClosed(1, versions.size()).boxed().toList(),
-                versions,
-                "migration versions must be continuous");
+        assertEquals(List.of("V001__business_schema.sql"), files);
 
         String applicationYaml = Files.readString(
                 Path.of("src/main/resources/application.yml"));
@@ -72,12 +57,19 @@ class SchemaRequiredTablesTest {
         for (String table : List.of(
                 "entity_definition",
                 "entity_field",
-                "runtime_entity_record",
                 "entity_form",
                 "entity_form_node",
                 "entity_list_config",
                 "entity_list_scope_policy",
                 "entity_list_scope_binding",
+                "entity_version_config",
+                "entity_version_scenario",
+                "entity_version_step",
+                "entity_change_target_binding",
+                "entity_version_config_release",
+                "entity_change_target_instance",
+                "entity_mutation_receipt",
+                "entity_record_version",
                 "process_definition_config",
                 "process_node_config",
                 "process_node_form",
@@ -88,12 +80,42 @@ class SchemaRequiredTablesTest {
                 "process_ui_release_binding",
                 "system_operation_log",
                 "ui_config_release",
+                "ui_event_binding",
                 "ui_extension_definition",
                 "workflow_outbox_event")) {
             assertTrue(
                     sql.contains("CREATE TABLE `" + table + "`"),
                     "missing table: " + table);
         }
+    }
+
+    @Test
+    void existingV001DatabaseHasAnIdempotentCompatibilityPatch()
+            throws Exception {
+        String sql = Files.readString(CURRENT_BASELINE_PATCH);
+
+        for (String table : List.of(
+                "entity_version_config",
+                "entity_version_scenario",
+                "entity_version_step",
+                "entity_change_target_binding",
+                "entity_version_config_release",
+                "entity_change_target_instance",
+                "entity_mutation_receipt",
+                "entity_record_version",
+                "ui_event_binding")) {
+            assertTrue(
+                    sql.contains(
+                            "CREATE TABLE IF NOT EXISTS `"
+                                    + table + "`"),
+                    "missing compatibility table: " + table);
+        }
+        assertTrue(sql.contains("INSERT IGNORE INTO `sys_menu`"));
+        assertTrue(sql.contains("INSERT IGNORE INTO `sys_role_menu`"));
+        assertTrue(sql.contains("interface_service_menu_001"));
+        assertTrue(sql.contains("entity_version_management_001"));
+        assertTrue(sql.contains("SET `menu_name` = '接口服务'"));
+        assertTrue(sql.contains("SET `menu_name` = '数据版本'"));
     }
 
     @Test
@@ -127,6 +149,7 @@ class SchemaRequiredTablesTest {
                 "idx_process_action_execution_ready",
                 "idx_workflow_outbox_ready",
                 "uk_workflow_outbox_topic_event",
+                "uk_entity_mutation_receipt_key",
                 "uk_ui_hotfix_target_active",
                 "uk_ui_extension_version")) {
             assertTrue(sql.contains(index), "missing index: " + index);
@@ -158,9 +181,17 @@ class SchemaRequiredTablesTest {
                 "system:audit:list",
                 "system:extension:list",
                 "system:extension:update",
+                "system:interface-service:list",
+                "system:interface-service:update",
+                "system:interface-service:test",
+                "entity:version:config:list",
+                "entity:version:config:update",
+                "entity:version:config:publish",
                 "system:flowAction:view",
                 "流程动作",
-                "扩展管理")) {
+                "扩展管理",
+                "接口服务",
+                "数据版本")) {
             assertTrue(sql.contains(value), "missing seed value: " + value);
         }
         assertTrue(sql.contains("'create_time','创建时间'"));
@@ -168,7 +199,7 @@ class SchemaRequiredTablesTest {
     }
 
     @Test
-    void immutableBaselineContainsLegacyBootstrapAdministrator() throws Exception {
+    void baselineSeedsUsableBootstrapAdministrator() throws Exception {
         String sql = Files.readString(BASELINE);
         assertTrue(sql.contains("INSERT INTO `sys_role`"));
         assertTrue(sql.contains(
@@ -186,27 +217,5 @@ class SchemaRequiredTablesTest {
                 "$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6";
         assertTrue(new BCryptPasswordEncoder().matches(
                 "admin", bootstrapPasswordHash));
-    }
-
-    @Test
-    void securityMigrationDisablesPublicBootstrapCredential() throws Exception {
-        String sql = Files.readString(SECURITY_FOUNDATION);
-
-        assertTrue(sql.contains("SET status = '1'"));
-        assertTrue(sql.contains("AND username = 'admin'"));
-        assertTrue(sql.contains(
-                "AND password = '$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6'"));
-        assertTrue(sql.contains("ADD COLUMN token_version BIGINT NOT NULL DEFAULT 0"));
-        for (String permission : List.of(
-                "system:user:view",
-                "system:role:manage",
-                "system:menu:manage",
-                "system:organization:manage",
-                "system:dictionary:manage",
-                "process:definition:publish",
-                "entity:definition:publish",
-                "storage:file:delete")) {
-            assertTrue(sql.contains(permission), "missing permission: " + permission);
-        }
     }
 }

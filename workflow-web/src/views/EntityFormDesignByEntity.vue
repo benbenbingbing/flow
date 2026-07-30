@@ -16,6 +16,12 @@
         </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
         <el-button @click="openExtensionManagement">扩展管理</el-button>
+        <el-button
+          :disabled="!form.id"
+          @click="openUnifiedEventBindings('OWNER')"
+        >
+          事件绑定
+        </el-button>
         <el-button type="success" plain @click="handlePublish" :disabled="!isEdit">
           发布
         </el-button>
@@ -708,6 +714,32 @@
               </SettingsSection>
 
               <SettingsSection
+                v-if="isSingleEntityReferenceField"
+                title="选择后回填"
+                description="选择实体数据后，将关联实体字段回填到当前表单字段"
+              >
+                <template #summary>
+                  <el-tag size="small" type="success" effect="plain">
+                    表单级配置
+                  </el-tag>
+                </template>
+                <div class="selection-fill-summary">
+                  <div>
+                    <strong>ENTITY_SELECTED</strong>
+                    <span>规则只属于当前表单，并随发布、热发布和回滚版本生效。</span>
+                  </div>
+                  <el-button
+                    type="primary"
+                    plain
+                    @click="openEntitySelectionMapping"
+                  >
+                    <el-icon><Connection /></el-icon>
+                    配置回填字段
+                  </el-button>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
                 v-if="canConfigureNodeExtension || isEditableFieldNode || isFieldNode"
                 title="复用与扩展"
                 description="节点扩展、组件模板、低频组件参数和字段事件"
@@ -788,6 +820,13 @@
                       <el-icon><Edit /></el-icon>
                       配置字段事件
                     </el-button>
+                    <el-button
+                      type="primary"
+                      text
+                      @click="openUnifiedEventBindings('FIELD')"
+                    >
+                      绑定接口链
+                    </el-button>
                     <el-tag v-if="hasEventConfig" type="success" size="small" style="margin-left: 8px">已配置</el-tag>
                   </el-form-item>
                 </template>
@@ -843,120 +882,13 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="formDataSourceDialogVisible"
-      title="表单级统一数据源"
-      width="920px"
-      destroy-on-close
-      :close-on-click-modal="false"
-    >
-      <div class="form-data-source-toolbar">
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
-          title="FORM_INIT 用于初始化整表数据；AFTER_LOAD 用于加载后处理；BEFORE_SUBMIT 默认只在后端执行。"
-        />
-        <el-button type="primary" plain @click="addFormDataSourceBinding">
-          添加绑定
-        </el-button>
-      </div>
-      <el-empty
-        v-if="formDataSourceRows.length === 0"
-        description="尚未配置表单级数据源"
-      />
-      <div
-        v-for="(binding, index) in formDataSourceRows"
-        :key="binding.rowKey"
-        class="form-data-source-row"
-      >
-        <div class="form-data-source-row-header">
-          <strong>绑定 {{ index + 1 }}</strong>
-          <el-button
-            link
-            type="danger"
-            @click="removeFormDataSourceBinding(index)"
-          >
-            删除
-          </el-button>
-        </div>
-        <el-form label-width="96px" size="small">
-          <div class="form-data-source-grid">
-            <el-form-item label="绑定位置">
-              <el-select v-model="binding.usage" style="width: 100%">
-                <el-option
-                  v-for="usage in formLevelDataSourceUsages"
-                  :key="usage.value"
-                  :label="usage.label"
-                  :value="usage.value"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="数据源">
-              <el-select
-                v-model="binding.sourceId"
-                clearable
-                filterable
-                placeholder="选择受控数据源"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="source in dataSources"
-                  :key="source.id"
-                  :label="`${source.sourceName} (${source.sourceType})`"
-                  :value="source.id"
-                />
-              </el-select>
-            </el-form-item>
-          </div>
-          <div
-            v-if="binding.usage === 'BEFORE_SUBMIT'"
-            class="form-data-source-prevalidate"
-          >
-            <el-checkbox v-model="binding.clientPrevalidate">
-              浏览器预校验
-            </el-checkbox>
-            <el-checkbox
-              v-model="binding.sideEffectFree"
-              :disabled="!binding.clientPrevalidate"
-            >
-              无副作用
-            </el-checkbox>
-            <span>只有两项同时开启时浏览器才会执行；后端始终是最终权威。</span>
-          </div>
-          <div class="form-data-source-grid">
-            <el-form-item label="输入映射">
-              <el-input
-                v-model="binding.inputMappingText"
-                type="textarea"
-                :rows="4"
-                placeholder='{"filters.ownerId":"data.ownerId"}'
-              />
-            </el-form-item>
-            <el-form-item label="输出映射">
-              <el-input
-                v-model="binding.outputMappingText"
-                type="textarea"
-                :rows="4"
-                placeholder='{"ownerName":"data.user.name"}'
-              />
-            </el-form-item>
-          </div>
-        </el-form>
-      </div>
-      <template #footer>
-        <el-button @click="formDataSourceDialogVisible = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="formDataSourceSaving"
-          @click="saveFormDataSourceBindings"
-        >
-          保存表单数据源
-        </el-button>
-      </template>
-    </el-dialog>
+    <FormDataSourceCompatDialog
+      ref="formDataSourceDialogRef"
+      :form="form"
+      :data-sources="dataSources"
+      @saved="handleFormDataSourceSaved"
+      @error="handleRevisionConflict"
+    />
 
     <UiConfigPublishDialog
       v-model="publishDialogVisible"
@@ -966,44 +898,26 @@
       @published="handlePublished"
     />
 
-    <el-dialog v-model="releaseDialogVisible" title="表单发布版本" width="920px">
-      <el-table :data="releases" size="small">
-        <el-table-column prop="version" label="版本" width="80" />
-        <el-table-column prop="releaseMode" label="方式" width="100">
-          <template #default="{ row }">
-            {{ row.releaseMode === 'HOTFIX' ? '兼容热修复' : '普通发布' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="riskLevel" label="风险" width="90" />
-        <el-table-column prop="rolloutStatus" label="Rollout" width="110">
-          <template #default="{ row }">
-            {{ row.releaseMode === 'HOTFIX' ? (row.rolloutStatus || '-') : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="contentHash" label="内容哈希" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="publishedBy" label="发布人" width="120" />
-        <el-table-column prop="publishedAt" label="发布时间" width="180" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.releaseMode !== 'HOTFIX'"
-              link
-              type="primary"
-              :disabled="row.status === 'ACTIVE'"
-              @click="activateRelease(row)"
-            >激活</el-button>
-            <el-button
-              v-else
-              link
-              type="danger"
-              :disabled="row.rolloutStatus !== 'ACTIVE'"
-              @click="rollbackHotfixRelease(row)"
-            >撤回热修复</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
+    <EventBindingDialog
+      ref="eventBindingDialogRef"
+      owner-type="FORM"
+      :owner-id="form.id || ''"
+      owner-label="表单"
+      :field-options="eventFieldOptions"
+    />
+    <EntitySelectionMappingDialog
+      ref="selectionMappingDialogRef"
+      :form-id="form.id || ''"
+      :form-fields="formFields"
+      @changed="loadDiff"
+    />
+    <UiConfigReleaseHistoryDialog
+      ref="releaseHistoryDialogRef"
+      config-type="FORM"
+      :config-id="form.id || ''"
+      config-label="表单"
+      @changed="handleReleaseChanged"
+    />
 
   </div>
 </template>
@@ -1018,6 +932,10 @@ import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
+import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
+import EntitySelectionMappingDialog from '@/components/ui-config/EntitySelectionMappingDialog.vue'
+import FormDataSourceCompatDialog from '@/components/ui-config/FormDataSourceCompatDialog.vue'
+import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
@@ -1077,9 +995,7 @@ import {
   deleteFormNode,
   reorderFormNode,
   getFormDiff,
-  getFormReleases,
-  activateFormRelease,
-  rollbackFormHotfix
+  getFormReleases
 } from '@/api/entityForm'
 import {
   uiDataSourceApi,
@@ -1104,15 +1020,13 @@ const propertyDrawerVisible = ref(false)
 const showLinkageConfig = ref(false)
 const showEventConfig = ref(false)
 const showFormExtensionConfig = ref(false)
-const formDataSourceDialogVisible = ref(false)
-const formDataSourceSaving = ref(false)
-const formDataSourceRows = ref([])
-let formDataSourceRowSequence = 0
+const formDataSourceDialogRef = ref(null)
+const eventBindingDialogRef = ref(null)
+const selectionMappingDialogRef = ref(null)
+const releaseHistoryDialogRef = ref(null)
 const currentEventField = ref(null)
 const activeDesignTab = ref('')
 const publishDialogVisible = ref(false)
-const releaseDialogVisible = ref(false)
-const releases = ref([])
 const diffInfo = ref({ changed: true, changedSections: [] })
 const dataSources = ref([])
 const extensionDefinitions = ref([])
@@ -1208,11 +1122,6 @@ const formDataSourceUsages = [
   { value: 'AFTER_LOAD', label: '加载后处理' },
   { value: 'BEFORE_SUBMIT', label: '提交前处理' }
 ]
-const formLevelDataSourceUsages = [
-  { value: 'FORM_INIT', label: '表单初始化' },
-  { value: 'AFTER_LOAD', label: '整表加载后处理' },
-  { value: 'BEFORE_SUBMIT', label: '整表提交前处理' }
-]
 const viewConfig = ref({
   labelWidth: 120,
   customComponentProps: {}
@@ -1244,7 +1153,14 @@ const formListByEntity = ref([])
 const childFormReleases = ref([])
 const childFormReleaseLoading = ref(false)
 const referenceListOptions = ref([])
-
+const eventFieldOptions = computed(() =>
+  entityFields.value
+    .filter(field => !field.isSystem)
+    .map(field => ({
+      label: field.fieldName || field.fieldCode,
+      value: field.fieldCode
+    }))
+)
 // Tab 模式的子表单字段（必须在 formFields 定义之后）
 const tabSubFormFields = ref([])
 watch(formFields, (fields) => {
@@ -1486,6 +1402,27 @@ const isReferenceFieldNode = computed(() =>
     String(selectedField.value?.componentType || '').toUpperCase()
   )
 )
+const isSingleEntityReferenceField = computed(() => {
+  if (!isFieldNode.value || !selectedField.value) return false
+  const fieldType = String(
+    selectedField.value.fieldType || ''
+  ).toUpperCase()
+  const componentType = String(
+    selectedField.value.componentType || ''
+  ).toUpperCase()
+  if (fieldType === 'MULTI_REFERENCE'
+      || componentType === 'MULTI_REFERENCE') {
+    return false
+  }
+  return [
+    'REFERENCE',
+    'USER',
+    'DEPT',
+    'ROLE',
+    'GROUP'
+  ].includes(fieldType)
+    || componentType === 'REFERENCE'
+})
 const canConfigureSelectedNodeRelations = computed(() =>
   selectedNodePropertySchema.value.childForm || isReferenceFieldNode.value
 )
@@ -1878,130 +1815,12 @@ function parseDocument(value) {
 }
 
 function openFormDataSourceConfig() {
-  if (!form.value.id) {
-    ElMessage.warning('请先保存表单草稿')
-    return
-  }
-  const bindings = parseDocument(
-    form.value.dataSourceBindingsDocument
-  )
-  const rows = []
-  Object.entries(bindings).forEach(([usage, configured]) => {
-    const values = Array.isArray(configured)
-      ? configured
-      : [configured]
-    values.filter(Boolean).forEach(value => {
-      const normalized = typeof value === 'string'
-        ? { sourceId: value }
-        : { ...value }
-      const {
-        sourceId,
-        id,
-        inputMapping,
-        outputMapping,
-        clientPrevalidate,
-        sideEffectFree,
-        usage: ignoredUsage,
-        ...extra
-      } = normalized
-      rows.push({
-        rowKey: `form_source_${++formDataSourceRowSequence}`,
-        usage,
-        sourceId: sourceId || id || '',
-        inputMappingText: stringifyConfig(inputMapping || {}),
-        outputMappingText: stringifyConfig(outputMapping || {}),
-        clientPrevalidate: clientPrevalidate === true,
-        sideEffectFree: sideEffectFree === true,
-        extra
-      })
-    })
-  })
-  formDataSourceRows.value = rows
-  formDataSourceDialogVisible.value = true
+  formDataSourceDialogRef.value?.open()
 }
 
-function addFormDataSourceBinding() {
-  formDataSourceRows.value.push({
-    rowKey: `form_source_${++formDataSourceRowSequence}`,
-    usage: 'FORM_INIT',
-    sourceId: '',
-    inputMappingText: '{}',
-    outputMappingText: '{}',
-    clientPrevalidate: false,
-    sideEffectFree: false,
-    extra: {}
-  })
-}
-
-function removeFormDataSourceBinding(index) {
-  formDataSourceRows.value.splice(index, 1)
-}
-
-function serializeFormDataSourceBindings() {
-  const bindings = {}
-  formDataSourceRows.value.forEach(row => {
-    if (!row.sourceId) {
-      throw new Error('表单级数据源不能为空')
-    }
-    if (row.usage === 'BEFORE_SUBMIT'
-      && row.clientPrevalidate
-      && !row.sideEffectFree) {
-      throw new Error('浏览器预校验必须同时标记为无副作用')
-    }
-    const binding = {
-      ...(row.extra || {}),
-      sourceId: row.sourceId,
-      inputMapping: parseJsonConfig(row.inputMappingText, {
-        fieldName: '表单数据源输入映射'
-      }),
-      outputMapping: parseJsonConfig(row.outputMappingText, {
-        fieldName: '表单数据源输出映射'
-      })
-    }
-    if (row.usage === 'BEFORE_SUBMIT') {
-      binding.clientPrevalidate = row.clientPrevalidate === true
-      binding.sideEffectFree = row.sideEffectFree === true
-    }
-    if (!bindings[row.usage]) bindings[row.usage] = []
-    bindings[row.usage].push(binding)
-  })
-  Object.keys(bindings).forEach(usage => {
-    if (bindings[usage].length === 1) {
-      bindings[usage] = bindings[usage][0]
-    }
-  })
-  return bindings
-}
-
-async function saveFormDataSourceBindings() {
-  if (!form.value.id) return
-  formDataSourceSaving.value = true
-  try {
-    const bindings = serializeFormDataSourceBindings()
-    await Promise.all(
-      formDataSourceRows.value.map(row =>
-        uiDataSourceApi.validateBinding(
-          row.sourceId,
-          row.usage
-        )
-      )
-    )
-    const updated = await patchFormMetadata(
-      form.value.id,
-      {
-        expectedRevision: form.value.revision,
-        dataSourceBindings: bindings
-      }
-    )
-    form.value = { ...form.value, ...updated }
-    formDataSourceDialogVisible.value = false
-    await loadDiff()
-    ElMessage.success('表单级数据源草稿已保存，发布后生效')
-  } catch (error) {
-    handleRevisionConflict(error)
-  } finally {
-    formDataSourceSaving.value = false
-  }
+async function handleFormDataSourceSaved(updated) {
+  form.value = { ...form.value, ...updated }
+  await loadDiff()
 }
 
 function legacyNodeType(field) {
@@ -2844,6 +2663,26 @@ function openEventConfig() {
   showEventConfig.value = true
 }
 
+function openUnifiedEventBindings(targetType) {
+  if (!form.value.id) {
+    ElMessage.warning('请先保存表单草稿')
+    return
+  }
+  if (targetType === 'FIELD') {
+    if (!selectedField.value?.fieldCode) {
+      ElMessage.warning('当前节点没有稳定字段编码，无法绑定字段事件')
+      return
+    }
+    eventBindingDialogRef.value?.openField(selectedField.value)
+  } else {
+    eventBindingDialogRef.value?.openOwner(form.value.formName || '')
+  }
+}
+
+function openEntitySelectionMapping() {
+  selectionMappingDialogRef.value?.open(selectedField.value)
+}
+
 // 保存事件配置
 function handleSaveEvent(events) {
   if (!currentEventField.value) return
@@ -3247,42 +3086,12 @@ function changeTypeLabel(changeType) {
 }
 
 async function showReleaseHistory() {
-  if (!form.value.id) {
-    ElMessage.warning('请先保存草稿')
-    return
-  }
-  releases.value = await getFormReleases(form.value.id)
-  releaseDialogVisible.value = true
+  await releaseHistoryDialogRef.value?.open()
 }
 
-async function activateRelease(release) {
-  await ElMessageBox.confirm(
-    `确认激活历史版本 v${release.version}？`,
-    '回滚发布版本',
-    { type: 'warning' }
-  )
-  await activateFormRelease(form.value.id, release.id)
-  await showReleaseHistory()
-  await loadDiff()
-  ElMessage.success('历史版本已激活')
-}
-
-async function rollbackHotfixRelease(release) {
-  const { value } = await ElMessageBox.prompt(
-    `确认按发布顺序撤回热修复 v${release.version}？`,
-    '撤回兼容热修复',
-    {
-      type: 'warning',
-      inputPlaceholder: '请输入撤回原因',
-      inputValidator: text => Boolean(String(text || '').trim())
-        || '撤回原因不能为空'
-    }
-  )
-  await rollbackFormHotfix(form.value.id, release.id, value)
-  await showReleaseHistory()
+async function handleReleaseChanged() {
   await loadFormInfo()
   await loadDiff()
-  ElMessage.success('热修复已撤回，目标流程版本已原子恢复')
 }
 
 // 保存表单
@@ -3434,46 +3243,28 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.form-data-source-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.form-data-source-toolbar :deep(.el-alert) {
-  flex: 1;
-}
-
-.form-data-source-row {
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  background: #fafafa;
-}
-
-.form-data-source-row-header {
+.selection-fill-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
 }
 
-.form-data-source-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
-
-.form-data-source-prevalidate {
+.selection-fill-summary > div {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 0 12px 96px;
-  color: #606266;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selection-fill-summary span {
+  color: var(--el-text-color-secondary);
   font-size: 12px;
+  line-height: 1.5;
 }
 
 .design-body {

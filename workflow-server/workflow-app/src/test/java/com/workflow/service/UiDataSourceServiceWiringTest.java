@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceService;
 
@@ -48,6 +49,7 @@ class UiDataSourceServiceWiringTest {
                     () -> mock(UiDataSourceExecutionAccessService.class));
             context.registerBean(JsonDocumentCodec.class,
                     () -> new JsonDocumentCodec(new ObjectMapper()));
+            context.registerBean(UiDataSourceDefinitionValidator.class);
             context.registerBean(
                     "applicationTaskExecutor",
                     TaskExecutor.class,

@@ -2,9 +2,15 @@ package com.workflow.project.action;
 
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -24,10 +30,11 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
     private static final String SOURCE_ENTITY = "system_application";
     private static final String TARGET_ENTITY = "system_asset";
 
-    private final EntityDataDynamicService entityDataService;
+    private final EntityMutationPort entityMutationPort;
 
-    public CreateSystemAssetHandler(EntityDataDynamicService entityDataService) {
-        this.entityDataService = entityDataService;
+    public CreateSystemAssetHandler(
+            EntityMutationPort entityMutationPort) {
+        this.entityMutationPort = entityMutationPort;
     }
 
     @Override
@@ -66,27 +73,109 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
             return;
         }
 
-        EntityDataDTO asset = new EntityDataDTO();
-        asset.setEntityCode(TARGET_ENTITY);
-        asset.setName(text(read(source, "proposed_system_name")));
-        asset.setSubmitterId(application.getSubmitterId());
-        asset.setSubmitterName(application.getSubmitterName());
-        asset.setData(buildAssetData(application, source));
-        EntityDataDTO saved = entityDataService.save(asset);
+        Map<String, Object> createPayload =
+                new LinkedHashMap<>();
+        createPayload.put(
+                "name",
+                text(read(source, "proposed_system_name")));
+        createPayload.put(
+                "submitterId",
+                application.getSubmitterId());
+        createPayload.put(
+                "submitterName",
+                application.getSubmitterName());
+        createPayload.put(
+                "data",
+                buildAssetData(application, source));
+        EntityMutationResult saved =
+                entityMutationPort.execute(
+                        mutationCommand(
+                                context,
+                                1,
+                                TARGET_ENTITY,
+                                null,
+                                EntityMutationOperationType.CREATE,
+                                createPayload));
 
         Map<String, Object> update = new LinkedHashMap<>();
         Map<String, Object> applicationData = new LinkedHashMap<>();
-        applicationData.put("approved_system_id", saved.getId());
+        applicationData.put(
+                "approved_system_id",
+                saved.recordId());
         applicationData.put("approved_at", LocalDateTime.now());
         update.put("data", applicationData);
-        entityDataService.update(SOURCE_ENTITY, application.getId(), update);
+        entityMutationPort.execute(
+                mutationCommand(
+                        context,
+                        2,
+                        SOURCE_ENTITY,
+                        application.getId(),
+                        EntityMutationOperationType.UPDATE,
+                        update));
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("systemAssetId", saved.getId());
-        result.put("systemAssetCode", saved.getCode());
+        result.put("systemAssetId", saved.recordId());
+        result.put(
+                "systemAssetCode",
+                saved.record().get("code"));
         result.put("reused", false);
         context.setExecutionResult(result);
         context.addExecutionTrace("CREATED", "Created system asset and linked it to the application.", result);
+    }
+
+    private EntityMutationCommand mutationCommand(
+            FlowActionContext flowContext,
+            int sequence,
+            String entityCode,
+            String recordId,
+            EntityMutationOperationType operationType,
+            Map<String, Object> payload) {
+        String baseKey = StringUtils.hasText(
+                flowContext.getIdempotencyKey())
+                ? flowContext.getIdempotencyKey()
+                : flowContext.getProcessInstanceId()
+                        + ":"
+                        + flowContext.getActionId();
+        String idempotencyKey =
+                baseKey + ":mutation:" + sequence;
+        Map<String, Object> extraParams =
+                new LinkedHashMap<>();
+        if (flowContext.getCustomParams() != null) {
+            extraParams.putAll(
+                    flowContext.getCustomParams());
+        }
+        if (flowContext.getExtraParams() != null) {
+            extraParams.putAll(
+                    flowContext.getExtraParams());
+        }
+        EntityMutationContext mutationContext =
+                EntityMutationContext.builder(
+                                EntityMutationSourceType.FLOW_ACTION,
+                                "INITIAL_EFFECTIVE",
+                                "系统申请审批生效")
+                        .sourceId(flowContext.getActionId())
+                        .sourceRecord(
+                                flowContext.getEntityCode(),
+                                flowContext.getEntityDataId())
+                        .process(
+                                flowContext.getProcessDefinitionId(),
+                                flowContext.getProcessInstanceId(),
+                                flowContext.getTaskId())
+                        .operator(
+                                flowContext.getOperatorId(),
+                                flowContext.getOperatorId())
+                        .trace(
+                                flowContext.getProcessInstanceId(),
+                                idempotencyKey)
+                        .extraParams(extraParams)
+                        .build();
+        return new EntityMutationCommand(
+                idempotencyKey,
+                entityCode,
+                recordId,
+                operationType,
+                payload,
+                mutationContext);
     }
 
     private Map<String, Object> buildAssetData(

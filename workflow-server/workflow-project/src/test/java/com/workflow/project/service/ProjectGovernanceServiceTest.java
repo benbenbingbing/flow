@@ -1,6 +1,10 @@
 package com.workflow.project.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
@@ -22,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,16 +34,67 @@ import static org.mockito.Mockito.when;
 class ProjectGovernanceServiceTest {
 
     private EntityDataDynamicService entityDataService;
+    private EntityMutationPort entityMutationPort;
     private ProjectGovernanceService service;
+    private AtomicInteger memberIndex;
+    private AtomicInteger catalogIndex;
+    private AtomicInteger assignmentIndex;
 
     @BeforeEach
     void setUp() {
         entityDataService = mock(EntityDataDynamicService.class);
+        entityMutationPort = mock(EntityMutationPort.class);
+        memberIndex = new AtomicInteger();
+        catalogIndex = new AtomicInteger();
+        assignmentIndex = new AtomicInteger();
+        ObjectMapper objectMapper =
+                new ObjectMapper().findAndRegisterModules();
+        ProjectEntityMutationExecutor mutationExecutor =
+                new ProjectEntityMutationExecutor(
+                        entityMutationPort,
+                        objectMapper);
         service = new ProjectGovernanceService(
                 entityDataService,
-                new ObjectMapper().findAndRegisterModules());
+                mutationExecutor,
+                new ProjectSystemRemovalGuard(
+                        entityDataService),
+                objectMapper);
         when(entityDataService.findByCondition(anyString(), anyMap()))
                 .thenReturn(List.of());
+        when(entityMutationPort.execute(
+                any(EntityMutationCommand.class)))
+                .thenAnswer(invocation -> {
+                    EntityMutationCommand command =
+                            invocation.getArgument(0);
+                    String recordId = command.recordId();
+                    Map<String, Object> record =
+                            new LinkedHashMap<>(command.payload());
+                    if (command.operationType()
+                            == EntityMutationOperationType.CREATE) {
+                        recordId = generatedId(
+                                command.entityCode());
+                    }
+                    record.put("id", recordId);
+                    record.put(
+                            "entityCode",
+                            command.entityCode());
+                    if ("project_system_link".equals(
+                            command.entityCode())) {
+                        record.put(
+                                "code",
+                                "PRJSYS2026072800002");
+                    }
+                    return new EntityMutationResult(
+                            command.operationId(),
+                            command.entityCode(),
+                            recordId,
+                            command.operationType(),
+                            record,
+                            null,
+                            null,
+                            true,
+                            false);
+                });
     }
 
     @Test
@@ -145,22 +199,6 @@ class ProjectGovernanceServiceTest {
                 Map.of("project_id", "PRJ-1")))
                 .thenReturn(List.of(systemLink));
 
-        AtomicInteger memberIndex = new AtomicInteger();
-        AtomicInteger catalogIndex = new AtomicInteger();
-        AtomicInteger assignmentIndex = new AtomicInteger();
-        when(entityDataService.save(any(EntityDataDTO.class)))
-                .thenAnswer(invocation -> {
-                    EntityDataDTO dto = invocation.getArgument(0);
-                    String id = switch (dto.getEntityCode()) {
-                        case "project_member" -> "MEM-" + memberIndex.incrementAndGet();
-                        case "project_role_catalog" -> "CAT-" + catalogIndex.incrementAndGet();
-                        case "project_role_assignment" -> "ASSIGN-" + assignmentIndex.incrementAndGet();
-                        default -> "DATA-1";
-                    };
-                    dto.setId(id);
-                    return dto;
-                });
-
         Map<String, Object> result = service.applyProjectInitiation(project);
 
         assertEquals(1, result.get("requirementLinkCount"));
@@ -169,18 +207,36 @@ class ProjectGovernanceServiceTest {
         assertEquals(3, catalogIndex.get());
         assertEquals(3, assignmentIndex.get());
         assertFalse((Boolean) result.get("reused"));
-        verify(entityDataService, times(9)).save(any(EntityDataDTO.class));
-
-        ArgumentCaptor<Map<String, Object>> updateCaptor =
-                ArgumentCaptor.forClass(Map.class);
-        verify(entityDataService).update(
-                org.mockito.ArgumentMatchers.eq("project"),
-                org.mockito.ArgumentMatchers.eq("PRJ-1"),
-                updateCaptor.capture());
-        assertEquals("APPROVED", updateCaptor.getValue().get("status"));
+        ArgumentCaptor<EntityMutationCommand> commandCaptor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(entityMutationPort, times(18))
+                .execute(commandCaptor.capture());
+        List<EntityMutationCommand> commands =
+                commandCaptor.getAllValues();
+        assertEquals(
+                9,
+                commands.stream()
+                        .filter(command ->
+                                command.operationType()
+                                == EntityMutationOperationType.CREATE)
+                        .count());
+        EntityMutationCommand projectCommand = commands.stream()
+                .filter(command ->
+                        "project".equals(command.entityCode())
+                        && "PRJ-1".equals(command.recordId()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(
+                EntityMutationOperationType.UPDATE,
+                projectCommand.operationType());
+        assertEquals("APPROVED",
+                projectCommand.payload().get("status"));
         @SuppressWarnings("unchecked")
         Map<String, Object> projectUpdate =
-                (Map<String, Object>) updateCaptor.getValue().get("data");
+                (Map<String, Object>) projectCommand
+                        .payload()
+                        .get("data");
         assertEquals(true, projectUpdate.get("initialization_completed_flag"));
     }
 
@@ -228,35 +284,37 @@ class ProjectGovernanceServiceTest {
         request.getData().put("planned_start_date", "2026-08-01");
         request.getData().put("planned_end_date", "2026-10-31");
 
-        when(entityDataService.save(any(EntityDataDTO.class)))
-                .thenAnswer(invocation -> {
-                    EntityDataDTO dto = invocation.getArgument(0);
-                    dto.setId("PSL-NEW");
-                    dto.setCode("PRJSYS2026072800002");
-                    return dto;
-                });
-
         Map<String, Object> result = service.applyProjectSystemChange(request);
 
         assertEquals("ADD", result.get("operation"));
         assertEquals("PSL-NEW", result.get("projectSystemLinkId"));
         assertFalse((Boolean) result.get("reused"));
 
-        ArgumentCaptor<Map<String, Object>> linkUpdate =
-                ArgumentCaptor.forClass(Map.class);
-        verify(entityDataService).update(
-                org.mockito.ArgumentMatchers.eq("project_system_link"),
-                org.mockito.ArgumentMatchers.eq("PSL-NEW"),
-                linkUpdate.capture());
-        assertEquals("ACTIVE", linkUpdate.getValue().get("status"));
-
-        ArgumentCaptor<Map<String, Object>> requestUpdate =
-                ArgumentCaptor.forClass(Map.class);
-        verify(entityDataService).update(
-                org.mockito.ArgumentMatchers.eq("project_system_change_request"),
-                org.mockito.ArgumentMatchers.eq("PSC-1"),
-                requestUpdate.capture());
-        assertEquals("EFFECTIVE", requestUpdate.getValue().get("status"));
+        ArgumentCaptor<EntityMutationCommand> commandCaptor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(entityMutationPort, times(3))
+                .execute(commandCaptor.capture());
+        List<EntityMutationCommand> commands =
+                commandCaptor.getAllValues();
+        EntityMutationCommand linkUpdate = commands.stream()
+                .filter(command ->
+                        "project_system_link".equals(
+                                command.entityCode())
+                        && "PSL-NEW".equals(
+                                command.recordId()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("ACTIVE",
+                linkUpdate.payload().get("status"));
+        EntityMutationCommand requestUpdate = commands.stream()
+                .filter(command ->
+                        "project_system_change_request".equals(
+                                command.entityCode()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("EFFECTIVE",
+                requestUpdate.payload().get("status"));
     }
 
     private EntityDataDTO projectWithInitialScope() {
@@ -326,5 +384,18 @@ class ProjectGovernanceServiceTest {
         dto.setStatus(status);
         dto.setData(new LinkedHashMap<>(data));
         return dto;
+    }
+
+    private String generatedId(String entityCode) {
+        return switch (entityCode) {
+            case "project_member" ->
+                    "MEM-" + memberIndex.incrementAndGet();
+            case "project_role_catalog" ->
+                    "CAT-" + catalogIndex.incrementAndGet();
+            case "project_role_assignment" ->
+                    "ASSIGN-" + assignmentIndex.incrementAndGet();
+            case "project_system_link" -> "PSL-NEW";
+            default -> "DATA-1";
+        };
     }
 }

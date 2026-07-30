@@ -37,6 +37,15 @@ collectFiles(path.join(root, 'src'), '.vue').forEach((vueFile) => {
   )
 })
 
+collectFiles(path.join(root, 'src/api'), '.js').forEach((apiFile) => {
+  const source = readFileSync(apiFile, 'utf8')
+  assert.doesNotMatch(
+    source,
+    /request\.(?:put|delete|patch)\s*\(/,
+    `前端业务接口仅允许 GET 或 POST: ${path.relative(root, apiFile)}`
+  )
+})
+
 const routedTopLevelViews = new Set([
   ...viewFiles.filter(file => !file.includes('/')),
   'Layout.vue'
@@ -246,6 +255,10 @@ const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelect
 })
 
 const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDesign.vue'), 'utf8')
+const entityDataSearchForm = readFileSync(
+  path.join(root, 'src/views/entity/components/EntityDataSearchForm.vue'),
+  'utf8'
+)
 ;['addVirtualField', 'getExtensionOptions', 'ConfigSchemaEditor', 'renderConfig', 'queryConfig', 'columnConfig'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少动态配置能力: ${marker}`)
 })
@@ -260,9 +273,141 @@ assert.ok(
   listDesigner.includes('@click="saveAll"') && listDesigner.includes('保存全部'),
   '列表设计器应提供页面级保存全部，同时保留增量保存接口'
 )
+assert.equal(listDesigner.includes('preview-panel'), false, '列表设计器不应保留右侧预览面板')
+;[
+  '@click="openPreview"',
+  'v-model="previewDialogVisible"',
+  'title="列表预览"',
+  'entityListRuntimeApi.query(',
+  '<EntityDataSearchForm',
+  'v-model:form="previewQueryForm"',
+  ':fields="previewQueryFields"',
+  ':view-config="viewConfig"'
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表设计器缺少独立弹窗预览能力: ${marker}`)
+})
+;[
+  'label="收起时显示条件数"',
+  'label="启用查询区折叠"',
+  'label="查询区标签宽度"'
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表查询体验配置缺少清晰名称: ${marker}`)
+})
+assert.equal(
+  listDesigner.includes('label="默认显示条件"')
+    || listDesigner.includes('label="允许展开收起"')
+    || listDesigner.includes('label="标签宽度"'),
+  false,
+  '列表查询体验配置不应继续使用含义不清的旧名称'
+)
+;[
+  '<el-tooltip',
+  'const unsavedItems = computed',
+  'const dirtyMetadataItems = computed',
+  '列表设置：查询区标签宽度',
+  '字段配置：${field.fieldName',
+  "position === 'TOOLBAR' ? '工具栏按钮' : '操作列按钮'"
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表设计器未保存状态缺少悬停明细: ${marker}`)
+})
+assert.ok(
+  entityDataList.includes('<EntityDataSearchForm')
+    && listDesigner.includes('<EntityDataSearchForm'),
+  '列表预览与实际列表应复用同一个查询折叠组件'
+)
+;[
+  'searchConfig.value.defaultVisibleCount',
+  'searchConfig.value.collapsible === false',
+  'props.fields.slice(0, visibleCount.value)',
+  'searchExpanded.value'
+].forEach((marker) => {
+  assert.ok(
+    entityDataSearchForm.includes(marker),
+    `列表查询折叠组件缺少运行时分支: ${marker}`
+  )
+})
+assert.equal(
+  listDesigner.includes('拖拽排序，勾选控制显示和查询'),
+  false,
+  '列表设计器不应保留与字段配置页签重复的外层卡片标题'
+)
+assert.ok(
+  listDesigner.indexOf('<el-tab-pane label="字段配置" name="fields">')
+    < listDesigner.indexOf('<el-tab-pane label="列表设置" name="view">')
+    && listDesigner.includes("const activeConfigTab = ref('fields')"),
+  '列表设计器应优先展示字段配置页签，并将列表设置放在其后'
+)
+assert.match(
+  listDesigner,
+  /\.config-panel\s*\{[\s\S]*?width:\s*100%;/,
+  '列表设计器字段配置区域应占满可用宽度'
+)
+;[
+  /\.entity-list-config-design\s*\{[\s\S]*?max-width:\s*100%;[\s\S]*?min-width:\s*0;/,
+  /\.design-container\s*\{[\s\S]*?max-width:\s*100%;[\s\S]*?min-width:\s*0;/,
+  /\.config-tabs[\s\S]*?\.el-tabs__content[\s\S]*?max-width:\s*100%;[\s\S]*?min-width:\s*0;/,
+  /@media\s*\(max-width:\s*1280px\)[\s\S]*?\.page-header/
+].forEach((pattern) => {
+  assert.match(listDesigner, pattern, '列表设计器应限制在浏览器可用宽度内')
+})
+;[
+  'ref="configPanelRef"',
+  'ref="fieldTableRef"',
+  'new ResizeObserver',
+  'fieldTableRef.value?.doLayout?.()',
+  'watch(activeConfigTab',
+  'configResizeObserver?.disconnect()'
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表设计器首次渲染缺少表格宽度重算能力: ${marker}`)
+})
+const layoutSource = readFileSync(path.join(root, 'src/views/Layout.vue'), 'utf8')
+assert.match(
+  layoutSource,
+  /\.main-content\s*\{[\s\S]*?min-width:\s*0;/,
+  '主内容 flex 容器应允许页面按浏览器可用宽度收缩'
+)
+assert.match(
+  listDesigner,
+  /\.view-config-form\s*\{[\s\S]*?width:\s*100%;/,
+  '列表设置表单应占满配置区域'
+)
+assert.doesNotMatch(
+  listDesigner,
+  /\.view-config-form\s*\{[\s\S]*?max-width:\s*760px;/,
+  '列表设置不应继续限制为左侧窄栏'
+)
+;[
+  'grid-template-columns: repeat(2, minmax(0, 1fr))',
+  'view-config-item--full'
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表设置缺少宽屏平铺能力: ${marker}`)
+})
 ;["'save'", "'remove'", "@click=\"$emit('save', row)\"", "@click=\"$emit('remove', row)\""].forEach((marker) => {
   assert.ok(listButtonConfig.includes(marker), `列表按钮缺少单项操作能力: ${marker}`)
 })
+;[
+  "import Sortable from 'sortablejs'",
+  'button-drag-handle',
+  "emit('reorder'",
+  "@reorder=\"reorderListAction($event, 'TOOLBAR')\"",
+  "@reorder=\"reorderListAction($event, 'ROW')\"",
+  'entityListConfigApi.reorderAction'
+].forEach((marker) => {
+  assert.ok(
+    `${listButtonConfig}\n${listDesigner}`.includes(marker),
+    `列表按钮缺少拖拽排序能力: ${marker}`
+  )
+})
+assert.equal(
+  listButtonConfig.includes('<el-input-number'),
+  false,
+  '列表按钮排序不应继续使用数字输入框'
+)
+assert.ok(
+  entityDataList.includes('buttonOrder(button')
+    && entityDataList.includes('buttonOrder(a) - buttonOrder(b)'),
+  '列表运行时应优先按拖拽顺序键展示按钮'
+)
 const listButtonTableSource = listButtonConfig.match(/<el-table\b[\s\S]*?<\/el-table>/)?.[0] || ''
 assert.ok(
   listButtonTableSource.includes('openAdvancedSettings(row)') && /更多(?:设置)?/.test(listButtonTableSource),
@@ -288,13 +433,71 @@ const entitySettingsDesigner = readFileSync(path.join(root, 'src/views/EntityDes
   assert.ok(entitySettingsDesigner.includes(marker), `实体字段设置缺少频率分组: ${marker}`)
 })
 ;[
-  [entitySettingsDesigner, 'designMode', ['label="数据库列名"', 'label="验证规则"']],
+  [entitySettingsDesigner, 'designMode', ['label="数据库列名"', '<EntityValidationRuleEditor']],
   [listDesigner, 'configMode', ['title="查询实现"', 'title="扩展渲染"', 'label="数据与显示"']]
 ].forEach(([source, modeVariable, visibleMarkers]) => {
   assert.equal(source.includes(modeVariable), false, `设计器不得再按模式隐藏配置: ${modeVariable}`)
   visibleMarkers.forEach((marker) => {
     assert.ok(source.includes(marker), `设计器缺少直接展示的配置项: ${marker}`)
   })
+})
+;[
+  'EntityValidationRuleEditor',
+  'v-model="selectedField.validateRules"',
+  ':field-type="selectedField.fieldType"',
+  'handleFieldTypeChange',
+  'validateEntityValidationRules'
+].forEach((marker) => {
+  assert.ok(entitySettingsDesigner.includes(marker), `实体验证规则可视化配置缺少实现: ${marker}`)
+})
+assert.equal(
+  entitySettingsDesigner.includes('entity-validation-rule-tooltip'),
+  false,
+  '实体验证规则不应继续依赖 JSON 帮助浮层'
+)
+const entityValidationRuleEditor = readFileSync(
+  path.join(root, 'src/components/EntityValidationRuleEditor.vue'),
+  'utf8'
+)
+;[
+  'label="最小长度"',
+  'label="最大长度"',
+  'label="最小值"',
+  'label="最大值"',
+  'label="格式"',
+  '中国大陆手机号',
+  'HTTP(S) 网址',
+  '历史验证规则格式异常',
+  "emit('update:modelValue', result.normalized)"
+].forEach((marker) => {
+  assert.ok(
+    entityValidationRuleEditor.includes(marker),
+    `实体验证规则编辑器缺少结构化配置: ${marker}`
+  )
+})
+assert.equal(
+  entityValidationRuleEditor.includes('type="textarea"'),
+  false,
+  '实体验证规则不应继续要求手写 JSON'
+)
+const entityValidationRules = readFileSync(
+  path.join(root, 'src/shared/entity-validation-rules.js'),
+  'utf8'
+)
+;[
+  '文本、长文本',
+  '整数、小数',
+  '其他字段类型',
+  'minLength',
+  'maxLength',
+  'min',
+  'max',
+  'format',
+  'EMAIL',
+  'PHONE',
+  'URL'
+].forEach((marker) => {
+  assert.ok(entityValidationRules.includes(marker), `实体验证规则说明缺少内容: ${marker}`)
 })
 const entityFieldGroupPositions = [
   entitySettingsDesigner.indexOf('title="常用属性"'),
@@ -308,13 +511,24 @@ assert.deepEqual(
 )
 
 const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
+const formDataSourceDialog = readFileSync(
+  path.join(root, 'src/components/ui-config/FormDataSourceCompatDialog.vue'),
+  'utf8'
+)
 assert.equal(formDesigner.includes('designMode'), false, '表单设计器不得再按基础、高级或开发者模式隐藏配置')
 ;['扩展管理', 'label="自定义组件"', 'title="数据源"', 'title="校验"', 'title="模式与权限"'].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单设计器缺少直接展示的配置项: ${marker}`)
 })
 ;[
   "parseJsonConfig(row.inputMappingText",
-  "parseJsonConfig(row.outputMappingText",
+  "parseJsonConfig(row.outputMappingText"
+].forEach((marker) => {
+  assert.ok(
+    formDataSourceDialog.includes(marker),
+    `表单数据源映射保存前必须执行严格 JSON 校验: ${marker}`
+  )
+})
+;[
   'validateNodeDataSourceMappings(selectedField.value)',
   'validateNodeDataSourceMappings(field)'
 ].forEach((marker) => {
@@ -646,6 +860,14 @@ assert.match(
   '实体设计器应默认展示系统字段'
 )
 ;[
+  'v-else-if="permissionSqlPreview.hasPermission === false"',
+  'v-else-if="permissionSqlPreview.needFilter === false"',
+  '当前用户无需数据过滤，可以查看全部数据。',
+  '当前可见范围未返回规则明细，请以最终生效 SQL 和说明为准。'
+].forEach((marker) => {
+  assert.ok(entityDesigner.includes(marker), `权限范围预览缺少准确的空规则结果分支: ${marker}`)
+})
+;[
   'ActionRuleGroupEditor',
   'filterRoot',
   'permissionRuleFieldOptions',
@@ -912,6 +1134,12 @@ const listFieldTableSource = listDesigner.match(
 assert.ok(
   listFieldTableSource.includes('label="当前配置" min-width="320"'),
   '列表字段主表应让当前配置列弹性占满剩余空间'
+)
+assert.ok(
+  listFieldTableSource.includes('label="用途" width="144"')
+    && listDesigner.includes('.field-purpose-controls {')
+    && listDesigner.includes('white-space: nowrap;'),
+  '列表字段用途列应有足够宽度并保持列表、查询选项单行展示'
 )
 assert.ok(
   listDesigner.includes('.field-config-table {') && listDesigner.includes('width: 100%;'),
@@ -1192,6 +1420,15 @@ const pagedEntityDataList = readFileSync(path.join(root, 'src/views/entity/Entit
 ].forEach((marker) => {
   assert.ok(pagedEntityDataList.includes(marker), `实体数据列表缺少服务端分页能力: ${marker}`)
 })
+assert.doesNotMatch(
+  pagedEntityDataList,
+  /scene:\s*'PAGE',/,
+  '实体数据列表不得用属性默认值覆盖路由传入的运行场景'
+)
+assert.ok(
+  pagedEntityDataList.includes("(props.scene || route.query.scene as string || 'PAGE').toUpperCase()"),
+  '实体数据列表应按显式属性、路由参数、PAGE 默认值的顺序解析运行场景'
+)
 
 const uiConfigPublishDialog = readFileSync(
   path.join(root, 'src/components/UiConfigPublishDialog.vue'),

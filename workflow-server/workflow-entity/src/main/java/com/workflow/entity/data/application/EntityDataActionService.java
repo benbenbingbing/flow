@@ -3,18 +3,33 @@ package com.workflow.entity.data.application;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
+import com.workflow.entity.ui.application.UiEventRuntimeService;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +39,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -37,6 +53,7 @@ public class EntityDataActionService {
             "entityCode",
             "entityName",
             "listKey",
+            "formId",
             "id",
             "startProcess",
             "processVariables",
@@ -44,11 +61,16 @@ public class EntityDataActionService {
             "actionCapabilities");
 
     private final EntityDataDynamicService dynamicService;
+    private final EntityMutationPort mutationPort;
     private final EntityListActionConfigService actionConfigService;
     private final EntityActionCapabilityService capabilityService;
     private final EntityListScopeAuditService scopeAuditService;
     private final PublishedFormSubmissionService formSubmissionService;
     private final FormSubmissionTraceService formSubmissionTraceService;
+    private final UiEventRuntimeService eventRuntimeService;
+    private final EntityDefinitionMapper definitionMapper;
+    private final EntityFormMapper formMapper;
+    private final ObjectMapper objectMapper;
 
     /**
      * 查询实体数据详情，前置校验列表查看按钮权限。
@@ -61,9 +83,46 @@ public class EntityDataActionService {
      */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(String entityCode, String id, String listKey) {
-        EntityDataDTO row = findAccessible(entityCode, id, listKey);
-        capabilityService.requireRowAction(entityCode, listKey, "view", row);
-        return row;
+        return getDetail(entityCode, id, listKey, null);
+    }
+
+    /**
+     * 查询详情并允许指定表单覆盖 DETAIL_LOAD 事件。
+     */
+    @Transactional(readOnly = true)
+    public EntityDataDTO getDetail(
+            String entityCode,
+            String id,
+            String listKey,
+            String formId) {
+        capabilityService.requireStandardPermission(
+                entityCode,
+                EntityPermissionAction.VIEW);
+        EventOrigin origin = eventOrigin(
+                entityCode, listKey, formId);
+        if (origin == null) {
+            EntityDataDTO row = findAccessible(entityCode, id, listKey);
+            capabilityService.requireRowAction(
+                    entityCode, listKey, "view", row);
+            return row;
+        }
+        UiEventExecuteRequest event = event(
+                "DETAIL_LOAD",
+                origin,
+                entityCode,
+                listKey,
+                id,
+                Map.of("recordId", id));
+        Object value = eventRuntimeService.execute(
+                event,
+                ignored -> {
+                    EntityDataDTO row =
+                            findAccessible(entityCode, id, listKey);
+                    capabilityService.requireRowAction(
+                            entityCode, listKey, "view", row);
+                    return row;
+                }).getData();
+        return entityData(value, entityCode, id);
     }
 
     /**
@@ -116,13 +175,51 @@ public class EntityDataActionService {
                                 dto.getEntityCode(),
                                 "mode",
                                 "create"));
-        dto.setData(formSubmissionService.applyDefaultForm(
+        EventOrigin origin = eventOrigin(
                 dto.getEntityCode(),
+                dto.getListKey(),
+                dto.getFormId());
+        if (origin == null) {
+            dto.setData(formSubmissionService.applyDefaultForm(
+                    dto.getEntityCode(),
+                    null,
+                    "create",
+                    dto.getData(),
+                    executionContext));
+            return mutateCreate(
+                    dto,
+                    origin,
+                    executionContext.businessTraceKey());
+        }
+        UiEventExecuteRequest event = event(
+                "DATA_CREATE",
+                origin,
+                dto.getEntityCode(),
+                dto.getListKey(),
                 null,
-                "create",
-                dto.getData(),
-                executionContext));
-        return dynamicService.save(dto);
+                createInput(dto));
+        event.setServerIdempotencyKey(
+                executionContext.businessTraceKey());
+        Object value = eventRuntimeService.execute(
+                event,
+                input -> {
+                    dto.setData(formSubmissionService.applyDefaultForm(
+                            dto.getEntityCode(),
+                            null,
+                            "create",
+                            map(input.get("data")),
+                            executionContext));
+                    if (input.containsKey("startProcess")) {
+                        dto.setStartProcess(
+                                Boolean.valueOf(String.valueOf(
+                                        input.get("startProcess"))));
+                    }
+                    return mutateCreate(
+                            dto,
+                            origin,
+                            executionContext.businessTraceKey());
+                }).getData();
+        return entityData(value, dto.getEntityCode(), null);
     }
 
     /**
@@ -148,8 +245,9 @@ public class EntityDataActionService {
             String id,
             String listKey,
             Map<String, Object> formData) {
-        EntityDataDTO row = findAccessible(entityCode, id, listKey);
-        capabilityService.requireRowAction(entityCode, listKey, "edit", row);
+        capabilityService.requireStandardPermission(
+                entityCode,
+                EntityPermissionAction.UPDATE);
         FormSubmissionExecutionContext executionContext =
                 formSubmissionTraceService.current(
                         "ENTITY_UPDATE",
@@ -161,23 +259,88 @@ public class EntityDataActionService {
                                 id,
                                 "mode",
                                 "edit"));
-        Map<String, Object> submittedData = extractSubmittedData(formData);
+        EventOrigin origin = eventOrigin(
+                entityCode,
+                listKey,
+                text(formData == null ? null : formData.get("formId")));
+        if (origin == null) {
+            return updateDefault(
+                    entityCode,
+                    id,
+                    listKey,
+                    formData,
+                    executionContext);
+        }
+        UiEventExecuteRequest event = event(
+                "DATA_UPDATE",
+                origin,
+                entityCode,
+                listKey,
+                id,
+                updateInput(formData));
+        event.setServerIdempotencyKey(
+                executionContext.businessTraceKey());
+        Object value = eventRuntimeService.execute(
+                event,
+                input -> {
+                    EntityDataDTO row =
+                            findAccessible(entityCode, id, listKey);
+                    capabilityService.requireRowAction(
+                            entityCode, listKey, "edit", row);
+                    Map<String, Object> safeData =
+                            formSubmissionService.applyDefaultForm(
+                                    entityCode,
+                                    id,
+                                    "edit",
+                                    map(input.get("data")),
+                                    executionContext);
+                    Map<String, Object> updateRequest =
+                            new LinkedHashMap<>();
+                    updateRequest.put("data", safeData);
+                    if (input.containsKey("startProcess")) {
+                        updateRequest.put(
+                                "startProcess",
+                                input.get("startProcess"));
+                    }
+                    return mutateUpdate(
+                            entityCode,
+                            id,
+                            updateRequest,
+                            origin,
+                            executionContext.businessTraceKey());
+                }).getData();
+        return entityData(value, entityCode, id);
+    }
+
+    private EntityDataDTO updateDefault(
+            String entityCode,
+            String id,
+            String listKey,
+            Map<String, Object> formData,
+            FormSubmissionExecutionContext executionContext) {
+        EntityDataDTO row = findAccessible(entityCode, id, listKey);
+        capabilityService.requireRowAction(
+                entityCode, listKey, "edit", row);
         Map<String, Object> safeData =
                 formSubmissionService.applyDefaultForm(
                         entityCode,
                         id,
                         "edit",
-                        submittedData,
+                        extractSubmittedData(formData),
                         executionContext);
         Map<String, Object> updateRequest = new LinkedHashMap<>();
         updateRequest.put("data", safeData);
         if (formData != null && formData.containsKey("startProcess")) {
-            updateRequest.put("startProcess", formData.get("startProcess"));
+            updateRequest.put(
+                    "startProcess",
+                    formData.get("startProcess"));
         }
-        return dynamicService.update(
+        return mutateUpdate(
                 entityCode,
                 id,
-                updateRequest);
+                updateRequest,
+                listEventOrigin(entityCode, listKey),
+                executionContext.businessTraceKey());
     }
 
     /**
@@ -199,7 +362,34 @@ public class EntityDataActionService {
     public void delete(String entityCode, String id, String listKey) {
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
         capabilityService.requireRowAction(entityCode, listKey, "delete", row);
-        dynamicService.delete(entityCode, id);
+        EventOrigin origin = listEventOrigin(entityCode, listKey);
+        if (origin == null) {
+            mutateDelete(
+                    entityCode,
+                    id,
+                    origin);
+            return;
+        }
+        UiEventExecuteRequest event = event(
+                "DATA_DELETE",
+                origin,
+                entityCode,
+                listKey,
+                id,
+                Map.of(
+                        "recordId",
+                        id,
+                        "record",
+                        objectMapper.convertValue(row, Map.class)));
+        eventRuntimeService.execute(
+                event,
+                ignored -> {
+                    mutateDelete(
+                            entityCode,
+                            id,
+                            origin);
+                    return Map.of("record", row);
+                });
     }
 
     /**
@@ -236,9 +426,174 @@ public class EntityDataActionService {
         if (!denied.isEmpty()) {
             throw new ForbiddenException("批量删除被阻止：" + String.join("；", denied));
         }
-        for (EntityDataDTO row : rows) {
-            dynamicService.delete(entityCode, row.getId());
+        EventOrigin origin = listEventOrigin(entityCode, listKey);
+        if (origin == null) {
+            mutateBatchDelete(
+                    entityCode,
+                    rows,
+                    origin);
+            return;
         }
+        UiEventExecuteRequest event = event(
+                "DATA_BATCH_DELETE",
+                origin,
+                entityCode,
+                listKey,
+                null,
+                Map.of(
+                        "selectedIds",
+                        rows.stream().map(EntityDataDTO::getId).toList(),
+                        "records",
+                        rows.stream()
+                                .map(row -> objectMapper.convertValue(
+                                        row,
+                                        Map.class))
+                                .toList()));
+        event.setSelectedIds(
+                rows.stream().map(EntityDataDTO::getId).toList());
+        eventRuntimeService.execute(
+                event,
+                ignored -> {
+                    mutateBatchDelete(
+                            entityCode,
+                            rows,
+                            origin);
+                    return Map.of(
+                            "changedRecords",
+                            rows.stream()
+                                    .map(row -> Map.of(
+                                            "entityCode",
+                                            entityCode,
+                                            "recordId",
+                                            row.getId()))
+                                    .toList());
+                });
+    }
+
+    private EntityDataDTO mutateCreate(
+            EntityDataDTO dto,
+            EventOrigin origin,
+            String traceKey) {
+        EntityMutationContext context = mutationContext(
+                origin,
+                "CREATE_RECORD",
+                "新增实体数据",
+                traceKey,
+                dto.getEntityCode(),
+                null);
+        EntityMutationResult result = mutationPort.execute(
+                EntityMutationCommand.create(
+                        dto.getEntityCode(),
+                        objectMapper.convertValue(
+                                dto,
+                                Map.class),
+                        context));
+        return entityData(
+                result.record(),
+                dto.getEntityCode(),
+                result.recordId());
+    }
+
+    private EntityDataDTO mutateUpdate(
+            String entityCode,
+            String id,
+            Map<String, Object> updateRequest,
+            EventOrigin origin,
+            String traceKey) {
+        EntityMutationResult result = mutationPort.execute(
+                EntityMutationCommand.update(
+                        entityCode,
+                        id,
+                        updateRequest,
+                        mutationContext(
+                                origin,
+                                "EDIT_RECORD",
+                                "编辑实体数据",
+                                traceKey,
+                                entityCode,
+                                id)));
+        return entityData(
+                result.record(),
+                entityCode,
+                id);
+    }
+
+    private void mutateDelete(
+            String entityCode,
+            String id,
+            EventOrigin origin) {
+        mutationPort.execute(
+                EntityMutationCommand.delete(
+                        entityCode,
+                        id,
+                        mutationContext(
+                                origin,
+                                "DELETE_RECORD",
+                                "删除实体数据",
+                                null,
+                                entityCode,
+                                id)));
+    }
+
+    private void mutateBatchDelete(
+            String entityCode,
+            List<EntityDataDTO> rows,
+            EventOrigin origin) {
+        String operationId =
+                java.util.UUID.randomUUID().toString();
+        List<EntityMutationCommand> commands =
+                rows.stream()
+                        .map(row -> new EntityMutationCommand(
+                                operationId + ":"
+                                        + row.getId(),
+                                entityCode,
+                                row.getId(),
+                                EntityMutationOperationType.DELETE,
+                                Map.of(),
+                                mutationContext(
+                                        origin,
+                                        "BATCH_DELETE_RECORD",
+                                        "批量删除实体数据",
+                                        operationId,
+                                        entityCode,
+                                        row.getId())))
+                        .toList();
+        mutationPort.executeBatch(
+                new EntityMutationBatchCommand(
+                        operationId,
+                        commands,
+                        true));
+    }
+
+    private EntityMutationContext mutationContext(
+            EventOrigin origin,
+            String intentCode,
+            String intentName,
+            String traceKey,
+            String sourceEntityCode,
+            String sourceRecordId) {
+        EntityMutationSourceType sourceType =
+                origin != null
+                        && "LIST".equals(origin.configType())
+                        ? EntityMutationSourceType.LIST
+                        : EntityMutationSourceType.FORM;
+        EntityMutationContext.Builder builder =
+                EntityMutationContext.builder(
+                                sourceType,
+                                intentCode,
+                                intentName)
+                        .sourceId(origin == null
+                                ? null : origin.configId())
+                        .sourceRecord(
+                                sourceEntityCode,
+                                sourceRecordId)
+                        .operator(
+                                UserContext.getUserId(),
+                                UserContext.getUsername());
+        if (StringUtils.hasText(traceKey)) {
+            builder.trace(traceKey, traceKey);
+        }
+        return builder.build();
     }
 
     private EntityDataDTO findAccessible(String entityCode, String id, String listKey) {
@@ -274,5 +629,149 @@ public class EntityDataActionService {
         Map<String, Object> submittedData = new LinkedHashMap<>(formData);
         UPDATE_CONTEXT_FIELDS.forEach(submittedData::remove);
         return submittedData;
+    }
+
+    private EventOrigin eventOrigin(
+            String entityCode,
+            String listKey,
+            String requestedFormId) {
+        if (StringUtils.hasText(requestedFormId)) {
+            EntityForm form = formMapper.selectById(requestedFormId);
+            if (form == null) {
+                throw new IllegalArgumentException(
+                        "表单不存在: " + requestedFormId);
+            }
+            EntityDefinition entity =
+                    definitionMapper.selectById(form.getEntityId());
+            if (entity == null
+                    || !Objects.equals(
+                            entityCode,
+                            entity.getEntityCode())) {
+                throw new IllegalArgumentException(
+                        "表单与实体不匹配");
+            }
+            return new EventOrigin("FORM", form.getId());
+        }
+        EntityDefinition entity = definitionMapper
+                .findByEntityCode(entityCode)
+                .orElse(null);
+        if (entity != null) {
+            EntityForm form =
+                    formMapper.selectDefaultByEntityId(entity.getId());
+            if (form != null) {
+                return new EventOrigin("FORM", form.getId());
+            }
+        }
+        EntityListConfig list =
+                actionConfigService.resolveListConfig(
+                        entityCode, listKey);
+        return list == null
+                ? null : new EventOrigin("LIST", list.getId());
+    }
+
+    private EventOrigin listEventOrigin(
+            String entityCode,
+            String listKey) {
+        EntityListConfig list =
+                actionConfigService.resolveListConfig(
+                        entityCode,
+                        listKey);
+        return list == null
+                ? null : new EventOrigin("LIST", list.getId());
+    }
+
+    private UiEventExecuteRequest event(
+            String eventCode,
+            EventOrigin origin,
+            String entityCode,
+            String listKey,
+            String recordId,
+            Map<String, Object> input) {
+        UiEventExecuteRequest event =
+                new UiEventExecuteRequest();
+        event.setEventCode(eventCode);
+        event.setConfigType(origin.configType());
+        event.setConfigId(origin.configId());
+        event.setEntityCode(entityCode);
+        event.setListKey(listKey);
+        event.setRecordId(recordId);
+        event.setInput(input);
+        event.setContext(Map.of(
+                "formId",
+                "FORM".equals(origin.configType())
+                        ? origin.configId() : "",
+                "listId",
+                "LIST".equals(origin.configType())
+                        ? origin.configId() : ""));
+        return event;
+    }
+
+    private Map<String, Object> createInput(EntityDataDTO dto) {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("data", dto.getData() == null
+                ? Map.of() : dto.getData());
+        input.put("name", dto.getName());
+        input.put("startProcess", Boolean.TRUE.equals(
+                dto.getStartProcess()));
+        input.put("processVariables", dto.getProcessVariables() == null
+                ? Map.of() : dto.getProcessVariables());
+        return input;
+    }
+
+    private Map<String, Object> updateInput(
+            Map<String, Object> formData) {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put(
+                "data",
+                extractSubmittedData(formData));
+        if (formData != null && formData.containsKey("startProcess")) {
+            input.put("startProcess", formData.get("startProcess"));
+        }
+        return input;
+    }
+
+    private EntityDataDTO entityData(
+            Object value,
+            String entityCode,
+            String recordId) {
+        if (value instanceof EntityDataDTO dto) {
+            return dto;
+        }
+        Object record = value instanceof Map<?, ?> map
+                && map.containsKey("record")
+                ? map.get("record") : value;
+        if (!(record instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException(
+                    "自定义数据操作必须返回标准 record 对象");
+        }
+        EntityDataDTO dto =
+                objectMapper.convertValue(record, EntityDataDTO.class);
+        if (!StringUtils.hasText(dto.getEntityCode())) {
+            dto.setEntityCode(entityCode);
+        }
+        if (!StringUtils.hasText(dto.getId())) {
+            dto.setId(recordId);
+        }
+        return dto;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> map(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((key, child) ->
+                    result.put(String.valueOf(key), child));
+            return result;
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private record EventOrigin(
+            String configType,
+            String configId) {
     }
 }

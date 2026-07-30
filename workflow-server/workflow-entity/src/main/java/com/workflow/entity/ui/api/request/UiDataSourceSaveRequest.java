@@ -3,6 +3,7 @@ package com.workflow.entity.ui.api.request;
 import lombok.Data;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * UI 数据源保存请求。
@@ -34,6 +35,8 @@ public class UiDataSourceSaveRequest {
     private Map<String, Object> outputSchema;
     /** 执行策略（缓存/超时等） */
     private Map<String, Object> executionPolicy;
+    /** 接口服务包含的操作定义；为空时兼容历史单操作数据源 */
+    private List<Map<String, Object>> operations;
     /** 是否启用 */
     private Boolean enabled;
 }

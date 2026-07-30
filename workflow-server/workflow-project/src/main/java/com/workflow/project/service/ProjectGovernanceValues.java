@@ -2,6 +2,8 @@ package com.workflow.project.service;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
+import org.springframework.util.StringUtils;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -9,10 +11,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.springframework.util.StringUtils;
 
 /**
- * Normalizes dynamic project fields used by governance rules.
+ * 项目治理规则使用的数据读取和规范化工具。
  */
 final class ProjectGovernanceValues {
 
@@ -32,8 +33,7 @@ final class ProjectGovernanceValues {
 
     static Map<String, Object> data(EntityDataDTO dto) {
         return dto.getData() == null
-                ? Map.of()
-                : dto.getData();
+                ? Map.of() : dto.getData();
     }
 
     static void requireEntity(
@@ -81,7 +81,7 @@ final class ProjectGovernanceValues {
         Object value = read(source, sourceKey);
         if (value != null
                 && (!(value instanceof String text)
-                        || !text.isBlank())) {
+                || !text.isBlank())) {
             target.put(targetKey, value);
         }
     }
@@ -118,7 +118,8 @@ final class ProjectGovernanceValues {
         }
         return list.stream()
                 .filter(Map.class::isInstance)
-                .map(item -> (Map<String, Object>) item)
+                .map(item ->
+                        (Map<String, Object>) item)
                 .toList();
     }
 
@@ -144,10 +145,8 @@ final class ProjectGovernanceValues {
             return dateTime.toLocalDate();
         }
         String text = String.valueOf(value);
-        return LocalDate.parse(
-                text.length() >= 10
-                        ? text.substring(0, 10)
-                        : text);
+        return LocalDate.parse(text.length() >= 10
+                ? text.substring(0, 10) : text);
     }
 
     static boolean bool(Object value) {
@@ -161,15 +160,13 @@ final class ProjectGovernanceValues {
 
     static String text(Object value) {
         return value == null
-                ? null
-                : String.valueOf(value);
+                ? null : String.valueOf(value);
     }
 
     static String upper(Object value) {
         String text = text(value);
         return text == null
-                ? null
-                : text.toUpperCase(Locale.ROOT);
+                ? null : text.toUpperCase(Locale.ROOT);
     }
 
     static String firstNonBlank(String... values) {
@@ -181,11 +178,15 @@ final class ProjectGovernanceValues {
         return null;
     }
 
-    static <T> T firstNonNull(T first, T fallback) {
+    static <T> T firstNonNull(
+            T first,
+            T fallback) {
         return first != null ? first : fallback;
     }
 
-    static void conflict(String errorCode, String message) {
+    static void conflict(
+            String errorCode,
+            String message) {
         throw new BusinessConflictException(
                 errorCode,
                 message);

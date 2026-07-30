@@ -1,14 +1,12 @@
 package com.workflow.project.service;
 
-import static com.workflow.project.service.ProjectGovernanceValues.*;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -16,7 +14,6 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,10 +21,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static com.workflow.project.service.ProjectGovernanceValues.*;
+
 /**
  * Project-specific cross-entity rules that cannot be expressed by form and BPMN configuration.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjectGovernanceService {
@@ -35,7 +33,6 @@ public class ProjectGovernanceService {
     private static final String PROJECT = "project";
     private static final String REQUIREMENT = "requirement";
     private static final String REQUIREMENT_PROJECT_LINK = "requirement_project_link";
-    private static final String REQUIREMENT_SYSTEM_IMPACT = "requirement_system_impact";
     private static final String SYSTEM_ASSET = "system_asset";
     private static final String PROJECT_SYSTEM_LINK = "project_system_link";
     private static final String PROJECT_MEMBER = "project_member";
@@ -49,10 +46,9 @@ public class ProjectGovernanceService {
             Set.of("APPROVED", "ACTIVE", "PAUSED", "ACCEPTING");
     private static final Set<String> TERMINAL_LINK_STATUSES =
             Set.of("INVALID", "REJECTED", "CANCELLED");
-    private static final Set<String> TERMINAL_CHANGE_STATUSES =
-            Set.of("EFFECTIVE", "REJECTED", "CANCELLED", "FAILED");
-
     private final EntityDataDynamicService entityDataService;
+    private final ProjectEntityMutationExecutor mutationExecutor;
+    private final ProjectSystemRemovalGuard removalGuard;
     private final ObjectMapper objectMapper;
 
     /**
@@ -60,6 +56,22 @@ public class ProjectGovernanceService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> validateProjectInitiation(EntityDataDTO project) {
+        return validateProjectInitiationInternal(project);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> validateProjectInitiation(
+            EntityDataDTO project,
+            FlowActionContext context) {
+        return mutationExecutor.inSession(
+                context,
+                "PROJECT_INITIATION_VALIDATION",
+                "项目立项校验",
+                () -> validateProjectInitiationInternal(project));
+    }
+
+    private Map<String, Object> validateProjectInitiationInternal(
+            EntityDataDTO project) {
         requireEntity(project, PROJECT);
         Map<String, Object> data = data(project);
 
@@ -101,6 +113,26 @@ public class ProjectGovernanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectInitiation(EntityDataDTO project) {
+        return mutationExecutor.inSession(
+                null,
+                "INITIAL_EFFECTIVE",
+                "项目立项审批生效",
+                () -> applyProjectInitiationInternal(project));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> applyProjectInitiation(
+            EntityDataDTO project,
+            FlowActionContext context) {
+        return mutationExecutor.inSession(
+                context,
+                "INITIAL_EFFECTIVE",
+                "项目立项审批生效",
+                () -> applyProjectInitiationInternal(project));
+    }
+
+    private Map<String, Object> applyProjectInitiationInternal(
+            EntityDataDTO project) {
         requireEntity(project, PROJECT);
         Map<String, Object> data = data(project);
         if (bool(read(data, "initialization_completed_flag"))) {
@@ -176,7 +208,7 @@ public class ProjectGovernanceService {
             if (!StringUtils.hasText(text(read(data(link), "responsible_member_id")))) {
                 custom.put("responsible_member_id", managerMember.getId());
             }
-            entityDataService.update(
+            mutationExecutor.update(
                     REQUIREMENT_PROJECT_LINK,
                     link.getId(),
                     update("APPROVED", custom));
@@ -197,7 +229,7 @@ public class ProjectGovernanceService {
             }
             custom.put("effective_at", effectiveAt);
             custom.put("source_process", "F03");
-            entityDataService.update(
+            mutationExecutor.update(
                     PROJECT_SYSTEM_LINK,
                     link.getId(),
                     update("ACTIVE", custom));
@@ -215,7 +247,7 @@ public class ProjectGovernanceService {
         Map<String, Object> projectUpdate = new LinkedHashMap<>();
         projectUpdate.put("initialization_completed_flag", true);
         projectUpdate.put("initialization_summary", summary);
-        entityDataService.update(
+        mutationExecutor.update(
                 PROJECT,
                 projectId,
                 update("APPROVED", projectUpdate));
@@ -235,6 +267,26 @@ public class ProjectGovernanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> validateProjectSystemChange(EntityDataDTO request) {
+        return mutationExecutor.inSession(
+                null,
+                "CHANGE_PRECHECK",
+                "项目系统变更前置校验",
+                () -> validateProjectSystemChangeInternal(request));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> validateProjectSystemChange(
+            EntityDataDTO request,
+            FlowActionContext context) {
+        return mutationExecutor.inSession(
+                context,
+                "CHANGE_PRECHECK",
+                "项目系统变更前置校验",
+                () -> validateProjectSystemChangeInternal(request));
+    }
+
+    private Map<String, Object> validateProjectSystemChangeInternal(
+            EntityDataDTO request) {
         requireEntity(request, PROJECT_SYSTEM_CHANGE);
         Map<String, Object> data = data(request);
         String operation = upper(read(data, "operation_type"));
@@ -312,7 +364,11 @@ public class ProjectGovernanceService {
         }
 
         List<String> blockers = "REMOVE".equals(operation)
-                ? collectRemovalBlockers(request.getId(), projectId, systemId, linkId)
+                ? removalGuard.collectBlockers(
+                        request.getId(),
+                        projectId,
+                        systemId,
+                        linkId)
                 : List.of();
         if (!blockers.isEmpty()) {
             conflict(
@@ -336,7 +392,7 @@ public class ProjectGovernanceService {
         if ("REMOVE".equals(operation)) {
             snapshotUpdate.put("remove_dependency_result", json(checkResult));
         }
-        entityDataService.update(
+        mutationExecutor.update(
                 PROJECT_SYSTEM_CHANGE,
                 request.getId(),
                 Map.of("data", snapshotUpdate));
@@ -348,6 +404,26 @@ public class ProjectGovernanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectSystemChange(EntityDataDTO request) {
+        return mutationExecutor.inSession(
+                null,
+                "CHANGE_EFFECTIVE",
+                "变更审批生效",
+                () -> applyProjectSystemChangeInternal(request));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> applyProjectSystemChange(
+            EntityDataDTO request,
+            FlowActionContext context) {
+        return mutationExecutor.inSession(
+                context,
+                "CHANGE_EFFECTIVE",
+                "变更审批生效",
+                () -> applyProjectSystemChangeInternal(request));
+    }
+
+    private Map<String, Object> applyProjectSystemChangeInternal(
+            EntityDataDTO request) {
         requireEntity(request, PROJECT_SYSTEM_CHANGE);
         Map<String, Object> data = data(request);
         String existingEffectiveLinkId = text(read(data, "effective_link_id"));
@@ -378,8 +454,8 @@ public class ProjectGovernanceService {
                 linkData.put("effective_at", effectiveAt);
                 linkData.put("source_process", "F06");
                 link.setData(linkData);
-                effectiveLink = entityDataService.save(link);
-                entityDataService.update(
+                effectiveLink = mutationExecutor.save(link);
+                mutationExecutor.update(
                         PROJECT_SYSTEM_LINK,
                         effectiveLink.getId(),
                         update("ACTIVE", Map.of(
@@ -394,7 +470,7 @@ public class ProjectGovernanceService {
                 Map<String, Object> linkData = buildProposedLinkData(data);
                 linkData.put("effective_at", effectiveAt);
                 linkData.put("source_process", "F06");
-                entityDataService.update(
+                mutationExecutor.update(
                         PROJECT_SYSTEM_LINK,
                         linkId,
                         update("ACTIVE", linkData));
@@ -405,11 +481,12 @@ public class ProjectGovernanceService {
                         data,
                         "project_system_link_id",
                         "移除时原项目系统关系不能为空");
-                List<String> blockers = collectRemovalBlockers(
-                        request.getId(),
-                        projectId,
-                        systemId,
-                        linkId);
+                List<String> blockers =
+                        removalGuard.collectBlockers(
+                                request.getId(),
+                                projectId,
+                                systemId,
+                                linkId);
                 if (!blockers.isEmpty()) {
                     conflict(
                             "PROJECT_SYSTEM_REMOVAL_BLOCKED",
@@ -419,7 +496,7 @@ public class ProjectGovernanceService {
                 invalidData.put("invalid_at", effectiveAt);
                 invalidData.put("invalid_reason", text(read(data, "change_reason")));
                 invalidData.put("source_process", "F06");
-                entityDataService.update(
+                mutationExecutor.update(
                         PROJECT_SYSTEM_LINK,
                         linkId,
                         update("INVALID", invalidData));
@@ -440,7 +517,7 @@ public class ProjectGovernanceService {
         requestData.put("effective_link_id", effectiveLink.getId());
         requestData.put("implementation_result", resultText);
         requestData.put("effective_at", effectiveAt);
-        entityDataService.update(
+        mutationExecutor.update(
                 PROJECT_SYSTEM_CHANGE,
                 request.getId(),
                 update("EFFECTIVE", requestData));
@@ -559,7 +636,7 @@ public class ProjectGovernanceService {
                     project,
                     memberData);
         }
-        entityDataService.update(
+        mutationExecutor.update(
                 PROJECT_MEMBER,
                 member.getId(),
                 update("ACTIVE", Map.of("source_process", "F03")));
@@ -602,7 +679,7 @@ public class ProjectGovernanceService {
                 project.getName() + "-" + roleName,
                 project,
                 assignmentData);
-        entityDataService.update(
+        mutationExecutor.update(
                 PROJECT_ROLE_ASSIGNMENT,
                 assignment.getId(),
                 update("ACTIVE", Map.of("source_process", "F03")));
@@ -641,97 +718,6 @@ public class ProjectGovernanceService {
         }
     }
 
-    private List<String> collectRemovalBlockers(
-            String requestId,
-            String projectId,
-            String systemId,
-            String linkId) {
-        List<String> blockers = new ArrayList<>();
-
-        long activeRoles = entityDataService.findByCondition(
-                        PROJECT_ROLE_ASSIGNMENT,
-                        Map.of("project_id", projectId, "system_id", systemId))
-                .stream()
-                .filter(item -> "ACTIVE".equals(item.getStatus()))
-                .count();
-        if (activeRoles > 0) {
-            blockers.add("存在" + activeRoles + "条有效系统级项目角色");
-        }
-
-        List<EntityDataDTO> projectRequirements = entityDataService.findByCondition(
-                        REQUIREMENT_PROJECT_LINK,
-                        Map.of("project_id", projectId))
-                .stream()
-                .filter(item -> Set.of("PROPOSED", "APPROVED", "DELIVERING", "DELIVERED")
-                        .contains(item.getStatus()))
-                .toList();
-        long affectedRequirements = 0;
-        for (EntityDataDTO projectRequirement : projectRequirements) {
-            String requirementId = text(read(data(projectRequirement), "requirement_id"));
-            if (!StringUtils.hasText(requirementId)) {
-                continue;
-            }
-            affectedRequirements += entityDataService.findByCondition(
-                            REQUIREMENT_SYSTEM_IMPACT,
-                            Map.of("requirement_id", requirementId, "system_id", systemId))
-                    .stream()
-                    .filter(item -> !"INVALID".equals(item.getStatus()))
-                    .count();
-        }
-        if (affectedRequirements > 0) {
-            blockers.add("存在" + affectedRequirements + "条未完成需求仍影响该系统");
-        }
-
-        long openReviews = optionalFind(
-                        "solution_review",
-                        Map.of("project_id", projectId, "system_id", systemId))
-                .stream()
-                .filter(item -> !Set.of("APPROVED", "REJECTED", "CLOSED")
-                        .contains(item.getStatus()))
-                .count();
-        if (openReviews > 0) {
-            blockers.add("存在" + openReviews + "条未关闭技术方案评审");
-        }
-
-        long pendingReleases = optionalFind(
-                        "release_system_link",
-                        Map.of("project_system_link_id", linkId))
-                .stream()
-                .filter(item -> !Set.of("SUCCESS", "ROLLED_BACK", "FAILED", "CANCELLED")
-                        .contains(item.getStatus()))
-                .count();
-        if (pendingReleases > 0) {
-            blockers.add("存在" + pendingReleases + "条未结束发布范围");
-        }
-
-        long concurrentChanges = entityDataService.findByCondition(
-                        PROJECT_SYSTEM_CHANGE,
-                        Map.of("project_system_link_id", linkId))
-                .stream()
-                .filter(item -> !Objects.equals(requestId, item.getId()))
-                .filter(item -> !TERMINAL_CHANGE_STATUSES.contains(item.getStatus()))
-                .count();
-        if (concurrentChanges > 0) {
-            blockers.add("存在" + concurrentChanges + "条并行未结束关系变更");
-        }
-        return blockers;
-    }
-
-    private List<EntityDataDTO> optionalFind(
-            String entityCode,
-            Map<String, Object> condition) {
-        try {
-            return entityDataService.findByCondition(entityCode, condition);
-        } catch (RuntimeException exception) {
-            String message = exception.getMessage();
-            if (message != null && message.contains("实体不存在")) {
-                log.debug("可选门禁实体尚未发布，按无记录处理: entityCode={}", entityCode);
-                return List.of();
-            }
-            throw exception;
-        }
-    }
-
     private Map<String, Object> buildProposedLinkData(Map<String, Object> source) {
         Map<String, Object> target = new LinkedHashMap<>();
         copy(source, target, "construction_mode", "construction_mode");
@@ -760,7 +746,7 @@ public class ProjectGovernanceService {
         dto.setSubmitterId(source.getSubmitterId());
         dto.setSubmitterName(source.getSubmitterName());
         dto.setData(customData);
-        return entityDataService.save(dto);
+        return mutationExecutor.save(dto);
     }
 
     private String json(Object value) {

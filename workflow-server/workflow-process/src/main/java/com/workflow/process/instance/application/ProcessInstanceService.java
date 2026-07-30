@@ -47,7 +47,6 @@ public class ProcessInstanceService {
     private final RepositoryService repositoryService;
     private final ProcessDefinitionConfigMapper processConfigMapper;
     private final SysUserService sysUserService;
-    private final com.workflow.process.instance.application.EntityDataService entityDataService;
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final ProcessProgressRuntimeService processProgressRuntimeService;
     private final ProcessInstanceAccessService processInstanceAccessService;
@@ -422,9 +421,6 @@ public class ProcessInstanceService {
                         } catch (Exception ex) {
                             // fallback
                         }
-                    }
-                    if (entityData == null) {
-                        entityData = entityDataService.findById(entityDataId);
                     }
                     if (entityData != null) {
                         if (entityData.getData() != null) {

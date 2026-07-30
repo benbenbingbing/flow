@@ -5,7 +5,6 @@ import com.workflow.entity.data.api.web.EntityDataController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityDataExportService;
@@ -72,7 +71,7 @@ public class EntityDataControllerTest {
         testData.setTitle("测试数据");
         testData.setSubmitterId("user1");
         testData.setSubmitterName("张三");
-        testData.setStatus(EntityData.DataStatus.PENDING.name());
+        testData.setStatus("PENDING");
         Map<String, Object> dataMap = new HashMap<>();
         dataMap.put("name", "测试");
         dataMap.put("amount", 100);
@@ -135,7 +134,8 @@ public class EntityDataControllerTest {
     /** 测试按 ID 查询实体数据详情接口，断言返回 200 且数据字段正确 */
     @Test
     void testGetById() throws Exception {
-        when(entityDataActionService.getDetail("test_entity", "1", null)).thenReturn(testData);
+        when(entityDataActionService.getDetail(
+                "test_entity", "1", null, null)).thenReturn(testData);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity/detail/1"))
                 .andExpect(status().isOk())
@@ -143,7 +143,8 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.data.id").value("1"))
                 .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
 
-        verify(entityDataActionService, times(1)).getDetail("test_entity", "1", null);
+        verify(entityDataActionService, times(1)).getDetail(
+                "test_entity", "1", null, null);
     }
 
     /** 测试按流程实例查询实体数据详情接口，断言返回 200 且 ID 正确 */

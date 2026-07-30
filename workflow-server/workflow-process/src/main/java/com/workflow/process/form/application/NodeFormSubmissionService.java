@@ -2,12 +2,15 @@ package com.workflow.process.form.application;
 
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
-import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
@@ -44,7 +47,7 @@ public class NodeFormSubmissionService {
     private final EntityFormService entityFormService;
     /** 实体表单运行时解析服务 */
     private final EntityFormRuntimeService entityFormRuntimeService;
-    private final EntityDataDynamicService entityDataDynamicService;
+    private final EntityMutationPort entityMutationPort;
     /** 已发布表单提交处理服务（按发布版本执行提交前处理） */
     private final PublishedFormSubmissionService formSubmissionService;
     /** 表单提交追踪服务 */
@@ -115,7 +118,30 @@ public class NodeFormSubmissionService {
             return;
         }
 
-        entityDataDynamicService.update(entityCode, entityDataId, Map.of("data", editableValues));
+        EntityMutationContext mutationContext =
+                EntityMutationContext.builder(
+                                EntityMutationSourceType.APPROVAL_TASK,
+                                "APPROVAL_FORM_EDIT",
+                                "审批表单编辑")
+                        .sourceId(task.getTaskDefinitionKey())
+                        .sourceRecord(entityCode, entityDataId)
+                        .process(
+                                task.getProcessDefinitionId(),
+                                processInstanceId,
+                                task.getId())
+                        .trace(
+                                executionContext.businessTraceKey(),
+                                executionContext.businessTraceKey())
+                        .extraParams(Map.of(
+                                "taskDefinitionKey",
+                                task.getTaskDefinitionKey()))
+                        .build();
+        entityMutationPort.execute(
+                EntityMutationCommand.update(
+                        entityCode,
+                        entityDataId,
+                        Map.of("data", editableValues),
+                        mutationContext));
         runtimeService.setVariables(processInstanceId, editableValues);
         log.info("审批节点保存可编辑字段: processInstanceId={}, nodeId={}, fields={}",
                 processInstanceId, task.getTaskDefinitionKey(), editableValues.keySet());

@@ -8,10 +8,13 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
-import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +30,6 @@ import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -44,7 +46,7 @@ public class ProcessRollbackService {
     private final HistoryService historyService;
     private final ProcessTaskService processTaskService;
     private final ProcessTaskMapper processTaskMapper;
-    private final EntityDataMapper entityDataMapper;
+    private final EntityMutationPort entityMutationPort;
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final org.flowable.engine.RepositoryService repositoryService;
 
@@ -121,7 +123,10 @@ public class ProcessRollbackService {
             processTaskService.syncTasksFromFlowable(processInstanceId);
 
             // 8. 更新实体状态为"被驳回"
-            updateEntityStatusToRejected(processInstanceId);
+            updateEntityStatusToRejected(
+                    processInstanceId,
+                    taskId,
+                    userId);
 
             return Result.success(null);
 
@@ -188,7 +193,11 @@ public class ProcessRollbackService {
                 runtimeService.setVariables(processInstanceId, formData);
                 
                 // 更新实体数据
-                updateEntityData(processInstanceId, formData);
+                updateEntityData(
+                        processInstanceId,
+                        currentTask.getId(),
+                        userId,
+                        formData);
             }
 
             // 5. 设置重新提交变量
@@ -281,26 +290,54 @@ public class ProcessRollbackService {
     /**
      * 更新实体状态为"被驳回"
      */
-    private void updateEntityStatusToRejected(String processInstanceId) {
+    private void updateEntityStatusToRejected(
+            String processInstanceId,
+            String taskId,
+            String userId) {
         try {
-            // 从流程变量中获取实体信息
             Map<String, Object> vars = runtimeService.getVariables(processInstanceId);
             String entityCode = (String) vars.get("entityCode");
             String entityDataId = (String) vars.get("entityDataId");
 
-            if (entityDataId != null) {
-                // 更新实体数据状态为被驳回
-                EntityData entityData = entityDataMapper.selectById(entityDataId);
-                if (entityData != null) {
-                    // 使用通用的驳回状态码，或从配置中查找
-                    String rejectedStatusCode = findRejectedStatusCode(entityCode);
-                    if (rejectedStatusCode != null) {
-                        entityData.setStatus(rejectedStatusCode);
-                    }
-                    entityData.setUpdatedAt(LocalDateTime.now());
-                    entityDataMapper.updateById(entityData);
-                    log.debug("实体数据 {} 状态更新为被驳回", entityDataId);
-                }
+            if (entityCode != null
+                    && entityDataId != null) {
+                String rejectedStatusCode =
+                        findRejectedStatusCode(entityCode);
+                String key = String.join(
+                        ":",
+                        "process-reject",
+                        processInstanceId,
+                        taskId);
+                entityMutationPort.execute(
+                        new EntityMutationCommand(
+                                key,
+                                entityCode,
+                                entityDataId,
+                                EntityMutationOperationType.STATUS_CHANGE,
+                                Map.of(
+                                        "status",
+                                        rejectedStatusCode),
+                                EntityMutationContext.builder(
+                                                EntityMutationSourceType.APPROVAL_TASK,
+                                                "PROCESS_REJECTED",
+                                                "流程驳回")
+                                        .sourceId(taskId)
+                                        .sourceRecord(
+                                                entityCode,
+                                                entityDataId)
+                                        .process(
+                                                processDefinitionId(
+                                                        processInstanceId),
+                                                processInstanceId,
+                                                taskId)
+                                        .operator(
+                                                userId,
+                                                userId)
+                                        .trace(key, key)
+                                        .build()));
+                log.debug(
+                        "实体数据 {} 状态已通过变更管道更新为被驳回",
+                        entityDataId);
             }
         } catch (Exception e) {
             log.warn("更新实体驳回状态失败: {}", e.getMessage());
@@ -323,43 +360,69 @@ public class ProcessRollbackService {
     /**
      * 更新实体数据
      */
-    private void updateEntityData(String processInstanceId, Map<String, Object> formData) {
+    private void updateEntityData(
+            String processInstanceId,
+            String taskId,
+            String userId,
+            Map<String, Object> formData) {
         try {
             Map<String, Object> vars = runtimeService.getVariables(processInstanceId);
             String entityCode = (String) vars.get("entityCode");
             String entityDataId = (String) vars.get("entityDataId");
 
-            if (entityDataId != null && !formData.isEmpty()) {
-                EntityData entityData = entityDataMapper.selectById(entityDataId);
-                if (entityData != null) {
-                    // 更新业务数据JSON
-                    String dataJson = entityData.getDataJson();
-                    Map<String, Object> dataMap = new HashMap<>();
-                    
-                    if (dataJson != null && !dataJson.isEmpty()) {
-                        try {
-                            dataMap = new com.fasterxml.jackson.databind.ObjectMapper()
-                                    .readValue(dataJson, HashMap.class);
-                        } catch (Exception e) {
-                            log.warn("解析业务数据失败: {}", e.getMessage());
-                        }
-                    }
-                    
-                    // 合并新数据
-                    dataMap.putAll(formData);
-                    
-                    // 保存回JSON
-                    String updatedJson = new com.fasterxml.jackson.databind.ObjectMapper()
-                            .writeValueAsString(dataMap);
-                    entityData.setDataJson(updatedJson);
-                    entityData.setUpdatedAt(LocalDateTime.now());
-                    entityDataMapper.updateById(entityData);
-                    
-                    log.debug("实体数据 {} 已更新", entityDataId);
-                }
+            if (entityCode != null
+                    && entityDataId != null
+                    && !formData.isEmpty()) {
+                String key = String.join(
+                        ":",
+                        "process-resubmit",
+                        processInstanceId,
+                        taskId);
+                entityMutationPort.execute(
+                        new EntityMutationCommand(
+                                key,
+                                entityCode,
+                                entityDataId,
+                                EntityMutationOperationType.UPDATE,
+                                Map.of(
+                                        "data",
+                                        new LinkedHashMap<>(
+                                                formData)),
+                                EntityMutationContext.builder(
+                                                EntityMutationSourceType.APPROVAL_TASK,
+                                                "RESUBMIT_FORM_EDIT",
+                                                "驳回后重新提交")
+                                        .sourceId(taskId)
+                                        .sourceRecord(
+                                                entityCode,
+                                                entityDataId)
+                                        .process(
+                                                processDefinitionId(
+                                                        processInstanceId),
+                                                processInstanceId,
+                                                taskId)
+                                        .operator(
+                                                userId,
+                                                userId)
+                                        .trace(key, key)
+                                        .build()));
+                log.debug(
+                        "实体数据 {} 已通过变更管道更新",
+                        entityDataId);
             }
         } catch (Exception e) {
             log.warn("更新实体数据失败: {}", e.getMessage());
         }
+    }
+
+    private String processDefinitionId(
+            String processInstanceId) {
+        ProcessInstance instance = runtimeService
+                .createProcessInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .singleResult();
+        return instance == null
+                ? null
+                : instance.getProcessDefinitionId();
     }
 }

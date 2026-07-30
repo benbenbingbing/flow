@@ -41,7 +41,6 @@ public class ProcessTaskController {
     private final ProcessInstanceAccessService processInstanceAccessService;
     private final com.workflow.process.task.application.TaskAddSignService taskAddSignService;
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
-    private final com.workflow.process.instance.application.EntityDataService entityDataService;
     private final org.flowable.engine.HistoryService historyService;
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
 
@@ -296,9 +295,6 @@ public class ProcessTaskController {
                     } catch (Exception ex) {
                         // fallback
                     }
-                }
-                if (entityData == null) {
-                    entityData = entityDataService.findById(entityDataId);
                 }
                 if (entityData != null) {
                     if (entityData.getData() != null) {

@@ -47,7 +47,6 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTa
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,13 +55,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -117,23 +113,12 @@ public class UiConfigReleaseService {
             "FORM_SECTION", Set.of(
                     "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE"),
             "SUB_FORM", Set.of("SUB_FORM", "REPEATER"));
-    private static final Set<String> VOLATILE_SNAPSHOT_KEYS = Set.of(
-            "revision",
-            "activeReleaseId",
-            "draftHash",
-            "publishedVersion",
-            "publishedSnapshot",
-            "toolbarCapabilities",
-            "createTime",
-            "updateTime",
-            "createdAt",
-            "updatedAt",
-            "deleted");
-
     private final UiConfigReleaseMapper releaseMapper;
     private final UiConfigHotfixTargetMapper hotfixTargetMapper;
     private final UiConfigReleaseAuditMapper releaseAuditMapper;
-    private final UiDataSourceDefinitionMapper dataSourceMapper;
+    private final UiConfigDataSourceReferenceValidator dataSourceValidator;
+    private final UiEventBindingSnapshotService eventBindingSnapshotService;
+    private final UiConfigSnapshotSupport snapshotSupport;
     private final UiComponentTemplateMapper templateMapper;
     private final UiComponentTemplateVersionMapper templateVersionMapper;
     private final EntityFormMapper formMapper;
@@ -312,6 +297,99 @@ public class UiConfigReleaseService {
                         release,
                         StringUtils.hasText(releaseId)),
                 verifiedSnapshot(release));
+    }
+
+    /**
+     * 解析表单事件运行时必须使用的精确发布快照。
+     *
+     * <p>流程表单携带服务端签名令牌时，事件绑定与字段定义必须从流程当前
+     * 有效快照读取，不能退回全局 ACTIVE 版本。</p>
+     */
+    public ResolvedUiEventSnapshot resolveRuntimeEventSnapshot(
+            String formId,
+            String releaseId,
+            Integer expectedVersion,
+            String releaseResolutionToken) {
+        if (StringUtils.hasText(releaseResolutionToken)) {
+            UiReleaseResolutionTokenService.Claims claims =
+                    resolutionTokenService.verify(
+                            releaseResolutionToken);
+            if (!Objects.equals(formId, claims.parentFormId())
+                    || (StringUtils.hasText(releaseId)
+                    && !Objects.equals(
+                            releaseId,
+                            claims.parentReleaseId()))
+                    || (expectedVersion != null
+                    && !Objects.equals(
+                            expectedVersion,
+                            claims.parentReleaseVersion()))) {
+                throw new BusinessForbiddenException(
+                        "UI_EVENT_RELEASE_CONTEXT_MISMATCH",
+                        "事件请求的表单发布版本与运行时上下文不一致");
+            }
+            ResolvedEntityFormRelease resolved =
+                    resolveRuntimeFormRelease(
+                            claims.parentFormId(),
+                            claims.parentReleaseId(),
+                            claims.parentReleaseVersion(),
+                            claims.context());
+            Map<String, Object> snapshot;
+            if (resolved.hotfixApplied()) {
+                UiConfigHotfixTarget target =
+                        hotfixTargetMapper.selectById(
+                                resolved.hotfixTargetId());
+                if (target == null
+                        || !"ACTIVE".equals(target.getStatus())) {
+                    throw new IllegalStateException(
+                            "表单热修复运行时目标不存在或已失效");
+                }
+                snapshot = verifiedEffectiveTargetSnapshot(target);
+            } else {
+                UiConfigRelease base =
+                        releaseMapper.selectById(
+                                resolved.releaseId());
+                if (base == null) {
+                    throw new IllegalArgumentException(
+                            "表单事件发布版本不存在");
+                }
+                snapshot = verifiedSnapshot(base);
+            }
+            return new ResolvedUiEventSnapshot(
+                    snapshot,
+                    resolved.releaseId(),
+                    resolved.releaseVersion(),
+                    resolved.effectiveReleaseId(),
+                    resolved.hotfixApplied());
+        }
+
+        UiConfigRelease release =
+                releaseMapper.findActive(FORM, formId);
+        if (release == null
+                || !FORM.equals(release.getConfigType())
+                || !Objects.equals(formId, release.getConfigId())) {
+            throw new IllegalArgumentException(
+                    "表单事件运行时发布版本不存在");
+        }
+        if (StringUtils.hasText(releaseId)
+                && !Objects.equals(releaseId, release.getId())) {
+            throw new BusinessConflictException(
+                    "UI_EVENT_RELEASE_CONFLICT",
+                    "页面配置版本已过期，请刷新后重试");
+        }
+        if (expectedVersion != null
+                && !Objects.equals(
+                        expectedVersion,
+                        release.getVersion())) {
+            throw new BusinessConflictException(
+                    "UI_EVENT_RELEASE_CONFLICT",
+                    "页面配置版本已过期，请刷新后重试");
+        }
+        return new ResolvedUiEventSnapshot(
+                verifiedSnapshot(release),
+                release.getId(),
+                release.getVersion(),
+                release.getId(),
+                false);
     }
 
     private Map<String, Object> runtimeReleaseResult(
@@ -563,16 +641,17 @@ public class UiConfigReleaseService {
      */
     public UiConfigDiffDTO diff(String configType, String configId) {
         Map<String, Object> draft = buildDraftSnapshot(configType, configId);
-        String draftDocument = canonical(draft);
-        String draftHash = hash(draftDocument);
+        String draftDocument = snapshotSupport.canonical(draft);
+        String draftHash = snapshotSupport.hash(draftDocument);
         UiConfigRelease active = active(configType, configId);
         Map<String, Object> activeSnapshot = active == null
                 ? Map.of()
-                : stableMap(codec.readObject(
+                : snapshotSupport.stableMap(codec.readObject(
                         active.getSnapshotDocument(), "UI发布快照"));
         String activeHash = active == null
                 ? null
-                : hash(canonical(activeSnapshot));
+                : snapshotSupport.hash(
+                        snapshotSupport.canonical(activeSnapshot));
         boolean changed = active == null
                 || !semanticPatchService.build(
                         configType,
@@ -581,7 +660,9 @@ public class UiConfigReleaseService {
         List<String> changedSections = new ArrayList<>();
         if (changed) {
             for (String key : draft.keySet()) {
-                if (!equivalent(draft.get(key), activeSnapshot.get(key))) {
+                if (!snapshotSupport.equivalent(
+                        draft.get(key),
+                        activeSnapshot.get(key))) {
                     changedSections.add(key);
                 }
             }
@@ -692,7 +773,7 @@ public class UiConfigReleaseService {
             String label,
             Map<String, Object> draft,
             Map<String, Object> active) {
-        if (equivalent(draft, active)) {
+        if (snapshotSupport.equivalent(draft, active)) {
             return;
         }
         changes.add(UiConfigDiffItemDTO.builder()
@@ -727,7 +808,7 @@ public class UiConfigReleaseService {
                         "ADDED", List.of()));
                 continue;
             }
-            if (equivalent(draft, active)) {
+            if (snapshotSupport.equivalent(draft, active)) {
                 continue;
             }
             List<String> changedFields = changedKeys(draft, active);
@@ -818,7 +899,9 @@ public class UiConfigReleaseService {
         keys.addAll(draft.keySet());
         keys.addAll(active.keySet());
         return keys.stream()
-                .filter(key -> !equivalent(draft.get(key), active.get(key)))
+                .filter(key -> !snapshotSupport.equivalent(
+                        draft.get(key),
+                        active.get(key)))
                 .sorted()
                 .toList();
     }
@@ -882,7 +965,8 @@ public class UiConfigReleaseService {
         }
         Map<String, Object> draft = buildDraftSnapshot(configType, configId);
         validateForPublish(configType, configId, draft);
-        String draftHash = hash(canonical(draft));
+        String draftHash = snapshotSupport.hash(
+                snapshotSupport.canonical(draft));
         UiConfigRelease current = releaseMapper.findActive(configType, configId);
         UiConfigDiffDTO diff = diff(configType, configId);
         String targetHash = "STANDARD:"
@@ -955,8 +1039,8 @@ public class UiConfigReleaseService {
         lockOwner(configType, configId);
         Map<String, Object> snapshot = buildDraftSnapshot(configType, configId);
         validateForPublish(configType, configId, snapshot);
-        String document = canonical(snapshot);
-        String contentHash = hash(document);
+        String document = snapshotSupport.canonical(snapshot);
+        String contentHash = snapshotSupport.hash(document);
         UiConfigRelease active = releaseMapper.findActive(
                 configType,
                 configId);
@@ -1115,8 +1199,8 @@ public class UiConfigReleaseService {
         Map<String, Object> draft =
                 buildDraftSnapshot(configType, configId);
         validateForPublish(configType, configId, draft);
-        String draftDocument = canonical(draft);
-        String draftHash = hash(draftDocument);
+        String draftDocument = snapshotSupport.canonical(draft);
+        String draftHash = snapshotSupport.hash(draftDocument);
         UiConfigRelease active =
                 releaseMapper.findActive(configType, configId);
         UiConfigDiffDTO diff = diff(configType, configId);
@@ -1184,8 +1268,10 @@ public class UiConfigReleaseService {
                                     configId,
                                     application.snapshot());
                             effectiveDocument =
-                                    canonical(application.snapshot());
-                            effectiveHash = hash(effectiveDocument);
+                                    snapshotSupport.canonical(
+                                            application.snapshot());
+                            effectiveHash =
+                                    snapshotSupport.hash(effectiveDocument);
                         } catch (RuntimeException exception) {
                             targetBlockers.add(
                                     "有效快照校验失败："
@@ -1399,7 +1485,8 @@ public class UiConfigReleaseService {
             Map<String, Object> snapshot = codec.readObject(
                     target.getEffectiveSnapshotDocument(),
                     "热修复目标有效快照");
-            String actualHash = hash(canonical(snapshot));
+            String actualHash = snapshotSupport.hash(
+                    snapshotSupport.canonical(snapshot));
             if (!Objects.equals(
                     actualHash,
                     target.getEffectiveContentHash())) {
@@ -1462,7 +1549,7 @@ public class UiConfigReleaseService {
             String activeReleaseId,
             String targetHash,
             String riskLevel) {
-        return hash(String.join(
+        return snapshotSupport.hash(String.join(
                 "|",
                 nullToEmpty(configType),
                 nullToEmpty(configId),
@@ -1643,7 +1730,8 @@ public class UiConfigReleaseService {
         }
         Map<String, Object> snapshot = codec.readObject(
                 release.getSnapshotDocument(), "待激活UI发布快照");
-        String actualHash = hash(canonical(snapshot));
+        String actualHash = snapshotSupport.hash(
+                snapshotSupport.canonical(snapshot));
         if (!StringUtils.hasText(release.getContentHash())
                 || !Objects.equals(release.getContentHash(), actualHash)) {
             throw new IllegalArgumentException("发布快照完整性校验失败，内容可能已被篡改");
@@ -1893,7 +1981,8 @@ public class UiConfigReleaseService {
         Map<String, Object> snapshot = codec.readObject(
                 target.getEffectiveSnapshotDocument(),
                 "热修复运行时有效快照");
-        String actualHash = hash(canonical(snapshot));
+        String actualHash = snapshotSupport.hash(
+                snapshotSupport.canonical(snapshot));
         if (!StringUtils.hasText(target.getEffectiveContentHash())
                 || !Objects.equals(
                         target.getEffectiveContentHash(),
@@ -1907,7 +1996,8 @@ public class UiConfigReleaseService {
     private Map<String, Object> verifiedSnapshot(UiConfigRelease release) {
         Map<String, Object> snapshot = codec.readObject(
                 release.getSnapshotDocument(), "UI发布快照");
-        String actualHash = hash(canonical(snapshot));
+        String actualHash = snapshotSupport.hash(
+                snapshotSupport.canonical(snapshot));
         if (!StringUtils.hasText(release.getContentHash())
                 || !Objects.equals(release.getContentHash(), actualHash)) {
             throw new IllegalArgumentException("发布快照完整性校验失败，内容可能已被篡改");
@@ -1928,6 +2018,14 @@ public class UiConfigReleaseService {
             throw new IllegalArgumentException("UI发布版本不能为空");
         }
         return verifiedSnapshot(release);
+    }
+
+    public record ResolvedUiEventSnapshot(
+            Map<String, Object> snapshot,
+            String releaseId,
+            Integer releaseVersion,
+            String effectiveReleaseId,
+            boolean hotfixApplied) {
     }
 
     private EntityForm runtimeForm(Map<String, Object> snapshot) {
@@ -1968,10 +2066,22 @@ public class UiConfigReleaseService {
             Map<String, Object> snapshot = new LinkedHashMap<>();
             snapshot.put("schemaVersion", 1);
             snapshot.put("configType", FORM);
-            snapshot.put("form", stableValue(formMetadata(form)));
-            snapshot.put("nodes", stableValue(
+            snapshot.put(
+                    "form",
+                    snapshotSupport.stableValue(formMetadata(form)));
+            snapshot.put("nodes", snapshotSupport.stableValue(
                     form.getNodes() == null ? List.of() : form.getNodes()));
-            snapshot.put("legacyFields", stableValue(deriveRuntimeFields(form)));
+            snapshot.put(
+                    "legacyFields",
+                    snapshotSupport.stableValue(
+                            deriveRuntimeFields(form)));
+            snapshot.put(
+                    "eventBindings",
+                    snapshotSupport.stableValue(
+                            eventBindingSnapshotService.snapshot(
+                                    FORM,
+                                    configId,
+                                    form.getEntityId())));
             return snapshot;
         }
         EntityListConfigDTO list = listConfigService.findById(configId);
@@ -1981,7 +2091,14 @@ public class UiConfigReleaseService {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("schemaVersion", 1);
         snapshot.put("configType", LIST);
-        snapshot.put("list", stableValue(list));
+        snapshot.put("list", snapshotSupport.stableValue(list));
+        snapshot.put(
+                "eventBindings",
+                snapshotSupport.stableValue(
+                        eventBindingSnapshotService.snapshot(
+                                LIST,
+                                configId,
+                                list.getEntityId())));
         return snapshot;
     }
 
@@ -2125,14 +2242,14 @@ public class UiConfigReleaseService {
             formNodeService.validateTree(configId);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
-            validateDataSourceReferences(snapshot);
+            dataSourceValidator.validate(snapshot);
             return;
         }
         EntityListConfigDTO list = objectMapper.convertValue(
                 snapshot.get("list"), EntityListConfigDTO.class);
         listConfigurationValidator.validate(list);
         validateListTemplateReferences(list);
-        validateDataSourceReferences(snapshot);
+        dataSourceValidator.validate(snapshot);
     }
 
     private void validateSnapshotForActivation(
@@ -2144,14 +2261,14 @@ public class UiConfigReleaseService {
             validateFormSnapshotTree(configId, snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
-            validateDataSourceReferences(snapshot);
+            dataSourceValidator.validate(snapshot);
             return;
         }
         EntityListConfigDTO list = objectMapper.convertValue(
                 snapshot.get("list"), EntityListConfigDTO.class);
         listConfigurationValidator.validate(list);
         validateListTemplateReferences(list);
-        validateDataSourceReferences(snapshot);
+        dataSourceValidator.validate(snapshot);
     }
 
     private void validateExtensionReferences(Map<String, Object> snapshot) {
@@ -2336,7 +2453,8 @@ public class UiConfigReleaseService {
                 || !StringUtils.hasText(version.getContentHash())
                 || !Objects.equals(
                         version.getContentHash(),
-                        hash(version.getSnapshotDocument()))) {
+                        snapshotSupport.hash(
+                                version.getSnapshotDocument()))) {
             throw new IllegalArgumentException(
                     referenceLabel
                             + " 引用的组件模板版本完整性校验失败: "
@@ -2525,48 +2643,6 @@ public class UiConfigReleaseService {
                 : null;
     }
 
-    private void validateDataSourceReferences(Map<String, Object> snapshot) {
-        String document = codec.write(snapshot, "待发布UI配置");
-        if (document.contains("\"sourceType\":\"SQL\"")
-                || document.contains("\"sourceType\":\"SCRIPT\"")
-                || document.contains("\"sourceType\":\"URL\"")
-                || document.contains("\"sql\":")
-                || document.contains("\"script\":")
-                || document.contains("\"url\":")) {
-            throw new IllegalArgumentException(
-                    "发布配置禁止包含任意 SQL、脚本或外网 URL 数据源");
-        }
-        validateDataSourceValue(snapshot, "$");
-    }
-
-    private void validateDataSourceValue(Object value, String path) {
-        if (value instanceof Map<?, ?> map) {
-            Object sourceId = map.get("sourceId");
-            if (sourceId != null && StringUtils.hasText(String.valueOf(sourceId))) {
-                String id = String.valueOf(sourceId);
-                var definition = dataSourceMapper.selectById(id);
-                if (definition == null
-                        || !Boolean.TRUE.equals(definition.getEnabled())
-                        || Integer.valueOf(1).equals(definition.getDeleted())) {
-                    throw new IllegalArgumentException(
-                            "发布配置引用的数据源不存在或未启用: "
-                                    + path + ".sourceId=" + id);
-                }
-            }
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                validateDataSourceValue(
-                        entry.getValue(),
-                        path + "." + entry.getKey());
-            }
-        } else if (value instanceof List<?> list) {
-            for (int index = 0; index < list.size(); index++) {
-                validateDataSourceValue(
-                        list.get(index),
-                        path + "[" + index + "]");
-            }
-        }
-    }
-
     private Map<String, Object> auditDetail(
             UiConfigPublishPreviewDTO preview) {
         return objectMapper.convertValue(
@@ -2637,67 +2713,6 @@ public class UiConfigReleaseService {
                 .set("draft_hash", contentHash)
                 .set("update_time", LocalDateTime.now());
         listConfigMapper.update(null, update);
-    }
-
-    private String canonical(Map<String, Object> snapshot) {
-        String document = codec.write(snapshot, "UI配置快照");
-        return codec.canonicalize(document, "UI配置快照");
-    }
-
-    private boolean equivalent(Object left, Object right) {
-        if (left == null || right == null) {
-            return Objects.equals(left, right);
-        }
-        String leftDocument = codec.write(left, "UI配置差异左值");
-        String rightDocument = codec.write(right, "UI配置差异右值");
-        return Objects.equals(
-                codec.canonicalize(leftDocument, "UI配置差异左值"),
-                codec.canonicalize(rightDocument, "UI配置差异右值"));
-    }
-
-    private Map<String, Object> stableMap(Map<String, Object> source) {
-        Object value = stableValue(source);
-        if (!(value instanceof Map<?, ?> map)) {
-            return Map.of();
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        map.forEach((key, child) -> result.put(String.valueOf(key), child));
-        return result;
-    }
-
-    private Object stableValue(Object source) {
-        Object value = objectMapper.convertValue(source, Object.class);
-        return stripVolatile(value);
-    }
-
-    private Object stripVolatile(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            map.forEach((key, child) -> {
-                String name = String.valueOf(key);
-                if (!VOLATILE_SNAPSHOT_KEYS.contains(name)) {
-                    Object stableChild = stripVolatile(child);
-                    if (stableChild != null) {
-                        result.put(name, stableChild);
-                    }
-                }
-            });
-            return result;
-        }
-        if (value instanceof List<?> list) {
-            return list.stream().map(this::stripVolatile).toList();
-        }
-        return value;
-    }
-
-    private String hash(String value) {
-        try {
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException("计算配置哈希失败", exception);
-        }
     }
 
     private void requireType(String configType) {

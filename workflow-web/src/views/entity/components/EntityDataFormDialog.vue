@@ -87,6 +87,10 @@
 
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button title="重置表单" @click="handleReset">
+        <el-icon><RefreshLeft /></el-icon>
+        重置
+      </el-button>
       <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
         {{ isEdit ? '保存修改' : '创建数据' }}
       </el-button>
@@ -97,8 +101,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { RefreshLeft } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
+import { uiEventBindingApi } from '@/api/uiConfig'
 import { useUserStore } from '@/stores/user'
 import { executeFormInitializer } from '@/utils/formInitializer'
 import { useProcessDetail } from '@/composables/useProcessDetail'
@@ -246,6 +252,112 @@ const resetForm = () => {
   applyRuntimeFieldDefaults(formData.data, props.defaultForm, fields)
 }
 
+async function executeFormEvent(eventCode: string) {
+  if (!props.defaultForm?.id) return
+  const result = await uiEventBindingApi.execute(eventCode, {
+    configType: 'FORM',
+    configId: String(props.defaultForm.id),
+    entityCode: props.entityCode,
+    listKey: props.listKey,
+    targetType: 'OWNER',
+    recordId: formData.id || undefined,
+    input: {
+      mode: isEdit.value ? 'edit' : 'create',
+      form: formData.data,
+      recordId: formData.id || undefined
+    },
+    context: {
+      formId: String(props.defaultForm.id),
+      listKey: props.listKey || '',
+      mode: isEdit.value ? 'edit' : 'create'
+    }
+  })
+  await applyFormEventResult(result)
+  if (result?.message) {
+    ElMessage.success(result.message)
+  }
+}
+
+async function applyFormEventResult(result: any) {
+  const effects = Array.isArray(result?.effects) ? result.effects : []
+  for (const effect of effects) {
+    if (effect?.type !== 'FIELD_MAPPING') continue
+    const mappings = Array.isArray(effect.mappings) ? effect.mappings : []
+    for (const mapping of mappings) {
+      const targetPath = String(mapping?.targetPath || '')
+      if (!targetPath) continue
+      const value = resolvePath(effect.data || {}, targetPath)
+      const formPath = targetPath.replace(/^form\./, '').replace(/^data\./, '')
+      const current = resolvePath(formData.data, formPath)
+      const overwrite = String(mapping?.overwrite || 'ALWAYS').toUpperCase()
+      if (overwrite === 'IF_EMPTY' && !emptyValue(current)) {
+        continue
+      }
+      if (overwrite === 'CONFIRM' && !emptyValue(current) && current !== value) {
+        try {
+          await ElMessageBox.confirm(
+            `字段“${fieldName(formPath)}”已有值，是否覆盖？`,
+            '确认回填',
+            { type: 'warning' }
+          )
+        } catch {
+          continue
+        }
+      }
+      setPath(formData.data, formPath, value)
+    }
+  }
+  if (!effects.length && result?.data && typeof result.data === 'object') {
+    const patch = result.data.form || result.data.data || result.data
+    Object.entries(patch || {}).forEach(([key, value]) => {
+      formData.data[key] = value
+    })
+  }
+}
+
+function resolvePath(source: any, path: string) {
+  return String(path || '')
+    .split('.')
+    .filter(Boolean)
+    .reduce((current, key) => current?.[key], source)
+}
+
+function setPath(target: Record<string, any>, path: string, value: any) {
+  const parts = String(path || '').split('.').filter(Boolean)
+  if (!parts.length) return
+  let current: Record<string, any> = target
+  parts.slice(0, -1).forEach(part => {
+    if (!current[part] || typeof current[part] !== 'object') {
+      current[part] = {}
+    }
+    current = current[part]
+  })
+  current[parts[parts.length - 1]] = value
+}
+
+function emptyValue(value: any) {
+  return value == null
+    || value === ''
+    || (Array.isArray(value) && value.length === 0)
+}
+
+function fieldName(path: string) {
+  const code = String(path || '').split('.')[0]
+  const field = props.entityFields.find((item: any) =>
+    String(item.fieldCode) === code)
+  return field?.fieldName || field?.fieldLabel || code
+}
+
+async function handleReset() {
+  resetForm()
+  try {
+    await executeFormEvent('FORM_RESET')
+  } catch (error: any) {
+    ElMessage.error(error.message || '表单重置事件执行失败')
+  }
+  nextTick(() => refreshFormLinkage())
+}
+
 // 新增
 const openCreate = async () => {
   isEdit.value = false
@@ -276,6 +388,11 @@ const openCreate = async () => {
     }
   }
 
+  try {
+    await executeFormEvent('FORM_OPEN')
+  } catch (error: any) {
+    ElMessage.error(error.message || '表单打开事件执行失败')
+  }
   dialogVisible.value = true
   nextTick(() => {
     refreshFormLinkage()
@@ -286,7 +403,12 @@ const openCreate = async () => {
 const openEdit = async (row: any) => {
   isEdit.value = true
   formData.startProcess = false
-  const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey).catch(() => row)
+  const detail = await entityDataApi.getDetail(
+    props.entityCode,
+    row.id,
+    props.listKey,
+    props.defaultForm?.id
+  ).catch(() => row)
   formData.id = detail.id
   formData.name = detail.name
   formData.data = normalizeEntityRecordForForm(detail)
@@ -307,6 +429,11 @@ const openEdit = async (row: any) => {
   activeTab.value = firstFormTabName.value
 
   dialogTitle.value = '编辑数据'
+  try {
+    await executeFormEvent('FORM_OPEN')
+  } catch (error: any) {
+    ElMessage.error(error.message || '表单打开事件执行失败')
+  }
   dialogVisible.value = true
   nextTick(() => {
     refreshFormLinkage()
@@ -349,6 +476,7 @@ const handleSubmit = async () => {
     const data = {
       entityCode: props.entityCode,
       listKey: props.listKey,
+      formId: props.defaultForm?.id,
       id: formData.id,
       name: formData.data?.name || formData.name,
       data: formData.data,
@@ -361,6 +489,7 @@ const handleSubmit = async () => {
         formData.id,
         {
           data: formData.data,
+          formId: props.defaultForm?.id,
           startProcess: formData.startProcess
         },
         formData.startProcess,

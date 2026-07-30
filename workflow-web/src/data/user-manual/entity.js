@@ -257,7 +257,7 @@ export default {
                 { field: '是否唯一', meaning: '要求字段值唯一。', defaultLimit: '默认关闭；code 系统字段默认唯一。', effect: '保存重复值时失败。', publish: '上线前清理重复数据；长文本和多值字段不建议唯一。' },
                 { field: '默认值', meaning: '新增记录的初始值。', defaultLimit: '默认空；选项字段必须填写 value。', effect: '表单未覆盖时使用默认值。', publish: '默认值改变只影响后续新增，不回填历史数据。' },
                 { field: '选项配置', meaning: '定义 SELECT、MULTI_SELECT、RADIO、CHECKBOX 的 value 和 label。', defaultLimit: '每行 value:label；空行忽略。', effect: '存 value、显 label。', publish: '不要复用已使用的 value 表达新含义；删除选项前处理历史值。' },
-                { field: '验证规则', meaning: '扩展 JSON 校验规则。', defaultLimit: '必须是合法 JSON。', effect: '由运行时或扩展组件解释。', publish: '先在预览和真实新增/编辑模式验证兼容性。' },
+                { field: '验证规则', meaning: '按字段类型配置长度、数值范围或格式校验。', defaultLimit: '文本支持长度与格式，数值支持最小值和最大值。', effect: '保存数据时由前后端共同校验。', publish: '发布后作为实体字段约束生效。' },
                 { field: '排序', meaning: '字段在实体设计和默认生成场景的顺序。', defaultLimit: '通过上下箭头调整。', effect: '影响字段展示和后续表单初始化顺序。', publish: '只改元数据，不改物理列顺序。' }
               ]
             }
@@ -1009,8 +1009,8 @@ export default {
                 { field: '上下文绑定', meaning: '以结构化对象声明 relationKey 等来源记录关系。', defaultLimit: '后端校验对象结构，前端不再进行二次 JSON 编解码。', effect: '后端通过 EntityListContextResolver 重新加载来源记录并生成可信条件。', publish: '不能把前端直接传入的客户、部门或项目 ID 当作权限依据。' },
                 { field: 'LIST_QUERY 数据源', meaning: '从统一目录选择实体查询、注册 Provider 或受控 Connector。', defaultLimit: '默认使用实体查询。', effect: '整表查询统一接收不可绕过的 DataScopePlan。', publish: '任意 SQL、脚本、URL 或缺失 Provider 均阻止发布。' },
                 { field: '组件参数', meaning: '按组件 configSchema 编辑。', defaultLimit: '组件声明 schema 时显示。', effect: '传入 viewConfig.customComponentProps。', publish: '迁移时确保组件版本一致。' },
-                { field: '默认显示条件', meaning: '查询区初始展开的条件数量。', defaultLimit: '1–20，默认 4。', effect: '多余条件可折叠。', publish: '高频条件排在前面。' },
-                { field: '允许展开收起', meaning: '查询区是否可折叠。', defaultLimit: '默认开启。', effect: '节省页面空间。', publish: '关闭时所有查询项常驻。' },
+                { field: '收起时显示条件数', meaning: '查询区收起时保留显示的条件数量。', defaultLimit: '1–20，默认 4。', effect: '超出数量的条件在展开后显示。', publish: '高频条件排在前面。' },
+                { field: '启用查询区折叠', meaning: '查询条件较多时是否允许展开和收起。', defaultLimit: '默认开启。', effect: '开启后节省页面空间；关闭时全部常驻。', publish: '关闭后“收起时显示条件数”不参与运行时展示。' },
                 { field: '标签宽度', meaning: '查询项标签宽度。', defaultLimit: '60–240 px，默认 100。', effect: '控制条件对齐。', publish: '长标签与移动端需验证。' },
                 { field: '表格样式', meaning: '斑马纹、边框、序号列。', defaultLimit: '默认斑马纹开、边框关、序号列开。', effect: '改变表格视觉。', publish: '数据密集页面建议紧凑且保留溢出提示。' },
                 { field: '表格尺寸', meaning: 'small/default/large。', defaultLimit: '默认 default。', effect: '控制行高和密度。', publish: '移动端建议 small。' },

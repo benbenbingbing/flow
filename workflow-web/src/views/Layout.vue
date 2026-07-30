@@ -305,6 +305,7 @@ async function handleCommand(command) {
 }
 
 .main-content {
+  min-width: 0;
   background-color: #f0f2f5;
   padding: 10px;
   overflow-y: auto;

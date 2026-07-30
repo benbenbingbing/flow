@@ -1,6 +1,5 @@
 package com.workflow.entity.data.api.response;
 
-import com.workflow.entity.data.infrastructure.persistence.record.EntityData;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -63,6 +62,11 @@ public class EntityDataDTO {
      * 当前操作来源列表标识，不持久化。
      */
     private String listKey;
+
+    /**
+     * 当前操作来源表单 ID，不持久化。
+     */
+    private String formId;
 
     /**
      * 当前用户针对本行数据的按钮能力。

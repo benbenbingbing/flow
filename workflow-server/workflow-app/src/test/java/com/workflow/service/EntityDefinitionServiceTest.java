@@ -6,8 +6,8 @@ import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldOptionService;
+import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
-import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.migration.MigrationAssetHandler;
@@ -26,7 +26,6 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPu
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.permission.application.EntityPermissionCatalogService;
 import com.workflow.entity.permission.application.EntityListScopeService;
-import com.workflow.core.error.BusinessConflictException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -102,7 +101,7 @@ public class EntityDefinitionServiceTest {
     private EntityFieldOptionService fieldOptionService;
 
     @Mock
-    private EntitySchemaPublishLock schemaPublishLock;
+    private EntityFieldValidationRuleService fieldValidationRuleService;
 
     @InjectMocks
     private EntityDefinitionService entityService;
@@ -115,7 +114,6 @@ public class EntityDefinitionServiceTest {
     /** 初始化测试实体与字段，并预置流程目录、表名生成、字段选项等 Mock 返回值 */
     @BeforeEach
     void setUp() {
-        lenient().when(schemaPublishLock.tryAcquire(anyString())).thenReturn(true);
         testEntity = new EntityDefinition();
         testEntity.setId("1");
         testEntity.setEntityCode("test_entity");
@@ -133,6 +131,9 @@ public class EntityDefinitionServiceTest {
         testField.setFieldName("名称");
         testField.setFieldType(EntityField.FieldType.STRING);
 
+        lenient().when(fieldValidationRuleService.validateAndNormalize(
+                        any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(processCatalogPort.findNamesByIds(anyCollection()))
                 .thenAnswer(invocation -> {
                     java.util.Collection<String> ids = invocation.getArgument(0);
@@ -349,6 +350,36 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
     }
 
+    /** 已存在字段更新时应持久化验证规则，而不是只在新字段创建时保存。 */
+    @Test
+    void testUpdatePersistsValidationRulesForExistingField() {
+        EntityFieldDTO fieldDTO = new EntityFieldDTO();
+        fieldDTO.setFieldCode("name");
+        fieldDTO.setFieldName("名称");
+        fieldDTO.setFieldType(EntityField.FieldType.STRING);
+        fieldDTO.setValidateRules(
+                """
+                {"minLength":2,"maxLength":20}
+                """);
+
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityName("测试实体");
+        dto.setFields(List.of(fieldDTO));
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1"))
+                .thenReturn(List.of(testField));
+
+        entityService.update("1", dto);
+
+        ArgumentCaptor<EntityField> fieldCaptor =
+                ArgumentCaptor.forClass(EntityField.class);
+        verify(fieldMapper).updateById(fieldCaptor.capture());
+        assertEquals(
+                fieldDTO.getValidateRules(),
+                fieldCaptor.getValue().getValidateRules());
+    }
+
     /** 测试更新时同步子表单关系：验证旧关系被删除并按 DTO 重新插入正确的关系记录 */
     @Test
     void testUpdateSyncsSubFormRelation() {
@@ -450,19 +481,6 @@ public class EntityDefinitionServiceTest {
         });
 
         assertEquals("实体不存在: 999", exception.getMessage());
-    }
-
-    @Test
-    void concurrentPublishReturnsStableRetryableConflict() {
-        when(schemaPublishLock.tryAcquire("1")).thenReturn(false);
-
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
-                () -> entityService.publish("1", "user1", "测试用户"));
-
-        assertEquals("ENTITY_SCHEMA_PUBLISH_BUSY", exception.getErrorCode());
-        verify(schemaPublishLock, never()).release("1");
-        verifyNoInteractions(dynamicTableService);
     }
 
     /** 测试绑定流程：验证生命周期切换为 WORKFLOW，绑定状态为草稿且记录新流程 ID */

@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAuthorization;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -807,6 +808,7 @@ class UiDataSourceServiceTest {
                 dynamicService,
                 mock(SysDictItemService.class),
                 executionAccessService,
+                new UiDataSourceDefinitionValidator(codec),
                 providers,
                 connectors,
                 codec,

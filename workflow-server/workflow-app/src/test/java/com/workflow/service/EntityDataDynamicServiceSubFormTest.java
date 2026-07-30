@@ -2,9 +2,12 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityDataMutationService;
+import com.workflow.entity.data.application.EntityDataMutationPayloadMapper;
+import com.workflow.entity.data.application.EntityDataMutationValidator;
 import com.workflow.entity.data.application.EntityRecordTeamService;
-import com.workflow.entity.data.application.EntityWorkflowRuntimeService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
+import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.contracts.process.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartResult;
 
@@ -45,9 +48,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 实体数据动态服务-子表单测试。
+ * 实体数据聚合读写服务-子表单测试。
  *
- * <p>被测对象：{@link EntityDataDynamicService}，覆盖子表单数据写入引用实体表、
+ * <p>覆盖查询服务与管道内部写入服务的子表单数据写入引用实体表、
  * 嵌套关系递归写入、必填字段校验、独立实体拒绝伪造流程启动、按引用字段加载子表单行等场景。
  */
 class EntityDataDynamicServiceSubFormTest {
@@ -59,7 +62,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void saveWritesSubFormRowsToReferencedEntityTableInsteadOfParentTable() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
 
         EntityDataDTO dto = new EntityDataDTO();
         dto.setEntityCode("parent");
@@ -93,7 +96,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void saveNormalizesEmptySubFormValuesToNull() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
 
         EntityDataDTO dto = new EntityDataDTO();
         dto.setEntityCode("parent");
@@ -121,7 +124,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void saveWritesNestedRelationRowsRecursively() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
 
         EntityDataDTO dto = new EntityDataDTO();
         dto.setEntityCode("parent");
@@ -156,7 +159,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void saveValidatesRequiredFieldsFromPublishedSnapshot() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
         EntityField requiredAmount = new EntityField();
         requiredAmount.setFieldCode("amount");
         requiredAmount.setFieldName("金额");
@@ -181,12 +184,50 @@ class EntityDataDynamicServiceSubFormTest {
     }
 
     /**
+     * 测试保存时执行发布快照中的实体字段验证规则。
+     */
+    @Test
+    void saveValidatesFieldRulesFromPublishedSnapshot() {
+        Fixture fixture = new Fixture();
+        EntityDataMutationService service = fixture.mutationService();
+        EntityField percentage = new EntityField();
+        percentage.setFieldCode("percentage");
+        percentage.setFieldName("完成比例");
+        percentage.setFieldType(EntityField.FieldType.DECIMAL);
+        percentage.setValidateRules(
+                """
+                {"min":0.01,"max":100}
+                """);
+        EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
+        snapshot.setEntityCode("parent");
+        snapshot.setFields(List.of(percentage));
+        when(fixture.snapshotService.getLatestByEntityCode("parent"))
+                .thenReturn(snapshot);
+
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setData(new HashMap<>(Map.of(
+                "name", "主数据",
+                "percentage", 0)));
+
+        IllegalArgumentException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.save(dto));
+
+        assertEquals("完成比例不能小于 0.01", exception.getMessage());
+        verify(fixture.dynamicMapper, never()).insert(
+                eq("wf_parent"),
+                org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    /**
      * 测试独立实体拒绝伪造的流程启动请求：验证抛出业务冲突异常且不写入数据表。
      */
     @Test
     void standaloneEntityRejectsForgedProcessStart() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
         EntityDataDTO dto = new EntityDataDTO();
         dto.setEntityCode("parent");
         dto.setStartProcess(true);
@@ -210,7 +251,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void findByIdLoadsSubFormRowsByReferenceField() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataDynamicService service = fixture.queryService();
 
         when(fixture.dynamicMapper.selectById("wf_parent", "parent-1")).thenReturn(new HashMap<>(Map.of(
                 "id", "parent-1",
@@ -257,7 +298,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void updateIgnoresRuntimeContextAndUnknownFields() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
         EntityField amount = new EntityField();
         amount.setFieldCode("amountTotal");
         amount.setFieldName("金额");
@@ -296,7 +337,7 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void workflowStartSynchronizesSubmittedAtWhenFieldIsPublished() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
         EntityDefinition workflowEntity = Fixture.entity("parent-id", "parent");
         workflowEntity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
         workflowEntity.setProcessDefinitionId("process-config-1");
@@ -347,13 +388,13 @@ class EntityDataDynamicServiceSubFormTest {
     @Test
     void processCompletionSynchronizesApprovedAtWhenFieldIsPublished() {
         Fixture fixture = new Fixture();
-        EntityDataDynamicService service = fixture.service();
+        EntityDataMutationService service = fixture.mutationService();
         EntityField approvedAt = new EntityField();
         approvedAt.setFieldCode("approved_at");
         approvedAt.setDbColumnName("approved_at");
         EntityPublishedSnapshot snapshot = Fixture.snapshot("parent");
         snapshot.setFields(List.of(approvedAt));
-        when(fixture.snapshotService.findLatestByEntityCode("parent"))
+        when(fixture.snapshotService.getLatestByEntityCode("parent"))
                 .thenReturn(snapshot);
         when(fixture.dynamicMapper.selectById("wf_parent", "parent-1"))
                 .thenReturn(new HashMap<>(Map.of(
@@ -435,28 +476,55 @@ class EntityDataDynamicServiceSubFormTest {
             when(snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot("parent"));
         }
 
-        /** 构造被测的 EntityDataDynamicService 及其关系运行时依赖 */
-        EntityDataDynamicService service() {
-            ObjectMapper objectMapper = new ObjectMapper();
-            EntityRuntimeRecordMapper recordMapper = new EntityRuntimeRecordMapper(objectMapper);
-            EntityRelationRuntimeService relationRuntimeService = new EntityRelationRuntimeService(
+        private EntityRelationRuntimeService relationRuntimeService(
+                EntityRuntimeRecordMapper recordMapper,
+                ObjectMapper objectMapper) {
+            return new EntityRelationRuntimeService(
                     dynamicMapper, definitionMapper, fieldMapper, relationMapper,
                     dynamicTableService, objectMapper, recordMapper, codeGeneratorService);
-            EntityWorkflowRuntimeService workflowRuntime =
-                    new EntityWorkflowRuntimeService(
-                            snapshotService,
-                            processRuntimePort,
-                            entityStatusMapper,
+        }
+
+        /** 构造管道内部的动态实体聚合写入服务。 */
+        EntityDataMutationService mutationService() {
+            ObjectMapper objectMapper = new ObjectMapper();
+            EntityRuntimeRecordMapper recordMapper = new EntityRuntimeRecordMapper(objectMapper);
+            EntityFieldValidationRuleService fieldValidationRuleService =
+                    new EntityFieldValidationRuleService(objectMapper);
+            EntityDataMutationValidator validator =
+                    new EntityDataMutationValidator(
                             dynamicMapper,
                             dynamicTableService,
+                            snapshotService,
                             recordMapper,
-                            entityRecordTeamService);
-            return new EntityDataDynamicService(
+                            fieldValidationRuleService);
+            EntityDataMutationPayloadMapper payloadMapper =
+                    new EntityDataMutationPayloadMapper(
+                            recordMapper,
+                            snapshotService,
+                            validator);
+            return new EntityDataMutationService(
                     dynamicMapper, definitionMapper, entityStatusMapper,
-                    dynamicTableService, codeGeneratorService, recordMapper, relationRuntimeService,
-                    multiValueRuntimeService, null, null, snapshotService,
-                    entityRecordTeamService, workflowRuntime,
-                    new com.workflow.entity.data.application.RichTextSanitizer());
+                    dynamicTableService, codeGeneratorService, recordMapper,
+                    relationRuntimeService(recordMapper, objectMapper),
+                    multiValueRuntimeService, processRuntimePort, null, snapshotService,
+                    entityRecordTeamService, validator, payloadMapper);
+        }
+
+        /** 构造只读动态实体聚合查询服务。 */
+        EntityDataDynamicService queryService() {
+            ObjectMapper objectMapper = new ObjectMapper();
+            EntityRuntimeRecordMapper recordMapper =
+                    new EntityRuntimeRecordMapper(objectMapper);
+            return new EntityDataDynamicService(
+                    dynamicMapper,
+                    definitionMapper,
+                    dynamicTableService,
+                    recordMapper,
+                    relationRuntimeService(recordMapper, objectMapper),
+                    multiValueRuntimeService,
+                    null,
+                    null,
+                    snapshotService);
         }
 
         /** 构造指定实体编码的空字段发布快照 */

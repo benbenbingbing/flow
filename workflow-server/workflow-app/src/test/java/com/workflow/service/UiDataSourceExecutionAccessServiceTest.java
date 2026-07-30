@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
+import com.workflow.entity.ui.application.UiDataSourceBindingMatcher;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAuthorization;
 
@@ -28,6 +29,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -654,6 +656,10 @@ class UiDataSourceExecutionAccessServiceTest {
         UiDataSourceExecutionAccessService service =
                 new UiDataSourceExecutionAccessService(
                         releaseMapper,
+                        new UiDataSourceBindingMatcher(
+                                mock(UiEventBindingMapper.class),
+                                codec,
+                                objectMapper),
                         formMapper,
                         formNodeMapper,
                         formFieldMapper,
@@ -665,7 +671,6 @@ class UiDataSourceExecutionAccessServiceTest {
                         dataPermissionEngine,
                         configurationAccessService,
                         releaseService,
-                        codec,
                         objectMapper);
         return new TestContext(
                 service,

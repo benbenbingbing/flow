@@ -8,6 +8,8 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetFreezeCommand;
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import com.workflow.contracts.process.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
@@ -25,6 +27,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -52,20 +55,13 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final WorkflowAutoSkipService workflowAutoSkipService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityProcessLinkMapper entityProcessLinkMapper;
+    private final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @SystemAudit(
-            module = AuditModule.PROCESS,
-            action = AuditAction.START,
-            operation = "发起实体流程",
-            risk = AuditRiskLevel.MEDIUM,
-            targetType = "PROCESS_INSTANCE",
-            captureArguments = true,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.START, operation = "发起实体流程", risk = AuditRiskLevel.MEDIUM, targetType = "PROCESS_INSTANCE", captureArguments = true, captureResult = true)
     public ProcessStartResult start(ProcessStartRequest request) {
-        ProcessDefinitionConfig processConfig =
-                processDefinitionConfigMapper.selectById(request.processDefinitionId());
+        ProcessDefinitionConfig processConfig = processDefinitionConfigMapper.selectById(request.processDefinitionId());
         if (processConfig == null) {
             throw new BusinessConflictException(
                     "ENTITY_WORKFLOW_NOT_READY",
@@ -105,6 +101,17 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 link.getId(), link.getRequestId(), processInstance.getId()) != 1) {
             throw new IllegalStateException("实体流程链接激活失败: " + link.getId());
         }
+        EntityChangeTargetPort changeTargetPort = changeTargetPortProvider.getIfAvailable();
+        if (changeTargetPort != null) {
+            changeTargetPort.freeze(
+                    new EntityChangeTargetFreezeCommand(
+                            request.entityCode(),
+                            request.entityRecordId(),
+                            processConfig.getId(),
+                            processInstance.getId(),
+                            request.submitterId(),
+                            request.variables()));
+        }
         workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfig.getId());
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())
@@ -132,8 +139,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         int generation = latest == null
                 ? 1
                 : ("ENDED".equals(latest.getState())
-                    ? latest.getGeneration() + 1
-                    : latest.getGeneration());
+                        ? latest.getGeneration() + 1
+                        : latest.getGeneration());
         String requestId = stableRequestId(
                 request.entityCode(), request.entityRecordId(), generation);
         EntityProcessLink candidate = new EntityProcessLink();

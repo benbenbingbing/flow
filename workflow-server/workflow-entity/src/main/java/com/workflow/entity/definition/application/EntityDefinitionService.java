@@ -62,6 +62,7 @@ public class EntityDefinitionService {
     private final EntityFieldFileItemService fileItemService;
     private final EntityFieldOptionService fieldOptionService;
     private final ObjectMapper objectMapper;
+    private final EntityFieldValidationRuleService fieldValidationRuleService;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
     private final MigrationAssetHandler migrationAssetHandler;
@@ -212,6 +213,7 @@ public class EntityDefinitionService {
         
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
+        normalizeFieldValidationRules(dto.getFields());
         
         EntityDefinition entity = convertToEntity(dto);
         entity.setLifecycleMode(dto.getLifecycleMode() == null
@@ -455,6 +457,7 @@ public class EntityDefinitionService {
     public EntityDefinitionDTO update(String id, EntityDefinitionDTO dto) {
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
+        normalizeFieldValidationRules(dto.getFields());
         
         EntityDefinition existing = entityMapper.selectById(id);
         if (existing == null) {
@@ -548,6 +551,7 @@ public class EntityDefinitionService {
                         existingField.setOptionsJson(fieldDTO.getOptionsJson());
                         existingField.setDictType(fieldDTO.getDictType());
                         existingField.setValueStorage(resolveValueStorage(fieldDTO));
+                        existingField.setValidateRules(fieldDTO.getValidateRules());
                         existingField.setSortOrder(fieldDTO.getSortOrder());
                     } else {
                         // 非系统字段，更新字段定义（仅更新元数据，不修改数据库列）
@@ -560,6 +564,7 @@ public class EntityDefinitionService {
                         existingField.setOptionsJson(fieldDTO.getOptionsJson());
                         existingField.setDictType(fieldDTO.getDictType());
                         existingField.setValueStorage(resolveValueStorage(fieldDTO));
+                        existingField.setValidateRules(fieldDTO.getValidateRules());
                         existingField.setSortOrder(fieldDTO.getSortOrder());
                         existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
                         existingField.setFileTypes(fieldDTO.getFileTypes());
@@ -1200,6 +1205,23 @@ public class EntityDefinitionService {
         return StringUtils.isNotBlank(field.getValueStorage())
                 ? field.getValueStorage()
                 : "SCALAR";
+    }
+
+    private void normalizeFieldValidationRules(
+            List<EntityFieldDTO> fields) {
+        if (fields == null) {
+            return;
+        }
+        for (EntityFieldDTO field : fields) {
+            if (field == null) {
+                continue;
+            }
+            field.setValidateRules(
+                    fieldValidationRuleService.validateAndNormalize(
+                            field.getFieldType(),
+                            field.getValidateRules(),
+                            field.getFieldName()));
+        }
     }
 
     private EntityDefinition.LifecycleMode lifecycleMode(EntityDefinition entity) {
