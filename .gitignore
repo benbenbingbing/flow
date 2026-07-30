@@ -80,5 +80,11 @@ uploads/
 .env.local
 .env.*.local
 
+# Load-test credentials and generated results
+deploy/loadtest/*.env
+!deploy/loadtest/config.example.env
+deploy/loadtest/secrets/
+deploy/loadtest/results/
+
 # AI artifacts
 .codex-artifacts/

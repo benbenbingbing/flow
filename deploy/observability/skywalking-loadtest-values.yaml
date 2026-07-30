@@ -1,0 +1,39 @@
+elasticsearch:
+  persistence:
+    enabled: true
+  volumeClaimTemplate:
+    resources:
+      requests:
+        storage: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+oap:
+  env:
+    SW_OTEL_RECEIVER: default
+    SW_OTEL_RECEIVER_ENABLED_HANDLERS: otlp-traces
+    SW_ZIPKIN_RECEIVER: default
+    SW_QUERY_ZIPKIN: default
+    SW_CORE_RECORD_DATA_TTL: "7"
+    SW_CORE_METRICS_DATA_TTL: "7"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 1536Mi
+
+ui:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

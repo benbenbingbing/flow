@@ -1,0 +1,36 @@
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+config:
+  exporters:
+    otlp/skywalking:
+      endpoint: flow-skywalking-oap.flow-observability.svc.cluster.local:11800
+      tls:
+        insecure: true
+      timeout: 500ms
+      sending_queue:
+        enabled: true
+        queue_size: 2048
+      retry_on_failure:
+        enabled: true
+        initial_interval: 1s
+        max_interval: 5s
+        max_elapsed_time: 30s
+  processors:
+    resource:
+      attributes:
+        - key: environment
+          value: loadtest-k3s
+          action: upsert
+  service:
+    pipelines:
+      traces:
+        exporters:
+          - otlphttp/tempo
+          - otlp/skywalking
+          - debug

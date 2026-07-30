@@ -12,6 +12,28 @@ flow_release=${FLOW_RELEASE:-flow-local}
 max_node_memory_percent=${OBSERVABILITY_MAX_NODE_MEMORY_PERCENT:-55}
 max_node_cpu_percent=${OBSERVABILITY_MAX_NODE_CPU_PERCENT:-70}
 
+helm_install() {
+  release=$1
+  chart=$2
+  version=$3
+  values_file=$4
+  extra_values_file=$5
+  timeout=$6
+
+  set -- helm upgrade --install "$release" "$chart" \
+    --namespace "$namespace" \
+    --version "$version" \
+    --values "$values_file"
+  if [ -n "$extra_values_file" ]; then
+    if [ ! -r "$extra_values_file" ]; then
+      printf 'extra Helm values file is not readable: %s\n' "$extra_values_file" >&2
+      exit 1
+    fi
+    set -- "$@" --values "$extra_values_file"
+  fi
+  "$@" --wait --timeout "$timeout"
+}
+
 check_business() {
   kubectl -n "$flow_namespace" wait \
     --for=condition=Available deployment/"$flow_release"-flow-server \
@@ -52,51 +74,38 @@ if ! kubectl -n "$namespace" get secret flow-grafana-admin >/dev/null 2>&1; then
     --from-literal=admin-password="$password"
 fi
 
-helm upgrade --install flow-monitoring prometheus-community/kube-prometheus-stack \
-  --namespace "$namespace" \
-  --version "$KUBE_PROMETHEUS_STACK_CHART_VERSION" \
-  --values "$script_dir/kube-prometheus-stack-values.yaml" \
-  --wait --timeout 10m
+helm_install flow-monitoring prometheus-community/kube-prometheus-stack \
+  "$KUBE_PROMETHEUS_STACK_CHART_VERSION" \
+  "$script_dir/kube-prometheus-stack-values.yaml" \
+  "${KUBE_PROMETHEUS_STACK_EXTRA_VALUES:-}" 10m
 check_business
 
-helm upgrade --install flow-loki grafana/loki \
-  --namespace "$namespace" \
-  --version "$LOKI_CHART_VERSION" \
-  --values "$script_dir/loki-values.yaml" \
-  --wait --timeout 10m
+helm_install flow-loki grafana/loki "$LOKI_CHART_VERSION" \
+  "$script_dir/loki-values.yaml" "${LOKI_EXTRA_VALUES:-}" 10m
 check_business
 
-helm upgrade --install flow-promtail grafana/promtail \
-  --namespace "$namespace" \
-  --version "$PROMTAIL_CHART_VERSION" \
-  --values "$script_dir/promtail-values.yaml" \
-  --wait --timeout 10m
+helm_install flow-promtail grafana/promtail "$PROMTAIL_CHART_VERSION" \
+  "$script_dir/promtail-values.yaml" "${PROMTAIL_EXTRA_VALUES:-}" 10m
 check_business
 
 if [ "$install_tempo" = "true" ]; then
-  helm upgrade --install flow-tempo grafana/tempo \
-    --namespace "$namespace" \
-    --version "$TEMPO_CHART_VERSION" \
-    --values "$script_dir/tempo-values.yaml" \
-    --wait --timeout 10m
+  helm_install flow-tempo grafana/tempo "$TEMPO_CHART_VERSION" \
+    "$script_dir/tempo-values.yaml" "${TEMPO_EXTRA_VALUES:-}" 10m
   check_business
 fi
-
-helm upgrade --install flow-otel-collector open-telemetry/opentelemetry-collector \
-  --namespace "$namespace" \
-  --version "$OTEL_COLLECTOR_CHART_VERSION" \
-  --values "$script_dir/otel-collector-values.yaml" \
-  --wait --timeout 10m
-check_business
 
 if [ "$install_skywalking" = "true" ]; then
-  helm upgrade --install flow-skywalking apache-skywalking/skywalking \
-    --namespace "$namespace" \
-    --version "$SKYWALKING_CHART_VERSION" \
-    --values "$script_dir/skywalking-values.yaml" \
-    --wait --timeout 15m
+  helm_install flow-skywalking apache-skywalking/skywalking \
+    "$SKYWALKING_CHART_VERSION" "$script_dir/skywalking-values.yaml" \
+    "${SKYWALKING_EXTRA_VALUES:-}" 15m
   check_business
 fi
+
+helm_install flow-otel-collector open-telemetry/opentelemetry-collector \
+  "$OTEL_COLLECTOR_CHART_VERSION" \
+  "$script_dir/otel-collector-values.yaml" \
+  "${OTEL_COLLECTOR_EXTRA_VALUES:-}" 10m
+check_business
 
 kubectl apply -f "$script_dir/flow-dashboard-configmap.yaml"
 
