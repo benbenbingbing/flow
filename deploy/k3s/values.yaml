@@ -75,7 +75,7 @@ application:
   logLevel: INFO
   shutdownTimeout: 30s
   environment: local-k3s
-  version: local
+  version: observability-local
 
 observability:
   tracing:
@@ -106,7 +106,10 @@ networkPolicy:
   ingressNamespaceSelector:
     kubernetes.io/metadata.name: flow-hardening
   monitoringNamespaceSelector:
-    kubernetes.io/metadata.name: flow-hardening
+    kubernetes.io/metadata.name: flow-observability
+  observabilityNamespaceSelector:
+    kubernetes.io/metadata.name: flow-observability
+  observabilityCollectorCIDRs: []
   databaseCIDRs: []
   objectStorageCIDRs: []
   outboundHttpsCIDRs: []

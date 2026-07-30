@@ -153,6 +153,9 @@ networkPolicy:
     kubernetes.io/metadata.name: ingress-nginx
   monitoringNamespaceSelector:
     kubernetes.io/metadata.name: monitoring
+  observabilityNamespaceSelector:
+    kubernetes.io/metadata.name: flow-observability
+  observabilityCollectorCIDRs: []
   # Replace these example networks with the resolved, stable dependency CIDRs.
   databaseCIDRs:
     - 10.0.0.0/24

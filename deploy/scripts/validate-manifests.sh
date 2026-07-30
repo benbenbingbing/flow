@@ -244,6 +244,16 @@ do
     <"$temporary_directory/$manifest"
 done
 
+for lite_manifest in "$repository_root"/deploy/observability/lite/*.yaml
+do
+  docker run --rm --interactive "$kubeconform_image" \
+    -kubernetes-version 1.32.0 \
+    -strict \
+    -ignore-missing-schemas \
+    -summary \
+    <"$lite_manifest"
+done
+
 CONFIG_MIGRATION_SIGNING_KEY=test-signing-key \
 DB_PASSWORD=test-db-password \
 DB_ROOT_PASSWORD=test-root-password \
