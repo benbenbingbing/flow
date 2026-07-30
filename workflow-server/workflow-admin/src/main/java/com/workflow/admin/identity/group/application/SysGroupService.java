@@ -18,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -31,6 +35,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SysGroupService {
+
+    private static final int GROUP_USER_ID_BATCH_SIZE = 500;
     
     /** 用户组 Mapper */
     private final SysGroupMapper groupMapper;
@@ -47,7 +53,7 @@ public class SysGroupService {
             new LambdaQueryWrapper<SysGroup>()
                 .orderByAsc(SysGroup::getSort)
         );
-        groups.forEach(this::fillGroupUsers);
+        fillGroupUserIds(groups);
         return groups;
     }
     
@@ -223,5 +229,43 @@ public class SysGroupService {
         List<SysUser> users = groupMapper.selectGroupUsers(group.getId());
         group.setUsers(users);
         group.setUserIds(users.stream().map(SysUser::getId).collect(Collectors.toList()));
+    }
+
+    /**
+     * 批量填充用户组成员 ID。
+     * <p>
+     * 列表页只需要成员数量和分配成员弹窗的选中 ID，不需要完整用户对象。
+     * 这里避免按组逐条查询成员，降低用户组较多时的数据库往返、序列化体积和 JVM 内存压力。
+     * </p>
+     *
+     * @param groups 用户组列表
+     */
+    private void fillGroupUserIds(List<SysGroup> groups) {
+        if (groups == null || groups.isEmpty()) {
+            return;
+        }
+
+        Map<String, List<String>> userIdsByGroupId = new HashMap<>();
+        List<String> groupIds = groups.stream()
+                .map(SysGroup::getId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toList());
+
+        for (int start = 0; start < groupIds.size(); start += GROUP_USER_ID_BATCH_SIZE) {
+            int end = Math.min(start + GROUP_USER_ID_BATCH_SIZE, groupIds.size());
+            List<String> batch = groupIds.subList(start, end);
+            for (SysGroupMapper.GroupUserIdRow row : groupMapper.selectGroupUserIdsByGroupIds(batch)) {
+                if (StringUtils.hasText(row.getGroupId()) && StringUtils.hasText(row.getUserId())) {
+                    userIdsByGroupId
+                            .computeIfAbsent(row.getGroupId(), ignored -> new ArrayList<>())
+                            .add(row.getUserId());
+                }
+            }
+        }
+
+        for (SysGroup group : groups) {
+            group.setUsers(null);
+            group.setUserIds(userIdsByGroupId.getOrDefault(group.getId(), Collections.emptyList()));
+        }
     }
 }

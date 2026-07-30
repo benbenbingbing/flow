@@ -23,7 +23,7 @@ metadata:
   name: flow-observability-prometheus
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods", "namespaces"]
+    resources: ["nodes", "services", "endpoints", "pods", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
@@ -50,7 +50,7 @@ metadata:
   name: flow-observability-promtail
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods", "namespaces"]
+    resources: ["nodes", "services", "endpoints", "pods", "namespaces"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

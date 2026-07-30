@@ -76,22 +76,38 @@ spec:
               path: /ready
               port: http
             periodSeconds: 10
-            timeoutSeconds: 3
-          livenessProbe:
+            timeoutSeconds: 5
+            failureThreshold: 6
+          startupProbe:
             httpGet:
               path: /ready
               port: http
-            periodSeconds: 20
-            timeoutSeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /status/version
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          env:
+            - name: GOMEMLIMIT
+              value: 1536MiB
+            - name: GOGC
+              value: "75"
           resources:
             requests:
-              cpu: 20m
-              memory: 96Mi
+              cpu: 250m
+              memory: 512Mi
             limits:
-              cpu: 200m
-              memory: 256Mi
+              cpu: "2"
+              memory: 2Gi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
@@ -100,13 +116,18 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/tempo
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
             name: flow-tempo-config
         - name: data
           emptyDir:
-            sizeLimit: 512Mi
+            sizeLimit: 4Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

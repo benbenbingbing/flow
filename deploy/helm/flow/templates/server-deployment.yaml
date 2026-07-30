@@ -15,8 +15,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      maxUnavailable: {{ .Values.server.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.server.strategy.rollingUpdate.maxSurge }}
   selector:
     matchLabels:
       {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 6 }}

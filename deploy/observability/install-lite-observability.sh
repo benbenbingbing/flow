@@ -48,6 +48,13 @@ apply_and_wait_deployment() {
   check_business
 }
 
+apply_grafana() {
+  kubectl apply -f "$lite_dir/60-grafana.yaml"
+  kubectl -n "$namespace" rollout restart deployment/flow-grafana
+  kubectl -n "$namespace" rollout status deployment/flow-grafana --timeout=180s
+  check_business
+}
+
 check_capacity
 kubectl apply -f "$lite_dir/00-namespace-rbac.yaml"
 
@@ -67,7 +74,7 @@ kubectl apply -f "$lite_dir/50-promtail.yaml"
 kubectl -n "$namespace" rollout status daemonset/flow-promtail --timeout=180s
 check_business
 
-apply_and_wait_deployment 60-grafana.yaml flow-grafana
+apply_grafana
 
 printf 'Grafana: kubectl -n %s port-forward svc/flow-grafana 3000:3000\n' "$namespace"
 printf 'User: admin\n'

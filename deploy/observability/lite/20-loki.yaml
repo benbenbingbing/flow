@@ -82,22 +82,26 @@ spec:
               path: /ready
               port: http
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /ready
               port: http
-            periodSeconds: 20
-            timeoutSeconds: 3
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
           resources:
             requests:
-              cpu: 20m
-              memory: 96Mi
+              cpu: 50m
+              memory: 128Mi
             limits:
-              cpu: 200m
-              memory: 256Mi
+              cpu: 500m
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
@@ -106,13 +110,18 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/loki
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
             name: flow-loki-config
         - name: data
           emptyDir:
-            sizeLimit: 512Mi
+            sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

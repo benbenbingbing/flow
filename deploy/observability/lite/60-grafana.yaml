@@ -13,11 +13,21 @@ data:
         access: proxy
         url: http://flow-prometheus.flow-observability.svc.cluster.local:9090
         isDefault: true
+        jsonData:
+          exemplarTraceIdDestinations:
+            - datasourceUid: tempo
+              name: trace_id
       - name: Loki
         uid: loki
         type: loki
         access: proxy
         url: http://flow-loki.flow-observability.svc.cluster.local:3100
+        jsonData:
+          derivedFields:
+            - name: Trace
+              matcherRegex: '"trace\\.id":"([a-f0-9]+)"'
+              datasourceUid: tempo
+              url: '$${__value.raw}'
       - name: Tempo
         uid: tempo
         type: tempo
@@ -28,6 +38,15 @@ data:
             datasourceUid: loki
             spanStartTimeShift: -5m
             spanEndTimeShift: 5m
+            filterByTraceID: true
+            filterBySpanID: false
+            tags:
+              - key: service.name
+                value: service_name
+              - key: request_id
+                value: request_id
+              - key: business_trace_id
+                value: business_trace_id
   dashboards.yml: |
     apiVersion: 1
     providers:
@@ -149,22 +168,26 @@ spec:
               path: /api/health
               port: http
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /api/health
               port: http
-            periodSeconds: 20
-            timeoutSeconds: 3
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
           resources:
             requests:
-              cpu: 20m
-              memory: 96Mi
+              cpu: 50m
+              memory: 128Mi
             limits:
-              cpu: 200m
-              memory: 256Mi
+              cpu: 500m
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
@@ -181,6 +204,8 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/lib/grafana
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: provisioning
           configMap:
@@ -191,6 +216,9 @@ spec:
         - name: data
           emptyDir:
             sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

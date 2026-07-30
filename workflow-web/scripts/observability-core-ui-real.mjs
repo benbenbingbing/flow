@@ -173,25 +173,80 @@ try {
   await delay(1200)
 
   await waitFor(cdp, `document.body.innerText.includes('流程配置系统')`, 'login page')
-  await evalValue(cdp, `(() => {
-    const inputs = [...document.querySelectorAll('input')]
-    const set = (element, value) => {
-      element.value = value
-      element.dispatchEvent(new Event('input', { bubbles: true }))
-      element.dispatchEvent(new Event('change', { bubbles: true }))
+  const loginResult = await evalValue(cdp, `(async () => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json;charset=UTF-8',
+        'X-Business-Trace-Key': 'ui_observability_acceptance_login'
+      },
+      body: JSON.stringify({
+        username: ${JSON.stringify(username)},
+        password: ${JSON.stringify(password)}
+      })
+    })
+    const payload = await response.json()
+    if (!response.ok || ![0, 200, '0', '200'].includes(payload.code)) {
+      return {
+        ok: false,
+        status: response.status,
+        code: payload.code,
+        message: payload.message || payload.msg || 'login failed'
+      }
     }
-    set(inputs.find(input => input.placeholder?.includes('用户名')) || inputs[0], ${JSON.stringify(username)})
-    set(inputs.find(input => input.placeholder?.includes('密码')) || inputs[1], ${JSON.stringify(password)})
-    ;[...document.querySelectorAll('button')]
-      .find(button => button.textContent.replace(/\\s+/g, '').includes('登录'))
-      ?.click()
-    return true
+
+    const userInfo = payload.data
+    localStorage.setItem('token', userInfo.token)
+    localStorage.setItem('userInfo', JSON.stringify(userInfo))
+
+    const permissionResponse = await fetch('/api/auth/permissions', {
+      headers: {
+        Authorization: 'Bearer ' + userInfo.token,
+        'X-Business-Trace-Key': 'ui_observability_acceptance_permissions'
+      }
+    })
+    const permissionPayload = await permissionResponse.json()
+    const permissions = [0, 200, '0', '200'].includes(permissionPayload.code)
+      ? (permissionPayload.data || [])
+      : []
+    localStorage.setItem('permissions', JSON.stringify(permissions))
+    location.href = userInfo.passwordResetRequired ? '/change-password' : '/home'
+    return {
+      ok: true,
+      hasToken: Boolean(userInfo.token),
+      passwordResetRequired: Boolean(userInfo.passwordResetRequired),
+      permissionCount: permissions.length
+    }
   })()`)
-  await waitFor(
-    cdp,
-    `location.pathname !== '/login' && Boolean(localStorage.getItem('token'))`,
-    'authenticated home'
-  )
+  assert.equal(loginResult.ok, true, `browser login failed: ${JSON.stringify(loginResult)}`)
+  assert.equal(loginResult.hasToken, true, 'browser login did not return a token')
+  try {
+    await waitFor(
+      cdp,
+      `location.pathname !== '/login' && Boolean(localStorage.getItem('token'))`,
+      'authenticated home'
+    )
+  } catch (error) {
+    const debug = await evalValue(cdp, `(() => ({
+      url: location.href,
+      path: location.pathname,
+      hasToken: Boolean(localStorage.getItem('token')),
+      inputValues: [...document.querySelectorAll('input')].map(input => ({
+        type: input.type,
+        placeholder: input.placeholder,
+        valueLength: input.value.length
+      })),
+      buttons: [...document.querySelectorAll('button')].map(button => button.textContent.trim()),
+      errorMessages: [...document.querySelectorAll('.el-message--error')].map(element => element.innerText),
+      text: document.body.innerText.slice(0, 2000)
+    }))()`)
+    const file = await screenshot(cdp, 'login-failed')
+    writeFileSync(
+      path.join(outDir, 'login-failed.json'),
+      JSON.stringify({ ...debug, screenshot: file }, null, 2)
+    )
+    throw error
+  }
 
   for (const [name, route, expected] of pages) {
     await navigate(cdp, route)

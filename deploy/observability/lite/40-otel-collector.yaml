@@ -16,32 +16,30 @@ data:
     processors:
       memory_limiter:
         check_interval: 5s
-        limit_mib: 192
-        spike_limit_mib: 48
+        limit_mib: 384
+        spike_limit_mib: 128
       resource:
         attributes:
           - key: environment
             value: local-k3s
             action: upsert
       batch:
-        timeout: 1s
-        send_batch_size: 256
-        send_batch_max_size: 512
+        timeout: 2s
+        send_batch_size: 512
+        send_batch_max_size: 1024
 
     exporters:
       otlphttp/tempo:
         endpoint: http://flow-tempo.flow-observability.svc.cluster.local:4318
-        timeout: 500ms
+        timeout: 5s
         sending_queue:
           enabled: true
-          queue_size: 1024
+          queue_size: 4096
         retry_on_failure:
           enabled: true
           initial_interval: 1s
-          max_interval: 5s
-          max_elapsed_time: 30s
-      debug:
-        verbosity: basic
+          max_interval: 10s
+          max_elapsed_time: 5m
 
     extensions:
       health_check:
@@ -61,11 +59,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [otlphttp/tempo, debug]
-        metrics:
-          receivers: [otlp]
-          processors: [memory_limiter, resource, batch]
-          exporters: [debug]
+          exporters: [otlphttp/tempo]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -110,20 +104,30 @@ spec:
               path: /
               port: health
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /
               port: health
-            periodSeconds: 20
-            timeoutSeconds: 3
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
           resources:
             requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              cpu: 200m
+              cpu: 100m
               memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
