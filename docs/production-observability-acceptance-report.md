@@ -1,7 +1,7 @@
 # Flow 生产可观测性验收记录
 
 > 分支：`feature/production-observability`
-> 记录时间：2026-07-30 09:20 CST
+> 记录时间：2026-07-30 09:31 CST
 > 状态：实施中，未完成最终验收
 
 ## 已完成
@@ -39,6 +39,12 @@
     路径。
 - 增加 `verify-lite-observability.sh`，断言 Prometheus、Loki、Tempo、告警均有真实数据。
 - 增加 `fault-test-lite-observability.sh`，逐个验证观测组件故障不影响业务健康请求。
+- 增加 `observe-lite-observability.sh`，用于最终 120 分钟稳定性观察，按 JSONL 记录：
+  - 业务健康请求结果和耗时。
+  - 业务 Deployment 可用性与 Pod 重启数。
+  - 可观测组件可用性与关键组件重启数。
+  - Prometheus `up`、请求量、5xx、P50/P95/P99、JVM 内存。
+  - `kubectl top pod` 的业务和可观测 Pod CPU/内存快照。
 
 ## 已验证
 
@@ -127,6 +133,24 @@
   - 覆盖：直接访问 `/home`、`/entity`、`/process`、`/system/user`、
     `/system/audit-logs` 时，前端均回到 `/login`。
   - 说明：未登录场景下控制台出现菜单和统计接口 401，符合路由保护预期，不作为业务页面通过证据。
+- Grafana API 与仪表盘查询回归，访问入口：`http://127.0.0.1:13000`
+  - 结果：通过
+  - 凭据：来自 `flow-observability/flow-grafana-admin` Secret，未写入验收记录或仓库文件。
+  - 覆盖：
+    - `GET /api/health`：数据库状态 `ok`，Grafana 版本 `12.3.1`。
+    - `GET /api/datasources`：存在 `prometheus`、`loki`、`tempo` 三个 datasource。
+    - `GET /api/search?query=Flow Production Observability`：返回 1 个仪表盘。
+    - `GET /api/dashboards/uid/flow-observability-lite`：标题为
+      `Flow Production Observability`，包含 5 个面板。
+    - `POST /api/ds/query` 通过 Grafana Prometheus datasource 查询
+      `up{job="flow-server"}`，返回 1 个数据帧。
+- `OBSERVABILITY_OBSERVE_SECONDS=5 OBSERVABILITY_OBSERVE_INTERVAL_SECONDS=5
+  OBSERVABILITY_OBSERVE_RESULT_FILE=/tmp/flow-observability-smoke.jsonl
+  deploy/observability/observe-lite-observability.sh`
+  - 结果：通过
+  - 覆盖：2 个采样点，业务健康请求均成功，业务和可观测组件均 Available，
+    `flow_up=1`，5 分钟 5xx 为 0，采集到 P50/P95/P99、请求量、JVM 内存和 Pod 资源。
+  - 说明：这是脚本 smoke，不替代最终 120 分钟稳定性观察。
 
 ## 本机 k3s 实测
 
@@ -166,7 +190,7 @@
 
 - 本机 k3s 完整观测栈稳定部署；当前以轻量栈完成核心能力验收。
 - 业务 API 登录和核心接口已经通过；内置浏览器登录后的核心页面覆盖仍需补齐。
-- Grafana 页面级人工验收截图。
+- Grafana API、datasource 和 dashboard 查询已通过；页面级截图仍需补齐。
 - 120 分钟稳定性观察。
 - SkyWalking 本地安装和故障隔离验证。
 - 镜像漏洞、Kubernetes misconfig、ShellCheck 和 Actionlint 的最终复跑。
