@@ -117,7 +117,7 @@ assert_prometheus_vector \
   "$temporary_directory/prometheus-tempo-export.json"
 
 curl -fsS --get "http://127.0.0.1:$loki_port/loki/api/v1/query_range" \
-  --data-urlencode 'query={namespace="flow-hardening",container="server"}' \
+  --data-urlencode 'query={namespace="flow-hardening",container="server"} | json | traceId != ""' \
   --data-urlencode 'limit=200' \
   --data-urlencode 'direction=backward' \
   >"$temporary_directory/loki-flow.json"
