@@ -2,7 +2,10 @@ package com.workflow.openapi.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,7 +53,7 @@ class OpenIntegrationKeyMaterialTest {
     }
 
     @Test
-    void rejectsMismatchedAndWeakRsaKeys() throws Exception {
+    void rejectsMismatchedRsaKeys() throws Exception {
         KeyPair first = keyPair(2048);
         KeyPair second = keyPair(2048);
         OpenIntegrationProperties mismatched =
@@ -68,13 +71,16 @@ class OpenIntegrationKeyMaterialTest {
                         mismatched,
                         new DefaultResourceLoader()));
 
-        OpenIntegrationProperties weak =
-                properties(keyPair(1024), "weak-key");
+    }
+
+    @Test
+    void rejectsWeakRsaPublicKeyWithoutGeneratingWeakKeyMaterial() {
+        RSAPublicKey weak = mock(RSAPublicKey.class);
+        when(weak.getModulus()).thenReturn(BigInteger.ONE.shiftLeft(1023));
+
         assertThrows(
                 IllegalStateException.class,
-                () -> new OpenIntegrationKeyMaterial(
-                        weak,
-                        new DefaultResourceLoader()));
+                () -> OpenIntegrationKeyMaterial.validatePublicKey(weak));
     }
 
     @Test

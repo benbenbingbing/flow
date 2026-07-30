@@ -7,6 +7,7 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.core.error.RateLimitExceededException;
+import com.workflow.core.logging.LogValue;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.web.OpenRequestTrace;
@@ -142,8 +143,8 @@ public class OpenApiApplicationPolicyFilter
         } catch (RuntimeException exception) {
             log.warn(
                     "开放接口策略检查失败: applicationId={}, traceId={}",
-                    applicationId,
-                    OpenRequestTrace.get(request),
+                    LogValue.safe(applicationId),
+                    LogValue.safe(OpenRequestTrace.get(request)),
                     exception);
             if (response.isCommitted()) {
                 throw exception;
@@ -163,9 +164,9 @@ public class OpenApiApplicationPolicyFilter
                     log.warn(
                             "开放接口并发租约释放失败: applicationId={},"
                                     + " leaseId={}, traceId={}",
-                            applicationId,
-                            lease.id(),
-                            OpenRequestTrace.get(request),
+                            LogValue.safe(applicationId),
+                            LogValue.safe(lease.id()),
+                            LogValue.safe(OpenRequestTrace.get(request)),
                             exception);
                 }
             }
@@ -223,8 +224,8 @@ public class OpenApiApplicationPolicyFilter
         } catch (RuntimeException exception) {
             log.warn(
                     "开放接口审计记录失败: applicationId={}, traceId={}",
-                    applicationId,
-                    OpenRequestTrace.get(request),
+                    LogValue.safe(applicationId),
+                    LogValue.safe(OpenRequestTrace.get(request)),
                     exception);
         }
     }

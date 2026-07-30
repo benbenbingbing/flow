@@ -20,6 +20,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import org.junit.jupiter.api.Test;
@@ -88,6 +89,27 @@ class EntityDataActionServiceTest {
 
     @InjectMocks
     private EntityDataActionService service;
+
+    @Test
+    void readOnlyDetailDoesNotExecuteUiEventChain() {
+        EntityListConfig config = new EntityListConfig();
+        config.setListKey("default");
+        when(actionConfigService.resolveListConfig(
+                "asset", "default")).thenReturn(config);
+        EntityDataDTO row = row("1", "A-1");
+        when(dynamicService.findAccessibleById(
+                "asset", "1", "default")).thenReturn(row);
+
+        EntityDataDTO result = service.getDetailReadOnly(
+                "asset", "1", "default");
+
+        assertEquals(row, result);
+        verify(capabilityService).requireStandardPermission(
+                "asset", EntityPermissionAction.VIEW);
+        verify(capabilityService).requireRowAction(
+                "asset", "default", "view", row);
+        verify(eventRuntimeService, never()).execute(any(), any());
+    }
 
     /**
      * 测试流程实例详情查询使用已解析的列表权限作用域：

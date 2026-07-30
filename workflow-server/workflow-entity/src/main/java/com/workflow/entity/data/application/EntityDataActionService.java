@@ -87,6 +87,20 @@ public class EntityDataActionService {
     }
 
     /**
+     * 只读取实体详情，不执行可能调用外部接口的 UI 事件链。
+     */
+    @Transactional(readOnly = true)
+    public EntityDataDTO getDetailReadOnly(
+            String entityCode,
+            String id,
+            String listKey) {
+        capabilityService.requireStandardPermission(
+                entityCode,
+                EntityPermissionAction.VIEW);
+        return findAuthorizedDetail(entityCode, id, listKey);
+    }
+
+    /**
      * 查询详情并允许指定表单覆盖 DETAIL_LOAD 事件。
      */
     @Transactional(readOnly = true)
@@ -101,10 +115,7 @@ public class EntityDataActionService {
         EventOrigin origin = eventOrigin(
                 entityCode, listKey, formId);
         if (origin == null) {
-            EntityDataDTO row = findAccessible(entityCode, id, listKey);
-            capabilityService.requireRowAction(
-                    entityCode, listKey, "view", row);
-            return row;
+            return findAuthorizedDetail(entityCode, id, listKey);
         }
         UiEventExecuteRequest event = event(
                 "DETAIL_LOAD",
@@ -123,6 +134,16 @@ public class EntityDataActionService {
                     return row;
                 }).getData();
         return entityData(value, entityCode, id);
+    }
+
+    private EntityDataDTO findAuthorizedDetail(
+            String entityCode,
+            String id,
+            String listKey) {
+        EntityDataDTO row = findAccessible(entityCode, id, listKey);
+        capabilityService.requireRowAction(
+                entityCode, listKey, "view", row);
+        return row;
     }
 
     /**

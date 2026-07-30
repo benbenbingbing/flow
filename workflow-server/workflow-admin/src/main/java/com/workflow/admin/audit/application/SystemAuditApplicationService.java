@@ -4,6 +4,7 @@ import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.core.logging.LogValue;
 import com.workflow.outbox.api.OutboxPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -77,8 +78,8 @@ public class SystemAuditApplicationService implements SystemAuditPort {
                 lastFailure = exception;
                 log.warn(
                         "普通操作审计入队重试失败: eventId={}, operation={}, attempt={}/{}",
-                        payload.eventId(),
-                        payload.operationName(),
+                        LogValue.safe(payload.eventId()),
+                        LogValue.safe(payload.operationName()),
                         attempt,
                         attempts);
             }
@@ -134,9 +135,9 @@ public class SystemAuditApplicationService implements SystemAuditPort {
             RuntimeException exception) {
         log.error(
                 "系统审计技术失败: eventId={}, operation={}, phase={}, exceptionType={}",
-                eventId,
-                operationName,
-                phase,
+                LogValue.safe(eventId),
+                LogValue.safe(operationName),
+                LogValue.safe(phase),
                 exception.getClass().getName());
         try {
             eventPublisher.publishEvent(
@@ -149,8 +150,8 @@ public class SystemAuditApplicationService implements SystemAuditPort {
         } catch (RuntimeException publishException) {
             log.error(
                     "系统审计技术失败事件发布异常: eventId={}, phase={}, exceptionType={}",
-                    eventId,
-                    phase,
+                    LogValue.safe(eventId),
+                    LogValue.safe(phase),
                     publishException.getClass().getName());
         }
     }

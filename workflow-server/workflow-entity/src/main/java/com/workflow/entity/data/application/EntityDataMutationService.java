@@ -7,6 +7,7 @@ import com.workflow.contracts.process.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
@@ -59,10 +60,10 @@ public class EntityDataMutationService {
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(EntityDataDTO dto) {
         log.info(
-                "保存数据: entityCode={}, id={}, data={}",
-                dto.getEntityCode(),
-                dto.getId(),
-                dto.getData());
+                "保存数据: entityCode={}, id={}, fieldCount={}",
+                LogValue.safe(dto.getEntityCode()),
+                LogValue.safe(dto.getId()),
+                dto.getData() == null ? 0 : dto.getData().size());
         String entityCode = dto.getEntityCode();
         EntityDefinition definition =
                 definitionMapper.findByEntityCode(entityCode)
@@ -561,8 +562,8 @@ public class EntityDataMutationService {
         } catch (Exception exception) {
             log.warn(
                     "获取实体[{}]默认状态失败: {}",
-                    entityCode,
-                    exception.getMessage());
+                    LogValue.safe(entityCode),
+                    LogValue.safe(exception.getMessage()));
         }
         return "DRAFT";
     }
@@ -662,9 +663,9 @@ public class EntityDataMutationService {
         } catch (RuntimeException exception) {
             log.debug(
                     "读取实体发布字段失败，跳过业务时间同步: entityCode={}, fieldCode={}, reason={}",
-                    entityCode,
-                    fieldCode,
-                    exception.getMessage());
+                    LogValue.safe(entityCode),
+                    LogValue.safe(fieldCode),
+                    LogValue.safe(exception.getMessage()));
         }
     }
 
@@ -712,9 +713,9 @@ public class EntityDataMutationService {
         } catch (Exception exception) {
             log.warn(
                     "获取实体[{}]状态分类[{}]失败: {}",
-                    entityCode,
-                    category,
-                    exception.getMessage());
+                    LogValue.safe(entityCode),
+                    LogValue.safe(category),
+                    LogValue.safe(exception.getMessage()));
         }
         return fallback;
     }

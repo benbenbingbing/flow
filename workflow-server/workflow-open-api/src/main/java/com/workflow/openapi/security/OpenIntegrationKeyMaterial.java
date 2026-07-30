@@ -106,7 +106,7 @@ public final class OpenIntegrationKeyMaterial {
         return Map.copyOf(keys);
     }
 
-    private void validatePublicKey(RSAPublicKey key) {
+    static void validatePublicKey(RSAPublicKey key) {
         if (key.getModulus().bitLength() < MINIMUM_RSA_BITS) {
             throw new IllegalStateException(
                     "开放接口 RSA 密钥不得低于 2048 位");

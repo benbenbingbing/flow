@@ -135,7 +135,7 @@ export const entityDataApi = {
     const params = {}
     if (listKey) params.listKey = listKey
     if (formId) params.formId = formId
-    return request.get(`/entity-data/entity/${entityCode}/detail/${id}`, {
+    return request.post(`/entity-data/entity/${entityCode}/detail/${id}/load`, {}, {
       params
     })
   },

@@ -12,6 +12,7 @@ import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.core.logging.LogValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -241,8 +242,8 @@ public class UiEventRuntimeService {
         } catch (RuntimeException auditException) {
             log.warn(
                     "记录UI事件执行日志失败: eventCode={}, configId={}",
-                    eventCode,
-                    request == null ? null : request.getConfigId(),
+                    LogValue.safe(eventCode),
+                    LogValue.safe(request == null ? null : request.getConfigId()),
                     auditException);
         }
     }

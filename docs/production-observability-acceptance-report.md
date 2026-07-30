@@ -1,6 +1,6 @@
 # Flow 生产可观测性验收记录
 
-> 分支：`feature/production-observability`
+> 分支：`main`
 > 记录时间：2026-07-30
 > 状态：核心链路、故障隔离、业务压测与静态门禁已通过本地 k3s 验收；120 分钟观察按验收方要求提前结束，不作为通过证据。
 
@@ -63,9 +63,9 @@
 
 ### 后端
 
-- `mvn -B test`
+- `mvn -B verify`
   - 结果：通过
-  - 覆盖：17 个 Maven 模块，939 个测试，0 失败，1 个跳过；包含 MySQL 8.4 Testcontainers 上的 17 个 Flyway 迁移版本。
+  - 覆盖：17 个 Maven 模块，944 个测试（Surefire 943、Failsafe 1），0 失败、0 错误、1 个跳过；包含 MySQL 8.4 Testcontainers 上的 17 个 Flyway 迁移版本和生产制品打包验证。
 - `mvn -B -pl workflow-app -am -Dtest=UiEventRuntimeServiceTest,ProductionArtifactSecurityTest,ApiAccessPolicyCoverageTest -Dsurefire.failIfNoSpecifiedTests=false test`
   - 结果：通过，11 个定向测试，0 失败。
   - 覆盖：UI 写事件权限降级保护、API 访问策略覆盖、生产部署与制品安全约束。
@@ -135,7 +135,11 @@
 
 - GitHub Dependabot
   - 结果：已逐项处理 3 个 Jackson Databind 中危告警；后端依赖管理和独立 Java 接入示例均升级到 `2.21.5`，依赖树复核未残留 `2.21.4`。
-  - 验证：升级后重新执行后端 17 模块全量测试，共 939 个测试，0 失败、0 错误、1 个跳过；独立 Java 示例编译及依赖解析通过。
+  - 验证：升级后重新执行后端 17 模块全量测试，共 944 个测试，0 失败、0 错误、1 个跳过；独立 Java 示例编译及依赖解析通过。
+- GitHub CodeQL
+  - 结果：逐项修复 17 个开放告警，覆盖 1 个 GET 请求副作用、14 个日志注入、1 个正则表达式拒绝服务和 1 个测试弱密钥问题。
+  - 业务处理：详情 GET 接口保持纯读取；需要执行 `DETAIL_LOAD` 事件链的操作迁移到 POST。日志字段统一清洗控制字符，保存接口不再记录完整业务数据。邮件脱敏正则消除回溯歧义，弱密钥负向测试改为模拟密钥属性，不再生成弱密钥材料。
+  - 验收标准：CodeQL Java、JavaScript 扫描任务成功，仓库开放告警为 0。
 - `gitleaks detect --source . --no-git --config .gitleaks.toml --redact`
   - 结果：通过，当前工作树未发现泄露；`gitleaks git` 复核 240 个提交历史同样未发现泄露。
 - `npm --prefix workflow-web audit --audit-level=high`

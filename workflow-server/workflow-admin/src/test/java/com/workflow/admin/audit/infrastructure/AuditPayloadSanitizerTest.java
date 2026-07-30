@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuditPayloadSanitizerTest {
@@ -56,5 +57,16 @@ class AuditPayloadSanitizerTest {
         assertFalse(text.contains("13800138000"));
         assertFalse(text.contains("6222021234567890123"));
         assertTrue(text.contains("******"));
+    }
+
+    @Test
+    void handlesLongNonEmailInputWithoutBacktracking() {
+        AuditPayloadSanitizer sanitizer =
+                new AuditPayloadSanitizer(new ObjectMapper(), 32768);
+        String input = "%".repeat(20_000);
+
+        String text = sanitizer.sanitizeText(input, 100);
+
+        assertEquals("%".repeat(100), text);
     }
 }
