@@ -428,6 +428,10 @@ function loadOptionalJson(environmentName) {
 }
 
 function scenariosFor(selectedProfile) {
+  const customDefinition = customScenarioDefinition();
+  if (customDefinition) {
+    return buildScenarios(customDefinition);
+  }
   const profiles = {
     smoke: {
       duration: '2m',
@@ -474,6 +478,47 @@ function scenariosFor(selectedProfile) {
   if (!definition) {
     throw new Error(`unsupported LOADTEST_PROFILE: ${selectedProfile}`);
   }
+  return buildScenarios(definition);
+}
+
+function customScenarioDefinition() {
+  const raw = (__ENV.LOADTEST_BUSINESS_PHASES_JSON || '').trim();
+  if (!raw) return null;
+  const duration = required('LOADTEST_TOTAL_DURATION');
+  let business;
+  try {
+    business = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `LOADTEST_BUSINESS_PHASES_JSON is not valid JSON: ${error.message}`,
+    );
+  }
+  if (!Array.isArray(business) || business.length === 0) {
+    throw new Error('LOADTEST_BUSINESS_PHASES_JSON must be a non-empty array');
+  }
+  const names = new Set();
+  for (const phase of business) {
+    if (!phase || typeof phase !== 'object') {
+      throw new Error('each custom business phase must be an object');
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(phase.name || '')) {
+      throw new Error('custom phase name must match ^[a-z][a-z0-9_]*$');
+    }
+    if (names.has(phase.name)) {
+      throw new Error(`duplicate custom phase name: ${phase.name}`);
+    }
+    names.add(phase.name);
+    if (typeof phase.start !== 'string' || typeof phase.duration !== 'string') {
+      throw new Error(`custom phase ${phase.name} requires string start and duration`);
+    }
+    if (!Number.isInteger(phase.rate) || phase.rate < 1) {
+      throw new Error(`custom phase ${phase.name} requires a positive integer rate`);
+    }
+  }
+  return { duration, business };
+}
+
+function buildScenarios(definition) {
   const scenarios = {};
   for (const phase of definition.business) {
     scenarios[`business_${phase.name}`] = {

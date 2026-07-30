@@ -19,6 +19,7 @@ helm_install() {
   values_file=$4
   extra_values_file=$5
   timeout=$6
+  wait_for_resources=${7:-true}
 
   set -- helm upgrade --install "$release" "$chart" \
     --namespace "$namespace" \
@@ -31,7 +32,10 @@ helm_install() {
     fi
     set -- "$@" --values "$extra_values_file"
   fi
-  "$@" --wait --timeout "$timeout"
+  if [ "$wait_for_resources" = "true" ]; then
+    set -- "$@" --wait
+  fi
+  "$@" --timeout "$timeout"
 }
 
 check_business() {
@@ -95,9 +99,15 @@ if [ "$install_tempo" = "true" ]; then
 fi
 
 if [ "$install_skywalking" = "true" ]; then
-  helm_install flow-skywalking apache-skywalking/skywalking \
+  helm_install flow-skywalking oci://registry-1.docker.io/apache/skywalking-helm \
     "$SKYWALKING_CHART_VERSION" "$script_dir/skywalking-values.yaml" \
-    "${SKYWALKING_EXTRA_VALUES:-}" 15m
+    "${SKYWALKING_EXTRA_VALUES:-}" 15m false
+  kubectl -n "$namespace" rollout status \
+    statefulset/flow-skywalking-banyandb --timeout=5m
+  kubectl -n "$namespace" rollout status \
+    deployment/flow-skywalking-skywalking-helm-oap --timeout=10m
+  kubectl -n "$namespace" rollout status \
+    deployment/flow-skywalking-skywalking-helm-ui --timeout=5m
   check_business
 fi
 

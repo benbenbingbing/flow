@@ -5,8 +5,18 @@ result_directory=${1:?result directory is required}
 health_url=${LOADTEST_HEALTH_URL:?LOADTEST_HEALTH_URL is required}
 interval_seconds=${LOADTEST_CANARY_INTERVAL_SECONDS:-30}
 output_file="$result_directory/target-canary.jsonl"
+sleep_pid=
 
-trap 'exit 0' HUP INT TERM
+cleanup() {
+  trap - EXIT HUP INT TERM
+  if [ -n "${sleep_pid:-}" ]; then
+    kill "$sleep_pid" >/dev/null 2>&1 || true
+    wait "$sleep_pid" >/dev/null 2>&1 || true
+  fi
+  exit 0
+}
+
+trap cleanup HUP INT TERM
 : >"$output_file"
 
 while :
@@ -23,5 +33,8 @@ do
   esac
   printf '{"sampled_at":"%s","available":%s,"status":%s,"duration_ms":%s}\n' \
     "$sampled_at" "$available" "${status:-000}" "${duration_ms:-10000}" >>"$output_file"
-  sleep "$interval_seconds"
+  sleep "$interval_seconds" &
+  sleep_pid=$!
+  wait "$sleep_pid"
+  sleep_pid=
 done

@@ -1,24 +1,36 @@
-elasticsearch:
-  persistence:
-    enabled: true
-  volumeClaimTemplate:
+banyandb:
+  standalone:
     resources:
       requests:
-        storage: 20Gi
-  resources:
-    requests:
-      cpu: 250m
-      memory: 1Gi
-    limits:
-      cpu: "2"
-      memory: 2Gi
+        - key: cpu
+          value: 250m
+        - key: memory
+          value: 1Gi
+      limits:
+        - key: cpu
+          value: "2"
+        - key: memory
+          value: 2Gi
+  storage:
+    standalone:
+      persistentVolumeClaims:
+        - mountTargets: ["measure", "stream", "metadata", "property", "trace"]
+          claimName: standalone-data
+          size: 20Gi
+          accessModes:
+            - ReadWriteOnce
+          storageClass: local-path
+          volumeMode: Filesystem
 
 oap:
+  ports:
+    grpc: 11800
+    rest: 12800
+    zipkinreceiver: 9411
+    zipkinquery: 9412
   env:
     SW_OTEL_RECEIVER: default
     SW_OTEL_RECEIVER_ENABLED_HANDLERS: otlp-traces
-    SW_ZIPKIN_RECEIVER: default
-    SW_QUERY_ZIPKIN: default
     SW_CORE_RECORD_DATA_TTL: "7"
     SW_CORE_METRICS_DATA_TTL: "7"
   resources:

@@ -24,6 +24,7 @@ prometheus-node-exporter:
 
 prometheus:
   prometheusSpec:
+    enableRemoteWriteReceiver: true
     retention: 7d
     retentionSize: 16GB
     resources:

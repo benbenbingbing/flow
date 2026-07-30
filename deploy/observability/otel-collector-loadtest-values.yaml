@@ -6,10 +6,13 @@ resources:
     cpu: 500m
     memory: 512Mi
 
+serviceMonitor:
+  enabled: true
+
 config:
   exporters:
     otlp/skywalking:
-      endpoint: flow-skywalking-oap.flow-observability.svc.cluster.local:11800
+      endpoint: flow-skywalking-skywalking-helm-oap.flow-observability.svc.cluster.local:11800
       tls:
         insecure: true
       timeout: 500ms

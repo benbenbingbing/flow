@@ -45,6 +45,20 @@ absolute_path() {
 }
 
 profile_seconds() {
+  if [ -n "${LOADTEST_DURATION_SECONDS:-}" ]; then
+    case "$LOADTEST_DURATION_SECONDS" in
+      *[!0-9]*|'')
+        printf 'LOADTEST_DURATION_SECONDS must be a positive integer\n' >&2
+        exit 1
+        ;;
+    esac
+    if [ "$LOADTEST_DURATION_SECONDS" -le 0 ]; then
+      printf 'LOADTEST_DURATION_SECONDS must be greater than zero\n' >&2
+      exit 1
+    fi
+    printf '%s' "$LOADTEST_DURATION_SECONDS"
+    return
+  fi
   case "$profile" in
     smoke) printf '120' ;;
     baseline) printf '2100' ;;
@@ -180,8 +194,37 @@ jq -n \
   --arg apiBaseUrl "$api_base_url" \
   --arg healthUrl "$health_url" \
   --arg startedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  --arg writePercent "${LOADTEST_WRITE_PERCENT:-3}" \
+  --arg baseRate "${LOADTEST_BASE_RATE:-8}" \
+  --arg peakRate "${LOADTEST_PEAK_RATE:-24}" \
+  --arg spikeRate "${LOADTEST_SPIKE_RATE:-48}" \
+  --arg maxVus "${LOADTEST_MAX_VUS:-120}" \
+  --arg totalDuration "${LOADTEST_TOTAL_DURATION:-}" \
+  --arg durationSeconds "${LOADTEST_DURATION_SECONDS:-}" \
+  --arg businessPhases "${LOADTEST_BUSINESS_PHASES_JSON:-}" \
   --argjson writes "$([ "$allow_writes" = "true" ] && printf true || printf false)" \
-  '{run_id:$runId,profile:$profile,api_base_url:$apiBaseUrl,health_url:$healthUrl,started_at:$startedAt,writes_enabled:$writes}' \
+  --argjson fileLifecycle \
+    "$([ "${LOADTEST_ENABLE_FILE_LIFECYCLE:-false}" = "true" ] && printf true || printf false)" \
+  '{
+    run_id: $runId,
+    profile: $profile,
+    api_base_url: $apiBaseUrl,
+    health_url: $healthUrl,
+    started_at: $startedAt,
+    writes_enabled: $writes,
+    workload: {
+      writes_enabled: $writes,
+      write_percent: ($writePercent | tonumber),
+      file_lifecycle_enabled: $fileLifecycle,
+      base_rate: ($baseRate | tonumber),
+      peak_rate: ($peakRate | tonumber),
+      spike_rate: ($spikeRate | tonumber),
+      max_vus: ($maxVus | tonumber),
+      total_duration: (if $totalDuration == "" then null else $totalDuration end),
+      duration_seconds: (if $durationSeconds == "" then null else ($durationSeconds | tonumber) end),
+      business_phases: (if $businessPhases == "" then null else ($businessPhases | fromjson) end)
+    }
+  }' \
   >"$result_directory/run.json"
 
 capture_cluster_snapshot before
@@ -197,6 +240,10 @@ if [ "$observe_k8s" = "true" ]; then
     "$repository_root/deploy/observability/observe-lite-observability.sh" \
       >"$result_directory/observer.log" 2>&1 &
   observer_pid=$!
+fi
+
+if [ "$observe_k8s" = "true" ]; then
+  sleep 6
 fi
 
 "$script_dir/monitor-target.sh" "$result_directory" &
@@ -215,6 +262,7 @@ if command -v k6 >/dev/null 2>&1; then
 else
   require_command docker
   set -- run --rm --add-host=host.docker.internal:host-gateway \
+    --user "$(id -u):$(id -g)" \
     -v "$script_dir:/work:ro" \
     -v "$result_directory:/results" \
     -e LOADTEST_API_BASE_URL -e LOADTEST_HEALTH_URL -e LOADTEST_PROFILE \
@@ -226,6 +274,9 @@ else
     -e LOADTEST_BUSINESS_ERROR_RATE -e LOADTEST_READ_P95_MS \
     -e LOADTEST_WRITE_P95_MS -e LOADTEST_P99_MS \
     -e LOADTEST_TOKEN_REFRESH_SECONDS -e LOADTEST_INSECURE_SKIP_TLS_VERIFY \
+    -e K6_OUT -e K6_PROMETHEUS_RW_SERVER_URL \
+    -e LOADTEST_BUSINESS_PHASES_JSON -e LOADTEST_TOTAL_DURATION \
+    -e LOADTEST_DURATION_SECONDS \
     -e LOADTEST_SUMMARY_DIR=/results
 
   if [ -n "$credentials_file" ]; then

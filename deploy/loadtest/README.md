@@ -69,6 +69,19 @@ LOADTEST_ALLOW_WRITES=true
 LOADTEST_CONFIRM_WRITES=isolated-test-environment
 ```
 
+需要在固定维护窗口内执行完整阶段时，可覆盖业务阶段计划。JSON 必须使用单引号
+包裹，`LOADTEST_TOTAL_DURATION` 是 k6 的认证与健康探针总时长，
+`LOADTEST_DURATION_SECONDS` 是采集脚本使用的同一时长（秒）：
+
+```bash
+LOADTEST_BUSINESS_PHASES_JSON='[{"name":"warmup","start":"0s","duration":"10m","rate":4},{"name":"steady","start":"10m","duration":"50m","rate":8}]'
+LOADTEST_TOTAL_DURATION=1h
+LOADTEST_DURATION_SECONDS=3600
+```
+
+阶段名称必须唯一，且只允许小写字母、数字和下划线。自定义计划仍受原有并发、
+阈值、目标确认和写入确认约束；总时长必须覆盖最后一个阶段。
+
 ## 执行顺序
 
 先运行只读烟测：

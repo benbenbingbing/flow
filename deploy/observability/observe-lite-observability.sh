@@ -9,11 +9,18 @@ duration_seconds=${OBSERVABILITY_OBSERVE_SECONDS:-7200}
 interval_seconds=${OBSERVABILITY_OBSERVE_INTERVAL_SECONDS:-60}
 prometheus_port=${OBSERVABILITY_PROMETHEUS_PORT:-19090}
 flow_server_port=${OBSERVABILITY_FLOW_SERVER_PORT:-19091}
+port_forward_address=${OBSERVABILITY_PORT_FORWARD_ADDRESS:-127.0.0.1}
 result_file=${OBSERVABILITY_OBSERVE_RESULT_FILE:-/tmp/flow-observability-stability.jsonl}
 temporary_directory=$(mktemp -d)
 kubectl_request_timeout=${KUBECTL_REQUEST_TIMEOUT:-30s}
 
-trap 'kill ${prometheus_pid:-0} ${flow_server_pid:-0} >/dev/null 2>&1 || true; rm -rf "$temporary_directory"' EXIT HUP INT TERM
+cleanup() {
+  trap - EXIT HUP INT TERM
+  kill ${prometheus_pid:-0} ${flow_server_pid:-0} >/dev/null 2>&1 || true
+  rm -rf "$temporary_directory"
+}
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -53,7 +60,7 @@ statefulset_available() {
   target_namespace=$1
   statefulset=$2
   if ! kubectl -n "$target_namespace" get statefulset "$statefulset" >/dev/null 2>&1; then
-    return 0
+    return 1
   fi
   attempt=1
   while [ "$attempt" -le 3 ]; do
@@ -208,24 +215,24 @@ record_sample() {
   deployment_available "$flow_namespace" "$flow_release-flow-web" && web_available=true
   deployment_available "$flow_namespace" "$flow_release-flow-schema-worker" && worker_available=true
   statefulset_available "$flow_namespace" "$flow_mysql_statefulset" && mysql_available=true || mysql_available=false
-  deployment_available "$namespace" flow-prometheus && prometheus_available=true
-  deployment_available "$namespace" flow-loki && loki_available=true
-  deployment_available "$namespace" flow-tempo && tempo_available=true
+  statefulset_available "$namespace" prometheus-flow-monitoring-prometheus && prometheus_available=true
+  statefulset_available "$namespace" flow-loki && loki_available=true
+  statefulset_available "$namespace" flow-tempo && tempo_available=true
   deployment_available "$namespace" flow-otel-collector && otel_available=true
-  deployment_available "$namespace" flow-grafana && grafana_available=true
+  deployment_available "$namespace" flow-monitoring-grafana && grafana_available=true
 
   request_total=$(prometheus_query_value 'sum(increase(http_server_requests_seconds_count{application="workflow-server"}[5m]))')
   request_errors=$(prometheus_query_value 'sum(increase(http_server_requests_seconds_count{application="workflow-server",status=~"5.."}[5m])) or vector(0)')
   request_p50=$(prometheus_query_value 'histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{application="workflow-server"}[5m])) by (le))')
   request_p95=$(prometheus_query_value 'histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application="workflow-server"}[5m])) by (le))')
   request_p99=$(prometheus_query_value 'histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{application="workflow-server"}[5m])) by (le))')
-  prometheus_up=$(prometheus_query_value 'up{job="flow-server"}')
+  prometheus_up=$(prometheus_query_value 'min(up{job="flow-local-flow-server"})')
   jvm_memory=$(prometheus_query_value 'sum(jvm_memory_used_bytes{application="workflow-server"})')
-  otel_queue_size=$(prometheus_query_value 'max(otelcol_exporter_queue_size{job="otel-collector"}) or vector(0)')
-  otel_queue_capacity=$(prometheus_query_value 'max(otelcol_exporter_queue_capacity{job="otel-collector"}) or vector(0)')
-  otel_receiver_failed_spans=$(prometheus_query_value 'sum(otelcol_receiver_failed_spans{job="otel-collector"}) or vector(0)')
-  otel_receiver_refused_spans=$(prometheus_query_value 'sum(otelcol_receiver_refused_spans{job="otel-collector"}) or vector(0)')
-  otel_exporter_sent_spans=$(prometheus_query_value 'sum(otelcol_exporter_sent_spans{job="otel-collector"}) or vector(0)')
+  otel_queue_size=$(prometheus_query_value 'max(otelcol_exporter_queue_size{job="flow-otel-collector"}) or vector(0)')
+  otel_queue_capacity=$(prometheus_query_value 'max(otelcol_exporter_queue_capacity{job="flow-otel-collector"}) or vector(0)')
+  otel_receiver_failed_spans=$(prometheus_query_value 'sum(otelcol_receiver_failed_spans{job="flow-otel-collector"}) or vector(0)')
+  otel_receiver_refused_spans=$(prometheus_query_value 'sum(otelcol_receiver_refused_spans{job="flow-otel-collector"}) or vector(0)')
+  otel_exporter_sent_spans=$(prometheus_query_value 'sum(otelcol_exporter_sent_spans{job="flow-otel-collector"}) or vector(0)')
   prometheus_rule_failures=$(prometheus_query_value 'sum(prometheus_rule_evaluation_failures_total) or vector(0)')
   prometheus_scrape_failures=$(prometheus_query_value 'sum(prometheus_target_sync_failed_total) or vector(0)')
   prometheus_exemplar_capacity=$(prometheus_query_value 'prometheus_tsdb_exemplar_max_exemplars')
@@ -235,20 +242,20 @@ record_sample() {
   web_restarts=$(deployment_restarts "$flow_namespace" "$flow_release-flow-web")
   worker_restarts=$(deployment_restarts "$flow_namespace" "$flow_release-flow-schema-worker")
   mysql_restarts=$(statefulset_restarts "$flow_namespace" "$flow_mysql_statefulset")
-  prometheus_restarts=$(deployment_restarts "$namespace" flow-prometheus)
-  loki_restarts=$(deployment_restarts "$namespace" flow-loki)
-  tempo_restarts=$(deployment_restarts "$namespace" flow-tempo)
+  prometheus_restarts=$(statefulset_restarts "$namespace" prometheus-flow-monitoring-prometheus)
+  loki_restarts=$(statefulset_restarts "$namespace" flow-loki)
+  tempo_restarts=$(statefulset_restarts "$namespace" flow-tempo)
   otel_restarts=$(deployment_restarts "$namespace" flow-otel-collector)
-  grafana_restarts=$(deployment_restarts "$namespace" flow-grafana)
+  grafana_restarts=$(deployment_restarts "$namespace" flow-monitoring-grafana)
 
   flow_top=$(metrics_top_json "$flow_namespace")
   observability_top=$(metrics_top_json "$namespace")
   server_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-server" /tmp)
   web_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-web" /tmp)
   worker_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-schema-worker" /tmp)
-  prometheus_disk=$(disk_sample_json "$namespace" deployment/flow-prometheus /prometheus)
-  tempo_disk=$(disk_sample_json "$namespace" deployment/flow-tempo /var/tempo)
-  grafana_disk=$(disk_sample_json "$namespace" deployment/flow-grafana /var/lib/grafana)
+  prometheus_disk=$(disk_sample_json "$namespace" statefulset/prometheus-flow-monitoring-prometheus /prometheus)
+  tempo_disk=$(disk_sample_json "$namespace" statefulset/flow-tempo /var/tempo)
+  grafana_disk=$(disk_sample_json "$namespace" deployment/flow-monitoring-grafana /var/lib/grafana)
 
   printf '{"sampled_at":"%s","business":{"health_ok":%s,"health_seconds":%s,"server_available":%s,"web_available":%s,"schema_worker_available":%s,"mysql_available":%s,"server_restarts":%s,"web_restarts":%s,"schema_worker_restarts":%s,"mysql_restarts":%s},"observability":{"prometheus_available":%s,"loki_available":%s,"tempo_available":%s,"otel_collector_available":%s,"grafana_available":%s,"prometheus_restarts":%s,"loki_restarts":%s,"tempo_restarts":%s,"otel_collector_restarts":%s,"grafana_restarts":%s},"prometheus":{"flow_up":%s,"request_total_5m":%s,"request_errors_5m":%s,"request_p50_seconds":%s,"request_p95_seconds":%s,"request_p99_seconds":%s,"jvm_memory_used_bytes":%s,"exemplar_max_exemplars":%s,"exemplar_exemplars_in_storage":%s},"telemetry":{"otel_exporter_queue_size":%s,"otel_exporter_queue_capacity":%s,"otel_receiver_failed_spans":%s,"otel_receiver_refused_spans":%s,"otel_exporter_sent_spans":%s,"prometheus_rule_evaluation_failures_total":%s,"prometheus_target_sync_failed_total":%s},"resources":{"flow_pods":%s,"observability_pods":%s,"disk":{"server":%s,"web":%s,"schema_worker":%s,"prometheus":%s,"tempo":%s,"grafana":%s}}}\n' \
     "$sampled_at" "$health_ok" "$health_seconds" \
@@ -270,7 +277,7 @@ require_command kubectl
 
 : >"$result_file"
 
-kubectl -n "$namespace" wait --for=condition=Available deployment/flow-prometheus --timeout=120s
+kubectl -n "$namespace" rollout status statefulset/prometheus-flow-monitoring-prometheus --timeout=120s
 kubectl -n "$flow_namespace" wait --for=condition=Available deployment/"$flow_release"-flow-server --timeout=120s
 kubectl -n "$flow_namespace" wait --for=condition=Available deployment/"$flow_release"-flow-web --timeout=120s
 kubectl -n "$flow_namespace" wait --for=condition=Available deployment/"$flow_release"-flow-schema-worker --timeout=120s
@@ -278,9 +285,9 @@ if kubectl -n "$flow_namespace" get statefulset "$flow_mysql_statefulset" >/dev/
   kubectl -n "$flow_namespace" wait --for=jsonpath='{.status.readyReplicas}'=1 statefulset/"$flow_mysql_statefulset" --timeout=120s
 fi
 
-kubectl -n "$namespace" port-forward svc/flow-prometheus "$prometheus_port":9090 >"$temporary_directory/prometheus.log" 2>&1 &
+command kubectl --request-timeout="$kubectl_request_timeout" -n "$namespace" port-forward --address="$port_forward_address" svc/flow-monitoring-prometheus "$prometheus_port":9090 >"$temporary_directory/prometheus.log" 2>&1 &
 prometheus_pid=$!
-kubectl -n "$flow_namespace" port-forward svc/"$flow_release"-flow-server "$flow_server_port":8080 >"$temporary_directory/flow-server.log" 2>&1 &
+command kubectl --request-timeout="$kubectl_request_timeout" -n "$flow_namespace" port-forward --address="$port_forward_address" svc/"$flow_release"-flow-server "$flow_server_port":8080 >"$temporary_directory/flow-server.log" 2>&1 &
 flow_server_pid=$!
 sleep 5
 
@@ -310,6 +317,10 @@ if jq -s -e '
   and all(.[]; .business.schema_worker_available == true)
   and all(.[]; .business.mysql_available == true)
   and all(.[]; .observability.prometheus_available == true)
+  and all(.[]; .observability.loki_available == true)
+  and all(.[]; .observability.tempo_available == true)
+  and all(.[]; .observability.otel_collector_available == true)
+  and all(.[]; .observability.grafana_available == true)
   and all(.[]; (.prometheus.flow_up == 1 or .prometheus.flow_up == "1"))
   and all(.[]; (.prometheus.exemplar_max_exemplars | tonumber) > 0)
   and stable(["business", "server_restarts"])
