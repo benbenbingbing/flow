@@ -104,7 +104,11 @@ let tokenIssuedAt = 0;
 
 export function setup() {
   const response = http.get(healthUrl, {
-    tags: { operation: 'health_preflight', kind: 'canary' },
+    tags: {
+      name: 'health_preflight',
+      operation: 'health_preflight',
+      kind: 'canary',
+    },
     timeout: '10s',
   });
   if (response.status < 200 || response.status >= 300) {
@@ -135,7 +139,11 @@ export function loginTraffic() {
 
 export function healthCanary() {
   const response = http.get(healthUrl, {
-    tags: { operation: 'health_canary', kind: 'canary' },
+    tags: {
+      name: 'health_canary',
+      operation: 'health_canary',
+      kind: 'canary',
+    },
     timeout: '5s',
   });
   const ok = response.status >= 200 && response.status < 300;
@@ -375,7 +383,7 @@ function requestParams(operation, token, json, kind) {
   }
   return {
     headers,
-    tags: { operation, kind },
+    tags: { name: operation, operation, kind },
     timeout: kind === 'write' ? '30s' : '15s',
   };
 }
@@ -432,7 +440,7 @@ function login(credential, operation) {
     JSON.stringify(credential),
     {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      tags: { operation, kind: 'auth' },
+      tags: { name: operation, operation, kind: 'auth' },
       timeout: '15s',
     },
   );
