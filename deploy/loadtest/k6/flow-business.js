@@ -59,6 +59,9 @@ const createdRecords = new Counter('flow_created_records');
 const deletedRecords = new Counter('flow_deleted_records');
 const cleanupFailures = new Counter('flow_cleanup_failures');
 const tokenRefreshes = new Counter('flow_token_refreshes');
+const idempotencyReplayFailures = new Counter(
+  'flow_idempotency_replay_failures',
+);
 
 export const options = {
   scenarios: scenariosFor(profile),
@@ -163,6 +166,7 @@ export function handleSummary(data) {
     `created_records=${value('flow_created_records', 'count') ?? 0}`,
     `deleted_records=${value('flow_deleted_records', 'count') ?? 0}`,
     `cleanup_failures=${value('flow_cleanup_failures', 'count') ?? 0}`,
+    `idempotency_replay_failures=${value('flow_idempotency_replay_failures', 'count') ?? 0}`,
   ];
   return {
     stdout: `${lines.join('\n')}\n`,
@@ -259,14 +263,43 @@ function fileLifecycle() {
   const token = ensureToken();
   if (!token) return;
   const content = `flow load test ${runId} ${uniqueSuffix()}\n`;
-  const response = http.post(`${apiBaseUrl}/file/upload`, {
-    file: http.file(content, `load-${runId}.txt`, 'text/plain'),
-  }, requestParams('file_upload', token, false, 'write'));
+  const filename = `load-${runId}.txt`;
+  const idempotencyKey = `load-file-${runId}-${uniqueSuffix()}`;
+  const uploadParams = requestParams(
+    'file_upload', token, false, 'write',
+  );
+  uploadParams.headers['Idempotency-Key'] = idempotencyKey;
+  const response = http.post(
+    `${apiBaseUrl}/file/upload`,
+    { file: http.file(content, filename, 'text/plain') },
+    uploadParams,
+  );
   const parsed = recordResponse(response, 'file_upload', 'write');
   const url = parsed.data?.url;
   if (!parsed.ok || !url) return;
   createdRecords.add(1, { resource: 'file' });
   try {
+    const replayParams = requestParams(
+      'file_upload_replay', token, false, 'write',
+    );
+    replayParams.headers['Idempotency-Key'] = idempotencyKey;
+    const replay = http.post(
+      `${apiBaseUrl}/file/upload`,
+      { file: http.file(content, filename, 'text/plain') },
+      replayParams,
+    );
+    const replayed = recordResponse(
+      replay, 'file_upload_replay', 'write',
+    );
+    const replayMatches = replayed.ok && replayed.data?.url === url;
+    idempotencyReplayFailures.add(!replayMatches);
+    businessErrors.add(
+      !replayMatches,
+      { operation: 'file_upload_replay', kind: 'write' },
+    );
+    check(replay, {
+      'file upload replay returns original object': () => replayMatches,
+    });
     const preview = http.get(
       `${apiBaseUrl}/file/preview?url=${encodeURIComponent(url)}`,
       requestParams('file_preview', token, false, 'read'),

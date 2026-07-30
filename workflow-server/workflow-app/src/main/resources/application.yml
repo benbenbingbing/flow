@@ -147,7 +147,7 @@ logging:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
-  allowed-headers: ${CORS_ALLOWED_HEADERS:Authorization,Content-Type,X-Trace-Id,X-Business-Trace-Key}
+  allowed-headers: ${CORS_ALLOWED_HEADERS:Authorization,Content-Type,Idempotency-Key,X-Trace-Id,X-Business-Trace-Key}
   max-age: ${CORS_MAX_AGE:1h}
 
 # 文件上传配置

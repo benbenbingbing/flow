@@ -6,7 +6,7 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
-    "test:unit": "node src/utils/__tests__/calcEngine.spec.js && node src/utils/__tests__/flowConditionGroups.spec.js && node src/utils/__tests__/jsonConfig.spec.js && node src/utils/__tests__/bpmnLayout.spec.js && node src/components/form-fields/composables/__tests__/useFormField.spec.js && node src/shared/__tests__/entity-selection-mapping.spec.js && node src/shared/__tests__/entity-validation-rules.spec.js && node src/shared/__tests__/list-config-design.spec.js",
+    "test:unit": "node src/utils/__tests__/calcEngine.spec.js && node src/utils/__tests__/flowConditionGroups.spec.js && node src/utils/__tests__/jsonConfig.spec.js && node src/utils/__tests__/bpmnLayout.spec.js && node src/components/form-fields/composables/__tests__/useFormField.spec.js && node src/shared/__tests__/entity-selection-mapping.spec.js && node src/shared/__tests__/entity-validation-rules.spec.js && node src/shared/__tests__/list-config-design.spec.js && node src/shared/__tests__/file-upload-idempotency.spec.js",
     "test:form-node-schema": "node src/shared/__tests__/form-node-property-schema.spec.js",
     "test:form-node-drag": "node src/shared/__tests__/form-node-drag.spec.js",
     "test:runtime-form-tabs": "node src/shared/__tests__/runtime-form-tabs.spec.js",

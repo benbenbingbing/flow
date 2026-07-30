@@ -9,6 +9,7 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.storage.application.FileStorageStrategy;
+import com.workflow.storage.application.FileUploadIdempotencyException;
 import com.workflow.storage.application.StoredFile;
 import com.workflow.storage.application.StoredFileAccessService;
 import lombok.RequiredArgsConstructor;
@@ -51,23 +52,64 @@ public class FileController {
             operation = "上传文件",
             risk = AuditRiskLevel.MEDIUM,
             targetType = "FILE")
-    public Result<Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
+    public Result<Map<String, String>> uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(
+                    value = "Idempotency-Key",
+                    required = false)
+            String idempotencyKey) {
+        return store(file, idempotencyKey);
+    }
+
+    private Result<Map<String, String>> store(
+            MultipartFile file,
+            String idempotencyKey) {
         if (file.isEmpty()) {
             return Result.error("请选择要上传的文件");
         }
         try {
+            StoredFileAccessService.UploadClaim claim =
+                    fileAccessService.prepareUpload(
+                            idempotencyKey,
+                            file);
+            if (claim.replay() != null) {
+                return Result.success(claim.replay());
+            }
             FileStorageStrategy strategy = storageFactory.getStrategy();
             Map<String, String> result = strategy.upload(file);
             try {
-                fileAccessService.register(result, file);
+                StoredFileAccessService.UploadRegistration registration =
+                        fileAccessService.register(
+                                result,
+                                file,
+                                claim);
+                if (!registration.currentObjectRegistered()) {
+                    deleteAfterFailedRegistration(strategy, result);
+                }
+                return Result.success(registration.response());
             } catch (RuntimeException exception) {
-                strategy.delete(result.get("url"));
+                deleteAfterFailedRegistration(strategy, result);
                 throw exception;
             }
-            return Result.success(result);
+        } catch (FileUploadIdempotencyException exception) {
+            return Result.error(
+                    exception.getResultCode(),
+                    exception.getMessage());
         } catch (Exception e) {
             log.error("文件上传失败", e);
-            return Result.error("文件上传失败: " + e.getMessage());
+            return Result.error("文件上传失败，请稍后重试");
+        }
+    }
+
+    private void deleteAfterFailedRegistration(
+            FileStorageStrategy strategy,
+            Map<String, String> stored) {
+        try {
+            if (!strategy.delete(stored.get("url"))) {
+                log.error("文件登记失败后的存储对象清理未成功");
+            }
+        } catch (RuntimeException cleanupException) {
+            log.error("文件登记失败后的存储对象清理失败", cleanupException);
         }
     }
 
@@ -84,14 +126,18 @@ public class FileController {
     public Result<Map<String, String>> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "maxWidth", defaultValue = "1920") int maxWidth,
-            @RequestParam(value = "quality", defaultValue = "0.8") float quality) {
+            @RequestParam(value = "quality", defaultValue = "0.8") float quality,
+            @RequestHeader(
+                    value = "Idempotency-Key",
+                    required = false)
+            String idempotencyKey) {
 
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
             return Result.error("只能上传图片文件");
         }
         // 目前使用与普通上传相同的逻辑，压缩功能可以后续添加
-        return uploadFile(file);
+        return store(file, idempotencyKey);
     }
 
     /**

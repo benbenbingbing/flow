@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 class ProductionCorsConfigurationGuardTest {
 
     @Test
-    void defaultHeadersAllowFrontendBusinessTraceKeys() {
-        assertTrue(
-                new CorsProperties()
-                        .getAllowedHeaders()
-                        .contains("X-Business-Trace-Key"));
+    void defaultHeadersAllowFrontendWriteHeaders() {
+        List<String> headers = new CorsProperties().getAllowedHeaders();
+
+        assertTrue(headers.contains("X-Business-Trace-Key"));
+        assertTrue(headers.contains("Idempotency-Key"));
     }
 
     @Test
