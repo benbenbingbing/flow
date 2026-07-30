@@ -5,7 +5,7 @@ namespace=${OBSERVABILITY_NAMESPACE:-flow-observability}
 flow_namespace=${FLOW_NAMESPACE:-flow-hardening}
 flow_release=${FLOW_RELEASE:-flow-local}
 result_file=${RESULT_FILE:-/tmp/flow-observability-fault-matrix.csv}
-components=${OBSERVABILITY_FAULT_COMPONENTS:-"flow-otel-collector flow-prometheus flow-loki flow-tempo flow-grafana"}
+components=${OBSERVABILITY_FAULT_COMPONENTS:-"deployment/flow-otel-collector statefulset/prometheus-flow-monitoring-prometheus statefulset/flow-loki statefulset/flow-tempo deployment/flow-monitoring-grafana deployment/flow-skywalking-skywalking-helm-oap"}
 kubectl_request_timeout=${KUBECTL_REQUEST_TIMEOUT:-30s}
 
 server_deployment="$flow_release-flow-server"
@@ -35,21 +35,29 @@ record_component_replicas() {
   : >"$state_file"
   for component in $components
   do
-    if kubectl -n "$namespace" get deployment "$component" >/dev/null 2>&1; then
-      replicas=$(kubectl -n "$namespace" get deployment "$component" -o jsonpath='{.spec.replicas}')
-      printf '%s %s\n' "$component" "${replicas:-1}" >>"$state_file"
+    resource=$(component_resource "$component")
+    if kubectl -n "$namespace" get "$resource" >/dev/null 2>&1; then
+      replicas=$(kubectl -n "$namespace" get "$resource" -o jsonpath='{.spec.replicas}')
+      printf '%s %s\n' "$resource" "${replicas:-1}" >>"$state_file"
     fi
   done
+}
+
+component_resource() {
+  case "$1" in
+    */*) printf '%s' "$1" ;;
+    *) printf 'deployment/%s' "$1" ;;
+  esac
 }
 
 restore_components() {
   if [ ! -s "$state_file" ]; then
     return
   fi
-  while read -r component replicas
+  while read -r resource replicas
   do
-    [ -n "$component" ] || continue
-    kubectl -n "$namespace" scale deployment "$component" --replicas="$replicas" >/dev/null 2>&1 || true
+    [ -n "$resource" ] || continue
+    kubectl -n "$namespace" scale "$resource" --replicas="$replicas" >/dev/null 2>&1 || true
   done <"$state_file"
 }
 
@@ -113,10 +121,10 @@ run_business_assertion() {
 }
 
 wait_zero_ready() {
-  component=$1
+  resource=$1
   for _ in 1 2 3 4 5 6 7 8 9 10
   do
-    ready=$(kubectl -n "$namespace" get deployment "$component" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+    ready=$(kubectl -n "$namespace" get "$resource" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
     [ -z "$ready" ] && return
     [ "$ready" = "0" ] && return
     sleep 3
@@ -126,25 +134,27 @@ wait_zero_ready() {
 
 run_component_case() {
   component=$1
-  if ! kubectl -n "$namespace" get deployment "$component" >/dev/null 2>&1; then
-    record_result "$component" "component_down" "business_available" "failed" "deployment_not_found"
+  resource=$(component_resource "$component")
+  case_name=${resource#*/}
+  if ! kubectl -n "$namespace" get "$resource" >/dev/null 2>&1; then
+    record_result "$case_name" "component_down" "business_available" "failed" "resource_not_found"
     return 1
   fi
 
-  original_replicas=$(awk -v component="$component" '$1 == component { print $2 }' "$state_file")
+  original_replicas=$(awk -v resource="$resource" '$1 == resource { print $2 }' "$state_file")
   [ -n "$original_replicas" ] || original_replicas=1
 
-  kubectl -n "$namespace" scale deployment "$component" --replicas=0 >/dev/null
-  if ! wait_zero_ready "$component"; then
-    record_result "$component" "component_down" "zero_ready" "failed" "component_still_ready"
+  kubectl -n "$namespace" scale "$resource" --replicas=0 >/dev/null
+  if ! wait_zero_ready "$resource"; then
+    record_result "$case_name" "component_down" "zero_ready" "failed" "component_still_ready"
     return 1
   fi
 
-  run_business_assertion "$component" "component_down"
+  run_business_assertion "$case_name" "component_down"
 
-  kubectl -n "$namespace" scale deployment "$component" --replicas="$original_replicas" >/dev/null
-  kubectl -n "$namespace" rollout status deployment/"$component" --timeout=180s >/dev/null
-  run_business_assertion "$component" "component_recovered"
+  kubectl -n "$namespace" scale "$resource" --replicas="$original_replicas" >/dev/null
+  kubectl -n "$namespace" rollout status "$resource" --timeout=180s >/dev/null
+  run_business_assertion "$case_name" "component_recovered"
 }
 
 run_tracing_endpoint_case() {
@@ -176,18 +186,9 @@ do
   run_component_case "$component"
 done
 
-if kubectl -n "$namespace" get deployment/flow-skywalking-oap >/dev/null 2>&1; then
-  components="$components flow-skywalking-oap"
-  printf 'flow-skywalking-oap %s\n' \
-    "$(kubectl -n "$namespace" get deployment flow-skywalking-oap -o jsonpath='{.spec.replicas}')" >>"$state_file"
-  run_component_case flow-skywalking-oap
-else
-  run_business_assertion skywalking "component_not_installed"
-fi
-
 run_tracing_endpoint_case otlp_refused "http://127.0.0.1:9/v1/traces" "500ms"
 run_tracing_endpoint_case otlp_timeout "http://10.255.255.1:4318/v1/traces" "500ms"
-run_tracing_endpoint_case otlp_http_error "http://flow-prometheus.$namespace.svc.cluster.local:9090/v1/traces" "500ms"
+run_tracing_endpoint_case otlp_http_error "http://flow-loki-gateway.$namespace.svc.cluster.local/v1/traces" "500ms"
 
 restore_tracing_env
 kubectl -n "$flow_namespace" rollout status deployment/"$server_deployment" --timeout=240s >/dev/null
