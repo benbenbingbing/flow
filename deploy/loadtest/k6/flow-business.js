@@ -85,8 +85,13 @@ export const options = {
       `p(95)<${integerEnv('LOADTEST_WRITE_P95_MS', 1500, 1)}`,
       `p(99)<${integerEnv('LOADTEST_P99_MS', 2500, 1)}`,
     ],
-    flow_auth_duration: [
+    'flow_auth_duration{operation:login_traffic}': [
       `p(95)<${integerEnv('LOADTEST_AUTH_P95_MS', 750, 1)}`,
+      `p(99)<${integerEnv('LOADTEST_P99_MS', 2500, 1)}`,
+    ],
+    // Phase changes create first-use logins for new VUs. Keep a global
+    // cold-start ceiling without mixing those samples into the login SLA.
+    flow_auth_duration: [
       `p(99)<${integerEnv('LOADTEST_P99_MS', 2500, 1)}`,
     ],
     checks: ['rate>0.995'],
@@ -159,6 +164,7 @@ export function teardown() {
 export function handleSummary(data) {
   const metrics = data.metrics || {};
   const value = (name, field) => metrics[name]?.values?.[field];
+  const loginTrafficMetric = 'flow_auth_duration{operation:login_traffic}';
   const lines = [
     `run_id=${runId}`,
     `profile=${profile}`,
@@ -169,8 +175,10 @@ export function handleSummary(data) {
     `read_p99_ms=${value('flow_read_duration', 'p(99)') ?? 'n/a'}`,
     `write_p95_ms=${value('flow_write_duration', 'p(95)') ?? 'n/a'}`,
     `write_p99_ms=${value('flow_write_duration', 'p(99)') ?? 'n/a'}`,
-    `auth_p95_ms=${value('flow_auth_duration', 'p(95)') ?? 'n/a'}`,
-    `auth_p99_ms=${value('flow_auth_duration', 'p(99)') ?? 'n/a'}`,
+    `auth_traffic_p95_ms=${value(loginTrafficMetric, 'p(95)') ?? 'n/a'}`,
+    `auth_traffic_p99_ms=${value(loginTrafficMetric, 'p(99)') ?? 'n/a'}`,
+    `auth_all_p95_ms=${value('flow_auth_duration', 'p(95)') ?? 'n/a'}`,
+    `auth_all_p99_ms=${value('flow_auth_duration', 'p(99)') ?? 'n/a'}`,
     `created_records=${value('flow_created_records', 'count') ?? 0}`,
     `deleted_records=${value('flow_deleted_records', 'count') ?? 0}`,
     `cleanup_failures=${value('flow_cleanup_failures', 'count') ?? 0}`,
