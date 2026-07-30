@@ -5,6 +5,7 @@ import com.workflow.outbox.api.OutboxEventHandler;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Duration;
@@ -17,6 +18,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,6 +115,30 @@ class OutboxProcessorTest {
                 1,
                 0L,
                 "unknown delivery");
+    }
+
+    @Test
+    void ignoresQueuedHeartbeatAfterProcessingCompletes() throws Exception {
+        OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
+        OutboxEventHandler handler = handler("TEST");
+        OutboxRecord record = processingRecord();
+        when(mapper.selectClaimed(record.getId(), "worker-1"))
+                .thenReturn(record);
+        when(mapper.markProcessed(record.getId(), "worker-1", 7L))
+                .thenReturn(1);
+        TaskScheduler scheduler = scheduler();
+        OutboxProcessor processor =
+                new OutboxProcessor(mapper, List.of(handler), scheduler);
+
+        processor.process(record.getId(), "worker-1", 7L, 120);
+
+        ArgumentCaptor<Runnable> heartbeat =
+                ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).scheduleAtFixedRate(
+                heartbeat.capture(), any(Duration.class));
+        heartbeat.getValue().run();
+        verify(mapper, never()).heartbeat(
+                record.getId(), "worker-1", 7L, 120);
     }
 
     private OutboxEventHandler handler(String topic) {
