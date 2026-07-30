@@ -3,6 +3,7 @@ package com.workflow.entity.definition.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +46,21 @@ public class EntityFieldValidationRuleService {
             Pattern.CASE_INSENSITIVE);
 
     private final ObjectMapper objectMapper;
+
+    /**
+     * 校验并标准化一组字段定义中的验证规则。
+     */
+    public void validateAndNormalizeAll(List<EntityFieldDTO> fields) {
+        if (fields == null) {
+            return;
+        }
+        fields.stream()
+                .filter(java.util.Objects::nonNull)
+                .forEach(field -> field.setValidateRules(validateAndNormalize(
+                        field.getFieldType(),
+                        field.getValidateRules(),
+                        field.getFieldName())));
+    }
 
     /**
      * 校验字段类型支持的规则并返回标准 JSON；空对象标准化为空值。

@@ -1,16 +1,23 @@
-name: Build and Deploy
+name: 生产部署
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
-    branches:
-      - main
+  workflow_call:
+    secrets:
+      DEPLOY_HOST:
+        required: true
+      DEPLOY_PORT:
+        required: false
+      DEPLOY_USER:
+        required: true
+      DEPLOY_SSH_KEY:
+        required: true
+      DEPLOY_KNOWN_HOSTS:
+        required: true
+  workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: production-deploy
@@ -18,141 +25,180 @@ concurrency:
 
 jobs:
   deploy:
-    name: Build and deploy production
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push'
+    name: 构建并部署生产环境
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     environment: 阿里云flow
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '8.145.54.70' }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/flow' }}
-      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+      IMAGE_TAG: ${{ github.sha }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'flow-production' }}
+      HELM_RELEASE: ${{ vars.HELM_RELEASE || 'flow' }}
     steps:
-      - name: Check out tested commit
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build server image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./workflow-server
-          load: true
-          tags: flow-server:${{ env.IMAGE_TAG }}
-          cache-from: type=gha,scope=server
-          cache-to: type=gha,mode=max,scope=server
-
-      - name: Build web image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./workflow-web
-          load: true
-          tags: flow-web:${{ env.IMAGE_TAG }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
-
-      - name: Package images
-        run: |
-          docker save \
-            "flow-server:$IMAGE_TAG" \
-            "flow-web:$IMAGE_TAG" |
-            gzip -1 > "flow-images-$IMAGE_TAG.tar.gz"
-
-      - name: Configure SSH
+      - name: 验证部署配置
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PATH"
           test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+
+      - name: 检出已验证的提交
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: 配置容器构建环境
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: 解析镜像仓库地址
+        id: images
+        shell: bash
+        run: |
+          owner=$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "server=ghcr.io/$owner/flow-server" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/$owner/flow-web" >> "$GITHUB_OUTPUT"
+
+      - name: 登录容器镜像仓库
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并推送后端镜像
+        id: server-image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./workflow-server
+          push: true
+          tags: ${{ steps.images.outputs.server }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+      - name: 构建并推送前端镜像
+        id: web-image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./workflow-web
+          push: true
+          tags: ${{ steps.images.outputs.web }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: 检查后端镜像漏洞
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.images.outputs.server }}@${{ steps.server-image.outputs.digest }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - name: 检查前端镜像漏洞
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.images.outputs.web }}@${{ steps.web-image.outputs.digest }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - name: 生成后端软件物料清单
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.images.outputs.server }}@${{ steps.server-image.outputs.digest }}
+          format: cyclonedx
+          output: server-sbom.cdx.json
+
+      - name: 生成前端软件物料清单
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.images.outputs.web }}@${{ steps.web-image.outputs.digest }}
+          format: cyclonedx
+          output: web-sbom.cdx.json
+
+      - name: 保存生产镜像软件物料清单
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-sbom-${{ env.IMAGE_TAG }}
+          path: '*-sbom.cdx.json'
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: 打包 Helm Chart
+        run: tar -C deploy/helm -czf "flow-chart-$IMAGE_TAG.tar.gz" flow
+
+      - name: 配置 SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            printf '%s\n' \
-              '8.145.54.70 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJo4ztiHhsKgHHVhcF9W2ULkGpZoZ0QjITkmzsy9b19Z' \
-              > ~/.ssh/known_hosts
-          fi
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          {
-            printf '%s\n' 'Host flow-deploy'
-            printf '  HostName %s\n' "$DEPLOY_HOST"
-            printf '  HostKeyAlias %s\n' "$DEPLOY_HOST"
-            printf '  Port %s\n' "$DEPLOY_PORT"
-            printf '  User %s\n' "$DEPLOY_USER"
-            printf '%s\n' \
-              '  IdentityFile ~/.ssh/id_ed25519' \
-              '  IdentitiesOnly yes' \
-              '  BatchMode yes' \
-              '  StrictHostKeyChecking yes' \
-              '  ConnectTimeout 30' \
-              '  ServerAliveInterval 15' \
-              '  ServerAliveCountMax 8' \
-              '  TCPKeepAlive yes' \
-              '  ControlMaster auto' \
-              '  ControlPersist 15m' \
-              '  ControlPath ~/.ssh/flow-%C'
-          } > ~/.ssh/config
-          chmod 600 ~/.ssh/config
 
-      - name: Open SSH connection
+      - name: 准备远程部署目录
         run: |
-          for attempt in $(seq 1 12); do
-            if ssh flow-deploy "mkdir -p '$DEPLOY_PATH'"; then
-              ssh -O check flow-deploy
-              exit 0
-            fi
+          ssh -o BatchMode=yes -o ConnectTimeout=15 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "mkdir -p '$DEPLOY_PATH'"
 
-            delay=$((attempt * 10))
-            echo "SSH is not ready (attempt $attempt/12); retrying in ${delay}s..."
-            sleep "$delay"
-          done
-
-          echo "Unable to establish a reusable SSH connection." >&2
-          exit 1
-
-      - name: Upload deployment files
+      - name: 上传部署文件
         run: |
-          for attempt in $(seq 1 5); do
-            if scp \
-              deploy/compose.prod.yml \
-              deploy/deploy.sh \
-              "flow-images-$IMAGE_TAG.tar.gz" \
-              "flow-deploy:$DEPLOY_PATH/"; then
-              exit 0
-            fi
+          scp -o BatchMode=yes -o ConnectTimeout=15 -P "$DEPLOY_PORT" \
+            "flow-chart-$IMAGE_TAG.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
 
-            delay=$((attempt * 20))
-            echo "Upload failed (attempt $attempt/5); retrying in ${delay}s..."
-            sleep "$delay"
-          done
-
-          echo "Unable to upload deployment files." >&2
-          exit 1
-
-      - name: Deploy tested images
+      - name: 使用不可变镜像执行 Helm 部署
+        env:
+          SERVER_IMAGE: ${{ steps.images.outputs.server }}
+          SERVER_DIGEST: ${{ steps.server-image.outputs.digest }}
+          WEB_IMAGE: ${{ steps.images.outputs.web }}
+          WEB_DIGEST: ${{ steps.web-image.outputs.digest }}
         run: |
-          ssh flow-deploy \
-            "set -eu; \
-             gzip -dc '$DEPLOY_PATH/flow-images-$IMAGE_TAG.tar.gz' | docker load; \
-             rm -f '$DEPLOY_PATH/flow-images-$IMAGE_TAG.tar.gz'; \
-             chmod +x '$DEPLOY_PATH/deploy.sh'; \
-             cd '$DEPLOY_PATH' && \
-             DEPLOY_DIR='$DEPLOY_PATH' \
-             IMAGE_TAG='$IMAGE_TAG' \
-             SERVER_IMAGE='flow-server:$IMAGE_TAG' \
-             WEB_IMAGE='flow-web:$IMAGE_TAG' \
-             WAIT_TIMEOUT=900 \
-             ./deploy.sh"
-
-      - name: Close SSH connection
-        if: always()
-        run: ssh -O exit flow-deploy || true
+          ssh -o BatchMode=yes -o ConnectTimeout=15 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' IMAGE_TAG='$IMAGE_TAG' \
+             K8S_NAMESPACE='$K8S_NAMESPACE' HELM_RELEASE='$HELM_RELEASE' \
+             SERVER_IMAGE='$SERVER_IMAGE' SERVER_DIGEST='$SERVER_DIGEST' \
+             WEB_IMAGE='$WEB_IMAGE' WEB_DIGEST='$WEB_DIGEST' sh -se" <<'REMOTE'
+          set -eu
+          command -v helm >/dev/null
+          command -v kubectl >/dev/null
+          test -f "$DEPLOY_PATH/values.production.yaml"
+          chart_directory="$DEPLOY_PATH/chart-$IMAGE_TAG"
+          mkdir -p "$chart_directory"
+          tar -C "$chart_directory" -xzf \
+            "$DEPLOY_PATH/flow-chart-$IMAGE_TAG.tar.gz"
+          helm upgrade --install "$HELM_RELEASE" "$chart_directory/flow" \
+            --namespace "$K8S_NAMESPACE" \
+            --create-namespace \
+            --values "$DEPLOY_PATH/values.production.yaml" \
+            --set-string server.image.repository="$SERVER_IMAGE" \
+            --set-string server.image.digest="$SERVER_DIGEST" \
+            --set-string web.image.repository="$WEB_IMAGE" \
+            --set-string web.image.digest="$WEB_DIGEST" \
+            --atomic \
+            --timeout 15m \
+            --wait
+          kubectl -n "$K8S_NAMESPACE" rollout status \
+            "deployment/$HELM_RELEASE-flow-server" --timeout=10m
+          kubectl -n "$K8S_NAMESPACE" rollout status \
+            "deployment/$HELM_RELEASE-flow-web" --timeout=10m
+          helm -n "$K8S_NAMESPACE" test "$HELM_RELEASE" \
+            --logs --timeout 5m
+          rm -f "$DEPLOY_PATH/flow-chart-$IMAGE_TAG.tar.gz"
+          REMOTE

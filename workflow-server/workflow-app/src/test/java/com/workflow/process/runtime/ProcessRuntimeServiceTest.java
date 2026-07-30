@@ -8,6 +8,8 @@ import com.workflow.contracts.process.ProcessStartResult;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
+import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
@@ -24,6 +26,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -78,6 +82,8 @@ class ProcessRuntimeServiceTest {
                 mock(WorkflowAutoSkipService.class);
         final MultiInstanceCollectionListener multiInstanceCollectionListener =
                 mock(MultiInstanceCollectionListener.class);
+        final EntityProcessLinkMapper entityProcessLinkMapper =
+                mock(EntityProcessLinkMapper.class);
         @SuppressWarnings("unchecked")
         final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
                 mock(ObjectProvider.class);
@@ -94,6 +100,19 @@ class ProcessRuntimeServiceTest {
             when(processInstance.getId()).thenReturn("pi-1");
             when(runtimeService.startProcessInstanceByKey(eq("expense_flow"), eq("data-1"), anyMap()))
                     .thenReturn(processInstance);
+
+            EntityProcessLink reservedLink = new EntityProcessLink();
+            reservedLink.setId("link-1");
+            reservedLink.setRequestId("request-1");
+            reservedLink.setState("PENDING");
+            reservedLink.setGeneration(1);
+            when(entityProcessLinkMapper.insertPending(any(EntityProcessLink.class)))
+                    .thenReturn(1);
+            when(entityProcessLinkMapper.selectForUpdate("expense", "data-1", 1))
+                    .thenReturn(reservedLink);
+            when(entityProcessLinkMapper.activate(
+                    eq("link-1"), eq("request-1"), anyString()))
+                    .thenReturn(1);
 
             Task task = mock(Task.class);
             when(task.getId()).thenReturn("task-1");
@@ -115,6 +134,7 @@ class ProcessRuntimeServiceTest {
                     processTaskService,
                     workflowAutoSkipService,
                     multiInstanceCollectionListener,
+                    entityProcessLinkMapper,
                     changeTargetPortProvider);
         }
     }

@@ -36,6 +36,13 @@
 - 用户组列表性能：
   - 列表查询不再逐组加载完整用户对象，改为每批 500 个用户组批量查询成员 ID。
   - 1200 个用户组的单元测试验证仅执行 3 次成员关系查询，并保持列表页需要的 `userIds` 返回契约。
+- 主线同步后的生产门禁修复：
+  - 开放集成管理接口统一为 GET/POST 契约，前后端路由同步，避免浏览器端与服务端方法不一致。
+  - 新增的 UI 事件、实体版本和变更目录接口补齐登录、对象级授权和管理权限；自定义写按钮默认至少要求实体更新权限，标准按钮继续校验对应的新增、删除、导出或审批权限。
+  - 移除未被引用且绕过实体变更端口的旧运行时服务，保留架构边界门禁。
+  - 生产 Compose 恢复独立迁移、schema worker、bootstrap、最小权限数据库账号和 S3 存储；生产部署恢复不可变镜像摘要、漏洞扫描、SBOM、Helm atomic 回滚与部署后测试。
+  - 手动生产部署强制限定 `main`，SSH 主机指纹必须由 Secret 提供，不再使用代码内默认主机或账号。
+  - 前端大文件按既有模块边界拆出验证规则和列表配置纯函数，并补齐单元测试和跨模块页面审计。
 
 ## 本地 k3s 部署结果
 
@@ -58,7 +65,10 @@
 
 - `mvn -B test`
   - 结果：通过
-  - 覆盖：17 个 Maven 模块，642 个测试，0 失败，1 个跳过。
+  - 覆盖：17 个 Maven 模块，939 个测试，0 失败，1 个跳过；包含 MySQL 8.4 Testcontainers 上的 17 个 Flyway 迁移版本。
+- `mvn -B -pl workflow-app -am -Dtest=UiEventRuntimeServiceTest,ProductionArtifactSecurityTest,ApiAccessPolicyCoverageTest -Dsurefire.failIfNoSpecifiedTests=false test`
+  - 结果：通过，11 个定向测试，0 失败。
+  - 覆盖：UI 写事件权限降级保护、API 访问策略覆盖、生产部署与制品安全约束。
 - `mvn -B -pl workflow-app -am -Dtest=GlobalExceptionHandlerTest -Dsurefire.failIfNoSpecifiedTests=false test`
   - 结果：通过
   - 覆盖：`AsyncRequestNotUsableException` 不再破坏指标响应。
@@ -81,6 +91,8 @@
   - 结果：通过。
   - 覆盖：生产、本地、Open API、Webhook、Connector、监控对象、完整观测 Helm chart、轻量观测 YAML 的 Helm lint、Helm template 和 kubeconform strict 校验。
   - 代理验证：在大小写代理变量不一致时仍优先使用显式 `HTTP_PROXY/HTTPS_PROXY`，容器内自动转换为 Docker 可访问的本机代理地址；不提交固定代理端口。
+- `rhysd/actionlint:1.7.7`
+  - 结果：通过，全部 GitHub Actions 工作流语法和表达式检查无错误。
 - `helm upgrade --install flow-local deploy/helm/flow --namespace flow-hardening --values deploy/k3s/values.yaml --wait --timeout 10m`
   - 结果：通过。
 - `helm test flow-local --namespace flow-hardening --timeout 5m`
@@ -121,17 +133,17 @@
 
 ### 安全与依赖
 
-- `gitleaks detect --source . --no-git --redact`
-  - 结果：通过，未发现泄露。
+- `gitleaks detect --source . --no-git --config .gitleaks.toml --redact`
+  - 结果：通过，当前工作树未发现泄露；`gitleaks git` 复核 240 个提交历史同样未发现泄露。
 - `npm --prefix workflow-web audit --audit-level=high`
   - 结果：通过，0 个漏洞。
   - 说明：本机默认 npm registry 指向的镜像站不支持 audit 接口；本次使用临时 `npm_config_registry=https://registry.npmjs.org/` 和本机代理重跑，未修改项目配置。
-- Trivy config scan
-  - 结果：HIGH/CRITICAL misconfiguration 输出为空。
-  - 说明：本次通过固定镜像 `aquasec/trivy:0.72.0` 执行 `--skip-check-update` 的 embedded checks，扫描交付范围内的 Kubernetes 清单和 Dockerfile。Trivy 对 Helm chart 的 schema 警告来自默认空 digest，不代表渲染产物未校验；渲染产物已由 `validate-manifests.sh` 覆盖。
+- Trivy filesystem scan
+  - 结果：通过，19 个 Maven/npm 依赖清单的 HIGH/CRITICAL 漏洞为 0，20 个 Helm、Kubernetes 和 Dockerfile 配置的 HIGH/CRITICAL 错误配置为 0，未发现敏感信息。
+  - 说明：固定使用 `aquasec/trivy:0.72.0` 和 `values.security-scan.yaml`。在线解析遇到 Maven Central 429 后，使用全量 Maven 测试已经填充的只读本机依赖缓存执行离线复扫；漏洞数据库仍为本次下载的最新数据库，不修改项目依赖或仓库配置。
 - Trivy image scan
   - 结果：此前 server/web 镜像 HIGH/CRITICAL 均为空。
-  - 说明：完整 filesystem scan 曾受 Maven Central 429 影响，未作为通过证据。
+  - 说明：生产 Actions 会对本次构建并推送的不可变镜像摘要再次执行 HIGH/CRITICAL 门禁，并保存 CycloneDX SBOM。
 
 ## 限制与后续生产验收
 

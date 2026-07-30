@@ -213,7 +213,7 @@ public class EntityDefinitionService {
         
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
-        normalizeFieldValidationRules(dto.getFields());
+        fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
         
         EntityDefinition entity = convertToEntity(dto);
         entity.setLifecycleMode(dto.getLifecycleMode() == null
@@ -457,7 +457,7 @@ public class EntityDefinitionService {
     public EntityDefinitionDTO update(String id, EntityDefinitionDTO dto) {
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
-        normalizeFieldValidationRules(dto.getFields());
+        fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
         
         EntityDefinition existing = entityMapper.selectById(id);
         if (existing == null) {
@@ -1205,23 +1205,6 @@ public class EntityDefinitionService {
         return StringUtils.isNotBlank(field.getValueStorage())
                 ? field.getValueStorage()
                 : "SCALAR";
-    }
-
-    private void normalizeFieldValidationRules(
-            List<EntityFieldDTO> fields) {
-        if (fields == null) {
-            return;
-        }
-        for (EntityFieldDTO field : fields) {
-            if (field == null) {
-                continue;
-            }
-            field.setValidateRules(
-                    fieldValidationRuleService.validateAndNormalize(
-                            field.getFieldType(),
-                            field.getValidateRules(),
-                            field.getFieldName()));
-        }
     }
 
     private EntityDefinition.LifecycleMode lifecycleMode(EntityDefinition entity) {

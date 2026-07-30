@@ -1,6 +1,9 @@
 package com.workflow.entity.version.api.web;
 
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.version.application.EntityRecordVersionService;
 import com.workflow.entity.version.application.model.EntityRecordVersionSummary;
 import lombok.RequiredArgsConstructor;
@@ -19,14 +22,17 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/entity-versions/records")
 @RequiredArgsConstructor
+@AuthenticatedApi(objectAuthorization = true)
 public class EntityRecordVersionController {
 
     private final EntityRecordVersionService service;
+    private final EntityActionCapabilityService actionCapabilityService;
 
     @GetMapping("/{entityCode}/{recordId}")
     public ApiResponse<List<EntityRecordVersionSummary>> list(
             @PathVariable String entityCode,
             @PathVariable String recordId) {
+        requireView(entityCode);
         return ApiResponse.success(
                 service.list(entityCode, recordId));
     }
@@ -36,6 +42,7 @@ public class EntityRecordVersionController {
             @PathVariable String entityCode,
             @PathVariable String recordId,
             @PathVariable Integer versionNo) {
+        requireView(entityCode);
         return ApiResponse.success(service.detail(
                 entityCode, recordId, versionNo));
     }
@@ -46,10 +53,17 @@ public class EntityRecordVersionController {
             @PathVariable String recordId,
             @RequestParam("from") Integer fromVersion,
             @RequestParam("to") Integer toVersion) {
+        requireView(entityCode);
         return ApiResponse.success(service.compare(
                 entityCode,
                 recordId,
                 fromVersion,
                 toVersion));
+    }
+
+    private void requireView(String entityCode) {
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                EntityPermissionAction.VIEW);
     }
 }

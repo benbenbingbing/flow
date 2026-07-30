@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
+import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
 import com.workflow.entity.ui.api.request.UiEventBindingSaveRequest;
 import com.workflow.entity.ui.application.UiEventBindingService;
@@ -23,6 +24,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/ui-event-bindings")
 @RequiredArgsConstructor
+@AuthenticatedApi(objectAuthorization = true)
 public class UiEventBindingController {
 
     private final UiEventBindingService bindingService;

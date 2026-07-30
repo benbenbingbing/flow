@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
+import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/ui-runtime/events")
 @RequiredArgsConstructor
+@AuthenticatedApi(objectAuthorization = true)
 public class UiEventRuntimeController {
 
     private final UiEventRuntimeService runtimeService;
