@@ -1,7 +1,7 @@
 # Flow 生产可观测性验收记录
 
 > 分支：`feature/production-observability`
-> 记录时间：2026-07-30 08:46 CST
+> 记录时间：2026-07-30 08:56 CST
 > 状态：实施中，未完成最终验收
 
 ## 已完成
@@ -45,6 +45,7 @@
 - `mvn -pl workflow-core,workflow-admin,workflow-open-api,workflow-app -am test -DskipITs`
   - 结果：通过
   - 覆盖：16 个 Maven 模块，641 个测试，1 个跳过
+  - 最近一次复跑时间：2026-07-30 08:55 CST
 - `mvn -pl workflow-admin -am -Dtest=AuditTraceFilterTest -Dsurefire.failIfNoSpecifiedTests=false test`
   - 结果：通过
 - `mvn -pl workflow-open-api -am -Dtest=OpenApiRequestGuardFilterTest -Dsurefire.failIfNoSpecifiedTests=false test`
@@ -56,6 +57,22 @@
     SkyWalking Helm 渲染和 kubeconform 校验
 - `git diff --check`
   - 结果：通过
+- `gitleaks git --config .gitleaks.toml --redact`
+  - 结果：通过
+  - 覆盖：222 个提交，约 64.49 MB 内容，未发现泄漏
+- `npm audit --audit-level=high`
+  - 结果：通过
+  - 覆盖：`workflow-web`
+- `npm test`
+  - 结果：通过
+  - 覆盖：前端单元、集成、功能、页面配置、UI 配置、术语和可维护性预算
+- `npm run build`
+  - 结果：通过
+  - 覆盖：前端 Vite 生产构建
+- 本地工具可用性：
+  - 已运行：`gitleaks`、`npm`、`mvn`
+  - 本机未安装：`trivy`、`syft`、`grype`、`shellcheck`、`actionlint`
+  - 对应严格检查仍需要通过 GitHub Actions 或安装固定版本工具后复跑
 - `docker build -t flow-hardening/server:observability-cf12824 workflow-server`
   - 结果：通过
   - 镜像：`flow-hardening/server:observability-cf12824`
@@ -130,7 +147,8 @@
 - Grafana 页面级人工验收截图。
 - 120 分钟稳定性观察。
 - SkyWalking 本地安装和故障隔离验证。
-- 依赖、镜像、Secret、Kubernetes 安全扫描的最终复跑和问题闭环。
+- 镜像漏洞、Kubernetes misconfig、ShellCheck 和 Actionlint 的最终复跑。
+  当前本机缺少 `trivy`、`shellcheck`、`actionlint`，仓库 Actions 已覆盖这些检查。
 
 ## 当前结论
 
