@@ -1,7 +1,7 @@
 # Flow 生产可观测性验收记录
 
 > 分支：`feature/production-observability`
-> 记录时间：2026-07-30 08:56 CST
+> 记录时间：2026-07-30 09:20 CST
 > 状态：实施中，未完成最终验收
 
 ## 已完成
@@ -87,6 +87,7 @@
     `monitoring.prometheusRule.enabled=false`
 - `deploy/observability/verify-lite-observability.sh`
   - 结果：通过
+  - 最近一次复跑时间：2026-07-30 09:20 CST
   - 覆盖：
     - Prometheus `up{job="flow-server"} == 1`
     - JVM 指标 `jvm_memory_used_bytes` 非零
@@ -105,6 +106,27 @@
     - 故障期间 `flow-server`、`flow-web`、`flow-schema-worker` 均 Available
     - `flow-web` 到 `flow-server /healthz` 请求成功
     - 组件恢复后业务请求仍成功
+- 业务 API 回归，访问入口：`http://127.0.0.1:18081/api`
+  - 结果：通过
+  - 账号：`admin`
+  - 密码：来自 `flow-hardening/flow-local-secrets` 的
+    `bootstrap-admin-password`，未写入验收记录或仓库文件。
+  - 覆盖接口：
+    - `POST /auth/login`：HTTP 200，业务码 200，返回管理员用户和 1 个角色。
+    - `GET /auth/current`：HTTP 200，业务码 200，当前用户为 `admin`。
+    - `GET /auth/permissions`：HTTP 200，业务码 200，返回 40 个权限码。
+    - `GET /system/menu/tree`：HTTP 200，业务码 200，返回 30 个菜单节点。
+    - `GET /entity?pageNum=1&pageSize=10`：HTTP 200，业务码 200，返回 10 条实体记录，
+      总数 10。
+    - `GET /process?pageNum=1&pageSize=10`：HTTP 200，业务码 200，当前本地数据为 0 条流程。
+    - `GET /system/user/page?pageNum=1&pageSize=10`：HTTP 200，业务码 200，返回 1 个用户。
+    - `GET /system/audit-logs?pageNum=1&pageSize=10`：HTTP 200，业务码 200，返回 10 条审计记录，
+      总数 60。
+- 内置浏览器未登录路由保护回归
+  - 结果：通过
+  - 覆盖：直接访问 `/home`、`/entity`、`/process`、`/system/user`、
+    `/system/audit-logs` 时，前端均回到 `/login`。
+  - 说明：未登录场景下控制台出现菜单和统计接口 401，符合路由保护预期，不作为业务页面通过证据。
 
 ## 本机 k3s 实测
 
@@ -127,7 +149,7 @@
 - `install-local-observability.sh` 已增加资源预检。默认节点内存超过 `55%` 或
   CPU 超过 `70%` 时拒绝安装，除非显式设置 `OBSERVABILITY_FORCE_INSTALL=true`。
 - 已安装本地轻量观测栈，节点内存约 `70%~71%` 时业务仍保持 Ready。
-- 轻量栈恢复后状态：
+- 轻量栈 2026-07-30 09:20 CST 状态：
   - `flow-local-flow-server`：`2/2`
   - `flow-local-flow-web`：`2/2`
   - `flow-local-flow-schema-worker`：`2/2`
@@ -143,7 +165,7 @@
 ## 未完成
 
 - 本机 k3s 完整观测栈稳定部署；当前以轻量栈完成核心能力验收。
-- 业务登录和核心前端流程重新验收。
+- 业务 API 登录和核心接口已经通过；内置浏览器登录后的核心页面覆盖仍需补齐。
 - Grafana 页面级人工验收截图。
 - 120 分钟稳定性观察。
 - SkyWalking 本地安装和故障隔离验证。
