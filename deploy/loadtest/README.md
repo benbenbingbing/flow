@@ -16,8 +16,10 @@
   Prometheus/Pod/磁盘/重启采集脚本联动。
 
 测试数据使用 `load_<run-id>_` 前缀。正常迭代会立即清理；进程异常中断时可
-使用 `cleanup.sh` 清理同一运行批次遗留的用户组和字典。逻辑删除数据、审计
-日志、流程历史和遥测数据按系统保留策略处理，不应直接执行数据库物理删除。
+使用 `cleanup.sh` 清理同一运行批次遗留的用户组和字典。在直接访问测试 k3s
+集群的场景，还可按文件上传幂等键精确发现遗留文件，并通过应用 API 删除。逻辑
+删除数据、审计日志、流程历史和遥测数据按系统保留策略处理，不应直接执行数据库
+物理删除。
 
 ## 准备凭据
 
@@ -161,8 +163,18 @@ LOADTEST_CONFIRM_CLEANUP=<run-id> \
 ```
 
 清理脚本只匹配 `load_<run-id>_` 前缀，不接受空值或其他字符，也不会执行数据库
-级删除。实体和文件通常在同一迭代的 `finally` 中删除；中断后仍需从结果日志、
-对象存储清单和实体列表核对遗留数据。
+级删除。启用过文件生命周期且清理主机可以访问目标 k3s 时，同时设置：
+
+```bash
+LOADTEST_CLEANUP_K8S_FILES=true
+FLOW_NAMESPACE=flow-hardening
+FLOW_MYSQL_STATEFULSET=local-mysql
+FLOW_MYSQL_DATABASE=workflow
+```
+
+文件发现只执行 `load-file-<run-id>-` 幂等键前缀的只读查询，实际删除仍通过带权限
+校验和审计的应用 API。实体和文件通常在同一迭代的 `finally` 中删除；中断后仍需
+从结果日志、数据库活跃记录和对象存储清单三方核对。
 
 完整执行与验收方案见
 [`docs/production-long-duration-load-test-plan.md`](../../docs/production-long-duration-load-test-plan.md)。
