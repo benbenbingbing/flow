@@ -5,23 +5,27 @@ global:
 server:
   image:
     repository: flow-hardening/server
-    tag: g5-final
+    tag: observability-local
     digest: ""
     pullPolicy: Never
   replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: "1"
+      cpu: 250m
       memory: 768Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
   pool:
     databaseMax: 5
     tomcatMaxThreads: 30
     applicationMaxThreads: 6
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 2
     maxReplicas: 2
     cpuUtilization: 70
@@ -34,15 +38,19 @@ web:
     digest: ""
     pullPolicy: Never
   replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   resources:
     requests:
-      cpu: 25m
-      memory: 48Mi
-    limits:
-      cpu: 250m
+      cpu: 100m
       memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 2
     maxReplicas: 4
     cpuUtilization: 70
@@ -52,10 +60,10 @@ schemaWorker:
   resources:
     requests:
       cpu: 25m
-      memory: 64Mi
+      memory: 128Mi
     limits:
       cpu: 250m
-      memory: 256Mi
+      memory: 512Mi
 
 database:
   url: jdbc:mysql://local-mysql:3306/workflow?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
@@ -69,11 +77,20 @@ storage:
   pathStyleAccess: true
 
 application:
-  corsAllowedOrigins: ""
+  corsAllowedOrigins: "http://127.0.0.1:18081,http://127.0.0.1:18083,http://127.0.0.1:3000,http://localhost:3000"
   trustForwardedHeaders: false
   httpAllowedHosts: ""
   logLevel: INFO
   shutdownTimeout: 30s
+  environment: local-k3s
+  version: observability-local
+
+observability:
+  tracing:
+    enabled: true
+    otlpEndpoint: http://flow-otel-collector.flow-observability.svc.cluster.local:4318/v1/traces
+    otlpTimeout: 2s
+    samplingProbability: "0.1"
 
 openApi:
   enabled: false
@@ -82,9 +99,11 @@ openApi:
 
 monitoring:
   serviceMonitor:
-    enabled: false
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 5s
   prometheusRule:
-    enabled: false
+    enabled: true
 
 ingress:
   enabled: false
@@ -95,7 +114,10 @@ networkPolicy:
   ingressNamespaceSelector:
     kubernetes.io/metadata.name: flow-hardening
   monitoringNamespaceSelector:
-    kubernetes.io/metadata.name: flow-hardening
+    kubernetes.io/metadata.name: flow-observability
+  observabilityNamespaceSelector:
+    kubernetes.io/metadata.name: flow-observability
+  observabilityCollectorCIDRs: []
   databaseCIDRs: []
   objectStorageCIDRs: []
   outboundHttpsCIDRs: []

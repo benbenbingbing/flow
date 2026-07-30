@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -183,6 +184,20 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleSQLException(SQLException e) {
         log.error("数据库异常: ", e);
         return ApiResponse.error("数据库操作失败，请稍后重试");
+    }
+
+    /**
+     * 客户端主动断开或异步响应流已不可写时，不再包装业务响应体。
+     *
+     * <p>典型场景是 Prometheus 或浏览器在服务端写出响应时取消请求。
+     * 这类异常不是服务端业务错误，若继续走通用异常处理会在已设置
+     * OpenMetrics 等 Content-Type 的响应上写入 JSON，造成额外 ERROR 噪声。</p>
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public ResponseEntity<Void> handleAsyncRequestNotUsableException(
+            AsyncRequestNotUsableException e) {
+        log.debug("客户端连接已断开或响应流不可写: {}", e.getMessage());
+        return ResponseEntity.noContent().build();
     }
 
     /**

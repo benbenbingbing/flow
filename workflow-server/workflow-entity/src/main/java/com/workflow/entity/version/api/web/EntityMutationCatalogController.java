@@ -2,6 +2,7 @@ package com.workflow.entity.version.api.web;
 
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.result.PageResult;
+import com.workflow.core.security.RequiresPermission;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetResolver;
 import com.workflow.contracts.entity.mutation.EntityMutationStepProvider;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -26,6 +27,7 @@ import java.util.Locale;
 @RestController
 @RequestMapping("/api/entity-versions/mutation-catalog")
 @RequiredArgsConstructor
+@RequiresPermission("entity:version:config:list")
 public class EntityMutationCatalogController {
 
     private final EntityMutationStepExecutor stepExecutor;

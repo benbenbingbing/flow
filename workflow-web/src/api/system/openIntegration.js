@@ -11,16 +11,16 @@ export const integrationApplicationApi = {
     return request.post('/integration-applications', data)
   },
   updateAccess(applicationId, data) {
-    return request.put(`${applicationPath(applicationId)}/access`, data)
+    return request.post(`${applicationPath(applicationId)}/access/update`, data)
   },
   updateStatus(applicationId, data) {
-    return request.patch(`${applicationPath(applicationId)}/status`, data)
+    return request.post(`${applicationPath(applicationId)}/status`, data)
   },
   listProcessContracts(applicationId) {
     return request.get(`${applicationPath(applicationId)}/process-contracts`)
   },
   updateProcessContracts(applicationId, data) {
-    return request.put(`${applicationPath(applicationId)}/process-contracts`, data)
+    return request.post(`${applicationPath(applicationId)}/process-contracts/update`, data)
   },
   rotateCredential(applicationId, data) {
     return request.post(`${applicationPath(applicationId)}/credentials/rotate`, data)
@@ -38,8 +38,8 @@ export const integrationWebhookApi = {
     return request.post(`${applicationPath(applicationId)}/webhooks`, data)
   },
   update(applicationId, endpointId, data) {
-    return request.put(
-      `${applicationPath(applicationId)}/webhooks/${encodeURIComponent(endpointId)}`,
+    return request.post(
+      `${applicationPath(applicationId)}/webhooks/${encodeURIComponent(endpointId)}/update`,
       data
     )
   },
@@ -85,8 +85,8 @@ export const integrationSecretApi = {
     )
   },
   destroy(applicationId, secretId) {
-    return request.delete(
-      `${applicationPath(applicationId)}/secrets/${encodeURIComponent(secretId)}`
+    return request.post(
+      `${applicationPath(applicationId)}/secrets/${encodeURIComponent(secretId)}/delete`
     )
   }
 }
@@ -99,8 +99,8 @@ export const integrationConnectorApi = {
     return request.post(`${applicationPath(applicationId)}/connectors`, data)
   },
   update(applicationId, configId, data) {
-    return request.put(
-      `${applicationPath(applicationId)}/connectors/${encodeURIComponent(configId)}`,
+    return request.post(
+      `${applicationPath(applicationId)}/connectors/${encodeURIComponent(configId)}/update`,
       data
     )
   },

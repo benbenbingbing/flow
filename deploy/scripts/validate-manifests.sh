@@ -141,6 +141,42 @@ helm template flow-monitoring "$repository_root/deploy/helm/flow" \
   $production_args \
   >"$temporary_directory/monitoring.yaml"
 
+helm template flow-observability-prometheus prometheus-community/kube-prometheus-stack \
+  --namespace flow-observability \
+  --version 87.21.0 \
+  --values "$repository_root/deploy/observability/kube-prometheus-stack-values.yaml" \
+  >"$temporary_directory/observability-prometheus.yaml"
+
+helm template flow-observability-loki grafana/loki \
+  --namespace flow-observability \
+  --version 7.2.0 \
+  --values "$repository_root/deploy/observability/loki-values.yaml" \
+  >"$temporary_directory/observability-loki.yaml"
+
+helm template flow-observability-promtail grafana/promtail \
+  --namespace flow-observability \
+  --version 6.17.1 \
+  --values "$repository_root/deploy/observability/promtail-values.yaml" \
+  >"$temporary_directory/observability-promtail.yaml"
+
+helm template flow-observability-tempo grafana/tempo \
+  --namespace flow-observability \
+  --version 1.24.4 \
+  --values "$repository_root/deploy/observability/tempo-values.yaml" \
+  >"$temporary_directory/observability-tempo.yaml"
+
+helm template flow-observability-otel open-telemetry/opentelemetry-collector \
+  --namespace flow-observability \
+  --version 0.165.0 \
+  --values "$repository_root/deploy/observability/otel-collector-values.yaml" \
+  >"$temporary_directory/observability-otel.yaml"
+
+helm template flow-observability-skywalking apache-skywalking/skywalking \
+  --namespace flow-observability \
+  --version 4.3.0 \
+  --values "$repository_root/deploy/observability/skywalking-values.yaml" \
+  >"$temporary_directory/observability-skywalking.yaml"
+
 network_policy_count=$(awk '
   /^kind: NetworkPolicy$/ { count++ }
   END { print count + 0 }
@@ -154,42 +190,133 @@ monitoring_kind_count=$(awk '
 [ "$monitoring_kind_count" -eq 2 ]
 
 kubeconform_image="ghcr.io/yannh/kubeconform@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c"
-docker run --rm --interactive "$kubeconform_image" \
+
+container_proxy_value() {
+  proxy_value="$1"
+  case "$proxy_value" in
+    http://127.0.0.1:*|http://localhost:*)
+      printf 'http://host.docker.internal:%s' "${proxy_value##*:}"
+      ;;
+    https://127.0.0.1:*|https://localhost:*)
+      printf 'https://host.docker.internal:%s' "${proxy_value##*:}"
+      ;;
+    *)
+      printf '%s' "$proxy_value"
+      ;;
+  esac
+}
+
+source_http_proxy="${HTTP_PROXY:-${http_proxy:-}}"
+source_https_proxy="${HTTPS_PROXY:-${https_proxy:-}}"
+source_no_proxy="${NO_PROXY:-${no_proxy:-}}"
+
+container_http_proxy="${VALIDATE_MANIFESTS_DOCKER_HTTP_PROXY:-$(container_proxy_value "$source_http_proxy")}"
+container_https_proxy="${VALIDATE_MANIFESTS_DOCKER_HTTPS_PROXY:-$(container_proxy_value "$source_https_proxy")}"
+container_no_proxy="${VALIDATE_MANIFESTS_DOCKER_NO_PROXY:-$source_no_proxy}"
+kubeconform_cache_directory="${KUBECONFORM_SCHEMA_CACHE:-${TMPDIR:-/tmp}/flow-kubeconform-schema-cache}"
+kubeconform_concurrency="${KUBECONFORM_CONCURRENCY:-1}"
+kubeconform_retries="${KUBECONFORM_RETRIES:-3}"
+kubeconform_binary="${KUBECONFORM_BIN:-}"
+if [ -z "$kubeconform_binary" ] && command -v kubeconform >/dev/null 2>&1; then
+  kubeconform_binary=$(command -v kubeconform)
+fi
+
+mkdir -p "$kubeconform_cache_directory"
+
+run_kubeconform_once() {
+  if [ -n "$kubeconform_binary" ]; then
+    "$kubeconform_binary" \
+      -cache "$kubeconform_cache_directory" \
+      -n "$kubeconform_concurrency" \
+      "$@"
+  else
+    docker run --rm --interactive \
+      --env "HTTP_PROXY=$container_http_proxy" \
+      --env "HTTPS_PROXY=$container_https_proxy" \
+      --env "NO_PROXY=$container_no_proxy" \
+      --env "http_proxy=$container_http_proxy" \
+      --env "https_proxy=$container_https_proxy" \
+      --env "no_proxy=$container_no_proxy" \
+      --volume "$kubeconform_cache_directory:/schema-cache" \
+      "$kubeconform_image" \
+      -cache /schema-cache \
+      -n "$kubeconform_concurrency" \
+      "$@"
+  fi
+}
+
+run_kubeconform_file() {
+  manifest_file="$1"
+  shift
+  attempt=1
+  while :; do
+    if run_kubeconform_once "$@" <"$manifest_file"; then
+      return 0
+    fi
+    if [ "$attempt" -ge "$kubeconform_retries" ]; then
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    printf 'kubeconform validation failed for %s, retrying attempt %s/%s\n' \
+      "$manifest_file" "$attempt" "$kubeconform_retries" >&2
+  done
+}
+
+run_kubeconform_file "$temporary_directory/production.yaml" \
   -kubernetes-version 1.32.0 \
   -strict \
-  -summary \
-  <"$temporary_directory/production.yaml"
+  -summary
 
-docker run --rm --interactive "$kubeconform_image" \
-  -kubernetes-version 1.32.0 \
-  -strict \
-  -summary \
-  <"$temporary_directory/local.yaml"
-
-docker run --rm --interactive "$kubeconform_image" \
-  -kubernetes-version 1.32.0 \
-  -strict \
-  -summary \
-  <"$temporary_directory/open-api.yaml"
-
-docker run --rm --interactive "$kubeconform_image" \
-  -kubernetes-version 1.32.0 \
-  -strict \
-  -summary \
-  <"$temporary_directory/webhook.yaml"
-
-docker run --rm --interactive "$kubeconform_image" \
-  -kubernetes-version 1.32.0 \
-  -strict \
-  -summary \
-  <"$temporary_directory/connector.yaml"
-
-docker run --rm --interactive "$kubeconform_image" \
+run_kubeconform_file "$temporary_directory/local.yaml" \
   -kubernetes-version 1.32.0 \
   -strict \
   -ignore-missing-schemas \
-  -summary \
-  <"$temporary_directory/monitoring.yaml"
+  -summary
+
+run_kubeconform_file "$temporary_directory/open-api.yaml" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary
+
+run_kubeconform_file "$temporary_directory/webhook.yaml" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary
+
+run_kubeconform_file "$temporary_directory/connector.yaml" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary
+
+run_kubeconform_file "$temporary_directory/monitoring.yaml" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -ignore-missing-schemas \
+  -summary
+
+for manifest in \
+  observability-prometheus.yaml \
+  observability-loki.yaml \
+  observability-promtail.yaml \
+  observability-tempo.yaml \
+  observability-otel.yaml \
+  observability-skywalking.yaml
+do
+  run_kubeconform_file "$temporary_directory/$manifest" \
+    -kubernetes-version 1.32.0 \
+    -strict \
+    -ignore-missing-schemas \
+    -summary
+done
+
+for lite_manifest in "$repository_root"/deploy/observability/lite/*.yaml
+do
+  run_kubeconform_file "$lite_manifest" \
+    -kubernetes-version 1.32.0 \
+    -strict \
+    -ignore-missing-schemas \
+    -summary
+done
 
 CONFIG_MIGRATION_SIGNING_KEY=test-signing-key \
 DB_PASSWORD=test-db-password \

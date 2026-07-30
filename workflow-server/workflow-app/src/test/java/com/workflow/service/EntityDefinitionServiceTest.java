@@ -8,6 +8,7 @@ import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldOptionService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
+import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.migration.MigrationAssetHandler;
@@ -86,6 +87,9 @@ public class EntityDefinitionServiceTest {
     private EntityPublishHistoryService publishHistoryService;
 
     @Mock
+    private EntitySchemaPublishLock schemaPublishLock;
+
+    @Mock
     private EntityFieldFileItemService fileItemService;
 
     @Mock
@@ -134,6 +138,8 @@ public class EntityDefinitionServiceTest {
         lenient().when(fieldValidationRuleService.validateAndNormalize(
                         any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
+        lenient().when(schemaPublishLock.tryAcquire(anyString()))
+                .thenReturn(true);
         lenient().when(processCatalogPort.findNamesByIds(anyCollection()))
                 .thenAnswer(invocation -> {
                     java.util.Collection<String> ids = invocation.getArgument(0);

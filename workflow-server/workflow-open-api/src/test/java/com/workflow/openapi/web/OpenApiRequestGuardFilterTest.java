@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.web.CorrelationContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +51,9 @@ class OpenApiRequestGuardFilterTest {
         assertEquals(
                 "trace-known-length",
                 response.getHeader(OpenRequestTrace.HEADER));
+        assertEquals(
+                "request-known-length",
+                response.getHeader(CorrelationContext.REQUEST_ID_HEADER));
         assertEquals(
                 "no-store",
                 response.getHeader("Cache-Control"));
@@ -99,6 +103,10 @@ class OpenApiRequestGuardFilterTest {
         request.addHeader(
                 OpenRequestTrace.HEADER,
                 "trace value with spaces");
+        request.removeHeader(CorrelationContext.REQUEST_ID_HEADER);
+        request.addHeader(
+                CorrelationContext.REQUEST_ID_HEADER,
+                "request-open-1");
         MockHttpServletResponse response =
                 new MockHttpServletResponse();
 
@@ -121,6 +129,9 @@ class OpenApiRequestGuardFilterTest {
         String traceId =
                 response.getHeader(OpenRequestTrace.HEADER);
         assertTrue(traceId.matches("[A-Za-z0-9._-]{1,64}"));
+        assertEquals(
+                "request-open-1",
+                response.getHeader(CorrelationContext.REQUEST_ID_HEADER));
         assertEquals(200, response.getStatus());
     }
 
@@ -133,6 +144,9 @@ class OpenApiRequestGuardFilterTest {
         request.addHeader(
                 OpenRequestTrace.HEADER,
                 "trace-known-length");
+        request.addHeader(
+                CorrelationContext.REQUEST_ID_HEADER,
+                "request-known-length");
         return request;
     }
 }

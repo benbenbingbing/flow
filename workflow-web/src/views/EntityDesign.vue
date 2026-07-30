@@ -958,6 +958,7 @@ import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.
 import SettingsSection from '@/components/SettingsSection.vue'
 import PageState from '@/components/PageState.vue'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { useEntityValidationRules } from '@/composables/useEntityValidationRules'
 import {
   ENTITY_FIELD_TYPES,
   WORKFLOW_SYSTEM_FIELD_CODES,
@@ -965,9 +966,6 @@ import {
   getEntityFieldTypeLabel,
   getEntityFieldTypeTag
 } from '@/shared/entity-design'
-import {
-  validateEntityValidationRules
-} from '@/shared/entity-validation-rules'
 
 const route = useRoute()
 const router = useRouter()
@@ -1156,21 +1154,8 @@ const isReference = computed(() => {
   return selectedField.value && ['REFERENCE', 'MULTI_REFERENCE'].includes(selectedField.value.fieldType)
 })
 
-const handleFieldTypeChange = (fieldType) => {
-  if (!selectedField.value?.validateRules) return
-
-  const result = validateEntityValidationRules(
-    fieldType,
-    selectedField.value.validateRules
-  )
-  if (result.valid) {
-    selectedField.value.validateRules = result.normalized
-    return
-  }
-
-  selectedField.value.validateRules = ''
-  ElMessage.info('字段类型已变化，原验证规则不再适用，已自动清空')
-}
+const { handleFieldTypeChange, validateFieldRules } =
+  useEntityValidationRules(selectedField)
 
 // 可选的实体列表（排除当前实体）
 const availableEntities = ref([])
@@ -1544,15 +1529,7 @@ const handleSave = async (options = {}) => {
       ElMessage.warning(`请选择关联实体：${field.fieldName}`)
       return false
     }
-    const validationResult = validateEntityValidationRules(
-      field.fieldType,
-      field.validateRules
-    )
-    if (!validationResult.valid) {
-      ElMessage.warning(`${field.fieldName}：${validationResult.error}`)
-      return false
-    }
-    field.validateRules = validationResult.normalized
+    if (!validateFieldRules(field)) return false
   }
 
   try {

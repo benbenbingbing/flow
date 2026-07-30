@@ -121,6 +121,8 @@ class ProductionArtifactSecurityTest {
                 "helm upgrade --install"));
         assertTrue(deploymentWorkflow.contains(
                 "--atomic"));
+        assertTrue(deploymentWorkflow.contains(
+                "test \"$GITHUB_REF\" = \"refs/heads/main\""));
         assertFalse(deploymentWorkflow.contains(
                 "docker compose"));
     }

@@ -23,7 +23,7 @@ class SchemaRequiredTablesTest {
     private static final String LEGACY_UPDATE_TIME =
             "updated" + "_at";
     private static final Path MIGRATION_DIRECTORY =
-            Path.of("src/main/resources/db/migration");
+            Path.of("../workflow-db-migrator/src/main/resources/db/migration");
     private static final Path BASELINE =
             MIGRATION_DIRECTORY.resolve("V001__business_schema.sql");
     private static final Path CURRENT_BASELINE_PATCH =
@@ -31,7 +31,7 @@ class SchemaRequiredTablesTest {
                     + "V001__current_baseline_patch.sql");
 
     @Test
-    void flywayUsesOneFreshInstallBaseline() throws Exception {
+    void flywayUsesOrderedMigrationSeries() throws Exception {
         List<String> files;
         try (var paths = Files.list(MIGRATION_DIRECTORY)) {
             files = paths
@@ -41,7 +41,13 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(List.of("V001__business_schema.sql"), files);
+        assertEquals(17, files.size());
+        for (int index = 0; index < files.size(); index++) {
+            assertTrue(
+                    files.get(index).startsWith(
+                            "V" + String.format("%03d", index + 1) + "__"),
+                    "migration version is missing or out of order: " + files);
+        }
 
         String applicationYaml = Files.readString(
                 Path.of("src/main/resources/application.yml"));

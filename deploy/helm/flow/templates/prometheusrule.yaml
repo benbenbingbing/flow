@@ -14,7 +14,9 @@ spec:
       rules:
         - alert: FlowReadyReplicaShortage
           expr: |
-            sum(up{service="{{ include "flow.fullname" . }}-server"} == 1)
+            kube_deployment_status_replicas_available{
+              namespace="{{ .Release.Namespace }}",
+              deployment="{{ include "flow.fullname" . }}-server"}
               < {{ .Values.monitoring.prometheusRule.minimumReadyReplicas }}
           for: 5m
           labels:
@@ -26,10 +28,13 @@ spec:
           expr: |
             (
               sum(rate(http_server_requests_seconds_count{
-                application="workflow-server",status=~"5.."}[5m]))
+                application="workflow-server",status=~"5..",
+                uri!~"/actuator/.*|/healthz|/livez"}[5m]))
               /
               clamp_min(sum(rate(http_server_requests_seconds_count{
-                application="workflow-server"}[5m])), 1)
+                application="workflow-server",
+                status!~"4..",
+                uri!~"/actuator/.*|/healthz|/livez"}[5m])), 1)
             ) > {{ .Values.monitoring.prometheusRule.http5xxRatio }}
           for: 10m
           labels:
@@ -70,6 +75,17 @@ spec:
           annotations:
             summary: Flow requests are waiting for database connections
             runbook_url: deploy/runbooks/incident-response.md#database
+        - alert: FlowMetricsScrapeMissing
+          expr: |
+            absent(up{
+              namespace="{{ .Release.Namespace }}",
+              service="{{ include "flow.fullname" . }}-server"} == 1)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Prometheus is not scraping Flow server metrics
+            runbook_url: deploy/runbooks/incident-response.md#metrics-missing
     - name: {{ include "flow.fullname" . }}.webhook
       rules:
         - alert: FlowWebhookDeadLetters

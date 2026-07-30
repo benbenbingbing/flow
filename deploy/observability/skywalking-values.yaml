@@ -1,0 +1,33 @@
+elasticsearch:
+  replicas: 1
+  minimumMasterNodes: 1
+  volumeClaimTemplate:
+    resources:
+      requests:
+        storage: 8Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+oap:
+  replicas: 1
+  storageType: elasticsearch
+  image:
+    tag: "10.2.0"
+  javaOpts: -Xmx768m -Xms768m
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1024Mi
+
+ui:
+  replicas: 1
+  image:
+    tag: "10.2.0"

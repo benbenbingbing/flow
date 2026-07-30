@@ -9,6 +9,7 @@ import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStat
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import org.flowable.engine.RuntimeService;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
@@ -50,6 +51,8 @@ class EntityStatusUpdateListenerTest {
         EntityMutationPort mutationPort = mock(EntityMutationPort.class);
         EntityFlowStatusMappingMapper statusMapper = mock(EntityFlowStatusMappingMapper.class);
         ProcessDefinitionConfigMapper processMapper = mock(ProcessDefinitionConfigMapper.class);
+        ProcessStatusSyncPublisher statusSyncPublisher =
+                mock(ProcessStatusSyncPublisher.class);
         ProcessInstanceQuery processQuery = mock(ProcessInstanceQuery.class);
         ProcessInstance processInstance = mock(ProcessInstance.class);
         TaskEntity task = mock(TaskEntity.class);
@@ -74,7 +77,11 @@ class EntityStatusUpdateListenerTest {
                 .thenReturn(List.of(mapping));
 
         EntityStatusUpdateListener listener = new EntityStatusUpdateListener(
-                runtimeService, mutationPort, statusMapper, processMapper);
+                runtimeService,
+                mutationPort,
+                statusMapper,
+                processMapper,
+                statusSyncPublisher);
         FlowableEntityEventImpl event = mock(FlowableEntityEventImpl.class);
         when(event.getType()).thenReturn(FlowableEngineEventType.TASK_COMPLETED);
         when(event.getEntity()).thenReturn(task);
@@ -106,11 +113,17 @@ class EntityStatusUpdateListenerTest {
         EntityMutationPort mutationPort = mock(EntityMutationPort.class);
         EntityFlowStatusMappingMapper statusMapper = mock(EntityFlowStatusMappingMapper.class);
         ProcessDefinitionConfigMapper processMapper = mock(ProcessDefinitionConfigMapper.class);
+        ProcessStatusSyncPublisher statusSyncPublisher =
+                mock(ProcessStatusSyncPublisher.class);
         FlowableEntityEventImpl event = mock(FlowableEntityEventImpl.class);
         when(event.getType()).thenReturn(FlowableEngineEventType.TASK_CREATED);
 
         EntityStatusUpdateListener listener = new EntityStatusUpdateListener(
-                runtimeService, mutationPort, statusMapper, processMapper);
+                runtimeService,
+                mutationPort,
+                statusMapper,
+                processMapper,
+                statusSyncPublisher);
 
         listener.onEvent(event);
 
@@ -118,6 +131,7 @@ class EntityStatusUpdateListenerTest {
                 runtimeService,
                 mutationPort,
                 statusMapper,
-                processMapper);
+                processMapper,
+                statusSyncPublisher);
     }
 }
