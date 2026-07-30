@@ -21,6 +21,7 @@
     "test:real-ui-config": "node scripts/real-ui-config-release.mjs",
     "test:real-file-upload": "node scripts/real-file-upload.mjs",
     "test:visual:real": "node scripts/visual-acceptance-real.mjs",
+    "test:observability-ui:real": "node scripts/observability-core-ui-real.mjs",
     "test:workflow:real": "node scripts/e2e-real-workflow.mjs",
     "test:workflow:config-real": "node scripts/real-workflow-config-closure.mjs",
     "test:workflow:node-forms-real": "node scripts/real-workflow-node-forms.mjs",

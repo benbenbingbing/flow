@@ -1,7 +1,7 @@
 # Flow 生产可观测性验收记录
 
 > 分支：`feature/production-observability`
-> 记录时间：2026-07-30 09:31 CST
+> 记录时间：2026-07-30 09:45 CST
 > 状态：实施中，未完成最终验收
 
 ## 已完成
@@ -133,6 +133,15 @@
   - 覆盖：直接访问 `/home`、`/entity`、`/process`、`/system/user`、
     `/system/audit-logs` 时，前端均回到 `/login`。
   - 说明：未登录场景下控制台出现菜单和统计接口 401，符合路由保护预期，不作为业务页面通过证据。
+- `TEST_USERNAME=admin TEST_PASSWORD=<来自 k8s Secret>
+  WORKFLOW_WEB_BASE=http://127.0.0.1:18081
+  WORKFLOW_UI_RESULT_DIR="$PWD/.codex-artifacts/production-observability/ui"
+  npm --prefix workflow-web run test:observability-ui:real`
+  - 结果：通过
+  - 覆盖：真实登录页提交管理员账号和一次性读取的 bootstrap 密码，不写入 token 或密码。
+  - 页面：`/home`、`/entity`、`/process`、`/system/user`、`/system/audit-logs`。
+  - 断言：页面 URL 与预期一致，核心文案存在，无 Element Plus 错误消息。
+  - 截图：生成到 `.codex-artifacts/production-observability/ui/*.png`，该目录被 git 忽略。
 - Grafana API 与仪表盘查询回归，访问入口：`http://127.0.0.1:13000`
   - 结果：通过
   - 凭据：来自 `flow-observability/flow-grafana-admin` Secret，未写入验收记录或仓库文件。
@@ -189,7 +198,7 @@
 ## 未完成
 
 - 本机 k3s 完整观测栈稳定部署；当前以轻量栈完成核心能力验收。
-- 业务 API 登录和核心接口已经通过；内置浏览器登录后的核心页面覆盖仍需补齐。
+- 业务 API 登录、核心接口和登录后的核心页面覆盖已经通过；仍需更完整业务流程专项验收。
 - Grafana API、datasource 和 dashboard 查询已通过；页面级截图仍需补齐。
 - 120 分钟稳定性观察。
 - SkyWalking 本地安装和故障隔离验证。
@@ -202,4 +211,5 @@
 Grafana 和 OTel Collector 任一组件单独不可用时，业务 Deployment 和健康请求不受影响。
 
 完整 kube-prometheus-stack、SkyWalking 等生产级重型组件仍不适合当前本机 k3s 资源余量。
-后续要完成最终 Goal，还需要补齐业务登录/核心流程、最终安全扫描和至少 120 分钟稳定性观察。
+后续要完成最终 Goal，还需要补齐最终安全扫描、Grafana 页面截图、SkyWalking 取舍证据和至少
+120 分钟稳定性观察。
