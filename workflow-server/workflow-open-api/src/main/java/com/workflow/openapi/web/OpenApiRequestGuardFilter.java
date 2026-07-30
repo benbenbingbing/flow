@@ -1,6 +1,7 @@
 package com.workflow.openapi.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.web.CorrelationContext;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
@@ -13,16 +14,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class OpenApiRequestGuardFilter extends OncePerRequestFilter {
 
     public static final int MAX_BODY_BYTES = 1_048_576;
-    private static final Pattern TRACE_ID = Pattern.compile(
-            "[A-Za-z0-9._-]{1,64}");
 
     private final ObjectMapper objectMapper;
 
@@ -36,13 +33,10 @@ public class OpenApiRequestGuardFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain)
             throws ServletException, IOException {
-        String supplied = request.getHeader(OpenRequestTrace.HEADER);
-        String traceId = supplied != null
-                && TRACE_ID.matcher(supplied).matches()
-                ? supplied
-                : UUID.randomUUID().toString().replace("-", "");
-        request.setAttribute(OpenRequestTrace.ATTRIBUTE, traceId);
+        String traceId = CorrelationContext.businessTraceId(request);
+        String requestId = CorrelationContext.requestId(request);
         response.setHeader(OpenRequestTrace.HEADER, traceId);
+        response.setHeader(CorrelationContext.REQUEST_ID_HEADER, requestId);
         response.setHeader(
                 HttpHeaders.CACHE_CONTROL,
                 "no-store");

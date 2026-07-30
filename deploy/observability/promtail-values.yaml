@@ -1,0 +1,40 @@
+config:
+  logLevel: info
+  clients:
+    - url: http://flow-loki-gateway.flow-observability.svc.cluster.local/loki/api/v1/push
+      backoff_config:
+        min_period: 500ms
+        max_period: 5s
+        max_retries: 5
+      timeout: 2s
+  snippets:
+    pipelineStages:
+      - cri: {}
+      - json:
+          expressions:
+            level: log.level
+            message: message
+            request_id: request_id
+            trace_id: trace.id
+            span_id: span.id
+            business_trace_id: business_trace_id
+            service_name: service.name
+      - labels:
+          level:
+          service_name:
+    extraRelabelConfigs:
+      - source_labels:
+          - __meta_kubernetes_namespace
+        regex: flow-hardening
+        action: keep
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 48Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+serviceMonitor:
+  enabled: true

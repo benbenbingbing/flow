@@ -74,6 +74,15 @@ application:
   httpAllowedHosts: ""
   logLevel: INFO
   shutdownTimeout: 30s
+  environment: local-k3s
+  version: local
+
+observability:
+  tracing:
+    enabled: true
+    otlpEndpoint: http://flow-otel-collector.flow-observability.svc.cluster.local:4318/v1/traces
+    otlpTimeout: 500ms
+    samplingProbability: "1.0"
 
 openApi:
   enabled: false
@@ -82,9 +91,11 @@ openApi:
 
 monitoring:
   serviceMonitor:
-    enabled: false
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 5s
   prometheusRule:
-    enabled: false
+    enabled: true
 
 ingress:
   enabled: false

@@ -119,9 +119,22 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+      service: ${spring.application.name}
+      environment: ${WORKFLOW_ENVIRONMENT:local}
+      version: ${WORKFLOW_VERSION:${BUILD_VERSION:dev}}
     distribution:
       percentiles-histogram:
-        http.server.requests: true
+        http.server.requests: false
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2s,5s
+  tracing:
+    enabled: ${OTEL_TRACES_ENABLED:false}
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLER_PROBABILITY:0.05}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://flow-otel-collector:4318/v1/traces}
+      timeout: ${OTEL_EXPORTER_OTLP_TIMEOUT:500ms}
 
 # 日志配置
 logging:

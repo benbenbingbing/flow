@@ -141,6 +141,42 @@ helm template flow-monitoring "$repository_root/deploy/helm/flow" \
   $production_args \
   >"$temporary_directory/monitoring.yaml"
 
+helm template flow-observability-prometheus prometheus-community/kube-prometheus-stack \
+  --namespace flow-observability \
+  --version 87.21.0 \
+  --values "$repository_root/deploy/observability/kube-prometheus-stack-values.yaml" \
+  >"$temporary_directory/observability-prometheus.yaml"
+
+helm template flow-observability-loki grafana/loki \
+  --namespace flow-observability \
+  --version 7.2.0 \
+  --values "$repository_root/deploy/observability/loki-values.yaml" \
+  >"$temporary_directory/observability-loki.yaml"
+
+helm template flow-observability-promtail grafana/promtail \
+  --namespace flow-observability \
+  --version 6.17.1 \
+  --values "$repository_root/deploy/observability/promtail-values.yaml" \
+  >"$temporary_directory/observability-promtail.yaml"
+
+helm template flow-observability-tempo grafana/tempo \
+  --namespace flow-observability \
+  --version 1.24.4 \
+  --values "$repository_root/deploy/observability/tempo-values.yaml" \
+  >"$temporary_directory/observability-tempo.yaml"
+
+helm template flow-observability-otel open-telemetry/opentelemetry-collector \
+  --namespace flow-observability \
+  --version 0.165.0 \
+  --values "$repository_root/deploy/observability/otel-collector-values.yaml" \
+  >"$temporary_directory/observability-otel.yaml"
+
+helm template flow-observability-skywalking apache-skywalking/skywalking \
+  --namespace flow-observability \
+  --version 4.3.0 \
+  --values "$repository_root/deploy/observability/skywalking-values.yaml" \
+  >"$temporary_directory/observability-skywalking.yaml"
+
 network_policy_count=$(awk '
   /^kind: NetworkPolicy$/ { count++ }
   END { print count + 0 }
@@ -163,6 +199,7 @@ docker run --rm --interactive "$kubeconform_image" \
 docker run --rm --interactive "$kubeconform_image" \
   -kubernetes-version 1.32.0 \
   -strict \
+  -ignore-missing-schemas \
   -summary \
   <"$temporary_directory/local.yaml"
 
@@ -190,6 +227,22 @@ docker run --rm --interactive "$kubeconform_image" \
   -ignore-missing-schemas \
   -summary \
   <"$temporary_directory/monitoring.yaml"
+
+for manifest in \
+  observability-prometheus.yaml \
+  observability-loki.yaml \
+  observability-promtail.yaml \
+  observability-tempo.yaml \
+  observability-otel.yaml \
+  observability-skywalking.yaml
+do
+  docker run --rm --interactive "$kubeconform_image" \
+    -kubernetes-version 1.32.0 \
+    -strict \
+    -ignore-missing-schemas \
+    -summary \
+    <"$temporary_directory/$manifest"
+done
 
 CONFIG_MIGRATION_SIGNING_KEY=test-signing-key \
 DB_PASSWORD=test-db-password \

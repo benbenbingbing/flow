@@ -81,6 +81,15 @@ application:
   httpAllowedHosts: ""
   logLevel: INFO
   shutdownTimeout: 30s
+  environment: production
+  version: "1.0.0"
+
+observability:
+  tracing:
+    enabled: false
+    otlpEndpoint: http://flow-otel-collector:4318/v1/traces
+    otlpTimeout: 500ms
+    samplingProbability: "0.05"
 
 openApi:
   enabled: false

@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flow-observability-dashboard
+  namespace: flow-observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  flow-observability.json: |
+    {
+      "uid": "flow-observability",
+      "title": "Flow 生产可观测性",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "tags": ["flow", "production"],
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "业务 HTTP RPS",
+          "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(rate(http_server_requests_seconds_count{application=\"workflow-server\",uri!~\"/actuator/.*|/healthz|/livez\"}[5m]))"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "业务 HTTP P95",
+          "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"workflow-server\",uri!~\"/actuator/.*|/healthz|/livez\"}[5m])) by (le))"
+            }
+          ]
+        },
+        {
+          "type": "logs",
+          "title": "Flow 结构化日志",
+          "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+          "targets": [
+            {
+              "datasource": {"type": "loki", "uid": "loki"},
+              "expr": "{namespace=\"flow-hardening\", app=\"flow\"} | json"
+            }
+          ]
+        },
+        {
+          "type": "traces",
+          "title": "Tempo Trace 查询",
+          "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+          "targets": [
+            {
+              "datasource": {"type": "tempo", "uid": "tempo"},
+              "query": "{resource.service.name=\"workflow-server\"}"
+            }
+          ]
+        }
+      ]
+    }
