@@ -241,6 +241,48 @@ disk_sample_json() {
     "$size" "$used" "$available" "$(json_escape "$capacity")"
 }
 
+statefulset_pvc_disk_sample_json() {
+  target_namespace=$1
+  statefulset=$2
+  container=$3
+  mount_path=$4
+  pod_json=$(kubectl -n "$target_namespace" get pod "$statefulset-0" -o json 2>/dev/null || true)
+  pvc_name=$(printf '%s' "$pod_json" | jq -r \
+    --arg container "$container" --arg mount "$mount_path" '
+      (.spec.containers[]? | select(.name == $container)
+        | .volumeMounts[]? | select(.mountPath == $mount) | .name) as $volume
+      | .spec.volumes[]?
+      | select(.name == $volume)
+      | .persistentVolumeClaim.claimName // empty
+    ' | head -n 1)
+
+  if [ -z "$pvc_name" ]; then
+    printf '{"available":false,"mount":"%s","pvc":null,"size_kib":null,"used_kib":null,"available_kib":null,"capacity":null}' \
+      "$(json_escape "$mount_path")"
+    return
+  fi
+
+  selector='namespace="'"$target_namespace"'",persistentvolumeclaim="'"$pvc_name"'"'
+  size_bytes=$(prometheus_query_value "kubelet_volume_stats_capacity_bytes{$selector}")
+  used_bytes=$(prometheus_query_value "kubelet_volume_stats_used_bytes{$selector}")
+  available_bytes=$(prometheus_query_value "kubelet_volume_stats_available_bytes{$selector}")
+
+  if ! awk -v size="$size_bytes" -v used="$used_bytes" -v available="$available_bytes" \
+    'BEGIN { exit !(size ~ /^[0-9]+([.][0-9]+)?$/ && size > 0 && used ~ /^[0-9]+([.][0-9]+)?$/ && available ~ /^[0-9]+([.][0-9]+)?$/) }'; then
+    printf '{"available":false,"mount":"%s","pvc":"%s","size_kib":null,"used_kib":null,"available_kib":null,"capacity":null}' \
+      "$(json_escape "$mount_path")" "$(json_escape "$pvc_name")"
+    return
+  fi
+
+  size_kib=$(awk -v value="$size_bytes" 'BEGIN { printf "%.0f", value / 1024 }')
+  used_kib=$(awk -v value="$used_bytes" 'BEGIN { printf "%.0f", value / 1024 }')
+  available_kib=$(awk -v value="$available_bytes" 'BEGIN { printf "%.0f", value / 1024 }')
+  capacity=$(awk -v used="$used_bytes" -v size="$size_bytes" 'BEGIN { printf "%.0f%%", used * 100 / size }')
+  printf '{"available":true,"filesystem":"persistentvolumeclaim/%s","mount":"%s","pvc":"%s","size_kib":%s,"used_kib":%s,"available_kib":%s,"capacity":"%s"}' \
+    "$(json_escape "$pvc_name")" "$(json_escape "$mount_path")" "$(json_escape "$pvc_name")" \
+    "$size_kib" "$used_kib" "$available_kib" "$(json_escape "$capacity")"
+}
+
 record_sample() {
   sampled_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
   health=$(business_health_request)
@@ -302,7 +344,8 @@ record_sample() {
   server_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-server" /tmp)
   web_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-web" /tmp)
   worker_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-schema-worker" /tmp)
-  prometheus_disk=$(disk_sample_json "$namespace" statefulset/prometheus-flow-monitoring-prometheus /prometheus)
+  prometheus_disk=$(statefulset_pvc_disk_sample_json \
+    "$namespace" prometheus-flow-monitoring-prometheus prometheus /prometheus)
   tempo_disk=$(disk_sample_json "$namespace" statefulset/flow-tempo /var/tempo)
   grafana_disk=$(disk_sample_json "$namespace" deployment/flow-monitoring-grafana /var/lib/grafana)
 
