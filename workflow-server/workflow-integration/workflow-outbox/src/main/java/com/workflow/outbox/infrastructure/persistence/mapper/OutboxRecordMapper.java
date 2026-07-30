@@ -12,28 +12,30 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 通用 Outbox 的就绪查询、乐观认领和维护操作。
+ * 通用 Outbox 的批量认领和维护操作。
  */
 @Mapper
 public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
-
-    @Select("SELECT * FROM workflow_outbox_event "
-            + "WHERE status IN ('PENDING','FAILED') "
-            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6)) "
-            + "ORDER BY create_time LIMIT #{limit}")
-    List<OutboxRecord> findReady(@Param("limit") int limit);
 
     @Update("UPDATE workflow_outbox_event "
             + "SET status = 'PROCESSING', owner_id = #{ownerId}, "
             + "lease_token = lease_token + 1, "
             + "lease_until = TIMESTAMPADD(SECOND, #{leaseSeconds}, UTC_TIMESTAMP(6)), "
             + "update_time = UTC_TIMESTAMP(6) "
-            + "WHERE id = #{id} AND status IN ('PENDING','FAILED') "
-            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6))")
-    int claim(
-            @Param("id") String id,
+            + "WHERE status IN ('PENDING','FAILED') "
+            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6)) "
+            + "ORDER BY create_time, id LIMIT #{limit}")
+    int claimBatch(
             @Param("ownerId") String ownerId,
-            @Param("leaseSeconds") int leaseSeconds);
+            @Param("leaseSeconds") int leaseSeconds,
+            @Param("limit") int limit);
+
+    @Select("SELECT * FROM workflow_outbox_event "
+            + "WHERE status = 'PROCESSING' AND owner_id = #{ownerId} "
+            + "AND lease_until > UTC_TIMESTAMP(6) "
+            + "ORDER BY create_time, id")
+    List<OutboxRecord> selectClaimedBatch(
+            @Param("ownerId") String ownerId);
 
     @Select("SELECT * FROM workflow_outbox_event "
             + "WHERE id = #{id} AND status = 'PROCESSING' "
