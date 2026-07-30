@@ -39,13 +39,13 @@ oap:
       memory: 1Gi
     limits:
       cpu: "2"
-      memory: 1536Mi
+      memory: 2560Mi
 
 ui:
   resources:
     requests:
       cpu: 25m
-      memory: 96Mi
+      memory: 128Mi
     limits:
       cpu: 250m
-      memory: 256Mi
+      memory: 512Mi

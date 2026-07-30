@@ -3,6 +3,54 @@ fullnameOverride: flow-monitoring
 defaultRules:
   create: true
 
+additionalPrometheusRulesMap:
+  flow-resource-capacity:
+    groups:
+      - name: flow.resource-capacity
+        rules:
+          - alert: FlowContainerMemoryLimitHigh
+            expr: |
+              max by (namespace, pod, container) (
+                container_memory_working_set_bytes{
+                  namespace=~"flow-hardening|flow-observability",
+                  container!="",
+                  image!=""
+                }
+                / on (namespace, pod, container)
+                kube_pod_container_resource_limits{
+                  namespace=~"flow-hardening|flow-observability",
+                  resource="memory",
+                  unit="byte"
+                }
+              ) > 0.90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "容器内存使用率持续超过限额的 90%"
+              description: "{{ $labels.namespace }}/{{ $labels.pod }} 容器 {{ $labels.container }} 的内存工作集已达到限额的 {{ $value | humanizePercentage }}。"
+          - alert: FlowContainerMemoryLimitCritical
+            expr: |
+              max by (namespace, pod, container) (
+                container_memory_working_set_bytes{
+                  namespace=~"flow-hardening|flow-observability",
+                  container!="",
+                  image!=""
+                }
+                / on (namespace, pod, container)
+                kube_pod_container_resource_limits{
+                  namespace=~"flow-hardening|flow-observability",
+                  resource="memory",
+                  unit="byte"
+                }
+              ) > 0.97
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "容器内存使用率接近限额"
+              description: "{{ $labels.namespace }}/{{ $labels.pod }} 容器 {{ $labels.container }} 的内存工作集已达到限额的 {{ $value | humanizePercentage }}，存在 OOM 风险。"
+
 alertmanager:
   enabled: false
   alertmanagerSpec:

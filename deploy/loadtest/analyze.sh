@@ -50,6 +50,14 @@ if [ -s "$observation_file" ]; then
     worker_restart_delta: ((.[-1].business.schema_worker_restarts // 0) - (.[0].business.schema_worker_restarts // 0)),
     mysql_restart_delta: ((.[-1].business.mysql_restarts // 0) - (.[0].business.mysql_restarts // 0)),
     peak_jvm_memory_bytes: ([.[].prometheus.jvm_memory_used_bytes | tonumber?] | max // null),
+    max_memory_limit_ratio: ([.[].resources.max_memory_limit_ratio | tonumber?] | min // null),
+    peak_flow_memory_limit_ratio: ([.[].resources.flow_memory_limit_ratio | tonumber?] | max // null),
+    peak_observability_memory_limit_ratio: ([.[].resources.observability_memory_limit_ratio | tonumber?] | max // null),
+    resource_metrics_available_samples: ([.[] | select(
+      (.resources.max_memory_limit_ratio | tonumber?) != null
+      and (.resources.flow_memory_limit_ratio | tonumber?) != null
+      and (.resources.observability_memory_limit_ratio | tonumber?) != null
+    )] | length),
     peak_otel_queue_size: ([.[].telemetry.otel_exporter_queue_size | tonumber?] | max // null),
     trace_receiver_failed_delta: ((.[-1].telemetry.otel_receiver_failed_spans // 0 | tonumber) - (.[0].telemetry.otel_receiver_failed_spans // 0 | tonumber))
   }' "$observation_file")
@@ -75,6 +83,9 @@ if ! jq -e '
   and (.observation.web_restart_delta == null or .observation.web_restart_delta == 0)
   and (.observation.worker_restart_delta == null or .observation.worker_restart_delta == 0)
   and (.observation.mysql_restart_delta == null or .observation.mysql_restart_delta == 0)
+  and (.observation.samples == 0 or .observation.resource_metrics_available_samples == .observation.samples)
+  and (.observation.samples == 0 or .observation.peak_flow_memory_limit_ratio <= .observation.max_memory_limit_ratio)
+  and (.observation.samples == 0 or .observation.peak_observability_memory_limit_ratio <= .observation.max_memory_limit_ratio)
 ' "$report_file" >/dev/null; then
   printf 'load-test acceptance failed: %s\n' "$report_file" >&2
   exit 1

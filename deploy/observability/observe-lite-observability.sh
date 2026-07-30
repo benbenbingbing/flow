@@ -13,6 +13,7 @@ port_forward_address=${OBSERVABILITY_PORT_FORWARD_ADDRESS:-127.0.0.1}
 result_file=${OBSERVABILITY_OBSERVE_RESULT_FILE:-/tmp/flow-observability-stability.jsonl}
 temporary_directory=$(mktemp -d)
 kubectl_request_timeout=${KUBECTL_REQUEST_TIMEOUT:-30s}
+max_memory_limit_ratio=${OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO:-0.90}
 
 cleanup() {
   trap - EXIT HUP INT TERM
@@ -237,6 +238,8 @@ record_sample() {
   prometheus_scrape_failures=$(prometheus_query_value 'sum(prometheus_target_sync_failed_total) or vector(0)')
   prometheus_exemplar_capacity=$(prometheus_query_value 'prometheus_tsdb_exemplar_max_exemplars')
   prometheus_exemplar_storage=$(prometheus_query_value 'prometheus_tsdb_exemplar_exemplars_in_storage')
+  flow_memory_limit_ratio=$(prometheus_query_value 'max(container_memory_working_set_bytes{namespace="'"$flow_namespace"'",container!="",image!=""} / on(namespace,pod,container) kube_pod_container_resource_limits{namespace="'"$flow_namespace"'",resource="memory",unit="byte"})')
+  observability_memory_limit_ratio=$(prometheus_query_value 'max(container_memory_working_set_bytes{namespace="'"$namespace"'",container!="",image!=""} / on(namespace,pod,container) kube_pod_container_resource_limits{namespace="'"$namespace"'",resource="memory",unit="byte"})')
 
   server_restarts=$(deployment_restarts "$flow_namespace" "$flow_release-flow-server")
   web_restarts=$(deployment_restarts "$flow_namespace" "$flow_release-flow-web")
@@ -257,7 +260,7 @@ record_sample() {
   tempo_disk=$(disk_sample_json "$namespace" statefulset/flow-tempo /var/tempo)
   grafana_disk=$(disk_sample_json "$namespace" deployment/flow-monitoring-grafana /var/lib/grafana)
 
-  printf '{"sampled_at":"%s","business":{"health_ok":%s,"health_seconds":%s,"server_available":%s,"web_available":%s,"schema_worker_available":%s,"mysql_available":%s,"server_restarts":%s,"web_restarts":%s,"schema_worker_restarts":%s,"mysql_restarts":%s},"observability":{"prometheus_available":%s,"loki_available":%s,"tempo_available":%s,"otel_collector_available":%s,"grafana_available":%s,"prometheus_restarts":%s,"loki_restarts":%s,"tempo_restarts":%s,"otel_collector_restarts":%s,"grafana_restarts":%s},"prometheus":{"flow_up":%s,"request_total_5m":%s,"request_errors_5m":%s,"request_p50_seconds":%s,"request_p95_seconds":%s,"request_p99_seconds":%s,"jvm_memory_used_bytes":%s,"exemplar_max_exemplars":%s,"exemplar_exemplars_in_storage":%s},"telemetry":{"otel_exporter_queue_size":%s,"otel_exporter_queue_capacity":%s,"otel_receiver_failed_spans":%s,"otel_receiver_refused_spans":%s,"otel_exporter_sent_spans":%s,"prometheus_rule_evaluation_failures_total":%s,"prometheus_target_sync_failed_total":%s},"resources":{"flow_pods":%s,"observability_pods":%s,"disk":{"server":%s,"web":%s,"schema_worker":%s,"prometheus":%s,"tempo":%s,"grafana":%s}}}\n' \
+  printf '{"sampled_at":"%s","business":{"health_ok":%s,"health_seconds":%s,"server_available":%s,"web_available":%s,"schema_worker_available":%s,"mysql_available":%s,"server_restarts":%s,"web_restarts":%s,"schema_worker_restarts":%s,"mysql_restarts":%s},"observability":{"prometheus_available":%s,"loki_available":%s,"tempo_available":%s,"otel_collector_available":%s,"grafana_available":%s,"prometheus_restarts":%s,"loki_restarts":%s,"tempo_restarts":%s,"otel_collector_restarts":%s,"grafana_restarts":%s},"prometheus":{"flow_up":%s,"request_total_5m":%s,"request_errors_5m":%s,"request_p50_seconds":%s,"request_p95_seconds":%s,"request_p99_seconds":%s,"jvm_memory_used_bytes":%s,"exemplar_max_exemplars":%s,"exemplar_exemplars_in_storage":%s},"telemetry":{"otel_exporter_queue_size":%s,"otel_exporter_queue_capacity":%s,"otel_receiver_failed_spans":%s,"otel_receiver_refused_spans":%s,"otel_exporter_sent_spans":%s,"prometheus_rule_evaluation_failures_total":%s,"prometheus_target_sync_failed_total":%s},"resources":{"max_memory_limit_ratio":%s,"flow_memory_limit_ratio":%s,"observability_memory_limit_ratio":%s,"flow_pods":%s,"observability_pods":%s,"disk":{"server":%s,"web":%s,"schema_worker":%s,"prometheus":%s,"tempo":%s,"grafana":%s}}}\n' \
     "$sampled_at" "$health_ok" "$health_seconds" \
     "$server_available" "$web_available" "$worker_available" "$mysql_available" \
     "$server_restarts" "$web_restarts" "$worker_restarts" "$mysql_restarts" \
@@ -267,6 +270,7 @@ record_sample() {
     "$prometheus_exemplar_capacity" "$prometheus_exemplar_storage" \
     "$otel_queue_size" "$otel_queue_capacity" "$otel_receiver_failed_spans" "$otel_receiver_refused_spans" "$otel_exporter_sent_spans" \
     "$prometheus_rule_failures" "$prometheus_scrape_failures" \
+    "$max_memory_limit_ratio" "$flow_memory_limit_ratio" "$observability_memory_limit_ratio" \
     "$flow_top" "$observability_top" \
     "$server_disk" "$web_disk" "$worker_disk" "$prometheus_disk" "$tempo_disk" "$grafana_disk" >>"$result_file"
 }
@@ -274,6 +278,11 @@ record_sample() {
 require_command curl
 require_command jq
 require_command kubectl
+
+if ! awk -v ratio="$max_memory_limit_ratio" 'BEGIN { exit !(ratio > 0 && ratio < 1) }'; then
+  printf 'OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO must be greater than 0 and less than 1\n' >&2
+  exit 1
+fi
 
 : >"$result_file"
 
@@ -323,6 +332,8 @@ if jq -s -e '
   and all(.[]; .observability.grafana_available == true)
   and all(.[]; (.prometheus.flow_up == 1 or .prometheus.flow_up == "1"))
   and all(.[]; (.prometheus.exemplar_max_exemplars | tonumber) > 0)
+  and all(.[]; (.resources.flow_memory_limit_ratio | tonumber) <= (.resources.max_memory_limit_ratio | tonumber))
+  and all(.[]; (.resources.observability_memory_limit_ratio | tonumber) <= (.resources.max_memory_limit_ratio | tonumber))
   and stable(["business", "server_restarts"])
   and stable(["business", "web_restarts"])
   and stable(["business", "schema_worker_restarts"])
@@ -341,6 +352,11 @@ else
     failed_business_health: map(select(.business.health_ok != true)) | length,
     unavailable_business: map(select(.business.server_available != true or .business.web_available != true or .business.schema_worker_available != true or .business.mysql_available != true)) | length,
     prometheus_flow_down: map(select(.prometheus.flow_up != 1 and .prometheus.flow_up != "1")) | length,
+    memory_limit_ratio: {
+      threshold: ([.[].resources.max_memory_limit_ratio | tonumber?] | min // null),
+      peak_flow: ([.[].resources.flow_memory_limit_ratio | tonumber?] | max // null),
+      peak_observability: ([.[].resources.observability_memory_limit_ratio | tonumber?] | max // null)
+    },
     restart_growth: {
       server: ([.[].business.server_restarts] | {first: .[0], last: .[-1]}),
       web: ([.[].business.web_restarts] | {first: .[0], last: .[-1]}),

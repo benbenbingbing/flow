@@ -237,6 +237,7 @@ if [ "$observe_k8s" = "true" ]; then
   FLOW_NAMESPACE=${FLOW_NAMESPACE:-flow} \
   FLOW_RELEASE=${FLOW_RELEASE:-flow} \
   OBSERVABILITY_NAMESPACE=${OBSERVABILITY_NAMESPACE:-flow-observability} \
+  OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO=${OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO:-0.90} \
     "$repository_root/deploy/observability/observe-lite-observability.sh" \
       >"$result_directory/observer.log" 2>&1 &
   observer_pid=$!

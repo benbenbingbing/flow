@@ -112,7 +112,7 @@ OBSERVABILITY_OBSERVE_RESULT_FILE=/tmp/flow-observability-120m.jsonl \
 deploy/observability/observe-lite-observability.sh
 ```
 
-观察脚本每分钟记录业务健康、Deployment 可用性、Pod 重启次数、HTTP 错误率、P50/P95/P99、JVM 内存、OTel Collector 队列和失败计数、Prometheus 规则/target 同步错误、exemplar storage 和关键组件磁盘水位。最终结果以 JSONL 汇总为准。
+观察脚本每分钟记录业务健康、Deployment 可用性、Pod 重启次数、HTTP 错误率、P50/P95/P99、JVM 内存、容器工作集相对内存限额的比例、OTel Collector 队列和失败计数、Prometheus 规则/target 同步错误、exemplar storage 和关键组件磁盘水位。业务或观测容器的内存比例超过 `OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO`（默认 `0.90`）时验收失败。最终结果以 JSONL 汇总为准。
 
 ## 卸载
 
