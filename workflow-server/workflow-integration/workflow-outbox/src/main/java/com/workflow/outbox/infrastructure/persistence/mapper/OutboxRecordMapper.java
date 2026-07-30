@@ -98,12 +98,30 @@ public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
             @Param("ownerId") String ownerId,
             @Param("leaseToken") long leaseToken);
 
-    @Update("UPDATE workflow_outbox_event "
+    // Separate the non-locking discovery from primary-key updates. A range
+    // UPDATE on the lease index takes locks in the opposite order from task
+    // completion and can deadlock under multi-Pod dispatch.
+    @Select("SELECT id FROM workflow_outbox_event "
+            + "WHERE status = 'PROCESSING' "
+            + "AND lease_until <= UTC_TIMESTAMP(6) "
+            + "ORDER BY lease_until, id LIMIT 100")
+    List<String> selectExpiredLeaseIds();
+
+    @Update("UPDATE workflow_outbox_event FORCE INDEX (PRIMARY) "
             + "SET status = 'FAILED', next_retry_time = UTC_TIMESTAMP(6), "
             + "error_message = 'LEASE_EXPIRED', owner_id = NULL, "
             + "lease_until = NULL, update_time = UTC_TIMESTAMP(6) "
-            + "WHERE status = 'PROCESSING' AND lease_until <= UTC_TIMESTAMP(6)")
-    int recoverExpiredLeases();
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND lease_until <= UTC_TIMESTAMP(6)")
+    int recoverExpiredLease(@Param("id") String id);
+
+    default int recoverExpiredLeases() {
+        int recovered = 0;
+        for (String id : selectExpiredLeaseIds()) {
+            recovered += recoverExpiredLease(id);
+        }
+        return recovered;
+    }
 
     @Delete("DELETE FROM workflow_outbox_event "
             + "WHERE status = 'PROCESSED' AND processed_time < #{cutoff}")

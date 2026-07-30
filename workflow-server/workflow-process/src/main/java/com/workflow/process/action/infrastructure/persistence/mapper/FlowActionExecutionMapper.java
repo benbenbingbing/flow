@@ -123,15 +123,31 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
      *
      * @return 恢复的记录条数
      */
-    @Update("UPDATE process_action_execution " +
+    // Avoid a lease-index range UPDATE: completion locks the primary row
+    // first, so recovery must use the same lock order in multi-Pod deployments.
+    @Select("SELECT id FROM process_action_execution " +
+            "WHERE status = 'RUNNING' " +
+            "  AND lease_until <= UTC_TIMESTAMP(6) " +
+            "ORDER BY lease_until, id LIMIT 100")
+    List<String> selectExpiredLeaseIds();
+
+    @Update("UPDATE process_action_execution FORCE INDEX (PRIMARY) " +
             "SET status = 'FAILED', " +
             "    next_retry_time = UTC_TIMESTAMP(6), " +
             "    error_message = 'LEASE_EXPIRED', " +
             "    owner_id = NULL, lease_until = NULL, " +
             "    update_time = UTC_TIMESTAMP(6) " +
-            "WHERE status = 'RUNNING' " +
+            "WHERE id = #{id} AND status = 'RUNNING' " +
             "  AND lease_until <= UTC_TIMESTAMP(6)")
-    int recoverExpiredLeases();
+    int recoverExpiredLease(@Param("id") String id);
+
+    default int recoverExpiredLeases() {
+        int recovered = 0;
+        for (String id : selectExpiredLeaseIds()) {
+            recovered += recoverExpiredLease(id);
+        }
+        return recovered;
+    }
 
     /**
      * 按流程实例查询全部执行记录（按创建时间倒序）。

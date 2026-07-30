@@ -40,6 +40,8 @@ public interface WebhookDeliveryMapper {
             @Param("createdBy") String createdBy,
             @Param("now") LocalDateTime now);
 
+    // Discover without locks, then recheck and update each primary row. This
+    // keeps recovery and delivery completion on the same database lock order.
     @Select("""
             SELECT ready.id
               FROM (
@@ -267,8 +269,18 @@ public interface WebhookDeliveryMapper {
             @Param("delaySeconds") long delaySeconds,
             @Param("reason") String reason);
 
+    @Select("""
+            SELECT id
+              FROM webhook_delivery
+             WHERE status = 'PROCESSING'
+               AND lease_until <= UTC_TIMESTAMP(6)
+             ORDER BY lease_until, id
+             LIMIT 100
+            """)
+    List<String> selectExpiredLeaseIds();
+
     @Update("""
-            UPDATE webhook_delivery
+            UPDATE webhook_delivery FORCE INDEX (PRIMARY)
                SET status = 'RETRY',
                    next_attempt_at = UTC_TIMESTAMP(6),
                    error_code = 'LEASE_EXPIRED',
@@ -276,10 +288,19 @@ public interface WebhookDeliveryMapper {
                    owner_id = NULL,
                    lease_until = NULL,
                    update_time = UTC_TIMESTAMP(6)
-             WHERE status = 'PROCESSING'
+             WHERE id = #{id}
+               AND status = 'PROCESSING'
                AND lease_until <= UTC_TIMESTAMP(6)
             """)
-    int recoverExpiredLeases();
+    int recoverExpiredLease(@Param("id") String id);
+
+    default int recoverExpiredLeases() {
+        int recovered = 0;
+        for (String id : selectExpiredLeaseIds()) {
+            recovered += recoverExpiredLease(id);
+        }
+        return recovered;
+    }
 
     @Select("""
             SELECT d.id, d.application_id, d.subscription_id,
