@@ -14,6 +14,8 @@ result_file=${OBSERVABILITY_OBSERVE_RESULT_FILE:-/tmp/flow-observability-stabili
 temporary_directory=$(mktemp -d)
 kubectl_request_timeout=${KUBECTL_REQUEST_TIMEOUT:-30s}
 max_memory_limit_ratio=${OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO:-0.90}
+max_database_connection_ratio=${OBSERVABILITY_MAX_DATABASE_CONNECTION_RATIO:-0.80}
+max_row_lock_waits_per_minute=${OBSERVABILITY_MAX_ROW_LOCK_WAITS_PER_MINUTE:-60}
 
 cleanup() {
   trap - EXIT HUP INT TERM
@@ -141,6 +143,49 @@ metrics_top_json() {
   fi
 }
 
+mysql_status_json() {
+  output=$(kubectl -n "$flow_namespace" exec \
+    "statefulset/$flow_mysql_statefulset" -- sh -c '
+      MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql \
+        --batch --skip-column-names -uroot --execute="
+          SHOW GLOBAL STATUS WHERE Variable_name IN (
+            '\''Threads_connected'\'', '\''Threads_running'\'',
+            '\''Innodb_row_lock_waits'\'', '\''Innodb_row_lock_time'\'',
+            '\''Created_tmp_disk_tables'\'', '\''Innodb_log_waits'\''
+          );
+          SELECT '\''max_connections'\'', @@GLOBAL.max_connections;
+        "
+    ' 2>/dev/null || true)
+
+  if [ -z "$output" ]; then
+    printf '{"available":false,"threads_connected":null,"threads_running":null,"max_connections":null,"row_lock_waits":null,"row_lock_time_ms":null,"temporary_disk_tables":null,"log_waits":null}'
+    return
+  fi
+
+  printf '%s\n' "$output" | awk '
+    BEGIN {
+      threads_connected = threads_running = max_connections = "null"
+      row_lock_waits = row_lock_time_ms = temporary_disk_tables = log_waits = "null"
+    }
+    $1 == "Threads_connected" { threads_connected = $2 }
+    $1 == "Threads_running" { threads_running = $2 }
+    $1 == "max_connections" { max_connections = $2 }
+    $1 == "Innodb_row_lock_waits" { row_lock_waits = $2 }
+    $1 == "Innodb_row_lock_time" { row_lock_time_ms = $2 }
+    $1 == "Created_tmp_disk_tables" { temporary_disk_tables = $2 }
+    $1 == "Innodb_log_waits" { log_waits = $2 }
+    END {
+      available = threads_connected != "null" && threads_running != "null" \
+        && max_connections != "null" && row_lock_waits != "null" \
+        && row_lock_time_ms != "null" && temporary_disk_tables != "null" \
+        && log_waits != "null"
+      printf "{\"available\":%s,\"threads_connected\":%s,\"threads_running\":%s,\"max_connections\":%s,\"row_lock_waits\":%s,\"row_lock_time_ms\":%s,\"temporary_disk_tables\":%s,\"log_waits\":%s}", \
+        available ? "true" : "false", threads_connected, threads_running, \
+        max_connections, row_lock_waits, row_lock_time_ms, \
+        temporary_disk_tables, log_waits
+    }'
+}
+
 disk_sample_json() {
   target_namespace=$1
   workload=$2
@@ -253,6 +298,7 @@ record_sample() {
 
   flow_top=$(metrics_top_json "$flow_namespace")
   observability_top=$(metrics_top_json "$namespace")
+  mysql_status=$(mysql_status_json)
   server_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-server" /tmp)
   web_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-web" /tmp)
   worker_disk=$(disk_sample_json "$flow_namespace" "deployment/$flow_release-flow-schema-worker" /tmp)
@@ -260,7 +306,7 @@ record_sample() {
   tempo_disk=$(disk_sample_json "$namespace" statefulset/flow-tempo /var/tempo)
   grafana_disk=$(disk_sample_json "$namespace" deployment/flow-monitoring-grafana /var/lib/grafana)
 
-  printf '{"sampled_at":"%s","business":{"health_ok":%s,"health_seconds":%s,"server_available":%s,"web_available":%s,"schema_worker_available":%s,"mysql_available":%s,"server_restarts":%s,"web_restarts":%s,"schema_worker_restarts":%s,"mysql_restarts":%s},"observability":{"prometheus_available":%s,"loki_available":%s,"tempo_available":%s,"otel_collector_available":%s,"grafana_available":%s,"prometheus_restarts":%s,"loki_restarts":%s,"tempo_restarts":%s,"otel_collector_restarts":%s,"grafana_restarts":%s},"prometheus":{"flow_up":%s,"request_total_5m":%s,"request_errors_5m":%s,"request_p50_seconds":%s,"request_p95_seconds":%s,"request_p99_seconds":%s,"jvm_memory_used_bytes":%s,"exemplar_max_exemplars":%s,"exemplar_exemplars_in_storage":%s},"telemetry":{"otel_exporter_queue_size":%s,"otel_exporter_queue_capacity":%s,"otel_receiver_failed_spans":%s,"otel_receiver_refused_spans":%s,"otel_exporter_sent_spans":%s,"prometheus_rule_evaluation_failures_total":%s,"prometheus_target_sync_failed_total":%s},"resources":{"max_memory_limit_ratio":%s,"flow_memory_limit_ratio":%s,"observability_memory_limit_ratio":%s,"flow_pods":%s,"observability_pods":%s,"disk":{"server":%s,"web":%s,"schema_worker":%s,"prometheus":%s,"tempo":%s,"grafana":%s}}}\n' \
+  printf '{"sampled_at":"%s","business":{"health_ok":%s,"health_seconds":%s,"server_available":%s,"web_available":%s,"schema_worker_available":%s,"mysql_available":%s,"server_restarts":%s,"web_restarts":%s,"schema_worker_restarts":%s,"mysql_restarts":%s},"observability":{"prometheus_available":%s,"loki_available":%s,"tempo_available":%s,"otel_collector_available":%s,"grafana_available":%s,"prometheus_restarts":%s,"loki_restarts":%s,"tempo_restarts":%s,"otel_collector_restarts":%s,"grafana_restarts":%s},"prometheus":{"flow_up":%s,"request_total_5m":%s,"request_errors_5m":%s,"request_p50_seconds":%s,"request_p95_seconds":%s,"request_p99_seconds":%s,"jvm_memory_used_bytes":%s,"exemplar_max_exemplars":%s,"exemplar_exemplars_in_storage":%s},"telemetry":{"otel_exporter_queue_size":%s,"otel_exporter_queue_capacity":%s,"otel_receiver_failed_spans":%s,"otel_receiver_refused_spans":%s,"otel_exporter_sent_spans":%s,"prometheus_rule_evaluation_failures_total":%s,"prometheus_target_sync_failed_total":%s},"database":{"max_connection_ratio":%s,"max_row_lock_waits_per_minute":%s,"mysql":%s},"resources":{"max_memory_limit_ratio":%s,"flow_memory_limit_ratio":%s,"observability_memory_limit_ratio":%s,"flow_pods":%s,"observability_pods":%s,"disk":{"server":%s,"web":%s,"schema_worker":%s,"prometheus":%s,"tempo":%s,"grafana":%s}}}\n' \
     "$sampled_at" "$health_ok" "$health_seconds" \
     "$server_available" "$web_available" "$worker_available" "$mysql_available" \
     "$server_restarts" "$web_restarts" "$worker_restarts" "$mysql_restarts" \
@@ -270,6 +316,7 @@ record_sample() {
     "$prometheus_exemplar_capacity" "$prometheus_exemplar_storage" \
     "$otel_queue_size" "$otel_queue_capacity" "$otel_receiver_failed_spans" "$otel_receiver_refused_spans" "$otel_exporter_sent_spans" \
     "$prometheus_rule_failures" "$prometheus_scrape_failures" \
+    "$max_database_connection_ratio" "$max_row_lock_waits_per_minute" "$mysql_status" \
     "$max_memory_limit_ratio" "$flow_memory_limit_ratio" "$observability_memory_limit_ratio" \
     "$flow_top" "$observability_top" \
     "$server_disk" "$web_disk" "$worker_disk" "$prometheus_disk" "$tempo_disk" "$grafana_disk" >>"$result_file"
@@ -281,6 +328,14 @@ require_command kubectl
 
 if ! awk -v ratio="$max_memory_limit_ratio" 'BEGIN { exit !(ratio > 0 && ratio < 1) }'; then
   printf 'OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO must be greater than 0 and less than 1\n' >&2
+  exit 1
+fi
+if ! awk -v ratio="$max_database_connection_ratio" 'BEGIN { exit !(ratio > 0 && ratio < 1) }'; then
+  printf 'OBSERVABILITY_MAX_DATABASE_CONNECTION_RATIO must be greater than 0 and less than 1\n' >&2
+  exit 1
+fi
+if ! awk -v rate="$max_row_lock_waits_per_minute" 'BEGIN { exit !(rate > 0) }'; then
+  printf 'OBSERVABILITY_MAX_ROW_LOCK_WAITS_PER_MINUTE must be greater than 0\n' >&2
   exit 1
 fi
 
@@ -319,6 +374,10 @@ done
 
 if jq -s -e '
   def stable($path): (.[0] | getpath($path)) as $first | all(.[]; getpath($path) == $first);
+  def mysql_delta($field):
+    ((.[-1].database.mysql[$field] | tonumber) - (.[0].database.mysql[$field] | tonumber));
+  def elapsed_minutes:
+    (((.[-1].sampled_at | fromdateiso8601) - (.[0].sampled_at | fromdateiso8601)) / 60);
   length > 0
   and all(.[]; .business.health_ok == true)
   and all(.[]; .business.server_available == true)
@@ -332,6 +391,15 @@ if jq -s -e '
   and all(.[]; .observability.grafana_available == true)
   and all(.[]; (.prometheus.flow_up == 1 or .prometheus.flow_up == "1"))
   and all(.[]; (.prometheus.exemplar_max_exemplars | tonumber) > 0)
+  and all(.[]; .database.mysql.available == true)
+  and all(.[];
+    ((.database.mysql.threads_connected | tonumber) / (.database.mysql.max_connections | tonumber))
+      <= (.database.max_connection_ratio | tonumber))
+  and (if length > 1 then
+    (mysql_delta("row_lock_waits") / elapsed_minutes)
+      <= (.[0].database.max_row_lock_waits_per_minute | tonumber)
+    else true end)
+  and (if length > 1 then mysql_delta("log_waits") == 0 else true end)
   and all(.[]; (.resources.flow_memory_limit_ratio | tonumber) <= (.resources.max_memory_limit_ratio | tonumber))
   and all(.[]; (.resources.observability_memory_limit_ratio | tonumber) <= (.resources.max_memory_limit_ratio | tonumber))
   and stable(["business", "server_restarts"])
@@ -356,6 +424,21 @@ else
       threshold: ([.[].resources.max_memory_limit_ratio | tonumber?] | min // null),
       peak_flow: ([.[].resources.flow_memory_limit_ratio | tonumber?] | max // null),
       peak_observability: ([.[].resources.observability_memory_limit_ratio | tonumber?] | max // null)
+    },
+    mysql: {
+      unavailable_samples: map(select(.database.mysql.available != true)) | length,
+      connection_ratio_threshold: ([.[].database.max_connection_ratio | tonumber?] | min // null),
+      peak_connection_ratio: ([.[] | ((.database.mysql.threads_connected | tonumber?) / (.database.mysql.max_connections | tonumber?))] | max // null),
+      peak_threads_running: ([.[].database.mysql.threads_running | tonumber?] | max // null),
+      row_lock_waits_per_minute_threshold: ([.[].database.max_row_lock_waits_per_minute | tonumber?] | min // null),
+      row_lock_wait_delta: ((.[-1].database.mysql.row_lock_waits | tonumber?) - (.[0].database.mysql.row_lock_waits | tonumber?)),
+      row_lock_time_ms_delta: ((.[-1].database.mysql.row_lock_time_ms | tonumber?) - (.[0].database.mysql.row_lock_time_ms | tonumber?)),
+      row_lock_waits_per_minute: (if length > 1 then
+        (((.[-1].database.mysql.row_lock_waits | tonumber?) - (.[0].database.mysql.row_lock_waits | tonumber?))
+          / (((.[-1].sampled_at | fromdateiso8601) - (.[0].sampled_at | fromdateiso8601)) / 60))
+        else null end),
+      temporary_disk_tables_delta: ((.[-1].database.mysql.temporary_disk_tables | tonumber?) - (.[0].database.mysql.temporary_disk_tables | tonumber?)),
+      log_wait_delta: ((.[-1].database.mysql.log_waits | tonumber?) - (.[0].database.mysql.log_waits | tonumber?))
     },
     restart_growth: {
       server: ([.[].business.server_restarts] | {first: .[0], last: .[-1]}),

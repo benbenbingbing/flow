@@ -4,7 +4,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - persistent-volumes.yaml
-  - ../../k3s/prerequisites.yaml
+  - ../../k3s
 
 patches:
   - target:

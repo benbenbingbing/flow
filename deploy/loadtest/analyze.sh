@@ -58,6 +58,19 @@ if [ -s "$observation_file" ]; then
       and (.resources.flow_memory_limit_ratio | tonumber?) != null
       and (.resources.observability_memory_limit_ratio | tonumber?) != null
     )] | length),
+    mysql_metrics_available_samples: ([.[] | select(.database.mysql.available == true)] | length),
+    max_database_connection_ratio: ([.[].database.max_connection_ratio | tonumber?] | min // null),
+    peak_database_connection_ratio: ([.[] | ((.database.mysql.threads_connected | tonumber?) / (.database.mysql.max_connections | tonumber?))] | max // null),
+    peak_database_threads_running: ([.[].database.mysql.threads_running | tonumber?] | max // null),
+    max_row_lock_waits_per_minute: ([.[].database.max_row_lock_waits_per_minute | tonumber?] | min // null),
+    row_lock_waits_delta: ((.[-1].database.mysql.row_lock_waits | tonumber?) - (.[0].database.mysql.row_lock_waits | tonumber?)),
+    row_lock_time_ms_delta: ((.[-1].database.mysql.row_lock_time_ms | tonumber?) - (.[0].database.mysql.row_lock_time_ms | tonumber?)),
+    temporary_disk_tables_delta: ((.[-1].database.mysql.temporary_disk_tables | tonumber?) - (.[0].database.mysql.temporary_disk_tables | tonumber?)),
+    row_lock_waits_per_minute: (if length > 1 then
+      (((.[-1].database.mysql.row_lock_waits | tonumber?) - (.[0].database.mysql.row_lock_waits | tonumber?))
+        / (((.[-1].sampled_at | fromdateiso8601) - (.[0].sampled_at | fromdateiso8601)) / 60))
+      else null end),
+    database_log_wait_delta: ((.[-1].database.mysql.log_waits | tonumber?) - (.[0].database.mysql.log_waits | tonumber?)),
     peak_otel_queue_size: ([.[].telemetry.otel_exporter_queue_size | tonumber?] | max // null),
     trace_receiver_failed_delta: ((.[-1].telemetry.otel_receiver_failed_spans // 0 | tonumber) - (.[0].telemetry.otel_receiver_failed_spans // 0 | tonumber))
   }' "$observation_file")
@@ -86,6 +99,10 @@ if ! jq -e '
   and (.observation.samples == 0 or .observation.resource_metrics_available_samples == .observation.samples)
   and (.observation.samples == 0 or .observation.peak_flow_memory_limit_ratio <= .observation.max_memory_limit_ratio)
   and (.observation.samples == 0 or .observation.peak_observability_memory_limit_ratio <= .observation.max_memory_limit_ratio)
+  and (.observation.samples == 0 or .observation.mysql_metrics_available_samples == .observation.samples)
+  and (.observation.samples == 0 or .observation.peak_database_connection_ratio <= .observation.max_database_connection_ratio)
+  and (.observation.samples <= 1 or .observation.row_lock_waits_per_minute <= .observation.max_row_lock_waits_per_minute)
+  and (.observation.samples <= 1 or .observation.database_log_wait_delta == 0)
 ' "$report_file" >/dev/null; then
   printf 'load-test acceptance failed: %s\n' "$report_file" >&2
   exit 1

@@ -238,6 +238,8 @@ if [ "$observe_k8s" = "true" ]; then
   FLOW_RELEASE=${FLOW_RELEASE:-flow} \
   OBSERVABILITY_NAMESPACE=${OBSERVABILITY_NAMESPACE:-flow-observability} \
   OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO=${OBSERVABILITY_MAX_MEMORY_LIMIT_RATIO:-0.90} \
+  OBSERVABILITY_MAX_DATABASE_CONNECTION_RATIO=${OBSERVABILITY_MAX_DATABASE_CONNECTION_RATIO:-0.80} \
+  OBSERVABILITY_MAX_ROW_LOCK_WAITS_PER_MINUTE=${OBSERVABILITY_MAX_ROW_LOCK_WAITS_PER_MINUTE:-60} \
     "$repository_root/deploy/observability/observe-lite-observability.sh" \
       >"$result_directory/observer.log" 2>&1 &
   observer_pid=$!
