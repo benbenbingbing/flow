@@ -38,7 +38,7 @@
         <flyway.version>11.20.3</flyway.version>
         <flowable.version>7.2.0</flowable.version>
         <jjwt.version>0.13.0</jjwt.version>
-        <mybatis-plus.version>3.5.16</mybatis-plus.version>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <lombok.version>1.18.30</lombok.version>
         <aws-sdk.version>2.47.6</aws-sdk.version>
         <bouncycastle.version>1.85</bouncycastle.version>
