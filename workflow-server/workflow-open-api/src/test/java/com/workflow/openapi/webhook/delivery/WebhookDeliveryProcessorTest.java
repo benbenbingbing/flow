@@ -17,6 +17,7 @@ import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,6 +43,7 @@ class WebhookDeliveryProcessorTest {
         heartbeat = mock(ScheduledFuture.class);
         doReturn(heartbeat).when(scheduler).scheduleAtFixedRate(
                 any(Runnable.class),
+                any(Instant.class),
                 any(Duration.class));
         processor = new WebhookDeliveryProcessor(
                 mapper,
@@ -293,6 +295,7 @@ class WebhookDeliveryProcessorTest {
         TaskScheduler scheduler = mock(TaskScheduler.class);
         doReturn(heartbeat).when(scheduler).scheduleAtFixedRate(
                 any(Runnable.class),
+                any(Instant.class),
                 any(Duration.class));
         return scheduler;
     }

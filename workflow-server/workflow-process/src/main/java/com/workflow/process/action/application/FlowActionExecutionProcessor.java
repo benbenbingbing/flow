@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -63,10 +64,13 @@ public class FlowActionExecutionProcessor {
                 || execution.getLeaseToken() != leaseToken) {
             return;
         }
+        Duration heartbeatPeriod = Duration.ofSeconds(
+                Math.max(1, leaseSeconds / 3));
         ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
                 () -> heartbeat(
                         executionId, ownerId, leaseToken, leaseSeconds),
-                Duration.ofSeconds(Math.max(1, leaseSeconds / 3)));
+                Instant.now().plus(heartbeatPeriod),
+                heartbeatPeriod);
         try {
             FlowAction action = flowActionMapper.selectById(execution.getActionId());
             if (action == null) {

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,8 @@ public class OutboxProcessor {
             return;
         }
         AtomicBoolean heartbeatActive = new AtomicBoolean(true);
+        Duration heartbeatPeriod = Duration.ofSeconds(
+                Math.max(1, leaseSeconds / 3));
         ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
                 () -> {
                     if (heartbeatActive.get()) {
@@ -62,7 +65,8 @@ public class OutboxProcessor {
                                 leaseSeconds, heartbeatActive);
                     }
                 },
-                Duration.ofSeconds(Math.max(1, leaseSeconds / 3)));
+                Instant.now().plus(heartbeatPeriod),
+                heartbeatPeriod);
         try {
             OutboxEventHandler handler = handlers.get(record.getTopic());
             if (handler == null) {

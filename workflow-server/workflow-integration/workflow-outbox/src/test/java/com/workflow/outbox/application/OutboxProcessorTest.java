@@ -9,10 +9,13 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -129,13 +132,23 @@ class OutboxProcessorTest {
         TaskScheduler scheduler = scheduler();
         OutboxProcessor processor =
                 new OutboxProcessor(mapper, List.of(handler), scheduler);
+        Instant beforeProcessing = Instant.now();
 
         processor.process(record.getId(), "worker-1", 7L, 120);
 
         ArgumentCaptor<Runnable> heartbeat =
                 ArgumentCaptor.forClass(Runnable.class);
+        ArgumentCaptor<Instant> firstHeartbeat =
+                ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Duration> heartbeatPeriod =
+                ArgumentCaptor.forClass(Duration.class);
         verify(scheduler).scheduleAtFixedRate(
-                heartbeat.capture(), any(Duration.class));
+                heartbeat.capture(),
+                firstHeartbeat.capture(),
+                heartbeatPeriod.capture());
+        assertEquals(Duration.ofSeconds(40), heartbeatPeriod.getValue());
+        assertFalse(firstHeartbeat.getValue().isBefore(
+                beforeProcessing.plusSeconds(40)));
         heartbeat.getValue().run();
         verify(mapper, never()).heartbeat(
                 record.getId(), "worker-1", 7L, 120);
@@ -169,7 +182,7 @@ class OutboxProcessorTest {
         TaskScheduler scheduler = mock(TaskScheduler.class);
         ScheduledFuture<Object> heartbeat = mock(ScheduledFuture.class);
         doReturn(heartbeat).when(scheduler).scheduleAtFixedRate(
-                any(Runnable.class), any(Duration.class));
+                any(Runnable.class), any(Instant.class), any(Duration.class));
         return scheduler;
     }
 }
