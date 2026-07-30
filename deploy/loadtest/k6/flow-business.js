@@ -484,7 +484,7 @@ function scenariosFor(selectedProfile) {
       rate: phase.rate,
       timeUnit: '1s',
       preAllocatedVUs: Math.min(maxVus, Math.max(2, phase.rate * 2)),
-      maxVUs,
+      maxVUs: maxVus,
       gracefulStop: '1m',
       tags: { phase: phase.name },
     };
@@ -497,7 +497,7 @@ function scenariosFor(selectedProfile) {
     rate: authRatePerMinute,
     timeUnit: '1m',
     preAllocatedVUs: Math.min(maxVus, Math.max(2, authRatePerMinute)),
-    maxVUs,
+    maxVUs: maxVus,
     gracefulStop: '30s',
     tags: { phase: 'authentication' },
   };
