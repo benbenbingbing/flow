@@ -222,6 +222,7 @@ import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import InterfaceServiceEditorDialog from '@/components/ui-config/InterfaceServiceEditorDialog.vue'
 import InterfaceServiceTestDialog from '@/components/ui-config/InterfaceServiceTestDialog.vue'
 import {
+  configurableEntities,
   eventCodes,
   executionPolicy,
   serviceOperations,
@@ -340,7 +341,7 @@ async function loadAll() {
     ])
     services.value = Array.isArray(serviceRows) ? serviceRows : []
     catalog.value = serviceCatalog || {}
-    entities.value = Array.isArray(entityRows) ? entityRows : []
+    entities.value = configurableEntities(entityRows)
     if (!selectedEntityId.value && entities.value.length) {
       selectedEntityId.value = entities.value[0].id
       await loadEntityChildren()

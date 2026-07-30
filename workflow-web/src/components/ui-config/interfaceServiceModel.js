@@ -49,3 +49,8 @@ export function executionPolicy(service = {}) {
 export function requiresProvider(type) {
   return ['REGISTERED_PROVIDER', 'INTEGRATION_CONNECTOR'].includes(type)
 }
+
+export function configurableEntities(entities) {
+  if (!Array.isArray(entities)) return []
+  return entities.filter(entity => entity?.storageMode !== 'SYSTEM')
+}
