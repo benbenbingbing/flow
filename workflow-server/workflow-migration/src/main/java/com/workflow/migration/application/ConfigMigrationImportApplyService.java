@@ -4,7 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -76,6 +79,16 @@ import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import com.workflow.process.form.application.ProcessNodeFormService;
+import com.workflow.process.sla.calendar.api.request.WorkCalendarSaveRequest;
+import com.workflow.process.sla.calendar.api.response.WorkCalendarDTO;
+import com.workflow.process.sla.calendar.application.WorkCalendarService;
+import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarMapper;
+import com.workflow.process.sla.calendar.infrastructure.persistence.record.WorkCalendar;
+import com.workflow.process.sla.policy.api.request.TaskSlaPolicySaveRequest;
+import com.workflow.process.sla.policy.api.response.TaskSlaPolicyDTO;
+import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
+import com.workflow.process.sla.policy.infrastructure.persistence.mapper.TaskSlaPolicyMapper;
+import com.workflow.process.sla.policy.infrastructure.persistence.record.TaskSlaPolicy;
 import com.workflow.entity.permission.application.EntityPermissionCatalogService;
 import com.workflow.entity.permission.application.EntityListScopeService;
 import lombok.RequiredArgsConstructor;
@@ -135,6 +148,10 @@ public class ConfigMigrationImportApplyService {
     private final ProcessDefinitionService processService;
     private final ProcessNodeFormService processNodeFormService;
     private final FlowActionService flowActionService;
+    private final WorkCalendarService workCalendarService;
+    private final WorkCalendarMapper workCalendarMapper;
+    private final TaskSlaPolicyService taskSlaPolicyService;
+    private final TaskSlaPolicyMapper taskSlaPolicyMapper;
     private final UiExtensionDefinitionService extensionDefinitionService;
     private final UiDataSourceService dataSourceService;
     private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
@@ -214,6 +231,19 @@ public class ConfigMigrationImportApplyService {
             markPublished(context.item());
         }
 
+        for (ConfigImportItem item : itemsOfType(
+                items,
+                ConfigMigrationAssetService.WORK_CALENDAR)) {
+            applyWorkCalendar(item, importPackage.getMigrationTag());
+            markPublished(item);
+        }
+        for (ConfigImportItem item : itemsOfType(
+                items,
+                ConfigMigrationAssetService.TASK_SLA_POLICY)) {
+            applyTaskSlaPolicy(item, importPackage.getMigrationTag());
+            markPublished(item);
+        }
+
         List<ProcessContext> processes = new ArrayList<>();
         for (ConfigImportItem item : itemsOfType(items, ConfigMigrationAssetService.PROCESS)) {
             processes.add(prepareProcess(item));
@@ -235,6 +265,202 @@ public class ConfigMigrationImportApplyService {
         importPackage.setErrorMessage(null);
         importPackageMapper.updateById(importPackage);
         return publishResult(importPackage, items);
+    }
+
+    private void applyWorkCalendar(
+            ConfigImportItem item,
+            String migrationTag) {
+        Map<String, Object> snapshot = readMap(item.getSnapshotJson());
+        WorkCalendarSaveRequest incoming = objectMapper.convertValue(
+                mapValue(snapshot.get("configuration")),
+                WorkCalendarSaveRequest.class);
+        List<WorkCalendarSaveRequest.BindingRequest> bindings =
+                new ArrayList<>();
+        for (WorkCalendarSaveRequest.BindingRequest binding :
+                incoming.bindings() == null
+                        ? List.<WorkCalendarSaveRequest.BindingRequest>of()
+                        : incoming.bindings()) {
+            String sourceKey = binding.scopeKey();
+            String targetCode = mappedKey("DEPT", sourceKey);
+            SysOrganization organization =
+                    organizationMapper.selectByCode(targetCode);
+            if (organization == null) {
+                organization = organizationMapper.selectById(targetCode);
+            }
+            if (organization == null) {
+                throw new IllegalStateException(
+                        "工作日历绑定的目标组织不存在: " + sourceKey);
+            }
+            bindings.add(new WorkCalendarSaveRequest.BindingRequest(
+                    binding.scopeType(),
+                    organization.getId(),
+                    binding.priority(),
+                    binding.effectiveFrom(),
+                    binding.effectiveTo()));
+        }
+        WorkCalendarSaveRequest request =
+                new WorkCalendarSaveRequest(
+                        incoming.calendarCode(),
+                        incoming.calendarName(),
+                        incoming.timezoneId(),
+                        incoming.description(),
+                        incoming.defaultFlag(),
+                        incoming.effectiveFrom(),
+                        incoming.effectiveTo(),
+                        incoming.periods(),
+                        incoming.exceptions(),
+                        bindings);
+        WorkCalendar existing =
+                workCalendarMapper.findByCode(item.getBusinessKey());
+        WorkCalendarDTO saved = workCalendarService.save(
+                existing == null ? null : existing.getId(),
+                request);
+        workCalendarService.publish(
+                saved.calendar().getId(),
+                migrationRequest(item, migrationTag));
+    }
+
+    private void applyTaskSlaPolicy(
+            ConfigImportItem item,
+            String migrationTag) {
+        Map<String, Object> snapshot = readMap(item.getSnapshotJson());
+        TaskSlaPolicySaveRequest incoming = objectMapper.convertValue(
+                mapValue(snapshot.get("configuration")),
+                TaskSlaPolicySaveRequest.class);
+        List<TaskSlaPolicySaveRequest.EscalationStepRequest> steps =
+                (incoming.escalationSteps() == null
+                        ? List.<TaskSlaPolicySaveRequest.EscalationStepRequest>of()
+                        : incoming.escalationSteps())
+                        .stream()
+                        .map(step ->
+                                new TaskSlaPolicySaveRequest.EscalationStepRequest(
+                                        step.stepName(),
+                                        step.metricType(),
+                                        step.triggerType(),
+                                        step.offsetMinutes(),
+                                        step.repeatIntervalMinutes(),
+                                        step.maxExecutions(),
+                                        step.actionType(),
+                                        step.templateCode(),
+                                        resolveSlaUserReferences(
+                                                step.recipientConfigJson()),
+                                        resolveSlaUserReferences(
+                                                step.targetConfigJson())))
+                        .toList();
+        TaskSlaPolicySaveRequest request =
+                new TaskSlaPolicySaveRequest(
+                        incoming.policyCode(),
+                        incoming.policyName(),
+                        incoming.description(),
+                        incoming.responseTargetMinutes(),
+                        incoming.completionTargetMinutes(),
+                        incoming.responseTimeBasis(),
+                        incoming.completionTimeBasis(),
+                        incoming.allowManualPause(),
+                        incoming.pauseOnProcessSuspend(),
+                        incoming.maxPauseMinutes(),
+                        steps);
+        TaskSlaPolicy existing =
+                taskSlaPolicyMapper.findLatestPublished(
+                        item.getBusinessKey());
+        TaskSlaPolicyDTO saved = taskSlaPolicyService.save(
+                existing == null ? null : existing.getId(),
+                request);
+        taskSlaPolicyService.publish(
+                saved.policy().getId(),
+                migrationRequest(item, migrationTag));
+    }
+
+    private String resolveSlaUserReferences(String document) {
+        if (!StringUtils.hasText(document)) {
+            return document;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(document);
+            rewriteSlaUserReferences(
+                    root,
+                    this::resolveSlaUserReference);
+            return objectMapper.writeValueAsString(root);
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "SLA策略用户引用无法映射到目标环境",
+                    exception);
+        }
+    }
+
+    private String resolveSlaUserReference(String value) {
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        String sourceKey = value.startsWith("wf-user://")
+                ? value.substring("wf-user://".length())
+                : value;
+        if (sourceKey.startsWith("missing/")) {
+            throw new IllegalStateException(
+                    "SLA策略引用的源用户不存在: "
+                            + sourceKey.substring("missing/".length()));
+        }
+        String targetKey = mappedKey("USER", sourceKey);
+        SysUser user = userMapper.selectByUsername(targetKey);
+        if (user == null) {
+            user = userMapper.selectById(targetKey);
+        }
+        if (user == null) {
+            throw new IllegalStateException(
+                    "SLA策略引用的目标用户不存在: "
+                            + sourceKey);
+        }
+        return user.getId();
+    }
+
+    private void rewriteSlaUserReferences(
+            JsonNode node,
+            java.util.function.UnaryOperator<String> converter) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof ObjectNode objectNode) {
+            List<String> names = new ArrayList<>();
+            objectNode.fieldNames().forEachRemaining(names::add);
+            for (String name : names) {
+                JsonNode value = objectNode.get(name);
+                if ("userId".equals(name) && value.isTextual()) {
+                    objectNode.put(
+                            name,
+                            converter.apply(value.asText()));
+                    continue;
+                }
+                if ("userIds".equals(name)
+                        && value instanceof ArrayNode values) {
+                    ArrayNode converted =
+                            objectMapper.createArrayNode();
+                    values.forEach(item -> converted.add(
+                            item.isTextual()
+                                    ? converter.apply(item.asText())
+                                    : item.asText()));
+                    objectNode.set(name, converted);
+                    continue;
+                }
+                rewriteSlaUserReferences(value, converter);
+            }
+            return;
+        }
+        if (node.isArray()) {
+            node.forEach(value ->
+                    rewriteSlaUserReferences(value, converter));
+        }
+    }
+
+    private ConfigMigrationPublishRequest migrationRequest(
+            ConfigImportItem item,
+            String migrationTag) {
+        ConfigMigrationPublishRequest request =
+                new ConfigMigrationPublishRequest();
+        request.setVersionDescription(
+                "配置迁移导入: " + migrationTag);
+        request.setMigrationTag(migrationTag);
+        request.setMarkForExport(false);
+        return request;
     }
 
     /**
@@ -270,6 +496,10 @@ public class ConfigMigrationImportApplyService {
         List<EntityContext> entityContexts = new ArrayList<>();
         List<SystemEntityUiRollbackContext> systemUiContexts =
                 new ArrayList<>();
+        List<ConfigImportItem> workCalendarRollbacks =
+                new ArrayList<>();
+        List<ConfigImportItem> taskSlaPolicyRollbacks =
+                new ArrayList<>();
         List<ProcessContext> processContexts = new ArrayList<>();
         for (ConfigImportItem item : items) {
             ConfigMigrationAsset previous = previousAsset(item);
@@ -296,6 +526,12 @@ public class ConfigMigrationImportApplyService {
             } else if (ConfigMigrationAssetService.PROCESS
                     .equals(item.getAssetType())) {
                 processContexts.add(prepareProcess(rollbackItem));
+            } else if (ConfigMigrationAssetService.WORK_CALENDAR
+                    .equals(item.getAssetType())) {
+                workCalendarRollbacks.add(rollbackItem);
+            } else if (ConfigMigrationAssetService.TASK_SLA_POLICY
+                    .equals(item.getAssetType())) {
+                taskSlaPolicyRollbacks.add(rollbackItem);
             } else {
                 throw new IllegalStateException(
                         "不支持回滚的迁移资产类型: "
@@ -316,6 +552,12 @@ public class ConfigMigrationImportApplyService {
 
         ConfigImportPackage rollbackPackage = new ConfigImportPackage();
         rollbackPackage.setMigrationTag("ROLLBACK-" + importPackage.getMigrationTag());
+        for (ConfigImportItem item : workCalendarRollbacks) {
+            applyWorkCalendar(item, rollbackPackage.getMigrationTag());
+        }
+        for (ConfigImportItem item : taskSlaPolicyRollbacks) {
+            applyTaskSlaPolicy(item, rollbackPackage.getMigrationTag());
+        }
         for (ProcessContext context : processContexts) {
             applyProcessConfiguration(context, rollbackPackage);
         }
@@ -1294,6 +1536,18 @@ public class ConfigMigrationImportApplyService {
         if (ConfigMigrationAssetService.SYSTEM_ENTITY_UI
                 .equals(item.getAssetType())) {
             disableSystemUiConfigurations(item);
+            return;
+        }
+        if (ConfigMigrationAssetService.WORK_CALENDAR
+                .equals(item.getAssetType())) {
+            workCalendarService.disableForMigration(
+                    item.getBusinessKey());
+            return;
+        }
+        if (ConfigMigrationAssetService.TASK_SLA_POLICY
+                .equals(item.getAssetType())) {
+            taskSlaPolicyService.disableForMigration(
+                    item.getBusinessKey());
             return;
         }
         if (!ConfigMigrationAssetService.PROCESS

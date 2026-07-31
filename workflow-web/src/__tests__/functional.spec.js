@@ -549,6 +549,60 @@ for (const file of userSelectionPages) {
 
 const homeSource = readFileSync('src/views/Home.vue', 'utf8')
 assert.ok(
+  homeSource.includes(
+    '<el-table-column label="操作" width="126" fixed="right" align="center">'
+  ),
+  '首页待办操作列应只保留主操作和更多入口所需宽度'
+)
+assert.ok(
+  homeSource.includes('@click="handleApprove(row)"')
+    && homeSource.includes('aria-label="更多任务操作"')
+    && homeSource.includes('@command="handleTodoMoreCommand($event, row)"'),
+  '首页待办应直接展示审批，并将其他操作收进更多菜单'
+)
+assert.ok(
+  /class="todo-more-button"[\s\S]*?type="primary"[\s\S]*?link[\s\S]*?aria-label="更多任务操作"/.test(
+    homeSource
+  ),
+  '首页待办更多按钮应使用无边框图标按钮'
+)
+for (const action of [
+  "command: 'transfer', label: '转办'",
+  "command: 'addSign', label: '加签'",
+  "command: 'cancelAddSign', label: '撤销加签'",
+  "command: 'cc', label: '知会'",
+  "command: 'sla',"
+]) {
+  assert.ok(homeSource.includes(action), `首页待办更多菜单缺少操作：${action}`)
+}
+for (const formName of ['transferForm', 'addSignForm', 'ccForm']) {
+  assert.ok(
+    new RegExp(`:title="${formName}\\.processName"[\\s\\S]*?${formName}\\.processName \\|\\| '-'`).test(homeSource)
+      && new RegExp(`:title="${formName}\\.code"[\\s\\S]*?${formName}\\.code \\|\\| '-'`).test(homeSource),
+    `${formName} 应使用无输入框文本展示流程名称和流程编码`
+  )
+}
+assert.equal(
+  (homeSource.match(/width="min\(680px, 92vw\)"/g) || []).length,
+  3,
+  '转办、加签和知会弹窗应使用统一的加宽响应式尺寸'
+)
+assert.equal(
+  (homeSource.match(/processName: row\.processName \|\| ''/g) || []).length,
+  2,
+  '加签和知会弹窗应保存当前待办的流程名称'
+)
+assert.equal(
+  (homeSource.match(/code: row\.code \|\| ''/g) || []).length,
+  2,
+  '加签和知会弹窗应保存当前待办的流程编码'
+)
+assert.ok(
+  homeSource.includes("transferForm.processName = row.processName || ''")
+    && homeSource.includes("transferForm.code = row.code || ''"),
+  '转办弹窗应保存当前待办的流程名称和流程编码'
+)
+assert.ok(
   /v-model="transferForm\.transferTo"[\s\S]*?value-key="code"/.test(
     homeSource
   ),
@@ -566,6 +620,62 @@ assert.ok(
   ),
   '人工知会必须支持多个 username'
 )
+
+const configHelpLabelSource = readFileSync(
+  'src/components/ConfigHelpLabel.vue',
+  'utf8'
+)
+assert.ok(
+  configHelpLabelSource.includes('<el-tooltip')
+    && configHelpLabelSource.includes('<QuestionFilled />')
+    && configHelpLabelSource.includes('<button')
+    && configHelpLabelSource.includes('type="button"')
+    && configHelpLabelSource.includes(':aria-label="`查看${label}配置说明`"'),
+  '通用配置说明标签应支持鼠标悬停和键盘聚焦'
+)
+
+const taskSlaPolicySource = readFileSync(
+  'src/views/process/TaskSlaPolicyManagement.vue',
+  'utf8'
+)
+assert.equal(
+  (taskSlaPolicySource.match(/<ConfigHelpLabel/g) || []).length,
+  8,
+  'SLA策略的关键配置属性都应展示问号说明'
+)
+assert.ok(
+  taskSlaPolicySource.includes('<el-form :model="form" label-width="132px">'),
+  'SLA策略问号说明不应挤压长标签换行'
+)
+for (const label of [
+  '响应分钟',
+  '响应计时',
+  '办结分钟',
+  '办结计时',
+  '允许人工暂停',
+  '流程挂起暂停',
+  '最长暂停分钟',
+  '说明'
+]) {
+  assert.ok(
+    taskSlaPolicySource.includes(`label="${label}"`),
+    `SLA策略缺少“${label}”的配置说明`
+  )
+}
+for (const helpText of [
+  '留空表示不考核首次响应',
+  '周末、节假日和非工作时段也计入',
+  '暂停时保存剩余响应及办结时长',
+  '流程实例挂起时自动暂停活动任务的 SLA',
+  '达到上限后系统自动恢复计时',
+  '不参与截止时间、提醒或升级计算'
+]) {
+  assert.ok(
+    taskSlaPolicySource.includes(helpText),
+    `SLA策略配置说明缺少关键规则：${helpText}`
+  )
+}
+
 assert.ok(
   /v-model="form\.leaderId"[\s\S]*?value-key="id"/.test(
     readFileSync('src/views/system/Organization.vue', 'utf8')

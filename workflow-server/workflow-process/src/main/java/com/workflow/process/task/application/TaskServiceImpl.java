@@ -10,6 +10,7 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.process.workbench.api.response.TaskStatisticsVO;
 import com.workflow.process.task.api.response.TaskVO;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
@@ -27,6 +28,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -571,6 +573,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         vo.setCreateTime(task.getCreateTime());
         vo.setPriority(task.getPriority());
         vo.setAssignee(task.getAssignee());
+        applySlaSummary(vo, task.getId());
         
         // 获取流程定义信息
         ProcessDefinition pd = repositoryService.createProcessDefinitionQuery()
@@ -632,6 +635,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         vo.setDuration(task.getDurationInMillis());
         vo.setPriority(task.getPriority());
         vo.setAssignee(task.getAssignee());
+        applySlaSummary(vo, task.getId());
         
         // 获取流程定义信息
         ProcessDefinition pd = repositoryService.createProcessDefinitionQuery()
@@ -689,6 +693,22 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         return vo;
+    }
+
+    private void applySlaSummary(TaskVO vo, String taskId) {
+        ProcessTask local = processTaskService.getTaskByTaskId(taskId);
+        if (local == null) {
+            return;
+        }
+        vo.setSlaStatus(local.getSlaStatus());
+        vo.setResponseDueTime(toDate(local.getResponseDueTime()));
+        vo.setDueTime(toDate(local.getDueTime()));
+    }
+
+    private Date toDate(LocalDateTime value) {
+        return value == null
+                ? null
+                : Date.from(value.toInstant(ZoneOffset.UTC));
     }
 
     /**

@@ -155,7 +155,7 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item>
+            <el-form-item label="Query 参数(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="Query 参数(JSON)"
@@ -164,7 +164,7 @@
               </template>
               <el-input v-model="initConfigData.api.paramsText" type="textarea" :rows="3" placeholder='{"projectId":"{{routeQuery.projectId}}"}' style="width: 260px" />
             </el-form-item>
-            <el-form-item>
+            <el-form-item label="请求体(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="请求体(JSON)"
@@ -175,7 +175,7 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item>
+            <el-form-item label="字段映射(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="字段映射(JSON)"
@@ -203,7 +203,7 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item>
+            <el-form-item label="过滤参数(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="过滤参数(JSON)"
@@ -214,7 +214,7 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item>
+            <el-form-item label="字段映射(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="字段映射(JSON)"
@@ -228,7 +228,7 @@
 
         <div v-else-if="initConfigType === 'static'" class="init-config-section">
           <el-form inline size="small">
-            <el-form-item>
+            <el-form-item label="静态值(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="静态值(JSON)"
@@ -269,7 +269,7 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item>
+            <el-form-item label="参数(JSON)">
               <template #label>
                 <JsonConfigLabel
                   label="参数(JSON)"

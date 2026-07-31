@@ -775,8 +775,8 @@ export default {
                 { field: '格式', meaning: 'STRING、TEXT 字段的预置格式校验。', defaultLimit: '仅兼容字段显示；EMAIL、PHONE、URL 或空。', effect: '校验常见文本格式。', publish: '格式仅校验形态，不验证邮箱/手机号真实存在。' },
                 { field: '新增 create', meaning: '新增记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制新增表单字段。', publish: '关键创建字段不可隐藏或只读。' },
                 { field: '编辑 edit', meaning: '编辑记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制编辑页面字段。', publish: '编码、流程字段等通常应只读。' },
-                { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制节点表单办理体验。', publish: '结合节点只读开关和审批字段权限测试。' },
-                { field: '查看 view', meaning: '查看详情模式。', defaultLimit: '显示、可编辑默认均为 true，但页面通常整体只读。', effect: '控制详情可见性。', publish: '敏感字段需要关闭 visible，而不仅是 editable。' }
+                { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '字段在审批办理时的默认编辑权限。', publish: '流程节点开启“强制整表只读”后，可编辑配置不生效。' },
+                { field: '查看 view', meaning: '查看详情模式。', defaultLimit: '固定只读，仅允许配置是否显示。', effect: '控制详情可见性，不能授予编辑权限。', publish: '敏感字段需要关闭 visible，而不仅是只读。' }
               ]
             }
           ]

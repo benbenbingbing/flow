@@ -33,6 +33,14 @@ public interface ProcessCcRecordMapper extends BaseMapper<ProcessCcRecord> {
             @Param("processInstanceId") String processInstanceId,
             @Param("userId") String userId,
             @Param("username") String username);
+
+    @Select("""
+            SELECT * FROM process_cc_record
+            WHERE unique_key = #{uniqueKey}
+              AND deleted = 0
+            LIMIT 1
+            """)
+    ProcessCcRecord findByUniqueKey(@Param("uniqueKey") String uniqueKey);
     
     /**
      * 根据抄送人查询抄送记录（分页）

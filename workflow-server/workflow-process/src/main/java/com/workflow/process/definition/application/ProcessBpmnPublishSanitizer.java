@@ -1,8 +1,14 @@
 package com.workflow.process.definition.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.workflow.process.sla.calendar.application.WorkCalendarResolutionSnapshot;
+import com.workflow.process.sla.calendar.application.WorkCalendarService;
+import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
+import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
+import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -36,12 +42,30 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProcessBpmnPublishSanitizer {
 
     private static final String FLOWABLE_NAMESPACE = "http://flowable.org/bpmn";
     /** JSON 序列化工具，用于解析节点配置 JSON */
     private final ObjectMapper objectMapper;
+    private final TaskSlaPolicyService taskSlaPolicyService;
+    private final WorkCalendarService workCalendarService;
+
+    @Autowired
+    public ProcessBpmnPublishSanitizer(
+            ObjectMapper objectMapper,
+            TaskSlaPolicyService taskSlaPolicyService,
+            WorkCalendarService workCalendarService) {
+        this.objectMapper = objectMapper;
+        this.taskSlaPolicyService = taskSlaPolicyService;
+        this.workCalendarService = workCalendarService;
+    }
+
+    /**
+     * 兼容不涉及 SLA 的轻量单元测试。
+     */
+    public ProcessBpmnPublishSanitizer(ObjectMapper objectMapper) {
+        this(objectMapper, null, null);
+    }
 
     /**
      * 对 BPMN XML 进行发布前的归一化处理。
@@ -79,10 +103,122 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredBusinessRuleTasks(result);
         result = fixConfiguredCallActivities(result);
         result = fixConfiguredReceiveTasks(result);
+        result = fixConfiguredUserTaskSlas(result);
         result = fixScriptTasks(result);
         BpmnExecutableContentValidator.validate(result);
 
         return result;
+    }
+
+    private String fixConfiguredUserTaskSlas(String bpmnXml) {
+        return rewriteConfiguredElements(
+                bpmnXml,
+                "userTask",
+                "slaConfig",
+                (element, config) -> {
+                    if (!config.path("enabled").asBoolean(false)) {
+                        return element;
+                    }
+                    String policyCode =
+                            config.path("policyCode").asText("").trim();
+                    if (policyCode.isBlank()) {
+                        throw new IllegalArgumentException(
+                                "用户任务启用SLA后必须选择策略: "
+                                        + element.id());
+                    }
+                    TaskSlaPolicySnapshot policy =
+                            requireTaskSlaPolicyService()
+                                    .publishedSnapshot(policyCode);
+                    String source = config.path("calendarSource")
+                            .asText("SYSTEM_DEFAULT")
+                            .trim()
+                            .toUpperCase(Locale.ROOT);
+                    if (!Set.of(
+                                    "NODE",
+                                    "PROCESS",
+                                    "BUSINESS_DEPT",
+                                    "STARTER_DEPT",
+                                    "SYSTEM_DEFAULT")
+                            .contains(source)) {
+                        throw new IllegalArgumentException(
+                                "不支持的SLA日历来源: "
+                                        + source
+                                        + ", nodeId="
+                                        + element.id());
+                    }
+
+                    ObjectNode published =
+                            config.deepCopy();
+                    published.put("calendarSource", source);
+                    published.set(
+                            "policySnapshot",
+                            objectMapper.valueToTree(policy));
+                    if ("NODE".equals(source)
+                            || "PROCESS".equals(source)) {
+                        String field = "NODE".equals(source)
+                                ? "calendarCode"
+                                : "processCalendarCode";
+                        String calendarCode =
+                                config.path(field).asText("").trim();
+                        if (calendarCode.isBlank()) {
+                            throw new IllegalArgumentException(
+                                    "SLA固定日历不能为空: nodeId="
+                                            + element.id());
+                        }
+                        WorkCalendarSnapshot calendar =
+                                requireWorkCalendarService()
+                                        .findPublishedSnapshotByCode(
+                                                calendarCode);
+                        published.set(
+                                "calendarSnapshot",
+                                objectMapper.valueToTree(calendar));
+                        published.remove(
+                                "calendarResolutionSnapshot");
+                    } else {
+                        if ("BUSINESS_DEPT".equals(source)
+                                && config.path("businessFieldCode")
+                                .asText("").isBlank()) {
+                            throw new IllegalArgumentException(
+                                    "业务归属日历必须选择部门字段: nodeId="
+                                            + element.id());
+                        }
+                        WorkCalendarResolutionSnapshot resolution =
+                                requireWorkCalendarService()
+                                        .resolutionSnapshot();
+                        published.set(
+                                "calendarResolutionSnapshot",
+                                objectMapper.valueToTree(resolution));
+                        published.remove("calendarSnapshot");
+                    }
+                    published.put("snapshotVersion", 1);
+                    return element.withContent(
+                            replacePropertyValue(
+                                    element.content(),
+                                    "slaConfig",
+                                    writeJson(published)));
+                });
+    }
+
+    private TaskSlaPolicyService requireTaskSlaPolicyService() {
+        if (taskSlaPolicyService == null) {
+            throw new IllegalStateException("SLA策略服务未初始化");
+        }
+        return taskSlaPolicyService;
+    }
+
+    private WorkCalendarService requireWorkCalendarService() {
+        if (workCalendarService == null) {
+            throw new IllegalStateException("工作日历服务未初始化");
+        }
+        return workCalendarService;
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new IllegalStateException("用户任务SLA快照序列化失败", exception);
+        }
     }
 
     /**
@@ -764,6 +900,39 @@ public class ProcessBpmnPublishSanitizer {
                         + Pattern.quote(propertyName) + "\"");
         matcher = valueFirst.matcher(content);
         return matcher.find() ? decodeXml(matcher.group(1)) : null;
+    }
+
+    private String replacePropertyValue(
+            String content,
+            String propertyName,
+            String value) {
+        String escaped = escapeXml(value);
+        Pattern nameFirst = Pattern.compile(
+                "(?i)(<flowable:property\\b[^>]*name=\""
+                        + Pattern.quote(propertyName)
+                        + "\"[^>]*value=\")([^\"]*)(\")");
+        Matcher matcher = nameFirst.matcher(content);
+        if (matcher.find()) {
+            return matcher.replaceFirst(
+                    Matcher.quoteReplacement(
+                            matcher.group(1)
+                                    + escaped
+                                    + matcher.group(3)));
+        }
+        Pattern valueFirst = Pattern.compile(
+                "(?i)(<flowable:property\\b[^>]*value=\")([^\"]*)(\"[^>]*name=\""
+                        + Pattern.quote(propertyName)
+                        + "\")");
+        matcher = valueFirst.matcher(content);
+        if (matcher.find()) {
+            return matcher.replaceFirst(
+                    Matcher.quoteReplacement(
+                            matcher.group(1)
+                                    + escaped
+                                    + matcher.group(3)));
+        }
+        throw new IllegalArgumentException(
+                "节点扩展属性不存在: " + propertyName);
     }
 
     private String removeAttributes(String startTag, String... names) {

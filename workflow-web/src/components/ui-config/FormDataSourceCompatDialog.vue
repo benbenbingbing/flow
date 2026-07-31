@@ -77,7 +77,7 @@
           <span>只有两项同时开启时浏览器才会执行；后端始终是最终权威。</span>
         </div>
         <div class="mapping-grid">
-          <el-form-item>
+          <el-form-item label="输入映射">
             <template #label>
               <JsonConfigLabel
                 label="输入映射"
@@ -91,7 +91,7 @@
               placeholder='{"filters.ownerId":"data.ownerId"}'
             />
           </el-form-item>
-          <el-form-item>
+          <el-form-item label="输出映射">
             <template #label>
               <JsonConfigLabel
                 label="输出映射"

@@ -14,6 +14,7 @@ import org.flowable.engine.TaskService;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +41,10 @@ public class ProcessTaskService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final EntityRecordPort entityRecordPort;
     private final IdentityDirectoryPort identityDirectoryPort;
+    private final com.workflow.process.sla.runtime.application.TaskSlaRuntimeService
+            taskSlaRuntimeService;
     
+    @Autowired
     public ProcessTaskService(ProcessTaskMapper taskMapper,
                               TaskService flowableTaskService,
                               RuntimeService runtimeService,
@@ -50,7 +54,9 @@ public class ProcessTaskService {
                               com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper,
                               com.fasterxml.jackson.databind.ObjectMapper objectMapper,
                               @Lazy EntityRecordPort entityRecordPort,
-                              IdentityDirectoryPort identityDirectoryPort) {
+                              IdentityDirectoryPort identityDirectoryPort,
+                              @Lazy com.workflow.process.sla.runtime.application.TaskSlaRuntimeService
+                                      taskSlaRuntimeService) {
         this.taskMapper = taskMapper;
         this.flowableTaskService = flowableTaskService;
         this.runtimeService = runtimeService;
@@ -61,6 +67,31 @@ public class ProcessTaskService {
         this.objectMapper = objectMapper;
         this.entityRecordPort = entityRecordPort;
         this.identityDirectoryPort = identityDirectoryPort;
+        this.taskSlaRuntimeService = taskSlaRuntimeService;
+    }
+
+    public ProcessTaskService(ProcessTaskMapper taskMapper,
+                       TaskService flowableTaskService,
+                       RuntimeService runtimeService,
+                       org.flowable.engine.RepositoryService repositoryService,
+                       com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper nodeConfigMapper,
+                       EntityFormRuntimePort entityFormRuntimePort,
+                       com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper,
+                       com.fasterxml.jackson.databind.ObjectMapper objectMapper,
+                       EntityRecordPort entityRecordPort,
+                       IdentityDirectoryPort identityDirectoryPort) {
+        this(
+                taskMapper,
+                flowableTaskService,
+                runtimeService,
+                repositoryService,
+                nodeConfigMapper,
+                entityFormRuntimePort,
+                processDefinitionConfigMapper,
+                objectMapper,
+                entityRecordPort,
+                identityDirectoryPort,
+                null);
     }
     
     /**
@@ -184,6 +215,9 @@ public class ProcessTaskService {
         }
         
         taskMapper.insert(task);
+        if (taskSlaRuntimeService != null) {
+            taskSlaRuntimeService.initialize(task, variables);
+        }
         log.info("创建流程待办: processInstanceId={}, nodeName={}, taskId={}", 
                 task.getProcessInstanceId(), task.getNodeName(), task.getId());
         
@@ -319,6 +353,9 @@ public class ProcessTaskService {
         }
         
         taskMapper.insert(task);
+        if (taskSlaRuntimeService != null) {
+            taskSlaRuntimeService.initialize(task, variables);
+        }
         log.info("创建流程待办: processInstanceId={}, processName={}, nodeName={}, taskId={}, assignee={}", 
                 task.getProcessInstanceId(), task.getProcessName(), task.getNodeName(), task.getId(), task.getAssigneeId());
         
@@ -362,6 +399,9 @@ public class ProcessTaskService {
         task.setUpdateTime(LocalDateTime.now());
 
         taskMapper.updateById(task);
+        if (taskSlaRuntimeService != null) {
+            taskSlaRuntimeService.complete(taskId);
+        }
 
         log.info("完成流程待办: id={}, nodeName={}, action={}, actionLabel={}, duration={}ms",
                 LogValue.safe(task.getId()), LogValue.safe(task.getNodeName()),
@@ -396,6 +436,9 @@ public class ProcessTaskService {
         task.setUpdateTime(LocalDateTime.now());
         
         taskMapper.updateById(task);
+        if (taskSlaRuntimeService != null) {
+            taskSlaRuntimeService.updateAssignee(taskId, transferTo);
+        }
         
         log.info("转办本地待办: id={}, nodeName={}, transferTo={}", 
                 task.getId(), task.getNodeName(), transferTo);
@@ -414,6 +457,10 @@ public class ProcessTaskService {
             task.setAssigneeType("user");
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
+            if (taskSlaRuntimeService != null) {
+                taskSlaRuntimeService.updateAssignee(taskId, assignee);
+                taskSlaRuntimeService.acknowledgeIfConfigured(taskId);
+            }
         } else {
             log.warn("认领任务缺少本地待办记录: taskId={}, processInstanceId={}",
                     LogValue.safe(taskId), LogValue.safe(processInstanceId));

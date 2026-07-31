@@ -275,6 +275,13 @@
       </el-collapse-item>
     </el-collapse>
 
+    <div
+      v-else-if="nodeType === 'TEXT' && isSectionTitleText"
+      class="design-section-title"
+    >
+      <SectionField :field="sectionTitleField" />
+    </div>
+
     <div v-else-if="nodeType === 'TEXT'" class="design-text">
       {{ nodeConfig.text || nodeConfig.content || nodeLabelValue }}
     </div>
@@ -365,6 +372,7 @@ import {
 } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
+import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
 
 defineOptions({ name: 'FormNodeDesignItem' })
@@ -395,6 +403,12 @@ const nodeType = computed(() =>
   String(props.node.nodeType || props.legacyNodeType(props.node) || 'FIELD').toUpperCase()
 )
 const nodeConfig = computed(() => safeParseConfig(props.node.componentProps))
+const isSectionTitleText = computed(() =>
+  String(nodeConfig.value.textStyle || '').toUpperCase() === 'SECTION_TITLE'
+)
+const sectionTitleField = computed(() => ({
+  fieldLabel: nodeConfig.value.text || nodeConfig.value.content || nodeLabelValue.value
+}))
 const children = computed(() => props.childrenFor(props.node.id))
 const withinGrid = computed(() => String(props.parentNodeType).toUpperCase() === 'GRID')
 const containerNode = computed(() => containerTypes.has(nodeType.value))
@@ -609,6 +623,13 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
   color: var(--el-text-color-regular);
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.design-section-title {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 112px 0 12px;
 }
 
 .design-orphan-tab,

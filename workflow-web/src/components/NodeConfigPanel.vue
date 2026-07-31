@@ -431,7 +431,7 @@
                       @selected="onCollectionResolverSelected"
                     />
                   </el-form-item>
-                  <el-form-item>
+                  <el-form-item label="extraParams">
                     <template #label>
                       <JsonConfigLabel
                         label="extraParams"
@@ -1095,9 +1095,11 @@
               </div>
             </el-form-item>
             
-            <el-form-item label="只读模式">
+            <el-form-item label="强制整表只读">
               <el-switch v-model="formConfig.isReadonly" />
-              <div class="form-tip">开启后节点只能查看表单，不能编辑</div>
+              <div class="form-tip">
+                开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。
+              </div>
             </el-form-item>
           </template>
           
@@ -1344,6 +1346,101 @@
               placeholder="如：${skip}"
             />
           </el-form-item>
+
+          <SettingsSection
+            v-if="isUserTask"
+            title="任务 SLA"
+            description="按已发布策略计算首次响应和办结时限"
+            :default-expanded="slaForm.enabled"
+          >
+            <template #summary>
+              <el-tag :type="slaForm.enabled ? 'success' : 'info'" size="small">
+                {{ slaForm.enabled ? selectedSlaPolicyName || '已启用' : '未启用' }}
+              </el-tag>
+            </template>
+            <el-form-item label="启用 SLA">
+              <el-switch v-model="slaForm.enabled" />
+            </el-form-item>
+            <template v-if="slaForm.enabled">
+              <el-form-item label="SLA 策略" required>
+                <el-select
+                  v-model="slaForm.policyCode"
+                  filterable
+                  placeholder="选择已发布策略"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="policy in slaPolicyOptions"
+                    :key="policy.policyCode"
+                    :label="`${policy.policyName}（v${policy.version}）`"
+                    :value="policy.policyCode"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="日历来源">
+                <el-select v-model="slaForm.calendarSource" style="width: 100%">
+                  <el-option label="节点指定" value="NODE" />
+                  <el-option label="流程指定" value="PROCESS" />
+                  <el-option label="业务归属部门" value="BUSINESS_DEPT" />
+                  <el-option label="发起人部门" value="STARTER_DEPT" />
+                  <el-option label="系统默认" value="SYSTEM_DEFAULT" />
+                </el-select>
+              </el-form-item>
+              <el-form-item
+                v-if="slaForm.calendarSource === 'NODE'"
+                label="节点日历"
+                required
+              >
+                <el-select v-model="slaForm.calendarCode" filterable style="width: 100%">
+                  <el-option
+                    v-for="calendar in workCalendarOptions"
+                    :key="calendar.calendarCode"
+                    :label="`${calendar.calendarName}（${calendar.timezoneId}）`"
+                    :value="calendar.calendarCode"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item
+                v-if="slaForm.calendarSource === 'PROCESS'"
+                label="流程日历"
+                required
+              >
+                <el-select v-model="slaForm.processCalendarCode" filterable style="width: 100%">
+                  <el-option
+                    v-for="calendar in workCalendarOptions"
+                    :key="calendar.calendarCode"
+                    :label="`${calendar.calendarName}（${calendar.timezoneId}）`"
+                    :value="calendar.calendarCode"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item
+                v-if="slaForm.calendarSource === 'BUSINESS_DEPT'"
+                label="部门字段"
+                required
+              >
+                <el-select
+                  v-model="slaForm.businessFieldCode"
+                  filterable
+                  placeholder="选择业务数据中的部门字段"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="field in entityFields"
+                    :key="getProcessConditionFieldCode(field)"
+                    :label="field.fieldName || field.fieldLabel || field.fieldCode"
+                    :value="getProcessConditionFieldCode(field)"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                title="发布时冻结策略与日历快照；转办不会重新计算截止时间。"
+              />
+            </template>
+          </SettingsSection>
           
           <SettingsSection
             title="自动跳过"
@@ -1633,6 +1730,20 @@ const formConfig = ref({
   entityCode: ''
 })
 const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '', skipNode: false })
+const slaForm = ref({
+  enabled: false,
+  policyCode: '',
+  calendarSource: 'SYSTEM_DEFAULT',
+  calendarCode: '',
+  processCalendarCode: '',
+  businessFieldCode: ''
+})
+const slaPolicyOptions = ref([])
+const workCalendarOptions = ref([])
+const selectedSlaPolicyName = computed(() => {
+  const policy = slaPolicyOptions.value.find(item => item.policyCode === slaForm.value.policyCode)
+  return policy?.policyName || ''
+})
 const organizationOptions = ref([])
 const ccResolverContext = { usage: 'CC' }
 const createCcRule = () => ({
@@ -1978,6 +2089,7 @@ onMounted(() => {
   loadOrganizations()
   loadEntityFields()
   loadSubProcesses()
+  loadSlaOptions()
 })
 
 // 监听 processId 变化，当流程ID传入后加载实体表单
@@ -2198,6 +2310,25 @@ watch(() => props.element, async (newElement) => {
             { value: 'approve', label: '通过', type: 'primary', showComment: true, remarkRequired: false },
             { value: 'reject', label: '驳回', type: 'danger', showComment: true, remarkRequired: false }
           ]
+        }
+      }
+      if (extProps.slaConfig) {
+        try {
+          slaForm.value = {
+            ...slaForm.value,
+            ...JSON.parse(extProps.slaConfig)
+          }
+        } catch (error) {
+          console.error('解析 slaConfig 失败:', error)
+        }
+      } else {
+        slaForm.value = {
+          enabled: false,
+          policyCode: '',
+          calendarSource: 'SYSTEM_DEFAULT',
+          calendarCode: '',
+          processCalendarCode: '',
+          businessFieldCode: ''
         }
       }
     }
@@ -2638,6 +2769,45 @@ function updateSkipExpression() {
 function updateSkipNode() {
   // 使用扩展属性存储跳过节点配置
   updateExtensionProperty('skipNode', advancedForm.value.skipNode ? 'true' : 'false')
+}
+
+async function loadSlaOptions() {
+  try {
+    const [policies, calendars] = await Promise.all([
+      request.get('/task-sla-policies/published'),
+      request.get('/work-calendars')
+    ])
+    slaPolicyOptions.value = Array.isArray(policies) ? policies : []
+    workCalendarOptions.value = (Array.isArray(calendars) ? calendars : [])
+      .filter(item => item.status === 'PUBLISHED')
+  } catch (error) {
+    console.warn('加载SLA策略或工作日历失败:', error)
+  }
+}
+
+function updateSlaConfig() {
+  if (!slaForm.value.enabled) {
+    updateExtensionProperty('slaConfig', JSON.stringify({ enabled: false }))
+    return true
+  }
+  if (!slaForm.value.policyCode) {
+    ElMessage.warning('请选择已发布的SLA策略')
+    return false
+  }
+  if (slaForm.value.calendarSource === 'NODE' && !slaForm.value.calendarCode) {
+    ElMessage.warning('请选择节点工作日历')
+    return false
+  }
+  if (slaForm.value.calendarSource === 'PROCESS' && !slaForm.value.processCalendarCode) {
+    ElMessage.warning('请选择流程工作日历')
+    return false
+  }
+  if (slaForm.value.calendarSource === 'BUSINESS_DEPT' && !slaForm.value.businessFieldCode) {
+    ElMessage.warning('请选择业务归属部门字段')
+    return false
+  }
+  updateExtensionProperty('slaConfig', JSON.stringify(slaForm.value))
+  return true
 }
 
 // ========== 执行人配置更新方法 ==========
@@ -3237,6 +3407,7 @@ function applyConfigurationSection(section) {
         updateAsync()
         updateSkipExpression()
         updateSkipNode()
+        if (isUserTask.value && !updateSlaConfig()) return false
         break
       default:
         console.warn('未知的配置分区:', section)

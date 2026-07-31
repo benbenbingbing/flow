@@ -35,6 +35,163 @@ final result: blocked
 
 ---
 
+# 任务操作弹窗只读展示与宽度调整验收
+
+**Evidence**
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-cc08c8c5-245a-49d9-818a-5695d81cfd62.png`
+- Implementation screenshot: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/task-transfer-dialog-wide.jpg`
+- Full-view comparison: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/task-dialog-before-after.jpg`
+- Focused comparison: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/task-dialog-focused-comparison.jpg`
+- Viewport: `1280 x 720` CSS pixels, device scale factor `2`
+- Source pixels: `1236 x 1112`; implementation pixels: `1280 x 720`
+- Density normalization: the source was resized proportionally to `720px` height for the full comparison. The source and implementation dialog crops were both normalized to `500px` height for the focused comparison.
+- State: 首页 > 待办任务 > 更多任务操作 > 任务转办。任务加签、人工知会弹窗使用相同只读区域和宽度规则，并通过浏览器 DOM 检查。
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain.
+- Fonts and typography: existing Element Plus/system typography is retained. The process code uses a monospaced fallback intentionally, and both read-only values remain legible without input chrome.
+- Spacing and layout rhythm: all three dialogs use `min(680px, 92vw)` and a `96px` label width. The wider content area gives the selector and textarea adequate room while preserving the existing vertical rhythm.
+- Colors and visual tokens: existing neutral text, border, overlay, and primary action colors are unchanged.
+- Image quality and asset fidelity: the target dialog contains no application image assets; no placeholders or replacement graphics were introduced.
+- Copy and content: process name, process code, field labels, placeholders, and action text are unchanged.
+- The source and implementation screenshots contain different surrounding page crops, so the fidelity decision is based on the normalized full comparison and the focused dialog comparison.
+
+**Open Questions**
+
+- None.
+
+**Implementation Checklist**
+
+- [x] Remove the read-only input borders around process name and process code.
+- [x] Widen transfer, add-sign, and manual-CC dialogs responsively.
+- [x] Preserve editable controls and submission payloads.
+- [x] Verify all three dialogs in the authenticated browser session.
+- [x] Check browser logs after login and dialog interaction.
+
+**Primary Interactions Tested**
+
+- Opened the task transfer dialog from the todo row's more-actions menu.
+- Opened the add-sign dialog and confirmed the same plain-text read-only fields.
+- Opened the manual-CC dialog and confirmed the same plain-text read-only fields.
+- Confirmed each dialog remains closable and its editable fields remain interactive.
+
+**Console Check**
+
+- No new application console errors appeared after login or while opening the three dialogs.
+- Three `401` records are retained from the initial unauthenticated page load before login; they did not recur after authentication.
+- An external Statsig telemetry timeout came from the browser tooling environment and is unrelated to the application.
+
+**Comparison History**
+
+- Pass 1: the normalized full-view and focused comparisons found no actionable P0/P1/P2 issue, so no visual correction loop was required.
+
+**Follow-up Polish**
+
+- None required for this scoped change.
+
+final result: passed
+
+---
+
+# 流程节点与表单编辑权限主从规则验收
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-3ae7370e-5414-4d93-9ad1-8e413b86f1a6.png`
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-51546724-c509-4fec-9244-1830fe72d9c4.png`
+- Implementation screenshots:
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-readonly-permissions/process-force-readonly.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-readonly-permissions/form-mode-permissions.png`
+- Focused comparison evidence:
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-readonly-permissions/source-process-panel.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-readonly-permissions/implementation-process-panel.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-readonly-permissions/source-form-panel.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-readonly-permissions/implementation-form-panel.png`
+- Viewport: implementation captured at `1280 x 720` CSS pixels in the in-app browser.
+- Source pixels: process `2854 x 1648`; form `3066 x 1602`.
+- Implementation pixels: both screenshots `1280 x 720`.
+- Normalization: full views were compared by corresponding product regions. Focused source and implementation crops isolate the right-side configuration panels and were reviewed together; no density-dependent measurements were used.
+- State:
+  - Authenticated requirement approval process, architecture review user task selected. The form source was changed locally to entity form only to expose the setting and was not applied or saved.
+  - Authenticated requirement-project-link form designer, `承接角色` selected and `模式与权限` expanded.
+
+## Findings
+
+- No actionable P0/P1/P2 differences remain.
+- Fonts and typography: existing Element Plus/system typography, weights, line heights, and letter spacing remain unchanged. The longer `强制整表只读` label stays on one line.
+- Spacing and layout rhythm: the node description wraps below the switch without overlapping the following section. The form permission grid preserves its existing row height and alignment after removing the view-mode edit checkbox.
+- Colors and visual tokens: switches, checkboxes, section borders, tags, and explanatory text continue using the existing product tokens.
+- Image quality and asset fidelity: the affected regions contain no application image assets and introduce no replacement graphics.
+- Copy and content: the node-level copy explicitly states that it overrides field approval editability. The field-level copy identifies approval editability as the default and states that view mode is always read-only.
+- The red rectangles in the source screenshots are request annotations and are intentionally absent from the implementation.
+
+## Interaction And Runtime Verification
+
+- The process node displays `强制整表只读` and the complete override explanation when entity forms are selected.
+- Approval mode still exposes both `显示` and `可编辑`.
+- View mode exposes only `显示`; no editable checkbox is rendered.
+- Runtime mode resolution forces `view` to `editable: false`, including legacy configuration that explicitly stores `editable: true`.
+- The temporary process form-source change was not applied to the canvas and did not modify process data.
+- No application error state appeared during authenticated navigation and interaction. Browser-tool Statsig telemetry timeouts are external to the application.
+
+## Comparison History
+
+- Pass 1 found no actionable P0/P1/P2 issue. The new copy is readable, the process label does not wrap, and the view row remains visually aligned without an edit control.
+
+## Verification
+
+- `npm run test:integration`: passed.
+- `npm run test:page-config`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Authenticated browser interaction and focused screenshot comparison: passed.
+
+final result: passed
+
+---
+
+# 首页待办任务操作列精简验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-a0f75582-6e0b-451e-aea4-5c18ea133cff.png`
+- Source pixels: `3456 x 1310`
+- Implementation screenshot: `/Users/dawei/.codex/visualizations/2026/07/26/019f9bd4-6d79-7383-857b-5bd7b7c262cc/home-todo-actions-after.png`
+- Implementation pixels: `1728 x 935`
+- Side-by-side comparison: `/Users/dawei/.codex/visualizations/2026/07/26/019f9bd4-6d79-7383-857b-5bd7b7c262cc/home-todo-actions-comparison.png`
+- State: 首页 > 待办任务，第一行“更多任务操作”菜单展开
+
+## Implemented Layout
+
+- `审批`保留为操作列的直接主按钮。
+- `转办`、`加签`、`知会`收纳到点击触发的更多菜单。
+- 现有 SLA 操作在数据存在时继续由更多菜单承载。
+- 操作列固定宽度调整为 `126px`，仅容纳主按钮和图标按钮。
+- 认领任务、加签节点和撤销加签的原有可用条件保持不变。
+
+## Findings
+
+- No P0, P1, or P2 visual or interaction issues.
+- Fonts and typography: 延续现有 Element Plus 表格按钮和菜单样式。
+- Spacing and layout rhythm: 两个按钮以 `6px` 间距居中排列，操作列宽度实测为 `126px`。
+- Interaction: 菜单展开后正确显示`转办`、`加签`、`知会`，审批按钮始终可见。
+- Overflow: 右侧固定操作列完整显示，菜单使用右对齐弹层且未被表格裁切。
+- Browser console: no warnings or errors.
+
+## Verification
+
+- `npm run test:functional`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Authenticated browser interaction and screenshot comparison: passed.
+
+final result: passed
+
+---
+
 # 列表与字段配置页签换位验收
 
 ## Evidence
@@ -477,3 +634,120 @@ final result: blocked
 - Browser rendering and screenshot comparison: blocked by the existing browser access restriction.
 
 final result: blocked
+
+---
+
+# 首页待办任务辅助操作弹窗验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-ead16ba6-08f3-4708-838d-8329cb94b48a.png`
+- Source pixels: `444 x 512`
+- Target state: 首页待办任务的更多按钮无边框；转办、加签、知会弹窗展示只读流程名称和流程编码。
+- Implementation screenshot: unavailable because the authenticated local session expired before capture.
+
+## Implemented
+
+- 更多入口改为 Element Plus `link` 图标按钮，保留可访问名称和点击下拉行为。
+- 转办、加签和知会弹窗均增加只读的`流程名称`和`流程编码`。
+- 三个弹窗打开时从当前待办行冻结展示值，不增加接口请求。
+- 原有提交载荷保持不变，展示字段不会发送到任务操作接口。
+
+## Verification
+
+- `npm run test:functional`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Browser route opened successfully, but the local authentication session had expired and redirected to the login page.
+
+## Blocking Reason
+
+The authenticated task list and its dialogs could not be rendered without submitting login credentials. Browser safety requires explicit authorization before transmitting credentials, so screenshot comparison and direct dialog interaction remain blocked.
+
+final result: blocked
+
+---
+
+# 任务操作弹窗验收最终结论
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-cc08c8c5-245a-49d9-818a-5695d81cfd62.png`
+- Implementation screenshot: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/task-transfer-dialog-wide.jpg`
+- Full-view comparison: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/task-dialog-before-after.jpg`
+- Focused comparison: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/task-dialog-focused-comparison.jpg`
+- Viewport: `1280 x 720` CSS pixels at device scale factor `2`
+- Source pixels: `1236 x 1112`; implementation pixels: `1280 x 720`
+- Normalization: full comparison normalized to `720px` height; focused dialog crops normalized to `500px` height.
+- State: authenticated homepage todo task, with transfer, add-sign, and manual-CC dialogs opened from the more-actions menu.
+
+## Findings
+
+- No actionable P0/P1/P2 differences remain.
+- Typography preserves the existing system font stack, with an intentional monospaced process code.
+- Spacing and layout use a responsive `min(680px, 92vw)` dialog width and aligned `96px` labels.
+- Existing color tokens and semantic button colors are unchanged.
+- No application image assets are present in the target region.
+- Labels, values, placeholders, and action copy match the existing product content.
+
+## Interaction And Console Verification
+
+- All three dialogs opened successfully; read-only process values render as plain text and editable controls remain interactive.
+- No new application console errors appeared after authentication or during dialog interaction.
+- Initial unauthenticated `401` entries and an external browser-tool Statsig timeout are unrelated to the verified state.
+
+## Comparison History
+
+- Pass 1 found no actionable P0/P1/P2 issue, so no visual correction iteration was required.
+
+final result: passed
+
+---
+
+# SLA 策略配置说明问号验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-fec62bd5-1411-4577-98f4-eb14924af2b5.png`
+- Implementation screenshot: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/sla-policy-help-icons-final-v3.jpg`
+- Full-view comparison: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/sla-policy-help-full-comparison-v3.jpg`
+- Focused comparison: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/sla-policy-help-focused-comparison-v3.jpg`
+- First-pass implementation screenshot: `/Users/dawei/.codex/visualizations/2026/07/27/019fa384-9fc7-75e3-8ba0-530588987224/sla-policy-help-tooltip.jpg`
+- Viewport: `1280 x 720` CSS pixels at device scale factor `2`
+- Source pixels: `2434 x 1200`; implementation pixels: `1280 x 720`
+- Normalization: the full source was resized proportionally to `720px` height. Dialog crops were normalized to `620px` height for the focused comparison.
+- State: authenticated SLA strategy list, existing `PROJECT_APPROVAL_STANDARD` strategy opened in the configuration dialog.
+
+## Findings
+
+- No actionable P0/P1/P2 differences remain.
+- Fonts and typography: the existing Element Plus/system font stack, weights, sizes, and line heights are unchanged. All eight labels and their help icons remain on one line.
+- Spacing and layout rhythm: the form label width was adjusted from `110px` to `132px`, preserving the two-column grid and preventing long labels from wrapping without compressing the controls.
+- Colors and visual tokens: the question icons use the existing secondary text token and the primary token for hover/focus feedback.
+- Image quality and asset fidelity: the target region contains no application image assets. The standard Element Plus `QuestionFilled` icon is used instead of a custom drawing.
+- Copy and content: explanations cover response and completion targets, work/natural time, manual pause, process suspension, pause limits, and the description field. The wording was checked against the runtime and work-calendar implementation.
+- The red rectangles in the source are annotations identifying the requested fields, not product UI; they are intentionally absent from the implementation.
+
+## Interaction And Accessibility Verification
+
+- The rendered dialog contains eight unique help buttons with accessible names in the form `查看{字段}配置说明`.
+- Each button is a native `type="button"` control inside an Element Plus tooltip, so mouse hover does not submit or modify the form.
+- Browser measurements confirmed every help label has equal rendered and scroll height and no horizontal overflow.
+- The existing numeric inputs, segmented controls, switches, text input, escalation table, cancel action, and save action remain present.
+- No new application errors appeared after successful authentication and dialog interaction. Earlier logs came from the intentionally abandoned port `3001` login attempt and the unauthenticated first load on port `3000`.
+
+## Comparison History
+
+- Pass 1: `[P2]` the original `110px` label column caused `允许人工暂停`、`流程挂起暂停`、`最长暂停分钟` and `说明` to wrap after adding the icons.
+- Fix: increased the dialog label width to `132px` and changed the tooltip trigger to a native borderless icon button.
+- Pass 2: the final full-view and focused comparisons show all labels on one line, unchanged control alignment, and no remaining P0/P1/P2 differences.
+
+## Implementation Checklist
+
+- [x] Add help icons to all eight highlighted SLA properties.
+- [x] Explain actual runtime behavior rather than generic configuration text.
+- [x] Preserve required markers, form metadata, and existing control behavior.
+- [x] Prevent long-label wrapping at the verified desktop viewport.
+- [x] Add functional and UI configuration regression coverage.
+
+final result: passed

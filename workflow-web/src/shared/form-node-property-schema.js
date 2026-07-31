@@ -68,8 +68,8 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     configKeys: ['defaultExpanded', 'accordion']
   }),
   TEXT: schema({
-    editable: ['parentId', 'text'],
-    configKeys: ['text']
+    editable: ['parentId', 'text', 'textStyle'],
+    configKeys: ['text', 'textStyle']
   }),
   FIELD: schema({
     editable: [
@@ -265,7 +265,8 @@ export function extractFormNodeComponentConfig(value, propsValue) {
       ?? props.content
       ?? nested.text
       ?? nested.content
-    return text === undefined ? {} : { text }
+    const textStyle = props.textStyle ?? nested.textStyle
+    return cleanObject({ text, textStyle })
   }
   return nodeSchema.configKeys.reduce((result, key) => {
     if (props[key] !== undefined) {

@@ -41,7 +41,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(18, files.size());
+        assertEquals(19, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(

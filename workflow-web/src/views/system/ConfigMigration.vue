@@ -4,7 +4,7 @@
       <div class="overview">
         <div>
           <h2>配置迁移</h2>
-          <p>迁移动态实体、流程和系统实体 UI 的已发布快照，不包含业务数据、系统表结构和敏感环境参数。</p>
+          <p>迁移实体、流程、系统实体 UI、工作日历和 SLA 策略的已发布快照，不包含业务数据、系统表结构和运行台账。</p>
         </div>
         <div class="overview-stats">
           <div><strong>{{ assetStats.pending }}</strong><span>待导出</span></div>
@@ -31,6 +31,8 @@
                   <el-option label="实体" value="ENTITY" />
                   <el-option label="系统实体 UI" value="SYSTEM_ENTITY_UI" />
                   <el-option label="流程" value="PROCESS" />
+                  <el-option label="工作日历" value="WORK_CALENDAR" />
+                  <el-option label="SLA 策略" value="TASK_SLA_POLICY" />
                 </el-select>
               </el-form-item>
               <el-form-item label="编码">
@@ -539,6 +541,12 @@ const sectionOptions = computed(() => {
       { label: 'UI 扩展', value: 'extensions' }
     ]
   }
+  if (asset.assetType === 'WORK_CALENDAR') {
+    return [{ label: '日历规则与组织绑定', value: 'configuration' }]
+  }
+  if (asset.assetType === 'TASK_SLA_POLICY') {
+    return [{ label: '时限与升级步骤', value: 'configuration' }]
+  }
   return [
     { label: '实体字段与关系', value: 'fields' },
     { label: '状态与编码规则', value: 'statuses' },
@@ -791,7 +799,7 @@ const saveMappings = async () => {
 
 const publishImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
-    `发布会更新目标环境的实体、系统实体 UI、表单、列表和流程配置。请输入迁移标记「${row.migrationTag}」确认。`,
+    `发布会更新目标环境的实体、系统实体 UI、表单、列表、流程、工作日历和 SLA 策略配置。请输入迁移标记「${row.migrationTag}」确认。`,
     '确认发布配置',
     {
       type: 'warning',
@@ -870,13 +878,17 @@ const publishStatusText = (status) => ({
 const assetTypeLabel = (assetType) => ({
   ENTITY: '实体',
   SYSTEM_ENTITY_UI: '系统实体 UI',
-  PROCESS: '流程'
+  PROCESS: '流程',
+  WORK_CALENDAR: '工作日历',
+  TASK_SLA_POLICY: 'SLA 策略'
 }[assetType] || assetType || '未知')
 
 const assetTypeTagType = (assetType) => ({
   ENTITY: 'primary',
   SYSTEM_ENTITY_UI: 'warning',
-  PROCESS: 'success'
+  PROCESS: 'success',
+  WORK_CALENDAR: 'info',
+  TASK_SLA_POLICY: 'danger'
 }[assetType] || 'info')
 
 const parseJson = (value, fallback) => {

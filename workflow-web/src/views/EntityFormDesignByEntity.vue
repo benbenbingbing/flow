@@ -88,6 +88,7 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item command="SECTION">区块</el-dropdown-item>
                   <el-dropdown-item command="GRID">栅格</el-dropdown-item>
                   <el-dropdown-item command="TAB_SET">Tab 集合</el-dropdown-item>
                   <el-dropdown-item command="TAB">Tab 页</el-dropdown-item>
@@ -297,11 +298,15 @@
                   <el-input v-model="selectedField.fieldLabel" />
                 </el-form-item>
 
-                <el-form-item v-if="selectedNodeType === 'TEXT'" label="说明内容">
+                <el-form-item
+                  v-if="selectedNodeType === 'TEXT'"
+                  :label="isSectionTitleNode ? '节名称' : '说明内容'"
+                >
                   <el-input
                     :model-value="selectedNodeConfig.text || selectedNodeConfig.content || ''"
-                    type="textarea"
-                    :rows="4"
+                    :type="isSectionTitleNode ? 'text' : 'textarea'"
+                    :rows="isSectionTitleNode ? undefined : 4"
+                    :placeholder="isSectionTitleNode ? '请输入节名称' : '请输入说明内容'"
                     @update:model-value="updateSelectedNodeConfig('text', $event)"
                   />
                 </el-form-item>
@@ -593,10 +598,15 @@
                       @change="updateModeAccess(modeOption.value, 'visible', $event)"
                     >显示</el-checkbox>
                     <el-checkbox
+                      v-if="modeOption.editable !== false"
                       :model-value="getModeAccessValue(modeOption.value, 'editable')"
                       @change="updateModeAccess(modeOption.value, 'editable', $event)"
                     >可编辑</el-checkbox>
                   </div>
+                </div>
+                <div class="mode-access-tip">
+                  审批可编辑：字段在审批办理时的默认编辑权限，流程节点开启“强制整表只读”后本配置不生效。
+                  查看模式固定只读，仅控制字段是否显示。
                 </div>
               </SettingsSection>
 
@@ -1128,7 +1138,7 @@ const modeOptions = [
   { value: 'create', label: '新增' },
   { value: 'edit', label: '编辑' },
   { value: 'approve', label: '审批' },
-  { value: 'view', label: '查看' }
+  { value: 'view', label: '查看', editable: false }
 ]
 const nodeTypeOptions = [
   { value: 'SECTION', label: '区块' },
@@ -1337,10 +1347,18 @@ const canEditGridSpan = computed(() =>
 const canConfigureNodeExtension = computed(() =>
   selectedNodePropertySchema.value.nodeExtension
 )
-const selectedNodeTypeLabel = computed(() =>
-  nodeTypeOptions.find(option => option.value === selectedNodeType.value)?.label
-    || selectedNodeType.value
+const selectedNodeConfig = computed(() =>
+  safeParseConfig(selectedField.value?.componentProps)
 )
+const isSectionTitleNode = computed(() =>
+  selectedNodeType.value === 'TEXT'
+    && String(selectedNodeConfig.value.textStyle || '').toUpperCase() === 'SECTION_TITLE'
+)
+const selectedNodeTypeLabel = computed(() => {
+  if (isSectionTitleNode.value) return '节'
+  return nodeTypeOptions.find(option => option.value === selectedNodeType.value)?.label
+    || selectedNodeType.value
+})
 const selectedNodeHasLockedBinding = computed(() => {
   if (!isEditableFieldNode.value) return false
   const bindingType = String(selectedField.value?.bindingType || '').toUpperCase()
@@ -1359,9 +1377,6 @@ const selectedNodeLockMessage = computed(() => {
   }
   return '可调整合法父容器；节点类型、同级排序和技术标识由画布结构控制。'
 })
-const selectedNodeConfig = computed(() =>
-  safeParseConfig(selectedField.value?.componentProps)
-)
 const availableNodeDataSourceUsages = computed(() => {
   const allowed = new Set(getFormNodeDataSourceUsages(selectedNodeType.value))
   return formDataSourceUsages.filter(usage => allowed.has(usage.value))
@@ -2467,10 +2482,16 @@ function isSectionField(field) {
 
 // 添加节
 function addSection() {
-  addContainerNode('SECTION')
+  addContainerNode('TEXT', {
+    label: '新节',
+    componentProps: {
+      text: '新节',
+      textStyle: 'SECTION_TITLE'
+    }
+  })
 }
 
-function addContainerNode(nodeType) {
+function addContainerNode(nodeType, options = {}) {
   const tabSetNodes = availableTabSetNodes.value
   if (nodeType === 'TAB' && tabSetNodes.length === 0) {
     ElMessage.warning('请先创建 Tab 集合，再添加 Tab 页')
@@ -2487,10 +2508,17 @@ function addContainerNode(nodeType) {
     REPEATER: '新明细表',
     ACTION_SLOT: '动作插槽'
   }
+  const nodeLabel = options.label || typeLabels[nodeType] || '新节点'
+  const componentProps = nodeType === 'TEXT'
+    ? {
+        text: nodeLabel,
+        ...(options.componentProps || {})
+      }
+    : (options.componentProps || {})
   const stableId = `node_${nodeType.toLowerCase()}_${ts}`
   const parentId = resolveDefaultParentId(nodeType)
   const placement = nextNodePlacement(parentId)
-  const section = {
+  const node = {
     id: stableId,
     nodeId: stableId,
     nodeKey: stableId,
@@ -2501,8 +2529,8 @@ function addContainerNode(nodeType) {
     formId: formId,
     fieldId: null,
     fieldCode: stableId,
-    fieldName: typeLabels[nodeType] || '新节点',
-    fieldLabel: typeLabels[nodeType] || '新节点',
+    fieldName: nodeLabel,
+    fieldLabel: nodeLabel,
     fieldType: nodeType === 'REPEATER' ? 'SUB_FORM_LIST' : nodeType,
     componentType: nodeType === 'REPEATER'
       ? 'sub_form_list'
@@ -2512,17 +2540,18 @@ function addContainerNode(nodeType) {
     isRequired: 0,
     isReadonly: 1,
     isHidden: 0,
+    componentProps: stringifyConfig(componentProps),
     validationRules: '',
     extensionConfig: '',
     gridSpan: 24,
     sortOrder: placement.sortOrder
   }
-  formFields.value.push(section)
-  selectField(section)
-  if (nodeType === 'TAB' && !section.parentId) {
+  formFields.value.push(node)
+  selectField(node)
+  if (nodeType === 'TAB' && !node.parentId) {
     ElMessage.info('请选择“所属 Tab 集合”后再保存当前 Tab 页')
   } else {
-    ElMessage.success(`${typeLabels[nodeType] || '节点'}已添加`)
+    ElMessage.success(`${nodeLabel}已添加`)
   }
 }
 
@@ -3413,6 +3442,12 @@ onMounted(async () => {
   border: 1px solid #ebeef5;
   border-radius: 4px;
   background: #fafafa;
+}
+
+.mode-access-tip {
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .field-info {

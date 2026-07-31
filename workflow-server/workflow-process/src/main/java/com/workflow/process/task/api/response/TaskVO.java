@@ -75,6 +75,15 @@ public class TaskVO {
      * 优先级
      */
     private Integer priority;
+
+    /** SLA综合状态 */
+    private String slaStatus;
+
+    /** 首次响应截止时间 */
+    private Date responseDueTime;
+
+    /** 办结截止时间 */
+    private Date dueTime;
     
     /**
      * 任务处理人

@@ -396,6 +396,20 @@ const modeField = {
 assert.deepEqual(getFieldModeAccess(modeField, 'view'), { visible: true, editable: false })
 assert.equal(isFieldVisibleForMode(modeField, 'create'), true)
 assert.equal(isFieldReadonlyForMode(modeField, 'view'), true)
+assert.deepEqual(
+  getFieldModeAccess({
+    extensionConfig: JSON.stringify({
+      modes: {
+        view: { visible: true, editable: true }
+      }
+    })
+  }, 'view'),
+  { visible: true, editable: false }
+)
+assert.deepEqual(
+  getFieldModeAccess({ extensionConfig: '' }, 'view'),
+  { visible: true, editable: false }
+)
 
 const validationRules = buildRuntimeFieldRules(
   { validationRules: JSON.stringify({ minLength: 2, maxLength: 5, format: 'EMAIL' }) },

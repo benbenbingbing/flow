@@ -280,15 +280,19 @@ const handleSelectionChange = (selection: any[]) => {
     return
   }
 
-  const nextSelection = props.selectionMode === 'MULTIPLE'
-    ? reconcileRecordPageSelection(
-        selectedRows.value,
-        props.dataList,
-        selection
-      )
-    : selection
-  selectedRows.value = nextSelection
-  emit('selection-change', nextSelection)
+  if (props.selectionMode === 'MULTIPLE') {
+    const nextSelection = reconcileRecordPageSelection(
+      selectedRows.value,
+      props.dataList,
+      selection
+    )
+    selectedRows.value = nextSelection
+    emit('selection-change', nextSelection)
+    return
+  }
+
+  selectedRows.value = selection
+  emit('selection-change', selection)
 }
 
 // 内置工具栏动作映射

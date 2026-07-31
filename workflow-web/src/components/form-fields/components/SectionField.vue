@@ -26,23 +26,23 @@ const title = computed(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 12px 0;
+  min-height: 38px;
+  padding: 8px 0;
   box-sizing: border-box;
 }
 
 .section-bar {
   width: 4px;
-  height: 18px;
+  height: 22px;
   background-color: #409eff;
-  border-radius: 2px;
   margin-right: 10px;
   flex-shrink: 0;
 }
 
 .section-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #303133;
-  line-height: 1;
+  line-height: 22px;
 }
 </style>

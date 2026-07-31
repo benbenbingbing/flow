@@ -101,6 +101,44 @@ class ConfigMigrationPackageCodecTest {
                 .containsKey("fields"));
     }
 
+    @Test
+    void slaAssetsUseDedicatedPackagePaths() {
+        ConfigMigrationPackageCodec codec = codec("test-signing-key");
+        ConfigMigrationAsset calendar = workCalendarAsset();
+        ConfigMigrationAsset policy = taskSlaPolicyAsset();
+
+        ConfigMigrationPackageCodec.DecodedPackage decoded =
+                codec.decode(codec.encode(
+                        "WFP-SLA-001",
+                        "REL-20260731-SLA",
+                        List.of(calendar, policy),
+                        Map.of())
+                        .data());
+
+        Map<String, String> pathsByType =
+                ((List<?>) decoded.manifest().get("assets"))
+                        .stream()
+                        .map(value -> (Map<String, Object>) value)
+                        .collect(java.util.stream.Collectors.toMap(
+                                value -> String.valueOf(
+                                        value.get("assetType")),
+                                value -> String.valueOf(
+                                        value.get("path"))));
+        assertTrue(pathsByType.get(
+                        ConfigMigrationAssetService.WORK_CALENDAR)
+                .startsWith("assets/work-calendars/"));
+        assertTrue(pathsByType.get(
+                        ConfigMigrationAssetService.TASK_SLA_POLICY)
+                .startsWith("assets/task-sla-policies/"));
+        assertEquals(
+                List.of(
+                        ConfigMigrationAssetService.WORK_CALENDAR,
+                        ConfigMigrationAssetService.TASK_SLA_POLICY),
+                decoded.assets().stream()
+                        .map(ConfigMigrationPackageCodec.DecodedAsset::assetType)
+                        .toList());
+    }
+
     /** 构造指定签名密钥的编解码器，通过反射注入密钥与环境名 */
     private ConfigMigrationPackageCodec codec(String signingKey) {
         ConfigMigrationPackageCodec codec = new ConfigMigrationPackageCodec(
@@ -161,6 +199,58 @@ class ConfigMigrationPackageCodecTest {
                   "lists": [{"listKey": "all", "listName": "用户列表"}],
                   "dataSources": [],
                   "extensions": [],
+                  "dependencies": []
+                }
+                """);
+        asset.setDependenciesJson("[]");
+        return asset;
+    }
+
+    private ConfigMigrationAsset workCalendarAsset() {
+        ConfigMigrationAsset asset = new ConfigMigrationAsset();
+        asset.setId("calendar-asset-1");
+        asset.setAssetType(
+                ConfigMigrationAssetService.WORK_CALENDAR);
+        asset.setBusinessKey("CN_STANDARD");
+        asset.setAssetName("中国标准工作日历");
+        asset.setSourceVersion(1);
+        asset.setContentHash("calendar-full-hash");
+        asset.setSnapshotSchemaVersion(1);
+        asset.setSnapshotJson("""
+                {
+                  "schemaVersion": 1,
+                  "assetType": "WORK_CALENDAR",
+                  "businessKey": "CN_STANDARD",
+                  "configuration": {
+                    "calendarCode": "CN_STANDARD",
+                    "timezoneId": "Asia/Shanghai"
+                  },
+                  "dependencies": []
+                }
+                """);
+        asset.setDependenciesJson("[]");
+        return asset;
+    }
+
+    private ConfigMigrationAsset taskSlaPolicyAsset() {
+        ConfigMigrationAsset asset = new ConfigMigrationAsset();
+        asset.setId("sla-policy-asset-1");
+        asset.setAssetType(
+                ConfigMigrationAssetService.TASK_SLA_POLICY);
+        asset.setBusinessKey("STANDARD_APPROVAL");
+        asset.setAssetName("标准审批 SLA");
+        asset.setSourceVersion(1);
+        asset.setContentHash("sla-policy-full-hash");
+        asset.setSnapshotSchemaVersion(1);
+        asset.setSnapshotJson("""
+                {
+                  "schemaVersion": 1,
+                  "assetType": "TASK_SLA_POLICY",
+                  "businessKey": "STANDARD_APPROVAL",
+                  "configuration": {
+                    "policyCode": "STANDARD_APPROVAL",
+                    "completionTargetMinutes": 480
+                  },
                   "dependencies": []
                 }
                 """);

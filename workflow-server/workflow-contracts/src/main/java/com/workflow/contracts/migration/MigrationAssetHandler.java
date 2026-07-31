@@ -21,4 +21,12 @@ public interface MigrationAssetHandler {
             String entityId,
             String releaseId,
             ConfigMigrationPublishRequest request);
+
+    void recordWorkCalendar(
+            String calendarId,
+            ConfigMigrationPublishRequest request);
+
+    void recordTaskSlaPolicy(
+            String policyId,
+            ConfigMigrationPublishRequest request);
 }

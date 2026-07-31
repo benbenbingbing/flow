@@ -47,6 +47,22 @@ export function claimTask(taskId) {
   return request.post(`/process-task/claim/${taskId}`)
 }
 
+export function getTaskSla(taskId) {
+  return request.get(`/tasks/${taskId}/sla`)
+}
+
+export function acknowledgeTask(taskId) {
+  return request.post(`/tasks/${taskId}/acknowledge`)
+}
+
+export function pauseTaskSla(taskId, data) {
+  return request.post(`/tasks/${taskId}/sla/pause`, data)
+}
+
+export function resumeTaskSla(taskId) {
+  return request.post(`/tasks/${taskId}/sla/resume`)
+}
+
 export function getTaskOperations(taskId) {
   return request.get(`/tasks/${taskId}/operations`)
 }
@@ -142,6 +158,10 @@ export const processTaskApi = {
   getTaskDetail,
   completeTask,
   claimTask,
+  getTaskSla,
+  acknowledgeTask,
+  pauseTaskSla,
+  resumeTaskSla,
   getTaskOperations,
   previewAddSign,
   addSignTask,

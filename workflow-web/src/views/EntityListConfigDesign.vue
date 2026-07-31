@@ -298,6 +298,7 @@
                   <el-form-item
                     v-if="configInfo.selectionMode !== 'NONE'"
                     class="view-config-item--full"
+                    label="返回映射 JSON"
                   >
                     <template #label>
                       <JsonConfigLabel
@@ -322,7 +323,7 @@
                   <template #summary>
                     {{ configInfo.queryProviderCode || configInfo.queryDataSourceId ? '已配置扩展查询' : '平台默认查询' }}
                   </template>
-                  <el-form-item>
+                  <el-form-item label="固定条件 JSON">
                     <template #label>
                       <JsonConfigLabel
                         label="固定条件 JSON"
@@ -336,7 +337,7 @@
                       placeholder='例如 {"status":"RUNNING","status_op":"EQ"}'
                     />
                   </el-form-item>
-                  <el-form-item>
+                  <el-form-item label="上下文绑定 JSON">
                     <template #label>
                       <JsonConfigLabel
                         label="上下文绑定 JSON"

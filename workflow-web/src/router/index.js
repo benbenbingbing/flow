@@ -47,6 +47,24 @@ const routes = [
         component: () => import('@/views/ProcessDesign.vue'),
         meta: { title: '流程设计', activeMenu: '/process' }
       },
+      {
+        path: '/process/sla-policies',
+        name: 'TaskSlaPolicyManagement',
+        component: () => import('@/views/process/TaskSlaPolicyManagement.vue'),
+        meta: {
+          title: 'SLA策略',
+          requiredPermissions: ['process:sla-policy:view']
+        }
+      },
+      {
+        path: '/process/sla-monitor',
+        name: 'TaskSlaMonitor',
+        component: () => import('@/views/process/TaskSlaMonitor.vue'),
+        meta: {
+          title: 'SLA监控',
+          requiredPermissions: ['process:sla:monitor']
+        }
+      },
       // 实体管理
       {
         path: '/entity',
@@ -159,6 +177,15 @@ const routes = [
         name: 'DictManagement',
         component: () => import('@/views/system/Dict.vue'),
         meta: { title: '字典设置' }
+      },
+      {
+        path: '/system/work-calendars',
+        name: 'WorkCalendarManagement',
+        component: () => import('@/views/system/WorkCalendarManagement.vue'),
+        meta: {
+          title: '工作日历',
+          requiredPermissions: ['system:work-calendar:view']
+        }
       },
       {
         path: '/system/audit-logs',

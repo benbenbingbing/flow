@@ -92,6 +92,13 @@
     </el-collapse-item>
   </el-collapse>
 
+  <div
+    v-else-if="node.nodeType === 'TEXT' && isSectionTitleText"
+    class="node-section-title"
+  >
+    <SectionField :field="sectionTitleField" />
+  </div>
+
   <div v-else-if="node.nodeType === 'TEXT'" class="node-text">
     {{ node.props.text || node.props.content || '' }}
   </div>
@@ -135,6 +142,7 @@
 <script setup>
 import { computed, defineComponent, h, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
+import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
 import {
   getFieldModeAccess,
@@ -168,6 +176,15 @@ const customDescriptor = computed(() => resolveFormNodeDescriptor(props.node))
 const customConfig = computed(() =>
   migrateFormNodeConfig(props.node, customDescriptor.value)
 )
+const isSectionTitleText = computed(() =>
+  String(props.node.props?.textStyle || '').toUpperCase() === 'SECTION_TITLE'
+)
+const sectionTitleField = computed(() => ({
+  fieldLabel: props.node.props?.text
+    || props.node.props?.content
+    || props.node.props?.label
+    || props.node.nodeKey
+}))
 const activeTab = ref('')
 const activeCollapseNames = ref([])
 const collapseModelValue = computed(() =>
@@ -373,6 +390,7 @@ function collectDescendants(parentId) {
 .node-tabs,
 .node-collapse,
 .node-text,
+.node-section-title,
 .node-container {
   margin-bottom: 12px;
 }

@@ -623,7 +623,7 @@ export default {
               rows: [
                 { field: '所属实体', meaning: '显示当前流程绑定实体。', defaultLimit: '只读；未绑定时显示警告。', effect: '决定可选实体表单和实体字段条件。', publish: '先在实体管理绑定流程。' },
                 { field: '选择表单', meaning: '多选一个或多个实体表单。', defaultLimit: '可筛选；默认无显式配置时尝试实体默认表单。', effect: '运行节点展示多个表单，首个为主表单。', publish: '表单必须启用、字段已保存且目标环境存在。' },
-                { field: '只读模式', meaning: '节点只能查看表单，不能编辑。', defaultLimit: '默认关闭。', effect: '写入 entityFormReadonly。', publish: '还会叠加表单字段的 approve/view 模式权限。' },
+                { field: '强制整表只读', meaning: '开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。', defaultLimit: '默认关闭。', effect: '写入 entityFormReadonly，作为节点级强制只读覆盖。', publish: '关闭时按表单字段的审批模式权限执行。' },
                 { field: '表单 Key', meaning: '自定义表单技术标识。', defaultLimit: '示例 leave_apply_form。', effect: '运行时打开外部表单。', publish: 'Key 在目标环境必须注册。' }
               ]
             },
@@ -687,7 +687,7 @@ export default {
                 { key: 'result', label: '运行结果' }
               ],
               rows: [
-                { layer: '节点只读模式', scope: '当前开始事件或用户任务选择的所有实体表单。', result: '开启后整张节点表单不可编辑。' },
+                { layer: '节点强制整表只读', scope: '当前开始事件或用户任务选择的所有实体表单。', result: '开启后整张节点表单不可编辑，并覆盖字段的审批可编辑配置。' },
                 { layer: '表单字段 isReadonly', scope: '该字段在所有模式。', result: '字段显示但不可编辑。' },
                 { layer: '表单运行模式 editable', scope: 'create/edit/approve/view 之一。', result: '对应模式关闭后字段不可编辑。' },
                 { layer: '表单运行模式 visible', scope: 'create/edit/approve/view 之一。', result: '对应模式关闭后字段隐藏。' },

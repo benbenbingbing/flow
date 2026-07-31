@@ -84,6 +84,12 @@ public class ProcessTask {
     /** 截止时间 */
     private LocalDateTime dueTime;
 
+    /** SLA综合状态 */
+    private String slaStatus;
+
+    /** 首次响应截止时间 */
+    private LocalDateTime responseDueTime;
+
     /** Flowable 任务优先级 */
     private Integer priority;
     

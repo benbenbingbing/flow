@@ -77,7 +77,7 @@ export function getFieldModeAccess(field, mode = 'view') {
   const access = extension?.modes?.[mode] || {}
   return {
     visible: field?.isHidden !== 1 && field?.isHidden !== true && access.visible !== false,
-    editable: access.editable !== false
+    editable: mode !== 'view' && access.editable !== false
   }
 }
 

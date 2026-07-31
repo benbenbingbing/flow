@@ -74,6 +74,21 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
      */
     @Select("SELECT * FROM process_task WHERE task_id = #{taskId} AND deleted = 0 LIMIT 1 FOR UPDATE")
     ProcessTask selectByTaskIdForUpdate(@Param("taskId") String taskId);
+
+    @Update("""
+            UPDATE process_task
+            SET due_time = #{dueTime},
+                response_due_time = #{responseDueTime},
+                sla_status = #{slaStatus},
+                update_time = UTC_TIMESTAMP(6)
+            WHERE task_id = #{taskId}
+              AND deleted = 0
+            """)
+    int updateSlaSummary(
+            @Param("taskId") String taskId,
+            @Param("responseDueTime") java.time.LocalDateTime responseDueTime,
+            @Param("dueTime") java.time.LocalDateTime dueTime,
+            @Param("slaStatus") String slaStatus);
     
     /**
      * 完成任务

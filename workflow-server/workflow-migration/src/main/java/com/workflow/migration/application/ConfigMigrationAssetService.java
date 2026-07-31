@@ -2,7 +2,10 @@ package com.workflow.migration.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
@@ -53,6 +56,17 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
 import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.sla.calendar.api.request.WorkCalendarSaveRequest;
+import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarBindingMapper;
+import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarExceptionMapper;
+import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarExceptionPeriodMapper;
+import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarMapper;
+import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarPeriodMapper;
+import com.workflow.process.sla.calendar.infrastructure.persistence.record.WorkCalendar;
+import com.workflow.process.sla.policy.api.request.TaskSlaPolicySaveRequest;
+import com.workflow.process.sla.policy.infrastructure.persistence.mapper.TaskSlaEscalationStepMapper;
+import com.workflow.process.sla.policy.infrastructure.persistence.mapper.TaskSlaPolicyMapper;
+import com.workflow.process.sla.policy.infrastructure.persistence.record.TaskSlaPolicy;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
@@ -97,6 +111,10 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     public static final String PROCESS = "PROCESS";     // 资产类型：流程
     public static final String SYSTEM_ENTITY_UI =
             "SYSTEM_ENTITY_UI";                         // 资产类型：系统实体UI
+    public static final String WORK_CALENDAR =
+            "WORK_CALENDAR";                            // 资产类型：工作日历
+    public static final String TASK_SLA_POLICY =
+            "TASK_SLA_POLICY";                          // 资产类型：SLA策略
     public static final String COMPLETE = "COMPLETE";   // 快照完整度：完整
 
     private static final int SNAPSHOT_SCHEMA_VERSION = 1;
@@ -134,6 +152,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final EntityFlowStatusMappingMapper statusMappingMapper;
     private final EntityPublishHistoryMapper entityHistoryMapper;
     private final ProcessVersionHistoryMapper processHistoryMapper;
+    private final WorkCalendarMapper workCalendarMapper;
+    private final WorkCalendarPeriodMapper workCalendarPeriodMapper;
+    private final WorkCalendarExceptionMapper workCalendarExceptionMapper;
+    private final WorkCalendarExceptionPeriodMapper
+            workCalendarExceptionPeriodMapper;
+    private final WorkCalendarBindingMapper workCalendarBindingMapper;
+    private final TaskSlaPolicyMapper taskSlaPolicyMapper;
+    private final TaskSlaEscalationStepMapper
+            taskSlaEscalationStepMapper;
     private final SysUserMapper userMapper;
     private final SysOrganizationMapper organizationMapper;
     private final UiConfigReleaseMapper configReleaseMapper;
@@ -380,6 +407,293 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 castList(snapshot.get("dependencies")),
                 release.getPublishedAt(),
                 release.getPublishedBy());
+    }
+
+    @Override
+    @Transactional
+    public void recordWorkCalendar(
+            String calendarId,
+            ConfigMigrationPublishRequest request) {
+        WorkCalendar calendar =
+                workCalendarMapper.selectById(calendarId);
+        if (calendar == null
+                || !"PUBLISHED".equals(calendar.getStatus())) {
+            throw new IllegalStateException(
+                    "工作日历发布快照上下文不存在: " + calendarId);
+        }
+        Map<String, Object> snapshot = baseSnapshot(
+                WORK_CALENDAR,
+                calendar.getCalendarCode(),
+                calendar.getCalendarName());
+        Map<String, Object> configuration =
+                buildWorkCalendarConfiguration(calendar);
+        List<Map<String, Object>> dependencies =
+                workCalendarDependencies(configuration);
+        snapshot.put("configuration", configuration);
+        snapshot.put("dependencies", dependencies);
+        saveAsset(
+                WORK_CALENDAR,
+                calendar.getCalendarCode(),
+                calendar.getCalendarName(),
+                calendar.getId(),
+                calendar.getVersion(),
+                effectiveDescription(request, calendar.getDescription()),
+                effectiveTag(request),
+                effectiveMark(request),
+                COMPLETE,
+                snapshot,
+                dependencies,
+                calendar.getUpdateTime(),
+                calendar.getUpdatedBy());
+    }
+
+    @Override
+    @Transactional
+    public void recordTaskSlaPolicy(
+            String policyId,
+            ConfigMigrationPublishRequest request) {
+        TaskSlaPolicy policy = taskSlaPolicyMapper.selectById(policyId);
+        if (policy == null
+                || !"PUBLISHED".equals(policy.getStatus())) {
+            throw new IllegalStateException(
+                    "SLA策略发布快照上下文不存在: " + policyId);
+        }
+        Map<String, Object> snapshot = baseSnapshot(
+                TASK_SLA_POLICY,
+                policy.getPolicyCode(),
+                policy.getPolicyName());
+        List<Map<String, Object>> dependencies =
+                new ArrayList<>();
+        snapshot.put("configuration",
+                buildTaskSlaPolicyConfiguration(
+                        policy,
+                        dependencies));
+        dependencies = deduplicateDependencies(dependencies);
+        snapshot.put("dependencies", dependencies);
+        saveAsset(
+                TASK_SLA_POLICY,
+                policy.getPolicyCode(),
+                policy.getPolicyName(),
+                policy.getId(),
+                policy.getVersion(),
+                effectiveDescription(request, policy.getDescription()),
+                effectiveTag(request),
+                effectiveMark(request),
+                COMPLETE,
+                snapshot,
+                dependencies,
+                policy.getUpdateTime(),
+                policy.getUpdatedBy());
+    }
+
+    private Map<String, Object> buildWorkCalendarConfiguration(
+            WorkCalendar calendar) {
+        List<WorkCalendarSaveRequest.PeriodRequest> periods =
+                workCalendarPeriodMapper
+                        .findByCalendarId(calendar.getId())
+                        .stream()
+                        .map(value ->
+                                new WorkCalendarSaveRequest.PeriodRequest(
+                                        value.getDayOfWeek(),
+                                        value.getStartMinute(),
+                                        value.getEndMinute()))
+                        .toList();
+        List<WorkCalendarSaveRequest.ExceptionRequest> exceptions =
+                workCalendarExceptionMapper
+                        .findByCalendarId(calendar.getId())
+                        .stream()
+                        .map(value ->
+                                new WorkCalendarSaveRequest.ExceptionRequest(
+                                        value.getExceptionDate(),
+                                        value.getExceptionType(),
+                                        value.getExceptionName(),
+                                        value.getDescription(),
+                                        workCalendarExceptionPeriodMapper
+                                                .findByExceptionId(value.getId())
+                                                .stream()
+                                                .map(period ->
+                                                        new WorkCalendarSaveRequest.TimePeriodRequest(
+                                                                period.getStartMinute(),
+                                                                period.getEndMinute()))
+                                                .toList()))
+                        .toList();
+        List<WorkCalendarSaveRequest.BindingRequest> bindings =
+                workCalendarBindingMapper
+                        .findByCalendarId(calendar.getId())
+                        .stream()
+                        .map(value ->
+                                new WorkCalendarSaveRequest.BindingRequest(
+                                        value.getScopeType(),
+                                        portableOrganizationKey(
+                                                value.getScopeKey()),
+                                        value.getPriority(),
+                                        value.getEffectiveFrom(),
+                                        value.getEffectiveTo()))
+                        .toList();
+        WorkCalendarSaveRequest configuration =
+                new WorkCalendarSaveRequest(
+                        calendar.getCalendarCode(),
+                        calendar.getCalendarName(),
+                        calendar.getTimezoneId(),
+                        calendar.getDescription(),
+                        calendar.getDefaultFlag(),
+                        calendar.getEffectiveFrom(),
+                        calendar.getEffectiveTo(),
+                        periods,
+                        exceptions,
+                        bindings);
+        return portableMap(configuration);
+    }
+
+    private Map<String, Object> buildTaskSlaPolicyConfiguration(
+            TaskSlaPolicy policy,
+            List<Map<String, Object>> dependencies) {
+        List<TaskSlaPolicySaveRequest.EscalationStepRequest> steps =
+                taskSlaEscalationStepMapper
+                        .findEnabledByPolicyId(policy.getId())
+                        .stream()
+                        .map(value ->
+                                new TaskSlaPolicySaveRequest.EscalationStepRequest(
+                                        value.getStepName(),
+                                        value.getMetricType(),
+                                        value.getTriggerType(),
+                                        value.getOffsetMinutes(),
+                                        value.getRepeatIntervalMinutes(),
+                                        value.getMaxExecutions(),
+                                        value.getActionType(),
+                                        value.getTemplateCode(),
+                                        portableSlaUserReferences(
+                                                value.getRecipientConfigJson(),
+                                                dependencies,
+                                                "SLA升级接收人"),
+                                        portableSlaUserReferences(
+                                                value.getTargetConfigJson(),
+                                                dependencies,
+                                                "SLA升级动作目标")))
+                        .toList();
+        return portableMap(new TaskSlaPolicySaveRequest(
+                policy.getPolicyCode(),
+                policy.getPolicyName(),
+                policy.getDescription(),
+                policy.getResponseTargetMinutes(),
+                policy.getCompletionTargetMinutes(),
+                policy.getResponseTimeBasis(),
+                policy.getCompletionTimeBasis(),
+                policy.getAllowManualPause(),
+                policy.getPauseOnProcessSuspend(),
+                policy.getMaxPauseMinutes(),
+                steps));
+    }
+
+    private String portableSlaUserReferences(
+            String document,
+            List<Map<String, Object>> dependencies,
+            String usage) {
+        if (!StringUtils.hasText(document)) {
+            return document;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(document);
+            rewriteSlaUserReferences(
+                    root,
+                    value -> {
+                        String portable = portableUserReference(value);
+                        addDependency(
+                                dependencies,
+                                "USER",
+                                stripPortablePrefix(portable),
+                                true,
+                                usage);
+                        return portable;
+                    });
+            return objectMapper.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "SLA策略用户引用无法转换为迁移快照",
+                    exception);
+        }
+    }
+
+    private String portableUserReference(String value) {
+        if (!StringUtils.hasText(value)
+                || value.startsWith("wf-user://")) {
+            return value;
+        }
+        SysUser user = userMapper.selectById(value);
+        if (user == null) {
+            user = userMapper.selectByUsername(value);
+        }
+        return user == null
+                ? "wf-user://missing/" + value
+                : "wf-user://" + user.getUsername();
+    }
+
+    private void rewriteSlaUserReferences(
+            JsonNode node,
+            java.util.function.UnaryOperator<String> converter) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof ObjectNode objectNode) {
+            List<String> names = new ArrayList<>();
+            objectNode.fieldNames().forEachRemaining(names::add);
+            for (String name : names) {
+                JsonNode value = objectNode.get(name);
+                if ("userId".equals(name) && value.isTextual()) {
+                    objectNode.put(
+                            name,
+                            converter.apply(value.asText()));
+                    continue;
+                }
+                if ("userIds".equals(name)
+                        && value instanceof ArrayNode values) {
+                    ArrayNode converted =
+                            objectMapper.createArrayNode();
+                    values.forEach(item -> converted.add(
+                            item.isTextual()
+                                    ? converter.apply(item.asText())
+                                    : item.asText()));
+                    objectNode.set(name, converted);
+                    continue;
+                }
+                rewriteSlaUserReferences(value, converter);
+            }
+            return;
+        }
+        if (node.isArray()) {
+            node.forEach(value ->
+                    rewriteSlaUserReferences(value, converter));
+        }
+    }
+
+    private String portableOrganizationKey(String scopeKey) {
+        if (!StringUtils.hasText(scopeKey)) {
+            return scopeKey;
+        }
+        SysOrganization organization =
+                organizationMapper.selectById(scopeKey);
+        return organization != null
+                && StringUtils.hasText(organization.getOrgCode())
+                ? organization.getOrgCode()
+                : scopeKey;
+    }
+
+    private List<Map<String, Object>> workCalendarDependencies(
+            Map<String, Object> configuration) {
+        List<Map<String, Object>> dependencies = new ArrayList<>();
+        for (Map<String, Object> binding :
+                castMapList(configuration.get("bindings"))) {
+            String key = text(binding.get("scopeKey"));
+            if (StringUtils.hasText(key)) {
+                addDependency(
+                        dependencies,
+                        "DEPT",
+                        key,
+                        true,
+                        "工作日历作用域绑定");
+            }
+        }
+        return deduplicateDependencies(dependencies);
     }
 
     /**

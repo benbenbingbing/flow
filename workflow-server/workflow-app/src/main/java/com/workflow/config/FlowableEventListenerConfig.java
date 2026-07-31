@@ -8,6 +8,7 @@ import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTas
 import com.workflow.process.action.application.FlowActionEngineEventListener;
 import com.workflow.process.open.application.OpenIntegrationProcessEventListener;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
+import com.workflow.process.sla.runtime.application.TaskSlaProcessStateListener;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.RuntimeService;
 import org.springframework.context.annotation.Configuration;
@@ -40,6 +41,9 @@ public class FlowableEventListenerConfig {
     /** 开放集成生命周期事件：同事务写入可靠 Outbox */
     private final OpenIntegrationProcessEventListener
             openIntegrationProcessEventListener;
+    /** 流程挂起/激活时同步暂停或恢复任务SLA */
+    private final TaskSlaProcessStateListener
+            taskSlaProcessStateListener;
 
     /**
      * 注册 Flowable 运行时事件监听器。
@@ -74,5 +78,8 @@ public class FlowableEventListenerConfig {
 
         runtimeService.addEventListener(
                 openIntegrationProcessEventListener);
+
+        runtimeService.addEventListener(
+                taskSlaProcessStateListener);
     }
 }

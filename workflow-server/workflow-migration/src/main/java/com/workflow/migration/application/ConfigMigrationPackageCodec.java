@@ -285,6 +285,10 @@ public class ConfigMigrationPackageCodec {
                     "assets/entities/";
             case ConfigMigrationAssetService.SYSTEM_ENTITY_UI ->
                     "assets/system-entity-ui/";
+            case ConfigMigrationAssetService.WORK_CALENDAR ->
+                    "assets/work-calendars/";
+            case ConfigMigrationAssetService.TASK_SLA_POLICY ->
+                    "assets/task-sla-policies/";
             case ConfigMigrationAssetService.PROCESS ->
                     "assets/processes/";
             default -> throw new IllegalArgumentException(

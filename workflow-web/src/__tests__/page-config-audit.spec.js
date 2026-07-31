@@ -570,6 +570,14 @@ assert.equal(formDesigner.includes('designMode'), false, '表单设计器不得�
 ;['getFormFieldComponentOptions', 'selectedComponentConfig', 'validationRules', 'extensionConfig', 'modeOptions'].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })
+;[
+  'v-if="modeOption.editable !== false"',
+  "{ value: 'view', label: '查看', editable: false }",
+  '审批可编辑：字段在审批办理时的默认编辑权限，流程节点开启“强制整表只读”后本配置不生效。',
+  '查看模式固定只读，仅控制字段是否显示。'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单模式权限缺少只读主从规则: ${marker}`)
+})
 assert.ok(
   formDesigner.includes('getDefaultFormFieldComponentType as getDefaultComponentType'),
   '新增实体字段必须使用共享的兼容默认组件策略'
@@ -1074,6 +1082,12 @@ assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程�
   assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少标识与备注分组: ${marker}`)
 })
 assert.equal(nodeConfigPanel.includes('node-config-summary'), false, '流程节点配置不应展示占用首屏空间的摘要卡片')
+assert.ok(
+  nodeConfigPanel.includes('label="强制整表只读"')
+    && nodeConfigPanel.includes('开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。'),
+  '流程节点应明确使用强制整表只读覆盖字段审批编辑权限'
+)
+assert.equal(nodeConfigPanel.includes('label="只读模式"'), false, '流程节点不应继续使用含义模糊的“只读模式”')
 ;[
   'class="node-config-panel__meta"',
   'nodeConfigTypeText',

@@ -206,34 +206,70 @@
             <el-tag v-else type="info" size="small">普通</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="SLA" width="190">
           <template #default="{ row }">
-            <el-button
-              v-if="row.claimRequired"
-              type="primary"
-              size="small"
-              :loading="claimingTaskId === row.taskId"
-              @click="handleClaim(row)"
-            >
-              认领
-            </el-button>
-            <template v-else>
-              <el-button type="primary" size="small" @click="handleApprove(row)">审批</el-button>
-              <template v-if="row.nodeType !== 'ADD_SIGN'">
-                <el-button v-if="row.taskOperations?.transfer !== false" type="warning" size="small" @click="openTransferDialog(row)">转办</el-button>
-                <el-button v-if="row.taskOperations?.addSign !== false" type="success" size="small" @click="openAddSignDialog(row)">加签</el-button>
+            <div v-if="row.slaStatus" class="sla-cell">
+              <el-tag :type="slaStatusType(row.slaStatus)" size="small">
+                {{ slaStatusText(row.slaStatus) }}
+              </el-tag>
+              <span v-if="row.dueTime" class="sla-due">
+                {{ slaRemainingText(row.dueTime, row.slaStatus) }}
+              </span>
+            </div>
+            <span v-else class="muted-text">未配置</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="126" fixed="right" align="center">
+          <template #default="{ row }">
+            <div class="todo-operation-cell">
+              <el-button
+                v-if="row.claimRequired"
+                type="primary"
+                size="small"
+                :loading="claimingTaskId === row.taskId"
+                @click="handleClaim(row)"
+              >
+                认领
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                size="small"
+                @click="handleApprove(row)"
+              >
+                审批
+              </el-button>
+              <el-dropdown
+                v-if="getTodoMoreActions(row).length"
+                trigger="click"
+                placement="bottom-end"
+                @command="handleTodoMoreCommand($event, row)"
+              >
                 <el-button
-                  v-else-if="row.taskOperations?.activeAddSign?.id"
-                  type="danger"
-                  plain
+                  class="todo-more-button"
                   size="small"
-                  @click="handleCancelAddSign(row)"
+                  type="primary"
+                  link
+                  native-type="button"
+                  aria-label="更多任务操作"
+                  title="更多任务操作"
                 >
-                  撤销加签
+                  <el-icon><MoreFilled /></el-icon>
                 </el-button>
-                <el-button v-if="row.taskOperations?.manualCc !== false" type="info" size="small" @click="openCcDialog(row)">知会</el-button>
-              </template>
-            </template>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item
+                      v-for="action in getTodoMoreActions(row)"
+                      :key="action.command"
+                      :command="action.command"
+                      :divided="action.divided"
+                    >
+                      {{ action.label }}
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -334,9 +370,109 @@
       @success="onApprovalSuccess"
     />
 
+    <el-dialog
+      v-model="slaDialogVisible"
+      title="任务 SLA"
+      width="min(880px, 94vw)"
+      destroy-on-close
+    >
+      <div v-loading="slaLoading">
+        <template v-if="slaRecord">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="策略">
+              {{ slaRecord.policyCode }} / V{{ slaRecord.policyVersion }}
+            </el-descriptions-item>
+            <el-descriptions-item label="工作日历">
+              {{ slaRecord.calendarCode }} / V{{ slaRecord.calendarVersion }}
+            </el-descriptions-item>
+            <el-descriptions-item label="首次响应">
+              <el-tag :type="metricStatusType(slaRecord.responseStatus)" size="small">
+                {{ metricStatusText(slaRecord.responseStatus) }}
+              </el-tag>
+              <span class="description-value">{{ formatSlaDate(slaRecord.responseDueAt) }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="办结">
+              <el-tag :type="metricStatusType(slaRecord.completionStatus)" size="small">
+                {{ metricStatusText(slaRecord.completionStatus) }}
+              </el-tag>
+              <span class="description-value">{{ formatSlaDate(slaRecord.completionDueAt) }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="当前状态">
+              <el-tag :type="slaStatusType(slaRecord.overallStatus)">
+                {{ slaStatusText(slaRecord.overallStatus) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="当前办理人">
+              {{ slaRecord.currentAssigneeId || '-' }}
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <div class="sla-actions">
+            <el-button
+              v-if="slaRecord.responseStatus === 'PENDING'"
+              type="primary"
+              :loading="slaActionLoading"
+              @click="acknowledgeSla"
+            >
+              确认首次响应
+            </el-button>
+            <el-button
+              v-if="slaRecord.overallStatus === 'RUNNING'"
+              :loading="slaActionLoading"
+              @click="pauseSla"
+            >
+              暂停计时
+            </el-button>
+            <el-button
+              v-if="slaRecord.overallStatus === 'PAUSED'"
+              type="success"
+              :loading="slaActionLoading"
+              @click="resumeSla"
+            >
+              恢复计时
+            </el-button>
+          </div>
+
+          <h3 class="sla-section-title">提醒与升级执行记录</h3>
+          <el-table :data="slaDetail?.events || []" border max-height="280">
+            <el-table-column label="触发时间" width="175">
+              <template #default="{ row }">{{ formatSlaDate(row.triggerAt) }}</template>
+            </el-table-column>
+            <el-table-column label="指标" width="100">
+              <template #default="{ row }">
+                {{ row.metricType === 'RESPONSE' ? '首次响应' : '办结' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="动作" min-width="130">
+              <template #default="{ row }">{{ slaActionText(row.actionType) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">{{ eventStatusText(row.status) }}</template>
+            </el-table-column>
+            <el-table-column prop="errorMessage" label="错误信息" min-width="180" show-overflow-tooltip />
+          </el-table>
+        </template>
+      </div>
+    </el-dialog>
+
     <!-- 转办弹窗 -->
-    <el-dialog v-model="transferDialogVisible" title="任务转办" width="400px" :close-on-click-modal="false">
-      <el-form :model="transferForm" label-width="80px">
+    <el-dialog
+      v-model="transferDialogVisible"
+      title="任务转办"
+      width="min(680px, 92vw)"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="transferForm" label-width="96px">
+        <el-form-item label="流程名称">
+          <div class="task-dialog-readonly-value" :title="transferForm.processName">
+            {{ transferForm.processName || '-' }}
+          </div>
+        </el-form-item>
+        <el-form-item label="流程编码">
+          <div class="task-dialog-readonly-value task-dialog-readonly-value--code" :title="transferForm.code">
+            {{ transferForm.code || '-' }}
+          </div>
+        </el-form-item>
         <el-form-item label="转办人" required>
           <UserSelector
             v-model="transferForm.transferTo"
@@ -355,8 +491,18 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="addSignDialogVisible" title="任务加签" width="520px">
-      <el-form label-width="90px">
+    <el-dialog v-model="addSignDialogVisible" title="任务加签" width="min(680px, 92vw)">
+      <el-form :model="addSignForm" label-width="96px">
+        <el-form-item label="流程名称">
+          <div class="task-dialog-readonly-value" :title="addSignForm.processName">
+            {{ addSignForm.processName || '-' }}
+          </div>
+        </el-form-item>
+        <el-form-item label="流程编码">
+          <div class="task-dialog-readonly-value task-dialog-readonly-value--code" :title="addSignForm.code">
+            {{ addSignForm.code || '-' }}
+          </div>
+        </el-form-item>
         <el-form-item label="加签人员" required>
           <UserSelector
             v-model="addSignForm.userIds"
@@ -394,8 +540,18 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="ccDialogVisible" title="人工知会" width="520px">
-      <el-form label-width="90px">
+    <el-dialog v-model="ccDialogVisible" title="人工知会" width="min(680px, 92vw)">
+      <el-form :model="ccForm" label-width="96px">
+        <el-form-item label="流程名称">
+          <div class="task-dialog-readonly-value" :title="ccForm.processName">
+            {{ ccForm.processName || '-' }}
+          </div>
+        </el-form-item>
+        <el-form-item label="流程编码">
+          <div class="task-dialog-readonly-value task-dialog-readonly-value--code" :title="ccForm.code">
+            {{ ccForm.code || '-' }}
+          </div>
+        </el-form-item>
         <el-form-item label="知会人员" required>
           <UserSelector
             v-model="ccForm.userIds"
@@ -420,12 +576,31 @@
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
+import { Bell, Check, MoreFilled, Share, Timer } from '@element-plus/icons-vue'
 import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
 import PageState from '@/components/PageState.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import { PRODUCT_TERMS } from '@/constants/productTerminology'
-import { getTodoList, getDoneList, getStatistics, completeTask, claimTask, getMyStartedList, terminateProcess, getTaskOperations, addSignTask, previewAddSign, cancelAddSign, ccTask, getMyCcList, markCcRead } from '@/api/processTask'
+import {
+  acknowledgeTask,
+  addSignTask,
+  cancelAddSign,
+  ccTask,
+  claimTask,
+  completeTask,
+  getDoneList,
+  getMyCcList,
+  getMyStartedList,
+  getStatistics,
+  getTaskOperations,
+  getTaskSla,
+  getTodoList,
+  markCcRead,
+  pauseTaskSla,
+  previewAddSign,
+  resumeTaskSla,
+  terminateProcess
+} from '@/api/processTask'
 
 // 统计数据
 const statistics = reactive({
@@ -489,20 +664,41 @@ const transferDialogVisible = ref(false)
 const transferLoading = ref(false)
 const transferForm = reactive({
   taskId: '',
+  processName: '',
+  code: '',
   transferTo: '',
   comment: ''
 })
 const addSignDialogVisible = ref(false)
 const ccDialogVisible = ref(false)
 const operationLoading = ref(false)
-const addSignForm = reactive({ taskId: '', type: 'BEFORE', userIds: [], comment: '' })
+const addSignForm = reactive({
+  taskId: '',
+  processName: '',
+  code: '',
+  type: 'BEFORE',
+  userIds: [],
+  comment: ''
+})
 const addSignPreview = reactive({ structure: '', duplicates: [], disabled: [], invalid: [] })
 const addSignTypeSummary = computed(() => ({
   BEFORE: '加签人员先处理；全部通过后原办理人继续审批',
   PARALLEL: '原办理人与加签人员可并行提交；全部完成后流程继续',
   AFTER: '原办理人先提交；随后激活加签任务；全部完成后流程继续'
 }[addSignForm.type]))
-const ccForm = reactive({ taskId: '', userIds: [], comment: '' })
+const ccForm = reactive({
+  taskId: '',
+  processName: '',
+  code: '',
+  userIds: [],
+  comment: ''
+})
+const slaDialogVisible = ref(false)
+const slaLoading = ref(false)
+const slaActionLoading = ref(false)
+const slaTaskId = ref('')
+const slaDetail = ref(null)
+const slaRecord = computed(() => slaDetail.value?.sla || null)
 
 // 初始化
 onMounted(() => {
@@ -691,6 +887,198 @@ async function handleBatchClaim() {
   }
 }
 
+function getTodoMoreActions(row) {
+  const actions = []
+  if (!row.claimRequired && row.nodeType !== 'ADD_SIGN') {
+    if (row.taskOperations?.transfer !== false) {
+      actions.push({ command: 'transfer', label: '转办' })
+    }
+    if (row.taskOperations?.addSign !== false) {
+      actions.push({ command: 'addSign', label: '加签' })
+    } else if (row.taskOperations?.activeAddSign?.id) {
+      actions.push({ command: 'cancelAddSign', label: '撤销加签' })
+    }
+    if (row.taskOperations?.manualCc !== false) {
+      actions.push({ command: 'cc', label: '知会' })
+    }
+  }
+  if (row.slaStatus) {
+    actions.push({
+      command: 'sla',
+      label: 'SLA',
+      divided: actions.length > 0
+    })
+  }
+  return actions
+}
+
+function handleTodoMoreCommand(command, row) {
+  if (command === 'transfer') {
+    openTransferDialog(row)
+  } else if (command === 'addSign') {
+    openAddSignDialog(row)
+  } else if (command === 'cancelAddSign') {
+    handleCancelAddSign(row)
+  } else if (command === 'cc') {
+    openCcDialog(row)
+  } else if (command === 'sla') {
+    openSlaDialog(row)
+  }
+}
+
+async function openSlaDialog(row) {
+  slaTaskId.value = row.taskId
+  slaDialogVisible.value = true
+  await reloadSlaDetail()
+}
+
+async function reloadSlaDetail() {
+  if (!slaTaskId.value) return
+  slaLoading.value = true
+  try {
+    slaDetail.value = await getTaskSla(slaTaskId.value)
+  } finally {
+    slaLoading.value = false
+  }
+}
+
+async function acknowledgeSla() {
+  slaActionLoading.value = true
+  try {
+    await acknowledgeTask(slaTaskId.value)
+    ElMessage.success('已记录首次响应')
+    await Promise.all([reloadSlaDetail(), loadTodoList()])
+  } finally {
+    slaActionLoading.value = false
+  }
+}
+
+async function pauseSla() {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '请输入暂停原因，恢复后将按剩余工作时间重新计算截止时间。',
+      '暂停 SLA 计时',
+      {
+        inputPattern: /\S+/,
+        inputErrorMessage: '暂停原因不能为空',
+        confirmButtonText: '确认暂停',
+        cancelButtonText: '取消'
+      }
+    )
+    slaActionLoading.value = true
+    await pauseTaskSla(slaTaskId.value, {
+      pauseType: 'MANUAL',
+      reason: value
+    })
+    ElMessage.success('SLA计时已暂停')
+    await Promise.all([reloadSlaDetail(), loadTodoList()])
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('暂停SLA失败:', error)
+    }
+  } finally {
+    slaActionLoading.value = false
+  }
+}
+
+async function resumeSla() {
+  slaActionLoading.value = true
+  try {
+    await resumeTaskSla(slaTaskId.value)
+    ElMessage.success('SLA计时已恢复')
+    await Promise.all([reloadSlaDetail(), loadTodoList()])
+  } finally {
+    slaActionLoading.value = false
+  }
+}
+
+function slaStatusText(status) {
+  return ({
+    RUNNING: '计时中',
+    PAUSED: '已暂停',
+    BREACHED: '已超时',
+    COMPLETED: '已完成'
+  })[status] || status
+}
+
+function slaStatusType(status) {
+  return ({
+    RUNNING: 'primary',
+    PAUSED: 'warning',
+    BREACHED: 'danger',
+    COMPLETED: 'success'
+  })[status] || 'info'
+}
+
+function metricStatusText(status) {
+  return ({
+    PENDING: '待达成',
+    MET: '已达成',
+    BREACHED: '已超时',
+    NOT_APPLICABLE: '不计'
+  })[status] || status
+}
+
+function metricStatusType(status) {
+  return ({
+    PENDING: 'warning',
+    MET: 'success',
+    BREACHED: 'danger',
+    NOT_APPLICABLE: 'info'
+  })[status] || 'info'
+}
+
+function utcDate(value) {
+  if (!value) return null
+  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`)
+}
+
+function formatSlaDate(value) {
+  const date = utcDate(value)
+  return !date || Number.isNaN(date.getTime()) ? '-' : formatDate(date.toISOString())
+}
+
+function slaRemainingText(value, status) {
+  if (status === 'PAUSED') return '计时已暂停'
+  if (status === 'COMPLETED') return '任务已完成'
+  const due = utcDate(value)
+  if (!due || Number.isNaN(due.getTime())) return '-'
+  const minutes = Math.ceil((due.getTime() - Date.now()) / 60000)
+  if (minutes < 0) return `已超时 ${durationText(Math.abs(minutes))}`
+  return `剩余 ${durationText(minutes)}`
+}
+
+function durationText(minutes) {
+  const days = Math.floor(minutes / 1440)
+  const hours = Math.floor((minutes % 1440) / 60)
+  const rest = minutes % 60
+  if (days > 0) return `${days}天${hours}小时`
+  if (hours > 0) return `${hours}小时${rest}分钟`
+  return `${rest}分钟`
+}
+
+function slaActionText(action) {
+  return ({
+    MARK_BREACH: '标记超时',
+    NOTIFY: '提醒办理人',
+    NOTIFY_MANAGER: '提醒上级',
+    ADD_CC: '增加知会',
+    TRANSFER: '自动转办',
+    ADD_SIGN: '自动加签'
+  })[action] || action
+}
+
+function eventStatusText(status) {
+  return ({
+    PENDING: '待执行',
+    PROCESSING: '执行中',
+    SUCCESS: '已成功',
+    FAILED: '待重试',
+    DEAD: '执行失败',
+    CANCELLED: '已取消'
+  })[status] || status
+}
+
 // 审批
 function handleApprove(row) {
   approvalDialogRef.value?.openApprove(row)
@@ -725,13 +1113,22 @@ function onApprovalSuccess() {
 // 打开转办弹窗
 function openTransferDialog(row) {
   transferForm.taskId = row.taskId
+  transferForm.processName = row.processName || ''
+  transferForm.code = row.code || ''
   transferForm.transferTo = ''
   transferForm.comment = ''
   transferDialogVisible.value = true
 }
 
 function openAddSignDialog(row) {
-  Object.assign(addSignForm, { taskId: row.taskId, type: 'BEFORE', userIds: [], comment: '' })
+  Object.assign(addSignForm, {
+    taskId: row.taskId,
+    processName: row.processName || '',
+    code: row.code || '',
+    type: 'BEFORE',
+    userIds: [],
+    comment: ''
+  })
   Object.assign(addSignPreview, { structure: '', duplicates: [], disabled: [], invalid: [] })
   addSignDialogVisible.value = true
 }
@@ -743,7 +1140,13 @@ async function loadAddSignPreview() {
 }
 
 function openCcDialog(row) {
-  Object.assign(ccForm, { taskId: row.taskId, userIds: [], comment: '' })
+  Object.assign(ccForm, {
+    taskId: row.taskId,
+    processName: row.processName || '',
+    code: row.code || '',
+    userIds: [],
+    comment: ''
+  })
   ccDialogVisible.value = true
 }
 
@@ -984,6 +1387,20 @@ function handleCurrentChange(val) {
   margin-bottom: 12px;
 }
 
+.todo-operation-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.todo-more-button {
+  width: 32px;
+  min-width: 32px;
+  padding: 5px;
+}
+
 @media (max-width: 760px) {
   .home-container {
     padding: 0;
@@ -1049,5 +1466,49 @@ function handleCurrentChange(val) {
 .pagination {
   margin-top: 20px;
   justify-content: flex-end;
+}
+
+.sla-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.sla-due,
+.muted-text {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.description-value {
+  margin-left: 8px;
+}
+
+.sla-actions {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.sla-section-title {
+  margin: 18px 0 10px;
+  font-size: 15px;
+}
+
+.task-dialog-readonly-value {
+  min-width: 0;
+  width: 100%;
+  color: #303133;
+  font-size: 15px;
+  line-height: 32px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-dialog-readonly-value--code {
+  color: #606266;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 </style>
