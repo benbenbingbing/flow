@@ -11,10 +11,12 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 在独立事务中路由并消费一条通用 Outbox 事件。
@@ -53,10 +55,18 @@ public class OutboxProcessor {
                 || record.getLeaseToken() != leaseToken) {
             return;
         }
+        AtomicBoolean heartbeatActive = new AtomicBoolean(true);
+        Duration heartbeatPeriod = Duration.ofSeconds(
+                Math.max(1, leaseSeconds / 3));
         ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
-                () -> heartbeat(
-                        outboxId, ownerId, leaseToken, leaseSeconds),
-                Duration.ofSeconds(Math.max(1, leaseSeconds / 3)));
+                () -> {
+                    if (heartbeatActive.get()) {
+                        heartbeat(outboxId, ownerId, leaseToken,
+                                leaseSeconds, heartbeatActive);
+                    }
+                },
+                Instant.now().plus(heartbeatPeriod),
+                heartbeatPeriod);
         try {
             OutboxEventHandler handler = handlers.get(record.getTopic());
             if (handler == null) {
@@ -64,10 +74,13 @@ public class OutboxProcessor {
                         "未注册 Outbox 处理器: " + record.getTopic());
             }
             handler.handle(toEvent(record));
+            heartbeatActive.set(false);
             markProcessed(record, ownerId, leaseToken);
         } catch (Exception exception) {
+            heartbeatActive.set(false);
             markFailed(record, ownerId, leaseToken, exception);
         } finally {
+            heartbeatActive.set(false);
             heartbeat.cancel(false);
         }
     }
@@ -76,12 +89,18 @@ public class OutboxProcessor {
             String outboxId,
             String ownerId,
             long leaseToken,
-            int leaseSeconds) {
+            int leaseSeconds,
+            AtomicBoolean heartbeatActive) {
         try {
             if (mapper.heartbeat(
                     outboxId, ownerId, leaseToken, leaseSeconds) == 0) {
-                log.warn("Outbox 心跳被 fencing 拒绝: id={}, owner={}, token={}",
-                        outboxId, ownerId, leaseToken);
+                if (heartbeatActive.get()) {
+                    log.warn("Outbox 心跳被 fencing 拒绝: id={}, owner={}, token={}",
+                            outboxId, ownerId, leaseToken);
+                } else {
+                    log.debug("Outbox 已完成，忽略排队中的心跳: id={}, owner={}",
+                            outboxId, ownerId);
+                }
             }
         } catch (RuntimeException exception) {
             log.error("Outbox 心跳失败，将在下一周期重试: id={}, owner={}",

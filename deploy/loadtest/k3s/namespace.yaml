@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flow-hardening
+  labels:
+    kubernetes.io/metadata.name: flow-hardening
+    app.kubernetes.io/part-of: flow-loadtest

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import com.workflow.core.error.RateLimitExceededException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -92,6 +93,16 @@ class GlobalExceptionHandlerTest {
         assertNotNull(response.getBody());
         assertEquals(404, response.getBody().getCode());
         assertEquals("资源不存在", response.getBody().getMessage());
+    }
+
+    /** 客户端断开连接不应包装业务 JSON 响应，避免污染监控端点日志。 */
+    @Test
+    void shouldNotWrapDisconnectedClientResponse() {
+        ResponseEntity<Void> response =
+                handler.handleAsyncRequestNotUsableException(
+                        new AsyncRequestNotUsableException("Broken pipe"));
+
+        assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
     }
 
     /** 业务冲突异常应返回 409 CONFLICT 且携带稳定业务错误码 */

@@ -1,0 +1,64 @@
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+    bucketNames:
+      chunks: flow-loki-chunks
+      ruler: flow-loki-ruler
+      admin: flow-loki-admin
+  useTestSchema: true
+  limits_config:
+    ingestion_rate_mb: 2
+    ingestion_burst_size_mb: 4
+    retention_period: 6h
+    max_label_names_per_series: 20
+    max_label_value_length: 256
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 384Mi
+  persistence:
+    enableStatefulSetAutoDeletePVC: true
+    size: 2Gi
+    storageClass: local-path
+
+read:
+  replicas: 0
+backend:
+  replicas: 0
+write:
+  replicas: 0
+
+lokiCanary:
+  enabled: false
+
+chunksCache:
+  enabled: false
+
+resultsCache:
+  enabled: false
+
+test:
+  enabled: false
+
+gateway:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 96Mi

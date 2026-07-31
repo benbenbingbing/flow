@@ -1,0 +1,54 @@
+server:
+  image:
+    repository: flow-hardening/server
+    pullPolicy: Never
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  pool:
+    databaseMax: 15
+    tomcatMaxThreads: 80
+    applicationMaxThreads: 16
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+web:
+  image:
+    repository: flow-hardening/web
+    pullPolicy: Never
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+schemaWorker:
+  replicas: 2
+
+application:
+  corsAllowedOrigins: "http://127.0.0.1:18081,http://localhost:18081"
+  logLevel: INFO
+  shutdownTimeout: 30s
+  environment: loadtest-k3s
+
+observability:
+  tracing:
+    enabled: true
+    otlpEndpoint: http://flow-otel-collector.flow-observability.svc.cluster.local:4318/v1/traces
+    otlpTimeout: 500ms
+    samplingProbability: "0.10"
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 5s
+  prometheusRule:
+    enabled: true

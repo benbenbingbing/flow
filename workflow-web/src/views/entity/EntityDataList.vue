@@ -335,16 +335,6 @@ const customListRuntime = computed(() => ({
   getActionReason
 }))
 
-function safeJsonParse(text: any) {
-  if (!text) return null
-  if (typeof text === 'object') return text
-  try {
-    return JSON.parse(text)
-  } catch (e) {
-    return null
-  }
-}
-
 function buttonOrder(button: any) {
   const orderKey = Number(button?.orderKey)
   if (Number.isFinite(orderKey) && orderKey > 0) {
@@ -362,7 +352,7 @@ const toolbarButtons = computed(() => {
     { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true, perm: '' },
     { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true, perm: '' }
   ]
-  const config = safeJsonParse(listConfig.value?.toolbarConfig)
+  const config = safeParseConfig(listConfig.value?.toolbarConfig, null)
   const buttons = (config && config.length > 0 ? config : DEFAULT_TOOLBAR_BUTTONS.map((b: any) => ({ ...b })))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
@@ -397,7 +387,7 @@ const rowActionButtons = computed(() => {
     { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true, perm: '' },
     { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true, perm: '' }
   ]
-  const config = safeJsonParse(listConfig.value?.rowActionConfig)
+  const config = safeParseConfig(listConfig.value?.rowActionConfig, null)
   const buttons = (config && config.length > 0 ? config : DEFAULT_ROW_ACTION_BUTTONS.map((b: any) => ({ ...b })))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))

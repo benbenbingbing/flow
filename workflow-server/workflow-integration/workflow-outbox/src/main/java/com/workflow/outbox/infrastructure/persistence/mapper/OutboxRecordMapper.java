@@ -12,28 +12,30 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 通用 Outbox 的就绪查询、乐观认领和维护操作。
+ * 通用 Outbox 的批量认领和维护操作。
  */
 @Mapper
 public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
-
-    @Select("SELECT * FROM workflow_outbox_event "
-            + "WHERE status IN ('PENDING','FAILED') "
-            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6)) "
-            + "ORDER BY create_time LIMIT #{limit}")
-    List<OutboxRecord> findReady(@Param("limit") int limit);
 
     @Update("UPDATE workflow_outbox_event "
             + "SET status = 'PROCESSING', owner_id = #{ownerId}, "
             + "lease_token = lease_token + 1, "
             + "lease_until = TIMESTAMPADD(SECOND, #{leaseSeconds}, UTC_TIMESTAMP(6)), "
             + "update_time = UTC_TIMESTAMP(6) "
-            + "WHERE id = #{id} AND status IN ('PENDING','FAILED') "
-            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6))")
-    int claim(
-            @Param("id") String id,
+            + "WHERE status IN ('PENDING','FAILED') "
+            + "AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6)) "
+            + "ORDER BY create_time, id LIMIT #{limit}")
+    int claimBatch(
             @Param("ownerId") String ownerId,
-            @Param("leaseSeconds") int leaseSeconds);
+            @Param("leaseSeconds") int leaseSeconds,
+            @Param("limit") int limit);
+
+    @Select("SELECT * FROM workflow_outbox_event "
+            + "WHERE status = 'PROCESSING' AND owner_id = #{ownerId} "
+            + "AND lease_until > UTC_TIMESTAMP(6) "
+            + "ORDER BY create_time, id")
+    List<OutboxRecord> selectClaimedBatch(
+            @Param("ownerId") String ownerId);
 
     @Select("SELECT * FROM workflow_outbox_event "
             + "WHERE id = #{id} AND status = 'PROCESSING' "
@@ -96,12 +98,30 @@ public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
             @Param("ownerId") String ownerId,
             @Param("leaseToken") long leaseToken);
 
-    @Update("UPDATE workflow_outbox_event "
+    // Separate the non-locking discovery from primary-key updates. A range
+    // UPDATE on the lease index takes locks in the opposite order from task
+    // completion and can deadlock under multi-Pod dispatch.
+    @Select("SELECT id FROM workflow_outbox_event "
+            + "WHERE status = 'PROCESSING' "
+            + "AND lease_until <= UTC_TIMESTAMP(6) "
+            + "ORDER BY lease_until, id LIMIT 100")
+    List<String> selectExpiredLeaseIds();
+
+    @Update("UPDATE workflow_outbox_event FORCE INDEX (PRIMARY) "
             + "SET status = 'FAILED', next_retry_time = UTC_TIMESTAMP(6), "
             + "error_message = 'LEASE_EXPIRED', owner_id = NULL, "
             + "lease_until = NULL, update_time = UTC_TIMESTAMP(6) "
-            + "WHERE status = 'PROCESSING' AND lease_until <= UTC_TIMESTAMP(6)")
-    int recoverExpiredLeases();
+            + "WHERE id = #{id} AND status = 'PROCESSING' "
+            + "AND lease_until <= UTC_TIMESTAMP(6)")
+    int recoverExpiredLease(@Param("id") String id);
+
+    default int recoverExpiredLeases() {
+        int recovered = 0;
+        for (String id : selectExpiredLeaseIds()) {
+            recovered += recoverExpiredLease(id);
+        }
+        return recovered;
+    }
 
     @Delete("DELETE FROM workflow_outbox_event "
             + "WHERE status = 'PROCESSED' AND processed_time < #{cutoff}")

@@ -18,49 +18,61 @@ public class AsyncQueueMetrics {
 
     private static final String OUTBOX_METRICS_SQL = """
             SELECT
-              SUM(
-                status IN ('PENDING', 'FAILED')
-                AND (next_retry_time IS NULL
-                     OR next_retry_time <= UTC_TIMESTAMP(6))
-              ) AS ready_count,
-              SUM(status = 'PROCESSING') AS running_count,
-              SUM(status = 'DEAD') AS dead_count,
+              (SELECT COUNT(*)
+                 FROM workflow_outbox_event
+                WHERE status IN ('PENDING', 'FAILED')
+                  AND (next_retry_time IS NULL
+                       OR next_retry_time <= UTC_TIMESTAMP(6)))
+                AS ready_count,
+              (SELECT COUNT(*)
+                 FROM workflow_outbox_event
+                WHERE status = 'PROCESSING')
+                AS running_count,
+              (SELECT COUNT(*)
+                 FROM workflow_outbox_event
+                WHERE status = 'DEAD')
+                AS dead_count,
               COALESCE(
-                TIMESTAMPDIFF(
-                  SECOND,
-                  MIN(CASE
-                    WHEN status IN ('PENDING', 'FAILED')
-                         AND (next_retry_time IS NULL
-                              OR next_retry_time
-                                 <= UTC_TIMESTAMP(6))
-                    THEN create_time
-                  END),
-                  UTC_TIMESTAMP(6)),
+                (SELECT TIMESTAMPDIFF(
+                          SECOND,
+                          create_time,
+                          UTC_TIMESTAMP(6))
+                   FROM workflow_outbox_event
+                  WHERE status IN ('PENDING', 'FAILED')
+                    AND (next_retry_time IS NULL
+                         OR next_retry_time <= UTC_TIMESTAMP(6))
+                  ORDER BY create_time
+                  LIMIT 1),
                 0) AS oldest_ready_seconds
-            FROM workflow_outbox_event
             """;
     private static final String FLOW_ACTION_METRICS_SQL = """
             SELECT
-              SUM(
-                status IN ('PENDING', 'FAILED')
-                AND (next_retry_time IS NULL
-                     OR next_retry_time <= UTC_TIMESTAMP(6))
-              ) AS ready_count,
-              SUM(status = 'RUNNING') AS running_count,
-              SUM(status = 'DEAD') AS dead_count,
+              (SELECT COUNT(*)
+                 FROM process_action_execution
+                WHERE status IN ('PENDING', 'FAILED')
+                  AND (next_retry_time IS NULL
+                       OR next_retry_time <= UTC_TIMESTAMP(6)))
+                AS ready_count,
+              (SELECT COUNT(*)
+                 FROM process_action_execution
+                WHERE status = 'RUNNING')
+                AS running_count,
+              (SELECT COUNT(*)
+                 FROM process_action_execution
+                WHERE status = 'DEAD')
+                AS dead_count,
               COALESCE(
-                TIMESTAMPDIFF(
-                  SECOND,
-                  MIN(CASE
-                    WHEN status IN ('PENDING', 'FAILED')
-                         AND (next_retry_time IS NULL
-                              OR next_retry_time
-                                 <= UTC_TIMESTAMP(6))
-                    THEN create_time
-                  END),
-                  UTC_TIMESTAMP(6)),
+                (SELECT TIMESTAMPDIFF(
+                          SECOND,
+                          create_time,
+                          UTC_TIMESTAMP(6))
+                   FROM process_action_execution
+                  WHERE status IN ('PENDING', 'FAILED')
+                    AND (next_retry_time IS NULL
+                         OR next_retry_time <= UTC_TIMESTAMP(6))
+                  ORDER BY create_time
+                  LIMIT 1),
                 0) AS oldest_ready_seconds
-            FROM process_action_execution
             """;
 
     private final JdbcTemplate jdbcTemplate;

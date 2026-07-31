@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-mysql-data
+  namespace: flow-hardening
+  labels:
+    app.kubernetes.io/part-of: flow-loadtest
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-minio-data
+  namespace: flow-hardening
+  labels:
+    app.kubernetes.io/part-of: flow-loadtest
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi

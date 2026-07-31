@@ -100,12 +100,16 @@ PUT    /api/system/dict/item/{id}/status
 ### 4.2 flow-file-service（前缀 `/api/file` `/api/entity-field-file-item`）
 
 ```
-POST   /api/file/upload                上传
-POST   /api/file/upload-image          上传图片(压缩)
-DELETE /api/file                        删除(按url)
+POST   /api/file/upload                上传，可携带 Idempotency-Key
+POST   /api/file/upload-image          上传图片，可携带 Idempotency-Key
+POST   /api/file                        删除(按url)
 GET    /api/file/preview               预览/下载
 GET    /api/entity-field-file-item/field/{fieldId}  字段附件项
 ```
+
+上传接口兼容不带幂等键的既有客户端。需要自动重试时，应为一次上传操作生成稳定的
+`Idempotency-Key`，格式为 1 至 128 个非空格可打印 ASCII 字符；同一用户使用同一键
+重传相同文件会返回首次结果，使用同一键上传不同内容会返回冲突。
 
 ### 4.3 flow-design-service
 

@@ -1,6 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
@@ -69,8 +70,8 @@ public class EntityDataMutationPayloadMapper {
                     } else {
                         log.warn(
                                 "忽略实体更新请求中的未发布字段: entityCode={}, field={}",
-                                entityCode,
-                                column);
+                                LogValue.safe(entityCode),
+                                LogValue.safe(column));
                     }
                 });
         existingData.forEach(
@@ -197,8 +198,8 @@ public class EntityDataMutationPayloadMapper {
         } catch (RuntimeException exception) {
             log.debug(
                     "读取实体发布字段失败，使用兼容字段映射: entityCode={}, reason={}",
-                    entityCode,
-                    exception.getMessage());
+                    LogValue.safe(entityCode),
+                    LogValue.safe(exception.getMessage()));
             return List.of();
         }
     }

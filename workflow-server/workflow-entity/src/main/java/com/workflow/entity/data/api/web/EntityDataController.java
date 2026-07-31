@@ -141,6 +141,20 @@ public class EntityDataController {
     public ApiResponse<EntityDataDTO> getById(
             @PathVariable String entityCode,
             @PathVariable String id,
+            @RequestParam(required = false) String listKey) {
+        return ApiResponse.success(entityDataActionService.getDetailReadOnly(
+                entityCode,
+                id,
+                listKey));
+    }
+
+    /**
+     * 加载详情并执行已发布的 DETAIL_LOAD 事件链。
+     */
+    @PostMapping("/entity/{entityCode}/detail/{id}/load")
+    public ApiResponse<EntityDataDTO> loadById(
+            @PathVariable String entityCode,
+            @PathVariable String id,
             @RequestParam(required = false) String listKey,
             @RequestParam(required = false) String formId) {
         return ApiResponse.success(entityDataActionService.getDetail(

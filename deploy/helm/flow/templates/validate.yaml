@@ -4,6 +4,9 @@
 {{- if and .Values.networkPolicy.enabled (not .Values.networkPolicy.allowSameNamespaceDependencies) (eq (len .Values.networkPolicy.objectStorageCIDRs) 0) }}
 {{- fail "networkPolicy.objectStorageCIDRs is required for external production object storage" }}
 {{- end }}
+{{- if and .Values.networkPolicy.enabled .Values.observability.tracing.enabled (not .Values.networkPolicy.observabilityNamespaceSelector) (eq (len .Values.networkPolicy.observabilityCollectorCIDRs) 0) }}
+{{- fail "networkPolicy.observabilityNamespaceSelector or networkPolicy.observabilityCollectorCIDRs is required when tracing is enabled" }}
+{{- end }}
 {{- if and .Values.openApi.enabled (not (regexMatch "^https://[^[:space:]]+$" .Values.openApi.issuer)) }}
 {{- fail "openApi.issuer must be an HTTPS URL when openApi is enabled" }}
 {{- end }}

@@ -134,8 +134,8 @@ public class EntityDataControllerTest {
     /** 测试按 ID 查询实体数据详情接口，断言返回 200 且数据字段正确 */
     @Test
     void testGetById() throws Exception {
-        when(entityDataActionService.getDetail(
-                "test_entity", "1", null, null)).thenReturn(testData);
+        when(entityDataActionService.getDetailReadOnly(
+                "test_entity", "1", null)).thenReturn(testData);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity/detail/1"))
                 .andExpect(status().isOk())
@@ -143,8 +143,29 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.data.id").value("1"))
                 .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
 
-        verify(entityDataActionService, times(1)).getDetail(
-                "test_entity", "1", null, null);
+        verify(entityDataActionService, times(1)).getDetailReadOnly(
+                "test_entity", "1", null);
+        verify(entityDataActionService, never()).getDetail(
+                anyString(), anyString(), any(), any());
+    }
+
+    /** 测试详情加载事件仅由 POST 接口执行 */
+    @Test
+    void testLoadByIdExecutesDetailLoadEvent() throws Exception {
+        when(entityDataActionService.getDetail(
+                "test_entity", "1", "default", "form-1"))
+                .thenReturn(testData);
+
+        mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/load")
+                        .param("listKey", "default")
+                        .param("formId", "form-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("1"));
+
+        verify(entityDataActionService).getDetail(
+                "test_entity", "1", "default", "form-1");
     }
 
     /** 测试按流程实例查询实体数据详情接口，断言返回 200 且 ID 正确 */

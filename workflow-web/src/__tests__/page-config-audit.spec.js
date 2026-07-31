@@ -268,6 +268,8 @@ const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelect
 })
 
 const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDesign.vue'), 'utf8')
+const listDesignerShared = readFileSync(path.join(root, 'src/shared/list-config-design.js'), 'utf8')
+const listDesignerImplementation = `${listDesigner}\n${listDesignerShared}`
 const entityDataSearchForm = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataSearchForm.vue'),
   'utf8'
@@ -321,7 +323,7 @@ assert.equal(
   '字段配置：${field.fieldName',
   "position === 'TOOLBAR' ? '工具栏按钮' : '操作列按钮'"
 ].forEach((marker) => {
-  assert.ok(listDesigner.includes(marker), `列表设计器未保存状态缺少悬停明细: ${marker}`)
+  assert.ok(listDesignerImplementation.includes(marker), `列表设计器未保存状态缺少悬停明细: ${marker}`)
 })
 assert.ok(
   entityDataList.includes('<EntityDataSearchForm')
@@ -452,6 +454,11 @@ lowFrequencyButtonFieldPatterns.forEach((pattern) => {
 })
 
 const entitySettingsDesigner = readFileSync(path.join(root, 'src/views/EntityDesign.vue'), 'utf8')
+const entityValidationRulesComposable = readFileSync(
+  path.join(root, 'src/composables/useEntityValidationRules.js'),
+  'utf8'
+)
+const entitySettingsImplementation = `${entitySettingsDesigner}\n${entityValidationRulesComposable}`
 ;['title="常用属性"', 'title="数据与约束"', 'title="类型专属配置"'].forEach((marker) => {
   assert.ok(entitySettingsDesigner.includes(marker), `实体字段设置缺少频率分组: ${marker}`)
 })
@@ -471,7 +478,7 @@ const entitySettingsDesigner = readFileSync(path.join(root, 'src/views/EntityDes
   'handleFieldTypeChange',
   'validateEntityValidationRules'
 ].forEach((marker) => {
-  assert.ok(entitySettingsDesigner.includes(marker), `实体验证规则可视化配置缺少实现: ${marker}`)
+  assert.ok(entitySettingsImplementation.includes(marker), `实体验证规则可视化配置缺少实现: ${marker}`)
 })
 assert.equal(
   entitySettingsDesigner.includes('entity-validation-rule-tooltip'),

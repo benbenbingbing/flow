@@ -25,6 +25,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/ui-event-bindings")
 @RequiredArgsConstructor
+@AuthenticatedApi(objectAuthorization = true)
 public class UiEventBindingController {
 
     private final UiEventBindingService bindingService;

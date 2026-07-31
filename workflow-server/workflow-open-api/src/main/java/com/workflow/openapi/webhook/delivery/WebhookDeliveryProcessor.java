@@ -7,6 +7,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.io.IOException;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -87,6 +88,8 @@ public class WebhookDeliveryProcessor {
                 || delivery.leaseToken() != leaseToken) {
             return;
         }
+        Duration heartbeatPeriod = Duration.ofSeconds(
+                Math.max(1, leaseSeconds / 3));
         ScheduledFuture<?> heartbeat =
                 heartbeatScheduler.scheduleAtFixedRate(
                         () -> heartbeat(
@@ -94,8 +97,8 @@ public class WebhookDeliveryProcessor {
                                 ownerId,
                                 leaseToken,
                                 leaseSeconds),
-                        Duration.ofSeconds(
-                                Math.max(1, leaseSeconds / 3)));
+                        Instant.now().plus(heartbeatPeriod),
+                        heartbeatPeriod);
         try {
             if (!"ACTIVE".equals(delivery.endpointStatus())
                     || !"ACTIVE".equals(

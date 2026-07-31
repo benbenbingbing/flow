@@ -10,6 +10,10 @@ server:
     digest: ""
     pullPolicy: IfNotPresent
   replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   resources:
     requests:
       cpu: 500m
@@ -38,6 +42,10 @@ web:
     digest: ""
     pullPolicy: IfNotPresent
   replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   resources:
     requests:
       cpu: 100m
@@ -81,6 +89,15 @@ application:
   httpAllowedHosts: ""
   logLevel: INFO
   shutdownTimeout: 30s
+  environment: production
+  version: "1.0.0"
+
+observability:
+  tracing:
+    enabled: false
+    otlpEndpoint: http://flow-otel-collector:4318/v1/traces
+    otlpTimeout: 500ms
+    samplingProbability: "0.05"
 
 openApi:
   enabled: false
@@ -144,6 +161,9 @@ networkPolicy:
     kubernetes.io/metadata.name: ingress-nginx
   monitoringNamespaceSelector:
     kubernetes.io/metadata.name: monitoring
+  observabilityNamespaceSelector:
+    kubernetes.io/metadata.name: flow-observability
+  observabilityCollectorCIDRs: []
   # Replace these example networks with the resolved, stable dependency CIDRs.
   databaseCIDRs:
     - 10.0.0.0/24

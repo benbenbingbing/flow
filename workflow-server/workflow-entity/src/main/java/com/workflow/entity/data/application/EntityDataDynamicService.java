@@ -6,6 +6,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
+import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
@@ -515,8 +516,8 @@ public class EntityDataDynamicService {
         } catch (RuntimeException exception) {
             log.debug(
                     "读取实体发布字段失败，使用兼容字段映射: entityCode={}, reason={}",
-                    entityCode,
-                    exception.getMessage());
+                    LogValue.safe(entityCode),
+                    LogValue.safe(exception.getMessage()));
             return List.of();
         }
     }

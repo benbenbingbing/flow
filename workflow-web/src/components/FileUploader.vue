@@ -26,8 +26,7 @@
       <el-upload
         ref="uploadRef"
         class="multi-group-uploader"
-        :action="uploadUrl"
-        :headers="uploadHeaders"
+        :http-request="uploadRequest"
         :disabled="disabled"
         :accept="activeAcceptTypes"
         :before-upload="beforeUploadActive"
@@ -79,8 +78,7 @@
       <!-- 图片上传模式 -->
       <template v-if="isImage">
         <el-upload
-          :action="uploadUrl"
-          :headers="uploadHeaders"
+          :http-request="uploadRequest"
           :file-list="fileList"
           :limit="maxCount"
           :disabled="disabled"
@@ -106,8 +104,7 @@
       <!-- 文件上传模式 -->
       <template v-else>
         <el-upload
-          :action="uploadUrl"
-          :headers="uploadHeaders"
+          :http-request="uploadRequest"
           :file-list="fileList"
           :limit="maxCount"
           :disabled="disabled"
@@ -163,7 +160,7 @@
 import { ref, computed, watch } from 'vue'
 import { Plus, Upload, Document, View, Download, RefreshRight, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { useUserStore } from '@/stores/user'
+import { fileApi } from '@/api/file'
 
 const props = defineProps({
   modelValue: {
@@ -186,20 +183,25 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const userStore = useUserStore()
 const uploadRef = ref(null)
 const activeGroupIndex = ref(0)
 const pendingGroupIndex = ref(0)
 
-// 上传地址
-const uploadUrl = '/api/file/upload'
-
-// 上传请求头
-const uploadHeaders = computed(() => {
-  return {
-    Authorization: `Bearer ${userStore.token}`
+const uploadRequest = async ({ file, onProgress, onSuccess, onError }) => {
+  try {
+    const response = await fileApi.upload(file, {
+      onUploadProgress: (event) => {
+        const percent = event.total
+          ? Math.round((event.loaded / event.total) * 100)
+          : 0
+        onProgress({ percent })
+      }
+    })
+    onSuccess({ code: 200, data: response })
+  } catch (error) {
+    onError(error)
   }
-})
+}
 
 // ==================== 多组模式 ====================
 const isMultiGroup = computed(() => {

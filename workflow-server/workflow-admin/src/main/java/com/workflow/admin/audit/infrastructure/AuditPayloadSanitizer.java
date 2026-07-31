@@ -35,7 +35,7 @@ public class AuditPayloadSanitizer {
     private static final Pattern BEARER_PATTERN =
             Pattern.compile("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+");
     private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("(?i)([A-Z0-9._%+-])[A-Z0-9._%+-]*(@[A-Z0-9.-]+\\.[A-Z]{2,})");
+            Pattern.compile("(?i)([A-Z0-9._%+-])[A-Z0-9._%+-]*+(@[A-Z0-9.-]+\\.[A-Z]{2,})");
     private static final Pattern PHONE_PATTERN =
             Pattern.compile("(?<!\\d)(1\\d{2})\\d{4}(\\d{4})(?!\\d)");
     private static final Pattern LONG_NUMBER_PATTERN =

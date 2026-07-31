@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - persistent-volumes.yaml
+  - ../../k3s
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: StatefulSet
+      name: local-mysql
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: local-mysql-data
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: minio
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: local-minio-data

@@ -1,0 +1,65 @@
+elasticsearch:
+  enabled: false
+
+banyandb:
+  enabled: true
+  image:
+    tag: "0.9.0"
+  standalone:
+    enabled: true
+    httpSvc:
+      type: ClusterIP
+    resources:
+      requests:
+        - key: cpu
+          value: 100m
+        - key: memory
+          value: 512Mi
+      limits:
+        - key: cpu
+          value: "1"
+        - key: memory
+          value: 1536Mi
+  cluster:
+    enabled: false
+  storage:
+    data:
+      enabled: false
+    liaison:
+      enabled: false
+    standalone:
+      enabled: true
+      persistentVolumeClaims:
+        - mountTargets: ["measure", "stream", "metadata", "property", "trace"]
+          claimName: standalone-data
+          size: 8Gi
+          accessModes:
+            - ReadWriteOnce
+          storageClass: local-path
+          volumeMode: Filesystem
+
+oap:
+  replicas: 1
+  storageType: banyandb
+  image:
+    tag: "10.3.0"
+  javaOpts: -Xmx768m -Xms768m
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+ui:
+  replicas: 1
+  image:
+    tag: "10.3.0"
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi

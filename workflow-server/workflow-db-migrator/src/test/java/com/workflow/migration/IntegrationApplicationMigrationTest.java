@@ -39,12 +39,12 @@ class IntegrationApplicationMigrationTest {
     }
 
     @Test
-    void freshDatabaseMigratesThroughIntegrationApplicationSchema()
+    void freshDatabaseMigratesThroughCurrentSchema()
             throws Exception {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("017", currentVersion());
+        assertEquals("018", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
@@ -77,6 +77,15 @@ class IntegrationApplicationMigrationTest {
         assertTrue(columnExists(
                 "integration_application_credential",
                 "secret_hash"));
+        assertTrue(columnExists(
+                "storage_file_object",
+                "idempotency_key"));
+        assertTrue(columnExists(
+                "storage_file_object",
+                "request_hash"));
+        assertTrue(indexExists(
+                "storage_file_object",
+                "uk_storage_file_owner_idempotency"));
         assertEquals(4, countRows(
                 "SELECT COUNT(*) FROM sys_menu "
                         + "WHERE id LIKE 'integration_perm_%'"));
@@ -139,7 +148,7 @@ class IntegrationApplicationMigrationTest {
 
         flyway().migrate();
 
-        assertEquals("017", currentVersion());
+        assertEquals("018", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "

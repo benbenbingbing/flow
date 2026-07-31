@@ -15,8 +15,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      maxUnavailable: {{ .Values.server.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.server.strategy.rollingUpdate.maxSurge }}
   selector:
     matchLabels:
       {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 6 }}
@@ -111,6 +111,18 @@ spec:
               value: {{ .Values.application.logLevel | quote }}
             - name: SHUTDOWN_TIMEOUT
               value: {{ .Values.application.shutdownTimeout | quote }}
+            - name: WORKFLOW_ENVIRONMENT
+              value: {{ .Values.application.environment | quote }}
+            - name: WORKFLOW_VERSION
+              value: {{ .Values.application.version | quote }}
+            - name: OTEL_TRACES_ENABLED
+              value: {{ .Values.observability.tracing.enabled | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.tracing.otlpEndpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_TIMEOUT
+              value: {{ .Values.observability.tracing.otlpTimeout | quote }}
+            - name: OTEL_TRACES_SAMPLER_PROBABILITY
+              value: {{ .Values.observability.tracing.samplingProbability | quote }}
             - name: WORKFLOW_OPEN_API_ENABLED
               value: {{ .Values.openApi.enabled | quote }}
             - name: WORKFLOW_OPEN_API_ISSUER

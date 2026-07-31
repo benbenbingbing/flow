@@ -52,27 +52,30 @@ public class OutboxWorker {
         if (recovered > 0) {
             log.warn("回收超时 Outbox 事件: count={}", recovered);
         }
-        for (OutboxRecord record : mapper.findReady(
-                Math.max(1, batchSize))) {
-            int effectiveLeaseSeconds = Math.max(10, leaseSeconds);
-            if (mapper.claim(
-                    record.getId(), ownerId, effectiveLeaseSeconds) == 0) {
-                continue;
-            }
-            OutboxRecord claimed = mapper.selectClaimed(
-                    record.getId(), ownerId);
-            if (claimed == null || claimed.getLeaseToken() == null) {
+        int effectiveLeaseSeconds = Math.max(10, leaseSeconds);
+        String batchOwnerId = ownerId + ":" + UUID.randomUUID();
+        if (mapper.claimBatch(
+                batchOwnerId,
+                effectiveLeaseSeconds,
+                Math.max(1, batchSize)) == 0) {
+            return;
+        }
+        for (OutboxRecord claimed : mapper.selectClaimedBatch(
+                batchOwnerId)) {
+            if (claimed.getLeaseToken() == null) {
                 continue;
             }
             try {
                 executor.execute(() -> processor.process(
                         claimed.getId(),
-                        ownerId,
+                        batchOwnerId,
                         claimed.getLeaseToken(),
                         effectiveLeaseSeconds));
             } catch (RejectedExecutionException exception) {
                 mapper.releaseClaim(
-                        claimed.getId(), ownerId, claimed.getLeaseToken());
+                        claimed.getId(),
+                        batchOwnerId,
+                        claimed.getLeaseToken());
                 log.error(
                         "Outbox 执行队列已满，释放租约: id={}, topic={}",
                         claimed.getId(),

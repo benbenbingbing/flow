@@ -4,6 +4,8 @@ import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
 
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
@@ -60,6 +62,10 @@ class ProcessEndListenerTest {
                 mock(ObjectProvider.class);
         ProcessStatusSyncPublisher publisher =
                 mock(ProcessStatusSyncPublisher.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
+                mock(ObjectProvider.class);
         HistoricVariableInstanceQuery entityCodeQuery =
                 variableQuery("expense");
         HistoricVariableInstanceQuery entityIdQuery =

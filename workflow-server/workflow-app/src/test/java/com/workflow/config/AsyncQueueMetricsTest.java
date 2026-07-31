@@ -1,13 +1,18 @@
 package com.workflow.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class AsyncQueueMetricsTest {
@@ -33,6 +38,14 @@ class AsyncQueueMetricsTest {
 
         metrics.refresh();
 
+        ArgumentCaptor<String> queries =
+                ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate, times(2))
+                .queryForMap(queries.capture());
+        queries.getAllValues().forEach(query -> {
+            assertTrue(query.contains("SELECT COUNT(*)"));
+            assertFalse(query.contains("SUM("));
+        });
         assertGauge(
                 registry,
                 "workflow.queue.items",

@@ -33,12 +33,14 @@ public class EntityVersionConfigurationController {
     private final EntityVersionPolicyMatcher matcher;
 
     @GetMapping
+    @RequiresPermission("entity:version:config:list")
     public ApiResponse<List<EntityVersionConfigSummary>> list(
             @RequestParam(required = false) String keyword) {
         return ApiResponse.success(service.list(keyword));
     }
 
     @GetMapping("/{entityCode}")
+    @RequiresPermission("entity:version:config:list")
     public ApiResponse<EntityVersionConfiguration> detail(
             @PathVariable String entityCode) {
         return ApiResponse.success(
@@ -47,6 +49,7 @@ public class EntityVersionConfigurationController {
 
     @RequiresPermission("entity:version:config:update")
     @PostMapping("/{entityCode}/save")
+    @RequiresPermission("entity:version:config:update")
     public ApiResponse<EntityVersionConfiguration> save(
             @PathVariable String entityCode,
             @RequestBody EntityVersionConfiguration request) {
@@ -56,6 +59,7 @@ public class EntityVersionConfigurationController {
 
     @RequiresPermission("entity:version:config:publish")
     @PostMapping("/{entityCode}/publish")
+    @RequiresPermission("entity:version:config:publish")
     public ApiResponse<EntityVersionConfiguration> publish(
             @PathVariable String entityCode) {
         return ApiResponse.success(
@@ -63,6 +67,7 @@ public class EntityVersionConfigurationController {
     }
 
     @GetMapping("/{entityCode}/releases")
+    @RequiresPermission("entity:version:config:list")
     public ApiResponse<List<EntityVersionReleaseSummary>> releases(
             @PathVariable String entityCode) {
         return ApiResponse.success(
@@ -70,6 +75,7 @@ public class EntityVersionConfigurationController {
     }
 
     @PostMapping("/{entityCode}/simulate")
+    @RequiresPermission("entity:version:config:update")
     public ApiResponse<Map<String, Object>> simulate(
             @PathVariable String entityCode,
             @RequestBody EntityVersionSimulationRequest request) {

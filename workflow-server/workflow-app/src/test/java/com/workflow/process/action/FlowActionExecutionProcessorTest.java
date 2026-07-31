@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.ScheduledFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,7 +64,7 @@ class FlowActionExecutionProcessorTest {
         FlowActionContext context = new FlowActionContext();
 
         doReturn(heartbeat).when(scheduler).scheduleAtFixedRate(
-                any(Runnable.class), any(Duration.class));
+                any(Runnable.class), any(Instant.class), any(Duration.class));
         when(executionService.getClaimed("execution-1", "owner-1"))
                 .thenReturn(execution);
         when(actionMapper.selectById("action-1")).thenReturn(action);
@@ -136,7 +137,7 @@ class FlowActionExecutionProcessorTest {
         FlowActionTriggerEvent event = new FlowActionTriggerEvent();
 
         doReturn(heartbeat).when(scheduler).scheduleAtFixedRate(
-                any(Runnable.class), any(Duration.class));
+                any(Runnable.class), any(Instant.class), any(Duration.class));
         when(executionService.getClaimed("execution-1", "owner-1"))
                 .thenReturn(execution);
         when(actionMapper.selectById("action-1")).thenReturn(action);

@@ -1,0 +1,173 @@
+fullnameOverride: flow-monitoring
+
+defaultRules:
+  create: true
+
+additionalPrometheusRulesMap:
+  flow-resource-capacity:
+    groups:
+      - name: flow.resource-capacity
+        rules:
+          - alert: FlowContainerMemoryLimitHigh
+            expr: |
+              max by (namespace, pod, container) (
+                container_memory_working_set_bytes{
+                  namespace=~"flow-hardening|flow-observability",
+                  container!="",
+                  image!=""
+                }
+                / on (namespace, pod, container)
+                kube_pod_container_resource_limits{
+                  namespace=~"flow-hardening|flow-observability",
+                  resource="memory",
+                  unit="byte"
+                }
+              ) > 0.90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "容器内存使用率持续超过限额的 90%"
+              description: "{{ $labels.namespace }}/{{ $labels.pod }} 容器 {{ $labels.container }} 的内存工作集已达到限额的 {{ $value | humanizePercentage }}。"
+          - alert: FlowContainerMemoryLimitCritical
+            expr: |
+              max by (namespace, pod, container) (
+                container_memory_working_set_bytes{
+                  namespace=~"flow-hardening|flow-observability",
+                  container!="",
+                  image!=""
+                }
+                / on (namespace, pod, container)
+                kube_pod_container_resource_limits{
+                  namespace=~"flow-hardening|flow-observability",
+                  resource="memory",
+                  unit="byte"
+                }
+              ) > 0.97
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "容器内存使用率接近限额"
+              description: "{{ $labels.namespace }}/{{ $labels.pod }} 容器 {{ $labels.container }} 的内存工作集已达到限额的 {{ $value | humanizePercentage }}，存在 OOM 风险。"
+
+alertmanager:
+  enabled: false
+  alertmanagerSpec:
+    replicas: 1
+    retention: 24h
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+grafana:
+  enabled: true
+  admin:
+    existingSecret: flow-grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsEnabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+      exemplarTraceIdDestinations:
+        datasourceUid: tempo
+        traceIdLabelName: trace_id
+        urlDisplayLabel: 查看链路
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://flow-loki-gateway.flow-observability.svc.cluster.local
+      jsonData:
+        derivedFields:
+          - name: Trace
+            matcherRegex: '"trace\\.id":"([a-f0-9]+)"'
+            datasourceUid: tempo
+            url: '$${__value.raw}'
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: http://flow-tempo.flow-observability.svc.cluster.local:3200
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: -5m
+          spanEndTimeShift: 5m
+          filterByTraceID: true
+          filterBySpanID: false
+          tags:
+            - key: service.name
+              value: service_name
+            - key: request_id
+              value: request_id
+            - key: business_trace_id
+              value: business_trace_id
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+kubeControllerManager:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+prometheus-node-exporter:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorNamespaceSelector: {}
+    exemplars:
+      maxSize: 100000
+    enableFeatures:
+      - exemplar-storage
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi

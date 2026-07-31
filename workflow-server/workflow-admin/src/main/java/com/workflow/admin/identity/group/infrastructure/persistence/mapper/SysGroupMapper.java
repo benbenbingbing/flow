@@ -44,6 +44,26 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
             "INNER JOIN sys_user_group ug ON u.id = ug.user_id " +
             "WHERE ug.group_id = #{groupId} AND u.deleted = 0 AND u.status = '0'")
     List<SysUser> selectGroupUsers(@Param("groupId") String groupId);
+
+    /**
+     * 批量查询用户组成员 ID，用于列表页成员数和分配成员回显。
+     *
+     * @param groupIds 组 ID 列表
+     * @return 组与用户 ID 关系
+     */
+    @Select({
+            "<script>",
+            "SELECT ug.group_id AS groupId, ug.user_id AS userId",
+            "FROM sys_user_group ug",
+            "INNER JOIN sys_user u ON u.id = ug.user_id",
+            "WHERE u.deleted = 0 AND u.status = '0'",
+            "AND ug.group_id IN",
+            "<foreach collection='groupIds' item='groupId' open='(' separator=',' close=')'>",
+            "#{groupId}",
+            "</foreach>",
+            "</script>"
+    })
+    List<GroupUserIdRow> selectGroupUserIdsByGroupIds(@Param("groupIds") List<String> groupIds);
     
     /**
      * 查询用户的组列表
@@ -55,4 +75,28 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
             "INNER JOIN sys_user_group ug ON g.id = ug.group_id " +
             "WHERE ug.user_id = #{userId} AND g.deleted = 0 AND g.status = '0'")
     List<SysGroup> selectGroupsByUserId(@Param("userId") String userId);
+
+    /**
+     * 用户组成员 ID 查询结果。
+     */
+    class GroupUserIdRow {
+        private String groupId;
+        private String userId;
+
+        public String getGroupId() {
+            return groupId;
+        }
+
+        public void setGroupId(String groupId) {
+            this.groupId = groupId;
+        }
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+    }
 }

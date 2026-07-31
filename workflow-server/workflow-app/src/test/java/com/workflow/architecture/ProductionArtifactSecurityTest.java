@@ -76,7 +76,7 @@ class ProductionArtifactSecurityTest {
         String parentPom = Files.readString(Path.of("../pom.xml"));
 
         assertTrue(parentPom.contains(
-                "<jackson-bom.version>2.21.4</jackson-bom.version>"));
+                "<jackson-bom.version>2.21.5</jackson-bom.version>"));
         assertTrue(parentPom.contains(
                 "<netty.version>4.1.136.Final</netty.version>"));
         assertTrue(parentPom.contains(
@@ -121,6 +121,8 @@ class ProductionArtifactSecurityTest {
                 "helm upgrade --install"));
         assertTrue(deploymentWorkflow.contains(
                 "--atomic"));
+        assertTrue(deploymentWorkflow.contains(
+                "test \"$GITHUB_REF\" = \"refs/heads/main\""));
         assertFalse(deploymentWorkflow.contains(
                 "docker compose"));
     }

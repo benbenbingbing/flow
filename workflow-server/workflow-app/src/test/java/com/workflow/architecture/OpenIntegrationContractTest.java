@@ -171,8 +171,9 @@ class OpenIntegrationContractTest {
     private Path repositoryRoot() {
         Path candidate = Path.of("").toAbsolutePath().normalize();
         while (candidate != null) {
-            if (Files.isDirectory(candidate.resolve(".git"))
-                    && Files.isRegularFile(candidate.resolve(OPEN_API_PATH))) {
+            if (Files.isRegularFile(candidate.resolve(OPEN_API_PATH))
+                    && Files.isRegularFile(candidate.resolve(
+                            "workflow-server/pom.xml"))) {
                 return candidate;
             }
             candidate = candidate.getParent();

@@ -826,6 +826,15 @@ import {
   stringifyConfig
 } from '@/shared/config-runtime'
 import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
+import {
+  calculateListActionOrderKey as localActionOrderKey,
+  describeListPublishChanges as describePublishChanges,
+  listActionBaselineKey as actionBaselineKey,
+  listActionFingerprint as actionFingerprint,
+  listMetadataDetailEntries,
+  listMetadataFingerprint,
+  normalizeListActionForSave as normalizeActionForSave
+} from '@/shared/list-config-design'
 import { uiDataSourceApi, uiComponentTemplateApi } from '@/api/uiConfig'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { parseJsonConfig } from '@/utils/jsonConfig'
@@ -1040,120 +1049,16 @@ const previewListFields = computed(() =>
   fieldConfigList.value.filter(field => field.showInList)
 )
 
-function metadataFingerprint() {
-  return JSON.stringify({
-    listName: configInfo.value.listName || '',
-    description: configInfo.value.description || '',
-    isDefault: Boolean(configInfo.value.isDefault),
-    customComponent: configInfo.value.customComponent || '',
-    dataScopeMode: configInfo.value.dataScopeMode || 'INHERIT',
-    accessPermissionCode: configInfo.value.accessPermissionCode || '',
-    selectionMode: configInfo.value.selectionMode || 'NONE',
-    selectionValueField: configInfo.value.selectionValueField || 'id',
-    selectionReturnMappingsText: configInfo.value.selectionReturnMappingsText || '',
-    fixedFilterConfig: configInfo.value.fixedFilterConfig || '',
-    contextBindingConfig: configInfo.value.contextBindingConfig || '',
-    viewConfig: viewConfig.value,
-    queryProviderCode: configInfo.value.queryProviderCode || '',
-    queryDataSourceId: configInfo.value.queryDataSourceId || null
-  })
-}
-
-function metadataDetailEntries() {
-  return [
-    { key: 'listName', label: '列表设置：列表名称', value: configInfo.value.listName || '' },
-    { key: 'description', label: '列表设置：列表说明', value: configInfo.value.description || '' },
-    { key: 'isDefault', label: '列表设置：默认列表', value: Boolean(configInfo.value.isDefault) },
-    { key: 'dataScopeMode', label: '列表设置：数据范围模式', value: configInfo.value.dataScopeMode || 'INHERIT' },
-    { key: 'accessPermissionCode', label: '列表设置：访问权限码', value: configInfo.value.accessPermissionCode || '' },
-    { key: 'selectionMode', label: '列表设置：选择模式', value: configInfo.value.selectionMode || 'NONE' },
-    { key: 'selectionValueField', label: '列表设置：返回值字段', value: configInfo.value.selectionValueField || 'id' },
-    {
-      key: 'selectionReturnMappingsText',
-      label: '列表设置：返回映射',
-      value: configInfo.value.selectionReturnMappingsText || ''
-    },
-    { key: 'fixedFilterConfig', label: '列表设置：固定条件', value: configInfo.value.fixedFilterConfig || '' },
-    {
-      key: 'contextBindingConfig',
-      label: '列表设置：上下文绑定',
-      value: configInfo.value.contextBindingConfig || ''
-    },
-    {
-      key: 'search.defaultVisibleCount',
-      label: '列表设置：收起时显示条件数',
-      value: viewConfig.value.search.defaultVisibleCount
-    },
-    {
-      key: 'search.collapsible',
-      label: '列表设置：启用查询区折叠',
-      value: viewConfig.value.search.collapsible
-    },
-    {
-      key: 'search.labelWidth',
-      label: '列表设置：查询区标签宽度',
-      value: viewConfig.value.search.labelWidth
-    },
-    { key: 'table.stripe', label: '列表设置：斑马纹', value: viewConfig.value.table.stripe },
-    { key: 'table.border', label: '列表设置：表格边框', value: viewConfig.value.table.border },
-    { key: 'table.showIndex', label: '列表设置：序号列', value: viewConfig.value.table.showIndex },
-    { key: 'table.size', label: '列表设置：表格尺寸', value: viewConfig.value.table.size },
-    {
-      key: 'pagination.pageSize',
-      label: '列表设置：默认每页',
-      value: viewConfig.value.pagination.pageSize
-    },
-    {
-      key: 'pagination.pageSizes',
-      label: '列表设置：分页选项',
-      value: viewConfig.value.pagination.pageSizes
-    },
-    {
-      key: 'customComponent',
-      label: '列表设置：自定义列表组件',
-      value: configInfo.value.customComponent || ''
-    },
-    {
-      key: 'customComponentProps',
-      label: '列表设置：组件参数',
-      value: viewConfig.value.customComponentProps
-    },
-    {
-      key: 'queryProviderCode',
-      label: '列表设置：安全查询提供者',
-      value: configInfo.value.queryProviderCode || ''
-    },
-    {
-      key: 'queryDataSourceId',
-      label: '列表设置：统一查询数据源',
-      value: configInfo.value.queryDataSourceId || null
-    }
-  ]
-}
-
-function metadataDetailFingerprint(value) {
-  return JSON.stringify(value)
-}
-
 function rememberMetadataBaseline() {
-  metadataBaseline.value = metadataFingerprint()
+  metadataBaseline.value = listMetadataFingerprint(configInfo.value, viewConfig.value)
   metadataDetailBaselines.value = new Map(
-    metadataDetailEntries().map(item => [item.key, metadataDetailFingerprint(item.value)])
+    listMetadataDetailEntries(configInfo.value, viewConfig.value)
+      .map(item => [item.key, JSON.stringify(item.value)])
   )
 }
 
 function fieldFingerprint(field) {
   return JSON.stringify(normalizeFieldForSave(field))
-}
-
-function actionFingerprint(button, position) {
-  const normalized = normalizeActionForSave(button, position)
-  delete normalized.expectedRevision
-  return JSON.stringify(normalized)
-}
-
-function actionBaselineKey(button, position) {
-  return `${position}:${button.id || button.key || button.buttonKey || 'new'}`
 }
 
 function rememberFieldBaseline(field) {
@@ -1178,13 +1083,14 @@ function rememberAllBaselines() {
 }
 
 const metadataDirty = computed(() =>
-  baselinesReady.value && metadataBaseline.value !== metadataFingerprint()
+  baselinesReady.value
+    && metadataBaseline.value !== listMetadataFingerprint(configInfo.value, viewConfig.value)
 )
 const dirtyMetadataItems = computed(() => {
   if (!metadataDirty.value) return []
-  const items = metadataDetailEntries()
+  const items = listMetadataDetailEntries(configInfo.value, viewConfig.value)
     .filter(item =>
-      metadataDetailBaselines.value.get(item.key) !== metadataDetailFingerprint(item.value)
+      metadataDetailBaselines.value.get(item.key) !== JSON.stringify(item.value)
     )
     .map(item => ({ key: `metadata:${item.key}`, label: item.label }))
   return items.length > 0
@@ -1719,51 +1625,6 @@ async function toggleScene(sceneCode, enabled) {
   }
 }
 
-function normalizeActionForSave(button, position) {
-  const actionParams = {}
-  for (const key of [
-    'targetEntityCode',
-    'targetListKey',
-    'presentation',
-    'selectionMode',
-    'openListTitle',
-    'relationKey',
-    'selectionHandler'
-  ]) {
-    if (button[key] !== undefined && button[key] !== '') {
-      actionParams[key] = button[key]
-    }
-  }
-  return {
-    expectedRevision: button.id ? button.revision : null,
-    position,
-    buttonKey: button.key,
-    buttonType: button.type,
-    buttonLabel: button.label,
-    icon: button.icon || '',
-    styleType: button.buttonType || 'default',
-    linkMode: button.link === true,
-    customMode: button.customMode || '',
-    handlerCode: button.customHandler || '',
-    permissionCode: button.perm || '',
-    enabled: button.enabled !== false,
-    unavailableBehavior: button.availabilityRule?.unavailableBehavior || '',
-    sortOrder: Number(button.sort || 0),
-    orderKey: button.orderKey
-      || (Number(button.sort || 0) + 1) * 1000000,
-    actionParams,
-    availabilityRule: button.availabilityRule || {},
-    templateId: button.templateId || null,
-    templateVersion: button.templateVersion || null,
-    localOverridesDocument: button.localOverridesDocument
-      || button.localOverrides
-      || null,
-    clearFields: button.templateId
-      ? []
-      : ['templateId', 'templateVersion', 'localOverridesDocument']
-  }
-}
-
 async function upgradeButtonTemplate(button, position) {
   if (!button?.templateId) return
   const template = buttonTemplates.value.find(item => item.id === button.templateId)
@@ -1923,25 +1784,6 @@ async function reorderListAction({ oldIndex, newIndex }, position) {
   } finally {
     button._saving = false
   }
-}
-
-function localActionOrderKey(buttons, index) {
-  const previous = buttons
-    .slice(0, index)
-    .reverse()
-    .map(item => Number(item.orderKey))
-    .find(orderKey => Number.isFinite(orderKey) && orderKey > 0)
-  const next = buttons
-    .slice(index + 1)
-    .map(item => Number(item.orderKey))
-    .find(orderKey => Number.isFinite(orderKey) && orderKey > 0)
-
-  if (previous && next && next - previous > 1) {
-    return previous + Math.floor((next - previous) / 2)
-  }
-  if (previous) return previous + 1000000
-  if (next) return Math.max(1, Math.floor(next / 2))
-  return (index + 1) * 1000000
 }
 
 async function removeListAction(button, position) {
@@ -2282,26 +2124,6 @@ function handlePreviewReset() {
   previewQueryForm.value = {}
   previewPageNum.value = 1
   loadPreviewData()
-}
-
-function describePublishChanges(diff) {
-  const labels = (diff.changedItems || [])
-    .slice(0, 8)
-    .map(item => `${changeTypeLabel(item.changeType)}${item.label || item.id}`)
-  if (labels.length) {
-    const remaining = Math.max(0, (diff.changedItems?.length || 0) - labels.length)
-    return `${labels.join('、')}${remaining ? `等 ${remaining + labels.length} 项` : ''}`
-  }
-  return diff.changedSections?.join('、') || '当前列表草稿'
-}
-
-function changeTypeLabel(changeType) {
-  return {
-    ADDED: '新增：',
-    UPDATED: '修改：',
-    MOVED: '移动：',
-    REMOVED: '删除：'
-  }[changeType] || '修改：'
 }
 
 async function showReleaseHistory() {

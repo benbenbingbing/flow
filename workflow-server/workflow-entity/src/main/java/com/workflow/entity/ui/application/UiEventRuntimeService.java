@@ -3,6 +3,8 @@ package com.workflow.entity.ui.application;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -10,6 +12,7 @@ import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.core.logging.LogValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -45,6 +48,7 @@ public class UiEventRuntimeService {
     private final UiEventValueMapper valueMapper;
     private final EntitySelectionRuntimeService selectionRuntimeService;
     private final SystemAuditPort auditPort;
+    private final EntityActionCapabilityService actionCapabilityService;
 
     /**
      * 执行已发布事件。按钮和字段事件可直接调用此入口。
@@ -85,6 +89,7 @@ public class UiEventRuntimeService {
             Function<Map<String, Object>, Object> defaultHandler) {
         UiEventBindingService.ResolvedEventChain chain =
                 bindingService.resolvePublished(request);
+        requireExecutionPermission(request, chain.entityCode());
         UiEventExecutionResult result = new UiEventExecutionResult();
         Object selection =
                 selectionRuntimeService.resolve(request, chain);
@@ -133,6 +138,37 @@ public class UiEventRuntimeService {
         }
         result.setData(latest);
         return result;
+    }
+
+    private void requireExecutionPermission(
+            UiEventExecuteRequest request,
+            String entityCode) {
+        if (!StringUtils.hasText(entityCode)) {
+            throw new IllegalArgumentException("UI 事件未关联有效实体");
+        }
+        String eventCode = normalize(request.getEventCode());
+        EntityPermissionAction action = switch (eventCode) {
+            case "DATA_CREATE" -> EntityPermissionAction.CREATE;
+            case "DATA_UPDATE", "FORM_SAVE", "SUBFORM_SAVE",
+                    "FORM_BUTTON_CLICK", "FIELD_BUTTON_CLICK" ->
+                    EntityPermissionAction.UPDATE;
+            case "DATA_DELETE" -> EntityPermissionAction.DELETE;
+            case "DATA_BATCH_DELETE" -> EntityPermissionAction.BATCH_DELETE;
+            case "ROW_BUTTON_CLICK", "TOOLBAR_BUTTON_CLICK" -> {
+                EntityPermissionAction buttonAction =
+                        EntityPermissionAction.fromButtonKey(
+                                request.getTargetKey());
+                yield buttonAction != null
+                        ? buttonAction
+                        : EntityPermissionAction.UPDATE;
+            }
+            default -> StringUtils.hasText(request.getRecordId())
+                    ? EntityPermissionAction.VIEW
+                    : EntityPermissionAction.LIST;
+        };
+        actionCapabilityService.requireStandardPermission(
+                entityCode,
+                action);
     }
 
     private void recordExecution(
@@ -206,8 +242,8 @@ public class UiEventRuntimeService {
         } catch (RuntimeException auditException) {
             log.warn(
                     "记录UI事件执行日志失败: eventCode={}, configId={}",
-                    eventCode,
-                    request == null ? null : request.getConfigId(),
+                    LogValue.safe(eventCode),
+                    LogValue.safe(request == null ? null : request.getConfigId()),
                     auditException);
         }
     }

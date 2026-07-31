@@ -218,6 +218,7 @@ import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import InterfaceServiceEditorDialog from '@/components/ui-config/InterfaceServiceEditorDialog.vue'
 import InterfaceServiceTestDialog from '@/components/ui-config/InterfaceServiceTestDialog.vue'
 import {
+  configurableEntities,
   eventCodes,
   executionPolicy,
   serviceOperations,
