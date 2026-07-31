@@ -62,10 +62,6 @@ class ProcessEndListenerTest {
                 mock(ObjectProvider.class);
         ProcessStatusSyncPublisher publisher =
                 mock(ProcessStatusSyncPublisher.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
-        @SuppressWarnings("unchecked")
-        ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
-                mock(ObjectProvider.class);
         HistoricVariableInstanceQuery entityCodeQuery =
                 variableQuery("expense");
         HistoricVariableInstanceQuery entityIdQuery =

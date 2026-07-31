@@ -83,7 +83,6 @@ class ProcessRuntimeServiceTest {
                 final WorkflowAutoSkipService workflowAutoSkipService = mock(WorkflowAutoSkipService.class);
                 final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(
                                 MultiInstanceCollectionListener.class);
-                final EntityProcessLinkMapper entityProcessLinkMapper = mock(EntityProcessLinkMapper.class);
                 @SuppressWarnings("unchecked")
                 final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider = mock(ObjectProvider.class);
 

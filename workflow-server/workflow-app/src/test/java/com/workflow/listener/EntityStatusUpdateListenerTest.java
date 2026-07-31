@@ -80,8 +80,7 @@ class EntityStatusUpdateListenerTest {
                 runtimeService,
                 mutationPort,
                 statusMapper,
-                processMapper,
-                statusSyncPublisher);
+                processMapper);
         FlowableEntityEventImpl event = mock(FlowableEntityEventImpl.class);
         when(event.getType()).thenReturn(FlowableEngineEventType.TASK_COMPLETED);
         when(event.getEntity()).thenReturn(task);
@@ -122,8 +121,7 @@ class EntityStatusUpdateListenerTest {
                 runtimeService,
                 mutationPort,
                 statusMapper,
-                processMapper,
-                statusSyncPublisher);
+                processMapper);
 
         listener.onEvent(event);
 

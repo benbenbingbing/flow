@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/ui-runtime/events")
 @RequiredArgsConstructor
-@AuthenticatedApi(objectAuthorization = true)
 public class UiEventRuntimeController {
 
     private final UiEventRuntimeService runtimeService;

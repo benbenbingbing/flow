@@ -49,7 +49,6 @@ public class EntityVersionConfigurationController {
 
     @RequiresPermission("entity:version:config:update")
     @PostMapping("/{entityCode}/save")
-    @RequiresPermission("entity:version:config:update")
     public ApiResponse<EntityVersionConfiguration> save(
             @PathVariable String entityCode,
             @RequestBody EntityVersionConfiguration request) {
@@ -59,7 +58,6 @@ public class EntityVersionConfigurationController {
 
     @RequiresPermission("entity:version:config:publish")
     @PostMapping("/{entityCode}/publish")
-    @RequiresPermission("entity:version:config:publish")
     public ApiResponse<EntityVersionConfiguration> publish(
             @PathVariable String entityCode) {
         return ApiResponse.success(
