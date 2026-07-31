@@ -9,7 +9,6 @@ import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
-import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
@@ -41,8 +40,6 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
         private final EntityFlowStatusMappingMapper statusMappingMapper;
         /** 流程定义配置 Mapper，查询流程配置 */
         private final ProcessDefinitionConfigMapper processConfigMapper;
-        /** 事务内发布持久化状态同步事件 */
-        private final ProcessStatusSyncPublisher statusSyncPublisher;
 
         /**
          * 任务完成事件处理：根据节点状态映射写入关联实体状态同步事件。

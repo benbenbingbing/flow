@@ -189,32 +189,23 @@
           <!-- 固定人员选择 -->
           <template v-if="assigneeForm.assigneeType === 'user'">
             <el-form-item label="执行人">
-              <el-select-v2
+              <UserSelector
                 v-model="assigneeForm.assignee"
-                :options="userOptions"
-                placeholder="选择用户"
-                filterable
-                clearable
-                style="width: 100%"
+                value-key="code"
+                placeholder="请选择执行人"
+                title="选择执行人"
                 @change="updateAssignee"
-              >
-                <template #default="{ item }">
-                  <span>{{ item.label }}</span>
-                  <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
-                </template>
-              </el-select-v2>
+              />
               <div class="form-tip">指定一个固定用户处理此任务</div>
             </el-form-item>
 
             <el-form-item label="候选人">
-              <el-select-v2
+              <UserSelector
                 v-model="assigneeForm.candidateUserIds"
-                :options="userOptions"
-                placeholder="选择多个候选人"
                 multiple
-                filterable
-                clearable
-                style="width: 100%"
+                value-key="code"
+                placeholder="请选择候选人"
+                title="选择候选人"
                 @change="updateCandidateUsers"
               />
               <div class="form-tip">任务可被其中任意一人认领</div>
@@ -310,7 +301,13 @@
               <div class="form-tip">平台固定传入流程、节点、实体和操作人上下文</div>
             </el-form-item>
 
-            <el-form-item label="extraParams">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="extraParams"
+                  help-key="process.assigneeExtraParams"
+                />
+              </template>
               <el-input
                 v-model="assigneeForm.extraParamsText"
                 type="textarea"
@@ -373,21 +370,14 @@
 
                 <template v-if="assigneeForm.collectionSource === 'variable'">
                   <el-form-item label="会签人员">
-                    <el-select-v2
+                    <UserSelector
                       v-model="assigneeForm.multiInstanceUserIds"
-                      :options="userOptions"
-                      placeholder="选择会签用户"
                       multiple
-                      filterable
-                      clearable
-                      style="width: 100%"
+                      value-key="code"
+                      placeholder="请选择会签用户"
+                      title="选择会签用户"
                       @change="updateMultiInstanceUsers"
-                    >
-                      <template #default="{ item }">
-                        <span>{{ item.label }}</span>
-                        <span v-if="item.nickname" style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.nickname }})</span>
-                      </template>
-                    </el-select-v2>
+                    />
                     <div class="form-tip">所选用户每人都会生成一个会签任务</div>
                   </el-form-item>
 
@@ -441,7 +431,13 @@
                       @selected="onCollectionResolverSelected"
                     />
                   </el-form-item>
-                  <el-form-item label="extraParams">
+                  <el-form-item>
+                    <template #label>
+                      <JsonConfigLabel
+                        label="extraParams"
+                        help-key="process.multiInstanceExtraParams"
+                      />
+                    </template>
                     <el-input
                       v-model="assigneeForm.collectionExtraParamsText"
                       type="textarea"
@@ -555,22 +551,33 @@
             <el-form-item label="Content-Type">
               <el-select v-model="restForm.contentType">
                 <el-option label="application/json" value="application/json" />
-                <el-option label="application/x-www-form-urlencoded" value="application/x-www-form-urlencoded" />
-                <el-option label="text/xml" value="text/xml" />
               </el-select>
+              <div class="form-tip">当前运行时仅支持 application/json</div>
             </el-form-item>
             
-            <el-form-item label="请求头(Headers)">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="请求头(Headers)"
+                  help-key="process.restHeaders"
+                />
+              </template>
               <el-input 
                 v-model="restForm.headers" 
                 type="textarea"
                 :rows="3"
-                placeholder='{"Authorization": "Bearer ${token}", "X-Request-Id": "${requestId}"}'
+                placeholder='{"X-Business-Ref":"${businessRef}","X-Client-Type":"workflow"}'
               />
-              <div class="form-tip">JSON格式，支持流程变量表达式</div>
+              <div class="form-tip">JSON 对象，支持精确的 ${流程变量} 模板</div>
             </el-form-item>
             
-            <el-form-item label="请求体(Body)" v-if="restForm.method !== 'GET'">
+            <el-form-item v-if="restForm.method !== 'GET'">
+              <template #label>
+                <JsonConfigLabel
+                  label="请求体(Body)"
+                  help-key="process.restBody"
+                />
+              </template>
               <el-input 
                 v-model="restForm.body" 
                 type="textarea"
@@ -578,10 +585,16 @@
                 :placeholder="getRestBodyPlaceholder()"
                 class="code-input"
               />
-              <div class="form-tip">JSON格式或表单格式，支持流程变量表达式如：${variable}</div>
+              <div class="form-tip">JSON 对象或数组，支持精确的 ${流程变量} 模板</div>
             </el-form-item>
             
-            <el-form-item label="查询参数">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="查询参数"
+                  help-key="process.restQueryParams"
+                />
+              </template>
               <el-input 
                 v-model="restForm.queryParams" 
                 type="textarea"
@@ -623,7 +636,13 @@
                 </el-radio-group>
               </el-form-item>
 
-              <el-form-item label="结果映射">
+              <el-form-item>
+                <template #label>
+                  <JsonConfigLabel
+                    label="结果映射"
+                    help-key="process.restResultMapping"
+                  />
+                </template>
                 <el-input
                   v-model="restForm.resultMapping"
                   type="textarea"
@@ -797,7 +816,13 @@
             <div class="form-tip">关联的DMN决策表定义Key</div>
           </el-form-item>
           
-          <el-form-item label="输入变量">
+          <el-form-item>
+            <template #label>
+              <JsonConfigLabel
+                label="输入变量"
+                help-key="process.dmnInputVariables"
+              />
+            </template>
             <el-input 
               v-model="ruleForm.inputVariables" 
               type="textarea"
@@ -881,7 +906,13 @@
               </el-tag>
             </template>
 
-            <el-form-item label="输入参数">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="输入参数"
+                  help-key="process.callInputParameters"
+                />
+              </template>
               <el-input
                 v-model="callForm.inputParameters"
                 type="textarea"
@@ -891,7 +922,13 @@
               <div class="form-tip">传递给子流程的变量映射</div>
             </el-form-item>
 
-            <el-form-item label="输出参数">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="输出参数"
+                  help-key="process.callOutputParameters"
+                />
+              </template>
               <el-input
                 v-model="callForm.outputParameters"
                 type="textarea"
@@ -1210,9 +1247,15 @@
                     <el-option label="实体字段用户" value="ENTITY_FIELD" />
                     <el-option label="受控解析器" value="RESOLVER" />
                   </el-select>
-                  <el-select v-if="rule.type === 'USER'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户">
-                    <el-option v-for="item in userOptions" :key="item.value" :label="item.label" :value="item.value" />
-                  </el-select>
+                  <UserSelector
+                    v-if="rule.type === 'USER'"
+                    v-model="rule.values"
+                    multiple
+                    value-key="code"
+                    placeholder="请选择知会用户"
+                    title="选择知会用户"
+                    style="flex: 1"
+                  />
                   <el-select v-else-if="rule.type === 'ROLE'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择角色">
                     <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
                   </el-select>
@@ -1239,14 +1282,22 @@
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </div>
-                <el-input
+                <div
                   v-if="rule.type === 'RESOLVER'"
-                  v-model="rule.extraParamsText"
-                  type="textarea"
-                  :rows="2"
-                  class="cc-extra-params"
-                  placeholder='extraParams JSON，例如 {"level": 2}'
-                />
+                  class="cc-extra-params-editor"
+                >
+                  <JsonConfigLabel
+                    label="extraParams"
+                    help-key="process.ccExtraParams"
+                  />
+                  <el-input
+                    v-model="rule.extraParamsText"
+                    type="textarea"
+                    :rows="2"
+                    class="cc-extra-params"
+                    placeholder='JSON 对象，例如 {"level": 2}'
+                  />
+                </div>
               </div>
               <el-button type="primary" link @click="addCcRule"><el-icon><Plus /></el-icon>添加收件人规则</el-button>
               <el-form-item label="知会说明">
@@ -1365,6 +1416,9 @@ import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import UserSelector from '@/components/UserSelector.vue'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
+import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   buildFlowConditionExpression,
   createFlowConditionGroup,
@@ -1633,8 +1687,7 @@ async function removeApprovalOption(index) {
   }
 }
 
-// 用户、组、角色选项
-const userOptions = ref([])
+// 组、角色选项
 const groupOptions = ref([])
 const roleOptions = ref([])
 
@@ -1759,24 +1812,6 @@ function getSelectedEntityFormIds() {
 
 function getPrimaryEntityFormId() {
   return getSelectedEntityFormIds()[0] || ''
-}
-
-// 加载用户列表
-async function loadUsers() {
-  try {
-    const res = await request.get('/system/user/list')
-    if (res && Array.isArray(res)) {
-      userOptions.value = res.map(user => ({
-        id: user.id,
-        username: user.username,
-        nickname: user.nickname,
-        label: user.username,
-        value: user.username
-      }))
-    }
-  } catch (e) {
-    console.error('加载用户列表失败:', e)
-  }
 }
 
 // 加载组列表
@@ -1938,7 +1973,6 @@ const subProcessesLoading = ref(false)
 
 // 在组件挂载时加载数据
 onMounted(() => {
-  loadUsers()
   loadGroups()
   loadRoles()
   loadOrganizations()
@@ -1956,13 +1990,7 @@ watch(() => props.processId, (newProcessId) => {
   }
 }, { immediate: true })
 
-// 监听用户/组/角色列表加载完成，重新计算ID映射
-watch(() => userOptions.value.length, () => {
-  if (isUserTask.value && assigneeForm.value.candidateUsers) {
-    assigneeForm.value.candidateUserIds = getUserIdsFromUsernames(assigneeForm.value.candidateUsers)
-  }
-})
-
+// 监听组/角色列表加载完成，重新计算编码映射
 watch(() => groupOptions.value.length, () => {
   if (isUserTask.value && assigneeForm.value.candidateGroups) {
     assigneeForm.value.candidateGroupIds = getGroupIdsFromCodes(assigneeForm.value.candidateGroups)
@@ -2000,14 +2028,12 @@ watch(() => props.element, (newElement) => {
   activeTab.value = 'basic'
 }, { immediate: true })
 
-// 根据用户名列表获取用户 value 列表（el-select-v2 的 v-model 绑定 value）
+// 用户选择器直接使用 username 作为流程配置值
 function getUserIdsFromUsernames(usernames) {
   if (!usernames) return []
-  const usernameList = usernames.split(',').filter(Boolean)
-  return usernameList.map(username => {
-    const user = userOptions.value.find(u => u.username === username || u.value === username)
-    return user?.value || username
-  }).filter(Boolean)
+  return usernames.split(',')
+    .map(username => username.trim())
+    .filter(Boolean)
 }
 
 // 根据组 code 列表获取组 value 列表（el-select-v2 的 v-model 绑定 value）
@@ -2841,9 +2867,8 @@ function updateAssignee() {
 }
 
 function updateCandidateUsers() {
-  // candidateUserIds 里存的是 username（el-select-v2 的 value）
-  const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
-  assigneeForm.value.candidateUsers = selectedUsers.map(u => u.username).join(',')
+  assigneeForm.value.candidateUsers =
+    (assigneeForm.value.candidateUserIds || []).join(',')
 }
 
 function updateCandidateGroups() {
@@ -2861,12 +2886,11 @@ function updateCandidateRoles() {
 }
 
 function updateMultiInstanceUsers() {
-  // multiInstanceUserIds/GroupIds/RoleIds 里存的是 el-select-v2 的 value
-  const selectedUsers = userOptions.value.filter(u => assigneeForm.value.multiInstanceUserIds?.includes(u.value))
+  // 用户选择器保存 username；组和角色选择器保存各自编码
   const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.multiInstanceGroupIds?.includes(g.value))
   const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.multiInstanceRoleIds?.includes(r.value))
   
-  const userNames = selectedUsers.map(u => u.username)
+  const userNames = assigneeForm.value.multiInstanceUserIds || []
   const groupCodes = selectedGroups.map(g => g.code)
   const roleCodes = selectedRoles.map(r => r.code)
   
@@ -2915,13 +2939,7 @@ function updateRestConfig() {
 }
 
 function getRestBodyPlaceholder() {
-  const contentType = restForm.value.contentType
-  if (contentType === 'application/json') {
-    return '{\n  "userId": "${userId}",\n  "status": "approved",\n  "remark": "${comment}"\n}'
-  } else if (contentType === 'application/x-www-form-urlencoded') {
-    return 'userId=${userId}&status=approved&remark=${comment}'
-  }
-  return '请求体内容'
+  return '{\n  "entityDataId": "${entityDataId}",\n  "status": "approved"\n}'
 }
 
 function getConfigurationSections() {
@@ -2988,8 +3006,8 @@ function applyConfigurationSection(section) {
         updates.loopCharacteristics = undefined
         updateExtensionProperty('multiInstanceConfig', null)
         if (assigneeForm.value.assigneeType === 'user') {
-          const selectedUsers = userOptions.value.filter(u => assigneeForm.value.candidateUserIds?.includes(u.value))
-          const usersStr = selectedUsers.map(u => u.username).join(',')
+          const usersStr =
+            (assigneeForm.value.candidateUserIds || []).join(',')
           assigneeForm.value.candidateUsers = usersStr
           updates.assignee = assigneeForm.value.assignee || null
           updates.candidateUsers = usersStr || null
@@ -3053,6 +3071,13 @@ function applyConfigurationSection(section) {
             parseJsonObject(restForm.value.headers, 'REST 请求头')
             parseJsonObject(restForm.value.queryParams, 'REST 查询参数')
             parseJsonObject(restForm.value.resultMapping, 'REST 结果映射')
+            if (restForm.value.method !== 'GET'
+                && restForm.value.body?.trim()) {
+              parseJsonConfig(restForm.value.body, {
+                fieldName: 'REST 请求体',
+                expectedType: 'object-or-array'
+              })
+            }
           } catch (error) {
             ElMessage.warning(error.message)
             return
@@ -3540,6 +3565,13 @@ async function saveStatusConfig() {
 :deep(.el-divider__text) { font-size: 12px; color: #909399; }
 .unit { margin-left: 8px; color: #606266; }
 .code-input :deep(textarea) { font-family: monospace; }
+.cc-extra-params-editor {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin-top: 8px;
+}
 
 .actions-section { display: flex; flex-direction: column; gap: 10px; }
 .actions-header { display: flex; justify-content: space-between; align-items: center; }

@@ -1,8 +1,8 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-
 import com.workflow.core.result.Result;
+import com.workflow.core.security.RequiresPermission;
 import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
@@ -40,6 +40,7 @@ public class UiDataSourceController {
      *
      * @return 数据源目录结构
      */
+    @RequiresPermission("system:interface-service:list")
     @GetMapping("/catalog")
     public Result<Map<String, Object>> catalog() {
         return Result.success(service.catalog());
@@ -53,6 +54,7 @@ public class UiDataSourceController {
      * @param sourceType 数据源类型（可选过滤）
      * @return 匹配的数据源定义列表
      */
+    @RequiresPermission("system:interface-service:list")
     @GetMapping
     public Result<List<UiDataSourceDefinition>> list(
             @RequestParam(required = false) String scopeType,
@@ -68,6 +70,7 @@ public class UiDataSourceController {
      * @param request 数据源保存请求（id 将被忽略并置空）
      * @return 保存后的数据源定义
      */
+    @RequiresPermission("system:interface-service:update")
     @PostMapping
     public Result<UiDataSourceDefinition> create(
             @RequestBody UiDataSourceSaveRequest request) {
@@ -83,6 +86,7 @@ public class UiDataSourceController {
      * @param request 数据源保存请求（id 将被覆盖为路径 id）
      * @return 保存后的数据源定义
      */
+    @RequiresPermission("system:interface-service:update")
     @PostMapping("/{id}/update")
     public Result<UiDataSourceDefinition> update(
             @PathVariable String id,
@@ -99,6 +103,7 @@ public class UiDataSourceController {
      * @param request 删除请求，携带期望版本号
      * @return 无数据返回
      */
+    @RequiresPermission("system:interface-service:update")
     @PostMapping("/{id}/delete")
     public Result<Void> delete(
             @PathVariable String id,
@@ -115,6 +120,7 @@ public class UiDataSourceController {
      * @param request 执行参数
      * @return 预览结果
      */
+    @RequiresPermission("system:interface-service:test")
     @PostMapping("/{id}/preview")
     public Result<Object> preview(
             @PathVariable String id,
@@ -123,6 +129,7 @@ public class UiDataSourceController {
         return Result.success(service.preview(id, request));
     }
 
+    @RequiresPermission("system:interface-service:list")
     @GetMapping("/{id}/operations")
     public Result<List<Map<String, Object>>> operations(
             @PathVariable String id) {
@@ -130,6 +137,7 @@ public class UiDataSourceController {
         return Result.success(service.operations(id));
     }
 
+    @RequiresPermission("system:interface-service:test")
     @PostMapping("/{id}/operations/{operationCode}/preview")
     public Result<Object> previewOperation(
             @PathVariable String id,
@@ -163,6 +171,7 @@ public class UiDataSourceController {
      * @param usage  数据源用途标识
      * @return 校验结果（含合法性及诊断信息）
      */
+    @RequiresPermission("system:interface-service:update")
     @PostMapping("/{id}/bindings/{usage}/validate")
     public Result<Map<String, Object>> validateBinding(
             @PathVariable String id,

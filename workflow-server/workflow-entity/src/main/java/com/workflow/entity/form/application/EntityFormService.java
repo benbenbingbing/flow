@@ -1,7 +1,8 @@
 package com.workflow.entity.form.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -55,7 +56,8 @@ public class EntityFormService {
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
     private final EntityFormConfigurationValidator configurationValidator;
-    private final EntityDefinitionAccessPolicy entityAccessPolicy;
+    private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final JsonDocumentCodec jsonDocumentCodec;
     
     /**
@@ -167,7 +169,11 @@ public class EntityFormService {
         desired.setFields(source.getFields());
         desired.setNodes(null);
         applyFormDefaults(desired);
-        entityAccessPolicy.requireDynamicById(desired.getEntityId());
+        entityUiConfigurationPolicy.requireConfigurableById(
+                desired.getEntityId());
+        validateSystemFormConfiguration(
+                desired,
+                source.getFields());
         configurationValidator.validateForm(desired);
         validateFormKey(desired);
 
@@ -324,6 +330,7 @@ public class EntityFormService {
                 expectedRevision,
                 current,
                 "表单已被其他人修改");
+        validateSystemFormConfiguration(current, fields);
         configurationValidator.validateFields(fields);
         touchFormWithRevision(current);
         synchronizeFormFieldsByDiff(formId, fields, SaveMode.USER_CAS);
@@ -348,6 +355,7 @@ public class EntityFormService {
             String formId,
             List<EntityFormField> fields) {
         EntityForm current = lockForm(formId);
+        validateSystemFormConfiguration(current, fields);
         configurationValidator.validateFields(fields);
         touchFormWithRevision(current);
         synchronizeFormFieldsByDiff(formId, fields, SaveMode.SYSTEM_IMPORT);
@@ -447,6 +455,56 @@ public class EntityFormService {
                             "表单字段已被其他人修改，请刷新后重试");
                 }
             }
+        }
+    }
+
+    private void validateSystemFormConfiguration(
+            EntityForm form,
+            List<EntityFormField> fields) {
+        EntityDefinition entity =
+                entityMapper.selectById(form.getEntityId());
+        if (entity == null
+                || entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        if (StringUtils.hasText(form.getCustomComponent())) {
+            throw new IllegalArgumentException(
+                    "平台系统表表单不能使用自定义写入组件");
+        }
+        Map<String, EntityField> byId = new HashMap<>();
+        Map<String, EntityField> byCode = new HashMap<>();
+        fieldMapper.findByEntityId(entity.getId()).forEach(field -> {
+            byId.put(field.getId(), field);
+            byCode.put(field.getFieldCode(), field);
+        });
+        for (EntityFormField configured :
+                fields == null ? List.<EntityFormField>of() : fields) {
+            EntityField field =
+                    StringUtils.hasText(configured.getFieldId())
+                            ? byId.get(configured.getFieldId())
+                            : byCode.get(configured.getFieldCode());
+            if (field == null
+                    || !systemEntityFieldPolicy
+                            .isUiConfigurable(entity, field)) {
+                throw new IllegalArgumentException(
+                        "平台系统表字段不可配置: "
+                                + configured.getFieldCode());
+            }
+            if (StringUtils.hasText(configured.getFieldCode())
+                    && !Objects.equals(
+                            configured.getFieldCode(),
+                            field.getFieldCode())) {
+                throw new IllegalArgumentException(
+                        "平台系统表字段编码与字段目录不一致");
+            }
+            configured.setFieldId(field.getId());
+            configured.setFieldCode(field.getFieldCode());
+            configured.setFieldType(
+                    field.getFieldType() == null
+                            ? configured.getFieldType()
+                            : field.getFieldType().name());
+            configured.setIsReadonly(1);
         }
     }
 
@@ -708,7 +766,23 @@ public class EntityFormService {
      * 获取实体的字段列表（用于创建表单时选择）
      */
     public List<EntityField> getEntityFields(String entityId) {
-        return fieldMapper.findByEntityId(entityId);
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        List<EntityField> fields = fieldMapper.findByEntityId(entityId);
+        fields.forEach(field -> {
+            field.setUiConfigurable(
+                    systemEntityFieldPolicy.isUiConfigurable(entity, field));
+            field.setRuntimeReadable(
+                    systemEntityFieldPolicy.isRuntimeReadable(entity, field));
+            if (field.getRefEntityType() == null) {
+                field.setRefEntityType(
+                        systemEntityFieldPolicy.referenceType(
+                                entity == null
+                                        ? null
+                                        : entity.getEntityCode(),
+                                field.getFieldCode()));
+            }
+        });
+        return fields;
     }
 
     /**

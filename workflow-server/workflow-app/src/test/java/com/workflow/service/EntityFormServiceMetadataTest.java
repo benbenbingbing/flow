@@ -1,6 +1,7 @@
 package com.workflow.service;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.form.application.EntityFormService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,7 +47,8 @@ class EntityFormServiceMetadataTest {
                 entityFieldMapper,
                 relationMapper,
                 mock(EntityFormConfigurationValidator.class),
-                mock(EntityDefinitionAccessPolicy.class),
+                mock(EntityUiConfigurationPolicy.class),
+                mock(SystemEntityFieldPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper())
         );
 

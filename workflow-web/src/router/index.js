@@ -45,7 +45,7 @@ const routes = [
         path: '/process/design/:id?',
         name: 'ProcessDesign',
         component: () => import('@/views/ProcessDesign.vue'),
-        meta: { title: '流程设计' }
+        meta: { title: '流程设计', activeMenu: '/process' }
       },
       // 实体管理
       {
@@ -58,13 +58,13 @@ const routes = [
         path: '/entity/design/:id',
         name: 'EntityDesign',
         component: () => import('@/views/EntityDesign.vue'),
-        meta: { title: '实体设计' }
+        meta: { title: '实体设计', activeMenu: '/entity' }
       },
       {
         path: '/entity/data/:code',
         name: 'LegacyEntityDataRedirect',
         component: () => import('@/views/entity/LegacyEntityDataRedirect.vue'),
-        meta: { title: '打开业务数据', deprecated: true }
+        meta: { title: '打开业务数据', activeMenu: '/entity', deprecated: true }
       },
       // entityCode + listKey 驱动的通用实体列表
       {
@@ -78,26 +78,26 @@ const routes = [
         path: '/entity-list-config/:entityId',
         name: 'EntityListConfig',
         component: () => import('@/views/EntityListConfig.vue'),
-        meta: { title: '实体列表配置' }
+        meta: { title: '实体列表配置', activeMenu: '/entity' }
       },
       {
         path: '/entity-list-config/design/:id',
         name: 'EntityListConfigDesign',
         component: () => import('@/views/EntityListConfigDesign.vue'),
-        meta: { title: '列表配置设计' }
+        meta: { title: '列表配置设计', activeMenu: '/entity' }
       },
       // 实体表单管理
       {
         path: '/entity-form/list-by-entity/:entityId',
         name: 'EntityFormList',
         component: () => import('@/views/EntityFormList.vue'),
-        meta: { title: '实体表单' }
+        meta: { title: '实体表单', activeMenu: '/entity' }
       },
       {
         path: '/entity-form/design/:id',
         name: 'EntityFormDesign',
         component: () => import('@/views/EntityFormDesignByEntity.vue'),
-        meta: { title: '表单设计' }
+        meta: { title: '表单设计', activeMenu: '/entity' }
       },
       // 用户手册
       {
@@ -121,7 +121,7 @@ const routes = [
         path: '/process/progress/:instanceId',
         name: 'ProcessProgress',
         component: () => import('@/views/ProcessProgress.vue'),
-        meta: { title: '流程进度' }
+        meta: { title: '流程进度', activeMenu: '/process' }
       },
       // 系统管理
       {

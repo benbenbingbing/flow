@@ -15,6 +15,15 @@ public interface FlowActionRuntimeAccess {
 
     Object getVariable(String processInstanceId, String name);
 
+    void setVariable(
+            String processInstanceId,
+            String name,
+            Object value);
+
+    void setVariables(
+            String processInstanceId,
+            Map<String, Object> variables);
+
     Object getProcessInstance(String processInstanceId);
 
     Object getHistoricProcessInstance(String processInstanceId);

@@ -57,6 +57,9 @@ public class SystemEntityCatalogService {
         int synchronizedCount = 0;
         for (Map<String, Object> table : tables) {
             String tableName = String.valueOf(table.get("TABLE_NAME"));
+            if (!SYSTEM_TABLE_NAMES.containsKey(tableName)) {
+                continue;
+            }
             String tableComment = text(table.get("TABLE_COMMENT"));
             EntityDefinition definition = definitionMapper.findByEntityCode(tableName).orElse(null);
             if (definition == null) {

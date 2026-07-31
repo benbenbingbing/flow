@@ -1,6 +1,7 @@
 package com.workflow.service;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
@@ -396,7 +397,8 @@ class EntityWholePackageCasServiceTest {
                 entityFieldMapper,
                 relationMapper,
                 mock(EntityFormConfigurationValidator.class),
-                mock(EntityDefinitionAccessPolicy.class),
+                mock(EntityUiConfigurationPolicy.class),
+                mock(SystemEntityFieldPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper()));
         return new FormContext(
                 service,
@@ -417,12 +419,15 @@ class EntityWholePackageCasServiceTest {
         EntityListConfigService service = new EntityListConfigService(
                 configMapper,
                 fieldMapper,
+                mock(EntityDefinitionMapper.class),
+                mock(EntityFieldMapper.class),
+                mock(SystemEntityFieldPolicy.class),
                 actionConfigService,
                 mock(EntityPermissionCatalogService.class),
                 mock(EntityActionCapabilityService.class),
                 mock(EntityListConfigurationValidator.class),
                 mock(CurrentUserRoleService.class),
-                mock(EntityDefinitionAccessPolicy.class),
+                mock(EntityUiConfigurationPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper()),
                 relationalConfigService);
         when(actionConfigService.resolveToolbarButtons(any(), any()))

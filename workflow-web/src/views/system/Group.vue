@@ -136,22 +136,13 @@
       width="600px"
       :close-on-click-modal="false"
     >
-      <el-transfer
+      <UserSelector
         v-model="selectedUserIds"
-        :data="userOptions"
-        :titles="['可选用户', '已选用户']"
-        :props="{ key: 'id', label: 'username' }"
-        filterable
-        :filter-method="filterUser"
-        filter-placeholder="请输入用户名搜索"
-      >
-        <template #default="{ option }">
-          <div class="user-option">
-            <span class="username">{{ option.username }}</span>
-            <span class="nickname" v-if="option.nickname">({{ option.nickname }})</span>
-          </div>
-        </template>
-      </el-transfer>
+        multiple
+        value-key="id"
+        placeholder="请选择组成员"
+        title="选择组成员"
+      />
       
       <template #footer>
         <el-button @click="userDialogVisible = false">取消</el-button>
@@ -167,13 +158,13 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getGroupList, createGroup, updateGroup, deleteGroup, updateGroupStatus, saveGroupUsers, getUsers } from '@/api/system/group'
+import { getGroupList, createGroup, updateGroup, deleteGroup, updateGroupStatus, saveGroupUsers } from '@/api/system/group'
 import PageState from '@/components/PageState.vue'
+import UserSelector from '@/components/UserSelector.vue'
 
 const loading = ref(false)
 const loadError = ref('')
 const groupList = ref<any[]>([])
-const userOptions = ref<any[]>([])
 
 // 组对话框
 const dialogVisible = ref(false)
@@ -212,20 +203,6 @@ const fetchGroupList = async () => {
   } finally {
     loading.value = false
   }
-}
-
-// 获取用户列表
-const fetchUserOptions = async () => {
-  try {
-    userOptions.value = await getUsers() || []
-  } catch (error) {
-    console.error('获取用户列表失败', error)
-  }
-}
-
-// 用户搜索过滤
-const filterUser = (query: string, item: any) => {
-  return item.username?.includes(query) || item.nickname?.includes(query)
 }
 
 // 重置表单
@@ -356,7 +333,6 @@ const handleSaveUsers = async () => {
 
 onMounted(() => {
   fetchGroupList()
-  fetchUserOptions()
 })
 </script>
 
@@ -378,36 +354,11 @@ onMounted(() => {
   }
 }
 
-.user-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  .username {
-    font-weight: 500;
-  }
-  
-  .nickname {
-    color: #909399;
-    font-size: 12px;
-  }
-}
-
 .field-help {
   margin-top: 4px;
   color: #909399;
   font-size: 12px;
   line-height: 1.5;
-}
-
-:deep(.el-transfer) {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  
-  .el-transfer-panel {
-    width: 250px;
-  }
 }
 
 @media (max-width: 760px) {
@@ -417,21 +368,6 @@ onMounted(() => {
     .page-header {
       align-items: flex-start;
       flex-direction: column;
-    }
-  }
-
-  :deep(.el-transfer) {
-    align-items: stretch;
-    flex-direction: column;
-
-    .el-transfer-panel {
-      width: 100%;
-    }
-
-    .el-transfer__buttons {
-      display: flex;
-      justify-content: center;
-      padding: 8px 0;
     }
   }
 }

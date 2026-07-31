@@ -277,7 +277,6 @@
       :catalog="catalog"
       :target-index="targetIndex"
       :target-editor="targetEditor"
-      :entities="entities"
       :target-entity-name="draft.entityName"
       :target-entity-code="draft.entityCode"
       :resolver-type-options="resolverTypeOptions"
@@ -292,6 +291,7 @@
       @save-target="saveTarget"
       @open-picker="openPicker"
       @select-picker-item="selectPickerItem"
+      @source-entity-resolved="rememberEntityOption"
       @run-simulation="runSimulation"
     />
   </div>
@@ -301,8 +301,8 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { DocumentChecked, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { entityApi } from '@/api/entity'
 import { entityVersionApi } from '@/api/entityVersion'
+import { useEntityDefinitionLabels } from '@/composables/useEntityDefinitionLabels'
 import EntityVersionConfigDialogs from './components/EntityVersionConfigDialogs.vue'
 
 const sourceTypeOptions = [
@@ -350,7 +350,6 @@ const resolverTypeOptions = [
 ]
 
 const configs = ref([])
-const entities = ref([])
 const releases = ref([])
 const catalog = ref({})
 const keyword = ref('')
@@ -360,6 +359,11 @@ const saving = ref(false)
 const publishing = ref(false)
 const drawerVisible = ref(false)
 const activeTab = ref('basic')
+const {
+  label: entityLabel,
+  remember: rememberEntityOption,
+  resolveCodes: resolveEntityCodes
+} = useEntityDefinitionLabels()
 
 const emptyDraft = () => ({
   entityCode: '',
@@ -438,13 +442,10 @@ async function loadCatalog() {
   catalog.value = await entityVersionApi.mutationCatalog()
 }
 
-async function loadEntities() {
-  entities.value = await entityApi.getAll()
-}
-
 async function openConfig(row) {
   const data = await entityVersionApi.getConfig(row.entityCode)
   Object.assign(draft, emptyDraft(), clone(data))
+  await resolveEntityCodes(draft.targetBindings.map(item => item.sourceEntityCode))
   activeTab.value = 'basic'
   drawerVisible.value = true
   loadReleases()
@@ -758,18 +759,13 @@ function scenarioName(code) {
   return draft.scenarios.find(item => item.scenarioCode === code)?.scenarioName || code
 }
 
-function entityLabel(code) {
-  const entity = entities.value.find(item => item.entityCode === code)
-  return entity ? `${entity.entityName} (${code})` : code
-}
-
 function formatTime(value) {
   if (!value) return '-'
   return String(value).replace('T', ' ').slice(0, 19)
 }
 
 onMounted(async () => {
-  await Promise.all([loadConfigs(), loadCatalog(), loadEntities()])
+  await Promise.all([loadConfigs(), loadCatalog()])
 })
 </script>
 

@@ -1,6 +1,9 @@
 package com.workflow.service;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.form.application.EntityFormNodeService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -791,7 +794,10 @@ class EntityFormNodeServiceTest {
                 nodeMapper,
                 mock(EntityRelationMapper.class),
                 mock(UiConfigReleaseMapper.class),
-                mock(EntityDefinitionAccessPolicy.class),
+                mock(EntityUiConfigurationPolicy.class),
+                mock(EntityDefinitionMapper.class),
+                mock(EntityFieldMapper.class),
+                mock(SystemEntityFieldPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper()));
 
         RevisionConflictException exception = assertThrows(
@@ -1011,7 +1017,10 @@ class EntityFormNodeServiceTest {
                 nodeMapper,
                 relationMapper,
                 releaseMapper,
-                mock(EntityDefinitionAccessPolicy.class),
+                mock(EntityUiConfigurationPolicy.class),
+                mock(EntityDefinitionMapper.class),
+                mock(EntityFieldMapper.class),
+                mock(SystemEntityFieldPolicy.class),
                 new JsonDocumentCodec(new ObjectMapper()));
     }
 

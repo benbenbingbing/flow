@@ -280,8 +280,17 @@ public class ConfigMigrationPackageCodec {
     }
 
     private String assetPath(ConfigMigrationAsset asset) {
-        String directory = ConfigMigrationAssetService.ENTITY.equals(asset.getAssetType())
-                ? "assets/entities/" : "assets/processes/";
+        String directory = switch (asset.getAssetType()) {
+            case ConfigMigrationAssetService.ENTITY ->
+                    "assets/entities/";
+            case ConfigMigrationAssetService.SYSTEM_ENTITY_UI ->
+                    "assets/system-entity-ui/";
+            case ConfigMigrationAssetService.PROCESS ->
+                    "assets/processes/";
+            default -> throw new IllegalArgumentException(
+                    "不支持的迁移资产类型: "
+                            + asset.getAssetType());
+        };
         return directory + safe(asset.getBusinessKey()) + "-v" + asset.getSourceVersion() + ".json";
     }
 

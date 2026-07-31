@@ -232,20 +232,14 @@
     <el-dialog v-model="openListDialogVisible" title="打开实体列表" width="620px">
       <el-form label-width="110px">
         <el-form-item label="目标实体" required>
-          <el-select
+          <EntityDefinitionPicker
             v-model="openListForm.targetEntityCode"
-            filterable
             placeholder="选择实体"
-            style="width: 100%"
+            value-key="entityCode"
+            title="选择目标实体"
+            :query="{ storageMode: 'DYNAMIC' }"
             @change="loadTargetLists"
-          >
-            <el-option
-              v-for="entity in entityOptions"
-              :key="entity.entityCode"
-              :label="`${entity.entityName} (${entity.entityCode})`"
-              :value="entity.entityCode"
-            />
-          </el-select>
+          />
         </el-form-item>
         <el-form-item label="目标列表" required>
           <el-select v-model="openListForm.targetListKey" placeholder="选择 listKey" style="width: 100%">
@@ -333,6 +327,7 @@ import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
@@ -388,7 +383,6 @@ const openListDialogVisible = ref(false)
 const buttonEventDialogVisible = ref(false)
 const buttonEventTarget = ref(null)
 const openListTargetButton = ref(null)
-const entityOptions = ref([])
 const targetListOptions = ref([])
 const openListForm = ref(createOpenListForm())
 let sortableInstance = null
@@ -504,9 +498,6 @@ function createOpenListForm(button = {}) {
 async function configureOpenList(row) {
   openListTargetButton.value = row
   openListForm.value = createOpenListForm(row)
-  if (entityOptions.value.length === 0) {
-    entityOptions.value = await entityApi.getAll()
-  }
   await loadTargetLists(openListForm.value.targetEntityCode, false)
   openListDialogVisible.value = true
 }
@@ -515,7 +506,10 @@ async function loadTargetLists(entityCode, reset = true) {
   if (reset) {
     openListForm.value.targetListKey = ''
   }
-  const entity = entityOptions.value.find(item => item.entityCode === entityCode)
+  const options = entityCode
+    ? await entityApi.resolveOptions({ entityCodes: [entityCode] }).catch(() => [])
+    : []
+  const entity = options?.[0]
   if (!entity?.id) {
     targetListOptions.value = []
     return

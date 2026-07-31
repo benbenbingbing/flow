@@ -1,0 +1,472 @@
+{
+  "schemaVersion": 1,
+  "assetType": "PROCESS",
+  "businessKey": "project_member_change_process",
+  "assetName": "项目成员变更审批",
+  "definition": {
+    "processKey": "project_member_change_process",
+    "processName": "项目成员变更审批",
+    "description": "项目经理、人员部门负责人、系统负责人权限、安全负责人和PMO条件审批；批准后自动生效成员、投入及角色交接。",
+    "category": "PROJECT_MANAGEMENT"
+  },
+  "bpmnFile": "project-config/bpmn/project-member-change.bpmn20.xml",
+  "nodes": [
+    {
+      "nodeId": "project_manager_review",
+      "nodeName": "项目经理审核",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟项目经理",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "department_review",
+      "nodeName": "人员部门负责人审核",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟人员部门负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "system_owner_access_review",
+      "nodeName": "系统负责人权限审核",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟系统负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全负责人审核",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟安全负责人",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO最终审批",
+      "nodeType": "USER_TASK",
+      "assignees": [
+        {
+          "assigneeType": "USER",
+          "assigneeValue": "wf-user://admin",
+          "assigneeName": "模拟PMO",
+          "priority": 0
+        }
+      ]
+    }
+  ],
+  "nodeForms": [
+    {
+      "nodeId": "project_manager_review",
+      "nodeName": "项目经理审核",
+      "formRef": "wf-form://project_member_change_request/project_member_change_apply",
+      "isReadonly": 1,
+      "sortOrder": 10
+    },
+    {
+      "nodeId": "department_review",
+      "nodeName": "人员部门负责人审核",
+      "formRef": "wf-form://project_member_change_request/project_member_change_apply",
+      "isReadonly": 1,
+      "sortOrder": 20
+    },
+    {
+      "nodeId": "system_owner_access_review",
+      "nodeName": "系统负责人权限审核",
+      "formRef": "wf-form://project_member_change_request/project_member_change_apply",
+      "isReadonly": 1,
+      "sortOrder": 30
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全负责人审核",
+      "formRef": "wf-form://project_member_change_request/project_member_change_apply",
+      "isReadonly": 1,
+      "sortOrder": 40
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO最终审批",
+      "formRef": "wf-form://project_member_change_request/project_member_change_apply",
+      "isReadonly": 1,
+      "sortOrder": 50
+    }
+  ],
+  "nodeApprovals": [
+    {
+      "nodeId": "project_manager_review",
+      "nodeName": "项目经理审核",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"确认资源安排\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "department_review",
+      "nodeName": "人员部门负责人审核",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"确认人员与投入安排\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "system_owner_access_review",
+      "nodeName": "系统负责人权限审核",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"确认账号与环境权限\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "security_review",
+      "nodeName": "安全负责人审核",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"确认敏感权限与回收安排\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"驳回\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    },
+    {
+      "nodeId": "pmo_review",
+      "nodeName": "PMO最终审批",
+      "enabled": 1,
+      "commentLabel": "审批意见",
+      "optionsJson": "[{\"value\":\"approve\",\"label\":\"批准成员变更\",\"type\":\"primary\",\"showComment\":true,\"remarkRequired\":false},{\"value\":\"reject\",\"label\":\"不批准成员变更\",\"type\":\"danger\",\"showComment\":true,\"remarkRequired\":true}]"
+    }
+  ],
+  "flowActions": [
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_STARTED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": "{\"maxRetries\":0}",
+      "actionName": "项目成员变更跨实体门禁",
+      "description": "校验项目状态、成员状态、跨项目投入、权限范围和角色交接。",
+      "interfaceName": "validateProjectMemberChangeHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 10,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "NODE",
+      "elementId": "project_manager_review",
+      "triggerTiming": "NODE_COMPLETED",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": "{\"maxRetries\":0}",
+      "actionName": "记录项目经理成员变更复核",
+      "description": "项目经理节点完成后写入复核时间和操作人。",
+      "interfaceName": "captureProjectMemberManagerReviewHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 20,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "SEQUENCE_FLOW",
+      "elementId": "flow_pmo_approve",
+      "triggerTiming": "TRANSITION_TAKEN",
+      "executionMode": "IN_TRANSACTION",
+      "failurePolicy": "ROLLBACK",
+      "retryConfig": "{\"maxRetries\":0}",
+      "actionName": "记录项目成员变更最终批准连线",
+      "description": "最终批准顺序流选中时记录来源、目标和决策编码。",
+      "interfaceName": "recordProjectMemberDecisionHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"decision\":\"APPROVED\"}",
+      "sortOrder": 30,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":5,\"initialDelaySeconds\":10,\"maxDelaySeconds\":300}",
+      "actionName": "批准后生效项目成员变更",
+      "description": "创建或更新项目成员，暂停、恢复或移交有效项目角色。",
+      "interfaceName": "applyProjectMemberChangeHandler",
+      "methodName": "execute",
+      "paramsJson": "{}",
+      "sortOrder": 40,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3,\"initialDelaySeconds\":10,\"maxDelaySeconds\":120}",
+      "actionName": "记录项目生命周期全局审计",
+      "description": "使用全局动作目录记录F07完成后的标准审计摘要。",
+      "interfaceName": "projectLifecycleAuditHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"auditCode\":\"F07_MEMBER_CHANGE\",\"businessStage\":\"MEMBER_EFFECTIVE\"}",
+      "sortOrder": 50,
+      "enabled": true,
+      "status": "DRAFT"
+    },
+    {
+      "scopeType": "PROCESS",
+      "elementId": null,
+      "triggerTiming": "PROCESS_COMPLETED",
+      "executionMode": "AFTER_COMMIT",
+      "failurePolicy": "RETRY",
+      "retryConfig": "{\"maxRetries\":3,\"initialDelaySeconds\":30,\"maxDelaySeconds\":300}",
+      "actionName": "发送项目成员变更结果通知",
+      "description": "流程完成后发送结果通知。",
+      "interfaceName": "sendNotificationHandler",
+      "methodName": "execute",
+      "paramsJson": "{\"templateCode\":\"PROJECT_MEMBER_CHANGE_RESULT\",\"notifyType\":\"in_app\",\"receiverExpr\":\"${submitterId}\"}",
+      "sortOrder": 60,
+      "enabled": true,
+      "status": "DRAFT"
+    }
+  ],
+  "statusMappings": [
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_start_manager",
+      "sourceNodeId": "start",
+      "sourceNodeName": "提交项目成员变更",
+      "targetNodeId": "project_manager_review",
+      "targetNodeName": "项目经理审核",
+      "entityStatus": "PENDING_MANAGER",
+      "entityStatusCode": "PENDING_MANAGER",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 10
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_manager_approve",
+      "sourceNodeId": "manager_result",
+      "sourceNodeName": "项目经理审核结果",
+      "targetNodeId": "department_review",
+      "targetNodeName": "人员部门负责人审核",
+      "entityStatus": "PENDING_DEPT",
+      "entityStatusCode": "PENDING_DEPT",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 20
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_need_access",
+      "sourceNodeId": "access_needed",
+      "sourceNodeName": "权限审核判断",
+      "targetNodeId": "system_owner_access_review",
+      "targetNodeName": "系统负责人权限审核",
+      "entityStatus": "ACCESS_REVIEW",
+      "entityStatusCode": "ACCESS_REVIEW",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 30
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_need_security",
+      "sourceNodeId": "security_needed",
+      "sourceNodeName": "安全审核判断",
+      "targetNodeId": "security_review",
+      "targetNodeName": "安全负责人审核",
+      "entityStatus": "SECURITY_REVIEW",
+      "entityStatusCode": "SECURITY_REVIEW",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 40
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_skip_security",
+      "sourceNodeId": "security_needed",
+      "sourceNodeName": "安全审核判断",
+      "targetNodeId": "pmo_review",
+      "targetNodeName": "PMO最终审批",
+      "entityStatus": "PENDING_PMO",
+      "entityStatusCode": "PENDING_PMO",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 50
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_security_approve",
+      "sourceNodeId": "security_result",
+      "sourceNodeName": "安全审核结果",
+      "targetNodeId": "pmo_review",
+      "targetNodeName": "PMO最终审批",
+      "entityStatus": "PENDING_PMO",
+      "entityStatusCode": "PENDING_PMO",
+      "statusCategory": "PROCESSING",
+      "sortOrder": 60
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_manager_reject",
+      "sourceNodeId": "manager_result",
+      "sourceNodeName": "项目经理审核结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "成员变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 70
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_department_reject",
+      "sourceNodeId": "department_result",
+      "sourceNodeName": "部门审核结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "成员变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 80
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_access_reject",
+      "sourceNodeId": "access_result",
+      "sourceNodeName": "权限审核结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "成员变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 90
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_security_reject",
+      "sourceNodeId": "security_result",
+      "sourceNodeName": "安全审核结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "成员变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 100
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_pmo_reject",
+      "sourceNodeId": "pmo_result",
+      "sourceNodeName": "PMO审批结果",
+      "targetNodeId": "end_rejected",
+      "targetNodeName": "成员变更已驳回",
+      "entityStatus": "REJECTED",
+      "entityStatusCode": "REJECTED",
+      "statusCategory": "TERMINATED",
+      "sortOrder": 110
+    },
+    {
+      "entityCode": "project_member_change_request",
+      "sequenceFlowId": "flow_pmo_approve",
+      "sourceNodeId": "pmo_result",
+      "sourceNodeName": "PMO审批结果",
+      "targetNodeId": "end_approved",
+      "targetNodeName": "成员变更已批准",
+      "entityStatus": "APPROVED",
+      "entityStatusCode": "APPROVED",
+      "statusCategory": "COMPLETED",
+      "sortOrder": 120
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "ENTITY",
+      "key": "project_member_change_request",
+      "required": true,
+      "reason": "实体状态映射"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_member",
+      "required": true,
+      "reason": "成员生效对象"
+    },
+    {
+      "type": "ENTITY",
+      "key": "project_role_assignment",
+      "required": true,
+      "reason": "角色暂停和移交对象"
+    },
+    {
+      "type": "FORM",
+      "key": "wf-form://project_member_change_request/project_member_change_apply",
+      "required": true,
+      "reason": "自定义审批表单"
+    },
+    {
+      "type": "USER",
+      "key": "admin",
+      "required": true,
+      "reason": "单账号模拟审批人"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "validateProjectMemberChangeHandler",
+      "required": true,
+      "reason": "跨实体成员门禁"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "captureProjectMemberManagerReviewHandler",
+      "required": true,
+      "reason": "节点完成动作"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "recordProjectMemberDecisionHandler",
+      "required": true,
+      "reason": "顺序流选中动作"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "applyProjectMemberChangeHandler",
+      "required": true,
+      "reason": "批准后生效成员变更"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "projectLifecycleAuditHandler",
+      "required": true,
+      "reason": "全局项目生命周期审计"
+    },
+    {
+      "type": "FLOW_ACTION_HANDLER",
+      "key": "sendNotificationHandler",
+      "required": true,
+      "reason": "流程完成通知"
+    },
+    {
+      "type": "UI_EXTENSION",
+      "key": "FORM:ProjectMemberChangeForm:1",
+      "required": true,
+      "reason": "自定义成员变更表单"
+    }
+  ]
+}

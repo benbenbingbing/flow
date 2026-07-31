@@ -91,7 +91,8 @@
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
           :viewConfig="viewConfig"
-          :showVersionAction="!selectionScene"
+          :showVersionAction="!selectionScene && !isSystemEntity"
+          :selection-mode="effectiveSelectionMode"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -137,6 +138,8 @@
       ref="approvalDialogRef"
       :entityCode="entityCode"
       :defaultForm="defaultForm"
+      :entityDefinition="entityDefinition"
+      :entityFields="entityFields"
       :listKey="listConfig?.listKey"
       @success="loadDataList"
     />
@@ -172,6 +175,7 @@ import EntityDataTable from './components/EntityDataTable.vue'
 import EntityDataFormDialog from './components/EntityDataFormDialog.vue'
 import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue'
 import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
+import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
 
 const route = useRoute()
@@ -184,11 +188,13 @@ const props = withDefaults(defineProps<{
   scene?: string
   context?: Record<string, any>
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
+  initialSelectedRows?: any[]
 }>(), {
   entityCode: '',
   listKey: '',
   context: () => ({}),
-  selectionMode: 'NONE'
+  selectionMode: 'NONE',
+  initialSelectedRows: () => []
 })
 
 const emit = defineEmits<{
@@ -209,17 +215,9 @@ const runtimeListKey = computed(() =>
 const runtimeScene = computed(() =>
   (props.scene || route.query.scene as string || 'PAGE').toUpperCase()
 )
-const effectiveSelectionMode = computed(() => {
-  if (props.selectionMode !== 'NONE') return props.selectionMode
-  return safeParseConfig(listConfig.value?.selectionConfig)?.selectionMode || 'NONE'
-})
-const selectionScene = computed(() =>
-  ['FORM_PICKER', 'SUB_TABLE'].includes(runtimeScene.value)
-  || (
-    ['DIALOG', 'DRAWER'].includes(runtimeScene.value)
-    && effectiveSelectionMode.value !== 'NONE'
-  )
-)
+const listConfig = ref<any>(null), listConfigFields = ref<any[]>([])
+const { effectiveSelectionMode, selectionScene, selectedRows } =
+  useEntityDataSelectionState(props, runtimeScene, listConfig)
 
 const loading = ref(false)
 const tableLoading = ref(false)
@@ -228,9 +226,6 @@ const dataError = ref('')
 
 const entityDefinition = ref<any>({})
 const entityFields = ref<any[]>([])
-
-const listConfig = ref<any>(null)
-const listConfigFields = ref<any[]>([])
 
 const DEFAULT_VIEW_CONFIG = {
   search: { defaultVisibleCount: 4, collapsible: true, labelWidth: 100 },
@@ -251,8 +246,6 @@ const viewConfig = computed(() => {
   }
 })
 
-const selectedRows = ref<any[]>([])
-
 const dataList = ref<any[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
@@ -269,6 +262,7 @@ const versionDrawerRef = ref<InstanceType<typeof EntityRecordVersionDrawer>>()
 
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
+const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
 
 // 查询字段（使用列表配置）
 const queryFields = computed(() => {
@@ -294,7 +288,8 @@ const queryFields = computed(() => {
   }
   return entityFields.value.filter((f: any) => {
     const type = (f.componentType || f.fieldType || '').toUpperCase()
-    return !f.isSystem && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
+    return f.runtimeReadable !== false
+      && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
   })
 })
 
@@ -314,7 +309,7 @@ const listFields = computed(() => {
         }
       })
   }
-  return entityFields.value.filter((f: any) => !f.isSystem)
+  return entityFields.value.filter((f: any) => f.runtimeReadable !== false)
 })
 
 // 是否使用列表配置
@@ -360,7 +355,7 @@ function buttonOrder(button: any) {
 
 // 工具栏按钮（按配置 + 权限过滤）
 const toolbarButtons = computed(() => {
-  if (selectionScene.value) return []
+  if (selectionScene.value || isSystemEntity.value) return []
   const DEFAULT_TOOLBAR_BUTTONS = [
     { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
     { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
@@ -382,6 +377,20 @@ const toolbarButtons = computed(() => {
 // 操作列按钮（按配置 + 权限过滤）
 const rowActionButtons = computed(() => {
   if (selectionScene.value) return []
+  if (isSystemEntity.value) {
+    return [
+      {
+        key: 'view',
+        type: 'built-in',
+        label: '查看',
+        buttonType: 'primary',
+        link: true,
+        sort: 1,
+        enabled: true,
+        perm: ''
+      }
+    ]
+  }
   const DEFAULT_ROW_ACTION_BUTTONS = [
     { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true, perm: '' },
     { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true, perm: '' },
@@ -398,6 +407,7 @@ const rowActionButtons = computed(() => {
 
 // 是否显示选择列
 const showSelectionColumn = computed(() => {
+  if (isSystemEntity.value) return false
   return selectionScene.value
     || effectiveSelectionMode.value !== 'NONE'
     || toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
@@ -414,7 +424,19 @@ async function loadRefEntityNames() {
   if (!sourceFields.length) return
 
   const refFields = sourceFields.filter((f: any) =>
-    ['REFERENCE', 'MULTI_REFERENCE', 'DEPT', 'USER', 'ROLE', 'GROUP'].includes(f.fieldType)
+    [
+      'REFERENCE',
+      'MULTI_REFERENCE',
+      'DEPT',
+      'USER',
+      'ROLE',
+      'GROUP',
+      'MENU',
+      'DICT',
+      'DICT_ITEM'
+    ].includes(
+      String(f.refEntityType || f.fieldType || '').toUpperCase()
+    )
   )
   if (!refFields.length) return
 

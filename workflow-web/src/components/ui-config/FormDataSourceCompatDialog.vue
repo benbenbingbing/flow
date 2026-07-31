@@ -77,7 +77,13 @@
           <span>只有两项同时开启时浏览器才会执行；后端始终是最终权威。</span>
         </div>
         <div class="mapping-grid">
-          <el-form-item label="输入映射">
+          <el-form-item>
+            <template #label>
+              <JsonConfigLabel
+                label="输入映射"
+                help-key="entityForm.dataSourceInputMapping"
+              />
+            </template>
             <el-input
               v-model="binding.inputMappingText"
               type="textarea"
@@ -85,7 +91,13 @@
               placeholder='{"filters.ownerId":"data.ownerId"}'
             />
           </el-form-item>
-          <el-form-item label="输出映射">
+          <el-form-item>
+            <template #label>
+              <JsonConfigLabel
+                label="输出映射"
+                help-key="entityForm.dataSourceOutputMapping"
+              />
+            </template>
             <el-input
               v-model="binding.outputMappingText"
               type="textarea"
@@ -110,6 +122,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { patchFormMetadata } from '@/api/entityForm'
 import { uiDataSourceApi } from '@/api/uiConfig'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 

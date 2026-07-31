@@ -1,3 +1,22 @@
+export const SELECTION_RETURN_MAPPING_EXAMPLE = [
+  {
+    sourceField: 'id',
+    targetField: 'customerId'
+  },
+  {
+    sourceField: 'data.name',
+    targetField: 'customerName'
+  }
+]
+
+export const SELECTION_RETURN_MAPPING_EXAMPLE_TOOLTIP_TEXT = `[
+  ${SELECTION_RETURN_MAPPING_EXAMPLE.map(item => JSON.stringify(item)).join(',\n  ')}
+]`
+
+export const SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT = JSON.stringify(
+  SELECTION_RETURN_MAPPING_EXAMPLE
+)
+
 export function applySelectionReturnMappings(
   row: Record<string, any>,
   mappings: any[]

@@ -317,13 +317,13 @@
               ? '配置子实体关系与级联行为'
               : isAttachment
                 ? '配置附件项、格式与数量限制'
-                : '配置关联实体与显示字段'"
+                : '配置单一目标实体与记录显示字段'"
             :default-expanded="true"
           >
             <template #summary>
               <span v-if="isSubForm">子表单关系</span>
               <span v-else-if="isAttachment">附件规则</span>
-              <span v-else>实体引用</span>
+              <span v-else>实体记录引用</span>
             </template>
 
             <!-- 子表单配置 -->
@@ -335,19 +335,15 @@
                 </el-radio-group>
               </el-form-item>
               <el-form-item label="子实体" required>
-                <el-select
+                <EntityDefinitionPicker
                   v-model="selectedField.childEntityId"
                   placeholder="选择实体"
-                  style="width: 100%"
+                  value-key="id"
+                  title="选择子实体"
+                  :query="{ storageMode: 'DYNAMIC' }"
+                  :exclude-values="[String(entityId)]"
                   @change="onChildEntityChange"
-                >
-                  <el-option
-                    v-for="entity in availableEntities"
-                    :key="entity.id"
-                    :label="entity.entityName || entity.entityCode"
-                    :value="entity.id"
-                  />
-                </el-select>
+                />
               </el-form-item>
               <el-form-item v-if="selectedField.childEntityId" label="子表外键">
                 <el-select
@@ -424,22 +420,17 @@
 
             <!-- 实体引用配置 -->
             <template v-if="isReference">
-              <el-form-item label="关联实体" required>
-                <el-select
+              <el-form-item label="目标实体" required>
+                <EntityDefinitionPicker
                   v-model="selectedField.refEntityId"
-                  placeholder="选择关联实体"
-                  style="width: 100%"
-                  filterable
+                  placeholder="选择目标实体"
+                  value-key="id"
+                  title="选择目标实体"
+                  :query="{ status: 'PUBLISHED' }"
+                  :exclude-values="[String(entityId)]"
                   @change="onReferenceEntityChange"
-                >
-                  <el-option
-                    v-for="entity in availableEntities"
-                    :key="entity.id"
-                    :label="`${entity.entityName} (${entity.entityCode})`"
-                    :value="entity.id"
-                  />
-                </el-select>
-                <div class="form-tip">业务实体和平台系统实体使用同一套引用模型。</div>
+                />
+                <div class="form-tip">{{ getEntityReferenceSelectionHint(selectedField.fieldType) }}</div>
               </el-form-item>
               <el-form-item v-if="selectedField.refEntityId" label="显示字段">
                 <el-select
@@ -576,17 +567,13 @@
       <el-button type="primary" size="small" @click="handleAddPermission">
         <el-icon><Plus /></el-icon>添加规则
       </el-button>
-      <el-select
+      <UserSelector
         v-model="simulationUserId"
-        filterable
-        clearable
         placeholder="选择模拟用户"
-        size="small"
+        title="选择模拟用户"
+        value-key="id"
         style="width: 220px"
-        @visible-change="visible => visible && loadSelectorOptions()"
-      >
-        <el-option v-for="opt in userOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-      </el-select>
+      />
       <el-button size="small" @click="handlePreviewPermissionSql('')">
         <el-icon><View /></el-icon>模拟可见范围
       </el-button>
@@ -725,21 +712,13 @@
             </el-select>
           </el-form-item>
           <el-form-item v-if="cond.scopeType === 'USER'" label="选择用户">
-            <el-select
+            <UserSelector
               v-model="cond.targetIds"
               multiple
-              filterable
-              clearable
+              value-key="id"
               placeholder="请选择用户"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="opt in userOptions"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
+              title="选择适用用户"
+            />
           </el-form-item>
           <el-form-item v-if="cond.scopeType === 'ROLE'" label="选择角色">
             <el-select
@@ -948,12 +927,13 @@ import { codeRuleApi } from '@/api/codeRule'
 import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getEntityStatusList } from '@/api/entityStatus'
-import { getUserList } from '@/api/system/user'
 import { getEnabledRoles } from '@/api/system/role'
 import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
 import { getDictList, createDictWithItems } from '@/api/system/dict'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
+import UserSelector from '@/components/UserSelector.vue'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import PageState from '@/components/PageState.vue'
@@ -963,7 +943,8 @@ import {
   WORKFLOW_SYSTEM_FIELD_CODES,
   filterEntityFieldsByLifecycle,
   getEntityFieldTypeLabel,
-  getEntityFieldTypeTag
+  getEntityFieldTypeTag,
+  getEntityReferenceSelectionHint
 } from '@/shared/entity-design'
 import {
   validateEntityValidationRules
@@ -1046,7 +1027,6 @@ const permissionSqlPreview = ref({ sql: '', matchedRules: [], hasPermission: tru
 const permissionSqlPreviewVisible = ref(false)
 const permissionSqlPreviewTitle = ref('权限 SQL 预览')
 const simulationUserId = ref('')
-const userOptions = ref([])
 const roleOptions = ref([])
 const groupOptions = ref([])
 const deptOptions = ref([])
@@ -1079,13 +1059,11 @@ const permissionRuleFieldOptions = computed(() => [
 
 const loadSelectorOptions = async () => {
   try {
-    const [users, roles, groups, orgs] = await Promise.all([
-      getUserList().catch(() => []),
+    const [roles, groups, orgs] = await Promise.all([
       getEnabledRoles().catch(() => []),
       getEnabledGroups().catch(() => []),
       getEnabledOrgList().catch(() => [])
     ])
-    userOptions.value = (users || []).map(u => ({ label: `${u.nickname || u.username} (${u.username})`, value: u.id }))
     roleOptions.value = (roles || []).map(r => ({ label: r.roleName || r.roleCode, value: r.id }))
     groupOptions.value = (groups || []).map(group => ({ label: group.groupName || group.groupCode, value: group.id }))
     deptOptions.value = (orgs || [])
@@ -1170,19 +1148,6 @@ const handleFieldTypeChange = (fieldType) => {
 
   selectedField.value.validateRules = ''
   ElMessage.info('字段类型已变化，原验证规则不再适用，已自动清空')
-}
-
-// 可选的实体列表（排除当前实体）
-const availableEntities = ref([])
-
-// 加载可选实体列表
-const loadAvailableEntities = async () => {
-  try {
-    const entities = await entityApi.getAll()
-    availableEntities.value = entities.filter(item => String(item.id) !== String(entityId))
-  } catch (error) {
-    console.error('加载实体列表失败:', error)
-  }
 }
 
 const loadDictOptions = async () => {
@@ -1541,7 +1506,7 @@ const handleSave = async (options = {}) => {
       return false
     }
     if (['REFERENCE', 'MULTI_REFERENCE'].includes(field.fieldType) && !field.refEntityId) {
-      ElMessage.warning(`请选择关联实体：${field.fieldName}`)
+      ElMessage.warning(`请选择目标实体：${field.fieldName}`)
       return false
     }
     const validationResult = validateEntityValidationRules(
@@ -1955,7 +1920,6 @@ watch(showSystemFields, (visible) => {
 
 onMounted(() => {
   loadEntity()
-  loadAvailableEntities()
   loadDictOptions()
   loadCodeRule()
 })

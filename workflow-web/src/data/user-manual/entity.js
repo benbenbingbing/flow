@@ -29,8 +29,8 @@ const entityFieldTypes = [
   { option: '图片 IMAGE', meaning: '上传图片并支持预览。', notes: '附件限制与 FILE 相同；应结合存储容量和图片安全扫描策略。' },
   { option: '用户 USER', meaning: '选择系统用户。', notes: '可配置字符串长度；用户停用后历史值仍需可回显。' },
   { option: '部门 DEPT', meaning: '选择系统组织部门。', notes: '组织调整可能影响数据权限和历史显示，发布前确认部门字段映射。' },
-  { option: '单选实体 REFERENCE', meaning: '引用一个自定义实体或系统用户、部门、角色、用户组。', notes: '自定义实体必须选择关联实体；表单层可选填定制查询接口。' },
-  { option: '多选实体 MULTI_REFERENCE', meaning: '引用多个实体记录。', notes: '列表查询、导出和权限过滤要考虑多值结构。' },
+  { option: '实体记录单选 REFERENCE', meaning: '从一个目标实体中引用一条记录，也可引用系统用户、部门、角色或用户组。', notes: '配置阶段只选择一个目标实体；业务填写时选择一条数据。' },
+  { option: '实体记录多选 MULTI_REFERENCE', meaning: '从一个目标实体中引用多条记录。', notes: '配置阶段仍只选择一个目标实体；业务填写时可跨页选择多条数据。' },
   { option: '子表单 SUB_FORM', meaning: '父记录关联一个子记录，默认关系为一对一。', notes: '必须选择子实体与子表外键；默认级联删除开启。' },
   { option: '子表单列表 SUB_FORM_LIST', meaning: '父记录关联多条子记录，默认关系为一对多。', notes: '必须选择子实体与子表外键；大量明细需要控制一次加载数量。' }
 ]
@@ -133,14 +133,14 @@ export default {
                 { option: '独立业务实体 STANDALONE', meaning: '不绑定流程，直接使用表单、列表、数据范围、编码、导出和实体引用。适合基础资料、项目档案、产品、客户、业务明细等。', notes: '默认仅本人数据；可升级为流程实体，升级后不能降级。' },
                 { option: '流程实体 WORKFLOW', meaning: '作为一个流程的主业务数据载体，支持节点表单、状态映射、审批和流程动作。', notes: '实体可先发布；绑定流程未发布、已禁用或丢失时只能保存业务数据，不能发起。' },
                 { option: '动态业务表 DYNAMIC', meaning: '由实体设计器维护，物理表采用 biz_*，可以配置字段、表单、列表、权限和迁移。', notes: '新建实体固定为该模式。' },
-                { option: '平台系统表 SYSTEM', meaning: '系统自动扫描 sys_user、sys_organization、sys_role、sys_dict 等 sys_* 表并登记字段结构。', notes: '只用于统一目录和结构查看；不能用动态实体接口修改数据或结构，也不进入配置迁移包。' }
+                { option: '平台系统表 SYSTEM', meaning: '系统自动扫描 sys_user、sys_organization、sys_role、sys_dict 等 sys_* 表并登记字段结构。', notes: '字段结构只读；管理员可以配置只读表单和列表，通用运行时只提供列表查询与详情查看，UI 配置可通过“系统实体 UI”资产迁移。' }
               ]
             },
             {
               type: 'callout',
               tone: 'warning',
               title: '系统实体安全边界',
-              text: '平台系统实体继续由用户、组织、角色、菜单和字典模块管理。即使手工调用实体表单、列表、状态、编码、数据范围或数据接口，后端也会返回冲突错误，防止绕过系统权限。'
+              text: '平台系统实体的数据写入继续只由用户、组织、角色、菜单和字典专用模块负责。通用运行时只允许按已发布配置查询列表和查看详情；结构修改、状态、编码、流程绑定、数据范围覆盖以及新增、编辑、删除请求仍由后端拒绝。密码、令牌和密钥类字段不会进入表单、列表、查询响应或迁移快照。'
             }
           ]
         },
@@ -156,7 +156,7 @@ export default {
                 { field: '实体名称', meaning: '按实体名称或编码模糊搜索。', defaultLimit: '默认空；按回车或“查询”执行。', effect: '返回匹配实体并将页码重置为 1。', publish: '无发布影响。' },
                 { field: '状态', meaning: '筛选草稿、已发布、已禁用。', defaultLimit: '默认全部。', effect: '只显示对应配置状态。', publish: '已发布不代表表单、列表后续修改已形成新快照。' },
                 { field: '实体类型', meaning: '筛选 STANDALONE 独立业务实体或 WORKFLOW 流程实体。', defaultLimit: '默认全部。', effect: '决定是否支持流程绑定和发起。', publish: '类型只允许从独立实体升级为流程实体。' },
-                { field: '存储类型', meaning: '筛选 DYNAMIC 动态业务表或 SYSTEM 平台系统表。', defaultLimit: '默认全部。', effect: '区分可配置业务实体和只读系统目录。', publish: '系统实体不执行动态发布。' },
+                { field: '存储类型', meaning: '筛选 DYNAMIC 动态业务表或 SYSTEM 平台系统表。', defaultLimit: '默认全部。', effect: '区分可维护结构的业务实体和仅可配置展示的系统实体。', publish: '系统实体不执行结构发布；表单和列表各自发布并聚合为“系统实体 UI”迁移资产。' },
                 { field: '分页', meaning: '控制当前页与每页数量。', defaultLimit: '默认 10；可选 10/20/50/100。', effect: '服务端分页加载。', publish: '无发布影响。' }
               ]
             },
@@ -165,7 +165,7 @@ export default {
               items: [
                 '列表展示实体名称、编码、描述、生命周期类型、存储类型、绑定流程和发布状态。',
                 '“重置”恢复全部筛选并回到第 1 页。',
-                '“设计、发布/重新发布、列表、表单”为高频入口；状态配置、绑定流程、版本历史和删除位于更多菜单。'
+                '动态业务实体显示“设计、发布/重新发布、列表、表单”等入口；平台系统实体只显示结构查看、列表和表单配置入口。'
               ]
             }
           ]
@@ -343,7 +343,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '用户自定义实体 CUSTOM', meaning: '引用平台内另一个业务实体；必须选择“关联实体”。', notes: '目标实体删除或编码变化会导致引用失效。' },
+                { option: '用户自定义实体 CUSTOM', meaning: '引用平台内另一个业务实体；必须选择“目标实体”。', notes: '目标实体删除或编码变化会导致引用失效。' },
                 { option: '系统用户 USER', meaning: '引用系统用户。', notes: '用户停用不应导致历史数据无法回显。' },
                 { option: '系统部门 DEPT', meaning: '引用组织部门。', notes: '可与数据权限中的部门范围结合。' },
                 { option: '系统角色 ROLE', meaning: '引用系统角色。', notes: '角色编码和授权变化会影响后续业务判断。' },

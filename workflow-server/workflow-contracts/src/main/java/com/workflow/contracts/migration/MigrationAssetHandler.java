@@ -16,4 +16,9 @@ public interface MigrationAssetHandler {
             String processId,
             String versionHistoryId,
             ConfigMigrationPublishRequest request);
+
+    void recordSystemEntityUi(
+            String entityId,
+            String releaseId,
+            ConfigMigrationPublishRequest request);
 }

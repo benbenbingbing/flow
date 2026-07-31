@@ -1,6 +1,6 @@
 package com.workflow.entity.ui.application;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.authorization.application.PermissionUtil;
@@ -17,15 +17,15 @@ import org.springframework.util.StringUtils;
 /**
  * UI 配置访问控制服务，统一校验当前用户对表单、列表及全局 UI 扩展的维护权限。
  *
- * <p>所有维护操作均要求管理员角色，并校验目标配置归属的实体为动态实体，
- * 系统实体的配置不允许通过通用入口修改。</p>
+ * <p>所有维护操作均要求管理员角色。动态实体和平台系统实体都允许维护
+ * 表单、列表展示配置；系统实体结构仍由结构访问策略保护。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class UiConfigurationAccessService {
 
     private final CurrentUserRoleService currentUserRoleService;
-    private final EntityDefinitionAccessPolicy entityAccessPolicy;
+    private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
     private final EntityFormMapper formMapper;
     private final EntityListConfigMapper listConfigMapper;
 
@@ -67,7 +67,8 @@ public class UiConfigurationAccessService {
         if (form == null) {
             throw new IllegalArgumentException("表单不存在: " + formId);
         }
-        entityAccessPolicy.requireDynamicById(form.getEntityId());
+        entityUiConfigurationPolicy.requireConfigurableById(
+                form.getEntityId());
     }
 
     /**
@@ -83,7 +84,7 @@ public class UiConfigurationAccessService {
         if (!StringUtils.hasText(entityId)) {
             throw new IllegalArgumentException("实体ID不能为空");
         }
-        entityAccessPolicy.requireDynamicById(entityId);
+        entityUiConfigurationPolicy.requireConfigurableById(entityId);
     }
 
     /**
@@ -99,7 +100,8 @@ public class UiConfigurationAccessService {
         if (form == null || !StringUtils.hasText(form.getEntityId())) {
             throw new IllegalArgumentException("表单实体ID不能为空");
         }
-        entityAccessPolicy.requireDynamicById(form.getEntityId());
+        entityUiConfigurationPolicy.requireConfigurableById(
+                form.getEntityId());
     }
 
     /**
@@ -116,7 +118,8 @@ public class UiConfigurationAccessService {
         if (config == null) {
             throw new IllegalArgumentException("列表配置不存在: " + listId);
         }
-        entityAccessPolicy.requireDynamicById(config.getEntityId());
+        entityUiConfigurationPolicy.requireConfigurableById(
+                config.getEntityId());
     }
 
     /**
@@ -133,10 +136,12 @@ public class UiConfigurationAccessService {
             throw new IllegalArgumentException("列表配置不能为空");
         }
         if (StringUtils.hasText(config.getEntityId())) {
-            entityAccessPolicy.requireDynamicById(config.getEntityId());
+            entityUiConfigurationPolicy.requireConfigurableById(
+                    config.getEntityId());
             return;
         }
-        entityAccessPolicy.requireDynamicByCode(config.getEntityCode());
+        entityUiConfigurationPolicy.requireConfigurableByCode(
+                config.getEntityCode());
     }
 
     /**
@@ -153,9 +158,11 @@ public class UiConfigurationAccessService {
             throw new IllegalArgumentException("列表配置不能为空");
         }
         if (StringUtils.hasText(config.getEntityId())) {
-            entityAccessPolicy.requireDynamicById(config.getEntityId());
+            entityUiConfigurationPolicy.requireConfigurableById(
+                    config.getEntityId());
             return;
         }
-        entityAccessPolicy.requireDynamicByCode(config.getEntityCode());
+        entityUiConfigurationPolicy.requireConfigurableByCode(
+                config.getEntityCode());
     }
 }

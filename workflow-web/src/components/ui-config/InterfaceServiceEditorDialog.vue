@@ -52,18 +52,13 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="editor.scopeType !== 'GLOBAL'" label="范围对象">
-          <el-select
+          <EntityDefinitionPicker
             v-if="editor.scopeType === 'ENTITY'"
             v-model="editor.scopeId"
-            filterable
-          >
-            <el-option
-              v-for="entity in entities"
-              :key="entity.id"
-              :label="`${entity.entityName} (${entity.entityCode})`"
-              :value="entity.id"
-            />
-          </el-select>
+            value-key="id"
+            title="选择接口服务作用实体"
+            :query="{ storageMode: 'DYNAMIC' }"
+          />
           <el-input
             v-else
             v-model="editor.scopeId"
@@ -185,6 +180,7 @@
 import { computed, reactive, ref } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import { uiDataSourceApi } from '@/api/uiConfig'
 import {
   executionPolicy,
@@ -195,7 +191,6 @@ import {
 } from './interfaceServiceModel'
 
 const props = defineProps({
-  entities: { type: Array, default: () => [] },
   catalog: { type: Object, default: () => ({}) },
   sourceTypeOptions: { type: Array, default: () => [] }
 })

@@ -68,6 +68,26 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimeAccess {
         return variables.get(name);
     }
 
+    @Override
+    public void setVariable(
+            String processInstanceId,
+            String name,
+            Object value) {
+        runtimeService.setVariable(
+                processInstanceId, name, value);
+    }
+
+    @Override
+    public void setVariables(
+            String processInstanceId,
+            Map<String, Object> variables) {
+        if (variables == null || variables.isEmpty()) {
+            return;
+        }
+        runtimeService.setVariables(
+                processInstanceId, variables);
+    }
+
     /**
      * 查询运行中的流程实例。
      *

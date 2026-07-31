@@ -28,8 +28,10 @@
       </template>
     </div>
     <el-table
+      ref="tableRef"
       :data="dataList"
       v-loading="loading"
+      row-key="id"
       :stripe="tableConfig.stripe !== false"
       :border="tableConfig.border === true"
       :size="tableConfig.size || 'default'"
@@ -158,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
@@ -168,6 +170,10 @@ import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegist
 import { getFieldModelPath } from '@/shared/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
+import {
+  reconcileRecordPageSelection,
+  recordSelectionIds
+} from '@/shared/entity-record-selection'
 import {
   canExecuteAction,
   getActionCapabilityReason,
@@ -194,6 +200,7 @@ const props = defineProps<{
   refresh: () => void
   viewConfig?: any
   showVersionAction?: boolean
+  selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
 }>()
 
 const tableConfig = computed(() => props.viewConfig?.table || {})
@@ -261,8 +268,27 @@ const formatDate = (date: string) => {
 }
 
 const handleSelectionChange = (selection: any[]) => {
-  selectedRows.value = selection
-  emit('selection-change', selection)
+  if (restoringPageSelection.value) return
+
+  if (props.selectionMode === 'SINGLE') {
+    const nextSelection = selection.length
+      ? [selection[selection.length - 1]]
+      : []
+    selectedRows.value = nextSelection
+    emit('selection-change', nextSelection)
+    restoreCurrentPageSelection()
+    return
+  }
+
+  const nextSelection = props.selectionMode === 'MULTIPLE'
+    ? reconcileRecordPageSelection(
+        selectedRows.value,
+        props.dataList,
+        selection
+      )
+    : selection
+  selectedRows.value = nextSelection
+  emit('selection-change', nextSelection)
 }
 
 // 内置工具栏动作映射
@@ -354,6 +380,8 @@ const onRowActionClick = (btn: any, row: any) => {
 
 // 当前选中行（由父组件通过 selection-change 同步）
 const selectedRows = defineModel<any[]>('selectedRows', { default: () => [] })
+const tableRef = ref<any>()
+const restoringPageSelection = ref(false)
 const entityListLauncherRef = ref<InstanceType<typeof EntityListLauncher>>()
 const pendingOpenListAction = ref<{ button: any, row?: any } | null>(null)
 const openListState = reactive({
@@ -364,6 +392,29 @@ const openListState = reactive({
   title: '选择数据',
   context: {} as Record<string, any>
 })
+
+async function restoreCurrentPageSelection() {
+  if (!['SINGLE', 'MULTIPLE'].includes(props.selectionMode || 'NONE')) return
+  restoringPageSelection.value = true
+  await nextTick()
+  tableRef.value?.clearSelection()
+  const selectedIds = new Set(recordSelectionIds(selectedRows.value))
+  props.dataList.forEach(row => {
+    if (selectedIds.has(String(row.id))) {
+      tableRef.value?.toggleRowSelection(row, true)
+    }
+  })
+  await nextTick()
+  restoringPageSelection.value = false
+}
+
+watch(
+  () => props.dataList,
+  () => {
+    restoreCurrentPageSelection()
+  },
+  { flush: 'sync' }
+)
 
 async function openConfiguredList(button: any, row?: any) {
   if (!button.targetEntityCode || !button.targetListKey) {

@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAuthorization;
@@ -805,6 +806,7 @@ class UiDataSourceServiceTest {
                 formMapper,
                 listMapper,
                 mock(EntityDefinitionAccessPolicy.class),
+                mock(EntityUiConfigurationPolicy.class),
                 dynamicService,
                 mock(SysDictItemService.class),
                 executionAccessService,

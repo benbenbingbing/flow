@@ -23,9 +23,17 @@
         <el-form-item
           v-for="item in group.items"
           :key="item.key"
-          :label="item.label"
           :required="item.required"
         >
+          <template #label>
+            <JsonConfigLabel
+              v-if="item.type === 'json'"
+              :label="item.label"
+              :help-key="item.helpKey || ''"
+              :help="schemaJsonHelp(item)"
+            />
+            <span v-else>{{ item.label }}</span>
+          </template>
           <el-switch
             v-if="item.type === 'boolean'"
             :model-value="currentValue[item.key]"
@@ -70,7 +78,7 @@
             :model-value="formatJsonValue(currentValue[item.key])"
             type="textarea"
             :rows="item.rows || 5"
-            :placeholder="item.placeholder || '请输入 JSON'"
+            :placeholder="item.placeholder || schemaJsonPlaceholder(item)"
             @change="updateJsonValue(item, $event)"
           />
           <el-input
@@ -91,7 +99,13 @@
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import SettingsSection from '@/components/SettingsSection.vue'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import { applySchemaDefaults, sanitizeConfigObject } from '@/shared/config-runtime'
+import {
+  buildSchemaJsonHelp,
+  getJsonConfigHelp
+} from '@/shared/json-config-help'
+import { parseJsonConfig } from '@/utils/jsonConfig'
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
@@ -330,15 +344,28 @@ function formatJsonValue(value) {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
 }
 
+function schemaJsonHelp(item) {
+  return buildSchemaJsonHelp(item)
+}
+
+function schemaJsonPlaceholder(item) {
+  const help = getJsonConfigHelp(item.helpKey)
+    || buildSchemaJsonHelp(item)
+  return `例如 ${JSON.stringify(help?.example ?? {})}`
+}
+
 function updateJsonValue(item, value) {
   if (!value) {
     updateValue(item, null)
     return
   }
   try {
-    updateValue(item, JSON.parse(value))
-  } catch {
-    ElMessage.warning(`${item.label}不是合法 JSON`)
+    updateValue(item, parseJsonConfig(value, {
+      fieldName: item.label,
+      expectedType: item.jsonShape || 'object-or-array'
+    }))
+  } catch (error) {
+    ElMessage.warning(error.message)
   }
 }
 </script>

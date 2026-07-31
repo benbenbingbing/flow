@@ -234,7 +234,13 @@
             <el-input v-model="editingAction.description" type="textarea" :rows="2" />
           </el-form-item>
 
-          <el-form-item label="参数配置">
+          <el-form-item>
+            <template #label>
+              <JsonConfigLabel
+                label="参数配置"
+                help-key="process.actionParams"
+              />
+            </template>
             <div class="action-params-list">
               <el-row
                 v-for="(param, index) in actionParamList"
@@ -296,6 +302,7 @@ import { extensionCatalogApi } from '@/api/system/extension'
 import { useUserStore } from '@/stores/user'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 
 const props = defineProps({
   processId: { type: String, required: true },
@@ -328,8 +335,7 @@ const actionParamTypeOptions = [
   { label: '静态文本', value: 'string' },
   { label: '数字', value: 'number' },
   { label: '布尔', value: 'boolean' },
-  { label: '流程变量', value: 'variable' },
-  { label: '表达式', value: 'expression' }
+  { label: '流程变量', value: 'variable' }
 ]
 
 const templates = [

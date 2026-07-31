@@ -5,6 +5,7 @@ import com.workflow.process.instance.application.ProcessProgressRuntimeService;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -77,6 +78,34 @@ public class ProcessProgressRuntimeServiceFormTest {
 
         String result = (String) method.invoke(service, "NonExistent", TEST_BPMN_XML);
         assertNull(result, "不存在的节点应该返回 null");
+    }
+
+    @Test
+    void completedProcessUsesLastCompletedUserTaskInsteadOfGateway()
+            throws Exception {
+        ProcessProgressRuntimeService service = service();
+        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod(
+                "resolveLastCompletedUserTaskId",
+                List.class,
+                String.class,
+                String.class);
+        method.setAccessible(true);
+
+        String result = (String) method.invoke(
+                service,
+                List.of(
+                        "Start",
+                        "Activity_0c9s28z",
+                        "Activity_1stkhyf",
+                        "Gateway_Result",
+                        "End"),
+                TEST_BPMN_XML,
+                null);
+
+        assertEquals(
+                "Activity_1stkhyf",
+                result,
+                "完成态应选择最后一个用户任务作为查看表单节点");
     }
 
     /** 构造被测服务实例(依赖全传 null，仅测试 BPMN 解析逻辑) */

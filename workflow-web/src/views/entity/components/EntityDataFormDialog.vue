@@ -176,7 +176,9 @@ const {
   loadProcessDetail
 } = useProcessDetail()
 
-const formFields = computed(() => props.entityFields.filter((f: any) => !f.isSystem))
+const formFields = computed(() =>
+  props.entityFields.filter((f: any) => f.runtimeReadable !== false)
+)
 const tabSubForms = computed(() => {
   const fields = props.defaultForm?.fields || formFields.value
   const mode = isEdit.value ? 'edit' : 'create'
@@ -245,7 +247,7 @@ const resetForm = () => {
   formData.data = {}
   formData.startProcess = false
   
-  const fields = props.entityFields.filter((f: any) => !f.isSystem)
+  const fields = props.entityFields.filter((f: any) => f.runtimeReadable !== false)
   fields.forEach((field: any) => {
     formData.data[field.fieldCode] = ''
   })

@@ -36,6 +36,7 @@
       </div>
       <div class="header-actions">
         <el-button
+          v-if="!isSystemEntity"
           :disabled="!configInfo.id"
           @click="openListEventBindings"
         >
@@ -54,6 +55,15 @@
         <el-button type="success" plain @click="handlePublish">发布生效</el-button>
       </div>
     </div>
+
+    <el-alert
+      v-if="isSystemEntity"
+      title="平台系统表结构只读。列表仅配置查询条件、显示列、排序、分页、格式化、选择模式和查看操作。"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="system-config-alert"
+    />
 
     <el-alert
       v-if="loadError"
@@ -80,7 +90,7 @@
                   :closable="false"
                   show-icon
                 />
-                <el-button type="primary" plain @click="addVirtualField">
+                <el-button v-if="!isSystemEntity" type="primary" plain @click="addVirtualField">
                   <el-icon><Plus /></el-icon>添加虚拟列
                 </el-button>
               </div>
@@ -185,6 +195,30 @@
                       <el-radio-button value="large">宽松</el-radio-button>
                     </el-radio-group>
                   </el-form-item>
+                  <el-form-item label="默认排序字段">
+                    <el-select
+                      v-model="viewConfig.table.defaultSortField"
+                      clearable
+                      filterable
+                      placeholder="使用平台默认顺序"
+                      style="width: 240px"
+                    >
+                      <el-option
+                        v-for="field in entityFields"
+                        :key="field.fieldCode"
+                        :label="field.fieldName || field.fieldCode"
+                        :value="field.fieldCode"
+                      />
+                    </el-select>
+                    <el-radio-group
+                      v-if="viewConfig.table.defaultSortField"
+                      v-model="viewConfig.table.defaultSortDirection"
+                      style="margin-left: 12px"
+                    >
+                      <el-radio-button value="ASC">升序</el-radio-button>
+                      <el-radio-button value="DESC">降序</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
                   <el-form-item label="默认每页">
                     <el-select v-model="viewConfig.pagination.pageSize" style="width: 160px">
                       <el-option
@@ -208,8 +242,8 @@
                   <el-form-item label="数据范围模式">
                     <el-select v-model="configInfo.dataScopeMode" style="width: 420px">
                       <el-option label="继承实体默认范围" value="INHERIT" />
-                      <el-option label="在实体范围内缩小" value="NARROW" />
-                      <el-option label="使用列表独立范围（高风险）" value="OVERRIDE" />
+                      <el-option v-if="!isSystemEntity" label="在实体范围内缩小" value="NARROW" />
+                      <el-option v-if="!isSystemEntity" label="使用列表独立范围（高风险）" value="OVERRIDE" />
                     </el-select>
                   </el-form-item>
                   <el-form-item label="访问权限码">
@@ -263,14 +297,19 @@
                   </el-form-item>
                   <el-form-item
                     v-if="configInfo.selectionMode !== 'NONE'"
-                    label="返回映射 JSON"
                     class="view-config-item--full"
                   >
+                    <template #label>
+                      <JsonConfigLabel
+                        label="返回映射 JSON"
+                        help-key="entityList.selectionReturnMappings"
+                      />
+                    </template>
                     <el-input
                       v-model="configInfo.selectionReturnMappingsText"
                       type="textarea"
                       :rows="3"
-                      placeholder='例如 [{"sourceField":"name","targetField":"customerName"}]'
+                      :placeholder="`例如 ${selectionReturnMappingExampleCompactText}`"
                     />
                   </el-form-item>
                 </SettingsSection>
@@ -283,7 +322,13 @@
                   <template #summary>
                     {{ configInfo.queryProviderCode || configInfo.queryDataSourceId ? '已配置扩展查询' : '平台默认查询' }}
                   </template>
-                  <el-form-item label="固定条件 JSON">
+                  <el-form-item>
+                    <template #label>
+                      <JsonConfigLabel
+                        label="固定条件 JSON"
+                        help-key="entityList.fixedFilters"
+                      />
+                    </template>
                     <el-input
                       v-model="configInfo.fixedFilterConfig"
                       type="textarea"
@@ -291,22 +336,28 @@
                       placeholder='例如 {"status":"RUNNING","status_op":"EQ"}'
                     />
                   </el-form-item>
-                  <el-form-item label="上下文绑定 JSON">
+                  <el-form-item>
+                    <template #label>
+                      <JsonConfigLabel
+                        label="上下文绑定 JSON"
+                        help-key="entityList.contextBinding"
+                      />
+                    </template>
                     <el-input
                       v-model="configInfo.contextBindingConfig"
                       type="textarea"
                       :rows="3"
-                      placeholder='只保存 relationKey 等服务端可信上下文配置'
+                      placeholder='扩展读取时例如 {"parentField":"project_id"}；默认查询请保持 {}'
                     />
                   </el-form-item>
-                  <el-form-item label="安全查询提供者">
+                  <el-form-item v-if="!isSystemEntity" label="安全查询提供者">
                     <el-input
                       v-model="configInfo.queryProviderCode"
                       placeholder="留空使用平台动态表查询"
                       style="width: 420px"
                     />
                   </el-form-item>
-                  <el-form-item label="统一查询数据源">
+                  <el-form-item v-if="!isSystemEntity" label="统一查询数据源">
                     <el-select
                       v-model="configInfo.queryDataSourceId"
                       clearable
@@ -325,6 +376,7 @@
                 </SettingsSection>
 
                 <SettingsSection
+                  v-if="!isSystemEntity"
                   title="扩展渲染"
                   description="仅在默认动态列表无法满足展示需求时配置"
                 >
@@ -354,7 +406,7 @@
                 </SettingsSection>
               </el-form>
             </el-tab-pane>
-            <el-tab-pane label="工具栏按钮" name="toolbar">
+            <el-tab-pane v-if="!isSystemEntity" label="工具栏按钮" name="toolbar">
               <ListButtonConfigPanel
                 type="toolbar"
                 v-model="toolbarButtons"
@@ -368,7 +420,7 @@
                 @remove="removeListAction($event, 'TOOLBAR')"
               />
             </el-tab-pane>
-            <el-tab-pane label="操作列按钮" name="rowActions">
+            <el-tab-pane v-if="!isSystemEntity" label="操作列按钮" name="rowActions">
               <ListButtonConfigPanel
                 type="row"
                 v-model="rowActionButtons"
@@ -529,19 +581,12 @@
                   :disabled="!editingField.isQuery"
                   style="width: 100%"
                 >
-                  <el-option label="等于" value="EQ" />
-                  <el-option label="不等于" value="NE" />
-                  <el-option label="包含" value="LIKE" />
-                  <el-option label="不包含" value="NOT_LIKE" />
-                  <el-option label="大于" value="GT" />
-                  <el-option label="大于等于" value="GE" />
-                  <el-option label="小于" value="LT" />
-                  <el-option label="小于等于" value="LE" />
-                  <el-option label="范围" value="BETWEEN" />
-                  <el-option label="包含于" value="IN" />
-                  <el-option label="不包含于" value="NOT_IN" />
-                  <el-option label="为空" value="EMPTY" />
-                  <el-option label="非空" value="NOT_EMPTY" />
+                  <el-option
+                    v-for="option in availableQueryTypeOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
                 </el-select>
               </el-form-item>
               <el-form-item label="占位提示">
@@ -768,6 +813,7 @@ import EntityDataSearchForm from '@/views/entity/components/EntityDataSearchForm
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
@@ -783,10 +829,15 @@ import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
 import { uiDataSourceApi, uiComponentTemplateApi } from '@/api/uiConfig'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { parseJsonConfig } from '@/utils/jsonConfig'
+import {
+  SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
+} from '@/utils/selectionReturnMappings'
 
 const route = useRoute()
 const router = useRouter()
 const configId = route.params.id
+const selectionReturnMappingExampleCompactText =
+  SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
 
 // 配置信息
 const configInfo = ref({})
@@ -795,6 +846,7 @@ const entityCode = ref('')
 const entityId = ref('')
 const entityFields = ref([])
 const entityDefinition = ref({})
+const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
 const publishDialogVisible = ref(false)
 const eventBindingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
@@ -814,7 +866,7 @@ const savingAll = ref(false)
 const unifiedDataSources = ref([])
 const eventFieldOptions = computed(() =>
   entityFields.value
-    .filter(field => !field.isSystem)
+    .filter(field => field.uiConfigurable !== false)
     .map(field => ({
       label: field.fieldName || field.fieldCode,
       value: field.fieldCode
@@ -846,6 +898,42 @@ const selectedCustomListCatalogOption = computed(() => {
     : null
 })
 const queryComponentOptions = getFormFieldComponentOptions()
+const queryTypeOptions = [
+  { label: '等于', value: 'EQ' },
+  { label: '不等于', value: 'NE' },
+  { label: '包含', value: 'LIKE' },
+  { label: '不包含', value: 'NOT_LIKE' },
+  { label: '大于', value: 'GT' },
+  { label: '大于等于', value: 'GE' },
+  { label: '小于', value: 'LT' },
+  { label: '小于等于', value: 'LE' },
+  { label: '范围', value: 'BETWEEN' },
+  { label: '包含于', value: 'IN' },
+  { label: '不包含于', value: 'NOT_IN' },
+  { label: '为空', value: 'EMPTY' },
+  { label: '非空', value: 'NOT_EMPTY' }
+]
+const systemQueryTypeValues = new Set([
+  'EQ',
+  'NE',
+  'LIKE',
+  'IN',
+  'BETWEEN',
+  'GT',
+  'GE',
+  'LT',
+  'LE',
+  'IS_NULL'
+])
+const availableQueryTypeOptions = computed(() => {
+  if (!isSystemEntity.value) return queryTypeOptions
+  return [
+    ...queryTypeOptions.filter(option =>
+      systemQueryTypeValues.has(option.value)
+    ),
+    { label: '为空', value: 'IS_NULL' }
+  ]
+})
 
 const createDefaultViewConfig = () => ({
   search: {
@@ -857,7 +945,9 @@ const createDefaultViewConfig = () => ({
     stripe: true,
     border: false,
     showIndex: true,
-    size: 'default'
+    size: 'default',
+    defaultSortField: '',
+    defaultSortDirection: 'ASC'
   },
   pagination: {
     pageSize: 10,
@@ -1254,15 +1344,22 @@ async function loadData() {
     // 加载实体信息
     const entityRes = await entityApi.getById(entityId.value)
     if (entityRes) {
-      if (entityRes.storageMode === 'SYSTEM') {
-        ElMessage.warning('平台系统实体不支持动态列表设计')
-        router.replace('/entity')
-        return
-      }
       entityDefinition.value = entityRes
       entityName.value = entityRes.entityName
       entityCode.value = entityRes.entityCode
-      entityFields.value = filterEntityFieldsByLifecycle(entityRes, entityRes.fields || [])
+      entityFields.value = filterEntityFieldsByLifecycle(
+        entityRes,
+        entityRes.fields || []
+      ).filter(field => field.uiConfigurable !== false)
+      if (isSystemEntity.value) {
+        configInfo.value.dataScopeMode = 'INHERIT'
+        configInfo.value.customComponent = ''
+        configInfo.value.queryProviderCode = ''
+        configInfo.value.queryDataSourceId = null
+        dataSourceOptions.value = dataSourceOptions.value.filter(option =>
+          ['ENTITY_FIELD', 'REFERENCE'].includes(option.value)
+        )
+      }
     }
 
     // 合并字段配置
@@ -1317,6 +1414,7 @@ function mergeFieldConfig(savedFields) {
   })
 
   savedFields
+    .filter(() => !isSystemEntity.value)
     .filter(saved => !entityFields.value.some(entityField => String(entityField.id) === String(saved.fieldId)))
     .forEach((saved, index) => {
       merged.push({
@@ -1558,6 +1656,22 @@ function safeJsonParse(text) {
 }
 
 function parseButtonConfig(configRes) {
+  if (isSystemEntity.value) {
+    toolbarButtons.value = []
+    rowActionButtons.value = [
+      {
+        key: 'view',
+        type: 'built-in',
+        label: '查看',
+        buttonType: 'primary',
+        link: true,
+        sort: 1,
+        enabled: true,
+        perm: ''
+      }
+    ]
+    return
+  }
   const toolbar = safeJsonParse(configRes?.toolbarConfig)
   toolbarButtons.value = toolbar && toolbar.length > 0
     ? toolbar
@@ -2020,8 +2134,10 @@ async function saveListMetadata(options = {}) {
       listName: configInfo.value.listName,
       description: configInfo.value.description,
       isDefault: configInfo.value.isDefault,
-      customComponent: configInfo.value.customComponent,
-      dataScopeMode: configInfo.value.dataScopeMode || 'INHERIT',
+      customComponent: isSystemEntity.value ? '' : configInfo.value.customComponent,
+      dataScopeMode: isSystemEntity.value
+        ? 'INHERIT'
+        : configInfo.value.dataScopeMode || 'INHERIT',
       accessPermissionCode: configInfo.value.accessPermissionCode || '',
       selectionConfig: {
         selectionMode: configInfo.value.selectionMode || 'NONE',
@@ -2042,8 +2158,12 @@ async function saveListMetadata(options = {}) {
         fieldName: '上下文绑定'
       }),
       viewConfig: viewConfig.value,
-      queryProviderCode: configInfo.value.queryProviderCode || '',
-      queryDataSourceId: configInfo.value.queryDataSourceId || null
+      queryProviderCode: isSystemEntity.value
+        ? ''
+        : configInfo.value.queryProviderCode || '',
+      queryDataSourceId: isSystemEntity.value
+        ? null
+        : configInfo.value.queryDataSourceId || null
     })
     configInfo.value.revision = saved.revision
     rememberMetadataBaseline()
@@ -2074,9 +2194,11 @@ async function saveAll() {
       if (!await saveCurrentField(field, { silent: true })) return
       savedCount += 1
     }
-    for (const { button, position } of [...dirtyActions.value]) {
-      if (!await saveListAction(button, position, { silent: true })) return
-      savedCount += 1
+    if (!isSystemEntity.value) {
+      for (const { button, position } of [...dirtyActions.value]) {
+        if (!await saveListAction(button, position, { silent: true })) return
+        savedCount += 1
+      }
     }
     ElMessage.success(`列表草稿保存完成，共保存 ${savedCount} 项`)
   } finally {
@@ -2423,6 +2545,10 @@ function goBack() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.system-config-alert {
+  margin: 12px 12px 0;
 }
 
 .design-container {

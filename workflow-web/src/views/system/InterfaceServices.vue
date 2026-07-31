@@ -108,19 +108,15 @@
             <div class="scope-title">绑定对象</div>
             <el-form label-position="top">
               <el-form-item label="实体">
-                <el-select
+                <EntityDefinitionPicker
                   v-model="selectedEntityId"
-                  filterable
                   placeholder="选择实体"
-                  @change="loadEntityChildren"
-                >
-                  <el-option
-                    v-for="entity in entities"
-                    :key="entity.id"
-                    :label="`${entity.entityName} (${entity.entityCode})`"
-                    :value="entity.id"
-                  />
-                </el-select>
+                  value-key="id"
+                  title="选择事件绑定实体"
+                  :query="{ storageMode: 'DYNAMIC' }"
+                  @selected="handleBindingEntitySelected"
+                  @resolved="rememberBindingEntity"
+                />
               </el-form-item>
               <el-form-item label="配置层级">
                 <el-segmented
@@ -199,7 +195,6 @@
 
     <InterfaceServiceEditorDialog
       ref="serviceEditorRef"
-      :entities="entities"
       :catalog="catalog"
       :source-type-options="sourceTypeOptions"
       @saved="loadAll"
@@ -218,6 +213,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import InterfaceServiceEditorDialog from '@/components/ui-config/InterfaceServiceEditorDialog.vue'
 import InterfaceServiceTestDialog from '@/components/ui-config/InterfaceServiceTestDialog.vue'
@@ -244,7 +240,6 @@ const keyword = ref('')
 const sourceTypeFilter = ref('')
 const services = ref([])
 const catalog = ref({})
-const entities = ref([])
 const forms = ref([])
 const lists = ref([])
 const entityFields = ref([])
@@ -271,8 +266,7 @@ const filteredServices = computed(() => {
   })
 })
 
-const selectedEntity = computed(() =>
-  entities.value.find(item => String(item.id) === String(selectedEntityId.value)))
+const selectedEntity = ref(null)
 
 const bindingOwnerId = computed(() => {
   if (bindingOwnerType.value === 'ENTITY') return selectedEntityId.value
@@ -333,16 +327,20 @@ const allowedEvents = computed(() => {
 async function loadAll() {
   loading.value = true
   try {
-    const [serviceRows, serviceCatalog, entityRows] = await Promise.all([
+    const [serviceRows, serviceCatalog, entityPage] = await Promise.all([
       uiDataSourceApi.list(),
       uiDataSourceApi.catalog(),
-      entityApi.getAll()
+      entityApi.getOptions({
+        pageNum: 1,
+        pageSize: 1,
+        storageMode: 'DYNAMIC'
+      })
     ])
     services.value = Array.isArray(serviceRows) ? serviceRows : []
     catalog.value = serviceCatalog || {}
-    entities.value = Array.isArray(entityRows) ? entityRows : []
-    if (!selectedEntityId.value && entities.value.length) {
-      selectedEntityId.value = entities.value[0].id
+    if (!selectedEntityId.value && entityPage?.records?.length) {
+      selectedEntity.value = entityPage.records[0]
+      selectedEntityId.value = selectedEntity.value.id
       await loadEntityChildren()
     }
   } catch (error) {
@@ -350,6 +348,17 @@ async function loadAll() {
   } finally {
     loading.value = false
   }
+}
+
+function rememberBindingEntity(entity) {
+  if (entity && !Array.isArray(entity)) {
+    selectedEntity.value = entity
+  }
+}
+
+async function handleBindingEntitySelected(entity) {
+  selectedEntity.value = entity || null
+  await loadEntityChildren()
 }
 
 async function loadEntityChildren() {

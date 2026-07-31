@@ -252,15 +252,51 @@ public class EntityListActionConfigService {
             boolean toolbar,
             String entityCode,
             boolean strictCustomPermission) {
+        EntityDefinition definition = StringUtils.hasText(entityCode)
+                ? definitionMapper.findByEntityCode(entityCode).orElse(null)
+                : null;
+        if (definition != null
+                && definition.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM) {
+            if (toolbar) {
+                return List.of();
+            }
+            List<Map<String, Object>> configured =
+                    source == null || source.isEmpty()
+                            ? List.of(Map.of(
+                                    "key", "view",
+                                    "type", "built-in",
+                                    "label", "查看",
+                                    "buttonType", "primary",
+                                    "link", true,
+                                    "sort", 1,
+                                    "enabled", true,
+                                    "perm", ""))
+                            : source;
+            List<Map<String, Object>> readOnly = new ArrayList<>();
+            for (Map<String, Object> original : configured) {
+                if (!"view".equalsIgnoreCase(
+                        asString(original.get("key")))) {
+                    throw new IllegalArgumentException(
+                            "平台系统表列表只能配置查看操作");
+                }
+                Map<String, Object> button =
+                        new LinkedHashMap<>(original);
+                button.put("key", "view");
+                button.put("type", "built-in");
+                button.put("perm", "");
+                button.put("enabled", true);
+                readOnly.add(button);
+            }
+            return readOnly;
+        }
+
         List<Map<String, Object>> buttons = new ArrayList<>(source);
         if (buttons.isEmpty()) {
             buttons = defaultButtons(toolbar);
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
-        EntityDefinition definition = StringUtils.hasText(entityCode)
-                ? definitionMapper.findByEntityCode(entityCode).orElse(null)
-                : null;
         for (Map<String, Object> original : buttons) {
             Map<String, Object> button = new LinkedHashMap<>(original);
             String key = asString(button.get("key"));

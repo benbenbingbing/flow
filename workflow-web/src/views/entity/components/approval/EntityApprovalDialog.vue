@@ -10,6 +10,8 @@
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
             :entityCode="entityCode"
+            :entityDefinition="entityDefinition"
+            :entityFields="entityFields"
             :context="approvalRuntimeContext"
             :dataSourceRuntime="dataSourceRuntime"
             :excludedNodeIds="approvalLiftedRootNodeIds"
@@ -29,6 +31,8 @@
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
             :entityCode="entityCode"
+            :entityDefinition="entityDefinition"
+            :entityFields="entityFields"
             :context="approvalRuntimeContext"
             :dataSourceRuntime="dataSourceRuntime"
             :nodeRootParentId="tab.rootParentId"
@@ -137,14 +141,19 @@ import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
+import { resolveApprovalFormConfig } from './entityApprovalDisplay.js'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
   defaultForm?: any
+  entityDefinition?: any
+  entityFields?: any[]
   listKey?: string
 }>(), {
   entityCode: '',
   defaultForm: null,
+  entityDefinition: () => ({}),
+  entityFields: () => [],
   listKey: ''
 })
 
@@ -196,9 +205,12 @@ const effectiveApprovalConfig = computed(() => {
 })
 
 const approvalFormReadonly = computed(() => {
-  return isViewMode.value || isRuntimeFormReadonly(formConfig.value)
+  return isViewMode.value || isRuntimeFormReadonly(effectiveFormConfig.value)
 })
 
+const effectiveFormConfig = computed(() =>
+  resolveApprovalFormConfig(formConfig.value, props.defaultForm)
+)
 const approvalRuntimeMode = computed(() => isViewMode.value ? 'view' : 'approve')
 const approvalRuntimeContext = computed(() => ({
   entityCode: props.entityCode,
@@ -206,7 +218,7 @@ const approvalRuntimeContext = computed(() => ({
   record: entityData.value,
   task: currentTask.value,
   processInstanceId: currentTask.value?.processInstanceId,
-  releaseResolutionToken: formConfig.value?.releaseResolutionToken
+  releaseResolutionToken: effectiveFormConfig.value?.releaseResolutionToken
 }))
 const dataSourceRuntime = createFormDataSourceRuntime({
   entityCode: props.entityCode,
@@ -219,17 +231,19 @@ const dataSourceRuntime = createFormDataSourceRuntime({
 
 // 审批弹窗中的 Tab 子表单字段
 const approvalTabSubForms = computed(() => {
-  const fields = formConfig.value?.fields || []
+  const fields = effectiveFormConfig.value?.fields || []
   return fields.filter((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value) && isTabSubForm(f))
 })
 
 // 审批弹窗中普通字段组成的 form（给 FormPreviewLinkage 用，不含 tab 子表单）
 const approvalNormalForm = computed(() => {
-  const fields = (formConfig.value?.fields || [])
+  const sourceForm = effectiveFormConfig.value
+  if (!sourceForm) return null
+  const fields = (sourceForm.fields || [])
     .filter((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value))
     .filter((f: any) => !isTabSubForm(f))
   return {
-    ...formConfig.value,
+    ...sourceForm,
     fields
   }
 })

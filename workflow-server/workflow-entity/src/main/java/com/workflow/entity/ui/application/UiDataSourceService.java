@@ -2,6 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -79,6 +80,7 @@ public class UiDataSourceService {
         private final EntityFormMapper formMapper;
         private final EntityListConfigMapper listMapper;
         private final EntityDefinitionAccessPolicy entityAccessPolicy;
+        private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
         private final EntityDataDynamicService dynamicService;
         private final SysDictItemService dictItemService;
         private final UiDataSourceExecutionAccessService executionAccessService;
@@ -112,6 +114,7 @@ public class UiDataSourceService {
                         EntityFormMapper formMapper,
                         EntityListConfigMapper listMapper,
                         EntityDefinitionAccessPolicy entityAccessPolicy,
+                        EntityUiConfigurationPolicy entityUiConfigurationPolicy,
                         EntityDataDynamicService dynamicService,
                         SysDictItemService dictItemService,
                         UiDataSourceExecutionAccessService executionAccessService,
@@ -124,6 +127,8 @@ public class UiDataSourceService {
                 this.formMapper = formMapper;
                 this.listMapper = listMapper;
                 this.entityAccessPolicy = entityAccessPolicy;
+                this.entityUiConfigurationPolicy =
+                                entityUiConfigurationPolicy;
                 this.dynamicService = dynamicService;
                 this.dictItemService = dictItemService;
                 this.executionAccessService = executionAccessService;
@@ -222,10 +227,11 @@ public class UiDataSourceService {
                         value.setCreatedAt(LocalDateTime.now());
                         mapper.insert(value);
                 } else {
-                        value.setRevision(current.getRevision() + 1);
+                        int currentRevision = current.getRevision();
+                        value.setRevision(currentRevision + 1);
                         UpdateWrapper<UiDataSourceDefinition> wrapper = new UpdateWrapper<>();
                         wrapper.eq("id", value.getId())
-                                        .eq("revision", current.getRevision())
+                                        .eq("revision", currentRevision)
                                         .eq("deleted", 0)
                                         .set("source_code", value.getSourceCode())
                                         .set("source_name", value.getSourceName())
@@ -978,14 +984,18 @@ public class UiDataSourceService {
                         EntityForm form = formMapper.selectById(scopeId);
                         if (form == null)
                                 throw new IllegalArgumentException("表单作用域不存在");
-                        entityAccessPolicy.requireDynamicById(form.getEntityId());
+                        entityUiConfigurationPolicy
+                                        .requireConfigurableById(
+                                                        form.getEntityId());
                         return;
                 }
                 if ("LIST".equals(scopeType)) {
                         EntityListConfig list = listMapper.selectById(scopeId);
                         if (list == null)
                                 throw new IllegalArgumentException("列表作用域不存在");
-                        entityAccessPolicy.requireDynamicById(list.getEntityId());
+                        entityUiConfigurationPolicy
+                                        .requireConfigurableById(
+                                                        list.getEntityId());
                 }
         }
 

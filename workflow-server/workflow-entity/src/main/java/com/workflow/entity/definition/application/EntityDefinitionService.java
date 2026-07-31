@@ -5,9 +5,7 @@ import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -63,6 +61,7 @@ public class EntityDefinitionService {
     private final EntityFieldOptionService fieldOptionService;
     private final ObjectMapper objectMapper;
     private final EntityFieldValidationRuleService fieldValidationRuleService;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
     private final MigrationAssetHandler migrationAssetHandler;
@@ -81,31 +80,15 @@ public class EntityDefinitionService {
      */
     @Transactional(readOnly = true)
     public PageResult<EntityDefinitionDTO> findPage(EntityDefinitionQueryDTO query) {
+        EntityDefinitionQueryDTO safeQuery = query == null ? new EntityDefinitionQueryDTO() : query;
         Page<EntityDefinition> page = new Page<>(
-                query.getPageNum() != null && query.getPageNum() > 0 ? query.getPageNum() : 1,
-                query.getPageSize() != null && query.getPageSize() > 0 ? query.getPageSize() : 10
+                safeQuery.getPageNum() != null && safeQuery.getPageNum() > 0 ? safeQuery.getPageNum() : 1,
+                safeQuery.getPageSize() != null && safeQuery.getPageSize() > 0 ? safeQuery.getPageSize() : 10
         );
 
-        LambdaQueryWrapper<EntityDefinition> wrapper = Wrappers.<EntityDefinition>lambdaQuery()
-                .orderByDesc(EntityDefinition::getCreatedAt);
-
-        if (StringUtils.isNotBlank(query.getStatus())) {
-            wrapper.eq(EntityDefinition::getStatus, query.getStatus());
-        }
-        if (query.getLifecycleMode() != null) {
-            wrapper.eq(EntityDefinition::getLifecycleMode, query.getLifecycleMode());
-        }
-        if (query.getStorageMode() != null) {
-            wrapper.eq(EntityDefinition::getStorageMode, query.getStorageMode());
-        }
-        if (StringUtils.isNotBlank(query.getKeyword())) {
-            String keyword = query.getKeyword().trim();
-            wrapper.and(w -> w.like(EntityDefinition::getEntityName, keyword)
-                    .or()
-                    .like(EntityDefinition::getEntityCode, keyword));
-        }
-
-        Page<EntityDefinition> resultPage = entityMapper.selectPage(page, wrapper);
+        Page<EntityDefinition> resultPage = entityMapper.selectPage(
+                page,
+                EntityDefinitionQueryBuilder.build(safeQuery));
         List<EntityDefinitionDTO> records = fillProcessNames(resultPage.getRecords());
         return new PageResult<>(records, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
@@ -1053,6 +1036,15 @@ public class EntityDefinitionService {
         dto.setProcessName(processName);
         dto.setLifecycleMode(lifecycleMode(entity));
         dto.setStorageMode(storageMode(entity));
+        boolean systemEntity =
+                storageMode(entity) == EntityDefinition.StorageMode.SYSTEM;
+        boolean uiConfigurable = !systemEntity
+                || systemEntityFieldPolicy.isSupportedEntity(
+                        entity.getEntityCode());
+        dto.setStructureEditable(!systemEntity);
+        dto.setFormConfigurable(uiConfigurable);
+        dto.setListConfigurable(uiConfigurable);
+        dto.setRuntimeReadOnly(systemEntity);
         dto.setTeamVisibilityEnabled(Boolean.TRUE.equals(entity.getTeamVisibilityEnabled()));
         dto.setTeamVisibilityLevel(entity.getTeamVisibilityLevel() == null
                 ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
@@ -1065,7 +1057,7 @@ public class EntityDefinitionService {
         
         if (entity.getFields() != null) {
             dto.setFields(entity.getFields().stream()
-                    .map(this::convertToDTO)
+                    .map(field -> convertToDTO(entity, field))
                     .collect(Collectors.toList()));
             enrichRelationFields(dto);
         }
@@ -1074,6 +1066,15 @@ public class EntityDefinitionService {
     }
     
     private EntityFieldDTO convertToDTO(EntityField field) {
+        EntityDefinition entity = field.getEntityId() == null
+                ? null
+                : entityMapper.selectById(field.getEntityId());
+        return convertToDTO(entity, field);
+    }
+
+    private EntityFieldDTO convertToDTO(
+            EntityDefinition entity,
+            EntityField field) {
         EntityFieldDTO dto = new EntityFieldDTO();
         dto.setId(field.getId());
         dto.setFieldCode(field.getFieldCode());
@@ -1104,12 +1105,23 @@ public class EntityDefinitionService {
         dto.setIsSystem(field.getIsSystem());
         dto.setEditable(field.getEditable());
         dto.setIsPublished(field.getIsPublished());
+        dto.setUiConfigurable(
+                systemEntityFieldPolicy.isUiConfigurable(entity, field));
+        dto.setRuntimeReadable(
+                systemEntityFieldPolicy.isRuntimeReadable(entity, field));
         dto.setFileTypes(field.getFileTypes());
         dto.setFileMaxSize(field.getFileMaxSize());
         dto.setFileMaxCount(field.getFileMaxCount());
         // 实体引用/子表单字段
         dto.setRefEntityId(field.getRefEntityId());
-        dto.setRefEntityType(field.getRefEntityType() != null ? field.getRefEntityType().name() : null);
+        EntityField.RefEntityType referenceType =
+                field.getRefEntityType() != null
+                        ? field.getRefEntityType()
+                        : systemEntityFieldPolicy.referenceType(
+                                entity == null ? null : entity.getEntityCode(),
+                                field.getFieldCode());
+        dto.setRefEntityType(
+                referenceType == null ? null : referenceType.name());
         dto.setDisplayMode(field.getDisplayMode());
         dto.setRefFieldCode(field.getRefFieldCode());
         // 加载文件字段的多组附件配置

@@ -15,8 +15,8 @@ export const ENTITY_FIELD_TYPES = [
   { value: 'IMAGE', label: '图片', icon: 'Picture' },
   { value: 'USER', label: '用户', icon: 'User' },
   { value: 'DEPT', label: '部门', icon: 'OfficeBuilding' },
-  { value: 'REFERENCE', label: '单选实体', icon: 'Connection' },
-  { value: 'MULTI_REFERENCE', label: '多选实体', icon: 'Share' },
+  { value: 'REFERENCE', label: '实体记录单选', icon: 'Connection' },
+  { value: 'MULTI_REFERENCE', label: '实体记录多选', icon: 'Share' },
   { value: 'SUB_FORM', label: '子表单', icon: 'Grid' },
   { value: 'SUB_FORM_LIST', label: '子表单列表', icon: 'List' }
 ]
@@ -52,6 +52,12 @@ export function filterEntityFieldsByLifecycle(entity, fields = []) {
 export function getEntityFieldTypeLabel(type) {
   const found = ENTITY_FIELD_TYPES.find((item) => item.value === type)
   return found?.label || type
+}
+
+export function getEntityReferenceSelectionHint(type) {
+  return String(type || '').toUpperCase() === 'MULTI_REFERENCE'
+    ? '这里只配置一个目标实体；业务数据填写时可从该实体中选择多条记录。'
+    : '这里只配置一个目标实体；业务数据填写时从该实体中选择一条记录。'
 }
 
 export function getEntityFieldTypeTag(type) {

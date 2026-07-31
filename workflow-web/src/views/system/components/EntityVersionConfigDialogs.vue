@@ -157,14 +157,14 @@
         <el-input v-model="target.bindingCode" :disabled="targetIndex >= 0" />
       </el-form-item>
       <el-form-item label="来源实体" required>
-        <el-select v-model="target.sourceEntityCode" filterable>
-          <el-option
-            v-for="item in entities"
-            :key="item.entityCode"
-            :label="`${item.entityName} (${item.entityCode})`"
-            :value="item.entityCode"
-          />
-        </el-select>
+        <EntityDefinitionPicker
+          v-model="target.sourceEntityCode"
+          value-key="entityCode"
+          title="选择来源实体"
+          :query="{ storageMode: 'DYNAMIC' }"
+          @selected="emit('sourceEntityResolved', $event)"
+          @resolved="emit('sourceEntityResolved', $event)"
+        />
       </el-form-item>
       <el-form-item label="目标实体">
         <el-input :model-value="`${targetEntityName} (${targetEntityCode})`" disabled />
@@ -316,6 +316,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Search } from '@element-plus/icons-vue'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 
 const props = defineProps({
   scenarioVisible: Boolean,
@@ -333,7 +334,6 @@ const props = defineProps({
   targetVisible: Boolean,
   targetIndex: { type: Number, default: -1 },
   targetEditor: { type: Object, required: true },
-  entities: { type: Array, default: () => [] },
   targetEntityName: { type: String, default: '' },
   targetEntityCode: { type: String, default: '' },
   resolverTypeOptions: { type: Array, default: () => [] },
@@ -362,6 +362,7 @@ const emit = defineEmits([
   'saveTarget',
   'openPicker',
   'selectPickerItem',
+  'sourceEntityResolved',
   'runSimulation'
 ])
 

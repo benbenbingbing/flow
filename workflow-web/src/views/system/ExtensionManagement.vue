@@ -199,21 +199,14 @@
             label="指定实体"
             required
           >
-            <el-select
+            <EntityDefinitionPicker
               v-model="editor.entityCodes"
               multiple
-              filterable
-              collapse-tags
-              collapse-tags-tooltip
-              style="width: 100%"
-            >
-              <el-option
-                v-for="entity in entities"
-                :key="entity.entityCode"
-                :label="`${entity.entityName} (${entity.entityCode})`"
-                :value="String(entity.entityCode).toLowerCase()"
-              />
-            </el-select>
+              value-key="entityCode"
+              value-case="lower"
+              title="选择动作适用实体"
+              placeholder="选择可使用该动作的实体"
+            />
           </el-form-item>
           <el-form-item label="允许配置">
             <el-switch v-model="editor.enabled" />
@@ -380,7 +373,7 @@ import PageState from '@/components/PageState.vue'
 import { extensionCatalogApi, personResolverApi } from '@/api/system/extension'
 import { processActionApi } from '@/api/processAction'
 import { uiExtensionApi } from '@/api/uiConfig'
-import { entityApi } from '@/api/entity'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import {
   getManagedExtensionManifest,
   isPlatformBuiltInUiExtension
@@ -426,7 +419,6 @@ const rows = ref([])
 const loading = ref(false)
 const loadError = ref('')
 const searchExpanded = ref(false)
-const entities = ref([])
 const editorVisible = ref(false)
 const saving = ref(false)
 const editor = reactive(emptyEditor())
@@ -585,17 +577,8 @@ function handleSizeChange() {
   load()
 }
 
-async function ensureEntities() {
-  if (entities.value.length) return
-  const result = await entityApi.getList({ pageNum: 1, pageSize: 1000 })
-  entities.value = Array.isArray(result)
-    ? result
-    : result?.records || result?.list || []
-}
-
 async function openEdit(row) {
   if (row.capabilityType === 'FLOW_ACTION') {
-    await ensureEntities()
     resetEditor({
       kind: 'FLOW_ACTION',
       configured: row.configured,

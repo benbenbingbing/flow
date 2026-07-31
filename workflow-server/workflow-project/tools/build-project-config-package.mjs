@@ -9,7 +9,7 @@ const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 const resourcesRoot = path.join(moduleRoot, "src/main/resources");
 const output = path.join(
   resourcesRoot,
-  "project-config/packages/project-f01-f06-v2.wfpack"
+  "project-config/packages/project-f01-f07-v3.wfpack"
 );
 const signingKey = process.env.CONFIG_MIGRATION_SIGNING_KEY
   || "workflow-config-migration-development-key";
@@ -145,8 +145,8 @@ for (const [assetType, businessKey, assetName, relativeSource] of assetSources) 
 addEntry("dependencies.json", compact([...packageDependencies.values()]));
 addEntry("manifest.json", compact({
   formatVersion: 1,
-  packageNo: "WFP-PROJECT-F01-F06-V2-20260728-R13",
-  migrationTag: "PROJECT-F01-F06-V2",
+  packageNo: "WFP-PROJECT-F01-F07-V3-20260730-R14",
+  migrationTag: "PROJECT-F01-F07-V3",
   sourceEnvironment: "local",
   createdAt: new Date().toISOString(),
   assets: manifestAssets

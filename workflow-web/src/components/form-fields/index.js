@@ -144,10 +144,24 @@ const builtInDescriptors = [
   descriptor('file', '文件上传', FileField, supportedTypes('file')),
   descriptor('image', '图片上传', FileField, supportedTypes('image')),
   descriptor('cascader', '级联选择', CascaderField, supportedTypes('cascader'), [
-    { key: 'cascaderOptions', label: '级联选项', type: 'json' }
+    {
+      key: 'cascaderOptions',
+      label: '级联选项',
+      type: 'json',
+      jsonShape: 'array',
+      helpKey: 'entityForm.cascaderOptions',
+      example: [
+        {
+          value: 'china',
+          label: '中国',
+          children: [{ value: 'beijing', label: '北京' }]
+        }
+      ],
+      description: 'value、label、children 组成的树形选项数组。'
+    }
   ]),
-  descriptor('reference', '实体引用单选', EntityField, supportedTypes('reference')),
-  descriptor('multi_reference', '实体引用多选', EntityField, supportedTypes('multi_reference')),
+  descriptor('reference', '实体记录单选', EntityField, supportedTypes('reference')),
+  descriptor('multi_reference', '实体记录多选', EntityField, supportedTypes('multi_reference')),
   descriptor('sub_form', '子表单', SubFormField, supportedTypes('sub_form')),
   descriptor('section', '分组标题', SectionField, supportedTypes('section'))
 ]

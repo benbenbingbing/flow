@@ -60,6 +60,14 @@ public class UiEventBindingService {
             Set.of("BEFORE", "REPLACE", "AFTER");
     private static final Set<String> FAILURE_POLICIES =
             Set.of("STOP", "CONTINUE", "EMPTY");
+    private static final Set<String> SYSTEM_READ_ONLY_EVENTS =
+            Set.of(
+                    "LIST_LOAD",
+                    "DETAIL_LOAD",
+                    "FORM_OPEN",
+                    "FIELD_CHANGE",
+                    "ENTITY_SELECTED",
+                    "SUBFORM_LOAD");
 
     private final UiEventBindingMapper mapper;
     private final UiConfigReleaseMapper releaseMapper;
@@ -102,6 +110,11 @@ public class UiEventBindingService {
                         ? request.getTargetType() : "OWNER");
         String eventCode = normalize(request.getEventCode());
         requireOwnerAccess(ownerType, request.getOwnerId());
+        validateSystemReadOnlyEvent(
+                ownerType,
+                request.getOwnerId(),
+                eventCode,
+                request.getSteps());
         UiEventBinding current = StringUtils.hasText(request.getId())
                 ? mapper.selectById(request.getId())
                 : findExisting(
@@ -132,10 +145,11 @@ public class UiEventBindingService {
             value.setCreatedAt(LocalDateTime.now());
             mapper.insert(value);
         } else {
-            value.setRevision(current.getRevision() + 1);
+            int currentRevision = current.getRevision();
+            value.setRevision(currentRevision + 1);
             UpdateWrapper<UiEventBinding> update = new UpdateWrapper<>();
             update.eq("id", current.getId())
-                    .eq("revision", current.getRevision())
+                    .eq("revision", currentRevision)
                     .eq("deleted", 0)
                     .set("owner_type", value.getOwnerType())
                     .set("owner_id", value.getOwnerId())
@@ -505,6 +519,61 @@ public class UiEventBindingService {
             }
             default -> throw new IllegalArgumentException(
                     "不支持的绑定作用域: " + ownerType);
+        }
+    }
+
+    private void validateSystemReadOnlyEvent(
+            String ownerType,
+            String ownerId,
+            String eventCode,
+            List<Map<String, Object>> steps) {
+        if ("ENTITY".equals(ownerType)) {
+            return;
+        }
+        ConfigIdentity identity = identity(ownerType, ownerId);
+        EntityDefinition entity =
+                definitionMapper.selectById(identity.entityId());
+        if (entity == null
+                || entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        if (!SYSTEM_READ_ONLY_EVENTS.contains(eventCode)) {
+            throw new IllegalArgumentException(
+                    "平台系统表只能配置只读 UI 事件: "
+                            + eventCode);
+        }
+        for (Map<String, Object> step :
+                steps == null
+                        ? List.<Map<String, Object>>of()
+                        : steps) {
+            String serviceId = firstText(
+                    step.get("serviceId"),
+                    step.get("sourceId"));
+            if (!StringUtils.hasText(serviceId)) {
+                continue;
+            }
+            String operationCode = firstText(
+                    step.get("operationCode"),
+                    "default");
+            Map<String, Object> operation =
+                    dataSourceService.operations(serviceId)
+                            .stream()
+                            .filter(item -> Objects.equals(
+                                    operationCode,
+                                    text(item.get("code"))))
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "接口服务操作不存在: "
+                                                    + serviceId
+                                                    + "/"
+                                                    + operationCode));
+            if (!"READ".equals(normalize(
+                    text(operation.get("kind"))))) {
+                throw new IllegalArgumentException(
+                        "平台系统表只允许调用 READ 类型数据源操作");
+            }
         }
     }
 

@@ -338,9 +338,12 @@
     <el-dialog v-model="transferDialogVisible" title="任务转办" width="400px" :close-on-click-modal="false">
       <el-form :model="transferForm" label-width="80px">
         <el-form-item label="转办人" required>
-          <el-select v-model="transferForm.transferTo" placeholder="请选择转办人" filterable clearable style="width: 100%">
-            <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
-          </el-select>
+          <UserSelector
+            v-model="transferForm.transferTo"
+            value-key="code"
+            placeholder="请选择转办人"
+            title="选择转办人"
+          />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="transferForm.comment" type="textarea" :rows="3" placeholder="请输入转办备注" />
@@ -355,9 +358,14 @@
     <el-dialog v-model="addSignDialogVisible" title="任务加签" width="520px">
       <el-form label-width="90px">
         <el-form-item label="加签人员" required>
-          <el-select v-model="addSignForm.userIds" multiple filterable style="width:100%" placeholder="请选择加签人员" @change="loadAddSignPreview">
-            <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
-          </el-select>
+          <UserSelector
+            v-model="addSignForm.userIds"
+            multiple
+            value-key="code"
+            placeholder="请选择加签人员"
+            title="选择加签人员"
+            @change="loadAddSignPreview"
+          />
         </el-form-item>
         <el-form-item label="加签方式" required>
           <el-radio-group v-model="addSignForm.type" @change="loadAddSignPreview">
@@ -389,9 +397,13 @@
     <el-dialog v-model="ccDialogVisible" title="人工知会" width="520px">
       <el-form label-width="90px">
         <el-form-item label="知会人员" required>
-          <el-select v-model="ccForm.userIds" multiple filterable style="width:100%" placeholder="请选择知会人员">
-            <el-option v-for="user in userOptions" :key="user.value" :label="user.label" :value="user.value" />
-          </el-select>
+          <UserSelector
+            v-model="ccForm.userIds"
+            multiple
+            value-key="code"
+            placeholder="请选择知会人员"
+            title="选择知会人员"
+          />
         </el-form-item>
         <el-form-item label="知会说明">
           <el-input v-model="ccForm.comment" type="textarea" :rows="3" />
@@ -411,9 +423,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell, Check, Share, Timer } from '@element-plus/icons-vue'
 import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
 import PageState from '@/components/PageState.vue'
+import UserSelector from '@/components/UserSelector.vue'
 import { PRODUCT_TERMS } from '@/constants/productTerminology'
 import { getTodoList, getDoneList, getStatistics, completeTask, claimTask, getMyStartedList, terminateProcess, getTaskOperations, addSignTask, previewAddSign, cancelAddSign, ccTask, getMyCcList, markCcRead } from '@/api/processTask'
-import { getUserList } from '@/api/system/user'
 
 // 统计数据
 const statistics = reactive({
@@ -462,9 +474,6 @@ const total = computed(() => {
   if (activeTab.value === 'started') return startedTotal.value
   return ccTotal.value
 })
-
-// 用户选项
-const userOptions = ref([])
 
 // 审批弹窗
 const approvalDialogRef = ref(null)
@@ -648,20 +657,6 @@ async function loadCcList() {
   }
 }
 
-// 加载用户列表
-async function loadUsers() {
-  if (userOptions.value.length > 0) return
-  try {
-    const res = await getUserList()
-    userOptions.value = res.map(user => ({
-      label: `${user.nickname || user.username} (${user.username})`,
-      value: user.username
-    }))
-  } catch (e) {
-    console.error('加载用户列表失败:', e)
-  }
-}
-
 async function handleBatchClaim() {
   const tasks = selectedTodoRows.value.filter(row => row.claimRequired && row.taskId)
   if (!tasks.length) return
@@ -728,16 +723,14 @@ function onApprovalSuccess() {
 }
 
 // 打开转办弹窗
-async function openTransferDialog(row) {
-  await loadUsers()
+function openTransferDialog(row) {
   transferForm.taskId = row.taskId
   transferForm.transferTo = ''
   transferForm.comment = ''
   transferDialogVisible.value = true
 }
 
-async function openAddSignDialog(row) {
-  await loadUsers()
+function openAddSignDialog(row) {
   Object.assign(addSignForm, { taskId: row.taskId, type: 'BEFORE', userIds: [], comment: '' })
   Object.assign(addSignPreview, { structure: '', duplicates: [], disabled: [], invalid: [] })
   addSignDialogVisible.value = true
@@ -749,8 +742,7 @@ async function loadAddSignPreview() {
   Object.assign(addSignPreview, result || {})
 }
 
-async function openCcDialog(row) {
-  await loadUsers()
+function openCcDialog(row) {
   Object.assign(ccForm, { taskId: row.taskId, userIds: [], comment: '' })
   ccDialogVisible.value = true
 }

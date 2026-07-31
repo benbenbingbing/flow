@@ -12,17 +12,17 @@ export const entityApi = {
   },
 
   /**
-   * 获取全部实体定义，用于配置项下拉选择。
+   * 获取实体选择器使用的轻量分页选项。
    */
-  async getAll(params = {}) {
-    const response = await request.get('/entity', {
-      params: { pageNum: 1, pageSize: 1000, ...params }
-    })
-    if (Array.isArray(response)) return response
-    if (Array.isArray(response?.records)) return response.records
-    if (Array.isArray(response?.list)) return response.list
-    if (Array.isArray(response?.data)) return response.data
-    return []
+  getOptions(params = {}) {
+    return request.get('/entity/options', { params })
+  },
+
+  /**
+   * 批量解析已保存的实体 ID 或编码，用于分页选择器回显。
+   */
+  resolveOptions(data = {}) {
+    return request.post('/entity/options/resolve', data)
   },
 
   /**

@@ -77,12 +77,30 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
 
   const value = getCellValue(row, field, undefined)
   if (value === null || value === undefined) return '-'
+  const displayValue = getCellValue(
+    row,
+    { fieldCode: `${fieldCode}_display` },
+    undefined
+  )
+  if (displayValue !== null && displayValue !== undefined && displayValue !== '') {
+    return displayValue
+  }
 
   const fieldType = (field.fieldType || '').toUpperCase()
   const componentType = field.componentType || ''
 
   // 实体引用字段（含 DEPT/USER/ROLE/GROUP 等系统实体和自定义引用）
-  if (['REFERENCE', 'MULTI_REFERENCE', 'DEPT', 'USER', 'ROLE', 'GROUP'].includes(fieldType)) {
+  if ([
+    'REFERENCE',
+    'MULTI_REFERENCE',
+    'DEPT',
+    'USER',
+    'ROLE',
+    'GROUP',
+    'MENU',
+    'DICT',
+    'DICT_ITEM'
+  ].includes(String(field.refEntityType || fieldType).toUpperCase())) {
     const entityType = field.refEntityType || field.fieldType || 'CUSTOM'
     const refEntityId = field.refEntityId || ''
     const groupKey = `${entityType}:${refEntityId}`

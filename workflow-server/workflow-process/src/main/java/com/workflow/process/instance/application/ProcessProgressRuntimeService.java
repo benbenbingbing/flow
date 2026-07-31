@@ -37,9 +37,11 @@ import org.springframework.util.StringUtils;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -793,19 +795,13 @@ public class ProcessProgressRuntimeService {
             // 2. 确定要加载表单的节点ID
             String targetNodeId = currentNodeId;
             
-            // 流程已结束：取最后一个完成的节点（排除 startEvent 和 endEvent）
+            // 流程已结束：优先取最后一个完成的用户任务，避免网关被误当成表单节点。
             if (targetNodeId == null && progress.getCompletedNodes() != null && !progress.getCompletedNodes().isEmpty()) {
                 List<String> completed = progress.getCompletedNodes();
-                for (int i = completed.size() - 1; i >= 0; i--) {
-                    String nodeId = completed.get(i);
-                    if (nodeId != null && !nodeId.toLowerCase().contains("start") && !nodeId.toLowerCase().contains("end")) {
-                        targetNodeId = nodeId;
-                        break;
-                    }
-                }
-                if (targetNodeId == null) {
-                    targetNodeId = completed.get(completed.size() - 1);
-                }
+                targetNodeId = resolveLastCompletedUserTaskId(
+                        completed,
+                        bpmnXml,
+                        fallbackBpmnXml);
             }
             
             // 3. 加载表单详情（优先级：流程发布快照 > 默认）
@@ -851,14 +847,17 @@ public class ProcessProgressRuntimeService {
                 }
             }
             
-            // 3b. 映射表中没有表单绑定，尝试使用默认表单
-            if (formConfigs.isEmpty()
-                    && "RUNNING".equals(progress.getStatus())) {
+            // 3b. 映射表中没有表单绑定，使用默认表单兜底。
+            if (formConfigs.isEmpty()) {
                 com.workflow.entity.form.infrastructure.persistence.record.EntityForm entityForm =
                         entityFormRuntimeService.getDefaultForm(entityDef.getId());
                 if (entityForm != null) {
                     formConfigs.add(buildProgressFormConfig(entityForm, null, null));
-                    log.debug("节点未配置表单，回退到默认表单: nodeId={}, formId={}", targetNodeId, entityForm.getId());
+                    log.debug(
+                            "节点未配置表单，回退到默认表单: status={}, nodeId={}, formId={}",
+                            progress.getStatus(),
+                            targetNodeId,
+                            entityForm.getId());
                 }
             }
             
@@ -881,6 +880,56 @@ public class ProcessProgressRuntimeService {
                             + currentNodeId,
                     e);
         }
+    }
+
+    private String resolveLastCompletedUserTaskId(
+            List<String> completedNodeIds,
+            String bpmnXml,
+            String fallbackBpmnXml) {
+        String effectiveBpmnXml = StringUtils.hasText(bpmnXml)
+                ? bpmnXml
+                : fallbackBpmnXml;
+        Set<String> userTaskIds = new HashSet<>();
+        if (StringUtils.hasText(effectiveBpmnXml)) {
+            try {
+                javax.xml.parsers.DocumentBuilderFactory factory =
+                        javax.xml.parsers.DocumentBuilderFactory.newInstance();
+                factory.setNamespaceAware(true);
+                org.w3c.dom.Document document = factory.newDocumentBuilder()
+                        .parse(new java.io.ByteArrayInputStream(
+                                effectiveBpmnXml.getBytes(
+                                        java.nio.charset.StandardCharsets.UTF_8)));
+                org.w3c.dom.NodeList tasks =
+                        document.getElementsByTagNameNS("*", "userTask");
+                for (int index = 0; index < tasks.getLength(); index++) {
+                    org.w3c.dom.Element task =
+                            (org.w3c.dom.Element) tasks.item(index);
+                    if (StringUtils.hasText(task.getAttribute("id"))) {
+                        userTaskIds.add(task.getAttribute("id"));
+                    }
+                }
+            } catch (Exception exception) {
+                log.warn(
+                        "解析完成态用户任务失败，将使用节点名称兜底: {}",
+                        exception.getMessage());
+            }
+        }
+
+        for (int index = completedNodeIds.size() - 1; index >= 0; index--) {
+            String nodeId = completedNodeIds.get(index);
+            if (userTaskIds.contains(nodeId)) {
+                return nodeId;
+            }
+        }
+        for (int index = completedNodeIds.size() - 1; index >= 0; index--) {
+            String nodeId = completedNodeIds.get(index);
+            if (nodeId != null
+                    && !nodeId.toLowerCase().contains("start")
+                    && !nodeId.toLowerCase().contains("end")) {
+                return nodeId;
+            }
+        }
+        return completedNodeIds.get(completedNodeIds.size() - 1);
     }
 
     private static final class FormConfigResolutionException

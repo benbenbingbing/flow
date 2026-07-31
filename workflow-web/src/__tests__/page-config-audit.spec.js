@@ -170,6 +170,19 @@ const entityDataTableSource = readFileSync(
 assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/, '动态实体列表应支持自定义列表组件')
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 assert.match(entityDataList, /selectionScene[\s\S]*toolbarButtons[\s\S]*return \[\]/s, '选择型列表应隐藏业务工具栏动作')
+assert.ok(
+  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity"'),
+  '平台系统表只读列表不得显示数据版本入口'
+)
+const entityListConfigDesign = readFileSync(
+  path.join(root, 'src/views/EntityListConfigDesign.vue'),
+  'utf8'
+)
+assert.ok(
+  entityListConfigDesign.includes('availableQueryTypeOptions')
+    && entityListConfigDesign.includes("'IS_NULL'"),
+  '平台系统表列表设计器应限制为可信只读查询方式'
+)
 assert.match(
   entityDataList,
   /const handleCreate = async[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*await formDialogRef\.value\?\.openCreate\(\)/,
@@ -365,6 +378,16 @@ assert.match(
   layoutSource,
   /\.main-content\s*\{[\s\S]*?min-width:\s*0;/,
   '主内容 flex 容器应允许页面按浏览器可用宽度收缩'
+)
+assert.match(
+  layoutSource,
+  /\.content-container\s*\{[\s\S]*?width:\s*0;[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/,
+  '主内容外层 flex 容器应只占剩余宽度，避免宽表格撑出浏览器视口'
+)
+assert.match(
+  layoutSource,
+  /\.layout-container\s*\{[\s\S]*?max-width:\s*100vw;[\s\S]*?overflow:\s*hidden;/,
+  '应用布局应限制在浏览器视口内'
 )
 assert.match(
   listDesigner,
@@ -1008,12 +1031,22 @@ assert.match(
 
 assert.match(
   appShell,
+  /@media \(max-width: 760px\)[\s\S]*\.el-table-fixed-column--right[\s\S]*position: static !important/,
+  '仅移动端应取消表格固定列，桌面端需要保留最右侧操作入口'
+)
+assert.doesNotMatch(
+  appShell,
   /@media \(max-width: 1366px\)[\s\S]*\.el-table-fixed-column--right[\s\S]*position: static !important/,
-  '常见桌面与平板宽度下不应让固定列覆盖状态、时间等业务列'
+  '常见桌面宽度不应把固定操作列推到横向滚动区域之外'
 )
 
 const userManagement = readFileSync(path.join(root, 'src/views/system/User.vue'), 'utf8')
 const roleManagement = readFileSync(path.join(root, 'src/views/system/Role.vue'), 'utf8')
+assert.match(
+  userManagement,
+  /\.user-management\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?min-width:\s*0;/,
+  '用户管理页应限制在主内容可用宽度内'
+)
 for (const [name, source] of [['用户管理', userManagement], ['角色管理', roleManagement]]) {
   assert.ok(source.includes(':formatter="formatDateColumn"'), `${name}应格式化创建时间`)
   assert.ok(source.includes('type="password"'), `${name}的新增用户流程应安全输入初始密码`)

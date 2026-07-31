@@ -53,8 +53,13 @@ load_environment() {
         fail "Missing $environment_file. Copy .env.example and replace every placeholder."
     fi
 
+    if [[ -n "${JAVA_HOME:-}" ]]; then
+        export JAVA_HOME
+    fi
+
     export SERVER_PORT="${SERVER_PORT:-8080}"
     export WEB_PORT="${WEB_PORT:-3000}"
+    export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}}"
     export DB_HOST="${DB_HOST:-localhost}"
     export DB_PORT="${DB_PORT:-3306}"
     export DB_NAME="${DB_NAME:-workflow}"
@@ -287,14 +292,42 @@ run_migrations() {
     java -jar "$MIGRATOR_JAR"
 }
 
+start_detached() {
+    local pid_file="$1"
+    local log_file="$2"
+    local working_directory="$3"
+    shift 3
+
+    node -e '
+const { closeSync, openSync, writeFileSync } = require("node:fs");
+const { spawn } = require("node:child_process");
+const [pidFile, logFile, cwd, command, ...args] = process.argv.slice(1);
+const output = openSync(logFile, "w");
+const child = spawn(command, args, {
+    cwd,
+    env: process.env,
+    detached: true,
+    stdio: ["ignore", output, output]
+});
+closeSync(output);
+if (!child.pid) {
+    throw new Error(`Unable to start ${command}`);
+}
+writeFileSync(pidFile, `${child.pid}\n`);
+child.unref();
+' "$pid_file" "$log_file" "$working_directory" "$@"
+}
+
 start_schema_worker() {
     log "Starting schema worker"
-    nohup env \
+    start_detached \
+        "$SCHEMA_WORKER_PID_FILE" \
+        "$SCHEMA_WORKER_LOG" \
+        "$ROOT_DIR" \
+        env \
         MIGRATION_COMMAND=schema-worker \
         SCHEMA_WORKER_ID="local-$(hostname)-$$" \
-        java -jar "$MIGRATOR_JAR" \
-        >"$SCHEMA_WORKER_LOG" 2>&1 &
-    printf '%s\n' "$!" >"$SCHEMA_WORKER_PID_FILE"
+        java -jar "$MIGRATOR_JAR"
 }
 
 start_server() {
@@ -304,25 +337,27 @@ start_server() {
         export SPRING_FLYWAY_ENABLED=false
         export FLOWABLE_SCHEMA_UPDATE=false
         export WORKFLOW_SCHEMA_PUBLISHER_MODE=queue
-        exec nohup java -jar "$SERVER_JAR"
-    ) >"$SERVER_LOG" 2>&1 &
-    printf '%s\n' "$!" >"$SERVER_PID_FILE"
+        start_detached \
+            "$SERVER_PID_FILE" \
+            "$SERVER_LOG" \
+            "$ROOT_DIR" \
+            java -jar "$SERVER_JAR"
+    )
 }
 
 start_web() {
     [[ -x "$WEB_EXECUTABLE" ]] || fail "Vite executable was not installed"
     log "Starting web development server"
-    (
-        cd "$ROOT_DIR/workflow-web"
-        nohup env \
-            VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://127.0.0.1:${SERVER_PORT}}" \
-            "$WEB_EXECUTABLE" \
-            --host 0.0.0.0 \
-            --port "$WEB_PORT" \
-            --strictPort \
-            >"$WEB_LOG" 2>&1 &
-        printf '%s\n' "$!" >"$WEB_PID_FILE"
-    )
+    start_detached \
+        "$WEB_PID_FILE" \
+        "$WEB_LOG" \
+        "$ROOT_DIR/workflow-web" \
+        env \
+        VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://127.0.0.1:${SERVER_PORT}}" \
+        "$WEB_EXECUTABLE" \
+        --host 0.0.0.0 \
+        --port "$WEB_PORT" \
+        --strictPort
 }
 
 cleanup_failed_start() {

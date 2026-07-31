@@ -1,7 +1,8 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessRuntimeService;
-import com.workflow.process.task.application.TaskService;
+import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
+import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
@@ -23,6 +24,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -73,6 +75,8 @@ class ProcessRuntimeServiceTest {
         final IdentityService identityService = mock(IdentityService.class);
         final org.flowable.engine.TaskService taskService =
                 mock(org.flowable.engine.TaskService.class);
+        final EntityProcessLinkMapper entityProcessLinkMapper =
+                mock(EntityProcessLinkMapper.class);
         final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
         final WorkflowAutoSkipService workflowAutoSkipService =
                 mock(WorkflowAutoSkipService.class);
@@ -95,6 +99,18 @@ class ProcessRuntimeServiceTest {
             when(runtimeService.startProcessInstanceByKey(eq("expense_flow"), eq("data-1"), anyMap()))
                     .thenReturn(processInstance);
 
+            EntityProcessLink processLink = new EntityProcessLink();
+            processLink.setId("link-1");
+            processLink.setRequestId("request-1");
+            processLink.setState("PENDING");
+            processLink.setGeneration(1);
+            when(entityProcessLinkMapper.insertPending(any(EntityProcessLink.class)))
+                    .thenReturn(1);
+            when(entityProcessLinkMapper.selectForUpdate("expense", "data-1", 1))
+                    .thenReturn(processLink);
+            when(entityProcessLinkMapper.activate("link-1", "request-1", "pi-1"))
+                    .thenReturn(1);
+
             Task task = mock(Task.class);
             when(task.getId()).thenReturn("task-1");
             when(task.getName()).thenReturn("费用审批");
@@ -115,6 +131,7 @@ class ProcessRuntimeServiceTest {
                     processTaskService,
                     workflowAutoSkipService,
                     multiInstanceCollectionListener,
+                    entityProcessLinkMapper,
                     changeTargetPortProvider);
         }
     }

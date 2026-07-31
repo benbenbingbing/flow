@@ -418,7 +418,7 @@ function isTabSubForm(field: any) {
 
 // 表单字段（排除系统字段）
 const formFields = computed(() => {
-  return props.entityFields.filter((f: any) => !f.isSystem)
+  return props.entityFields.filter((f: any) => f.runtimeReadable !== false)
 })
 
 const runtimeFormFields = computed(() =>

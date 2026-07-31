@@ -631,6 +631,9 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .user-management {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 20px;
   
   .page-header {
@@ -645,6 +648,11 @@ onMounted(() => {
       font-weight: 500;
     }
   }
+}
+
+.user-management :deep(.el-table) {
+  width: 100%;
+  max-width: 100%;
 }
 
 .user-filters {

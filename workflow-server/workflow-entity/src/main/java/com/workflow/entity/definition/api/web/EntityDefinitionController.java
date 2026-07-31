@@ -5,11 +5,14 @@ import com.workflow.core.security.RequiresPermission;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.ApiResponse;
+import com.workflow.entity.definition.api.request.EntityDefinitionOptionResolveRequest;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
+import com.workflow.entity.definition.api.response.EntityDefinitionOptionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
 import com.workflow.entity.definition.api.request.EntityLifecycleModeRequest;
 import com.workflow.entity.definition.api.request.EntityWorkflowBindingRequest;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.entity.definition.application.EntityDefinitionOptionService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +30,7 @@ import java.util.List;
 public class EntityDefinitionController {
     
     private final EntityDefinitionService entityService;
+    private final EntityDefinitionOptionService entityOptionService;
     
     /**
      * 获取实体定义分页列表
@@ -34,6 +38,23 @@ public class EntityDefinitionController {
     @GetMapping
     public ApiResponse<PageResult<EntityDefinitionDTO>> list(EntityDefinitionQueryDTO query) {
         return ApiResponse.success(entityService.findPage(query));
+    }
+
+    /**
+     * 获取实体选择器分页选项。
+     */
+    @GetMapping("/options")
+    public ApiResponse<PageResult<EntityDefinitionOptionDTO>> options(EntityDefinitionQueryDTO query) {
+        return ApiResponse.success(entityOptionService.findPage(query));
+    }
+
+    /**
+     * 根据实体 ID 或编码批量回显选择项。
+     */
+    @PostMapping("/options/resolve")
+    public ApiResponse<List<EntityDefinitionOptionDTO>> resolveOptions(
+            @RequestBody EntityDefinitionOptionResolveRequest request) {
+        return ApiResponse.success(entityOptionService.resolve(request));
     }
     
     /**

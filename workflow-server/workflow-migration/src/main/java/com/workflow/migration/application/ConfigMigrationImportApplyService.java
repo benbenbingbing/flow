@@ -1,6 +1,7 @@
 package com.workflow.migration.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,6 +57,7 @@ import com.workflow.process.configuration.infrastructure.persistence.mapper.Proc
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigAssetBaselineMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigEnvironmentMappingMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportItemMapper;
@@ -63,6 +65,7 @@ import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportPack
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetMapper;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.list.application.EntityListConfigService;
@@ -135,7 +138,9 @@ public class ConfigMigrationImportApplyService {
     private final UiExtensionDefinitionService extensionDefinitionService;
     private final UiDataSourceService dataSourceService;
     private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
+    private final UiConfigReleaseMapper uiConfigReleaseMapper;
     private final UiConfigReleaseService uiConfigReleaseService;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationMenuImporter menuImporter;
     private final ObjectMapper objectMapper;
@@ -197,6 +202,18 @@ public class ConfigMigrationImportApplyService {
             applyEntityConfiguration(context, false);
         }
 
+        List<SystemEntityUiContext> systemEntityUis =
+                new ArrayList<>();
+        for (ConfigImportItem item : itemsOfType(
+                items,
+                ConfigMigrationAssetService.SYSTEM_ENTITY_UI)) {
+            systemEntityUis.add(prepareSystemEntityUi(item));
+        }
+        for (SystemEntityUiContext context : systemEntityUis) {
+            applySystemEntityUiConfiguration(context);
+            markPublished(context.item());
+        }
+
         List<ProcessContext> processes = new ArrayList<>();
         for (ConfigImportItem item : itemsOfType(items, ConfigMigrationAssetService.PROCESS)) {
             processes.add(prepareProcess(item));
@@ -251,6 +268,8 @@ public class ConfigMigrationImportApplyService {
 
         List<ConfigImportItem> items = selectedItems(importId, null);
         List<EntityContext> entityContexts = new ArrayList<>();
+        List<SystemEntityUiRollbackContext> systemUiContexts =
+                new ArrayList<>();
         List<ProcessContext> processContexts = new ArrayList<>();
         for (ConfigImportItem item : items) {
             ConfigMigrationAsset previous = previousAsset(item);
@@ -268,12 +287,30 @@ public class ConfigMigrationImportApplyService {
             rollbackItem.setSnapshotJson(previous.getSnapshotJson());
             if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
                 entityContexts.add(prepareEntity(rollbackItem, true));
-            } else {
+            } else if (ConfigMigrationAssetService.SYSTEM_ENTITY_UI
+                    .equals(item.getAssetType())) {
+                systemUiContexts.add(
+                        new SystemEntityUiRollbackContext(
+                                prepareSystemEntityUi(rollbackItem),
+                                item));
+            } else if (ConfigMigrationAssetService.PROCESS
+                    .equals(item.getAssetType())) {
                 processContexts.add(prepareProcess(rollbackItem));
+            } else {
+                throw new IllegalStateException(
+                        "不支持回滚的迁移资产类型: "
+                                + item.getAssetType());
             }
         }
         for (EntityContext context : entityContexts) {
             applyEntityConfiguration(context, true);
+        }
+        for (SystemEntityUiRollbackContext rollback :
+                systemUiContexts) {
+            applySystemEntityUiConfiguration(rollback.context());
+            disableSystemUiConfigurationsAbsentFrom(
+                    rollback.originalItem(),
+                    rollback.context().snapshot());
         }
         bindEntities(entityContexts, processContexts);
 
@@ -299,6 +336,124 @@ public class ConfigMigrationImportApplyService {
         importPackage.setPublishedAt(LocalDateTime.now());
         importPackageMapper.updateById(importPackage);
         return publishResult(importPackage, items);
+    }
+
+    private SystemEntityUiContext prepareSystemEntityUi(
+            ConfigImportItem item) {
+        Map<String, Object> snapshot =
+                readMap(item.getSnapshotJson());
+        Map<String, Object> definition =
+                mapValue(snapshot.get("definition"));
+        String entityCode = text(
+                definition.get("entityCode"),
+                item.getBusinessKey());
+        EntityDefinition entity = entityMapper
+                .findByEntityCode(entityCode)
+                .orElseThrow(() -> new IllegalStateException(
+                        "目标环境缺少系统实体: " + entityCode));
+        if (entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            throw new IllegalStateException(
+                    "目标实体不是平台系统实体: " + entityCode);
+        }
+        if (!systemEntityFieldPolicy.isSupportedEntity(
+                entityCode)) {
+            throw new IllegalStateException(
+                    "目标系统实体不在UI配置白名单: "
+                            + entityCode);
+        }
+        validateSystemEntityUiFields(entity, snapshot);
+        return new SystemEntityUiContext(
+                item, snapshot, definition, entity);
+    }
+
+    private void applySystemEntityUiConfiguration(
+            SystemEntityUiContext context) {
+        Map<String, Object> snapshot = context.snapshot();
+        EntityDefinition entity = context.entity();
+        if (snapshot.containsKey("extensions")) {
+            applyExtensions(mapList(snapshot.get("extensions")));
+        }
+        if (snapshot.containsKey("dataSources")) {
+            Map<String, String> dataSourceIds = applyDataSources(
+                    entity,
+                    mapList(snapshot.get("dataSources")));
+            snapshot.put(
+                    "forms",
+                    rewriteDataSourceReferences(
+                            snapshot.get("forms"),
+                            dataSourceIds));
+            snapshot.put(
+                    "lists",
+                    rewriteDataSourceReferences(
+                            snapshot.get("lists"),
+                            dataSourceIds));
+        }
+        if (snapshot.containsKey("forms")) {
+            applyForms(entity, mapList(snapshot.get("forms")));
+        }
+        if (snapshot.containsKey("lists")) {
+            applyLists(entity, mapList(snapshot.get("lists")));
+        }
+    }
+
+    private void validateSystemEntityUiFields(
+            EntityDefinition entity,
+            Map<String, Object> snapshot) {
+        Map<String, EntityField> fields =
+                fieldsByCode(entity.getId());
+        Set<String> references = new LinkedHashSet<>(
+                stringList(snapshot.get("referencedFields")));
+        for (Map<String, Object> form :
+                mapList(snapshot.get("forms"))) {
+            mapList(form.get("fields")).forEach(field ->
+                    references.add(text(
+                            field.get("fieldCode"), "")));
+            mapList(form.get("nodes")).forEach(node -> {
+                String fieldCode =
+                        systemNodeFieldCode(node);
+                if (StringUtils.hasText(fieldCode)) {
+                    references.add(fieldCode);
+                }
+            });
+        }
+        for (Map<String, Object> list :
+                mapList(snapshot.get("lists"))) {
+            mapList(list.get("fields")).forEach(field ->
+                    references.add(text(
+                            field.get("fieldCode"), "")));
+        }
+        references.removeIf(value ->
+                !StringUtils.hasText(value));
+        for (String fieldCode : references) {
+            EntityField field = fields.get(fieldCode);
+            if (field == null) {
+                throw new IllegalStateException(
+                        "目标系统实体缺少已引用字段: "
+                                + entity.getEntityCode()
+                                + "." + fieldCode);
+            }
+            if (!systemEntityFieldPolicy.isRuntimeReadable(
+                    entity, field)) {
+                throw new IllegalStateException(
+                        "系统实体UI引用了不可读取字段: "
+                                + entity.getEntityCode()
+                                + "." + fieldCode);
+            }
+        }
+    }
+
+    private String systemNodeFieldCode(
+            Map<String, Object> node) {
+        if ("ENTITY_FIELD".equalsIgnoreCase(
+                text(node.get("bindingType"), null))) {
+            return text(node.get("bindingRef"), null);
+        }
+        Object props = parseJsonDocument(
+                text(node.get("propsDocument"), null));
+        return props instanceof Map<?, ?> map
+                ? text(map.get("fieldCode"), null)
+                : null;
     }
 
     /**
@@ -1136,10 +1291,138 @@ public class ConfigMigrationImportApplyService {
             }
             return;
         }
+        if (ConfigMigrationAssetService.SYSTEM_ENTITY_UI
+                .equals(item.getAssetType())) {
+            disableSystemUiConfigurations(item);
+            return;
+        }
+        if (!ConfigMigrationAssetService.PROCESS
+                .equals(item.getAssetType())) {
+            throw new IllegalStateException(
+                    "不支持停用的迁移资产类型: "
+                            + item.getAssetType());
+        }
         ProcessDefinitionConfig process = processMapper.findByProcessKey(item.getBusinessKey()).orElse(null);
         if (process != null) {
             processService.disable(process.getId());
         }
+    }
+
+    private void disableSystemUiConfigurations(
+            ConfigImportItem item) {
+        Map<String, Object> snapshot =
+                readMap(item.getSnapshotJson());
+        disableSystemUiConfigurations(
+                item,
+                formKeys(snapshot),
+                listKeys(snapshot));
+    }
+
+    private void disableSystemUiConfigurationsAbsentFrom(
+            ConfigImportItem importedItem,
+            Map<String, Object> restoredSnapshot) {
+        Map<String, Object> importedSnapshot =
+                readMap(importedItem.getSnapshotJson());
+        Set<String> removedForms =
+                formKeys(importedSnapshot);
+        removedForms.removeAll(formKeys(restoredSnapshot));
+        Set<String> removedLists =
+                listKeys(importedSnapshot);
+        removedLists.removeAll(listKeys(restoredSnapshot));
+        disableSystemUiConfigurations(
+                importedItem,
+                removedForms,
+                removedLists);
+    }
+
+    private void disableSystemUiConfigurations(
+            ConfigImportItem item,
+            Set<String> formKeys,
+            Set<String> listKeys) {
+        Map<String, Object> snapshot =
+                readMap(item.getSnapshotJson());
+        Map<String, Object> definition =
+                mapValue(snapshot.get("definition"));
+        String entityCode = text(
+                definition.get("entityCode"),
+                item.getBusinessKey());
+        EntityDefinition entity = entityMapper
+                .findByEntityCode(entityCode)
+                .orElse(null);
+        if (entity == null
+                || entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        for (String formKey : formKeys) {
+            EntityForm form =
+                    formMapper.selectByEntityIdAndFormKey(
+                            entity.getId(), formKey);
+            if (form == null) {
+                continue;
+            }
+            deactivateUiReleases(
+                    UiConfigReleaseService.FORM,
+                    form.getId());
+            UpdateWrapper<EntityForm> update =
+                    new UpdateWrapper<>();
+            update.eq("id", form.getId())
+                    .set("status", 0)
+                    .set("active_release_id", null)
+                    .set("update_time", LocalDateTime.now());
+            formMapper.update(null, update);
+        }
+        for (String listKey : listKeys) {
+            EntityListConfig list =
+                    listConfigMapper.findByEntityIdAndListKey(
+                            entity.getId(), listKey);
+            if (list == null) {
+                continue;
+            }
+            deactivateUiReleases(
+                    UiConfigReleaseService.LIST,
+                    list.getId());
+            UpdateWrapper<EntityListConfig> update =
+                    new UpdateWrapper<>();
+            update.eq("id", list.getId())
+                    .set("active_release_id", null)
+                    .set("published_version", null)
+                    .set("deleted", 1)
+                    .set("update_time", LocalDateTime.now());
+            listConfigMapper.update(null, update);
+        }
+    }
+
+    private void deactivateUiReleases(
+            String configType,
+            String configId) {
+        UpdateWrapper<com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease>
+                update = new UpdateWrapper<>();
+        update.eq("config_type", configType)
+                .eq("config_id", configId)
+                .eq("status", "ACTIVE")
+                .set("status", "INACTIVE");
+        uiConfigReleaseMapper.update(null, update);
+    }
+
+    private Set<String> formKeys(
+            Map<String, Object> snapshot) {
+        return mapList(snapshot.get("forms"))
+                .stream()
+                .map(value -> text(value.get("formKey"), null))
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toCollection(
+                        LinkedHashSet::new));
+    }
+
+    private Set<String> listKeys(
+            Map<String, Object> snapshot) {
+        return mapList(snapshot.get("lists"))
+                .stream()
+                .map(value -> text(value.get("listKey"), null))
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toCollection(
+                        LinkedHashSet::new));
     }
 
     /**
@@ -1402,6 +1685,20 @@ public class ConfigMigrationImportApplyService {
                                  EntityDefinition entity,
                                  String processKey,
                                  boolean rollbackMode) {
+    }
+
+    /** 系统实体UI应用上下文，只允许写入表单、列表及其只读依赖配置。 */
+    private record SystemEntityUiContext(
+            ConfigImportItem item,
+            Map<String, Object> snapshot,
+            Map<String, Object> definition,
+            EntityDefinition entity) {
+    }
+
+    /** 系统实体UI回滚上下文，保留原导入条目用于停用新增配置。 */
+    private record SystemEntityUiRollbackContext(
+            SystemEntityUiContext context,
+            ConfigImportItem originalItem) {
     }
 
     /** 流程应用上下文：导入条目、快照、定义与流程定义配置。 */

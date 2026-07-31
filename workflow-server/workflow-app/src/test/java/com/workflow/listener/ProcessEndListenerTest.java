@@ -1,5 +1,7 @@
 package com.workflow.listener;
 
+import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
+import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
 
 import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
@@ -13,6 +15,7 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.variable.api.history.HistoricVariableInstance;
 import org.flowable.variable.api.history.HistoricVariableInstanceQuery;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +54,10 @@ class ProcessEndListenerTest {
     @Test
     void processCompletionPublishesDurableEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
+                mock(ObjectProvider.class);
         ProcessStatusSyncPublisher publisher =
                 mock(ProcessStatusSyncPublisher.class);
         HistoricVariableInstanceQuery entityCodeQuery =
@@ -77,7 +84,11 @@ class ProcessEndListenerTest {
                 .thenReturn(FlowableEngineEventType.PROCESS_COMPLETED);
         when(event.getEntity()).thenReturn(processInstance);
         ProcessEndListener listener =
-                new ProcessEndListener(historyService, publisher);
+                new ProcessEndListener(
+                        historyService,
+                        mutationPort,
+                        changeTargetPortProvider,
+                        publisher);
 
         listener.onEvent(event);
 

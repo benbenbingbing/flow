@@ -192,9 +192,20 @@ public class ProcessBpmnPublishSanitizer {
                 throw new IllegalArgumentException(
                         "REST 服务任务暂不支持 multipart/form-data: " + element.id());
             }
+            String contentType = config.path("contentType")
+                    .asText("application/json");
+            if (!"application/json".equalsIgnoreCase(contentType)) {
+                throw new IllegalArgumentException(
+                        "REST 服务任务仅支持 application/json: "
+                                + element.id());
+            }
             validateJsonObjectDocument(config.path("headers").asText(""), "REST 请求头", element.id());
             validateJsonObjectDocument(config.path("queryParams").asText(""), "REST 查询参数", element.id());
             validateJsonObjectDocument(config.path("resultMapping").asText(""), "REST 结果映射", element.id());
+            validateJsonContainerDocument(
+                    config.path("body").asText(""),
+                    "REST 请求体",
+                    element.id());
             String startTag = removeAttributes(
                     element.startTag(),
                     "class", "expression", "delegateExpression", "type");
@@ -654,6 +665,29 @@ public class ProcessBpmnPublishSanitizer {
             if (!objectMapper.readTree(document).isObject()) {
                 throw new IllegalArgumentException(
                         label + "必须是 JSON 对象: " + elementId);
+            }
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    label + "不是合法 JSON: " + elementId,
+                    exception);
+        }
+    }
+
+    private void validateJsonContainerDocument(
+            String document,
+            String label,
+            String elementId) {
+        if (document == null || document.isBlank()) {
+            return;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode node =
+                    objectMapper.readTree(document);
+            if (!node.isObject() && !node.isArray()) {
+                throw new IllegalArgumentException(
+                        label + "必须是 JSON 对象或数组: " + elementId);
             }
         } catch (IllegalArgumentException exception) {
             throw exception;

@@ -10,7 +10,7 @@ const entityDir = path.join(resourcesRoot, "project-config/assets/entities");
 const processDir = path.join(resourcesRoot, "project-config/assets/processes");
 const packageFile = path.join(
   resourcesRoot,
-  "project-config/packages/project-f01-f06-v2.wfpack"
+  "project-config/packages/project-f01-f07-v3.wfpack"
 );
 const signingKey = process.env.CONFIG_MIGRATION_SIGNING_KEY
   || "workflow-config-migration-development-key";
@@ -66,6 +66,11 @@ for (const entity of entities) {
   const formKeys = new Set(entity.forms.map((form) => form.formKey));
   const listKeys = new Set(entity.lists.map((list) => list.listKey));
   const policyKeys = new Set(entity.scopePolicies.map((policy) => policy.policyKey));
+  const extensionKeys = new Set(
+    (entity.extensions ?? []).map((extension) =>
+      `${extension.extensionType}:${extension.extensionKey}:${extension.version}`
+    )
+  );
 
   for (const field of entity.fields) {
     if (field.refEntityType === "CUSTOM") {
@@ -90,6 +95,18 @@ for (const entity of entities) {
   }
 
   for (const form of entity.forms) {
+    if (form.customComponent) {
+      const extensionKey =
+        `FORM:${form.customComponent}:${form.customComponentVersion}`;
+      assert(
+        extensionKeys.has(extensionKey),
+        `${entity.businessKey}/${form.formKey}: 自定义表单扩展 ${extensionKey} 不存在`
+      );
+      assert(
+        Number(form.customComponentSnapshotVersion) > 0,
+        `${entity.businessKey}/${form.formKey}: 自定义表单快照版本无效`
+      );
+    }
     for (const field of form.fields) {
       assert(
         fieldCodes.has(field.fieldCode) || systemFields.has(field.fieldCode),
@@ -169,10 +186,24 @@ for (const process of processes) {
   );
 
   assert(sequenceFlowIds.size > 0, `${process.businessKey}: BPMN 未定义 sequenceFlow`);
+  const edgeBlocks = new Map(
+    [...bpmn.matchAll(
+      /<(?:[A-Za-z_][\w.-]*:)?BPMNEdge\b[^>]*\bbpmnElement="([^"]+)"[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?BPMNEdge>/gi
+    )].map(match => [match[1], match[2]])
+  );
   for (const sequenceFlowId of sequenceFlowIds) {
     assert(
       edgeRefs.has(sequenceFlowId),
       `${process.businessKey}: sequenceFlow ${sequenceFlowId} 缺少 BPMNEdge 连线`
+    );
+    const waypointCount = (
+      edgeBlocks.get(sequenceFlowId)?.match(
+        /<(?:[A-Za-z_][\w.-]*:)?waypoint\b/gi
+      ) ?? []
+    ).length;
+    assert(
+      waypointCount >= 2,
+      `${process.businessKey}: sequenceFlow ${sequenceFlowId} 的 BPMNEdge 至少需要两个 waypoint`
     );
   }
 
@@ -180,6 +211,32 @@ for (const process of processes) {
     assert(bpmn.includes(`id="${nodeId}"`), `${process.businessKey}: BPMN 缺少节点 ${nodeId}`);
     assert(formNodeIds.has(nodeId), `${process.businessKey}: 节点 ${nodeId} 缺少表单`);
     assert(approvalNodeIds.has(nodeId), `${process.businessKey}: 节点 ${nodeId} 缺少审批配置`);
+    assert(
+      shapeRefs.has(nodeId),
+      `${process.businessKey}: 节点 ${nodeId} 缺少 BPMNShape`
+    );
+  }
+  for (const action of process.flowActions ?? []) {
+    if (action.scopeType === "PROCESS") {
+      assert(
+        action.elementId == null || action.elementId === "",
+        `${process.businessKey}: 流程级动作 ${action.actionName} 不得绑定元素`
+      );
+    } else if (action.scopeType === "NODE") {
+      assert(
+        nodeIds.has(action.elementId),
+        `${process.businessKey}: 节点动作 ${action.actionName} 绑定节点不存在`
+      );
+    } else if (action.scopeType === "SEQUENCE_FLOW") {
+      assert(
+        sequenceFlowIds.has(action.elementId),
+        `${process.businessKey}: 顺序流动作 ${action.actionName} 绑定连线不存在`
+      );
+    } else {
+      throw new Error(
+        `${process.businessKey}: 动作 ${action.actionName} 的 scopeType 不合法`
+      );
+    }
   }
   for (const mapping of process.statusMappings) {
     assert(

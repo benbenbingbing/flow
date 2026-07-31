@@ -23,6 +23,7 @@ import com.workflow.migration.infrastructure.persistence.record.ConfigImportPack
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
@@ -83,6 +84,7 @@ public class ConfigMigrationPackageService {
     private final ConfigEnvironmentMappingMapper environmentMappingMapper;
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final EntityFormMapper formMapper;
     private final ProcessDefinitionConfigMapper processMapper;
     private final SysDictMapper dictMapper;
@@ -357,7 +359,7 @@ public class ConfigMigrationPackageService {
             item.setErrorMessage(itemBlocked ? summarizeFailure(dependencyResolution.missing(), risks,
                     item.getComparisonStatus()) : null);
             item.setUpdatedAt(LocalDateTime.now());
-            importItemMapper.updateById(item);
+            importItemMapper.updateAnalysisResult(item);
         }
 
         Map<String, Object> validationReport = new LinkedHashMap<>();
@@ -367,7 +369,11 @@ public class ConfigMigrationPackageService {
         importPackage.setValidationReportJson(writeJson(validationReport));
         importPackage.setStatus(blocked ? "BLOCKED" : "ANALYZED");
         importPackage.setErrorMessage(blocked ? "存在冲突、缺失依赖或危险数据库变更" : null);
-        importPackageMapper.updateById(importPackage);
+        importPackageMapper.updateAnalysisResult(
+                importPackage.getId(),
+                importPackage.getStatus(),
+                importPackage.getValidationReportJson(),
+                importPackage.getErrorMessage());
         return validationReport;
     }
 
@@ -676,6 +682,10 @@ public class ConfigMigrationPackageService {
      */
     private List<Map<String, Object>> analyzeRisks(ConfigImportItem item) {
         List<Map<String, Object>> risks = new ArrayList<>();
+        if (ConfigMigrationAssetService.SYSTEM_ENTITY_UI
+                .equals(item.getAssetType())) {
+            return analyzeSystemEntityUiRisks(item);
+        }
         if (!ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
             return risks;
         }
@@ -735,6 +745,120 @@ public class ConfigMigrationPackageService {
             }
         }
         return risks;
+    }
+
+    private List<Map<String, Object>> analyzeSystemEntityUiRisks(
+            ConfigImportItem item) {
+        List<Map<String, Object>> risks = new ArrayList<>();
+        Map<String, Object> snapshot =
+                readMap(item.getSnapshotJson());
+        Map<String, Object> definition =
+                snapshot.get("definition") instanceof Map<?, ?> map
+                        ? map.entrySet().stream().collect(
+                                java.util.stream.Collectors.toMap(
+                                        entry -> String.valueOf(
+                                                entry.getKey()),
+                                        Map.Entry::getValue,
+                                        (left, right) -> left,
+                                        LinkedHashMap::new))
+                        : Map.of();
+        String entityCode = String.valueOf(
+                definition.getOrDefault(
+                        "entityCode",
+                        item.getBusinessKey()));
+        EntityDefinition entity = entityMapper
+                .findByEntityCode(entityCode)
+                .orElse(null);
+        if (entity == null) {
+            risks.add(risk(
+                    "BLOCKING",
+                    "SYSTEM_ENTITY_MISSING",
+                    entityCode,
+                    "目标环境缺少同编码的平台系统实体"));
+            return risks;
+        }
+        if (entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            risks.add(risk(
+                    "BLOCKING",
+                    "SYSTEM_ENTITY_MODE_MISMATCH",
+                    entityCode,
+                    "目标环境同编码实体不是平台系统实体"));
+            return risks;
+        }
+        if (!systemEntityFieldPolicy.isSupportedEntity(
+                entityCode)) {
+            risks.add(risk(
+                    "BLOCKING",
+                    "SYSTEM_ENTITY_NOT_SUPPORTED",
+                    entityCode,
+                    "目标系统实体不在通用UI配置白名单"));
+            return risks;
+        }
+        Map<String, EntityField> fields = fieldMapper
+                .findByEntityId(entity.getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        EntityField::getFieldCode,
+                        value -> value,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        Set<String> references = new LinkedHashSet<>();
+        Object configured = snapshot.get("referencedFields");
+        if (configured instanceof Collection<?> collection) {
+            collection.forEach(value ->
+                    references.add(String.valueOf(value)));
+        }
+        collectReferencedFieldCodes(snapshot.get("forms"), references);
+        collectReferencedFieldCodes(snapshot.get("lists"), references);
+        references.removeIf(value ->
+                !StringUtils.hasText(value));
+        for (String fieldCode : references) {
+            EntityField field = fields.get(fieldCode);
+            if (field == null) {
+                risks.add(risk(
+                        "BLOCKING",
+                        "SYSTEM_FIELD_MISSING",
+                        fieldCode,
+                        "目标系统实体缺少已引用字段"));
+            } else if (!systemEntityFieldPolicy
+                    .isRuntimeReadable(entity, field)) {
+                risks.add(risk(
+                        "BLOCKING",
+                        "SYSTEM_FIELD_NOT_READABLE",
+                        fieldCode,
+                        "字段属于安全字段，禁止进入系统实体UI配置"));
+            }
+        }
+        return risks;
+    }
+
+    private void collectReferencedFieldCodes(
+            Object value,
+            Set<String> result) {
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> {
+                if ("fieldCode".equals(String.valueOf(key))
+                        && child != null) {
+                    result.add(String.valueOf(child));
+                }
+                collectReferencedFieldCodes(child, result);
+            });
+            return;
+        }
+        if (value instanceof Collection<?> collection) {
+            collection.forEach(child ->
+                    collectReferencedFieldCodes(child, result));
+            return;
+        }
+        if (value instanceof String text
+                && (text.trim().startsWith("{")
+                || text.trim().startsWith("["))) {
+            Object parsed = parseJson(text, null);
+            if (parsed != null) {
+                collectReferencedFieldCodes(parsed, result);
+            }
+        }
     }
 
     private Map<String, Object> risk(String level, String code, String fieldCode, String message) {

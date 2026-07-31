@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="http://workflow.com/project">
+  <process id="project_member_change_process" name="项目成员变更审批" isExecutable="true">
+    <startEvent id="start" name="提交项目成员变更">
+      <outgoing>flow_start_manager</outgoing>
+    </startEvent>
+    <userTask id="project_manager_review" name="项目经理审核" flowable:assignee="wf-user://admin" flowable:formKey="wf-form://project_member_change_request/project_member_change_apply">
+      <extensionElements>
+        <flowable:properties>
+          <flowable:property name="approvalConfig" value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;approve&quot;,&quot;label&quot;:&quot;确认资源安排&quot;,&quot;type&quot;:&quot;primary&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:false},{&quot;value&quot;:&quot;reject&quot;,&quot;label&quot;:&quot;驳回&quot;,&quot;type&quot;:&quot;danger&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:true}]}" />
+        </flowable:properties>
+      </extensionElements>
+      <incoming>flow_start_manager</incoming>
+      <outgoing>flow_manager_result</outgoing>
+    </userTask>
+    <exclusiveGateway id="manager_result" name="项目经理审核结果" default="flow_manager_approve">
+      <incoming>flow_manager_result</incoming>
+      <outgoing>flow_manager_reject</outgoing>
+      <outgoing>flow_manager_approve</outgoing>
+    </exclusiveGateway>
+    <userTask id="department_review" name="人员部门负责人审核" flowable:assignee="wf-user://admin" flowable:formKey="wf-form://project_member_change_request/project_member_change_apply">
+      <extensionElements>
+        <flowable:properties>
+          <flowable:property name="approvalConfig" value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;approve&quot;,&quot;label&quot;:&quot;确认人员与投入安排&quot;,&quot;type&quot;:&quot;primary&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:false},{&quot;value&quot;:&quot;reject&quot;,&quot;label&quot;:&quot;驳回&quot;,&quot;type&quot;:&quot;danger&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:true}]}" />
+        </flowable:properties>
+      </extensionElements>
+      <incoming>flow_manager_approve</incoming>
+      <outgoing>flow_department_result</outgoing>
+    </userTask>
+    <exclusiveGateway id="department_result" name="部门审核结果" default="flow_department_approve">
+      <incoming>flow_department_result</incoming>
+      <outgoing>flow_department_reject</outgoing>
+      <outgoing>flow_department_approve</outgoing>
+    </exclusiveGateway>
+    <exclusiveGateway id="access_needed" name="权限审核判断" default="flow_skip_access">
+      <incoming>flow_department_approve</incoming>
+      <outgoing>flow_need_access</outgoing>
+      <outgoing>flow_skip_access</outgoing>
+    </exclusiveGateway>
+    <userTask id="system_owner_access_review" name="系统负责人权限审核" flowable:assignee="wf-user://admin" flowable:formKey="wf-form://project_member_change_request/project_member_change_apply">
+      <extensionElements>
+        <flowable:properties>
+          <flowable:property name="approvalConfig" value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;approve&quot;,&quot;label&quot;:&quot;确认账号与环境权限&quot;,&quot;type&quot;:&quot;primary&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:false},{&quot;value&quot;:&quot;reject&quot;,&quot;label&quot;:&quot;驳回&quot;,&quot;type&quot;:&quot;danger&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:true}]}" />
+        </flowable:properties>
+      </extensionElements>
+      <incoming>flow_need_access</incoming>
+      <outgoing>flow_access_result</outgoing>
+    </userTask>
+    <exclusiveGateway id="access_result" name="权限审核结果" default="flow_access_approve">
+      <incoming>flow_access_result</incoming>
+      <outgoing>flow_access_reject</outgoing>
+      <outgoing>flow_access_approve</outgoing>
+    </exclusiveGateway>
+    <exclusiveGateway id="security_needed" name="安全审核判断" default="flow_skip_security">
+      <incoming>flow_skip_access</incoming>
+      <incoming>flow_access_approve</incoming>
+      <outgoing>flow_need_security</outgoing>
+      <outgoing>flow_skip_security</outgoing>
+    </exclusiveGateway>
+    <userTask id="security_review" name="安全负责人审核" flowable:assignee="wf-user://admin" flowable:formKey="wf-form://project_member_change_request/project_member_change_apply">
+      <extensionElements>
+        <flowable:properties>
+          <flowable:property name="approvalConfig" value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;approve&quot;,&quot;label&quot;:&quot;确认敏感权限与回收安排&quot;,&quot;type&quot;:&quot;primary&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:false},{&quot;value&quot;:&quot;reject&quot;,&quot;label&quot;:&quot;驳回&quot;,&quot;type&quot;:&quot;danger&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:true}]}" />
+        </flowable:properties>
+      </extensionElements>
+      <incoming>flow_need_security</incoming>
+      <outgoing>flow_security_result</outgoing>
+    </userTask>
+    <exclusiveGateway id="security_result" name="安全审核结果" default="flow_security_approve">
+      <incoming>flow_security_result</incoming>
+      <outgoing>flow_security_reject</outgoing>
+      <outgoing>flow_security_approve</outgoing>
+    </exclusiveGateway>
+    <userTask id="pmo_review" name="PMO最终审批" flowable:assignee="wf-user://admin" flowable:formKey="wf-form://project_member_change_request/project_member_change_apply">
+      <extensionElements>
+        <flowable:properties>
+          <flowable:property name="approvalConfig" value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;approve&quot;,&quot;label&quot;:&quot;批准成员变更&quot;,&quot;type&quot;:&quot;primary&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:false},{&quot;value&quot;:&quot;reject&quot;,&quot;label&quot;:&quot;不批准成员变更&quot;,&quot;type&quot;:&quot;danger&quot;,&quot;showComment&quot;:true,&quot;remarkRequired&quot;:true}]}" />
+        </flowable:properties>
+      </extensionElements>
+      <incoming>flow_skip_security</incoming>
+      <incoming>flow_security_approve</incoming>
+      <outgoing>flow_pmo_result</outgoing>
+    </userTask>
+    <exclusiveGateway id="pmo_result" name="PMO审批结果" default="flow_pmo_approve">
+      <incoming>flow_pmo_result</incoming>
+      <outgoing>flow_pmo_reject</outgoing>
+      <outgoing>flow_pmo_approve</outgoing>
+    </exclusiveGateway>
+    <endEvent id="end_approved" name="成员变更已批准">
+      <incoming>flow_pmo_approve</incoming>
+    </endEvent>
+    <endEvent id="end_rejected" name="成员变更已驳回">
+      <incoming>flow_manager_reject</incoming>
+      <incoming>flow_department_reject</incoming>
+      <incoming>flow_access_reject</incoming>
+      <incoming>flow_security_reject</incoming>
+      <incoming>flow_pmo_reject</incoming>
+    </endEvent>
+    <sequenceFlow id="flow_start_manager" sourceRef="start" targetRef="project_manager_review" />
+    <sequenceFlow id="flow_manager_result" sourceRef="project_manager_review" targetRef="manager_result" />
+    <sequenceFlow id="flow_manager_reject" sourceRef="manager_result" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == 'reject'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_manager_approve" sourceRef="manager_result" targetRef="department_review" />
+    <sequenceFlow id="flow_department_result" sourceRef="department_review" targetRef="department_result" />
+    <sequenceFlow id="flow_department_reject" sourceRef="department_result" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == 'reject'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_department_approve" sourceRef="department_result" targetRef="access_needed" />
+    <sequenceFlow id="flow_need_access" sourceRef="access_needed" targetRef="system_owner_access_review">
+      <conditionExpression xsi:type="tFormalExpression">${access_review_required_flag == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_skip_access" sourceRef="access_needed" targetRef="security_needed" />
+    <sequenceFlow id="flow_access_result" sourceRef="system_owner_access_review" targetRef="access_result" />
+    <sequenceFlow id="flow_access_reject" sourceRef="access_result" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == 'reject'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_access_approve" sourceRef="access_result" targetRef="security_needed" />
+    <sequenceFlow id="flow_need_security" sourceRef="security_needed" targetRef="security_review">
+      <conditionExpression xsi:type="tFormalExpression">${security_review_required_flag == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_skip_security" sourceRef="security_needed" targetRef="pmo_review" />
+    <sequenceFlow id="flow_security_result" sourceRef="security_review" targetRef="security_result" />
+    <sequenceFlow id="flow_security_reject" sourceRef="security_result" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == 'reject'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_security_approve" sourceRef="security_result" targetRef="pmo_review" />
+    <sequenceFlow id="flow_pmo_result" sourceRef="pmo_review" targetRef="pmo_result" />
+    <sequenceFlow id="flow_pmo_reject" sourceRef="pmo_result" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == 'reject'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_pmo_approve" sourceRef="pmo_result" targetRef="end_approved" />
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_project_member_change_process">
+    <bpmndi:BPMNPlane id="BPMNPlane_project_member_change_process" bpmnElement="project_member_change_process">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start">
+        <dc:Bounds x="45" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="project_manager_review_di" bpmnElement="project_manager_review">
+        <dc:Bounds x="145" y="170" width="112" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="manager_result_di" bpmnElement="manager_result" isMarkerVisible="true">
+        <dc:Bounds x="315" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="department_review_di" bpmnElement="department_review">
+        <dc:Bounds x="430" y="170" width="112" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="department_result_di" bpmnElement="department_result" isMarkerVisible="true">
+        <dc:Bounds x="600" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="access_needed_di" bpmnElement="access_needed" isMarkerVisible="true">
+        <dc:Bounds x="725" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="system_owner_access_review_di" bpmnElement="system_owner_access_review">
+        <dc:Bounds x="840" y="170" width="112" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="access_result_di" bpmnElement="access_result" isMarkerVisible="true">
+        <dc:Bounds x="1010" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="security_needed_di" bpmnElement="security_needed" isMarkerVisible="true">
+        <dc:Bounds x="1135" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="security_review_di" bpmnElement="security_review">
+        <dc:Bounds x="1250" y="170" width="112" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="security_result_di" bpmnElement="security_result" isMarkerVisible="true">
+        <dc:Bounds x="1420" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="pmo_review_di" bpmnElement="pmo_review">
+        <dc:Bounds x="1545" y="170" width="112" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="pmo_result_di" bpmnElement="pmo_result" isMarkerVisible="true">
+        <dc:Bounds x="1715" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_approved_di" bpmnElement="end_approved">
+        <dc:Bounds x="1870" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_rejected_di" bpmnElement="end_rejected">
+        <dc:Bounds x="1870" y="16" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_start_manager_di" bpmnElement="flow_start_manager">
+        <di:waypoint x="63" y="210" />
+        <di:waypoint x="201" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_manager_result_di" bpmnElement="flow_manager_result">
+        <di:waypoint x="201" y="210" />
+        <di:waypoint x="340" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_manager_reject_di" bpmnElement="flow_manager_reject">
+        <di:waypoint x="340" y="210" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="375" y="16" />
+        <di:waypoint x="1888" y="16" />
+        <di:waypoint x="1888" y="34" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_manager_approve_di" bpmnElement="flow_manager_approve">
+        <di:waypoint x="340" y="210" />
+        <di:waypoint x="486" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_department_result_di" bpmnElement="flow_department_result">
+        <di:waypoint x="486" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_department_reject_di" bpmnElement="flow_department_reject">
+        <di:waypoint x="625" y="210" />
+        <di:waypoint x="660" y="210" />
+        <di:waypoint x="660" y="16" />
+        <di:waypoint x="1888" y="16" />
+        <di:waypoint x="1888" y="34" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_department_approve_di" bpmnElement="flow_department_approve">
+        <di:waypoint x="625" y="210" />
+        <di:waypoint x="750" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_need_access_di" bpmnElement="flow_need_access">
+        <di:waypoint x="750" y="210" />
+        <di:waypoint x="896" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_skip_access_di" bpmnElement="flow_skip_access">
+        <di:waypoint x="750" y="210" />
+        <di:waypoint x="780" y="210" />
+        <di:waypoint x="780" y="330" />
+        <di:waypoint x="1130" y="330" />
+        <di:waypoint x="1130" y="210" />
+        <di:waypoint x="1160" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_access_result_di" bpmnElement="flow_access_result">
+        <di:waypoint x="896" y="210" />
+        <di:waypoint x="1035" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_access_reject_di" bpmnElement="flow_access_reject">
+        <di:waypoint x="1035" y="210" />
+        <di:waypoint x="1070" y="210" />
+        <di:waypoint x="1070" y="16" />
+        <di:waypoint x="1888" y="16" />
+        <di:waypoint x="1888" y="34" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_access_approve_di" bpmnElement="flow_access_approve">
+        <di:waypoint x="1035" y="210" />
+        <di:waypoint x="1160" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_need_security_di" bpmnElement="flow_need_security">
+        <di:waypoint x="1160" y="210" />
+        <di:waypoint x="1306" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_skip_security_di" bpmnElement="flow_skip_security">
+        <di:waypoint x="1160" y="210" />
+        <di:waypoint x="1190" y="210" />
+        <di:waypoint x="1190" y="330" />
+        <di:waypoint x="1571" y="330" />
+        <di:waypoint x="1571" y="210" />
+        <di:waypoint x="1601" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_security_result_di" bpmnElement="flow_security_result">
+        <di:waypoint x="1306" y="210" />
+        <di:waypoint x="1445" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_security_reject_di" bpmnElement="flow_security_reject">
+        <di:waypoint x="1445" y="210" />
+        <di:waypoint x="1480" y="210" />
+        <di:waypoint x="1480" y="16" />
+        <di:waypoint x="1888" y="16" />
+        <di:waypoint x="1888" y="34" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_security_approve_di" bpmnElement="flow_security_approve">
+        <di:waypoint x="1445" y="210" />
+        <di:waypoint x="1601" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_pmo_result_di" bpmnElement="flow_pmo_result">
+        <di:waypoint x="1601" y="210" />
+        <di:waypoint x="1740" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_pmo_reject_di" bpmnElement="flow_pmo_reject">
+        <di:waypoint x="1740" y="210" />
+        <di:waypoint x="1775" y="210" />
+        <di:waypoint x="1775" y="16" />
+        <di:waypoint x="1888" y="16" />
+        <di:waypoint x="1888" y="34" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_pmo_approve_di" bpmnElement="flow_pmo_approve">
+        <di:waypoint x="1740" y="210" />
+        <di:waypoint x="1888" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

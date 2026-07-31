@@ -223,6 +223,40 @@ class ProcessBpmnPublishSanitizerTest {
                 "SCRIPT_TASK_DISABLED"));
     }
 
+    @Test
+    void sanitizeRejectsUnsupportedRestContentTypeAndInvalidJsonBody() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+
+        IllegalArgumentException contentTypeError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:serviceTask id=\"rest\">"
+                                + properties(property(
+                                        "restConfig",
+                                        "{\"method\":\"POST\","
+                                                + "\"url\":\"http://localhost:8080/api/demo\","
+                                                + "\"contentType\":\"text/xml\"}"))
+                                + "</bpmn:serviceTask>"),
+                        "runtime_process"));
+        assertTrue(contentTypeError.getMessage().contains(
+                "application/json"));
+
+        IllegalArgumentException bodyError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:serviceTask id=\"rest\">"
+                                + properties(property(
+                                        "restConfig",
+                                        "{\"method\":\"POST\","
+                                                + "\"url\":\"http://localhost:8080/api/demo\","
+                                                + "\"contentType\":\"application/json\","
+                                                + "\"body\":\"\\\"text\\\"\"}"))
+                                + "</bpmn:serviceTask>"),
+                        "runtime_process"));
+        assertTrue(bodyError.getMessage().contains("JSON 对象或数组"));
+    }
+
     /**
      * 显式知会不能覆盖服务或发送任务的主实现，纯知会节点则直接使用知会代理。
      */

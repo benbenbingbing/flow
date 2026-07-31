@@ -1,6 +1,9 @@
 package com.workflow.entity.form.application;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -342,8 +345,8 @@ class EntityFormNodeCommandBoundaryTest {
                 mock(EntityRelationMapper.class);
         UiConfigReleaseMapper releaseMapper =
                 mock(UiConfigReleaseMapper.class);
-        EntityDefinitionAccessPolicy accessPolicy =
-                mock(EntityDefinitionAccessPolicy.class);
+        EntityUiConfigurationPolicy uiConfigurationPolicy =
+                mock(EntityUiConfigurationPolicy.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         EntityForm form = form("form-1", "entity-1", 1);
@@ -359,7 +362,10 @@ class EntityFormNodeCommandBoundaryTest {
                         nodeMapper,
                         relationMapper,
                         releaseMapper,
-                        accessPolicy,
+                        uiConfigurationPolicy,
+                        mock(EntityDefinitionMapper.class),
+                        mock(EntityFieldMapper.class),
+                        mock(SystemEntityFieldPolicy.class),
                         codec),
                 formMapper,
                 nodeMapper,

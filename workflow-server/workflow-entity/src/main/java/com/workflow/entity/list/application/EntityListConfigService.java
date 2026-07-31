@@ -1,6 +1,11 @@
 package com.workflow.entity.list.application;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.application.EntityFormNodeService;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
@@ -29,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -41,6 +47,19 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EntityListConfigService {
 
+    private static final Set<String> SYSTEM_QUERY_OPERATORS =
+            Set.of(
+                    "EQ",
+                    "NE",
+                    "LIKE",
+                    "IN",
+                    "BETWEEN",
+                    "GT",
+                    "GE",
+                    "LT",
+                    "LE",
+                    "IS_NULL");
+
     private enum SaveMode {
         USER_CAS,
         SYSTEM_IMPORT
@@ -48,12 +67,15 @@ public class EntityListConfigService {
 
     private final EntityListConfigMapper configMapper;
     private final EntityListFieldMapper fieldMapper;
+    private final EntityDefinitionMapper definitionMapper;
+    private final EntityFieldMapper definitionFieldMapper;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final com.workflow.entity.permission.application.EntityListActionConfigService actionConfigService;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService permissionCatalogService;
     private final com.workflow.entity.permission.application.EntityActionCapabilityService actionCapabilityService;
     private final EntityListConfigurationValidator configurationValidator;
     private final CurrentUserRoleService currentUserRoleService;
-    private final EntityDefinitionAccessPolicy entityAccessPolicy;
+    private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
     private final JsonDocumentCodec jsonDocumentCodec;
     private final EntityListRelationalConfigService relationalConfigService;
 
@@ -137,6 +159,7 @@ public class EntityListConfigService {
 
         EntityListConfigDTO candidate = buildCandidate(source, current);
         requireEntityAccess(candidate);
+        validateSystemListConfiguration(candidate);
         configurationValidator.validate(candidate);
         requireOverridePermission(candidate);
 
@@ -594,9 +617,11 @@ public class EntityListConfigService {
 
     private void requireEntityAccess(EntityListConfigDTO candidate) {
         if (StringUtils.hasText(candidate.getEntityId())) {
-            entityAccessPolicy.requireDynamicById(candidate.getEntityId());
+            entityUiConfigurationPolicy.requireConfigurableById(
+                    candidate.getEntityId());
         } else {
-            entityAccessPolicy.requireDynamicByCode(candidate.getEntityCode());
+            entityUiConfigurationPolicy.requireConfigurableByCode(
+                    candidate.getEntityCode());
         }
     }
 
@@ -748,7 +773,109 @@ public class EntityListConfigService {
         fields.removeIf(item -> Objects.equals(item.getId(), replacingId));
         fields.add(field);
         config.setFields(fields);
+        validateSystemListConfiguration(config);
         configurationValidator.validate(config);
+    }
+
+    private void validateSystemListConfiguration(
+            EntityListConfigDTO config) {
+        EntityDefinition entity =
+                StringUtils.hasText(config.getEntityId())
+                        ? definitionMapper.selectById(
+                                config.getEntityId())
+                        : definitionMapper.findByEntityCode(
+                                config.getEntityCode()).orElse(null);
+        if (entity == null
+                || entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        if (StringUtils.hasText(config.getCustomComponent())
+                || StringUtils.hasText(
+                        config.getQueryProviderCode())
+                || StringUtils.hasText(
+                        config.getQueryDataSourceId())) {
+            throw new IllegalArgumentException(
+                    "平台系统表列表只能使用可信只读查询");
+        }
+        if (StringUtils.hasText(config.getDataScopeMode())
+                && !"INHERIT".equalsIgnoreCase(
+                        config.getDataScopeMode())) {
+            throw new IllegalArgumentException(
+                    "平台系统表列表不能覆盖数据范围");
+        }
+        if (config.getToolbarConfig() != null
+                && !config.getToolbarConfig().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "平台系统表列表不能配置工具栏写操作");
+        }
+        if (config.getRowActionConfig() != null) {
+            for (Map<String, Object> action :
+                    config.getRowActionConfig()) {
+                String key = action == null
+                        ? null
+                        : Objects.toString(
+                                action.get("key"), null);
+                if (!"view".equalsIgnoreCase(key)) {
+                    throw new IllegalArgumentException(
+                            "平台系统表列表只能配置查看操作");
+                }
+            }
+        }
+        Map<String, EntityField> byId = new HashMap<>();
+        Map<String, EntityField> byCode = new HashMap<>();
+        definitionFieldMapper.findByEntityId(entity.getId())
+                .forEach(field -> {
+                    byId.put(field.getId(), field);
+                    byCode.put(field.getFieldCode(), field);
+                });
+        for (EntityListField configured :
+                config.getFields() == null
+                        ? List.<EntityListField>of()
+                        : config.getFields()) {
+            EntityField field =
+                    StringUtils.hasText(configured.getFieldId())
+                            ? byId.get(configured.getFieldId())
+                            : byCode.get(configured.getFieldCode());
+            if (field == null
+                    || !systemEntityFieldPolicy
+                            .isUiConfigurable(entity, field)) {
+                throw new IllegalArgumentException(
+                        "平台系统表字段不可配置: "
+                                + configured.getFieldCode());
+            }
+            if (StringUtils.hasText(configured.getFieldCode())
+                    && !Objects.equals(
+                            configured.getFieldCode(),
+                            field.getFieldCode())) {
+                throw new IllegalArgumentException(
+                        "平台系统表字段编码与字段目录不一致");
+            }
+            configured.setFieldId(field.getId());
+            configured.setFieldCode(field.getFieldCode());
+            if (StringUtils.hasText(
+                    configured.getDataSourceType())
+                    && !"ENTITY_FIELD".equalsIgnoreCase(
+                            configured.getDataSourceType())
+                    && !"REFERENCE".equalsIgnoreCase(
+                            configured.getDataSourceType())) {
+                throw new IllegalArgumentException(
+                        "平台系统表列表字段不能使用自定义查询数据源");
+            }
+            if (Boolean.TRUE.equals(configured.getIsQuery())) {
+                String operator = StringUtils.hasText(
+                        configured.getQueryType())
+                        ? configured.getQueryType()
+                                .trim()
+                                .toUpperCase(Locale.ROOT)
+                        : "LIKE";
+                if (!SYSTEM_QUERY_OPERATORS.contains(operator)) {
+                    throw new IllegalArgumentException(
+                            "平台系统表不支持查询方式: " + operator);
+                }
+                configured.setQueryType(operator);
+            }
+        }
     }
 
     private long nextFieldOrderKey(String listConfigId) {

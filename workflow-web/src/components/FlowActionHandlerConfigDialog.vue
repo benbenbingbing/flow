@@ -45,23 +45,15 @@
       </el-table-column>
       <el-table-column label="指定实体" min-width="230">
         <template #default="{ row }">
-          <el-select
+          <EntityDefinitionPicker
             v-model="row.entityCodes"
             multiple
-            filterable
-            collapse-tags
-            collapse-tags-tooltip
             :disabled="row.visibilityScope !== 'ENTITY'"
             placeholder="选择可见实体"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="entity in entities"
-              :key="entity.entityCode"
-              :label="`${entity.entityName} (${entity.entityCode})`"
-              :value="String(entity.entityCode).toLowerCase()"
-            />
-          </el-select>
+            value-key="entityCode"
+            value-case="lower"
+            title="选择动作适用实体"
+          />
         </template>
       </el-table-column>
       <el-table-column label="启用" width="70" align="center">
@@ -88,23 +80,19 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { processActionApi } from '@/api/processAction'
-import { entityApi } from '@/api/entity'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 
 const emit = defineEmits(['changed'])
 const visible = ref(false)
 const loading = ref(false)
 const savingBean = ref('')
 const rows = ref([])
-const entities = ref([])
 
 async function open() {
   visible.value = true
   loading.value = true
   try {
-    const [handlerConfigs, entityList] = await Promise.all([
-      processActionApi.listHandlerConfigs(),
-      entityApi.getList({ pageNum: 1, pageSize: 1000 })
-    ])
+    const handlerConfigs = await processActionApi.listHandlerConfigs()
     rows.value = (handlerConfigs || []).map(item => ({
       ...item,
       displayName: item.configured ? item.displayName : '',
@@ -113,7 +101,6 @@ async function open() {
       entityCodes: item.entityCodes || [],
       enabled: item.configured ? item.enabled !== false : false
     }))
-    entities.value = normalizeEntities(entityList)
   } catch (error) {
     console.error(error)
     ElMessage.error(error?.message || '加载流程动作处理器目录失败')
@@ -149,13 +136,6 @@ async function saveRow(row) {
   } finally {
     savingBean.value = ''
   }
-}
-
-function normalizeEntities(value) {
-  if (Array.isArray(value)) return value
-  if (Array.isArray(value?.records)) return value.records
-  if (Array.isArray(value?.list)) return value.list
-  return []
 }
 
 function shortClassName(value) {

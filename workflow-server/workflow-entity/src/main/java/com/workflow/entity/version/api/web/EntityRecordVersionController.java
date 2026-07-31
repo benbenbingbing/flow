@@ -1,6 +1,7 @@
 package com.workflow.entity.version.api.web;
 
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.security.RequiresPermission;
 import com.workflow.entity.version.application.EntityRecordVersionService;
 import com.workflow.entity.version.application.model.EntityRecordVersionSummary;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/entity-versions/records")
 @RequiredArgsConstructor
+@RequiresPermission("entity:version:config:list")
 public class EntityRecordVersionController {
 
     private final EntityRecordVersionService service;

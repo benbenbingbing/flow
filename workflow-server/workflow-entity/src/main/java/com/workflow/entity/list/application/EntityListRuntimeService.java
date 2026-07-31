@@ -2,6 +2,8 @@ package com.workflow.entity.list.application;
 
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.SystemEntityReadService;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.api.request.EntityListQueryRequest;
 import com.workflow.entity.list.api.response.EntityListRuntimeContextDTO;
@@ -29,6 +31,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.*;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
@@ -53,8 +56,11 @@ public class EntityListRuntimeService {
 
     private final EntityDataListConfigService dataListService;
     private final EntityDataDynamicService dynamicService;
+    private final SystemEntityReadService systemEntityReadService;
     private final EntityListConfigService listConfigService;
     private final EntityDefinitionMapper definitionMapper;
+    private final EntityFieldMapper entityFieldMapper;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final EntityListFieldMapper fieldMapper;
     private final SysUserService sysUserService;
     private final DataPermissionEngine dataPermissionEngine;
@@ -82,6 +88,12 @@ public class EntityListRuntimeService {
         requireListAccess(config);
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
                 .orElseThrow(() -> new IllegalArgumentException("实体不存在: " + entityCode));
+        boolean systemEntity =
+                definition.getStorageMode()
+                        == EntityDefinition.StorageMode.SYSTEM;
+        if (systemEntity) {
+            systemEntityReadService.requirePermissions(entityCode);
+        }
 
         EntityListSchemaDTO schema = new EntityListSchemaDTO();
         schema.setId(config.getId());
@@ -96,13 +108,20 @@ public class EntityListRuntimeService {
         schema.setSelectionConfig(readObject(
                 config.getSelectionConfig(), "选择模式配置"));
         schema.setViewConfig(readObject(config.getViewConfig(), "列表视图配置"));
-        schema.setToolbarConfig(publishedRuntimeService.resolveToolbar(
-                config,
-                actionConfigService.resolveToolbarButtons(config, entityCode)));
-        schema.setRowActionConfig(publishedRuntimeService.resolveRowActions(
-                config,
-                actionConfigService.resolveRowButtons(config, entityCode)));
-        schema.setCustomComponent(config.getCustomComponent());
+        schema.setToolbarConfig(systemEntity
+                ? List.of()
+                : publishedRuntimeService.resolveToolbar(
+                        config,
+                        actionConfigService.resolveToolbarButtons(
+                                config, entityCode)));
+        schema.setRowActionConfig(systemEntity
+                ? List.of(readOnlyViewAction())
+                : publishedRuntimeService.resolveRowActions(
+                        config,
+                        actionConfigService.resolveRowButtons(
+                                config, entityCode)));
+        schema.setCustomComponent(systemEntity
+                ? null : config.getCustomComponent());
         List<String> relationScenes = publishedRuntimeService.resolveScenes(
                 config,
                 relationalConfigService.findScenes(config.getId()));
@@ -113,12 +132,34 @@ public class EntityListRuntimeService {
                 config.getFixedFilterConfig(), "列表固定条件"));
         schema.setContextBindingConfig(readObject(
                 config.getContextBindingConfig(), "上下文绑定配置"));
-        schema.setQueryProviderCode(config.getQueryProviderCode());
-        schema.setToolbarCapabilities(
-                actionCapabilityService.evaluateToolbarActions(entityCode, config));
-        schema.setFields(publishedRuntimeService.resolveFields(
-                config,
-                fieldMapper.findByListConfigId(config.getId())));
+        schema.setQueryProviderCode(systemEntity
+                ? null : config.getQueryProviderCode());
+        schema.setToolbarCapabilities(systemEntity
+                ? Map.of()
+                : actionCapabilityService.evaluateToolbarActions(
+                        entityCode, config));
+        List<EntityListField> resolvedFields =
+                publishedRuntimeService.resolveFields(
+                        config,
+                        fieldMapper.findByListConfigId(config.getId()));
+        if (systemEntity) {
+            Set<String> readableCodes =
+                    entityFieldMapper.findByEntityId(definition.getId())
+                            .stream()
+                            .filter(field ->
+                                    systemEntityFieldPolicy
+                                            .isRuntimeReadable(
+                                                    definition,
+                                                    field))
+                            .map(field -> field.getFieldCode())
+                            .collect(java.util.stream.Collectors.toSet());
+            resolvedFields = resolvedFields.stream()
+                    .filter(field ->
+                            readableCodes.contains(
+                                    field.getFieldCode()))
+                    .toList();
+        }
+        schema.setFields(resolvedFields);
 
         if (StringUtils.hasText(config.getCustomComponent())) {
             for (EntityListSchemaProvider provider : schemaProviders) {
@@ -209,6 +250,36 @@ public class EntityListRuntimeService {
                                 (int) Math.max(
                                         1,
                                         safeRequest.getPageSize()))));
+        EntityDefinition definition =
+                definitionMapper.findByEntityCode(entityCode)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "实体不存在: " + entityCode));
+        if (definition.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM) {
+            if (StringUtils.hasText(config.getQueryDataSourceId())
+                    || StringUtils.hasText(
+                            config.getQueryProviderCode())) {
+                throw new IllegalStateException(
+                        "平台系统表列表不能覆盖可信只读查询");
+            }
+            Map<String, Object> viewConfig = readObject(
+                    config.getViewConfig(), "列表视图配置");
+            Map<String, Object> tableConfig =
+                    viewConfig.get("table")
+                                    instanceof Map<?, ?> table
+                            ? objectMapper.convertValue(
+                                    table,
+                                    new TypeReference<Map<String, Object>>() {})
+                            : Map.of();
+            return systemEntityReadService.findPage(
+                    entityCode,
+                    filters,
+                    pageNum,
+                    pageSize,
+                    text(tableConfig.get("defaultSortField")),
+                    text(tableConfig.get("defaultSortDirection")));
+        }
         if (StringUtils.hasText(config.getQueryDataSourceId())) {
             UiDataSourceExecuteRequest dataSourceRequest =
                     new UiDataSourceExecuteRequest();
@@ -288,6 +359,10 @@ public class EntityListRuntimeService {
             String listKey,
             EntityListScopeSimulationRequest request) {
         currentUserRoleService.requireSuperAdmin();
+        if (systemEntityReadService.isSystemEntity(entityCode)) {
+            throw new IllegalStateException(
+                    "平台系统表不使用动态实体数据范围模拟");
+        }
         EntityListConfig config = requireList(entityCode, listKey);
         String userId = request == null || !StringUtils.hasText(request.getUserId())
                 ? UserContext.getUserId() : request.getUserId();
@@ -338,15 +413,47 @@ public class EntityListRuntimeService {
 
     private void requireListAccess(EntityListConfig config) {
         String permission = resolveAccessPermission(config);
-        if (!PermissionUtil.hasPermission(permission)) {
+        Set<String> permissions =
+                PermissionUtil.getCurrentUserPermissions();
+        if (!permissions.contains("*")
+                && !PermissionUtil.hasPermission(permission)) {
             throw new ForbiddenException("没有权限访问列表：" + config.getListName());
         }
     }
 
     private String resolveAccessPermission(EntityListConfig config) {
-        return StringUtils.hasText(config.getAccessPermissionCode())
-                ? config.getAccessPermissionCode()
-                : "entity:" + config.getEntityCode().toLowerCase(Locale.ROOT) + ":list";
+        if (StringUtils.hasText(config.getAccessPermissionCode())) {
+            return config.getAccessPermissionCode();
+        }
+        EntityDefinition definition =
+                definitionMapper.findByEntityCode(config.getEntityCode())
+                        .orElse(null);
+        if (definition != null
+                && definition.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM) {
+            return systemEntityFieldPolicy
+                    .requiredPermissions(config.getEntityCode())
+                    .stream()
+                    .findFirst()
+                    .orElse("");
+        }
+        return "entity:"
+                + config.getEntityCode()
+                        .toLowerCase(Locale.ROOT)
+                + ":list";
+    }
+
+    private Map<String, Object> readOnlyViewAction() {
+        Map<String, Object> action = new LinkedHashMap<>();
+        action.put("key", "view");
+        action.put("type", "built-in");
+        action.put("label", "查看");
+        action.put("buttonType", "primary");
+        action.put("link", true);
+        action.put("sort", 1);
+        action.put("enabled", true);
+        action.put("perm", "");
+        return action;
     }
 
     private String validateScene(EntityListConfig config, String scene) {
@@ -471,5 +578,9 @@ public class EntityListRuntimeService {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : fallback;
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 }

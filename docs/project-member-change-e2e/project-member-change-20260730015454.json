@@ -1,0 +1,474 @@
+{
+  "runId": "20260730015454",
+  "apiBase": "http://127.0.0.1:8080/api",
+  "package": {
+    "importId": "2082646085070761986",
+    "packageFile": "project-f01-f07-v3.wfpack",
+    "analysisStatus": "ANALYZED",
+    "selectedItems": [
+      {
+        "id": "2082646085246922754",
+        "assetType": "ENTITY",
+        "businessKey": "project_member_change_request",
+        "comparisonStatus": "CONSISTENT",
+        "mappingStatus": "RESOLVED"
+      },
+      {
+        "id": "2082646085234339842",
+        "assetType": "ENTITY",
+        "businessKey": "project_member",
+        "comparisonStatus": "SOURCE_NEWER",
+        "mappingStatus": "RESOLVED"
+      },
+      {
+        "id": "2082646085515358210",
+        "assetType": "PROCESS",
+        "businessKey": "project_member_change_process",
+        "comparisonStatus": "CONSISTENT",
+        "mappingStatus": "RESOLVED"
+      }
+    ],
+    "publishSteps": [
+      {
+        "step": "F07_ENTITY_AND_PROCESS",
+        "businessKeys": [
+          "project_member_change_request",
+          "project_member",
+          "project_member_change_process"
+        ],
+        "status": "PUBLISHED"
+      }
+    ]
+  },
+  "handlers": [
+    {
+      "beanName": "validateProjectMemberChangeHandler",
+      "definitionId": "2082640143868514306",
+      "visibilityScope": "GLOBAL",
+      "entityCodes": [],
+      "enabled": true,
+      "available": true,
+      "phase": "BOOTSTRAP_GLOBAL"
+    },
+    {
+      "beanName": "captureProjectMemberManagerReviewHandler",
+      "definitionId": "2082640143935623169",
+      "visibilityScope": "GLOBAL",
+      "entityCodes": [],
+      "enabled": true,
+      "available": true,
+      "phase": "BOOTSTRAP_GLOBAL"
+    },
+    {
+      "beanName": "recordProjectMemberDecisionHandler",
+      "definitionId": "2082640143994343425",
+      "visibilityScope": "GLOBAL",
+      "entityCodes": [],
+      "enabled": true,
+      "available": true,
+      "phase": "BOOTSTRAP_GLOBAL"
+    },
+    {
+      "beanName": "applyProjectMemberChangeHandler",
+      "definitionId": "2082640144061452289",
+      "visibilityScope": "GLOBAL",
+      "entityCodes": [],
+      "enabled": true,
+      "available": true,
+      "phase": "BOOTSTRAP_GLOBAL"
+    },
+    {
+      "beanName": "projectLifecycleAuditHandler",
+      "definitionId": "2082640144111783937",
+      "visibilityScope": "GLOBAL",
+      "entityCodes": [],
+      "enabled": true,
+      "available": true,
+      "phase": "BOOTSTRAP_GLOBAL"
+    },
+    {
+      "beanName": "validateProjectMemberChangeHandler",
+      "definitionId": "2082640143868514306",
+      "visibilityScope": "ENTITY",
+      "entityCodes": [
+        "project_member_change_request"
+      ],
+      "enabled": true,
+      "available": true,
+      "phase": "FINAL_SCOPE"
+    },
+    {
+      "beanName": "captureProjectMemberManagerReviewHandler",
+      "definitionId": "2082640143935623169",
+      "visibilityScope": "ENTITY",
+      "entityCodes": [
+        "project_member_change_request"
+      ],
+      "enabled": true,
+      "available": true,
+      "phase": "FINAL_SCOPE"
+    },
+    {
+      "beanName": "recordProjectMemberDecisionHandler",
+      "definitionId": "2082640143994343425",
+      "visibilityScope": "ENTITY",
+      "entityCodes": [
+        "project_member_change_request"
+      ],
+      "enabled": true,
+      "available": true,
+      "phase": "FINAL_SCOPE"
+    },
+    {
+      "beanName": "applyProjectMemberChangeHandler",
+      "definitionId": "2082640144061452289",
+      "visibilityScope": "ENTITY",
+      "entityCodes": [
+        "project_member_change_request"
+      ],
+      "enabled": true,
+      "available": true,
+      "phase": "FINAL_SCOPE"
+    },
+    {
+      "beanName": "projectLifecycleAuditHandler",
+      "definitionId": "2082640144111783937",
+      "visibilityScope": "GLOBAL",
+      "entityCodes": [],
+      "enabled": true,
+      "available": true,
+      "phase": "FINAL_SCOPE"
+    }
+  ],
+  "prerequisites": {
+    "projectId": "9f73de29c4a04e6680bc92a60e946c12",
+    "projectCode": "PRJ2026073000006",
+    "projectStatus": "APPROVED",
+    "joinUserId": "2081553852142010370",
+    "joinAvailableAllocation": 100,
+    "handoverUserId": "2081506080806223874",
+    "handoverMemberId": "1d8f51e4ddfd4ff8b2e103a446bd4851",
+    "handoverAllocation": 10,
+    "roleCatalogId": "03936b721bff4027966d58ea9fd811ea",
+    "roleCode": "PROJECT_MANAGER"
+  },
+  "flows": {
+    "JOIN": {
+      "requestId": "fe7297e47bb84450bbb0440f02effd51",
+      "processInstanceId": "bddcf10d-8bb9-11f1-80b8-7612d5b69a47",
+      "completedTasks": [
+        {
+          "taskId": "bde1d351-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "项目经理审核"
+        },
+        {
+          "taskId": "bdf3adba-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "人员部门负责人审核"
+        },
+        {
+          "taskId": "bdfdbfec-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "系统负责人权限审核"
+        },
+        {
+          "taskId": "be070ece-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "安全负责人审核"
+        },
+        {
+          "taskId": "be10369e-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "PMO最终审批"
+        }
+      ],
+      "executedSequenceFlows": [
+        "flow_start_manager",
+        "flow_manager_result",
+        "flow_manager_approve",
+        "flow_department_result",
+        "flow_department_approve",
+        "flow_need_access",
+        "flow_access_result",
+        "flow_access_approve",
+        "flow_need_security",
+        "flow_security_result",
+        "flow_security_approve",
+        "flow_pmo_result",
+        "flow_pmo_approve"
+      ],
+      "customComponent": "ProjectMemberChangeForm",
+      "bpmn": {
+        "sequenceFlowCount": 20,
+        "edgeCount": 20,
+        "waypointCount": 63
+      },
+      "finalRequestStatus": "EFFECTIVE",
+      "effectiveMemberId": "4f96d96b0e9442938d35fedbf6c741f7",
+      "memberStatus": "ACTIVE",
+      "allocation": 25,
+      "accessReviewRequired": true,
+      "securityReviewRequired": true,
+      "implementationResult": "成员已加入项目",
+      "actionExecutions": [
+        {
+          "id": "2082646231724601346",
+          "actionName": "发送项目成员变更结果通知",
+          "handlerName": "sendNotificationHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "status": "SUCCESS",
+            "handlerReturnType": "void"
+          }
+        },
+        {
+          "id": "2082646231724601345",
+          "actionName": "记录项目生命周期全局审计",
+          "handlerName": "projectLifecycleAuditHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "auditCode": "F07_MEMBER_CHANGE",
+            "businessStage": "MEMBER_EFFECTIVE",
+            "entityCode": "project_member_change_request",
+            "entityDataId": "fe7297e47bb84450bbb0440f02effd51",
+            "processInstanceId": "bddcf10d-8bb9-11f1-80b8-7612d5b69a47",
+            "approved": "approve",
+            "operatorId": "1",
+            "recordedAt": "2026-07-30T09:55:30.218869"
+          }
+        },
+        {
+          "id": "2082646231720407042",
+          "actionName": "批准后生效项目成员变更",
+          "handlerName": "applyProjectMemberChangeHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "requestId": "fe7297e47bb84450bbb0440f02effd51",
+            "operation": "JOIN",
+            "memberId": "4f96d96b0e9442938d35fedbf6c741f7",
+            "transferredRoleCount": 0,
+            "effectiveAt": "2026-07-30T09:55:30.256605",
+            "reused": false
+          }
+        },
+        {
+          "id": "2082646231623938050",
+          "actionName": "记录项目成员变更最终批准连线",
+          "handlerName": "recordProjectMemberDecisionHandler",
+          "scopeType": "SEQUENCE_FLOW",
+          "elementId": "flow_pmo_approve",
+          "triggerTiming": "TRANSITION_TAKEN",
+          "status": "SUCCESS",
+          "result": {
+            "decision": "APPROVED",
+            "sequenceFlowId": "flow_pmo_approve",
+            "sourceNodeId": "pmo_result",
+            "targetNodeId": "end_approved",
+            "operatorId": "1",
+            "recordedAt": "2026-07-30T09:55:29.974277"
+          }
+        },
+        {
+          "id": "2082646230537613314",
+          "actionName": "记录项目经理成员变更复核",
+          "handlerName": "captureProjectMemberManagerReviewHandler",
+          "scopeType": "NODE",
+          "elementId": "project_manager_review",
+          "triggerTiming": "NODE_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "reviewedAt": "2026-07-30T09:55:29.715789",
+            "operatorId": "1",
+            "requestId": "fe7297e47bb84450bbb0440f02effd51"
+          }
+        },
+        {
+          "id": "2082646229979770881",
+          "actionName": "项目成员变更跨实体门禁",
+          "handlerName": "validateProjectMemberChangeHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_STARTED",
+          "status": "SUCCESS",
+          "result": {
+            "allowed": true,
+            "operation": "JOIN",
+            "projectId": "9f73de29c4a04e6680bc92a60e946c12",
+            "targetUserId": "2081553852142010370",
+            "requestedAllocation": 25,
+            "activeRoleCount": 0,
+            "handoverRequired": false,
+            "accessReviewRequired": true,
+            "securityReviewRequired": true,
+            "checkedAt": "2026-07-30T09:55:29.59577"
+          }
+        }
+      ]
+    },
+    "LEAVE": {
+      "requestId": "3d39cfffd96042b2a74ed6f0fe38f40a",
+      "processInstanceId": "be82315e-8bb9-11f1-80b8-7612d5b69a47",
+      "completedTasks": [
+        {
+          "taskId": "be873ab2-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "项目经理审核"
+        },
+        {
+          "taskId": "be956b9b-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "人员部门负责人审核"
+        },
+        {
+          "taskId": "be9e454d-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "系统负责人权限审核"
+        },
+        {
+          "taskId": "bea7460f-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "安全负责人审核"
+        },
+        {
+          "taskId": "beb96e8f-8bb9-11f1-80b8-7612d5b69a47",
+          "taskName": "PMO最终审批"
+        }
+      ],
+      "executedSequenceFlows": [
+        "flow_start_manager",
+        "flow_manager_result",
+        "flow_manager_approve",
+        "flow_department_result",
+        "flow_department_approve",
+        "flow_need_access",
+        "flow_access_result",
+        "flow_access_approve",
+        "flow_need_security",
+        "flow_security_result",
+        "flow_security_approve",
+        "flow_pmo_result",
+        "flow_pmo_approve"
+      ],
+      "bpmn": {
+        "sequenceFlowCount": 20,
+        "edgeCount": 20,
+        "waypointCount": 63
+      },
+      "finalRequestStatus": "EFFECTIVE",
+      "leftMemberId": "4f96d96b0e9442938d35fedbf6c741f7",
+      "leftMemberStatus": "LEFT",
+      "revokedRoleId": "e08d170fc74d476fad5a0c885ea70d31",
+      "revokedRoleStatus": "REVOKED",
+      "replacementRoleId": "43b0f336e6e444628f59f63cc9ee3699",
+      "replacementMemberId": "1d8f51e4ddfd4ff8b2e103a446bd4851",
+      "transferredRoleCount": 1,
+      "implementationResult": "成员已完成交接并退出项目",
+      "actionExecutions": [
+        {
+          "id": "2082646236438999042",
+          "actionName": "发送项目成员变更结果通知",
+          "handlerName": "sendNotificationHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "status": "SUCCESS",
+            "handlerReturnType": "void"
+          }
+        },
+        {
+          "id": "2082646236434804738",
+          "actionName": "记录项目生命周期全局审计",
+          "handlerName": "projectLifecycleAuditHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "auditCode": "F07_MEMBER_CHANGE",
+            "businessStage": "MEMBER_EFFECTIVE",
+            "entityCode": "project_member_change_request",
+            "entityDataId": "3d39cfffd96042b2a74ed6f0fe38f40a",
+            "processInstanceId": "be82315e-8bb9-11f1-80b8-7612d5b69a47",
+            "approved": "approve",
+            "operatorId": "1",
+            "recordedAt": "2026-07-30T09:55:35.236098"
+          }
+        },
+        {
+          "id": "2082646236434804737",
+          "actionName": "批准后生效项目成员变更",
+          "handlerName": "applyProjectMemberChangeHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "requestId": "3d39cfffd96042b2a74ed6f0fe38f40a",
+            "operation": "LEAVE",
+            "memberId": "4f96d96b0e9442938d35fedbf6c741f7",
+            "transferredRoleCount": 1,
+            "effectiveAt": "2026-07-30T09:55:35.287801",
+            "reused": false
+          }
+        },
+        {
+          "id": "2082646236325752833",
+          "actionName": "记录项目成员变更最终批准连线",
+          "handlerName": "recordProjectMemberDecisionHandler",
+          "scopeType": "SEQUENCE_FLOW",
+          "elementId": "flow_pmo_approve",
+          "triggerTiming": "TRANSITION_TAKEN",
+          "status": "SUCCESS",
+          "result": {
+            "decision": "APPROVED",
+            "sequenceFlowId": "flow_pmo_approve",
+            "sourceNodeId": "pmo_result",
+            "targetNodeId": "end_approved",
+            "operatorId": "1",
+            "recordedAt": "2026-07-30T09:55:31.09602"
+          }
+        },
+        {
+          "id": "2082646234970992642",
+          "actionName": "记录项目经理成员变更复核",
+          "handlerName": "captureProjectMemberManagerReviewHandler",
+          "scopeType": "NODE",
+          "elementId": "project_manager_review",
+          "triggerTiming": "NODE_COMPLETED",
+          "status": "SUCCESS",
+          "result": {
+            "reviewedAt": "2026-07-30T09:55:30.773337",
+            "operatorId": "1",
+            "requestId": "3d39cfffd96042b2a74ed6f0fe38f40a"
+          }
+        },
+        {
+          "id": "2082646234526396417",
+          "actionName": "项目成员变更跨实体门禁",
+          "handlerName": "validateProjectMemberChangeHandler",
+          "scopeType": "PROCESS",
+          "elementId": null,
+          "triggerTiming": "PROCESS_STARTED",
+          "status": "SUCCESS",
+          "result": {
+            "allowed": true,
+            "operation": "LEAVE",
+            "projectId": "9f73de29c4a04e6680bc92a60e946c12",
+            "targetUserId": "2081553852142010370",
+            "requestedAllocation": 0,
+            "activeRoleCount": 1,
+            "handoverRequired": true,
+            "accessReviewRequired": true,
+            "securityReviewRequired": true,
+            "checkedAt": "2026-07-30T09:55:30.680261"
+          }
+        }
+      ]
+    }
+  },
+  "result": "PASS",
+  "conclusion": "F07 JOIN/LEAVE 均完成真实审批；条件会签、完整BPMN连线、自定义表单、节点/连线/流程/全局动作、成员生效及角色交接全部通过。"
+}

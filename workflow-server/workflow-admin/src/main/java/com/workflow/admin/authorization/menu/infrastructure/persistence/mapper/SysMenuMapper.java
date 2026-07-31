@@ -58,14 +58,22 @@ public interface SysMenuMapper extends BaseMapper<SysMenu> {
      * @param userId 用户ID
      * @return 权限标识集合
      */
-    @Select("SELECT DISTINCT m.perm FROM sys_menu m " +
+    @Select("SELECT DISTINCT granted.permission FROM (" +
+            "SELECT m.perm AS permission FROM sys_menu m " +
             "JOIN sys_role_menu rm ON m.id = rm.menu_id " +
             "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
             "JOIN sys_role r ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} " +
             "AND r.status = '0' AND r.deleted = 0 " +
             "AND m.menu_type = 'F' AND m.status = '0' AND m.deleted = 0 " +
-            "AND m.perm IS NOT NULL AND m.perm != ''")
+            "AND m.perm IS NOT NULL AND m.perm != '' " +
+            "UNION ALL " +
+            "SELECT '*' AS permission FROM sys_role r " +
+            "JOIN sys_user_role ur ON r.id = ur.role_id " +
+            "WHERE ur.user_id = #{userId} " +
+            "AND r.role_code = 'super_admin' " +
+            "AND r.status = '0' AND r.deleted = 0" +
+            ") granted")
     Set<String> selectPermsByUserId(@Param("userId") String userId);
 
     /**

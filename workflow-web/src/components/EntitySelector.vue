@@ -63,96 +63,149 @@
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      :width="useUnifiedList ? '85%' : '800px'"
+      :width="useUnifiedList ? '85%' : multiple ? 'min(1040px, 94vw)' : '800px'"
+      top="5vh"
+      append-to-body
+      destroy-on-close
       :close-on-click-modal="false"
+      class="entity-selector-dialog"
     >
       <AsyncEntityDataList
         v-if="useUnifiedList"
-        :entity-code="runtimeEntityCode"
+        :entity-code="effectiveEntityCode"
         :list-key="listKey"
         scene="FORM_PICKER"
         :context="context"
         :selection-mode="multiple ? 'MULTIPLE' : 'SINGLE'"
+        :initial-selected-rows="selectedList"
         @confirm="handleRuntimeConfirm"
         @cancel="dialogVisible = false"
       />
 
-      <div v-else class="selector-body">
-        <!-- 实体类型标签（系统实体时显示） -->
-        <div v-if="isSystemEntity" class="entity-type-bar">
-          <el-tag :type="getEntityTypeTag(entityType)" size="large">
-            {{ getEntityTypeLabel(entityType) }}
-          </el-tag>
-          <span class="type-desc">{{ getEntityTypeDesc(entityType) }}</span>
-        </div>
+      <div v-else class="selector-layout" :class="{ 'is-multiple': multiple }">
+        <div class="selector-body">
+          <!-- 实体类型标签（系统实体时显示） -->
+          <div v-if="isSystemEntity" class="entity-type-bar">
+            <el-tag :type="getEntityTypeTag(entityType)" size="large">
+              {{ getEntityTypeLabel(entityType) }}
+            </el-tag>
+            <span class="type-desc">{{ getEntityTypeDesc(entityType) }}</span>
+          </div>
 
-        <!-- 搜索栏 -->
-        <div class="search-bar">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索名称或标识"
-            clearable
-            @keyup.enter="handleSearch"
+          <!-- 搜索栏 -->
+          <div class="search-bar">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索名称或标识"
+              clearable
+              @keyup.enter="handleSearch"
+            >
+              <template #append>
+                <el-button
+                  aria-label="搜索可选记录"
+                  title="搜索可选记录"
+                  @click="handleSearch"
+                >
+                  <el-icon><Search /></el-icon>
+                </el-button>
+              </template>
+            </el-input>
+          </div>
+
+          <!-- 数据表格 -->
+          <el-table
+            ref="tableRef"
+            :data="tableData"
+            v-loading="loading"
+            row-key="id"
+            max-height="360"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+            @row-click="handleRowClick"
           >
-            <template #append>
-              <el-button
-                aria-label="搜索可选记录"
-                title="搜索可选记录"
-                @click="handleSearch"
+            <el-table-column v-if="multiple" type="selection" width="55" />
+            <el-table-column prop="name" label="名称" min-width="150" />
+            <el-table-column prop="code" label="标识" width="120" />
+            <el-table-column label="类型" width="100">
+              <template #default="{ row }">
+                <el-tag size="small" :type="getEntityTypeTag(row.entityType)">
+                  {{ getEntityTypeLabel(row.entityType) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag v-if="row.status" size="small" :type="getStatusType(row.status)">
+                  {{ getStatusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column v-if="!multiple" label="操作" width="80">
+              <template #default="{ row }">
+                <el-button link type="primary" @click.stop="selectRow(row)">
+                  选择
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- 分页 -->
+          <div class="pagination">
+            <el-pagination
+              v-model:current-page="pageNum"
+              v-model:page-size="pageSize"
+              :total="total"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              @size-change="handleSizeChange"
+              @current-change="handleCurrentChange"
+            />
+          </div>
+        </div>
+
+        <aside v-if="multiple" class="selected-records">
+          <div class="selected-records-header">
+            <div>
+              <strong>已选数据</strong>
+              <span>{{ selectedRows.length }} 条</span>
+            </div>
+            <el-button
+              v-if="selectedRows.length"
+              link
+              type="primary"
+              @click="clearDraftSelection"
+            >
+              清空
+            </el-button>
+          </div>
+          <el-scrollbar class="selected-records-scrollbar" height="360px">
+            <el-empty
+              v-if="selectedRows.length === 0"
+              description="尚未选择数据"
+              :image-size="72"
+            />
+            <div v-else class="selected-record-list">
+              <div
+                v-for="item in selectedRows"
+                :key="item.id"
+                class="selected-record-item"
               >
-                <el-icon><Search /></el-icon>
-              </el-button>
-            </template>
-          </el-input>
-        </div>
-
-        <!-- 数据表格 -->
-        <el-table
-          ref="tableRef"
-          :data="tableData"
-          v-loading="loading"
-          style="width: 100%"
-          @selection-change="handleSelectionChange"
-          @row-click="handleRowClick"
-        >
-          <el-table-column v-if="multiple" type="selection" width="55" />
-          <el-table-column prop="name" label="名称" min-width="150" />
-          <el-table-column prop="code" label="标识" width="120" />
-          <el-table-column label="类型" width="100">
-            <template #default="{ row }">
-              <el-tag size="small" :type="getEntityTypeTag(row.entityType)">
-                {{ getEntityTypeLabel(row.entityType) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="80">
-            <template #default="{ row }">
-              <el-tag v-if="row.status" size="small" :type="getStatusType(row.status)">
-                {{ getStatusLabel(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="80" v-if="!multiple">
-            <template #default="{ row }">
-              <el-button link type="primary" @click.stop="selectRow(row)">
-                选择
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <!-- 分页 -->
-        <div class="pagination">
-          <el-pagination
-            v-model:current-page="pageNum"
-            v-model:page-size="pageSize"
-            :total="total"
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next"
-            @size-change="handleSizeChange"
-            @current-change="handleCurrentChange"
-          />
-        </div>
+                <div>
+                  <strong>{{ getItemLabel(item) }}</strong>
+                  <span>{{ getItemSecondary(item) }}</span>
+                </div>
+                <el-button
+                  circle
+                  text
+                  title="移除"
+                  @click="removeDraftSelection(item)"
+                >
+                  <el-icon><Close /></el-icon>
+                </el-button>
+              </div>
+            </div>
+          </el-scrollbar>
+        </aside>
       </div>
 
       <template v-if="!useUnifiedList" #footer>
@@ -168,9 +221,19 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, computed, defineAsyncComponent } from 'vue'
+import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue'
 import { ArrowDown, Close, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import {
+  resolveRuntimeEntitySelectionReference
+} from '@/shared/entity-selection-mapping'
+import {
+  normalizeRecordSelection,
+  reconcileRecordPageSelection,
+  recordSelectionIds,
+  recordSelectionValues,
+  removeRecordSelection
+} from '@/shared/entity-record-selection'
 
 const props = defineProps({
   // 实体类型：CUSTOM(用户实体)/USER/DEPT/ROLE/GROUP
@@ -183,7 +246,7 @@ const props = defineProps({
     type: String,
     default: null
   },
-  // 关联实体ID（当 entityCode 为空时，用于后端查询 entityCode）
+  // 目标实体ID（当 entityCode 为空时，用于后端查询 entityCode）
   refEntityId: {
     type: String,
     default: null
@@ -215,6 +278,15 @@ const props = defineProps({
     type: [String, Array],
     default: null
   },
+  valueKey: {
+    type: String,
+    default: 'id',
+    validator: value => ['id', 'code'].includes(value)
+  },
+  title: {
+    type: String,
+    default: ''
+  },
   // 占位文本
   placeholder: {
     type: String,
@@ -232,10 +304,22 @@ const AsyncEntityDataList = defineAsyncComponent(() => import('@/views/entity/En
 
 // 计算属性
 const isSystemEntity = computed(() => props.entityType !== 'CUSTOM')
+const customReference = computed(() =>
+  resolveRuntimeEntitySelectionReference(props)
+)
+const effectiveEntityCode = computed(() =>
+  customReference.value.entityCode
+)
+const effectiveRefEntityId = computed(() =>
+  customReference.value.refEntityId
+)
 const useUnifiedList = computed(() =>
-  props.entityType === 'CUSTOM' && !!props.runtimeEntityCode && !!props.listKey
+  props.entityType === 'CUSTOM'
+  && !!effectiveEntityCode.value
+  && !!props.listKey
 )
 const dialogTitle = computed(() => {
+  if (props.title) return props.title
   const typeMap = {
     'CUSTOM': '选择数据',
     'USER': '选择用户',
@@ -262,14 +346,19 @@ const selectedData = ref(null)
 const selectedList = ref([])
 const selectedRows = ref([])
 const tableRef = ref(null)
+const restoringPageSelection = ref(false)
 
 // 监听值变化
 watch(() => props.modelValue, (val) => {
-  if (val) {
+  const hasValue = Array.isArray(val)
+    ? val.length > 0
+    : val !== null && val !== undefined && val !== ''
+  if (hasValue) {
     loadSelectedData()
   } else {
     selectedData.value = null
     selectedList.value = []
+    selectedRows.value = []
   }
 }, { immediate: true })
 
@@ -303,23 +392,30 @@ async function loadSelectedData() {
   }
 
   // 纯 ID 模式：去后台查询详情
-  if (props.entityType === 'CUSTOM' && !props.entityCode && !props.refEntityId) {
+  if (
+    props.entityType === 'CUSTOM'
+    && !effectiveEntityCode.value
+    && !effectiveRefEntityId.value
+  ) {
     return
   }
 
   try {
-    const ids = props.multiple && Array.isArray(props.modelValue)
+    const values = props.multiple && Array.isArray(props.modelValue)
       ? props.modelValue.join(',')
       : props.modelValue
 
-    if (!ids) return
+    if (!values) return
 
-    const params = new URLSearchParams({ ids })
+    const params = new URLSearchParams({
+      ids: values,
+      valueKey: props.valueKey
+    })
     if (props.entityType === 'CUSTOM') {
-      if (props.entityCode) {
-        params.append('entityCode', props.entityCode)
-      } else if (props.refEntityId) {
-        params.append('refEntityId', props.refEntityId)
+      if (effectiveEntityCode.value) {
+        params.append('entityCode', effectiveEntityCode.value)
+      } else if (effectiveRefEntityId.value) {
+        params.append('refEntityId', effectiveRefEntityId.value)
       }
     }
 
@@ -342,44 +438,27 @@ async function loadSelectedData() {
 // 打开选择器
 async function openSelector() {
   if (props.disabled) return
+  await loadSelectedData()
+  selectedRows.value = normalizeRecordSelection(selectedList.value)
   dialogVisible.value = true
   if (useUnifiedList.value) {
     return
   }
   pageNum.value = 1
   searchKeyword.value = ''
-  selectedRows.value = []
   await loadData()
-  
-  // 回显已选项
-  if (props.multiple && tableRef.value) {
-    // 防御性提取已选 id（兼容对象数组）
-    const selectedIds = Array.isArray(props.modelValue)
-      ? props.modelValue.map(v => v && typeof v === 'object' ? v.id : v)
-      : []
-    setTimeout(() => {
-      tableData.value.forEach(row => {
-        const isSelected = props.multiple
-          ? selectedIds.includes(row.id)
-          : props.modelValue === row.id
-        if (isSelected) {
-          tableRef.value.toggleRowSelection(row, true)
-        }
-      })
-    }, 100)
-  }
 }
 
 function handleRuntimeConfirm(rows) {
   const selected = Array.isArray(rows) ? rows : []
   if (props.multiple) {
     selectedList.value = selected
-    emit('update:modelValue', selected.map(row => row.id))
+    emit('update:modelValue', recordSelectionValues(selected, props.valueKey))
     emit('change', selected)
   } else {
     const row = selected[0] || null
     selectedData.value = row
-    emit('update:modelValue', row?.id || null)
+    emit('update:modelValue', selectionValue(row))
     emit('change', row)
   }
   dialogVisible.value = false
@@ -388,8 +467,12 @@ function handleRuntimeConfirm(rows) {
 // 加载数据
 async function loadData() {
   // CUSTOM 类型必须配置 entityCode 或 refEntityId
-  if (props.entityType === 'CUSTOM' && !props.entityCode && !props.refEntityId) {
-    ElMessage.warning('该实体引用字段未配置关联实体，请先配置')
+  if (
+    props.entityType === 'CUSTOM'
+    && !effectiveEntityCode.value
+    && !effectiveRefEntityId.value
+  ) {
+    ElMessage.warning('该实体引用字段未配置目标实体，请先配置')
     return
   }
 
@@ -403,10 +486,10 @@ async function loadData() {
       params.append('keyword', searchKeyword.value)
     }
     if (props.entityType === 'CUSTOM') {
-      if (props.entityCode) {
-        params.append('entityCode', props.entityCode)
-      } else if (props.refEntityId) {
-        params.append('refEntityId', props.refEntityId)
+      if (effectiveEntityCode.value) {
+        params.append('entityCode', effectiveEntityCode.value)
+      } else if (effectiveRefEntityId.value) {
+        params.append('refEntityId', effectiveRefEntityId.value)
       }
     }
     
@@ -423,6 +506,7 @@ async function loadData() {
     if (res.code === 200) {
       tableData.value = res.data.records || []
       total.value = res.data.total || 0
+      await restoreCurrentPageSelection()
     } else {
       ElMessage.error(res.message || '加载数据失败')
     }
@@ -452,29 +536,37 @@ function handleCurrentChange(val) {
 
 // 选择变化（多选）
 function handleSelectionChange(rows) {
-  selectedRows.value = rows
+  if (restoringPageSelection.value) return
+  selectedRows.value = reconcileRecordPageSelection(
+    selectedRows.value,
+    tableData.value,
+    rows
+  )
 }
 
 // 点击行（单选）
 function handleRowClick(row) {
-  if (!props.multiple) {
-    selectRow(row)
+  if (props.multiple) {
+    tableRef.value?.toggleRowSelection(row)
+    return
   }
+  selectRow(row)
 }
 
 // 选择单行
 function selectRow(row) {
   selectedData.value = row
-  emit('update:modelValue', row.id)
+  emit('update:modelValue', selectionValue(row))
   emit('change', row)
   dialogVisible.value = false
 }
 
 // 确认选择（多选）
 function confirmSelection() {
-  const ids = selectedRows.value.map(r => r.id)
-  selectedList.value = [...selectedRows.value]
-  emit('update:modelValue', ids)
+  selectedRows.value = normalizeRecordSelection(selectedRows.value)
+  const values = recordSelectionValues(selectedRows.value, props.valueKey)
+  selectedList.value = selectedRows.value.map(item => ({ ...item }))
+  emit('update:modelValue', values)
   emit('change', selectedRows.value)
   dialogVisible.value = false
 }
@@ -488,10 +580,41 @@ function clearSelection() {
 
 // 移除选择（多选）
 function removeSelection(item) {
-  selectedList.value = selectedList.value.filter(i => i.id !== item.id)
-  const ids = selectedList.value.map(i => i.id)
-  emit('update:modelValue', ids)
+  selectedList.value = removeRecordSelection(selectedList.value, item)
+  const values = recordSelectionValues(selectedList.value, props.valueKey)
+  emit('update:modelValue', values)
   emit('change', selectedList.value)
+}
+
+function selectionValue(item) {
+  if (!item) return null
+  const value = item[props.valueKey]
+  return value == null || value === '' ? null : String(value)
+}
+
+async function restoreCurrentPageSelection() {
+  if (!props.multiple || !tableRef.value) return
+  restoringPageSelection.value = true
+  await nextTick()
+  tableRef.value.clearSelection()
+  const selectedIds = new Set(recordSelectionIds(selectedRows.value))
+  tableData.value.forEach(row => {
+    if (selectedIds.has(String(row.id))) {
+      tableRef.value.toggleRowSelection(row, true)
+    }
+  })
+  await nextTick()
+  restoringPageSelection.value = false
+}
+
+async function removeDraftSelection(item) {
+  selectedRows.value = removeRecordSelection(selectedRows.value, item)
+  await restoreCurrentPageSelection()
+}
+
+async function clearDraftSelection() {
+  selectedRows.value = []
+  await restoreCurrentPageSelection()
 }
 
 // 获取实体类型标签
@@ -529,7 +652,16 @@ function getEntityTypeDesc(type) {
 }
 
 function getItemLabel(item) {
-  return item?.name || item?.code || '未命名记录'
+  return item?.name
+    || item?.title
+    || item?.code
+    || item?.dataNo
+    || item?.id
+    || '未命名记录'
+}
+
+function getItemSecondary(item) {
+  return item?.dataNo || item?.code || item?.id || ''
 }
 
 function getStatusLabel(status) {
@@ -648,6 +780,80 @@ function getStatusType(status) {
   margin-bottom: 16px;
 }
 
+.selector-layout.is-multiple {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+}
+
+.selector-body {
+  min-width: 0;
+}
+
+.selected-records {
+  min-width: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--el-border-color-lighter);
+}
+
+.selected-records-header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.selected-records-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.selected-records-header span,
+.selected-record-item span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.selected-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 8px;
+}
+
+.selected-records-scrollbar {
+  height: 360px;
+  min-height: 0;
+}
+
+.selected-record-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  background: var(--el-fill-color-lighter);
+}
+
+.selected-record-item > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.selected-record-item strong,
+.selected-record-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pagination {
   margin-top: 16px;
   display: flex;
@@ -656,5 +862,11 @@ function getStatusType(status) {
 
 :deep(.el-tag) {
   margin: 2px;
+}
+
+.entity-selector-dialog :deep(.el-dialog__footer) {
+  position: relative;
+  z-index: 1;
+  background: var(--el-bg-color);
 }
 </style>

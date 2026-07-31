@@ -15,8 +15,9 @@
           <el-icon><View /></el-icon>预览
         </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
-        <el-button @click="openExtensionManagement">扩展管理</el-button>
+        <el-button v-if="!isSystemEntity" @click="openExtensionManagement">扩展管理</el-button>
         <el-button
+          v-if="!isSystemEntity"
           :disabled="!form.id"
           @click="openUnifiedEventBindings('OWNER')"
         >
@@ -30,6 +31,15 @@
         </el-button>
       </div>
     </div>
+
+    <el-alert
+      v-if="isSystemEntity"
+      title="平台系统表结构只读。这里仅配置详情查看布局、中文标签、分组、页签、格式化与显隐。"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="system-config-alert"
+    />
 
     <div class="design-body">
       <div class="field-panel">
@@ -147,7 +157,7 @@
                     style="width: 180px"
                   />
                 </el-form-item>
-                <el-form-item label="自定义组件">
+                <el-form-item v-if="!isSystemEntity" label="自定义组件">
                   <ExtensionCapabilityPicker
                     v-model="form.customComponent"
                     placeholder="留空使用默认动态表单"
@@ -157,7 +167,7 @@
                     style="width: 320px"
                   />
                 </el-form-item>
-                <el-form-item v-if="form.customComponent" label="组件版本">
+                <el-form-item v-if="!isSystemEntity && form.customComponent" label="组件版本">
                   <el-tag>
                     v{{ form.customComponentVersion || 1 }}
                     / 快照 v{{ form.customComponentSnapshotVersion || 1 }}
@@ -464,7 +474,13 @@
                 <details class="property-advanced">
                   <summary>输入与输出映射</summary>
                   <div class="property-advanced-body">
-                    <el-form-item label="输入映射">
+                    <el-form-item>
+                      <template #label>
+                        <JsonConfigLabel
+                          label="输入映射"
+                          help-key="entityForm.dataSourceInputMapping"
+                        />
+                      </template>
                       <el-input
                         v-model="selectedField.dataSourceInputMappingText"
                         type="textarea"
@@ -473,7 +489,13 @@
                       />
                       <div class="form-tip">目标路径映射到 data/context/input 路径；也可使用 {"literal": 值}。</div>
                     </el-form-item>
-                    <el-form-item label="输出映射">
+                    <el-form-item>
+                      <template #label>
+                        <JsonConfigLabel
+                          label="输出映射"
+                          help-key="entityForm.dataSourceOutputMapping"
+                        />
+                      </template>
                       <el-input
                         v-model="selectedField.dataSourceOutputMappingText"
                         type="textarea"
@@ -669,25 +691,27 @@
                       <el-option label="系统部门" value="DEPT" />
                       <el-option label="系统角色" value="ROLE" />
                       <el-option label="系统用户组" value="GROUP" />
+                      <el-option label="系统菜单" value="MENU" />
+                      <el-option label="系统字典" value="DICT" />
+                      <el-option label="系统字典项" value="DICT_ITEM" />
                     </el-select>
                   </el-form-item>
-                  <el-form-item label="关联实体" v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'">
-                    <el-select
+                  <el-form-item label="目标实体" v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'">
+                    <EntityDefinitionPicker
                       v-model="selectedField.refEntityId"
                       :disabled="!!selectedField.fieldId"
-                      placeholder="选择关联实体"
-                      style="width: 100%"
-                      @change="handleReferenceEntityChange"
-                    >
-                      <el-option
-                        v-for="ent in entityList"
-                        :key="ent.id"
-                        :label="ent.entityName"
-                        :value="ent.id"
-                      />
-                    </el-select>
+                      placeholder="选择目标实体"
+                      value-key="id"
+                      title="选择目标实体"
+                      :query="{ status: 'PUBLISHED' }"
+                      @selected="handleReferenceEntitySelected"
+                      @resolved="rememberEntityOption"
+                    />
+                    <div class="form-tip">
+                      {{ getEntityReferenceSelectionHint(selectedField.fieldType || selectedField.componentType) }}
+                    </div>
                     <div v-if="selectedField.refEntityId" class="form-tip">
-                      当前关联：{{ getEntityNameById(selectedField.refEntityId) }}
+                      当前目标：{{ getEntityNameById(selectedField.refEntityId) }}
                     </div>
                   </el-form-item>
                   <el-form-item label="选择列表" v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'">
@@ -861,7 +885,7 @@
       <LinkageConfigPanel
         v-if="selectedField"
         :field="selectedField"
-        :all-fields="entityFields.filter(f => !f.isSystem)"
+        :all-fields="entityFields.filter(f => f.uiConfigurable !== false)"
         @save="handleSaveLinkage"
       />
     </el-dialog>
@@ -937,7 +961,9 @@ import EntitySelectionMappingDialog from '@/components/ui-config/EntitySelection
 import FormDataSourceCompatDialog from '@/components/ui-config/FormDataSourceCompatDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
@@ -980,7 +1006,10 @@ import {
 } from '@/shared/form-field-component-policy'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
-import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
+import {
+  filterEntityFieldsByLifecycle,
+  getEntityReferenceSelectionHint
+} from '@/shared/entity-design'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import {
@@ -1144,18 +1173,19 @@ function isTabSubForm(field) {
 }
 
 const entityInfo = ref({})
+const isSystemEntity = computed(() => entityInfo.value?.storageMode === 'SYSTEM')
 const entityFields = ref([])
 const formFields = ref([])
 const selectedField = ref(null)
 const fieldSearch = ref('')
-const entityList = ref([])
+const entityNameById = ref({})
 const formListByEntity = ref([])
 const childFormReleases = ref([])
 const childFormReleaseLoading = ref(false)
 const referenceListOptions = ref([])
 const eventFieldOptions = computed(() =>
   entityFields.value
-    .filter(field => !field.isSystem)
+    .filter(field => field.uiConfigurable !== false)
     .map(field => ({
       label: field.fieldName || field.fieldCode,
       value: field.fieldCode
@@ -1508,8 +1538,11 @@ const isSelectedSection = computed(() => isSectionField(selectedField.value))
 
 // 过滤后的字段
 const filteredEntityFields = computed(() => {
-  if (!fieldSearch.value) return entityFields.value
-  return entityFields.value.filter(f => 
+  const configurableFields = entityFields.value.filter(
+    field => field.uiConfigurable !== false
+  )
+  if (!fieldSearch.value) return configurableFields
+  return configurableFields.filter(f =>
     f.fieldName.includes(fieldSearch.value) || 
     f.fieldCode.includes(fieldSearch.value)
   )
@@ -1547,11 +1580,6 @@ async function loadEntityInfo() {
   try {
     const data = await entityApi.getById(entityId)
     entityInfo.value = data
-    if (data.storageMode === 'SYSTEM') {
-      ElMessage.warning('平台系统实体不支持动态表单设计')
-      router.replace('/entity')
-      return
-    }
     if (!isEdit.value) {
       form.value.formName = data.entityName + '表单'
       form.value.formKey = data.entityCode + '_form'
@@ -1564,20 +1592,34 @@ async function loadEntityInfo() {
 // 根据实体ID获取实体名称
 function getEntityNameById(id) {
   if (!id) return '-'
-  const ent = entityList.value.find(e => String(e.id) === String(id))
-  return ent?.entityName || String(id)
+  return entityNameById.value[String(id)] || String(id)
 }
 
-// 加载所有实体列表（用于子表单引用选择）
-async function loadEntityList() {
-  try {
-    const list = await entityApi.getAll()
-    // 统一将 id 转为字符串，避免 el-select value 类型不匹配显示 raw value
-    entityList.value = list
-      .filter(ent => ent.storageMode !== 'SYSTEM')
-      .map(ent => ({ ...ent, id: String(ent.id) }))
-  } catch (e) {
-    console.error('加载实体列表失败:', e)
+function rememberEntityOption(entity) {
+  if (!entity || Array.isArray(entity) || !entity.id) return
+  entityNameById.value = {
+    ...entityNameById.value,
+    [String(entity.id)]: entity.entityName || entity.entityCode || String(entity.id)
+  }
+}
+
+async function resolveReferencedEntityNames() {
+  const ids = [...new Set(
+    formFields.value
+      .flatMap(field => [field.refEntityId, field.childEntityId])
+      .map(value => String(value || ''))
+      .filter(Boolean)
+  )]
+  if (!ids.length) return
+  const options = await entityApi.resolveOptions({ ids }).catch(() => [])
+  entityNameById.value = {
+    ...entityNameById.value,
+    ...Object.fromEntries(
+      (options || []).map(item => [
+        String(item.id),
+        item.entityName || item.entityCode || String(item.id)
+      ])
+    )
   }
 }
 
@@ -1781,7 +1823,10 @@ async function loadEntityFields() {
 
   try {
     const loadedFields = await getEntityFields(eid)
-    entityFields.value = filterEntityFieldsByLifecycle(entityInfo.value, loadedFields)
+    entityFields.value = filterEntityFieldsByLifecycle(
+      entityInfo.value,
+      loadedFields
+    ).filter(field => field.uiConfigurable !== false)
     enrichFieldCodes()
   } catch (e) {
     console.error('加载实体字段失败:', e)
@@ -2314,6 +2359,7 @@ async function loadFormFields() {
       }
     })
     formFields.value.forEach(restoreFieldConfig)
+    await resolveReferencedEntityNames()
     enrichFieldCodes()
     nodeBaselines.value = new Map()
     formFields.value.forEach(rememberNodeBaseline)
@@ -2355,7 +2401,7 @@ function addField(entityField) {
     fieldType: entityField.fieldType,
     componentType: getDefaultComponentType(entityField.fieldType),
     isRequired: entityField.isRequired ? 1 : 0,
-    isReadonly: 0,
+    isReadonly: isSystemEntity.value ? 1 : 0,
     isHidden: 0,
     validationRules: '',
     extensionConfig: '',
@@ -2802,8 +2848,9 @@ function handleRefEntityChange(entityId) {
   loadFormListByEntity(entityId || entityInfo.value.id)
 }
 
-async function handleReferenceEntityChange(targetEntityId) {
-  const entity = entityList.value.find(item => String(item.id) === String(targetEntityId))
+async function handleReferenceEntitySelected(entity) {
+  rememberEntityOption(entity)
+  const targetEntityId = entity?.id || ''
   if (selectedField.value) {
     selectedField.value.refEntityCode = entity?.entityCode || ''
     selectedField.value.refListKey = ''
@@ -2819,8 +2866,10 @@ async function loadReferenceLists(targetEntityId, reset = true) {
     referenceListOptions.value = []
     return
   }
-  const entity = entityList.value.find(item => String(item.id) === String(targetEntityId))
   if (selectedField.value && !selectedField.value.refEntityCode) {
+    const options = await entityApi.resolveOptions({ ids: [String(targetEntityId)] }).catch(() => [])
+    const entity = options?.[0]
+    rememberEntityOption(entity)
     selectedField.value.refEntityCode = entity?.entityCode || ''
   }
   try {
@@ -3127,11 +3176,17 @@ async function handleSave() {
         layoutType: form.value.layoutType,
         isDefault: form.value.isDefault,
         status: form.value.status,
-        customComponent: form.value.customComponent,
-        customComponentVersion: form.value.customComponentVersion,
+        customComponent: isSystemEntity.value ? '' : form.value.customComponent,
+        customComponentVersion: isSystemEntity.value
+          ? null
+          : form.value.customComponentVersion,
         customComponentSnapshotVersion:
-          form.value.customComponentSnapshotVersion,
-        initConfig: safeParseConfig(form.value.initConfig),
+          isSystemEntity.value
+            ? null
+            : form.value.customComponentSnapshotVersion,
+        initConfig: isSystemEntity.value
+          ? null
+          : safeParseConfig(form.value.initConfig),
         viewConfig: viewConfig.value
       })
       form.value = { ...form.value, ...updated }
@@ -3143,6 +3198,9 @@ async function handleSave() {
     }
 
     for (const field of formFields.value) {
+      if (isSystemEntity.value && field.fieldId) {
+        field.isReadonly = 1
+      }
       await ensureChildFormReleaseBinding(field)
       validateNodeDataSourceMappings(field)
       const payload = fieldToNodePayload(field, {
@@ -3187,8 +3245,6 @@ onMounted(async () => {
   await loadEntityInfo()
   await loadFormInfo()
   await loadEntityFields()
-  // 先加载实体列表，确保 el-select 有选项后再加载并恢复表单字段
-  await loadEntityList()
   await loadFormFields()
   await loadDataSources()
   await loadComponentTemplates()
@@ -3206,6 +3262,11 @@ onMounted(async () => {
   flex-direction: column;
   overflow: hidden;
   background-color: #f5f7fa;
+}
+
+.system-config-alert {
+  flex: 0 0 auto;
+  margin: 12px 16px 0;
 }
 
 .design-header {

@@ -125,13 +125,11 @@
           <el-input v-model="form.orgName" placeholder="请输入名称" />
         </el-form-item>
         <el-form-item label="负责人">
-          <el-select-v2
+          <UserSelector
             v-model="form.leaderId"
-            :options="userOptions"
+            value-key="id"
             placeholder="请选择负责人"
-            filterable
-            clearable
-            style="width: 100%"
+            title="选择负责人"
           />
         </el-form-item>
         <el-form-item label="联系电话">
@@ -172,6 +170,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, OfficeBuilding, House } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
+import UserSelector from '@/components/UserSelector.vue'
 
 const loading = ref(false)
 const loadError = ref('')
@@ -181,7 +180,6 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitLoading = ref(false)
 const formRef = ref(null)
-const userOptions = ref([])
 
 const flatOrganizations = computed(() => {
   const result = []
@@ -271,21 +269,6 @@ async function loadOrgTree() {
     loadError.value = e?.message || '无法读取组织部门树，请重试。'
   } finally {
     loading.value = false
-  }
-}
-
-// 加载用户列表
-async function loadUsers() {
-  try {
-    const res = await request.get('/system/user/list')
-    if (res && Array.isArray(res)) {
-      userOptions.value = res.map(user => ({
-        label: `${user.nickname || user.username} (${user.username})`,
-        value: user.id
-      }))
-    }
-  } catch (e) {
-    console.error('加载用户列表失败:', e)
   }
 }
 
@@ -386,7 +369,6 @@ function resetForm() {
 
 onMounted(() => {
   loadOrgTree()
-  loadUsers()
 })
 </script>
 

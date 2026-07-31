@@ -69,6 +69,38 @@ class ConfigMigrationPackageCodecTest {
         assertThrows(IllegalStateException.class, codec::validateSigningKey);
     }
 
+    @Test
+    void systemEntityUiUsesDedicatedAssetPathAndSections() {
+        ConfigMigrationPackageCodec codec = codec("test-signing-key");
+        ConfigMigrationAsset asset = systemEntityUiAsset();
+
+        ConfigMigrationPackageCodec.DecodedPackage decoded =
+                codec.decode(codec.encode(
+                        "WFP-SYSTEM-UI-001",
+                        "REL-20260730-SYSTEM-UI",
+                        List.of(asset),
+                        Map.of(asset.getId(), Map.of(
+                                "full", false,
+                                "sections", List.of("forms"))))
+                        .data());
+
+        Map<String, Object> manifestAsset =
+                (Map<String, Object>) ((List<?>) decoded
+                        .manifest()
+                        .get("assets")).get(0);
+        assertTrue(String.valueOf(manifestAsset.get("path"))
+                .startsWith("assets/system-entity-ui/"));
+        assertEquals(
+                ConfigMigrationAssetService.SYSTEM_ENTITY_UI,
+                decoded.assets().get(0).assetType());
+        assertTrue(decoded.assets().get(0).snapshot()
+                .containsKey("forms"));
+        assertFalse(decoded.assets().get(0).snapshot()
+                .containsKey("lists"));
+        assertFalse(decoded.assets().get(0).snapshot()
+                .containsKey("fields"));
+    }
+
     /** 构造指定签名密钥的编解码器，通过反射注入密钥与环境名 */
     private ConfigMigrationPackageCodec codec(String signingKey) {
         ConfigMigrationPackageCodec codec = new ConfigMigrationPackageCodec(
@@ -96,6 +128,39 @@ class ConfigMigrationPackageCodecTest {
                   "definition": {"entityCode": "expense", "entityName": "费用申请"},
                   "fields": [{"fieldCode": "amount", "fieldType": "DECIMAL"}],
                   "forms": [{"formKey": "default", "formName": "默认表单"}],
+                  "dependencies": []
+                }
+                """);
+        asset.setDependenciesJson("[]");
+        return asset;
+    }
+
+    private ConfigMigrationAsset systemEntityUiAsset() {
+        ConfigMigrationAsset asset = new ConfigMigrationAsset();
+        asset.setId("system-ui-asset-1");
+        asset.setAssetType(
+                ConfigMigrationAssetService.SYSTEM_ENTITY_UI);
+        asset.setBusinessKey("sys_user");
+        asset.setAssetName("系统用户 UI");
+        asset.setSourceVersion(2);
+        asset.setContentHash("system-ui-full-hash");
+        asset.setSnapshotSchemaVersion(1);
+        asset.setSnapshotJson("""
+                {
+                  "schemaVersion": 1,
+                  "assetType": "SYSTEM_ENTITY_UI",
+                  "businessKey": "sys_user",
+                  "assetName": "系统用户 UI",
+                  "definition": {
+                    "entityCode": "sys_user",
+                    "entityName": "系统用户",
+                    "storageMode": "SYSTEM"
+                  },
+                  "referencedFields": ["id", "username", "nickname"],
+                  "forms": [{"formKey": "detail", "formName": "用户详情"}],
+                  "lists": [{"listKey": "all", "listName": "用户列表"}],
+                  "dataSources": [],
+                  "extensions": [],
                   "dependencies": []
                 }
                 """);

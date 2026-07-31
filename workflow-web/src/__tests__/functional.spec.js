@@ -333,7 +333,7 @@ assert.equal(getEntityFieldTypeTag('REFERENCE'), 'primary')
 const apiExpectations = {
   'src/api/auth.js': ['login', 'getCurrentUser', 'logout', 'getPermissions'],
   'src/api/process.js': ['getList', 'getPublishedList', 'getById', 'create', 'update', 'delete', 'publish', 'getProcessProgress'],
-  'src/api/entity.js': ['getList', 'getAll', 'getByCode', 'create', 'update', 'delete', 'publish', 'getListWithConfig', 'getDetail', 'save', 'exportData'],
+  'src/api/entity.js': ['getList', 'getOptions', 'resolveOptions', 'getByCode', 'create', 'update', 'delete', 'publish', 'getListWithConfig', 'getDetail', 'save', 'exportData'],
   'src/api/entityListConfig.js': [
     'getByEntityId',
     'getById',
@@ -413,6 +413,22 @@ assert.ok(
   '实体列表菜单应由角色菜单授权控制，不应重复保存列表访问权限码'
 )
 
+const entityDefinitionPickerSource = readFileSync(
+  'src/components/EntityDefinitionPicker.vue',
+  'utf8'
+)
+assert.ok(
+  entityDefinitionPickerSource.includes('class="selected-scrollbar"')
+    && /\.selected-scrollbar\s*\{[\s\S]*?height:\s*468px;/.test(entityDefinitionPickerSource),
+  '实体选择弹窗必须限制已选区域高度，避免覆盖底部确认按钮'
+)
+assert.ok(
+  /\.entity-definition-picker-dialog\s+:deep\(\.el-dialog__footer\)\s*\{[\s\S]*?z-index:\s*1;/.test(
+    entityDefinitionPickerSource
+  ),
+  '实体选择弹窗底部操作区必须保持在内容层上方'
+)
+
 const pageFeatureExpectations = {
   'src/views/ProcessList.vue': ['handleCreate', 'handleEdit', 'handleDelete', 'handlePublish', 'handleDisable', 'handleDesign', 'handleViewVersions', 'handleDeleteVersion'],
   'src/views/EntityList.vue': ['handleCreate', 'handleDelete', 'handlePublish', 'handleRepublish', 'handleDesign', 'handleListConfig', 'handleForm', 'handleUpgradeWorkflow', 'handleBindWorkflow', 'handleUnbindWorkflow', 'handleStatusConfig'],
@@ -487,6 +503,80 @@ assert.equal(
   /<el-checkbox label="(?:email|sms)">/.test(nodeConfigPanelSource),
   false,
   '发送任务不应提供尚未注册运行时实现的邮件或短信渠道'
+)
+
+const userSelectorSource = readFileSync(
+  'src/components/UserSelector.vue',
+  'utf8'
+)
+assert.ok(
+  userSelectorSource.includes('entity-type="USER"')
+    && userSelectorSource.includes(':value-key="valueKey"'),
+  '人员选择必须复用系统实体选择器并支持 ID/用户名取值'
+)
+
+const entitySelectorSource = readFileSync(
+  'src/components/EntitySelector.vue',
+  'utf8'
+)
+assert.ok(
+  entitySelectorSource.includes('valueKey: {')
+    && entitySelectorSource.includes('valueKey: props.valueKey'),
+  '实体选择器必须支持按配置值批量回显'
+)
+
+const userSelectionPages = [
+  'src/views/Home.vue',
+  'src/components/NodeConfigPanel.vue',
+  'src/views/EntityDesign.vue',
+  'src/views/system/Organization.vue',
+  'src/views/system/Group.vue'
+]
+for (const file of userSelectionPages) {
+  const source = readFileSync(file, 'utf8')
+  assert.ok(
+    source.includes('<UserSelector'),
+    `${file} 未使用通用人员实体选择器`
+  )
+  assert.equal(
+    source.includes('/system/user/list')
+      || source.includes('getUserList(')
+      || source.includes('userOptions'),
+    false,
+    `${file} 不应再加载全部人员作为下拉选项`
+  )
+}
+
+const homeSource = readFileSync('src/views/Home.vue', 'utf8')
+assert.ok(
+  /v-model="transferForm\.transferTo"[\s\S]*?value-key="code"/.test(
+    homeSource
+  ),
+  '任务转办必须继续保存 username'
+)
+assert.ok(
+  /v-model="addSignForm\.userIds"[\s\S]*?multiple[\s\S]*?value-key="code"/.test(
+    homeSource
+  ),
+  '任务加签必须支持多个 username'
+)
+assert.ok(
+  /v-model="ccForm\.userIds"[\s\S]*?multiple[\s\S]*?value-key="code"/.test(
+    homeSource
+  ),
+  '人工知会必须支持多个 username'
+)
+assert.ok(
+  /v-model="form\.leaderId"[\s\S]*?value-key="id"/.test(
+    readFileSync('src/views/system/Organization.vue', 'utf8')
+  ),
+  '组织负责人必须继续保存用户 ID'
+)
+assert.ok(
+  /v-model="selectedUserIds"[\s\S]*?multiple[\s\S]*?value-key="id"/.test(
+    readFileSync('src/views/system/Group.vue', 'utf8')
+  ),
+  '用户组成员必须继续保存多个用户 ID'
 )
 
 console.log('functional tests passed')

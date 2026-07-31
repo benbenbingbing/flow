@@ -29,6 +29,14 @@ public class EntityDefinitionDTO {
     private EntityDefinition.LifecycleMode lifecycleMode;
     /** 存储模式：DYNAMIC / SYSTEM */
     private EntityDefinition.StorageMode storageMode;
+    /** 实体结构是否可编辑 */
+    private Boolean structureEditable;
+    /** 是否允许配置表单 */
+    private Boolean formConfigurable;
+    /** 是否允许配置列表 */
+    private Boolean listConfigurable;
+    /** 通用实体运行时是否只读 */
+    private Boolean runtimeReadOnly;
     /** 是否启用团队可见性 */
     private Boolean teamVisibilityEnabled;
     /** 团队可见性级别 */

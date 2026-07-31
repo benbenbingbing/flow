@@ -87,7 +87,7 @@
       "sortOrder": 90,
       "defaultValue": "100",
       "fieldPrecision": 2,
-      "validateRules": "{\"min\":0.01,\"max\":100}"
+      "validateRules": "{\"min\":0,\"max\":100}"
     },
     {
       "fieldCode": "join_reason",

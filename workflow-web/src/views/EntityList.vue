@@ -93,6 +93,22 @@
               <el-button link type="primary" @click="handleDesign(row)">
                 {{ row.storageMode === 'SYSTEM' ? '查看' : '设计' }}
               </el-button>
+              <el-button
+                v-if="row.listConfigurable !== false"
+                link
+                type="primary"
+                @click="handleListConfig(row)"
+              >
+                列表
+              </el-button>
+              <el-button
+                v-if="row.formConfigurable !== false"
+                link
+                type="primary"
+                @click="handleForm(row)"
+              >
+                表单
+              </el-button>
               <template v-if="row.storageMode !== 'SYSTEM'">
                 <el-button
                   v-if="row.status !== 'PUBLISHED'"
@@ -105,8 +121,6 @@
                 <el-button v-else link type="success" @click="handleRepublish(row)">
                   重新发布
                 </el-button>
-                <el-button link type="primary" @click="handleListConfig(row)">列表</el-button>
-                <el-button link type="primary" @click="handleForm(row)">表单</el-button>
                 <el-button link type="primary" @click="handleStatusConfig(row)">状态</el-button>
                 <el-button
                   v-if="row.lifecycleMode === 'STANDALONE'"

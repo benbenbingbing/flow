@@ -23,6 +23,10 @@ export function parseJsonConfig(text, options = {}) {
   if (expectedType === 'array' && !Array.isArray(parsed)) {
     throw new Error(`${fieldName}必须是 JSON 数组`)
   }
+  if (expectedType === 'object-or-array'
+      && (parsed == null || typeof parsed !== 'object')) {
+    throw new Error(`${fieldName}必须是 JSON 对象或数组`)
+  }
 
   return parsed
 }

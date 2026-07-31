@@ -6,7 +6,7 @@
         <span>流程配置系统</span>
       </div>
       <el-menu
-        :default-active="$route.path"
+        :default-active="activeMenuPath"
         router
         class="menu"
         background-color="#304156"
@@ -17,11 +17,10 @@
           v-for="menu in menuTree"
           :key="menu.id"
           :menu="menu"
-          :icon-map="iconMap"
         />
       </el-menu>
     </el-aside>
-    <el-container>
+    <el-container class="content-container">
       <el-header class="header">
         <div class="header-left">
           <el-button
@@ -79,7 +78,7 @@
         <span>流程配置系统</span>
       </div>
       <el-menu
-        :default-active="$route.path"
+        :default-active="activeMenuPath"
         router
         class="menu mobile-menu"
         background-color="#304156"
@@ -90,7 +89,6 @@
           v-for="menu in menuTree"
           :key="menu.id"
           :menu="menu"
-          :icon-map="iconMap"
         />
       </el-menu>
     </el-drawer>
@@ -98,14 +96,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { HomeFilled, Share, Box, Setting, User, UserFilled, FolderOpened, Menu, Connection, ArrowDown, OfficeBuilding, Document, Notebook } from '@element-plus/icons-vue'
+import { Menu, Connection, ArrowDown } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
 import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
+import {
+  SIDEBAR_MENU_REFRESH_EVENT,
+  SIDEBAR_MENU_REVISION_KEY
+} from '@/utils/menuRefresh'
+import {
+  buildBreadcrumb,
+  getActiveMenuPath
+} from '@/utils/breadcrumb'
 
 const router = useRouter()
 const route = useRoute()
@@ -117,46 +123,8 @@ const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726
 // 菜单树
 const menuTree = ref([])
 
-// 根据当前路由生成面包屑
-const breadcrumb = computed(() => {
-  const target = route.path
-  if (!target || !menuTree.value || menuTree.value.length === 0) {
-    return []
-  }
-
-  const findChain = (menus, parents = []) => {
-    for (const m of menus) {
-      const chain = [...parents, m]
-      if (m.path && m.path === target) {
-        return chain
-      }
-      if (m.children && m.children.length > 0) {
-        const res = findChain(m.children, chain)
-        if (res) return res
-      }
-    }
-    return null
-  }
-
-  return findChain(menuTree.value) || []
-})
-
-// 图标映射（将菜单配置中的图标名映射到 Element Plus 图标组件）
-const iconMap = {
-  HomeFilled,
-  Share,
-  Box,
-  Setting,
-  User,
-  UserFilled,
-  FolderOpened,
-  Menu,
-  Connection,
-  ArrowDown,
-  OfficeBuilding,
-  Document,
-  Notebook
-}
+const activeMenuPath = computed(() => getActiveMenuPath(route))
+const breadcrumb = computed(() => buildBreadcrumb(menuTree.value, route))
 
 // 收集所有被禁用菜单的路径（用于路由守卫拦截）
 const collectDisabledPaths = (menus) => {
@@ -203,8 +171,21 @@ const loadMenus = async () => {
   }
 }
 
+const handleMenuStorageChange = event => {
+  if (event.key === SIDEBAR_MENU_REVISION_KEY) {
+    loadMenus()
+  }
+}
+
 onMounted(() => {
   loadMenus()
+  window.addEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
+  window.addEventListener('storage', handleMenuStorageChange)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
+  window.removeEventListener('storage', handleMenuStorageChange)
 })
 
 watch(() => route.fullPath, () => {
@@ -239,7 +220,17 @@ async function handleCommand(command) {
 
 <style scoped>
 .layout-container {
+  width: 100%;
+  max-width: 100vw;
   height: 100vh;
+  overflow: hidden;
+}
+
+.content-container {
+  width: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -270,6 +261,8 @@ async function handleCommand(command) {
 }
 
 .header {
+  min-width: 0;
+  flex-shrink: 0;
   background-color: #fff;
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
   display: flex;
@@ -280,16 +273,22 @@ async function handleCommand(command) {
 
 .header-left {
   display: flex;
+  min-width: 0;
+  overflow: hidden;
   align-items: center;
 }
 
 .breadcrumb {
+  min-width: 0;
+  overflow: hidden;
   margin-left: 20px;
 }
 
 .header-right {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
+  margin-left: 16px;
 }
 
 .user-info {
@@ -305,10 +304,12 @@ async function handleCommand(command) {
 }
 
 .main-content {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   background-color: #f0f2f5;
   padding: 10px;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 :deep(.mobile-nav-drawer .el-drawer__body) {

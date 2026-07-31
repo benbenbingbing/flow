@@ -1,10 +1,10 @@
 package com.workflow.service;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
-import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -53,7 +53,9 @@ class UiConfigurationAccessServiceTest {
         listConfigMapper = mock(EntityListConfigMapper.class);
         accessService = new UiConfigurationAccessService(
                 new CurrentUserRoleService(roleMapper),
-                new EntityDefinitionAccessPolicy(definitionMapper),
+                new EntityUiConfigurationPolicy(
+                        definitionMapper,
+                        new SystemEntityFieldPolicy()),
                 formMapper,
                 listConfigMapper);
         UserContext.setCurrentUser("user-1", "tester");
@@ -129,9 +131,9 @@ class UiConfigurationAccessServiceTest {
         assertEquals("列表配置不存在: missing-list", listError.getMessage());
     }
 
-    /** 测试系统实体表单对管理员拒绝：验证抛出业务冲突异常且错误码为 ENTITY_SYSTEM_DEFINITION_PROTECTED */
+    /** 测试管理员可以维护系统实体的只读表单展示配置。 */
     @Test
-    void systemEntityFormIsRejectedForAdministrator() {
+    void administratorCanConfigureSystemEntityForm() {
         when(roleMapper.selectRolesByUserId("user-1"))
                 .thenReturn(List.of(role("admin")));
         EntityForm form = new EntityForm();
@@ -140,16 +142,13 @@ class UiConfigurationAccessServiceTest {
         when(definitionMapper.selectById("system-entity"))
                 .thenReturn(systemEntity("system-entity"));
 
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
+        assertDoesNotThrow(
                 () -> accessService.requireFormAccess("form-1"));
-
-        assertEquals("ENTITY_SYSTEM_DEFINITION_PROTECTED", exception.getErrorCode());
     }
 
-    /** 测试系统实体列表对超级管理员拒绝：验证抛出业务冲突异常且错误码为 ENTITY_SYSTEM_DEFINITION_PROTECTED */
+    /** 测试超级管理员可以维护系统实体的只读列表展示配置。 */
     @Test
-    void systemEntityListIsRejectedForAdministrator() {
+    void superAdministratorCanConfigureSystemEntityList() {
         when(roleMapper.selectRolesByUserId("user-1"))
                 .thenReturn(List.of(role("super_admin")));
         EntityListConfig list = new EntityListConfig();
@@ -158,11 +157,26 @@ class UiConfigurationAccessServiceTest {
         when(definitionMapper.selectById("system-entity"))
                 .thenReturn(systemEntity("system-entity"));
 
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
+        assertDoesNotThrow(
                 () -> accessService.requireListAccess("list-1"));
+    }
 
-        assertEquals("ENTITY_SYSTEM_DEFINITION_PROTECTED", exception.getErrorCode());
+    @Test
+    void unsupportedSystemEntityCannotOpenUiConfiguration() {
+        when(roleMapper.selectRolesByUserId("user-1"))
+                .thenReturn(List.of(role("admin")));
+        EntityForm form = new EntityForm();
+        form.setEntityId("system-entity");
+        EntityDefinition entity =
+                systemEntity("system-entity");
+        entity.setEntityCode("sys_refresh_token");
+        when(formMapper.selectById("form-1")).thenReturn(form);
+        when(definitionMapper.selectById("system-entity"))
+                .thenReturn(entity);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> accessService.requireFormAccess("form-1"));
     }
 
     /** 构造指定角色编码的角色对象 */
@@ -180,10 +194,11 @@ class UiConfigurationAccessServiceTest {
         return entity;
     }
 
-    /** 构造系统存储模式的实体定义（受保护） */
+    /** 构造系统存储模式的实体定义。 */
     private EntityDefinition systemEntity(String id) {
         EntityDefinition entity = new EntityDefinition();
         entity.setId(id);
+        entity.setEntityCode("sys_user");
         entity.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
         return entity;
     }

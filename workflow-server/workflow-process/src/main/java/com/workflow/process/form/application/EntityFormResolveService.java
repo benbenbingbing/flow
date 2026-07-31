@@ -145,13 +145,15 @@ public class EntityFormResolveService {
                             java.util.Comparator.nullsLast(
                                     java.util.Comparator.naturalOrder())))
                     .orElse(null);
-            return historicTask == null
-                    ? null
-                    : getNodeBoundEntityForm(
-                            null,
-                            historicInstance.getProcessDefinitionId(),
-                            historicTask.getTaskDefinitionKey(),
-                            UiRuntimePurpose.HISTORICAL);
+            if (historicTask == null) {
+                return context.defaultForm();
+            }
+            Map<String, Object> nodeForm = getNodeBoundEntityForm(
+                    null,
+                    historicInstance.getProcessDefinitionId(),
+                    historicTask.getTaskDefinitionKey(),
+                    UiRuntimePurpose.HISTORICAL);
+            return nodeForm != null ? nodeForm : context.defaultForm();
         }
 
         Task currentTask = taskService.createTaskQuery()

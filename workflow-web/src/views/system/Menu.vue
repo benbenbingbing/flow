@@ -291,20 +291,14 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="关联实体">
-              <el-select 
+              <EntityDefinitionPicker
                 v-model="formData.entityCode" 
                 placeholder="选择关联实体（可选）"
                 clearable
-                style="width: 100%"
-                @change="handleEntityChange"
-              >
-                <el-option
-                  v-for="entity in entityList"
-                  :key="entity.entityCode"
-                  :label="entity.entityName"
-                  :value="entity.entityCode"
-                />
-              </el-select>
+                value-key="entityCode"
+                title="选择菜单关联实体"
+                @selected="handleEntitySelected"
+              />
               <div class="form-tip">选择实体后，点击菜单将直接显示该实体的数据列表</div>
             </el-form-item>
           </el-col>
@@ -351,12 +345,14 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import IconPicker from '@/components/IconPicker.vue'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import PageState from '@/components/PageState.vue'
 import { getMenuTree, getMenuChildren, getMenuSubtree, createMenu, updateMenu, deleteMenu, updateStatus, updateVisible } from '@/api/system/menu'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
+import { normalizeMenuIconName, resolveMenuIcon } from '@/utils/menuIcons'
+import { notifySidebarMenuChanged } from '@/utils/menuRefresh'
 
 const loading = ref(false)
 const loadError = ref('')
@@ -407,8 +403,6 @@ const fetchMenuTreeOptions = async () => {
   }
 }
 
-// 实体列表
-const entityList = ref<any[]>([])
 const entityListConfigs = ref<any[]>([])
 const isEntityListMenu = computed(() =>
   formData.menuType === 'C'
@@ -416,36 +410,22 @@ const isEntityListMenu = computed(() =>
   && !!formData.listKey
 )
 
-// 加载实体列表
-const fetchEntityList = async () => {
-  try {
-    entityList.value = await entityApi.getAll()
-  } catch (error) {
-    console.error('获取实体列表失败:', error)
-  }
-}
-
 // 自动设置实体路由
 const autoSetEntityPath = (showMessage = true) => {
   if (!formData.entityCode || !formData.listKey) return
-  const entity = entityList.value.find(e => e.entityCode === formData.entityCode)
-  if (entity) {
-    formData.resourceType = 'ENTITY_LIST'
-    formData.path = `/entity-list/${formData.entityCode}/${formData.listKey}`
-    formData.component = 'entity/EntityListRuntime'
-    formData.perm = ''
-    if (showMessage) {
-      ElMessage.success(`已自动设置路由：${formData.path}`)
-    }
+  formData.resourceType = 'ENTITY_LIST'
+  formData.path = `/entity-list/${formData.entityCode}/${formData.listKey}`
+  formData.component = 'entity/EntityListRuntime'
+  formData.perm = ''
+  if (showMessage) {
+    ElMessage.success(`已自动设置路由：${formData.path}`)
   }
 }
 
-const handleEntityChange = async () => {
+const handleEntitySelected = async (entity: any) => {
   formData.listKey = ''
   entityListConfigs.value = []
-  if (!formData.entityCode) return
-  const entity = entityList.value.find(item => item.entityCode === formData.entityCode)
-  if (!entity) return
+  if (!entity?.id) return
   entityListConfigs.value = await entityListConfigApi.getByEntityId(entity.id).catch(() => [])
   const defaultList = entityListConfigs.value.find(item => item.isDefault)
     || entityListConfigs.value[0]
@@ -524,23 +504,7 @@ const loadSubtree = async (row: any) => {
 
 // 获取图标组件
 const getIconComponent = (iconName: string) => {
-  if (!iconName) return null
-  const name = iconName.trim()
-  // 精确匹配
-  const exact = (ElementPlusIconsVue as any)[name]
-  if (exact) return exact
-  // 尝试首字母大写（处理全小写情况）
-  const capitalized = name.charAt(0).toUpperCase() + name.slice(1)
-  const capitalizedMatch = (ElementPlusIconsVue as any)[capitalized]
-  if (capitalizedMatch) return capitalizedMatch
-  // 调试：打印相近的图标名
-  if (typeof window !== 'undefined') {
-    const similar = Object.keys(ElementPlusIconsVue).filter(k =>
-      k.toLowerCase().includes(name.toLowerCase())
-    ).slice(0, 5)
-    console.warn(`[Menu] Icon not found: "${name}", similar:`, similar)
-  }
-  return null
+  return resolveMenuIcon(iconName)
 }
 
 // 计算左侧缩进（根据层级）
@@ -652,9 +616,13 @@ const handleAddChild = async (row: any) => {
 // 编辑菜单
 const handleEdit = async (row: any) => {
   Object.assign(formData, { ...row })
+  formData.icon = normalizeMenuIconName(row.icon) || row.icon?.trim() || ''
   showAdvancedFields.value = false
   if (formData.entityCode) {
-    const entity = entityList.value.find(item => item.entityCode === formData.entityCode)
+    const options = await entityApi.resolveOptions({
+      entityCodes: [formData.entityCode]
+    }).catch(() => [])
+    const entity = options?.[0]
     if (entity) {
       try {
         entityListConfigs.value = await entityListConfigApi.getByEntityId(entity.id) || []
@@ -683,6 +651,7 @@ const handleSubmit = async () => {
     return
   }
   await formRef.value.validate()
+  formData.icon = normalizeMenuIconName(formData.icon) || formData.icon?.trim() || ''
   submitLoading.value = true
   try {
     if (formData.id) {
@@ -694,7 +663,8 @@ const handleSubmit = async () => {
     }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
-    fetchTopMenus(topPageNum.value)
+    await fetchTopMenus(topPageNum.value)
+    notifySidebarMenuChanged()
   } finally {
     submitLoading.value = false
   }
@@ -716,7 +686,8 @@ const handleDelete = async (row: any) => {
     )
     await deleteMenu(row.id)
     ElMessage.success('删除成功')
-    fetchTopMenus(topPageNum.value)
+    await fetchTopMenus(topPageNum.value)
+    notifySidebarMenuChanged()
   } catch {
     // 取消删除
   }
@@ -739,6 +710,7 @@ const handleStatusChange = async (row: any) => {
       }
     )
     await updateStatus(row.id, row.status)
+    notifySidebarMenuChanged()
     if (isEnable) {
       ElMessage.success(`菜单「${row.menuName}」已启用，将恢复显示在导航栏且可正常访问`)
     } else {
@@ -766,6 +738,7 @@ const handleVisibleChange = async (row: any) => {
       }
     )
     await updateVisible(row.id, row.visible)
+    notifySidebarMenuChanged()
     if (isShow) {
       ElMessage.success(`菜单「${row.menuName}」已显示，将重新出现在导航栏`)
     } else {
@@ -780,6 +753,7 @@ const handleVisibleChange = async (row: any) => {
 const handleSortChange = async (row: any) => {
   try {
     await updateMenu(row.id, { ...row, children: undefined })
+    notifySidebarMenuChanged()
     ElMessage.success(`菜单「${row.menuName}」排序已保存`)
   } catch (error) {
     ElMessage.error(error?.message || '排序保存失败，正在重新加载')
@@ -789,7 +763,6 @@ const handleSortChange = async (row: any) => {
 
 onMounted(() => {
   fetchTopMenus(1)
-  fetchEntityList()
 })
 </script>
 

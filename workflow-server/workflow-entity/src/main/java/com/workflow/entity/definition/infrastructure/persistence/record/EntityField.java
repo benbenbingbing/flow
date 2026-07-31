@@ -128,6 +128,14 @@ public class EntityField {
      */
     @TableField("is_published")
     private Boolean isPublished;
+
+    /** 是否允许加入表单或列表配置，仅用于接口返回。 */
+    @TableField(exist = false)
+    private Boolean uiConfigurable;
+
+    /** 通用运行时是否允许读取，仅用于接口返回。 */
+    @TableField(exist = false)
+    private Boolean runtimeReadable;
     
     /**
      * 关联实体ID（用于子表单/实体选择）
@@ -208,8 +216,8 @@ public class EntityField {
         IMAGE,          // 图片
         USER,           // 用户选择
         DEPT,           // 部门选择
-        REFERENCE,      // 引用其他实体（单选实体）
-        MULTI_REFERENCE,// 引用其他实体（多选实体）
+        REFERENCE,      // 引用一个目标实体中的单条记录
+        MULTI_REFERENCE,// 引用一个目标实体中的多条记录
         SUB_FORM,       // 子表单（嵌入主表单）
         SUB_FORM_LIST   // 子表单列表（数据列表形式）
     }
@@ -222,6 +230,9 @@ public class EntityField {
         USER,       // 系统用户
         DEPT,       // 系统部门/组织
         ROLE,       // 系统角色
-        GROUP       // 系统用户组
+        GROUP,      // 系统用户组
+        MENU,       // 系统菜单
+        DICT,       // 系统字典
+        DICT_ITEM   // 系统字典项
     }
 }

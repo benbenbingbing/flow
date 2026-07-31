@@ -65,13 +65,19 @@ public class EntityListField {
     /**
      * 是否显示在列表
      */
-    @TableField("show_in_list")
+    @TableField(
+            value = "show_in_list",
+            insertStrategy = FieldStrategy.ALWAYS,
+            updateStrategy = FieldStrategy.ALWAYS)
     private Boolean showInList;
 
     /**
      * 是否作为查询条件
      */
-    @TableField("is_query")
+    @TableField(
+            value = "is_query",
+            insertStrategy = FieldStrategy.ALWAYS,
+            updateStrategy = FieldStrategy.ALWAYS)
     private Boolean isQuery;
 
     /**

@@ -16,6 +16,8 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpactPort;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
@@ -23,6 +25,8 @@ import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.contracts.ui.runtime.UiPublishedFormReference;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigDiffItemDTO;
 import com.workflow.entity.ui.api.response.UiConfigHotfixRiskItemDTO;
@@ -123,6 +127,7 @@ public class UiConfigReleaseService {
     private final UiComponentTemplateVersionMapper templateVersionMapper;
     private final EntityFormMapper formMapper;
     private final EntityListConfigMapper listConfigMapper;
+    private final EntityDefinitionMapper entityDefinitionMapper;
     private final EntityFormService formService;
     private final EntityFormNodeService formNodeService;
     private final UiExtensionDefinitionService extensionDefinitionService;
@@ -135,6 +140,7 @@ public class UiConfigReleaseService {
     private final FormSubmissionTraceService traceService;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
+    private final MigrationAssetHandler migrationAssetHandler;
 
     /**
      * 查询指定配置的所有发布历史记录。
@@ -1057,6 +1063,8 @@ public class UiConfigReleaseService {
                     configId,
                     active,
                     active.getContentHash());
+            recordSystemEntityUiAsset(
+                    configType, configId, active, request);
             return active;
         }
         List<UiConfigRelease> releases = releaseMapper.findReleases(configType, configId);
@@ -1089,6 +1097,8 @@ public class UiConfigReleaseService {
                 Map.of(
                         "version", release.getVersion(),
                         "contentHash", contentHash));
+        recordSystemEntityUiAsset(
+                configType, configId, release, request);
         return release;
     }
 
@@ -1743,7 +1753,51 @@ public class UiConfigReleaseService {
         releaseMapper.update(null, releaseUpdate);
         release.setStatus("ACTIVE");
         activateOnOwner(configType, configId, release, release.getContentHash());
+        recordSystemEntityUiAsset(
+                configType, configId, release, null);
         return release;
+    }
+
+    private void recordSystemEntityUiAsset(
+            String configType,
+            String configId,
+            UiConfigRelease release,
+            UiConfigPublishRequest request) {
+        EntityDefinition entity = ownerEntity(
+                configType, configId);
+        if (entity == null
+                || entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        ConfigMigrationPublishRequest migrationRequest =
+                new ConfigMigrationPublishRequest();
+        migrationRequest.setVersionDescription(
+                request == null
+                        ? release.getDescription()
+                        : request.getDescription());
+        migrationRequest.setMarkForExport(true);
+        migrationAssetHandler.recordSystemEntityUi(
+                entity.getId(),
+                release.getId(),
+                migrationRequest);
+    }
+
+    private EntityDefinition ownerEntity(
+            String configType,
+            String configId) {
+        String entityId;
+        if (FORM.equals(configType)) {
+            EntityForm form = formMapper.selectById(configId);
+            entityId = form == null ? null : form.getEntityId();
+        } else {
+            EntityListConfig list =
+                    listConfigMapper.selectById(configId);
+            entityId = list == null ? null : list.getEntityId();
+        }
+        return StringUtils.hasText(entityId)
+                ? entityDefinitionMapper.selectById(entityId)
+                : null;
     }
 
     private void lockOwner(String configType, String configId) {

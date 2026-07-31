@@ -23,34 +23,54 @@
       <el-form :model="entityData" label-width="100px" class="entity-form">
         <el-row :gutter="20">
           <el-col v-for="(value, key) in entityData" :key="key" :span="12">
-            <el-form-item :label="key">
-              <div v-if="value && typeof value === 'object' && !Array.isArray(value)" class="file-display-readonly">
+            <el-form-item :label="displayFieldLabel(key)">
+              <div v-if="isGroupedFileValue(value)" class="file-display-readonly">
                 <div v-for="(urls, groupName) in value" :key="groupName" class="file-group-readonly">
                   <el-tag size="small" type="primary">{{ groupName }}</el-tag>
                   <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
-                    <a :href="url" target="_blank" class="file-link">
+                    <a
+                      :href="url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="file-link"
+                    >
                       <el-icon><Document /></el-icon>
-                      {{ url.split('/').pop() }}
+                      {{ fileName(url) }}
                     </a>
                   </div>
                 </div>
               </div>
               <div v-else-if="Array.isArray(value)" class="file-list-readonly">
                 <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
-                  <a v-if="typeof url === 'string' && url.startsWith('/')" :href="url" target="_blank" class="file-link">
+                  <a
+                    v-if="isFileUrl(url)"
+                    :href="url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="file-link"
+                  >
                     <el-icon><Document /></el-icon>
-                    {{ url.split('/').pop() }}
+                    {{ fileName(url) }}
                   </a>
-                  <span v-else>{{ url }}</span>
+                  <span v-else>{{ formatReadonlyValue(url) }}</span>
                 </div>
               </div>
-              <div v-else-if="typeof value === 'string' && value.startsWith('/')" class="file-item-readonly">
-                <a :href="value" target="_blank" class="file-link">
+              <div v-else-if="isFileUrl(value)" class="file-item-readonly">
+                <a
+                  :href="value"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="file-link"
+                >
                   <el-icon><Document /></el-icon>
-                  {{ value.split('/').pop() }}
+                  {{ fileName(value) }}
                 </a>
               </div>
-              <el-input v-else v-model="entityData[key]" :readonly="true" />
+              <el-input
+                v-else
+                :model-value="formatReadonlyValue(value)"
+                :readonly="true"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -63,6 +83,13 @@
 import { computed, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import {
+  fileName,
+  formatReadonlyValue,
+  isFileUrl,
+  isGroupedFileValue,
+  resolveApprovalFieldLabel
+} from './entityApprovalDisplay.js'
 
 const props = defineProps<{
   entityData: any
@@ -90,6 +117,10 @@ const hasConfiguredForm = computed(() =>
     || Boolean(props.approvalNormalForm?.customComponent)
   )
 )
+
+function displayFieldLabel(fieldCode: string) {
+  return resolveApprovalFieldLabel(fieldCode, props.entityFields || [])
+}
 
 async function validate() {
   if (!hasConfiguredForm.value) return true

@@ -22,6 +22,8 @@ import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpactPort;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
@@ -100,6 +102,7 @@ class UiConfigReleaseServiceTest {
                 mock(UiComponentTemplateVersionMapper.class),
                 mock(EntityFormMapper.class),
                 mock(EntityListConfigMapper.class),
+                mock(EntityDefinitionMapper.class),
                 formService,
                 mock(EntityFormNodeService.class),
                 mock(UiExtensionDefinitionService.class),
@@ -111,7 +114,8 @@ class UiConfigReleaseServiceTest {
                 mock(UiReleaseResolutionTokenService.class),
                 mock(FormSubmissionTraceService.class),
                 codec,
-                objectMapper);
+                objectMapper,
+                mock(MigrationAssetHandler.class));
 
         Map<String, Object> legacySnapshot = objectMapper.convertValue(
                 service.draftSnapshot(UiConfigReleaseService.FORM, "form-1"),
@@ -382,6 +386,7 @@ class UiConfigReleaseServiceTest {
                 mock(UiComponentTemplateVersionMapper.class),
                 mock(EntityFormMapper.class),
                 mock(EntityListConfigMapper.class),
+                mock(EntityDefinitionMapper.class),
                 mock(EntityFormService.class),
                 mock(EntityFormNodeService.class),
                 mock(UiExtensionDefinitionService.class),
@@ -393,7 +398,8 @@ class UiConfigReleaseServiceTest {
                 mock(UiReleaseResolutionTokenService.class),
                 mock(FormSubmissionTraceService.class),
                 codec,
-                objectMapper);
+                objectMapper,
+                mock(MigrationAssetHandler.class));
 
         UiConfigDiffDTO diff = service.diff(
                 UiConfigReleaseService.LIST, "list-1");
@@ -1226,6 +1232,7 @@ class UiConfigReleaseServiceTest {
                 templateVersionMapper,
                 formMapper,
                 mock(EntityListConfigMapper.class),
+                mock(EntityDefinitionMapper.class),
                 formService,
                 mock(EntityFormNodeService.class),
                 mock(UiExtensionDefinitionService.class),
@@ -1237,7 +1244,8 @@ class UiConfigReleaseServiceTest {
                 resolutionTokenService,
                 mock(FormSubmissionTraceService.class),
                 codec,
-                objectMapper);
+                objectMapper,
+                mock(MigrationAssetHandler.class));
         return new TestContext(
                 service,
                 releaseMapper,

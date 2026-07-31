@@ -1,95 +1,94 @@
 <template>
   <div class="user-selector">
-    <el-select
-      v-model="selectedValue"
+    <EntitySelector
+      entity-type="USER"
+      :model-value="normalizedModelValue"
+      :multiple="multiple"
+      :value-key="valueKey"
       :placeholder="placeholder"
-      clearable
-      filterable
-      remote
-      :remote-method="searchUsers"
-      :loading="loading"
-      style="width: 100%"
-    >
-      <el-option
-        v-for="user in userList"
-        :key="user.id"
-        :label="user.nickname || user.username"
-        :value="user.id"
-      >
-        <div class="user-option">
-          <el-avatar :size="24" :src="user.avatar" />
-          <span class="user-name">{{ user.nickname || user.username }}</span>
-          <span class="user-dept" v-if="user.deptName">({{ user.deptName }})</span>
-        </div>
-      </el-option>
-    </el-select>
+      :disabled="disabled"
+      :title="title"
+      @update:model-value="handleValueUpdate"
+      @change="handleSelectionChange"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
-import { getUserList } from '@/api/system/user'
+import { computed } from 'vue'
+import EntitySelector from '@/components/EntitySelector.vue'
+import { recordSelectionValues } from '@/shared/entity-record-selection'
 
 const props = defineProps({
-  modelValue: String,
+  modelValue: {
+    type: [String, Number, Array],
+    default: ''
+  },
+  multiple: {
+    type: Boolean,
+    default: false
+  },
+  valueKey: {
+    type: String,
+    default: 'id',
+    validator: value => ['id', 'code'].includes(value)
+  },
   placeholder: {
     type: String,
     default: '请选择用户'
+  },
+  title: {
+    type: String,
+    default: ''
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits([
+  'update:modelValue',
+  'change',
+  'selected'
+])
 
-const selectedValue = computed({
-  get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
+const normalizedModelValue = computed(() => {
+  if (props.multiple) {
+    return Array.isArray(props.modelValue)
+      ? props.modelValue.map(value => String(value))
+      : []
+  }
+  return props.modelValue == null ? '' : String(props.modelValue)
 })
 
-const loading = ref(false)
-const userList = ref([])
-
-// 搜索用户
-const searchUsers = async (keyword) => {
-  if (!keyword || keyword.length < 1) {
-    userList.value = []
-    return
+function normalizeValue(value) {
+  if (props.multiple) {
+    return Array.isArray(value)
+      ? value.map(item => String(item)).filter(Boolean)
+      : []
   }
-  
-  loading.value = true
-  try {
-    const res = await getUserList({ keyword, pageSize: 20 })
-    userList.value = res.records || []
-  } catch (error) {
-    console.error('搜索用户失败:', error)
-  } finally {
-    loading.value = false
-  }
+  return value == null ? '' : String(value)
 }
 
-// 初始加载
-watch(() => props.modelValue, async (val) => {
-  if (val && !userList.value.length) {
-    // 如果有值但列表为空，根据ID加载用户信息
-    // 这里简化处理，实际可能需要根据ID查询用户详情
-  }
-}, { immediate: true })
+function handleValueUpdate(value) {
+  emit('update:modelValue', normalizeValue(value))
+}
+
+function handleSelectionChange(selection) {
+  const rows = props.multiple
+    ? (Array.isArray(selection) ? selection : [])
+    : (selection ? [selection] : [])
+  const values = recordSelectionValues(rows, props.valueKey)
+  const value = props.multiple ? values : (values[0] || '')
+  emit('change', value)
+  emit('selected', props.multiple ? rows : (rows[0] || null))
+}
 </script>
 
-<style scoped lang="scss">
+<style scoped>
 .user-selector {
-  .user-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    
-    .user-name {
-      flex: 1;
-    }
-    
-    .user-dept {
-      color: #909399;
-      font-size: 12px;
-    }
-  }
+  width: 100%;
+  min-width: 0;
 }
 </style>

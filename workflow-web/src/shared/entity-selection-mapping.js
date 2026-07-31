@@ -62,6 +62,24 @@ export function resolveEntitySelectionRefConfig(field = {}) {
   }
 }
 
+export function resolveRuntimeEntitySelectionReference(config = {}) {
+  if (String(config.entityType || '').toUpperCase() !== 'CUSTOM') {
+    return {
+      entityCode: '',
+      refEntityId: ''
+    }
+  }
+  const entityCode = String(
+    config.runtimeEntityCode || config.entityCode || ''
+  ).trim()
+  return {
+    entityCode,
+    refEntityId: entityCode
+      ? ''
+      : String(config.refEntityId || '').trim()
+  }
+}
+
 export function isPersistedEntitySelectionField(field) {
   if (!field) return false
   if (Number(field.revision || 0) > 0) return true

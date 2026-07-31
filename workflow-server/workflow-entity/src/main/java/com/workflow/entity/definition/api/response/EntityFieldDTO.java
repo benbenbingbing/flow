@@ -50,6 +50,8 @@ public class EntityFieldDTO {
     private Boolean isSystem;       // 是否系统字段
     private Boolean editable;       // 是否可编辑
     private Boolean isPublished;    // 是否已发布到数据库表
+    private Boolean uiConfigurable; // 是否允许加入表单或列表配置
+    private Boolean runtimeReadable;// 通用运行时是否允许读取
     private String fileTypes;       // 文件类型限制（用于附件类型）
     private Integer fileMaxSize;    // 文件大小限制（MB，用于附件类型）
     private Integer fileMaxCount;   // 文件数量限制（用于附件类型）

@@ -12,8 +12,14 @@ import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
+import org.flowable.engine.history.HistoricProcessInstance;
+import org.flowable.engine.history.HistoricProcessInstanceQuery;
+import org.flowable.task.api.history.HistoricTaskInstance;
+import org.flowable.task.api.history.HistoricTaskInstanceQuery;
+import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.junit.jupiter.api.Test;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -136,6 +142,82 @@ class EntityFormResolveServiceTest {
         assertEquals(
                 "Task_First",
                 service.resolveFirstUserTaskId(bpmn()));
+    }
+
+    @Test
+    void completedDataFallsBackToDefaultFormWhenHistoricalBindingIsMissing() {
+        EntityFormRuntimePort entityFormRuntimePort =
+                mock(EntityFormRuntimePort.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        RuntimeService runtimeService = mock(RuntimeService.class);
+        HistoryService historyService = mock(HistoryService.class);
+        EntityFormResolveService service = new EntityFormResolveService(
+                entityFormRuntimePort,
+                mock(ProcessDefinitionConfigMapper.class),
+                snapshotService,
+                runtimeService,
+                mock(TaskService.class),
+                historyService);
+
+        Map<String, Object> defaultForm = Map.of(
+                "id", "form-default",
+                "customComponent", "ProjectMemberChangeForm");
+        when(entityFormRuntimePort.findContext("member-change")).thenReturn(
+                Optional.of(new EntityFormRuntimeContext(
+                        "entity-1",
+                        "member-change",
+                        "process-1",
+                        true,
+                        defaultForm)));
+
+        ProcessInstanceQuery processQuery = mock(ProcessInstanceQuery.class);
+        when(runtimeService.createProcessInstanceQuery())
+                .thenReturn(processQuery);
+        when(processQuery.processInstanceBusinessKey("data-1"))
+                .thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(null);
+
+        HistoricProcessInstanceQuery historicProcessQuery =
+                mock(HistoricProcessInstanceQuery.class);
+        HistoricProcessInstance historicProcess =
+                mock(HistoricProcessInstance.class);
+        when(historyService.createHistoricProcessInstanceQuery())
+                .thenReturn(historicProcessQuery);
+        when(historicProcessQuery.processInstanceBusinessKey("data-1"))
+                .thenReturn(historicProcessQuery);
+        when(historicProcessQuery.list()).thenReturn(List.of(historicProcess));
+        when(historicProcess.getId()).thenReturn("pi-1");
+        when(historicProcess.getProcessDefinitionId()).thenReturn("pd-1");
+        when(historicProcess.getStartTime()).thenReturn(new Date(1000));
+
+        HistoricTaskInstanceQuery historicTaskQuery =
+                mock(HistoricTaskInstanceQuery.class);
+        HistoricTaskInstance historicTask =
+                mock(HistoricTaskInstance.class);
+        when(historyService.createHistoricTaskInstanceQuery())
+                .thenReturn(historicTaskQuery);
+        when(historicTaskQuery.processInstanceId("pi-1"))
+                .thenReturn(historicTaskQuery);
+        when(historicTaskQuery.list()).thenReturn(List.of(historicTask));
+        when(historicTask.getTaskDefinitionKey()).thenReturn("pmo_review");
+        when(historicTask.getEndTime()).thenReturn(new Date(2000));
+
+        ProcessVersionHistory history = new ProcessVersionHistory();
+        history.setId("history-1");
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
+                "pd-1",
+                "pmo_review"))
+                .thenReturn(
+                        new ProcessPublishedSnapshotService.PublishedNodeForms(
+                                history,
+                                List.of()));
+
+        assertEquals(
+                defaultForm,
+                service.resolveFormForViewData(
+                        "member-change",
+                        "data-1"));
     }
 
     private String bpmn() {

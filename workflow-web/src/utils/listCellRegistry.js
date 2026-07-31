@@ -41,8 +41,24 @@ registry.set('StatusBadge', normalizeExtensionDescriptor('StatusBadge', StatusBa
         { label: '大', value: 'large' }
       ]
     },
-    { key: 'labelMap', label: '文本映射', type: 'json', description: '例如 {"DRAFT":"草稿"}' },
-    { key: 'statusMap', label: '颜色映射', type: 'json', description: '例如 {"draft":"info","approved":"success"}' }
+    {
+      key: 'labelMap',
+      label: '文本映射',
+      type: 'json',
+      jsonShape: 'object',
+      helpKey: 'entityList.statusLabelMap',
+      example: { DRAFT: '草稿', APPROVED: '已通过' },
+      description: '原始值到显示文本的精确映射。'
+    },
+    {
+      key: 'statusMap',
+      label: '颜色映射',
+      type: 'json',
+      jsonShape: 'object',
+      helpKey: 'entityList.statusColorMap',
+      example: { draft: 'info', approved: 'success' },
+      description: '小写状态值到标签类型的映射。'
+    }
   ]
 }))
 registry.set('DateFormatter', normalizeExtensionDescriptor('DateFormatter', DateFormatter, {

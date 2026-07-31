@@ -15,6 +15,7 @@ import com.workflow.process.configuration.infrastructure.persistence.record.Assi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -94,6 +95,8 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
 
     public static final String ENTITY = "ENTITY";       // 资产类型：实体
     public static final String PROCESS = "PROCESS";     // 资产类型：流程
+    public static final String SYSTEM_ENTITY_UI =
+            "SYSTEM_ENTITY_UI";                         // 资产类型：系统实体UI
     public static final String COMPLETE = "COMPLETE";   // 快照完整度：完整
 
     private static final int SNAPSHOT_SCHEMA_VERSION = 1;
@@ -136,6 +139,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final UiConfigReleaseMapper configReleaseMapper;
     private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
     private final UiExtensionDefinitionMapper extensionDefinitionMapper;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ObjectMapper objectMapper;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
 
@@ -328,6 +332,267 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             throw new IllegalStateException("流程发布快照上下文不存在: " + processId);
         }
         recordProcess(process, history, request);
+    }
+
+    @Override
+    @Transactional
+    public void recordSystemEntityUi(
+            String entityId,
+            String releaseId,
+            ConfigMigrationPublishRequest request) {
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        UiConfigRelease release = configReleaseMapper.selectById(releaseId);
+        if (entity == null || release == null) {
+            throw new IllegalStateException(
+                    "系统实体UI发布快照上下文不存在: " + entityId);
+        }
+        if (entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            throw new IllegalArgumentException(
+                    "仅平台系统实体可登记系统实体UI资产: "
+                            + entity.getEntityCode());
+        }
+        if (!systemEntityFieldPolicy.isSupportedEntity(
+                entity.getEntityCode())) {
+            throw new IllegalArgumentException(
+                    "平台系统实体不在UI配置白名单: "
+                            + entity.getEntityCode());
+        }
+        ConfigMigrationAsset latest =
+                findLatest(SYSTEM_ENTITY_UI, entity.getEntityCode());
+        int nextVersion = latest == null
+                || latest.getSourceVersion() == null
+                ? 1 : latest.getSourceVersion() + 1;
+        Map<String, Object> snapshot =
+                buildSystemEntityUiSnapshot(entity);
+        saveAsset(
+                SYSTEM_ENTITY_UI,
+                entity.getEntityCode(),
+                entity.getEntityName() + " UI",
+                release.getId(),
+                nextVersion,
+                effectiveDescription(
+                        request, release.getDescription()),
+                effectiveTag(request),
+                effectiveMark(request),
+                COMPLETE,
+                snapshot,
+                castList(snapshot.get("dependencies")),
+                release.getPublishedAt(),
+                release.getPublishedBy());
+    }
+
+    /**
+     * 构建系统实体当前全部已发布UI配置的聚合快照。
+     *
+     * <p>快照只包含目标系统实体标识、实际使用的字段编码、表单、列表、
+     * 只读数据源及UI扩展，不包含系统表结构、系统数据、权限目录和菜单。</p>
+     */
+    private Map<String, Object> buildSystemEntityUiSnapshot(
+            EntityDefinition entity) {
+        Map<String, Object> snapshot = baseSnapshot(
+                SYSTEM_ENTITY_UI,
+                entity.getEntityCode(),
+                entity.getEntityName() + " UI");
+        Map<String, Object> definition = new LinkedHashMap<>();
+        definition.put("entityCode", entity.getEntityCode());
+        definition.put("entityName", entity.getEntityName());
+        definition.put(
+                "storageMode",
+                EntityDefinition.StorageMode.SYSTEM.name());
+        snapshot.put("definition", definition);
+
+        Map<String, EntityField> fieldsByCode = fieldMapper
+                .findByEntityId(entity.getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        EntityField::getFieldCode,
+                        value -> value,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        Set<String> referencedFields = new LinkedHashSet<>();
+        Set<String> extensionReferences = new LinkedHashSet<>();
+        Set<String> dataSourceIds = new LinkedHashSet<>();
+
+        List<Map<String, Object>> forms = new ArrayList<>();
+        for (EntityForm form :
+                formMapper.selectByEntityId(entity.getId())) {
+            UiConfigRelease active =
+                    configReleaseMapper.findActive("FORM", form.getId());
+            if (active == null) {
+                continue;
+            }
+            Map<String, Object> releaseSnapshot = mapValue(parseJson(
+                    active.getSnapshotDocument(), Map.of()));
+            Map<String, Object> formSnapshot = sanitizeMap(mapValue(
+                    releaseSnapshot.get("form")));
+            formSnapshot.putIfAbsent("formKey", form.getFormKey());
+            formSnapshot.putIfAbsent("formName", form.getFormName());
+            formSnapshot.put("publishedVersion", active.getVersion());
+
+            List<Map<String, Object>> formFields = new ArrayList<>();
+            for (Map<String, Object> value :
+                    castList(releaseSnapshot.get("legacyFields"))) {
+                String fieldCode = text(value.get("fieldCode"));
+                if (!isSystemFieldReadable(
+                        entity, fieldsByCode, fieldCode)) {
+                    continue;
+                }
+                Map<String, Object> field = sanitizeMap(value);
+                field.put("isReadonly", 1);
+                referencedFields.add(fieldCode);
+                collectDataSourceIds(field, dataSourceIds);
+                formFields.add(field);
+            }
+            formSnapshot.put("fields", formFields);
+
+            List<Map<String, Object>> rawNodes =
+                    castList(releaseSnapshot.get("nodes"));
+            Map<String, String> nodeKeysById =
+                    new LinkedHashMap<>();
+            rawNodes.forEach(node -> nodeKeysById.put(
+                    text(node.get("id")),
+                    text(node.get("nodeKey"))));
+            List<Map<String, Object>> nodes = new ArrayList<>();
+            for (Map<String, Object> value : rawNodes) {
+                String fieldCode =
+                        systemNodeFieldCode(value);
+                if (StringUtils.hasText(fieldCode)
+                        && !isSystemFieldReadable(
+                                entity, fieldsByCode, fieldCode)) {
+                    continue;
+                }
+                Map<String, Object> node = sanitizeMap(value);
+                node.put(
+                        "parentNodeKey",
+                        nodeKeysById.get(text(value.get("parentId"))));
+                if (StringUtils.hasText(fieldCode)) {
+                    referencedFields.add(fieldCode);
+                }
+                String componentName =
+                        text(node.get("componentName"));
+                Integer componentVersion =
+                        integer(node.get("componentVersion"));
+                if (StringUtils.hasText(componentName)
+                        && componentVersion != null) {
+                    extensionReferences.add(extensionReference(
+                            "NODE",
+                            componentName,
+                            componentVersion));
+                }
+                collectDataSourceIds(node, dataSourceIds);
+                nodes.add(node);
+            }
+            formSnapshot.put("nodes", nodes);
+            collectDataSourceIds(formSnapshot, dataSourceIds);
+            forms.add(formSnapshot);
+        }
+
+        List<Map<String, Object>> lists = new ArrayList<>();
+        for (EntityListConfig list :
+                listConfigMapper.findByEntityId(entity.getId())) {
+            UiConfigRelease active =
+                    configReleaseMapper.findActive("LIST", list.getId());
+            if (active == null) {
+                continue;
+            }
+            Map<String, Object> releaseSnapshot = mapValue(parseJson(
+                    active.getSnapshotDocument(), Map.of()));
+            Map<String, Object> listSnapshot = sanitizeMap(mapValue(
+                    releaseSnapshot.get("list")));
+            listSnapshot.putIfAbsent("listKey", list.getListKey());
+            listSnapshot.putIfAbsent("listName", list.getListName());
+            listSnapshot.put("publishedVersion", active.getVersion());
+            listSnapshot.put("toolbarConfig", List.of());
+            listSnapshot.put(
+                    "rowActionConfig",
+                    List.of(Map.of(
+                            "key", "view",
+                            "actionCode", "view",
+                            "label", "查看")));
+            listSnapshot.put("dataScopeMode", "INHERIT");
+            listSnapshot.remove("customComponent");
+            listSnapshot.remove("queryProviderCode");
+            listSnapshot.remove("queryDataSourceId");
+
+            List<Map<String, Object>> listFields =
+                    new ArrayList<>();
+            for (Map<String, Object> value :
+                    castList(listSnapshot.get("fields"))) {
+                String fieldCode = text(value.get("fieldCode"));
+                if (!isSystemFieldReadable(
+                        entity, fieldsByCode, fieldCode)) {
+                    continue;
+                }
+                Map<String, Object> field = sanitizeMap(value);
+                field.remove("renderComponent");
+                if ("CUSTOM_PROVIDER".equalsIgnoreCase(
+                        text(field.get("dataSourceType")))) {
+                    field.put("dataSourceType", "ENTITY_FIELD");
+                    field.remove("dataSourceConfig");
+                }
+                referencedFields.add(fieldCode);
+                collectDataSourceIds(field, dataSourceIds);
+                listFields.add(field);
+            }
+            listSnapshot.put("fields", listFields);
+            collectDataSourceIds(listSnapshot, dataSourceIds);
+            lists.add(listSnapshot);
+        }
+
+        Map<String, String> dataSourceCodes =
+                dataSourceCodesById(dataSourceIds);
+        snapshot.put(
+                "forms",
+                forms.stream()
+                        .map(value -> mapValue(
+                                rewriteDataSourceReferences(
+                                        value, dataSourceCodes)))
+                        .toList());
+        snapshot.put(
+                "lists",
+                lists.stream()
+                        .map(value -> mapValue(
+                                rewriteDataSourceReferences(
+                                        value, dataSourceCodes)))
+                        .toList());
+        snapshot.put(
+                "referencedFields",
+                referencedFields.stream().sorted().toList());
+        snapshot.put(
+                "extensions",
+                extensionSnapshots(extensionReferences));
+        snapshot.put(
+                "dataSources",
+                dataSourceSnapshots(
+                        dataSourceIds,
+                        entity.getId(),
+                        entity.getEntityCode()));
+        snapshot.put("dependencies", List.of());
+        return snapshot;
+    }
+
+    private boolean isSystemFieldReadable(
+            EntityDefinition entity,
+            Map<String, EntityField> fieldsByCode,
+            String fieldCode) {
+        EntityField field = fieldsByCode.get(fieldCode);
+        return field != null
+                && systemEntityFieldPolicy.isRuntimeReadable(
+                        entity, field);
+    }
+
+    private String systemNodeFieldCode(
+            Map<String, Object> node) {
+        if ("ENTITY_FIELD".equalsIgnoreCase(
+                text(node.get("bindingType")))) {
+            return text(node.get("bindingRef"));
+        }
+        Object props = parseJson(
+                text(node.get("propsDocument")), Map.of());
+        return props instanceof Map<?, ?> map
+                ? text(map.get("fieldCode"))
+                : null;
     }
 
     /**

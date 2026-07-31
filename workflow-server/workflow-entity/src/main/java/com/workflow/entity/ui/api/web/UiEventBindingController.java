@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
+import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
 import com.workflow.entity.ui.api.request.UiEventBindingSaveRequest;
 import com.workflow.entity.ui.application.UiEventBindingService;
@@ -20,6 +21,7 @@ import java.util.Map;
 /**
  * 统一接口事件绑定管理与运行控制器。
  */
+@AuthenticatedApi(objectAuthorization = true)
 @RestController
 @RequestMapping("/api/ui-event-bindings")
 @RequiredArgsConstructor

@@ -40,16 +40,14 @@ a:focus-visible,
   margin-left: 0;
 }
 
-@media (max-width: 1366px) {
+@media (max-width: 760px) {
   .el-table .el-table-fixed-column--right,
   .el-table .el-table-fixed-column--left {
     position: static !important;
     right: auto !important;
     left: auto !important;
   }
-}
 
-@media (max-width: 760px) {
   .el-card {
     border-right: 0;
     border-left: 0;

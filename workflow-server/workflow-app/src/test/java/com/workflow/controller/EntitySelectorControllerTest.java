@@ -3,13 +3,17 @@ package com.workflow.controller;
 import com.workflow.entity.data.api.web.EntitySelectorController;
 
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.SystemEntityReadService;
+import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldService;
 import com.workflow.entity.definition.application.SystemEntityService;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -42,13 +46,17 @@ class EntitySelectorControllerTest {
     /** 模拟的实体定义服务 */
     private final EntityDefinitionService definitionService =
             mock(EntityDefinitionService.class);
+    /** 模拟的平台系统实体读取服务 */
+    private final SystemEntityReadService systemEntityReadService =
+            mock(SystemEntityReadService.class);
     /** 被测控制器实例，注入上述 mock 依赖 */
     private final EntitySelectorController controller = new EntitySelectorController(
             dynamicService,
             tableService,
             systemEntityService,
             fieldService,
-            definitionService);
+            definitionService,
+            systemEntityReadService);
 
     /**
      * 自定义选择器单条详情查询应使用权限感知接口。
@@ -85,7 +93,10 @@ class EntitySelectorControllerTest {
     void customSelectorBatchOmitsRowsOutsidePermissionScope() {
         when(tableService.tableExists("expense")).thenReturn(true);
         EntityDataDTO allowed = new EntityDataDTO();
-        allowed.setData(Map.of("id", "row-1", "name", "可见数据"));
+        allowed.setId("row-1");
+        allowed.setName("可见数据");
+        allowed.setCode("EXP-001");
+        allowed.setData(Map.of("amount", 100));
         when(dynamicService.findAccessibleById("expense", "row-1", null))
                 .thenReturn(allowed);
         when(dynamicService.findAccessibleById("expense", "row-2", null))
@@ -95,9 +106,143 @@ class EntitySelectorControllerTest {
                 "CUSTOM",
                 "row-1,row-2",
                 "expense",
-                null);
+                null,
+                "id");
 
         assertEquals(1, result.getData().size());
         assertEquals("row-1", result.getData().get(0).get("id"));
+        assertEquals("可见数据", result.getData().get(0).get("name"));
+        assertEquals("EXP-001", result.getData().get(0).get("code"));
+    }
+
+    @Test
+    void systemUserBatchCanResolveStoredUsernames() {
+        List<Map<String, Object>> users = List.of(
+                Map.of(
+                        "id", "user-1",
+                        "code", "admin",
+                        "name", "管理员"));
+        when(systemEntityService.selectBatch(
+                "USER",
+                List.of("admin"),
+                "code"))
+                .thenReturn(users);
+
+        Result<List<Map<String, Object>>> result = controller.getBatch(
+                "USER",
+                "admin",
+                null,
+                null,
+                "code");
+
+        assertEquals(users, result.getData());
+        verify(systemEntityService).selectBatch(
+                "USER",
+                List.of("admin"),
+                "code");
+    }
+
+    @Test
+    void customSelectorDetailUsesDtoStandardFieldsForDisplay() {
+        when(tableService.tableExists("project")).thenReturn(true);
+        EntityDataDTO project = new EntityDataDTO();
+        project.setId("project-1");
+        project.setName("统一客户运营平台建设");
+        project.setCode("PRJ-001");
+        project.setStatus("APPROVED");
+        project.setData(Map.of("project_type", "NEW_SYSTEM"));
+        when(dynamicService.findAccessibleById(
+                "project",
+                "project-1",
+                null))
+                .thenReturn(project);
+
+        Result<Map<String, Object>> result = controller.getById(
+                "CUSTOM",
+                "project-1",
+                "project",
+                null);
+
+        assertEquals("统一客户运营平台建设",
+                result.getData().get("name"));
+        assertEquals("PRJ-001", result.getData().get("code"));
+        assertEquals("APPROVED", result.getData().get("status"));
+    }
+
+    @Test
+    void publishedSystemDefinitionUsesReadOnlySelectorPage() {
+        when(definitionService.findById("system-user-definition"))
+                .thenReturn(systemDefinition());
+        EntityDataDTO user = new EntityDataDTO();
+        user.setId("user-1");
+        user.setName("超级管理员");
+        user.setCode("admin");
+        when(systemEntityReadService.findSelectorPage(
+                "sys_user",
+                "管理",
+                1,
+                10))
+                .thenReturn(new PageResult<>(
+                        List.of(user), 1, 1, 10));
+
+        Result<Map<String, Object>> result =
+                controller.selectList(
+                        "CUSTOM",
+                        null,
+                        "system-user-definition",
+                        "管理",
+                        1,
+                        10);
+
+        assertEquals(200, result.getCode());
+        assertEquals(1L, result.getData().get("total"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> records =
+                (List<Map<String, Object>>) result.getData()
+                        .get("records");
+        assertEquals("超级管理员", records.get(0).get("name"));
+        verify(systemEntityReadService).findSelectorPage(
+                "sys_user",
+                "管理",
+                1,
+                10);
+        verify(tableService, never()).tableExists("sys_user");
+    }
+
+    @Test
+    void publishedSystemDefinitionDetailUsesReadOnlyLookup() {
+        when(definitionService.findById("system-user-definition"))
+                .thenReturn(systemDefinition());
+        EntityDataDTO user = new EntityDataDTO();
+        user.setId("user-1");
+        user.setName("超级管理员");
+        user.setCode("admin");
+        when(systemEntityReadService.findById(
+                "sys_user", "user-1"))
+                .thenReturn(user);
+
+        Result<Map<String, Object>> result = controller.getById(
+                "CUSTOM",
+                "user-1",
+                null,
+                "system-user-definition");
+
+        assertEquals(200, result.getCode());
+        assertEquals("超级管理员", result.getData().get("name"));
+        assertEquals("admin", result.getData().get("code"));
+        verify(tableService, never()).tableExists("sys_user");
+        verify(dynamicService, never()).findAccessibleById(
+                "sys_user", "user-1", null);
+    }
+
+    private EntityDefinitionDTO systemDefinition() {
+        EntityDefinitionDTO definition = new EntityDefinitionDTO();
+        definition.setId("system-user-definition");
+        definition.setEntityCode("sys_user");
+        definition.setEntityName("系统用户");
+        definition.setStatus(EntityDefinition.Status.PUBLISHED);
+        definition.setStorageMode(
+                EntityDefinition.StorageMode.SYSTEM);
+        return definition;
     }
 }

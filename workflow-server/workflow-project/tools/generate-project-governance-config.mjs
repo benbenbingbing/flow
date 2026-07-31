@@ -127,7 +127,15 @@ const form = (
   formKey,
   description,
   fields,
-  { isDefault = false, readonly = false, submitLabel } = {}
+  {
+    isDefault = false,
+    readonly = false,
+    submitLabel,
+    customComponent,
+    customComponentVersion = 1,
+    customComponentSnapshotVersion = 1,
+    customComponentProps = {}
+  } = {}
 ) => ({
   formName,
   formKey,
@@ -135,11 +143,17 @@ const form = (
   layoutType: "grid",
   isDefault,
   status: 1,
+  ...(customComponent ? {
+    customComponent,
+    customComponentVersion,
+    customComponentSnapshotVersion
+  } : {}),
   viewConfig: JSON.stringify({
     labelWidth: 140,
     columns: 2,
     ...(readonly ? { readonly: true } : {}),
-    ...(submitLabel ? { submitLabel } : {})
+    ...(submitLabel ? { submitLabel } : {}),
+    ...(customComponent ? { customComponentProps } : {})
   }),
   fields,
   nodes: []
@@ -289,6 +303,7 @@ const baseEntity = ({
   scopePolicies,
   scopeBindings,
   menus = [],
+  extensions = [],
   dependencies = []
 }) => ({
   schemaVersion: 1,
@@ -307,7 +322,7 @@ const baseEntity = ({
   relations,
   statuses,
   codeRule: codeRule(codePrefix, codeExample),
-  extensions: [],
+  extensions,
   dataSources: [],
   forms,
   lists,
@@ -602,7 +617,7 @@ const projectMember = baseEntity({
     field("allocation_percentage", "投入比例(%)", "DECIMAL", "decimal(5,2)", true, 90, {
       defaultValue: "100",
       fieldPrecision: 2,
-      validateRules: JSON.stringify({ min: 0.01, max: 100 })
+      validateRules: JSON.stringify({ min: 0, max: 100 })
     }),
     field("join_reason", "加入原因", "TEXT", "text", true, 100),
     field("leave_reason", "退出原因", "TEXT", "text", false, 110),
@@ -2261,6 +2276,385 @@ const projectSystemChangeRequest = baseEntity({
   ]
 });
 
+const projectMemberChangeRequest = baseEntity({
+  businessKey: "project_member_change_request",
+  assetName: "项目成员变更申请",
+  description: "项目成员加入、退出、暂停、恢复、投入调整及权限和角色交接的审批与生效记录。",
+  lifecycleMode: "WORKFLOW",
+  processKey: "project_member_change_process",
+  fields: [
+    field("operation_type", "变更类型", "SELECT", "varchar(30)", true, 20, {
+      fieldLength: 30,
+      optionsJson: optionJson([
+        ["成员加入", "JOIN"],
+        ["成员退出", "LEAVE"],
+        ["暂停参与", "SUSPEND"],
+        ["恢复参与", "RESUME"],
+        ["调整投入", "ALLOCATION_CHANGE"]
+      ])
+    }),
+    refField("project_id", "所属项目", "CUSTOM", "project", true, 30),
+    refField("project_member_id", "目标项目成员", "CUSTOM", "project_member", false, 40),
+    refField("target_user_id", "目标人员", "USER", null, false, 50),
+    refField("source_dept_id", "来源部门", "DEPT", null, false, 60),
+    field("employment_type", "人员类型", "SELECT", "varchar(30)", false, 70, {
+      fieldLength: 30,
+      optionsJson: optionJson([
+        ["内部员工", "INTERNAL"],
+        ["合同人员", "CONTRACTOR"],
+        ["供应商人员", "VENDOR"]
+      ])
+    }),
+    field("effective_date", "计划生效日期", "DATE", "date", true, 80),
+    field("planned_leave_date", "计划退出日期", "DATE", "date", false, 90),
+    field("new_allocation_percentage", "新投入比例", "DECIMAL", "decimal(5,2)", false, 100, {
+      precision: 5,
+      scale: 2,
+      validateRules: JSON.stringify({ min: 0.01, max: 100 })
+    }),
+    field("change_reason", "变更原因", "TEXT", "text", true, 110),
+    field("account_required_flag", "需要项目账号", "BOOLEAN", "tinyint", true, 120, {
+      defaultValue: "false"
+    }),
+    field("environment_access_required_flag", "需要环境权限", "BOOLEAN", "tinyint", true, 130, {
+      defaultValue: "false"
+    }),
+    field("environment_scope", "环境范围", "MULTI_SELECT", "varchar(500)", false, 140, {
+      fieldLength: 500,
+      optionsJson: optionJson([
+        ["开发环境", "DEV"],
+        ["测试环境", "TEST"],
+        ["验收环境", "UAT"],
+        ["生产只读", "PROD_READ"],
+        ["生产操作", "PROD_OPERATE"]
+      ])
+    }),
+    field("sensitive_access_flag", "涉及敏感权限", "BOOLEAN", "tinyint", true, 150, {
+      defaultValue: "false"
+    }),
+    field("handover_required_flag", "必须交接", "BOOLEAN", "tinyint", true, 160, {
+      defaultValue: "false"
+    }),
+    refField("handover_member_id", "交接成员", "CUSTOM", "project_member", false, 170),
+    field("handover_description", "交接说明", "TEXT", "text", false, 180),
+    field("permission_revoke_deadline", "权限回收截止日期", "DATE", "date", false, 190),
+    field("access_review_required_flag", "需要权限审核", "BOOLEAN", "tinyint", true, 200, {
+      defaultValue: "false"
+    }),
+    field("security_review_required_flag", "需要安全审核", "BOOLEAN", "tinyint", true, 210, {
+      defaultValue: "false"
+    }),
+    field("before_snapshot", "变更前成员快照", "TEXT", "longtext", false, 220),
+    field("after_snapshot", "拟变更后成员快照", "TEXT", "longtext", false, 230),
+    field("conflict_check_result", "跨实体校验结果", "TEXT", "longtext", false, 240),
+    field("manager_reviewed_at", "项目经理复核时间", "DATETIME", "datetime", false, 250),
+    refField("manager_review_operator_id", "项目经理复核操作人", "USER", null, false, 260),
+    field("decision_trace", "最终决策轨迹", "TEXT", "longtext", false, 270),
+    refField("effective_member_id", "生效项目成员", "CUSTOM", "project_member", false, 280),
+    field("implementation_result", "实施结果", "TEXT", "text", false, 290),
+    field("transferred_role_count", "已移交角色数", "INTEGER", "int", true, 300, {
+      defaultValue: "0"
+    }),
+    field("effective_at", "实际生效时间", "DATETIME", "datetime", false, 310),
+    ...workflowCommonFields(320)
+  ],
+  statuses: [
+    status("DRAFT", "草稿", "NEW", 10, "#909399"),
+    status("PENDING_MANAGER", "待项目经理审核", "PROCESSING", 20, "#409EFF"),
+    status("PENDING_DEPT", "待人员部门审核", "PROCESSING", 30, "#409EFF"),
+    status("ACCESS_REVIEW", "待权限审核", "PROCESSING", 40, "#E6A23C"),
+    status("SECURITY_REVIEW", "待安全审核", "PROCESSING", 50, "#F56C6C"),
+    status("PENDING_PMO", "待PMO审批", "PROCESSING", 60, "#409EFF"),
+    status("APPROVED", "已批准待生效", "COMPLETED", 70, "#67C23A"),
+    status("EFFECTIVE", "已生效", "COMPLETED", 80, "#2E7D32"),
+    status("REJECTED", "已驳回", "TERMINATED", 90, "#F56C6C"),
+    status("CANCELLED", "已取消", "TERMINATED", 100, "#606266"),
+    status("FAILED", "生效失败", "TERMINATED", 110, "#C62828")
+  ],
+  codePrefix: "PMCR",
+  codeExample: "PMCR2026073000001",
+  forms: [
+    form(
+      "项目成员变更申请",
+      "project_member_change_apply",
+      "覆盖成员变更、投入校验、权限路由和角色交接的自定义整表单。",
+      [
+        formField("name", "申请标题", "STRING", 10, {
+          hidden: true
+        }),
+        formField("operation_type", "变更类型", "SELECT", 20, {
+          required: true,
+          componentType: "select"
+        }),
+        formField("project_id", "所属项目", "REFERENCE", 30, {
+          required: true,
+          componentType: "reference"
+        }),
+        formField("applicant_id", "申请人", "USER", 40, {
+          required: true,
+          componentType: "user"
+        }),
+        formField("applicant_dept_id", "申请部门", "DEPT", 50, {
+          required: true,
+          componentType: "dept"
+        }),
+        formField("project_member_id", "目标项目成员", "REFERENCE", 60, {
+          componentType: "reference"
+        }),
+        formField("target_user_id", "目标人员", "USER", 70, {
+          componentType: "user"
+        }),
+        formField("source_dept_id", "来源部门", "DEPT", 80, {
+          componentType: "dept"
+        }),
+        formField("employment_type", "人员类型", "SELECT", 90, {
+          componentType: "select"
+        }),
+        formField("effective_date", "计划生效日期", "DATE", 100, {
+          required: true,
+          componentType: "date"
+        }),
+        formField("planned_leave_date", "计划退出日期", "DATE", 110, {
+          componentType: "date"
+        }),
+        formField("new_allocation_percentage", "新投入比例", "DECIMAL", 120, {
+          componentType: "number"
+        }),
+        formField("account_required_flag", "需要项目账号", "BOOLEAN", 130, {
+          componentType: "switch"
+        }),
+        formField("environment_access_required_flag", "需要环境权限", "BOOLEAN", 140, {
+          componentType: "switch"
+        }),
+        formField("environment_scope", "环境范围", "MULTI_SELECT", 150, {
+          componentType: "select_multiple"
+        }),
+        formField("sensitive_access_flag", "涉及敏感权限", "BOOLEAN", 160, {
+          componentType: "switch"
+        }),
+        formField("handover_member_id", "交接成员", "REFERENCE", 170, {
+          componentType: "reference"
+        }),
+        formField("permission_revoke_deadline", "权限回收截止日期", "DATE", 180, {
+          componentType: "date"
+        }),
+        formField("handover_description", "交接说明", "TEXT", 190, {
+          componentType: "textarea",
+          gridSpan: 24
+        }),
+        formField("change_reason", "变更原因", "TEXT", 200, {
+          required: true,
+          componentType: "textarea",
+          gridSpan: 24
+        })
+      ],
+      {
+        isDefault: true,
+        submitLabel: "保存并提交审批",
+        customComponent: "ProjectMemberChangeForm",
+        customComponentVersion: 1,
+        customComponentSnapshotVersion: 1,
+        customComponentProps: {
+          title: "项目成员变更申请",
+          showRoutePreview: true
+        }
+      }
+    )
+  ],
+  lists: [
+    entityList("all", "项目成员变更台账", "查询全部成员变更申请和当前流程状态。", [
+      listField("code", "申请编号", 10, 180, { queryType: "LIKE" }),
+      listField("name", "申请标题", 20, 260, { queryType: "LIKE" }),
+      listField("operation_type", "变更类型", 30, 120),
+      listField("project_id", "所属项目", 40, 200),
+      listField("target_user_id", "目标人员", 50, 150),
+      listField("effective_date", "计划生效", 60, 120, {
+        queryType: "BETWEEN",
+        align: "center"
+      }),
+      listField("access_review_required_flag", "权限审核", 70, 100, {
+        align: "center"
+      }),
+      listField("security_review_required_flag", "安全审核", 80, 100, {
+        align: "center"
+      }),
+      listField("status", "状态", 90, 150, {
+        queryType: "IN",
+        align: "center"
+      }),
+      listField("currentTaskName", "当前环节", 100, 180, {
+        query: false
+      })
+    ], {
+      isDefault: true,
+      createLabel: "申请成员变更",
+      rowActions: [
+        ...defaultRowActions,
+        {
+          key: "approve",
+          type: "built-in",
+          label: "审批",
+          buttonType: "warning",
+          link: true,
+          sort: 3,
+          enabled: true
+        }
+      ]
+    }),
+    entityList("my_pending", "我的成员变更待办", "当前办理人为当前用户的成员变更申请。", [
+      listField("code", "申请编号", 10, 180, { queryType: "LIKE" }),
+      listField("name", "申请标题", 20, 260, { queryType: "LIKE" }),
+      listField("operation_type", "变更类型", 30, 120),
+      listField("project_id", "所属项目", 40, 200),
+      listField("target_user_id", "目标人员", 50, 150),
+      listField("currentTaskName", "当前环节", 60, 180, { query: false }),
+      listField("submitTime", "提交时间", 70, 170, {
+        queryType: "BETWEEN",
+        align: "center"
+      })
+    ], {
+      dataScopeMode: "NARROW",
+      allowedScenes: ["PAGE"],
+      selectionMode: "NONE",
+      rowActions: [
+        {
+          key: "view",
+          type: "built-in",
+          label: "查看",
+          buttonType: "primary",
+          link: true,
+          sort: 1,
+          enabled: true
+        },
+        {
+          key: "approve",
+          type: "built-in",
+          label: "审批",
+          buttonType: "warning",
+          link: true,
+          sort: 2,
+          enabled: true
+        }
+      ]
+    }),
+    entityList("effective", "已生效成员变更", "已成功写入项目成员和角色结果的申请。", [
+      listField("code", "申请编号", 10, 180, { queryType: "LIKE" }),
+      listField("name", "申请标题", 20, 260, { queryType: "LIKE" }),
+      listField("operation_type", "变更类型", 30, 120),
+      listField("project_id", "所属项目", 40, 200),
+      listField("effective_member_id", "生效成员", 50, 180),
+      listField("transferred_role_count", "移交角色数", 60, 100, {
+        align: "right"
+      }),
+      listField("effective_at", "生效时间", 70, 170, {
+        queryType: "BETWEEN",
+        align: "center"
+      }),
+      listField("status", "状态", 80, 110, {
+        queryType: "IN",
+        align: "center"
+      })
+    ], {
+      dataScopeMode: "NARROW",
+      fixedFilterConfig: { status: ["EFFECTIVE"] },
+      rowActions: [{
+        key: "view",
+        type: "built-in",
+        label: "查看",
+        buttonType: "primary",
+        link: true,
+        sort: 1,
+        enabled: true
+      }]
+    })
+  ],
+  scopePolicies: [
+    creatorPolicy("project_member_change_request", "项目成员变更"),
+    policy(
+      "project_member_change_current_assignee",
+      "当前待办成员变更",
+      "当前审批人为当前用户的数据。",
+      "CURRENT_ASSIGNEE",
+      {
+        version: 1,
+        type: "PERSONAL",
+        fieldMapping: {
+          userField: "current_task_assignee",
+          deptField: "dept_id",
+          statusField: "status"
+        }
+      }
+    )
+  ],
+  scopeBindings: [
+    binding("project_member_change_request_creator"),
+    binding("project_member_change_current_assignee", "my_pending"),
+    binding("project_member_change_request_creator", "effective")
+  ],
+  menus: [
+    menu(
+      "项目成员变更",
+      "/entity-list/project_member_change_request/all",
+      "entity:project_member_change_request:list",
+      "all",
+      64,
+      "UserFilled"
+    ),
+    menu(
+      "我的成员变更待办",
+      "/entity-list/project_member_change_request/my_pending",
+      "entity:project_member_change_request:list",
+      "my_pending",
+      65,
+      "Clock"
+    ),
+    menu(
+      "已生效成员变更",
+      "/entity-list/project_member_change_request/effective",
+      "entity:project_member_change_request:list",
+      "effective",
+      66,
+      "CircleCheck"
+    )
+  ],
+  extensions: [{
+    extensionType: "FORM",
+    extensionKey: "ProjectMemberChangeForm",
+    displayName: "项目·成员变更表单",
+    version: 1,
+    snapshotVersion: 1,
+    supportedModesDocument: ["CREATE", "EDIT", "APPROVE", "VIEW"],
+    supportedNodeTypesDocument: [],
+    supportedBindingsDocument: [],
+    configSchemaDocument: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          title: "表单标题"
+        },
+        showRoutePreview: {
+          type: "boolean",
+          title: "显示审批路径"
+        }
+      }
+    },
+    capabilitiesDocument: {
+      exposesValidate: true,
+      computesWorkflowRouteFlags: true,
+      crossEntityContext: true
+    },
+    status: "ACTIVE"
+  }],
+  dependencies: [
+    { type: "ENTITY", key: "project", required: true, reason: "所属项目" },
+    { type: "ENTITY", key: "project_member", required: true, reason: "成员与交接对象" },
+    { type: "ENTITY", key: "project_role_assignment", required: true, reason: "角色暂停和移交" },
+    { type: "PROCESS", key: "project_member_change_process", required: true, reason: "成员变更审批流程" },
+    { type: "UI_EXTENSION", key: "FORM:ProjectMemberChangeForm:1", required: true, reason: "自定义成员变更表单" }
+  ]
+});
+
 const writeJson = (directory, fileName, value) => {
   fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(
@@ -3156,6 +3550,347 @@ buildProcessAssets({
   ]
 });
 
+const memberChangeNodes = [
+  startNode("提交项目成员变更"),
+  task(
+    "project_manager_review",
+    "项目经理审核",
+    145,
+    "wf-form://project_member_change_request/project_member_change_apply",
+    "模拟项目经理",
+    approveReject("确认资源安排"),
+    true
+  ),
+  gateway("manager_result", "项目经理审核结果", 315, "flow_manager_approve"),
+  task(
+    "department_review",
+    "人员部门负责人审核",
+    430,
+    "wf-form://project_member_change_request/project_member_change_apply",
+    "模拟人员部门负责人",
+    approveReject("确认人员与投入安排"),
+    true
+  ),
+  gateway("department_result", "部门审核结果", 600, "flow_department_approve"),
+  gateway("access_needed", "权限审核判断", 725, "flow_skip_access"),
+  task(
+    "system_owner_access_review",
+    "系统负责人权限审核",
+    840,
+    "wf-form://project_member_change_request/project_member_change_apply",
+    "模拟系统负责人",
+    approveReject("确认账号与环境权限"),
+    true
+  ),
+  gateway("access_result", "权限审核结果", 1010, "flow_access_approve"),
+  gateway("security_needed", "安全审核判断", 1135, "flow_skip_security"),
+  task(
+    "security_review",
+    "安全负责人审核",
+    1250,
+    "wf-form://project_member_change_request/project_member_change_apply",
+    "模拟安全负责人",
+    approveReject("确认敏感权限与回收安排"),
+    true
+  ),
+  gateway("security_result", "安全审核结果", 1420, "flow_security_approve"),
+  task(
+    "pmo_review",
+    "PMO最终审批",
+    1545,
+    "wf-form://project_member_change_request/project_member_change_apply",
+    "模拟PMO",
+    approveReject("批准成员变更", "不批准成员变更"),
+    true
+  ),
+  gateway("pmo_result", "PMO审批结果", 1715, "flow_pmo_approve"),
+  endNode("end_approved", "成员变更已批准", 1870, 192),
+  endNode("end_rejected", "成员变更已驳回", 1870, 16)
+];
+
+const memberChangeFlows = [
+  { id: "flow_start_manager", source: "start", target: "project_manager_review" },
+  { id: "flow_manager_result", source: "project_manager_review", target: "manager_result" },
+  {
+    id: "flow_manager_reject",
+    source: "manager_result",
+    target: "end_rejected",
+    condition: "${approved == 'reject'}",
+    route: "reject"
+  },
+  { id: "flow_manager_approve", source: "manager_result", target: "department_review" },
+  { id: "flow_department_result", source: "department_review", target: "department_result" },
+  {
+    id: "flow_department_reject",
+    source: "department_result",
+    target: "end_rejected",
+    condition: "${approved == 'reject'}",
+    route: "reject"
+  },
+  { id: "flow_department_approve", source: "department_result", target: "access_needed" },
+  {
+    id: "flow_need_access",
+    source: "access_needed",
+    target: "system_owner_access_review",
+    condition: "${access_review_required_flag == true}"
+  },
+  {
+    id: "flow_skip_access",
+    source: "access_needed",
+    target: "security_needed",
+    route: "skip"
+  },
+  { id: "flow_access_result", source: "system_owner_access_review", target: "access_result" },
+  {
+    id: "flow_access_reject",
+    source: "access_result",
+    target: "end_rejected",
+    condition: "${approved == 'reject'}",
+    route: "reject"
+  },
+  { id: "flow_access_approve", source: "access_result", target: "security_needed" },
+  {
+    id: "flow_need_security",
+    source: "security_needed",
+    target: "security_review",
+    condition: "${security_review_required_flag == true}"
+  },
+  {
+    id: "flow_skip_security",
+    source: "security_needed",
+    target: "pmo_review",
+    route: "skip"
+  },
+  { id: "flow_security_result", source: "security_review", target: "security_result" },
+  {
+    id: "flow_security_reject",
+    source: "security_result",
+    target: "end_rejected",
+    condition: "${approved == 'reject'}",
+    route: "reject"
+  },
+  { id: "flow_security_approve", source: "security_result", target: "pmo_review" },
+  { id: "flow_pmo_result", source: "pmo_review", target: "pmo_result" },
+  {
+    id: "flow_pmo_reject",
+    source: "pmo_result",
+    target: "end_rejected",
+    condition: "${approved == 'reject'}",
+    route: "reject"
+  },
+  { id: "flow_pmo_approve", source: "pmo_result", target: "end_approved" }
+];
+
+const memberChangeStatusMappings = [
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_start_manager",
+    sourceNodeId: "start",
+    sourceNodeName: "提交项目成员变更",
+    targetNodeId: "project_manager_review",
+    targetNodeName: "项目经理审核",
+    entityStatus: "PENDING_MANAGER",
+    entityStatusCode: "PENDING_MANAGER",
+    statusCategory: "PROCESSING",
+    sortOrder: 10
+  },
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_manager_approve",
+    sourceNodeId: "manager_result",
+    sourceNodeName: "项目经理审核结果",
+    targetNodeId: "department_review",
+    targetNodeName: "人员部门负责人审核",
+    entityStatus: "PENDING_DEPT",
+    entityStatusCode: "PENDING_DEPT",
+    statusCategory: "PROCESSING",
+    sortOrder: 20
+  },
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_need_access",
+    sourceNodeId: "access_needed",
+    sourceNodeName: "权限审核判断",
+    targetNodeId: "system_owner_access_review",
+    targetNodeName: "系统负责人权限审核",
+    entityStatus: "ACCESS_REVIEW",
+    entityStatusCode: "ACCESS_REVIEW",
+    statusCategory: "PROCESSING",
+    sortOrder: 30
+  },
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_need_security",
+    sourceNodeId: "security_needed",
+    sourceNodeName: "安全审核判断",
+    targetNodeId: "security_review",
+    targetNodeName: "安全负责人审核",
+    entityStatus: "SECURITY_REVIEW",
+    entityStatusCode: "SECURITY_REVIEW",
+    statusCategory: "PROCESSING",
+    sortOrder: 40
+  },
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_skip_security",
+    sourceNodeId: "security_needed",
+    sourceNodeName: "安全审核判断",
+    targetNodeId: "pmo_review",
+    targetNodeName: "PMO最终审批",
+    entityStatus: "PENDING_PMO",
+    entityStatusCode: "PENDING_PMO",
+    statusCategory: "PROCESSING",
+    sortOrder: 50
+  },
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_security_approve",
+    sourceNodeId: "security_result",
+    sourceNodeName: "安全审核结果",
+    targetNodeId: "pmo_review",
+    targetNodeName: "PMO最终审批",
+    entityStatus: "PENDING_PMO",
+    entityStatusCode: "PENDING_PMO",
+    statusCategory: "PROCESSING",
+    sortOrder: 60
+  },
+  ...[
+    ["flow_manager_reject", "manager_result", "项目经理审核结果"],
+    ["flow_department_reject", "department_result", "部门审核结果"],
+    ["flow_access_reject", "access_result", "权限审核结果"],
+    ["flow_security_reject", "security_result", "安全审核结果"],
+    ["flow_pmo_reject", "pmo_result", "PMO审批结果"]
+  ].map(([sequenceFlowId, sourceNodeId, sourceNodeName], index) => ({
+    entityCode: "project_member_change_request",
+    sequenceFlowId,
+    sourceNodeId,
+    sourceNodeName,
+    targetNodeId: "end_rejected",
+    targetNodeName: "成员变更已驳回",
+    entityStatus: "REJECTED",
+    entityStatusCode: "REJECTED",
+    statusCategory: "TERMINATED",
+    sortOrder: 70 + index * 10
+  })),
+  {
+    entityCode: "project_member_change_request",
+    sequenceFlowId: "flow_pmo_approve",
+    sourceNodeId: "pmo_result",
+    sourceNodeName: "PMO审批结果",
+    targetNodeId: "end_approved",
+    targetNodeName: "成员变更已批准",
+    entityStatus: "APPROVED",
+    entityStatusCode: "APPROVED",
+    statusCategory: "COMPLETED",
+    sortOrder: 120
+  }
+];
+
+const memberChangeNodeAction = {
+  scopeType: "NODE",
+  elementId: "project_manager_review",
+  triggerTiming: "NODE_COMPLETED",
+  executionMode: "IN_TRANSACTION",
+  failurePolicy: "ROLLBACK",
+  retryConfig: JSON.stringify({ maxRetries: 0 }),
+  actionName: "记录项目经理成员变更复核",
+  description: "项目经理节点完成后写入复核时间和操作人。",
+  interfaceName: "captureProjectMemberManagerReviewHandler",
+  methodName: "execute",
+  paramsJson: "{}",
+  sortOrder: 20,
+  enabled: true,
+  status: "DRAFT"
+};
+
+const memberChangeTransitionAction = {
+  scopeType: "SEQUENCE_FLOW",
+  elementId: "flow_pmo_approve",
+  triggerTiming: "TRANSITION_TAKEN",
+  executionMode: "IN_TRANSACTION",
+  failurePolicy: "ROLLBACK",
+  retryConfig: JSON.stringify({ maxRetries: 0 }),
+  actionName: "记录项目成员变更最终批准连线",
+  description: "最终批准顺序流选中时记录来源、目标和决策编码。",
+  interfaceName: "recordProjectMemberDecisionHandler",
+  methodName: "execute",
+  paramsJson: JSON.stringify({ decision: "APPROVED" }),
+  sortOrder: 30,
+  enabled: true,
+  status: "DRAFT"
+};
+
+const memberChangeGlobalAuditAction = {
+  scopeType: "PROCESS",
+  elementId: null,
+  triggerTiming: "PROCESS_COMPLETED",
+  executionMode: "AFTER_COMMIT",
+  failurePolicy: "RETRY",
+  retryConfig: JSON.stringify({
+    maxRetries: 3,
+    initialDelaySeconds: 10,
+    maxDelaySeconds: 120
+  }),
+  actionName: "记录项目生命周期全局审计",
+  description: "使用全局动作目录记录F07完成后的标准审计摘要。",
+  interfaceName: "projectLifecycleAuditHandler",
+  methodName: "execute",
+  paramsJson: JSON.stringify({
+    auditCode: "F07_MEMBER_CHANGE",
+    businessStage: "MEMBER_EFFECTIVE"
+  }),
+  sortOrder: 50,
+  enabled: true,
+  status: "DRAFT"
+};
+
+buildProcessAssets({
+  processKey: "project_member_change_process",
+  processName: "项目成员变更审批",
+  description: "项目经理、人员部门负责人、系统负责人权限、安全负责人和PMO条件审批；批准后自动生效成员、投入及角色交接。",
+  entityCode: "project_member_change_request",
+  fileName: "project-member-change.bpmn20.xml",
+  nodes: memberChangeNodes,
+  flows: memberChangeFlows,
+  statusMappings: memberChangeStatusMappings,
+  flowActions: [
+    validationAction(
+      "项目成员变更跨实体门禁",
+      "校验项目状态、成员状态、跨项目投入、权限范围和角色交接。",
+      "validateProjectMemberChangeHandler",
+      10
+    ),
+    memberChangeNodeAction,
+    memberChangeTransitionAction,
+    applyAction(
+      "批准后生效项目成员变更",
+      "创建或更新项目成员，暂停、恢复或移交有效项目角色。",
+      "applyProjectMemberChangeHandler",
+      40
+    ),
+    memberChangeGlobalAuditAction,
+    commonNotification(
+      "发送项目成员变更结果通知",
+      "PROJECT_MEMBER_CHANGE_RESULT",
+      60
+    )
+  ],
+  dependencies: [
+    { type: "ENTITY", key: "project_member_change_request", required: true, reason: "实体状态映射" },
+    { type: "ENTITY", key: "project_member", required: true, reason: "成员生效对象" },
+    { type: "ENTITY", key: "project_role_assignment", required: true, reason: "角色暂停和移交对象" },
+    { type: "FORM", key: "wf-form://project_member_change_request/project_member_change_apply", required: true, reason: "自定义审批表单" },
+    { type: "USER", key: "admin", required: true, reason: "单账号模拟审批人" },
+    { type: "FLOW_ACTION_HANDLER", key: "validateProjectMemberChangeHandler", required: true, reason: "跨实体成员门禁" },
+    { type: "FLOW_ACTION_HANDLER", key: "captureProjectMemberManagerReviewHandler", required: true, reason: "节点完成动作" },
+    { type: "FLOW_ACTION_HANDLER", key: "recordProjectMemberDecisionHandler", required: true, reason: "顺序流选中动作" },
+    { type: "FLOW_ACTION_HANDLER", key: "applyProjectMemberChangeHandler", required: true, reason: "批准后生效成员变更" },
+    { type: "FLOW_ACTION_HANDLER", key: "projectLifecycleAuditHandler", required: true, reason: "全局项目生命周期审计" },
+    { type: "FLOW_ACTION_HANDLER", key: "sendNotificationHandler", required: true, reason: "流程完成通知" },
+    { type: "UI_EXTENSION", key: "FORM:ProjectMemberChangeForm:1", required: true, reason: "自定义成员变更表单" }
+  ]
+});
+
 for (const entity of [
   projectGroup,
   requirementProjectLink,
@@ -3164,14 +3899,15 @@ for (const entity of [
   projectRoleAssignment,
   projectSystemLink,
   project,
-  projectSystemChangeRequest
+  projectSystemChangeRequest,
+  projectMemberChangeRequest
 ]) {
   writeJson(entityDir, `${entity.businessKey}-v1.json`, entity);
 }
 
 console.log(JSON.stringify({
-  generatedEntities: 8,
-  generatedProcesses: 2,
+  generatedEntities: 9,
+  generatedProcesses: 3,
   entityDir,
   processDir,
   bpmnDir

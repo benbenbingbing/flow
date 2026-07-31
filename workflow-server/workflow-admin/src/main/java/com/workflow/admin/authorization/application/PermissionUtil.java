@@ -114,7 +114,8 @@ public class PermissionUtil {
         if (perm == null || perm.isEmpty()) {
             return true;
         }
-        return getCurrentUserPermissions().contains(perm);
+        Set<String> userPerms = getCurrentUserPermissions();
+        return userPerms.contains("*") || userPerms.contains(perm);
     }
 
     /**
@@ -128,6 +129,7 @@ public class PermissionUtil {
             return true;
         }
         Set<String> userPerms = getCurrentUserPermissions();
-        return perms.stream().anyMatch(userPerms::contains);
+        return userPerms.contains("*")
+                || perms.stream().anyMatch(userPerms::contains);
     }
 }

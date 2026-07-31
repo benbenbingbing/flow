@@ -1,6 +1,11 @@
 package com.workflow.entity.form.application;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
@@ -93,12 +98,17 @@ public class EntityFormNodeService {
     private static final Set<String> DATA_SOURCE_USAGES = Set.of(
             "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
             "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
+    private static final Set<String> SYSTEM_READ_ONLY_DATA_SOURCE_USAGES =
+            Set.of("FORM_INIT", "FIELD_OPTIONS", "AFTER_LOAD");
 
     private final EntityFormMapper formMapper;
     private final EntityFormNodeMapper nodeMapper;
     private final EntityRelationMapper relationMapper;
     private final UiConfigReleaseMapper releaseMapper;
-    private final EntityDefinitionAccessPolicy entityAccessPolicy;
+    private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
+    private final EntityDefinitionMapper definitionMapper;
+    private final EntityFieldMapper fieldMapper;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final JsonDocumentCodec codec;
 
     /**
@@ -173,6 +183,7 @@ public class EntityFormNodeService {
         }
         normalizeAndValidateConfiguration(node, migrateUnsupported);
         validateNode(node, null);
+        validateSystemNode(node);
         try {
             nodeMapper.insert(node);
         } catch (DataIntegrityViolationException exception) {
@@ -230,6 +241,7 @@ public class EntityFormNodeService {
         updated.setRevision(current.getRevision() + 1);
         updated.setUpdatedAt(LocalDateTime.now());
         validateNode(updated, current.getId());
+        validateSystemNode(updated);
 
         UpdateWrapper<EntityFormNode> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", nodeId)
@@ -1339,6 +1351,82 @@ public class EntityFormNodeService {
         }
     }
 
+    private void validateSystemNode(EntityFormNode node) {
+        EntityForm form = formMapper.selectById(node.getFormId());
+        EntityDefinition entity = form == null
+                ? null
+                : definitionMapper.selectById(form.getEntityId());
+        if (entity == null
+                || entity.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return;
+        }
+        if ("ACTION_SLOT".equals(node.getNodeType())) {
+            throw new IllegalArgumentException(
+                    "平台系统表查看表单不能配置动作插槽");
+        }
+        if (StringUtils.hasText(node.getComponentName())) {
+            throw new IllegalArgumentException(
+                    "平台系统表查看表单不能配置自定义写入组件");
+        }
+        Map<String, Object> rules = read(
+                node.getRulesDocument(), "表单节点规则");
+        if (rules != null && !rules.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "平台系统表查看表单不能配置提交校验规则");
+        }
+        Map<String, Object> bindings = read(
+                node.getDataSourceBindingsDocument(),
+                "表单节点数据源绑定");
+        if (bindings != null) {
+            for (String usage : bindings.keySet()) {
+                if (!SYSTEM_READ_ONLY_DATA_SOURCE_USAGES.contains(
+                        normalize(usage, ""))) {
+                    throw new IllegalArgumentException(
+                            "平台系统表查看表单不允许数据源位置: "
+                                    + usage);
+                }
+            }
+        }
+        if (!"ENTITY_FIELD".equals(node.getBindingType())) {
+            return;
+        }
+        EntityField field = fieldMapper.findByEntityIdAndFieldCode(
+                entity.getId(), node.getBindingRef());
+        if (field == null
+                || !systemEntityFieldPolicy
+                        .isUiConfigurable(entity, field)) {
+            throw new IllegalArgumentException(
+                    "平台系统表字段不可配置: "
+                            + node.getBindingRef());
+        }
+        Map<String, Object> props = read(
+                node.getPropsDocument(), "表单节点属性");
+        if (props == null
+                || !Boolean.TRUE.equals(props.get("readonly"))) {
+            throw new IllegalArgumentException(
+                    "平台系统表字段节点必须设置为只读");
+        }
+        String configuredFieldCode = text(
+                props.get("fieldCode"));
+        String configuredFieldId = text(
+                props.get("fieldId"));
+        if (StringUtils.hasText(configuredFieldCode)
+                && !Objects.equals(
+                        configuredFieldCode,
+                        field.getFieldCode())) {
+            throw new IllegalArgumentException(
+                    "平台系统表字段编码与字段目录不一致");
+        }
+        if (StringUtils.hasText(configuredFieldId)
+                && !Objects.equals(
+                        configuredFieldId,
+                        field.getId())) {
+            throw new IllegalArgumentException(
+                    "平台系统表字段标识与字段目录不一致");
+        }
+    }
+
     private void validateParent(String formId, String nodeId, String parentId) {
         int parentDepth = 0;
         if (StringUtils.hasText(parentId)) {
@@ -2060,7 +2148,8 @@ public class EntityFormNodeService {
         if (form == null) {
             throw new IllegalArgumentException("表单不存在");
         }
-        entityAccessPolicy.requireDynamicById(form.getEntityId());
+        entityUiConfigurationPolicy.requireConfigurableById(
+                form.getEntityId());
         return form;
     }
 
@@ -2074,7 +2163,8 @@ public class EntityFormNodeService {
         if (form == null) {
             throw new IllegalArgumentException("表单不存在");
         }
-        entityAccessPolicy.requireDynamicById(form.getEntityId());
+        entityUiConfigurationPolicy.requireConfigurableById(
+                form.getEntityId());
         int currentRevision =
                 form.getRevision() == null ? 1 : form.getRevision();
         if (!Objects.equals(expectedRevision, currentRevision)) {

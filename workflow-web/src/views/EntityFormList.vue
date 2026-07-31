@@ -7,10 +7,19 @@
         </el-button>
         <span class="title">{{ entityInfo.entityName }} - 表单管理</span>
       </div>
-      <el-button v-if="entityInfo.storageMode !== 'SYSTEM'" type="primary" @click="handleCreate">
+      <el-button type="primary" @click="handleCreate">
         <el-icon><Plus /></el-icon>新建表单
       </el-button>
     </div>
+
+    <el-alert
+      v-if="entityInfo.storageMode === 'SYSTEM'"
+      title="平台系统表结构只读，当前表单仅用于详情查看布局，不会开放新增或编辑数据。"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="system-config-alert"
+    />
 
     <el-card shadow="never">
       <PageState
@@ -63,7 +72,13 @@
                 默认
               </el-button>
               <el-button type="primary" link size="small" @click="handleCopy(row)">复制</el-button>
-              <el-button type="primary" link size="small" @click="handleInitConfig(row)">配置</el-button>
+              <el-button
+                v-if="entityInfo.storageMode !== 'SYSTEM'"
+                type="primary"
+                link
+                size="small"
+                @click="handleInitConfig(row)"
+              >配置</el-button>
               <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
             </div>
           </template>
@@ -140,16 +155,34 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item label="Query 参数(JSON)">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="Query 参数(JSON)"
+                  help-key="entityForm.init.apiQuery"
+                />
+              </template>
               <el-input v-model="initConfigData.api.paramsText" type="textarea" :rows="3" placeholder='{"projectId":"{{routeQuery.projectId}}"}' style="width: 260px" />
             </el-form-item>
-            <el-form-item label="请求体(JSON)">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="请求体(JSON)"
+                  help-key="entityForm.init.apiBody"
+                />
+              </template>
               <el-input v-model="initConfigData.api.dataText" type="textarea" :rows="3" placeholder='{"key":"value"}' style="width: 260px" />
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item label="字段映射(JSON)">
-              <el-input v-model="initConfigData.api.mappingText" type="textarea" :rows="3" placeholder='{"name":"projectName","code":"projectCode"}' style="width: 540px" />
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="字段映射(JSON)"
+                  help-key="entityForm.init.apiMapping"
+                />
+              </template>
+              <el-input v-model="initConfigData.api.mappingText" type="textarea" :rows="3" placeholder='{"projectName":"name","projectCode":"code"}' style="width: 540px" />
             </el-form-item>
           </el-form>
         </div>
@@ -157,34 +190,51 @@
         <div v-else-if="initConfigType === 'entity'" class="init-config-section">
           <el-form inline size="small">
             <el-form-item label="目标实体">
-              <el-select v-model="initConfigData.entity.entityCode" placeholder="选择实体" filterable style="width: 200px">
-                <el-option
-                  v-for="item in allEntityList"
-                  :key="item.entityCode"
-                  :label="item.entityName"
-                  :value="item.entityCode"
-                />
-              </el-select>
+              <EntityDefinitionPicker
+                v-model="initConfigData.entity.entityCode"
+                value-key="entityCode"
+                title="选择初始化数据实体"
+                placeholder="选择实体"
+                :query="{ storageMode: 'DYNAMIC' }"
+              />
             </el-form-item>
             <el-form-item label="取第几条">
               <el-input-number v-model="initConfigData.entity.index" :min="0" :max="100" style="width: 100px" />
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item label="过滤参数(JSON)">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="过滤参数(JSON)"
+                  help-key="entityForm.init.entityFilters"
+                />
+              </template>
               <el-input v-model="initConfigData.entity.paramsText" type="textarea" :rows="3" placeholder='{"status":"APPROVED"}' style="width: 540px" />
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item label="字段映射(JSON)">
-              <el-input v-model="initConfigData.entity.mappingText" type="textarea" :rows="3" placeholder='{"name":"name","code":"code"}' style="width: 540px" />
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="字段映射(JSON)"
+                  help-key="entityForm.init.entityMapping"
+                />
+              </template>
+              <el-input v-model="initConfigData.entity.mappingText" type="textarea" :rows="3" placeholder='{"projectName":"name","projectCode":"code"}' style="width: 540px" />
             </el-form-item>
           </el-form>
         </div>
 
         <div v-else-if="initConfigType === 'static'" class="init-config-section">
           <el-form inline size="small">
-            <el-form-item label="静态值(JSON)">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="静态值(JSON)"
+                  help-key="entityForm.init.staticValues"
+                />
+              </template>
               <el-input v-model="initConfigData.staticText" type="textarea" :rows="4" placeholder='{"status":"DRAFT","reqType":"重大"}' style="width: 540px" />
             </el-form-item>
           </el-form>
@@ -219,7 +269,13 @@
             </el-form-item>
           </el-form>
           <el-form inline size="small">
-            <el-form-item label="参数(JSON)">
+            <el-form-item>
+              <template #label>
+                <JsonConfigLabel
+                  label="参数(JSON)"
+                  help-key="entityForm.init.customParams"
+                />
+              </template>
               <el-input v-model="initConfigData.custom.paramsText" type="textarea" :rows="3" placeholder='{"key":"value"}' style="width: 540px" />
             </el-form-item>
           </el-form>
@@ -240,13 +296,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { entityApi } from '@/api/entity'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm, copyForm, updateFormInitConfig } from '@/api/entityForm'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import { getRegisteredFormInitializerNames } from '@/utils/formInitializerRegistry'
 import { formatDateValue } from '@/shared/list-runtime'
 import PageState from '@/components/PageState.vue'
 
-const allEntityList = ref([])
 const registeredInitializers = getRegisteredFormInitializerNames()
 
 const route = useRoute()
@@ -298,10 +355,6 @@ const rules = {
 async function loadEntityInfo() {
   try {
     entityInfo.value = await entityApi.getById(entityId)
-    if (entityInfo.value.storageMode === 'SYSTEM') {
-      ElMessage.warning('平台系统实体只提供结构目录，不支持动态表单配置')
-      router.replace('/entity')
-    }
   } catch (e) {
     console.error('加载实体信息失败:', e)
   }
@@ -440,17 +493,7 @@ function resetForm() {
 onMounted(() => {
   loadEntityInfo()
   loadForms()
-  loadAllEntities()
 })
-
-async function loadAllEntities() {
-  try {
-    allEntityList.value = await entityApi.getAll()
-  } catch (e) {
-    console.error('加载实体列表失败:', e)
-    allEntityList.value = []
-  }
-}
 
 function safeJsonStringify(obj, space = 0) {
   if (obj == null) return ''
@@ -568,6 +611,10 @@ async function handleSaveInitConfig() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.system-config-alert {
+  margin-bottom: 16px;
 }
 
 .header-left {

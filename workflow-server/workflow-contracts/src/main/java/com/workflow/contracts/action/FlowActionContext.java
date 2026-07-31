@@ -149,6 +149,45 @@ public class FlowActionContext {
     }
 
     /**
+     * 在当前流程实例中写入一个变量，并同步更新本次动作的变量快照。
+     *
+     * @param name  变量名
+     * @param value 变量值
+     */
+    public void setProcessVariable(String name, Object value) {
+        if (runtimeAccess == null) {
+            throw new IllegalStateException("流程动作运行时访问器未初始化");
+        }
+        runtimeAccess.setVariable(processInstanceId, name, value);
+        mutableVariablesSnapshot().put(name, value);
+    }
+
+    /**
+     * 在当前流程实例中批量写入变量，并同步更新本次动作的变量快照。
+     *
+     * @param variables 待写入变量
+     */
+    public void setProcessVariables(Map<String, Object> variables) {
+        if (runtimeAccess == null) {
+            throw new IllegalStateException("流程动作运行时访问器未初始化");
+        }
+        Map<String, Object> values =
+                variables == null ? Map.of() : variables;
+        runtimeAccess.setVariables(processInstanceId, values);
+        mutableVariablesSnapshot().putAll(values);
+    }
+
+    private Map<String, Object> mutableVariablesSnapshot() {
+        if (variablesSnapshot == null) {
+            variablesSnapshot = new LinkedHashMap<>();
+        } else if (!(variablesSnapshot instanceof LinkedHashMap)) {
+            variablesSnapshot =
+                    new LinkedHashMap<>(variablesSnapshot);
+        }
+        return variablesSnapshot;
+    }
+
+    /**
      * 获取运行中的流程实例。
      *
      * @return 运行中的流程实例；不存在返回 null

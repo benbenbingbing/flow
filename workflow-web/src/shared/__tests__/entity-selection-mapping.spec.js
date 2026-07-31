@@ -8,7 +8,8 @@ import {
   entitySelectionMappings,
   isPersistedEntitySelectionField,
   mergeEntitySelectionMappings,
-  resolveEntitySelectionRefConfig
+  resolveEntitySelectionRefConfig,
+  resolveRuntimeEntitySelectionReference
 } from '../entity-selection-mapping.js'
 
 const firstFormBinding = {
@@ -149,6 +150,31 @@ assert.deepEqual(
     refEntityId: 'entity-1'
   },
   '入口与编辑器应兼容 componentProps.refConfig'
+)
+
+assert.deepEqual(
+  resolveRuntimeEntitySelectionReference({
+    entityType: 'CUSTOM',
+    entityCode: '',
+    runtimeEntityCode: 'project',
+    refEntityId: 'legacy-project-definition-id'
+  }),
+  {
+    entityCode: 'project',
+    refEntityId: ''
+  },
+  '运行时实体编码必须用于已选关联记录的名称回显'
+)
+assert.deepEqual(
+  resolveRuntimeEntitySelectionReference({
+    entityType: 'CUSTOM',
+    refEntityId: 'project-definition-id'
+  }),
+  {
+    entityCode: '',
+    refEntityId: 'project-definition-id'
+  },
+  '没有实体编码时继续兼容实体定义 ID'
 )
 
 console.log('entity-selection-mapping tests passed')

@@ -1,5 +1,13 @@
 package com.workflow.service;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 
@@ -13,11 +21,14 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListScen
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -30,6 +41,71 @@ import static org.mockito.Mockito.when;
  */
 class EntityListIncrementalConfigurationTest {
 
+    @Test
+    void listFieldBooleanFlagsAlwaysParticipateInInsertAndUpdate() throws Exception {
+        for (String fieldName : List.of("showInList", "isQuery")) {
+            Field field = EntityListField.class.getDeclaredField(fieldName);
+            TableField mapping = field.getAnnotation(TableField.class);
+
+            assertEquals(FieldStrategy.ALWAYS, mapping.insertStrategy());
+            assertEquals(FieldStrategy.ALWAYS, mapping.updateStrategy());
+        }
+    }
+
+    @Test
+    void systemListRejectsUnsupportedQueryOperator() {
+        EntityDefinitionMapper definitionMapper =
+                mock(EntityDefinitionMapper.class);
+        EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
+        SystemEntityFieldPolicy fieldPolicy =
+                mock(SystemEntityFieldPolicy.class);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setId("system-user");
+        entity.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
+        EntityField entityField = new EntityField();
+        entityField.setId("username-field");
+        entityField.setFieldCode("username");
+        when(definitionMapper.selectById("system-user"))
+                .thenReturn(entity);
+        when(fieldMapper.findByEntityId("system-user"))
+                .thenReturn(List.of(entityField));
+        when(fieldPolicy.isUiConfigurable(entity, entityField))
+                .thenReturn(true);
+
+        EntityListConfigService service =
+                new EntityListConfigService(
+                        null,
+                        null,
+                        definitionMapper,
+                        fieldMapper,
+                        fieldPolicy,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        EntityListConfigDTO config = new EntityListConfigDTO();
+        config.setEntityId("system-user");
+        EntityListField configured = new EntityListField();
+        configured.setFieldId("username-field");
+        configured.setFieldCode("username");
+        configured.setIsQuery(true);
+        configured.setQueryType("NOT_IN");
+        config.setFields(List.of(configured));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        service,
+                        "validateSystemListConfiguration",
+                        config));
+
+        assertTrue(error.getMessage().contains("不支持查询方式"));
+    }
+
     /**
      * 测试字段补丁可显式清空可选绑定：
      * 验证通过 copyMutableFieldProperties 将源字段为空的属性复制到目标后，相关绑定被清空为 null。
@@ -38,7 +114,8 @@ class EntityListIncrementalConfigurationTest {
     void fieldPatchCanExplicitlyClearOptionalBindings() {
         EntityListConfigService service = new EntityListConfigService(
                 null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null,
+                null, null, null);
         EntityListField source = new EntityListField();
         EntityListField target = new EntityListField();
         target.setDataSourceId("source-1");

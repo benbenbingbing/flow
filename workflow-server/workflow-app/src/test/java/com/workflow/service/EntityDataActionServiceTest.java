@@ -2,6 +2,8 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.SystemEntityReadService;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
@@ -15,6 +17,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
@@ -22,6 +25,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -32,11 +36,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -55,6 +61,9 @@ class EntityDataActionServiceTest {
 
     @Mock
     private EntityDataDynamicService dynamicService;
+
+    @Mock
+    private SystemEntityReadService systemEntityReadService;
 
     @Mock
     private EntityMutationPort mutationPort;
@@ -89,6 +98,15 @@ class EntityDataActionServiceTest {
     @InjectMocks
     private EntityDataActionService service;
 
+    @BeforeEach
+    void setUpDynamicEntity() {
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("asset");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(definitionMapper.findByEntityCode(anyString()))
+                .thenReturn(Optional.of(entity));
+    }
+
     /**
      * 测试流程实例详情查询使用已解析的列表权限作用域：
      * 验证按流程实例查询实体详情时，调用的是带权限作用域的 findAccessibleByProcessInstanceId 方法。
@@ -112,6 +130,29 @@ class EntityDataActionServiceTest {
                 "asset",
                 "process-1",
                 "default");
+    }
+
+    @Test
+    void systemEntityUpdateIsRejectedBeforeMutation() {
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("sys_user");
+        entity.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
+        when(definitionMapper.findByEntityCode("sys_user"))
+                .thenReturn(Optional.of(entity));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> service.update(
+                        "sys_user",
+                        "1",
+                        "readonly_users",
+                        Map.of("data", Map.of("nickname", "blocked"))));
+
+        assertEquals(
+                "ENTITY_SYSTEM_RUNTIME_NOT_SUPPORTED",
+                error.getErrorCode());
+        verify(mutationPort, never())
+                .execute(any(EntityMutationCommand.class));
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.workflow.entity.version.api.web;
 
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.security.RequiresPermission;
 import com.workflow.entity.version.application.EntityVersionConfigurationService;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher;
 import com.workflow.entity.version.application.model.EntityVersionConfigSummary;
@@ -25,6 +26,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/entity-versions/configs")
 @RequiredArgsConstructor
+@RequiresPermission("entity:version:config:list")
 public class EntityVersionConfigurationController {
 
     private final EntityVersionConfigurationService service;
@@ -43,6 +45,7 @@ public class EntityVersionConfigurationController {
                 service.getDraft(entityCode));
     }
 
+    @RequiresPermission("entity:version:config:update")
     @PostMapping("/{entityCode}/save")
     public ApiResponse<EntityVersionConfiguration> save(
             @PathVariable String entityCode,
@@ -51,6 +54,7 @@ public class EntityVersionConfigurationController {
                 service.saveDraft(entityCode, request));
     }
 
+    @RequiresPermission("entity:version:config:publish")
     @PostMapping("/{entityCode}/publish")
     public ApiResponse<EntityVersionConfiguration> publish(
             @PathVariable String entityCode) {

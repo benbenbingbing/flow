@@ -55,7 +55,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import {
+  COMMON_MENU_ICON_NAMES,
+  listMenuIconNames,
+  normalizeMenuIconName,
+  resolveMenuIcon
+} from '@/utils/menuIcons'
 
 const props = defineProps<{
   modelValue: string
@@ -71,49 +76,19 @@ const selectedIcon = computed({
   set: (val) => emit('update:modelValue', val)
 })
 
-// 常用图标列表
-const commonIcons = [
-  'HomeFilled', 'Home', 'User', 'UserFilled', 'Setting', 'Tools',
-  'Document', 'Folder', 'FolderOpened', 'FolderChecked', 'FolderDelete',
-  'Menu', 'Grid', 'List', 'Histogram', 'DataLine', 'TrendCharts',
-  'PieChart', 'Histogram', 'Connection', 'Link', 'Share',
-  'Search', 'ZoomIn', 'ZoomOut', 'FullScreen', 'Rank',
-  'Plus', 'Edit', 'Delete', 'Check', 'Close', 'Refresh',
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-  'Upload', 'Download', 'Top', 'Bottom', 'Back', 'Right',
-  'Warning', 'WarningFilled', 'InfoFilled', 'SuccessFilled', 'CircleCheck', 'CircleClose',
-  'Message', 'Bell', 'ChatDotRound', 'ChatLineRound', 'Notification',
-  'Lock', 'Unlock', 'Key', 'Unlock',
-  'Calendar', 'Timer', 'Clock', 'Watch', 'AlarmClock',
-  'Monitor', 'Cellphone', 'Camera', 'VideoCamera', 'Picture',
-  'Goods', 'ShoppingCart', 'Sell', 'PriceTag', 'Wallet',
-  'OfficeBuilding', 'School', 'Shop', 'Box', 'FirstAidKit',
-  'User', 'UserFilled', 'Avatar', 'User', 'UserFilled',
-  'Ship', 'Truck', 'Bicycle', 'Van', 'Promotion',
-  'Sunny', 'Moon', 'Cloudy', 'Lightning', 'Pouring',
-  'Star', 'StarFilled', 'Collection', 'CollectionTag',
-  'Briefcase', 'Suitcase', 'Handbag', 'ShoppingBag',
-  'Coffee', 'Food', 'IceCream', 'IceTea', 'Goblet',
-  'MostlyCloudy', 'PartlyCloudy', 'Sunrise', 'Sunset',
-  'DArrowRight', 'DArrowLeft', 'DCaret', 'CaretRight', 'CaretLeft',
-  'Memo', 'Notebook', 'Tickets', 'Postcard', 'Discount',
-  'Cpu', 'Mouse', 'Headset', 'Service', 'Coordinate'
-]
+const allIcons = listMenuIconNames()
 
 const filteredIcons = computed(() => {
-  if (!searchText.value) return commonIcons
-  return Object.keys(ElementPlusIconsVue).filter(
+  if (!searchText.value) return COMMON_MENU_ICON_NAMES
+  return allIcons.filter(
     name => name.toLowerCase().includes(searchText.value.toLowerCase())
   )
 })
 
-const getIconComponent = (iconName: string) => {
-  if (!iconName) return null
-  return (ElementPlusIconsVue as any)[iconName] || null
-}
+const getIconComponent = (iconName: string) => resolveMenuIcon(iconName)
 
 const selectIcon = (icon: string) => {
-  selectedIcon.value = icon
+  selectedIcon.value = normalizeMenuIconName(icon)
   dialogVisible.value = false
 }
 

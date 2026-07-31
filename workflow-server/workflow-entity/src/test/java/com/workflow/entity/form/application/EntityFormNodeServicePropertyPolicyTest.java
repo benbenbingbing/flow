@@ -1,6 +1,9 @@
 package com.workflow.entity.form.application;
 
-import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -239,8 +242,8 @@ class EntityFormNodeServicePropertyPolicyTest {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         UiConfigReleaseMapper releaseMapper =
                 mock(UiConfigReleaseMapper.class);
-        EntityDefinitionAccessPolicy accessPolicy =
-                mock(EntityDefinitionAccessPolicy.class);
+        EntityUiConfigurationPolicy uiConfigurationPolicy =
+                mock(EntityUiConfigurationPolicy.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
 
@@ -262,7 +265,10 @@ class EntityFormNodeServicePropertyPolicyTest {
                         nodeMapper,
                         mock(EntityRelationMapper.class),
                         releaseMapper,
-                        accessPolicy,
+                        uiConfigurationPolicy,
+                        mock(EntityDefinitionMapper.class),
+                        mock(EntityFieldMapper.class),
+                        mock(SystemEntityFieldPolicy.class),
                         codec),
                 nodeMapper);
     }

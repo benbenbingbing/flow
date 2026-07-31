@@ -4,7 +4,7 @@
       <div class="overview">
         <div>
           <h2>配置迁移</h2>
-          <p>仅迁移实体和流程的已发布快照，不包含业务数据、流程实例和敏感环境参数。</p>
+          <p>迁移动态实体、流程和系统实体 UI 的已发布快照，不包含业务数据、系统表结构和敏感环境参数。</p>
         </div>
         <div class="overview-stats">
           <div><strong>{{ assetStats.pending }}</strong><span>待导出</span></div>
@@ -27,8 +27,9 @@
           <div class="toolbar">
             <el-form :model="assetFilters" inline>
               <el-form-item label="类型">
-                <el-select v-model="assetFilters.assetType" clearable placeholder="全部" style="width: 120px">
+                <el-select v-model="assetFilters.assetType" clearable placeholder="全部" style="width: 160px">
                   <el-option label="实体" value="ENTITY" />
+                  <el-option label="系统实体 UI" value="SYSTEM_ENTITY_UI" />
                   <el-option label="流程" value="PROCESS" />
                 </el-select>
               </el-form-item>
@@ -78,10 +79,10 @@
             @selection-change="selectedAssets = $event"
           >
             <el-table-column type="selection" width="48" :selectable="row => row.snapshotCompleteness === 'COMPLETE'" />
-            <el-table-column prop="assetType" label="类型" width="80">
+            <el-table-column prop="assetType" label="类型" width="120">
               <template #default="{ row }">
-                <el-tag :type="row.assetType === 'ENTITY' ? 'primary' : 'success'">
-                  {{ row.assetType === 'ENTITY' ? '实体' : '流程' }}
+                <el-tag :type="assetTypeTagType(row.assetType)">
+                  {{ assetTypeLabel(row.assetType) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -295,8 +296,8 @@
             <el-table-column label="资产" min-width="330">
               <template #default="{ row }">
                 <div class="asset-title-line">
-                  <el-tag size="small" :type="row.assetType === 'ENTITY' ? 'primary' : 'success'">
-                    {{ row.assetType === 'ENTITY' ? '实体' : '流程' }}
+                  <el-tag size="small" :type="assetTypeTagType(row.assetType)">
+                    {{ assetTypeLabel(row.assetType) }}
                   </el-tag>
                   <span>{{ row.assetName }}</span>
                 </div>
@@ -398,7 +399,13 @@
 
     <el-dialog v-model="itemsVisible" title="导入项目" width="1180px">
       <el-table :data="currentImportItems" border stripe>
-        <el-table-column prop="assetType" label="类型" width="80" />
+        <el-table-column prop="assetType" label="类型" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="assetTypeTagType(row.assetType)">
+              {{ assetTypeLabel(row.assetType) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="assetName" label="名称" min-width="150" />
         <el-table-column prop="businessKey" label="业务编码" min-width="160" />
         <el-table-column prop="sourceVersion" label="来源版本" width="90" />
@@ -522,6 +529,14 @@ const sectionOptions = computed(() => {
       { label: '节点审批', value: 'nodeApprovals' },
       { label: '流程动作', value: 'flowActions' },
       { label: '状态映射', value: 'statusMappings' }
+    ]
+  }
+  if (asset.assetType === 'SYSTEM_ENTITY_UI') {
+    return [
+      { label: '表单', value: 'forms' },
+      { label: '列表', value: 'lists' },
+      { label: '只读数据源', value: 'dataSources' },
+      { label: 'UI 扩展', value: 'extensions' }
     ]
   }
   return [
@@ -776,7 +791,7 @@ const saveMappings = async () => {
 
 const publishImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
-    `发布会更新目标环境的实体、表单、列表和流程配置。请输入迁移标记「${row.migrationTag}」确认。`,
+    `发布会更新目标环境的实体、系统实体 UI、表单、列表和流程配置。请输入迁移标记「${row.migrationTag}」确认。`,
     '确认发布配置',
     {
       type: 'warning',
@@ -793,7 +808,7 @@ const publishImport = async (row) => {
 
 const rollbackImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
-    `回滚会重新发布上一版本，但不会删除已新增的物理列。请输入发布包编号「${row.packageNo}」确认。`,
+    `回滚会恢复上一版本配置，但不会修改业务数据或系统表结构。请输入发布包编号「${row.packageNo}」确认。`,
     '确认回滚配置',
     {
       type: 'warning',
@@ -851,6 +866,18 @@ const publishStatusText = (status) => ({
   FAILED: '发布失败',
   ROLLED_BACK: '已回滚'
 }[status] || '未知状态')
+
+const assetTypeLabel = (assetType) => ({
+  ENTITY: '实体',
+  SYSTEM_ENTITY_UI: '系统实体 UI',
+  PROCESS: '流程'
+}[assetType] || assetType || '未知')
+
+const assetTypeTagType = (assetType) => ({
+  ENTITY: 'primary',
+  SYSTEM_ENTITY_UI: 'warning',
+  PROCESS: 'success'
+}[assetType] || 'info')
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback

@@ -7,7 +7,9 @@ import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -68,6 +70,7 @@ public class EntityDataActionService {
     private final PublishedFormSubmissionService formSubmissionService;
     private final FormSubmissionTraceService formSubmissionTraceService;
     private final UiEventRuntimeService eventRuntimeService;
+    private final SystemEntityReadService systemEntityReadService;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFormMapper formMapper;
     private final ObjectMapper objectMapper;
@@ -95,6 +98,17 @@ public class EntityDataActionService {
             String id,
             String listKey,
             String formId) {
+        EntityDefinition definition = requireEntity(entityCode);
+        if (definition.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM) {
+            systemEntityReadService.requirePermissions(entityCode);
+            EntityListConfig config =
+                    actionConfigService.resolveListConfig(
+                            entityCode, listKey);
+            requireConfiguredListPermission(config);
+            return systemEntityReadService.findById(
+                    entityCode, id);
+        }
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.VIEW);
@@ -138,6 +152,7 @@ public class EntityDataActionService {
             String entityCode,
             String processInstanceId,
             String listKey) {
+        requireDynamicRuntime(entityCode);
         EntityListConfig config = actionConfigService.resolveListConfig(entityCode, listKey);
         return dynamicService.findAccessibleByProcessInstanceId(
                 entityCode,
@@ -165,6 +180,7 @@ public class EntityDataActionService {
         if (dto == null || !StringUtils.hasText(dto.getEntityCode())) {
             throw new IllegalArgumentException("实体编码不能为空");
         }
+        requireDynamicRuntime(dto.getEntityCode());
         capabilityService.requireToolbarAction(dto.getEntityCode(), dto.getListKey(), "create");
         FormSubmissionExecutionContext executionContext =
                 formSubmissionTraceService.current(
@@ -245,6 +261,7 @@ public class EntityDataActionService {
             String id,
             String listKey,
             Map<String, Object> formData) {
+        requireDynamicRuntime(entityCode);
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.UPDATE);
@@ -360,6 +377,7 @@ public class EntityDataActionService {
             targetType = "ENTITY_RECORD",
             targetIdArg = 1)
     public void delete(String entityCode, String id, String listKey) {
+        requireDynamicRuntime(entityCode);
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
         capabilityService.requireRowAction(entityCode, listKey, "delete", row);
         EventOrigin origin = listEventOrigin(entityCode, listKey);
@@ -409,6 +427,7 @@ public class EntityDataActionService {
             risk = AuditRiskLevel.HIGH,
             targetType = "ENTITY_RECORD_BATCH")
     public void batchDelete(String entityCode, List<String> ids, String listKey) {
+        requireDynamicRuntime(entityCode);
         if (ids == null || ids.isEmpty()) {
             throw new IllegalArgumentException("请选择需要删除的数据");
         }
@@ -614,6 +633,44 @@ public class EntityDataActionService {
                             "dataId", id,
                             "reason", exception.getMessage()));
             throw exception;
+        }
+    }
+
+    private EntityDefinition requireEntity(String entityCode) {
+        if (!StringUtils.hasText(entityCode)) {
+            throw new IllegalArgumentException("实体编码不能为空");
+        }
+        return definitionMapper.findByEntityCode(entityCode)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "实体不存在: " + entityCode));
+    }
+
+    private void requireDynamicRuntime(String entityCode) {
+        EntityDefinition definition = requireEntity(entityCode);
+        if (definition.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_RUNTIME_NOT_SUPPORTED",
+                    "平台系统实体只支持通用只读列表和详情: "
+                            + entityCode);
+        }
+    }
+
+    private void requireConfiguredListPermission(
+            EntityListConfig config) {
+        if (config == null
+                || !StringUtils.hasText(
+                        config.getAccessPermissionCode())) {
+            return;
+        }
+        Set<String> permissions =
+                PermissionUtil.getCurrentUserPermissions();
+        if (!permissions.contains("*")
+                && !permissions.contains(
+                        config.getAccessPermissionCode())) {
+            throw new ForbiddenException(
+                    "没有权限访问列表："
+                            + config.getListName());
         }
     }
 
