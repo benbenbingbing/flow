@@ -399,9 +399,9 @@ const levels = [
 ]
 
 const nodeRows = [
-  { type: 'SECTION / GRID', meaning: '业务区块和栅格容器，可递归包含布局与内容节点' },
+  { type: 'SECTION / GRID', meaning: '区块和栅格容器，可递归包含布局与内容节点' },
   { type: 'TAB_SET / TAB', meaning: 'TAB_SET 只直接包含 TAB；TAB 可递归包含字段、布局、文本和其他合法内容节点' },
-  { type: 'COLLAPSE / TEXT', meaning: '折叠容器与无数据说明节点，TEXT 不执行脚本' },
+  { type: 'COLLAPSE / TEXT', meaning: '折叠容器与静态文本节点；TEXT 可显示普通说明或竖线节标题，且不执行脚本' },
   { type: 'FIELD', meaning: '绑定实体字段、关系、计算字段或上下文字段' },
   { type: 'SUB_FORM', meaning: '引用子实体、关系和指定已发布表单版本' },
   { type: 'REPEATER', meaning: '一对多明细容器，通过 SUBFORM_ROWS 加载' },
@@ -414,7 +414,7 @@ const propertyRows = [
   { types: 'TAB_SET', editable: '合法父容器、页签位置 tabPosition；用于组织一组 Tab 页。', boundary: '直接子项只能是 TAB；当前不开放默认激活页。' },
   { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', boundary: '不能位于根节点，父级只能选择有效 TAB_SET；无字段规则或数据源。' },
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', boundary: '不显示字段组件、默认值、校验或字段数据源。' },
-  { types: 'TEXT', editable: '合法父容器、受限说明内容 text；用于提示或静态文本。', boundary: '禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
+  { types: 'TEXT', editable: '合法父容器、受限文本 text；普通说明或节标题由 textStyle 区分。', boundary: 'SECTION_TITLE 只改变展示样式；禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
   { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
   { types: 'SUB_FORM', editable: '显示标签、父容器、展示模式、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；子实体、关系和外键绑定锁定。' },
   { types: 'REPEATER', editable: '显示标签、父容器、展示模式、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },

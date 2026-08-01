@@ -49,7 +49,20 @@
       :root-parent-id="nodeRootParentId"
       :excluded-node-ids="excludedNodeIds"
       @update:model-value="handleCustomFormUpdate"
-    />
+    >
+      <template
+        v-for="slotKey in actionSlotKeys"
+        #[`action-${slotKey}`]
+      >
+        <FormActionBar
+          :key="slotKey"
+          :actions="slotFormActions(currentFormActions, slotKey)"
+          :loading-key="actionLoadingKey"
+          inline
+          @action="$emit('form-action', $event)"
+        />
+      </template>
+    </FormNodeRenderer>
     <el-form
       v-else
       ref="formRef"
@@ -161,10 +174,12 @@
 import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import FormNodeRenderer from './FormNodeRenderer.vue'
+import FormActionBar from './FormActionBar.vue'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
+import { slotFormActions } from '@/shared/form-actions'
 import {
   isFieldReadonlyForMode,
   isFieldVisibleForMode,
@@ -221,6 +236,14 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  formActions: {
+    type: Array,
+    default: () => []
+  },
+  actionLoadingKey: {
+    type: String,
+    default: ''
+  },
   nodeRootParentId: {
     type: [String, Number],
     default: ''
@@ -231,7 +254,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'form-action'])
 const formViewConfig = computed(() => safeParseConfig(props.form?.viewConfig))
 
 // 预览容器样式：支持自定义高度，默认 70vh
@@ -259,6 +282,26 @@ const linkageState = ref({
 })
 const activeTabSubForm = ref('basic')
 const hasNodeTree = computed(() => Array.isArray(props.form?.nodes) && props.form.nodes.length > 0)
+const actionSlotKeys = computed(() =>
+  (props.form?.nodes || [])
+    .filter(node => String(node?.nodeType || '').toUpperCase() === 'ACTION_SLOT')
+    .map(node => node.nodeKey)
+    .filter(Boolean)
+)
+const currentFormActions = computed(() => {
+  const formId = String(
+    props.form?.id
+    || props.form?.formId
+    || props.form?.entityFormId
+    || ''
+  )
+  return props.formActions.filter(action =>
+    action?.type === 'built-in'
+    || !formId
+    || !action?.ownerFormId
+    || String(action.ownerFormId) === formId
+  )
+})
 const runtimeContext = computed(() => ({
   ...props.context,
   mode: props.mode,
@@ -404,9 +447,9 @@ function isFieldDisabled(field) {
 function isFieldRequired(field) {
   const fieldKey = getFieldKey(field)
   if (linkageState.value.required[fieldKey] !== undefined) {
-    return linkageState.value.required[fieldKey]
+    return Boolean(linkageState.value.required[fieldKey])
   }
-  return field.isRequired
+  return Boolean(field.isRequired)
 }
 
 // 获取字段验证规则

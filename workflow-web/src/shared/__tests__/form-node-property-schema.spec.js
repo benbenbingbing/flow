@@ -50,7 +50,7 @@ const expectedSchemas = {
     capabilities: {}
   },
   TEXT: {
-    editable: ['parentId', 'text'],
+    editable: ['parentId', 'text', 'textStyle'],
     capabilities: {}
   },
   FIELD: {
@@ -578,11 +578,13 @@ assert.deepEqual(
 assert.deepEqual(
   extractFormNodeComponentConfig('TEXT', {
     componentProps: {
-      content: '历史说明文本'
+      content: '审批意见',
+      textStyle: 'SECTION_TITLE'
     }
   }),
   {
-    text: '历史说明文本'
+    text: '审批意见',
+    textStyle: 'SECTION_TITLE'
   })
 
 const legacyTextPatch = buildFormNodePayload(
@@ -606,6 +608,24 @@ assert.equal(
   false,
   'TEXT history alias content must never be written back'
 )
+
+const sectionTitlePatch = buildFormNodePayload(
+  {
+    id: 'section-title',
+    nodeType: 'TEXT',
+    nodeKey: 'approval_opinion',
+    fieldLabel: '审批意见'
+  },
+  {
+    componentProps: {
+      text: '审批意见',
+      textStyle: 'SECTION_TITLE'
+    },
+    forPatch: true
+  }
+)
+assert.equal(sectionTitlePatch.props.text, '审批意见')
+assert.equal(sectionTitlePatch.props.textStyle, 'SECTION_TITLE')
 
 const multiBindingPatch = buildFormNodePayload(
   {

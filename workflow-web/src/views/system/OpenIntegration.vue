@@ -76,6 +76,7 @@
         <IntegrationApplicationPanel
           v-if="selectedApplication"
           :application="selectedApplication"
+          :capabilities="capabilities"
           :permissions="userStore.permissions"
           :super-admin="userStore.isSuperAdmin"
           @refresh="loadApplications(true)"
@@ -205,6 +206,7 @@ const scopeOptions = [
 
 const userStore = useUserStore()
 const applications = ref([])
+const capabilities = ref(defaultCapabilities())
 const selectedId = ref('')
 const keyword = ref('')
 const loading = ref(false)
@@ -254,11 +256,27 @@ function defaultCreateForm() {
   }
 }
 
+function defaultCapabilities() {
+  return {
+    openApiEnabled: false,
+    webhookEnabled: false,
+    httpConnectorEnabled: false
+  }
+}
+
 async function loadApplications(preserveSelection = false) {
   loading.value = true
   loadError.value = ''
   try {
-    applications.value = await integrationApplicationApi.list() || []
+    const [applicationRows, capabilityResult] = await Promise.all([
+      integrationApplicationApi.list(),
+      integrationApplicationApi.capabilities().catch(() => null)
+    ])
+    applications.value = applicationRows || []
+    capabilities.value = {
+      ...defaultCapabilities(),
+      ...(capabilityResult || {})
+    }
     if (!preserveSelection || !applications.value.some(item => item.id === selectedId.value)) {
       selectedId.value = applications.value[0]?.id || ''
     }

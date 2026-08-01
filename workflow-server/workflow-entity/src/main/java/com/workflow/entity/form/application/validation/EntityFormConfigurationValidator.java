@@ -2,6 +2,7 @@ package com.workflow.entity.form.application.validation;
 
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
+import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class EntityFormConfigurationValidator {
     private static final Set<String> FORMATS = Set.of("", "EMAIL", "PHONE", "URL");
 
     private final StructuredConfigValidator structuredConfigValidator;
+    private final EntityFormActionConfigPolicy formActionConfigPolicy;
 
     /**
      * 校验表单整体配置。
@@ -71,7 +73,17 @@ public class EntityFormConfigurationValidator {
             throw new IllegalArgumentException(
                     "未配置自定义表单组件时不能单独保存组件版本");
         }
-        structuredConfigValidator.parseObject(form.getViewConfig(), "表单视图配置");
+        Map<String, Object> viewConfig =
+                structuredConfigValidator.parseObject(
+                        form.getViewConfig(),
+                        "表单视图配置");
+        formActionConfigPolicy.validate(
+                viewConfig,
+                false,
+                Set.of(),
+                false,
+                Set.of(),
+                false);
         form.setViewConfig(blankToNull(form.getViewConfig()));
         structuredConfigValidator.parseObject(form.getInitConfig(), "表单初始化配置");
         structuredConfigValidator.parseObject(

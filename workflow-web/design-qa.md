@@ -95,6 +95,79 @@ final result: passed
 
 ---
 
+# 开放集成能力状态验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-a373f8d9-6db5-4ec3-8003-11570d78958f.png`
+- Source state: 接入应用列表与详情正常，但 Webhook、Secret、Connector 在能力关闭时请求未注册接口，连续显示“资源不存在”。
+- Implementation screenshot: unavailable because the authenticated local browser session had expired before capture.
+
+## Implemented
+
+- 增加始终可用的开放集成管理能力接口，统一返回开放 API、Webhook 和 HTTP Connector 的启用状态。
+- 页面加载应用列表时同步读取能力状态。
+- Webhook、Secret、Connector 仅在对应能力启用时装载并请求数据。
+- 能力关闭时展示明确的“能力未启用”状态，不再误报“资源不存在”。
+- `.env.example` 补充可选能力开关和密钥配置说明，默认保持关闭。
+
+## Verification
+
+- 后端能力查询与默认关闭测试：passed。
+- Webhook 条件装配测试：passed。
+- `npm run test:functional`: passed。
+- `npm run build`: passed。
+- 后端 `workflow-app` package：passed。
+- `git diff --check`: passed。
+- 修复后的后端已于 2026-08-01 启动，Flyway 与自动建表均保持关闭。
+
+## Blocking Reason
+
+当前 Chrome 和应用内浏览器均停留在登录页，无法在不修改用户或认证数据的情况下复现已登录页面。因此本次没有生成实现截图；视觉状态仍需登录后刷新页面确认。
+
+final result: code passed, authenticated visual verification blocked
+
+---
+
+# 表单区块与节标题语义调整验收
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-fb54d3c6-3a0d-45ed-8b94-965110f3a3a7.png`
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-e4b75717-5131-4a56-a11c-a6a2ded4d317.png`
+- Intended state: `SECTION` remains the recursive content container and is created from `添加容器节点 > 区块`; the top-level `添加节` command creates a non-container `TEXT` node with `textStyle=SECTION_TITLE`.
+- Browser verification target: `http://localhost:3001/entity-form/design-by-entity/...`
+
+## Implementation Verification
+
+- The container menu exposes `区块` and no longer presents the container itself as a section title.
+- `添加节` creates a text node rendered as a blue vertical rule followed by its name.
+- Designer and published runtime both use the shared `SectionField` renderer.
+- The property drawer identifies the node as `节` and edits its single-line `节名称`.
+- Backend property policy accepts only `PLAIN` and `SECTION_TITLE`, preventing arbitrary style values.
+- Legacy plain text and existing `SECTION` containers remain compatible.
+
+## Automated Verification
+
+- `npm run test:form-node-schema`: passed.
+- `npm run test:page-config`: passed.
+- `npm run build`: passed.
+- `npm run test:integration`: passed.
+- `npm run test:functional`: passed.
+- `npm run test:runtime-form-tabs`: passed.
+- Targeted backend property-policy test passed before unrelated concurrent backend changes introduced a compile error in `UiConfigReleaseService`.
+
+## Blocker
+
+- The available browser session redirected the designer route to `/login`, so an authenticated same-viewport screenshot comparison could not be completed without user credentials.
+- No credentials were entered or changed.
+- The repository-wide maintainability audit still reports 20 unrelated files above their existing line budgets; the changed property-policy file is no longer among them.
+
+final result: blocked
+
+---
+
 # 流程节点与表单编辑权限主从规则验收
 
 ## Evidence

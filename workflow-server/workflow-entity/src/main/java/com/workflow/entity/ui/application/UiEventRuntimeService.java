@@ -5,6 +5,7 @@ import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -49,6 +50,7 @@ public class UiEventRuntimeService {
     private final EntitySelectionRuntimeService selectionRuntimeService;
     private final SystemAuditPort auditPort;
     private final EntityActionCapabilityService actionCapabilityService;
+    private final EntityFormActionService formActionService;
 
     /**
      * 执行已发布事件。按钮和字段事件可直接调用此入口。
@@ -150,8 +152,12 @@ public class UiEventRuntimeService {
         EntityPermissionAction action = switch (eventCode) {
             case "DATA_CREATE" -> EntityPermissionAction.CREATE;
             case "DATA_UPDATE", "FORM_SAVE", "SUBFORM_SAVE",
-                    "FORM_BUTTON_CLICK", "FIELD_BUTTON_CLICK" ->
+                    "FIELD_BUTTON_CLICK" ->
                     EntityPermissionAction.UPDATE;
+            case "FORM_BUTTON_CLICK" -> {
+                formActionService.requireCustomButton(request);
+                yield null;
+            }
             case "DATA_DELETE" -> EntityPermissionAction.DELETE;
             case "DATA_BATCH_DELETE" -> EntityPermissionAction.BATCH_DELETE;
             case "ROW_BUTTON_CLICK", "TOOLBAR_BUTTON_CLICK" -> {
@@ -166,9 +172,11 @@ public class UiEventRuntimeService {
                     ? EntityPermissionAction.VIEW
                     : EntityPermissionAction.LIST;
         };
-        actionCapabilityService.requireStandardPermission(
-                entityCode,
-                action);
+        if (action != null) {
+            actionCapabilityService.requireStandardPermission(
+                    entityCode,
+                    action);
+        }
     }
 
     private void recordExecution(

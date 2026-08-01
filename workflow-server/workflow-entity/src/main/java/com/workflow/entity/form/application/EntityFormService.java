@@ -472,6 +472,17 @@ public class EntityFormService {
             throw new IllegalArgumentException(
                     "平台系统表表单不能使用自定义写入组件");
         }
+        new EntityFormActionConfigPolicy().validate(
+                StringUtils.hasText(form.getViewConfig())
+                        ? jsonDocumentCodec.readObject(
+                                form.getViewConfig(),
+                                "平台系统表表单视图配置")
+                        : Map.of(),
+                true,
+                Set.of(),
+                false,
+                Set.of(),
+                false);
         Map<String, EntityField> byId = new HashMap<>();
         Map<String, EntityField> byCode = new HashMap<>();
         fieldMapper.findByEntityId(entity.getId()).forEach(field -> {

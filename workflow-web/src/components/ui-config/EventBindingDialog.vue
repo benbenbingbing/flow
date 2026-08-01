@@ -1,7 +1,11 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="targetType === 'FIELD' ? '字段事件绑定' : `${ownerLabel}事件绑定`"
+    :title="targetType === 'FIELD'
+      ? '字段事件绑定'
+      : targetType === 'BUTTON'
+        ? `${targetName || '按钮'}事件绑定`
+        : `${ownerLabel}事件绑定`"
     width="1040px"
     append-to-body
     destroy-on-close
@@ -39,6 +43,8 @@ const targetName = ref('')
 const allowedEvents = computed(() =>
   targetType.value === 'FIELD'
     ? ['FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK']
+    : targetType.value === 'BUTTON'
+      ? ['FORM_BUTTON_CLICK']
     : props.ownerEvents.length
       ? props.ownerEvents
       : String(props.ownerType).toUpperCase() === 'LIST'
@@ -66,5 +72,12 @@ function openField(field) {
   visible.value = true
 }
 
-defineExpose({ openOwner, openField })
+function openButton(button) {
+  targetType.value = 'BUTTON'
+  targetKey.value = button?.key || ''
+  targetName.value = button?.label || button?.key || ''
+  visible.value = true
+}
+
+defineExpose({ openOwner, openField, openButton })
 </script>

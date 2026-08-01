@@ -454,6 +454,41 @@ for (const [file, names] of Object.entries(pageFeatureExpectations)) {
   }
 }
 
+const openIntegrationSource = readFileSync(
+  'src/views/system/OpenIntegration.vue',
+  'utf8'
+)
+const integrationApplicationPanelSource = readFileSync(
+  'src/views/system/open-integration/IntegrationApplicationPanel.vue',
+  'utf8'
+)
+assert.ok(
+  openIntegrationSource.includes('integrationApplicationApi.capabilities')
+    && openIntegrationSource.includes(':capabilities="capabilities"'),
+  '开放集成页面应先读取服务端能力，再加载应用子资源'
+)
+assert.ok(
+  /v-if="capabilities\.webhookEnabled"[\s\S]*?IntegrationWebhookPanel/.test(
+    integrationApplicationPanelSource
+  )
+    && (
+      integrationApplicationPanelSource.match(
+        /v-if="capabilities\.httpConnectorEnabled"/g
+      ) || []
+    ).length === 2,
+  'Webhook、Secret 和 Connector 面板必须按服务端能力装载，避免功能关闭时产生 404'
+)
+for (const unavailableTitle of [
+  'Webhook 能力未启用',
+  '集成 Secret 能力未启用',
+  'HTTP Connector 能力未启用'
+]) {
+  assert.ok(
+    integrationApplicationPanelSource.includes(unavailableTitle),
+    `开放集成缺少明确的未启用状态: ${unavailableTitle}`
+  )
+}
+
 const designerSource = readFileSync('src/components/VueBpmnDesigner.vue', 'utf8')
 for (const configurableType of ['bpmn:CallActivity', 'bpmn:SubProcess']) {
   assert.ok(designerSource.includes(`'${configurableType}'`), `流程设计器无法打开配置面板: ${configurableType}`)

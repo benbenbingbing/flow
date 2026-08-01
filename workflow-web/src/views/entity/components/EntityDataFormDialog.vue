@@ -15,6 +15,9 @@
           :excludedNodeIds="liftedRootNodeIds"
           :dataSourceRuntime="dataSourceRuntime"
           :skipDataSourcePrevalidation="true"
+          :form-actions="formActions"
+          :action-loading-key="actionLoadingKey"
+          @form-action="handleFormAction"
         />
       </el-tab-pane>
       <el-tab-pane
@@ -36,6 +39,9 @@
           :nodeRootParentId="tab.rootParentId"
           :dataSourceRuntime="dataSourceRuntime"
           :skipDataSourcePrevalidation="true"
+          :form-actions="formActions"
+          :action-loading-key="actionLoadingKey"
+          @form-action="handleFormAction"
         />
       </el-tab-pane>
       <el-tab-pane
@@ -83,25 +89,24 @@
       :showStartProcess="canStartProcess"
       :dataSourceRuntime="dataSourceRuntime"
       :skipDataSourcePrevalidation="true"
+      :form-actions="formActions"
+      :action-loading-key="actionLoadingKey"
+      @form-action="handleFormAction"
     />
 
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button title="重置表单" @click="handleReset">
-        <el-icon><RefreshLeft /></el-icon>
-        重置
-      </el-button>
-      <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
-        {{ isEdit ? '保存修改' : '创建数据' }}
-      </el-button>
+      <FormActionBar
+        :actions="footerActions"
+        :loading-key="actionLoadingKey"
+        @action="handleFormAction"
+      />
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
-import { RefreshLeft } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { uiEventBindingApi } from '@/api/uiConfig'
@@ -121,6 +126,13 @@ import EntityDataFormFields from './EntityDataFormFields.vue'
 import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './approval/EntityApprovalDiagram.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import {
+  executeCustomFormAction,
+  resolveRuntimeFormActions
+} from '@/shared/form-action-runtime'
+import { footerFormActions } from '@/shared/form-actions'
+import { isWorkflowReady } from '@/shared/entity-design'
 
 const props = defineProps<{
   entityCode: string
@@ -135,11 +147,13 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
-const submitLoading = ref(false)
+const formActions = ref<any[]>([])
+const actionLoadingKey = ref('')
 const formFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const basicFormFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const nodeFormFieldsRefs = ref<Record<string, InstanceType<typeof EntityDataFormFields>>>({})
@@ -148,6 +162,7 @@ const activeTab = ref('form')
 const processInstanceId = ref('')
 const currentProcessStatus = ref('')
 const currentProcessName = ref('')
+const resetSnapshot = ref<any>(null)
 
 const formData = reactive({
   id: '',
@@ -158,6 +173,7 @@ const formData = reactive({
 
 const hasProcessInfo = computed(() => !!processInstanceId.value)
 const canStartProcess = computed(() => !hasProcessInfo.value)
+const footerActions = computed(() => footerFormActions(formActions.value))
 const dataSourceRuntime = createFormDataSourceRuntime({
   entityCode: props.entityCode,
   getRecord: () => formData.data || {},
@@ -254,6 +270,39 @@ const resetForm = () => {
   applyRuntimeFieldDefaults(formData.data, props.defaultForm, fields)
 }
 
+function captureResetSnapshot() {
+  resetSnapshot.value = JSON.parse(JSON.stringify({
+    id: formData.id,
+    name: formData.name,
+    data: formData.data,
+    startProcess: false
+  }))
+}
+
+function restoreResetSnapshot() {
+  const snapshot = resetSnapshot.value
+  if (!snapshot) {
+    resetForm()
+    return
+  }
+  formData.id = snapshot.id || ''
+  formData.name = snapshot.name || ''
+  formData.data = JSON.parse(JSON.stringify(snapshot.data || {}))
+  formData.startProcess = false
+}
+
+async function loadFormActions() {
+  formActions.value = await resolveRuntimeFormActions(props.defaultForm, {
+    entityCode: props.entityCode,
+    listKey: props.listKey,
+    mode: isEdit.value ? 'edit' : 'create',
+    recordId: formData.id || undefined,
+    workflowReady: isWorkflowReady(props.entityDefinition),
+    hasProcessInstance: hasProcessInfo.value,
+    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM'
+  })
+}
+
 async function executeFormEvent(eventCode: string) {
   if (!props.defaultForm?.id) return
   const result = await uiEventBindingApi.execute(eventCode, {
@@ -283,30 +332,55 @@ async function executeFormEvent(eventCode: string) {
 async function applyFormEventResult(result: any) {
   const effects = Array.isArray(result?.effects) ? result.effects : []
   for (const effect of effects) {
-    if (effect?.type !== 'FIELD_MAPPING') continue
-    const mappings = Array.isArray(effect.mappings) ? effect.mappings : []
-    for (const mapping of mappings) {
-      const targetPath = String(mapping?.targetPath || '')
-      if (!targetPath) continue
-      const value = resolvePath(effect.data || {}, targetPath)
-      const formPath = targetPath.replace(/^form\./, '').replace(/^data\./, '')
-      const current = resolvePath(formData.data, formPath)
-      const overwrite = String(mapping?.overwrite || 'ALWAYS').toUpperCase()
-      if (overwrite === 'IF_EMPTY' && !emptyValue(current)) {
-        continue
-      }
-      if (overwrite === 'CONFIRM' && !emptyValue(current) && current !== value) {
-        try {
-          await ElMessageBox.confirm(
-            `字段“${fieldName(formPath)}”已有值，是否覆盖？`,
-            '确认回填',
-            { type: 'warning' }
-          )
-        } catch {
+    const type = String(effect?.type || '').toUpperCase()
+    if (type === 'FIELD_MAPPING') {
+      const mappings = Array.isArray(effect.mappings) ? effect.mappings : []
+      for (const mapping of mappings) {
+        const targetPath = String(mapping?.targetPath || '')
+        if (!targetPath) continue
+        const value = resolvePath(effect.data || {}, targetPath)
+        const formPath = targetPath.replace(/^form\./, '').replace(/^data\./, '')
+        const current = resolvePath(formData.data, formPath)
+        const overwrite = String(mapping?.overwrite || 'ALWAYS').toUpperCase()
+        if (overwrite === 'IF_EMPTY' && !emptyValue(current)) {
           continue
         }
+        if (overwrite === 'CONFIRM' && !emptyValue(current) && current !== value) {
+          try {
+            await ElMessageBox.confirm(
+              `字段“${fieldName(formPath)}”已有值，是否覆盖？`,
+              '确认回填',
+              { type: 'warning' }
+            )
+          } catch {
+            continue
+          }
+        }
+        setPath(formData.data, formPath, value)
       }
-      setPath(formData.data, formPath, value)
+      continue
+    }
+    if (type === 'MESSAGE' && effect.message) {
+      ElMessage({
+        type: effect.level || 'success',
+        message: effect.message
+      })
+      continue
+    }
+    if (type === 'OPEN_ROUTE' && effect.route) {
+      await router.push(effect.route)
+      continue
+    }
+    if (type === 'CLOSE_FORM') {
+      dialogVisible.value = false
+      continue
+    }
+    if (type === 'REFRESH_PARENT') {
+      emit('success')
+      continue
+    }
+    if (type === 'DOWNLOAD_TASK') {
+      ElMessage.success(effect.message || '下载任务已创建')
     }
   }
   if (!effects.length && result?.data && typeof result.data === 'object') {
@@ -314,6 +388,66 @@ async function applyFormEventResult(result: any) {
     Object.entries(patch || {}).forEach(([key, value]) => {
       formData.data[key] = value
     })
+  }
+}
+
+async function confirmAction(action: any) {
+  if (action?.confirm?.enabled !== true) return true
+  try {
+    await ElMessageBox.confirm(
+      action.confirm.message || `确认执行“${action.label}”？`,
+      '操作确认',
+      { type: 'warning' }
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleFormAction(action: any) {
+  if (!action || action.enabled === false || actionLoadingKey.value) return
+  if (!(await confirmAction(action))) return
+  const loadingKey = String(action.runtimeKey || action.key || '')
+  actionLoadingKey.value = loadingKey
+  try {
+    if (action.key === 'close') {
+      dialogVisible.value = false
+      return
+    }
+    if (action.key === 'reset') {
+      await handleReset()
+      return
+    }
+    if (action.key === 'save' || action.key === 'saveAndStart') {
+      await handleSubmit(action.key === 'saveAndStart')
+      return
+    }
+    if (action.type !== 'custom') return
+    if (action.validateBeforeExecute && !(await validateRuntimeForms())) {
+      ElMessage.warning('请先完成表单必填项')
+      return
+    }
+    const result = await executeCustomFormAction(
+      action,
+      props.defaultForm,
+      {
+        entityCode: props.entityCode,
+        listKey: props.listKey,
+        mode: isEdit.value ? 'edit' : 'create',
+        recordId: formData.id || undefined,
+        formData: formData.data,
+        processInstanceId: processInstanceId.value || undefined
+      }
+    )
+    await applyFormEventResult(result)
+    if (result?.message) {
+      ElMessage.success(result.message)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '按钮操作执行失败')
+  } finally {
+    actionLoadingKey.value = ''
   }
 }
 
@@ -351,7 +485,7 @@ function fieldName(path: string) {
 }
 
 async function handleReset() {
-  resetForm()
+  restoreResetSnapshot()
   try {
     await executeFormEvent('FORM_RESET')
   } catch (error: any) {
@@ -395,6 +529,8 @@ const openCreate = async () => {
   } catch (error: any) {
     ElMessage.error(error.message || '表单打开事件执行失败')
   }
+  captureResetSnapshot()
+  await loadFormActions()
   dialogVisible.value = true
   nextTick(() => {
     refreshFormLinkage()
@@ -436,6 +572,8 @@ const openEdit = async (row: any) => {
   } catch (error: any) {
     ElMessage.error(error.message || '表单打开事件执行失败')
   }
+  captureResetSnapshot()
+  await loadFormActions()
   dialogVisible.value = true
   nextTick(() => {
     refreshFormLinkage()
@@ -469,11 +607,11 @@ async function validateRuntimeForms() {
 }
 
 // 提交
-const handleSubmit = async () => {
+const handleSubmit = async (startProcess = false) => {
   const valid = await validateRuntimeForms()
   if (!valid) return
 
-  submitLoading.value = true
+  formData.startProcess = startProcess
   try {
     const data = {
       entityCode: props.entityCode,
@@ -507,8 +645,6 @@ const handleSubmit = async () => {
     emit('success')
   } catch (error: any) {
     ElMessage.error(error.message || '操作失败')
-  } finally {
-    submitLoading.value = false
   }
 }
 

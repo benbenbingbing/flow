@@ -690,6 +690,22 @@ assert.match(
   '设计画布的 Tab 集合应读取 tabPosition，与预览和运行时保持一致'
 )
 assert.match(
+  formDesigner,
+  /command="SECTION">\s*区块\s*<\/el-dropdown-item>/,
+  '区块容器应位于“添加容器节点”菜单'
+)
+assert.match(
+  formDesigner,
+  /function addSection\(\)[\s\S]{0,500}textStyle:\s*'SECTION_TITLE'/,
+  '添加节应创建带 SECTION_TITLE 样式的文本标题节点'
+)
+;[formNodeDesignItem, formNodeRuntimeItem].forEach((source) => {
+  assert.ok(
+    source.includes('SECTION_TITLE') && source.includes('SectionField'),
+    '节标题应在设计画布和发布运行时统一使用竖线标题组件'
+  )
+})
+assert.match(
   formPreviewLinkage,
   /hasNodeTree[\s\S]{0,1400}FormNodeRenderer|FormNodeRenderer[\s\S]{0,1400}hasNodeTree/,
   '表单预览应优先使用节点树运行时渲染器'

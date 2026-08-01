@@ -195,6 +195,18 @@
                     {{ formDataSourceBindingCount }} 项
                   </el-tag>
                 </el-form-item>
+                <el-form-item label="表单按钮">
+                  <el-button @click="showFormButtonConfig = true">
+                    配置操作栏
+                  </el-button>
+                  <el-tag
+                    v-if="customFormButtonCount"
+                    type="success"
+                    style="margin-left: 8px"
+                  >
+                    自定义 {{ customFormButtonCount }} 项
+                  </el-tag>
+                </el-form-item>
               </el-form>
             </div>
           </el-collapse-transition>
@@ -879,10 +891,50 @@
       </el-drawer>
     </div>
 
-    <el-dialog v-model="showPreview" title="表单预览" width="800px" destroy-on-close>
-      <div class="preview-container">
-        <FormPreviewLinkage :form="previewForm" />
+    <el-drawer
+      v-model="showFormButtonConfig"
+      title="表单按钮"
+      direction="rtl"
+      size="min(1180px, 94vw)"
+      append-to-body
+      destroy-on-close
+    >
+      <FormButtonConfigPanel
+        v-model="viewConfig.actionBar"
+        :entity-code="entityInfo.entityCode || ''"
+        :entity-fields="entityFields"
+        :form-id="form.id || ''"
+        :nodes="formFields"
+        :system-entity="isSystemEntity"
+      />
+    </el-drawer>
+
+    <el-dialog v-model="showPreview" title="表单预览" width="900px" destroy-on-close>
+      <div class="preview-mode-toolbar">
+        <span>预览模式</span>
+        <el-segmented
+          v-model="previewMode"
+          :options="previewModeOptions"
+        />
       </div>
+      <div class="preview-container">
+        <FormPreviewLinkage
+          :form="previewForm"
+          :mode="previewMode"
+          :readonly="previewMode === 'view' || isSystemEntity"
+          :entity-code="entityInfo.entityCode || ''"
+          :entity-definition="entityInfo"
+          :entity-fields="entityFields"
+          :form-actions="previewActions"
+          @form-action="handlePreviewAction"
+        />
+      </div>
+      <template #footer>
+        <FormActionBar
+          :actions="previewFooterActions"
+          @action="handlePreviewAction"
+        />
+      </template>
     </el-dialog>
     
     <el-dialog
@@ -964,6 +1016,8 @@ import { ArrowLeft, ArrowDown, Check, View, Search, Document, Edit, DocumentAdd,
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
@@ -1018,8 +1072,16 @@ import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   filterEntityFieldsByLifecycle,
-  getEntityReferenceSelectionHint
+  getEntityReferenceSelectionHint,
+  isWorkflowReady
 } from '@/shared/entity-design'
+import {
+  FORM_ACTION_MODES,
+  emptyFormActionBar,
+  footerFormActions,
+  normalizeFormActionBar,
+  resolveLocalFormActions
+} from '@/shared/form-actions'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import {
@@ -1054,6 +1116,8 @@ const reorderingNode = ref(false)
 const nodeBaselines = ref(new Map())
 const formBaseline = ref('')
 const showPreview = ref(false)
+const showFormButtonConfig = ref(false)
+const previewMode = ref('create')
 const formSettingsExpanded = ref(false)
 const propertyDrawerVisible = ref(false)
 const showLinkageConfig = ref(false)
@@ -1163,7 +1227,8 @@ const formDataSourceUsages = [
 ]
 const viewConfig = ref({
   labelWidth: 120,
-  customComponentProps: {}
+  customComponentProps: {},
+  actionBar: emptyFormActionBar()
 })
 
 // 判断是否为 Tab 模式的子表单
@@ -1184,6 +1249,18 @@ function isTabSubForm(field) {
 
 const entityInfo = ref({})
 const isSystemEntity = computed(() => entityInfo.value?.storageMode === 'SYSTEM')
+watch(isSystemEntity, value => {
+  if (!value) return
+  previewMode.value = 'view'
+  const actionBar = normalizeFormActionBar(viewConfig.value.actionBar)
+  viewConfig.value.actionBar = {
+    version: 1,
+    builtInOverrides: actionBar.builtInOverrides.close
+      ? { close: actionBar.builtInOverrides.close }
+      : {},
+    customButtons: []
+  }
+})
 const entityFields = ref([])
 const formFields = ref([])
 const selectedField = ref(null)
@@ -1228,6 +1305,11 @@ const formDataSourceBindingCount = computed(() =>
   Object.values(parseDocument(form.value.dataSourceBindingsDocument))
     .reduce((total, value) =>
       total + (Array.isArray(value) ? value.length : (value ? 1 : 0)), 0)
+)
+const customFormButtonCount = computed(() =>
+  viewConfig.value.actionBar?.customButtons?.filter(button =>
+    button.enabled !== false
+  ).length || 0
 )
 
 const availableNodeExtensionOptions = computed(() => {
@@ -1523,6 +1605,28 @@ const previewForm = computed(() => {
     nodes: previewNodes
   }
 })
+const previewModeOptions = computed(() =>
+  (isSystemEntity.value
+    ? FORM_ACTION_MODES.filter(mode => mode.value === 'view')
+    : FORM_ACTION_MODES
+  ).map(mode => ({ label: mode.label, value: mode.value }))
+)
+const previewActions = computed(() =>
+  resolveLocalFormActions(previewForm.value, {
+    mode: previewMode.value,
+    workflowReady: isWorkflowReady(entityInfo.value),
+    hasProcessInstance: false,
+    canApprove: true,
+    systemEntity: isSystemEntity.value
+  })
+)
+const previewFooterActions = computed(() =>
+  footerFormActions(previewActions.value)
+)
+
+function handlePreviewAction(action) {
+  ElMessage.info(`预览模式不执行“${action?.label || '按钮'}”`)
+}
 
 // 表单标签宽度 - 与预览保持一致
 const formLabelWidth = computed(() => {
@@ -1855,10 +1959,12 @@ async function loadFormInfo() {
   try {
     const data = await getFormById(formId)
     form.value = { ...form.value, ...data }
+    const parsedViewConfig = safeParseConfig(data.viewConfig)
     viewConfig.value = {
       labelWidth: 120,
       customComponentProps: {},
-      ...safeParseConfig(data.viewConfig)
+      ...parsedViewConfig,
+      actionBar: normalizeFormActionBar(parsedViewConfig.actionBar)
     }
     if (data.entityId && !entityId) {
       form.value.entityId = data.entityId

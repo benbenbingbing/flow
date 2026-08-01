@@ -33,7 +33,9 @@ class EntityFormNodePropertyPolicyTest {
                         "label", "高级设置",
                         "defaultExpanded", false,
                         "accordion", true),
-                "TEXT", Map.of("text", "说明"),
+                "TEXT", Map.of(
+                        "text", "审批意见",
+                        "textStyle", "SECTION_TITLE"),
                 "FIELD", Map.of(
                         "fieldId", "f1",
                         "fieldCode", "amount",
@@ -271,6 +273,14 @@ class EntityFormNodePropertyPolicyTest {
                                         Map.of(
                                                 "apiUrl",
                                                 "https://example.com"))),
+                        false));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> EntityFormNodePropertyPolicy.normalizeProps(
+                        "TEXT",
+                        Map.of(
+                                "text", "标题",
+                                "textStyle", "CARD_TITLE"),
                         false));
     }
 

@@ -1,6 +1,7 @@
 package com.workflow.service.config;
 
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
+import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,7 +25,9 @@ class EntityFormConfigurationValidatorTest {
 
     /** 被测表单配置校验器 */
     private final EntityFormConfigurationValidator validator =
-            new EntityFormConfigurationValidator(new StructuredConfigValidator(new ObjectMapper()));
+            new EntityFormConfigurationValidator(
+                    new StructuredConfigValidator(new ObjectMapper()),
+                    new EntityFormActionConfigPolicy());
 
     /** 测试接受结构化校验与模式访问：验证合法校验规则与多模式扩展配置通过校验 */
     @Test

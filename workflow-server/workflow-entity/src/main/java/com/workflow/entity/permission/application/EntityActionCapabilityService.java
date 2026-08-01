@@ -220,19 +220,63 @@ public class EntityActionCapabilityService {
             String permissionCode,
             EntityActionRuleDTO rule,
             EntityDataDTO row) {
+        EntityActionCapabilityDTO capability =
+                evaluateConfiguredAction(
+                        entityCode,
+                        permissionCode,
+                        rule,
+                        row);
+        if (!capability.isVisible() || !capability.isEnabled()) {
+            deny(
+                    entityCode,
+                    actionKey,
+                    row == null ? null : row.getId(),
+                    capability.getReason());
+        }
+    }
+
+    /**
+     * 评估任意受控动作配置，供表单和列表共享权限与适用条件语义。
+     *
+     * @param entityCode    实体编码
+     * @param permissionCode 动作权限码
+     * @param rule          结构化适用条件
+     * @param row           当前数据，可为空
+     * @return 当前用户的动作能力
+     */
+    public EntityActionCapabilityDTO evaluateConfiguredAction(
+            String entityCode,
+            String permissionCode,
+            EntityActionRuleDTO rule,
+            EntityDataDTO row) {
         if (!PermissionUtil.hasPermission(permissionCode)) {
-            deny(entityCode, actionKey, row == null ? null : row.getId(), "缺少权限：" + permissionCode);
+            return EntityActionCapabilityDTO.hidden(
+                    "缺少权限：" + permissionCode);
         }
         SysUser user = currentUser();
-        EntityStatus status = row != null && StringUtils.hasText(row.getStatus())
-                ? statusMapper.findByEntityAndCode(entityCode, row.getStatus())
-                : null;
-        if (!ruleEvaluator.evaluate(rule, row, user, status == null ? null : status.getStatusCategory())) {
-            String reason = rule != null && StringUtils.hasText(rule.getMessage())
-                    ? rule.getMessage()
-                    : "当前数据不满足操作条件";
-            deny(entityCode, actionKey, row == null ? null : row.getId(), reason);
+        EntityStatus status =
+                row != null && StringUtils.hasText(row.getStatus())
+                        ? statusMapper.findByEntityAndCode(
+                                entityCode,
+                                row.getStatus())
+                        : null;
+        if (ruleEvaluator.evaluate(
+                rule,
+                row,
+                user,
+                status == null
+                        ? null : status.getStatusCategory())) {
+            return EntityActionCapabilityDTO.allowed();
         }
+        String reason =
+                rule != null && StringUtils.hasText(rule.getMessage())
+                        ? rule.getMessage()
+                        : "当前数据不满足操作条件";
+        return rule != null
+                && "DISABLE".equalsIgnoreCase(
+                        rule.getUnavailableBehavior())
+                ? EntityActionCapabilityDTO.disabled(reason)
+                : EntityActionCapabilityDTO.hidden(reason);
     }
 
     private EntityActionCapabilityDTO evaluateButton(

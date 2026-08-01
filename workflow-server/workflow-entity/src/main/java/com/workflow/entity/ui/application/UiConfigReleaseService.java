@@ -2,6 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.application.EntityFormNodeService;
+import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
@@ -2294,6 +2295,7 @@ public class UiConfigReleaseService {
             Map<String, Object> snapshot) {
         if (FORM.equals(configType)) {
             formNodeService.validateTree(configId);
+            validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
             dataSourceValidator.validate(snapshot);
@@ -2313,6 +2315,7 @@ public class UiConfigReleaseService {
         requireType(configType);
         if (FORM.equals(configType)) {
             validateFormSnapshotTree(configId, snapshot);
+            validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
             dataSourceValidator.validate(snapshot);
@@ -2358,6 +2361,46 @@ public class UiConfigReleaseService {
                     node.getBindingType(),
                     node.getSnapshotVersion());
         }
+    }
+
+    private void validateFormActions(Map<String, Object> snapshot) {
+        EntityForm form = objectMapper.convertValue(
+                snapshot.get("form"),
+                EntityForm.class);
+        EntityDefinition definition =
+                entityDefinitionMapper.selectById(form.getEntityId());
+        Set<String> actionSlotKeys = snapshotNodes(snapshot).stream()
+                .filter(node -> "ACTION_SLOT".equals(
+                        normalize(node.getNodeType())))
+                .map(EntityFormNode::getNodeKey)
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> boundButtonKeys = mapList(
+                snapshot.get("eventBindings")).stream()
+                .filter(binding -> "BUTTON".equals(
+                        normalize(text(binding.get("targetType")))))
+                .filter(binding -> "FORM_BUTTON_CLICK".equals(
+                        normalize(text(binding.get("eventCode")))))
+                .filter(binding -> !Boolean.FALSE.equals(
+                        binding.get("enabled")))
+                .map(binding -> text(binding.get("targetKey")))
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toSet());
+        Map<String, Object> viewConfig =
+                StringUtils.hasText(form.getViewConfig())
+                        ? codec.readObject(
+                                form.getViewConfig(),
+                                "表单视图配置")
+                        : Map.of();
+        new EntityFormActionConfigPolicy().validate(
+                viewConfig,
+                definition != null
+                        && definition.getStorageMode()
+                        == EntityDefinition.StorageMode.SYSTEM,
+                actionSlotKeys,
+                true,
+                boundButtonKeys,
+                true);
     }
 
     private void validateTemplateReferences(Map<String, Object> snapshot) {

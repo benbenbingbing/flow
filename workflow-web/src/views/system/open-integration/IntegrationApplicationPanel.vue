@@ -87,24 +87,48 @@
     <el-tabs v-model="activeTab" class="resource-tabs">
       <el-tab-pane label="Webhook" name="webhooks">
         <IntegrationWebhookPanel
+          v-if="capabilities.webhookEnabled"
           :application-id="application.id"
           :can-manage="canManage"
           :can-rotate="canRotate"
           :can-replay="canReplay"
           @secret-issued="$emit('secret-issued', $event)"
         />
+        <PageState
+          v-else
+          type="empty"
+          title="Webhook 能力未启用"
+          description="当前环境未启用 Webhook 管理与投递能力。"
+          compact
+        />
       </el-tab-pane>
       <el-tab-pane label="Secret" name="secrets">
         <IntegrationSecretPanel
+          v-if="capabilities.httpConnectorEnabled"
           :application-id="application.id"
           :can-rotate="canRotate"
           @secret-issued="$emit('secret-issued', $event)"
         />
+        <PageState
+          v-else
+          type="empty"
+          title="集成 Secret 能力未启用"
+          description="启用 HTTP Connector 后可以管理集成 Secret。"
+          compact
+        />
       </el-tab-pane>
       <el-tab-pane label="Connector" name="connectors">
         <IntegrationConnectorPanel
+          v-if="capabilities.httpConnectorEnabled"
           :application-id="application.id"
           :can-manage="canManage"
+        />
+        <PageState
+          v-else
+          type="empty"
+          title="HTTP Connector 能力未启用"
+          description="当前环境未启用 HTTP Connector 配置与连接测试能力。"
+          compact
         />
       </el-tab-pane>
     </el-tabs>
@@ -173,6 +197,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { integrationApplicationApi } from '@/api/system/openIntegration'
+import PageState from '@/components/PageState.vue'
 import IntegrationWebhookPanel from './IntegrationWebhookPanel.vue'
 import IntegrationSecretPanel from './IntegrationSecretPanel.vue'
 import IntegrationConnectorPanel from './IntegrationConnectorPanel.vue'
@@ -187,6 +212,14 @@ const scopeOptions = [
 
 const props = defineProps({
   application: { type: Object, required: true },
+  capabilities: {
+    type: Object,
+    default: () => ({
+      openApiEnabled: false,
+      webhookEnabled: false,
+      httpConnectorEnabled: false
+    })
+  },
   permissions: { type: Array, default: () => [] },
   superAdmin: { type: Boolean, default: false }
 })

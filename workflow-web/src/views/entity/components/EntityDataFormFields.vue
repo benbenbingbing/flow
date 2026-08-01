@@ -30,13 +30,6 @@
       }"
       :data-source-runtime="dataSourceRuntime"
     />
-    <el-form label-width="100px" v-if="canStartProcess && showStartProcess">
-      <el-divider />
-      <el-form-item label="发起流程">
-        <el-switch v-model="formData.startProcess" />
-        <span class="form-tip">保存数据同时发起流程</span>
-      </el-form-item>
-    </el-form>
   </div>
   <template v-else-if="hasConfiguredForm">
     <!-- 有表单配置时：用 FormPreviewLinkage 渲染（支持 tab 子表单、联动） -->
@@ -60,14 +53,10 @@
         releaseResolutionToken: defaultForm?.releaseResolutionToken
       }"
       :data-source-runtime="dataSourceRuntime"
+      :form-actions="formActions"
+      :action-loading-key="actionLoadingKey"
+      @form-action="$emit('form-action', $event)"
     />
-    <el-form label-width="100px" v-if="canStartProcess && showStartProcess">
-      <el-divider />
-      <el-form-item label="发起流程">
-        <el-switch v-model="formData.startProcess" />
-        <span class="form-tip">保存数据同时发起流程</span>
-      </el-form-item>
-    </el-form>
   </template>
   <el-form v-else ref="formRef" :model="formData" label-width="100px">
     <template v-for="field in renderFields" :key="field.fieldCode">
@@ -97,12 +86,6 @@
         />
       </el-form-item>
     </template>
-
-    <el-divider v-if="canStartProcess && showStartProcess" />
-    <el-form-item v-if="canStartProcess && showStartProcess" label="发起流程">
-      <el-switch v-model="formData.startProcess" />
-      <span class="form-tip">保存数据同时发起流程</span>
-    </el-form-item>
   </el-form>
 </template>
 
@@ -137,6 +120,12 @@ const props = defineProps<{
   excludedNodeIds?: Array<string | number>
   dataSourceRuntime?: any
   skipDataSourcePrevalidation?: boolean
+  formActions?: any[]
+  actionLoadingKey?: string
+}>()
+
+defineEmits<{
+  'form-action': [action: any]
 }>()
 
 const formData = defineModel<any>('formData', { required: true })
@@ -500,9 +489,4 @@ defineExpose({
   width: 100%;
 }
 
-.form-tip {
-  margin-left: 10px;
-  color: #909399;
-  font-size: 12px;
-}
 </style>

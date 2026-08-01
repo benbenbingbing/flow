@@ -101,11 +101,10 @@ final class EntityFormNodePropertyPolicy {
                     "GRID", Set.of("gutter", "defaultSpan"),
                     "TAB_SET", Set.of("tabPosition"),
                     "COLLAPSE", Set.of("defaultExpanded", "accordion"),
-                    "TEXT", Set.of("text"));
+                    "TEXT", Set.of("text", "textStyle"));
 
     private EntityFormNodePropertyPolicy() {
     }
-
     /**
      * 规范化节点属性，拆分为活跃属性与不支持属性；非迁移模式下遇到不支持属性将抛出异常。
      *
@@ -549,7 +548,7 @@ final class EntityFormNodePropertyPolicy {
                 Set.of("defaultExpanded", "accordion")));
         result.put("TEXT", union(
                 COMMON_CONTAINER_PROPS,
-                Set.of("text")));
+                Set.of("text", "textStyle")));
         result.put("FIELD", FIELD_PROPS);
         result.put("SUB_FORM", SUB_FORM_PROPS);
         result.put("REPEATER", SUB_FORM_PROPS);
@@ -569,6 +568,7 @@ final class EntityFormNodePropertyPolicy {
             String nodeType,
             Map<String, Object> props) {
         requireText(props, "label", 500);
+        requireEnum(props, "textStyle", Set.of("PLAIN", "SECTION_TITLE"));
         switch (nodeType) {
             case "GRID" -> {
                 requireIntegerRange(props, "gutter", 0, 48);

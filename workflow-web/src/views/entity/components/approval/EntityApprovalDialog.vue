@@ -15,6 +15,9 @@
             :context="approvalRuntimeContext"
             :dataSourceRuntime="dataSourceRuntime"
             :excludedNodeIds="approvalLiftedRootNodeIds"
+            :form-actions="formActions"
+            :action-loading-key="actionLoadingKey"
+            @form-action="handleFormAction"
           />
         </el-tab-pane>
 
@@ -36,6 +39,9 @@
             :context="approvalRuntimeContext"
             :dataSourceRuntime="dataSourceRuntime"
             :nodeRootParentId="tab.rootParentId"
+            :form-actions="formActions"
+            :action-loading-key="actionLoadingKey"
+            @form-action="handleFormAction"
           />
         </el-tab-pane>
 
@@ -114,18 +120,23 @@
     </div>
 
     <template #footer>
-      <el-button @click="processDialogVisible = false">关闭</el-button>
-      <el-button v-if="!isViewMode && isApprovalFormTab" type="primary" @click="submitApprove" :loading="approveSubmitLoading">确认</el-button>
+      <FormActionBar
+        :actions="footerActions"
+        :loading-key="actionLoadingKey"
+        @action="handleFormAction"
+      />
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
 import {
   getFieldKey,
   isRuntimeFieldReadonly,
@@ -142,6 +153,12 @@ import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import { resolveApprovalFormConfig } from './entityApprovalDisplay.js'
+import {
+  executeCustomFormAction,
+  resolveRuntimeFormActions
+} from '@/shared/form-action-runtime'
+import { footerFormActions } from '@/shared/form-actions'
+import { isWorkflowReady } from '@/shared/entity-design'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -161,10 +178,13 @@ const emit = defineEmits<{
   success: []
 }>()
 const userStore = useUserStore()
+const router = useRouter()
 
 const processDialogVisible = ref(false)
 const activeDialogTab = ref('basic')
 const approveSubmitLoading = ref(false)
+const formActions = ref<any[]>([])
+const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
 const basicInfoRef = ref<any>()
@@ -271,6 +291,19 @@ const firstApprovalFormTabName = computed(() =>
 const isApprovalFormTab = computed(() =>
   approvalFormTabNames.value.includes(activeDialogTab.value)
 )
+const footerActions = computed(() =>
+  footerFormActions(formActions.value).filter(action =>
+    action.key !== 'submitApproval' || isApprovalFormTab.value
+  )
+)
+const runtimeForms = computed(() => {
+  const configured = Array.isArray(formConfigs.value)
+    ? formConfigs.value.filter(Boolean)
+    : []
+  return configured.length
+    ? configured
+    : [approvalNormalForm.value].filter(Boolean)
+})
 
 function setNodeTabRef(tabName: string, instance: any) {
   if (instance) {
@@ -278,6 +311,20 @@ function setNodeTabRef(tabName: string, instance: any) {
   } else {
     delete nodeTabRefs.value[tabName]
   }
+}
+
+async function loadFormActions() {
+  formActions.value = await resolveRuntimeFormActions(runtimeForms.value, {
+    entityCode: props.entityCode,
+    listKey: props.listKey,
+    mode: approvalRuntimeMode.value,
+    recordId: entityData.value?.id || undefined,
+    taskId: currentTask.value?.taskId || undefined,
+    workflowReady: isWorkflowReady(props.entityDefinition),
+    hasProcessInstance: Boolean(currentTask.value?.processInstanceId),
+    canApprove: !isViewMode.value && Boolean(currentTask.value?.taskId),
+    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM'
+  })
 }
 
 watch(
@@ -350,6 +397,7 @@ const openApprove = async (row: any) => {
     ElMessage.error('加载最新流程表单失败，请重试')
     return
   }
+  await loadFormActions()
   processDialogVisible.value = true
 }
 
@@ -406,6 +454,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
       ElMessage.error('加载详情失败')
     }
   }
+  await loadFormActions()
   processDialogVisible.value = true
 }
 
@@ -420,6 +469,159 @@ async function validateApprovalForms() {
     if ((await formRef.validate?.()) === false) return false
   }
   return true
+}
+
+async function confirmAction(action: any) {
+  if (action?.confirm?.enabled !== true) return true
+  try {
+    await ElMessageBox.confirm(
+      action.confirm.message || `确认执行“${action.label}”？`,
+      '操作确认',
+      { type: 'warning' }
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleFormAction(action: any) {
+  if (!action || action.enabled === false || actionLoadingKey.value) return
+  if (!(await confirmAction(action))) return
+  actionLoadingKey.value = String(action.runtimeKey || action.key || '')
+  try {
+    if (action.key === 'close') {
+      processDialogVisible.value = false
+      return
+    }
+    if (action.key === 'submitApproval') {
+      await submitApprove()
+      return
+    }
+    if (action.type !== 'custom') return
+    if (action.validateBeforeExecute && !(await validateApprovalForms())) {
+      ElMessage.warning('请先完成表单必填项')
+      return
+    }
+    const result = await executeCustomFormAction(
+      action,
+      runtimeForms.value,
+      {
+        entityCode: props.entityCode,
+        listKey: props.listKey,
+        mode: approvalRuntimeMode.value,
+        recordId: entityData.value?.id || undefined,
+        taskId: currentTask.value?.taskId || undefined,
+        task: currentTask.value,
+        formData: entityData.value,
+        processInstanceId: currentTask.value?.processInstanceId
+      }
+    )
+    await applyFormEventResult(result)
+    if (result?.message) {
+      ElMessage.success(result.message)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '按钮操作执行失败')
+  } finally {
+    actionLoadingKey.value = ''
+  }
+}
+
+async function applyFormEventResult(result: any) {
+  const effects = Array.isArray(result?.effects) ? result.effects : []
+  for (const effect of effects) {
+    const type = String(effect?.type || '').toUpperCase()
+    if (type === 'FIELD_MAPPING') {
+      const mappings = Array.isArray(effect.mappings) ? effect.mappings : []
+      for (const mapping of mappings) {
+        const targetPath = String(mapping?.targetPath || '')
+          .replace(/^form\./, '')
+          .replace(/^data\./, '')
+        if (!targetPath) continue
+        const value = resolvePath(effect.data || {}, mapping?.targetPath)
+        const current = resolvePath(entityData.value, targetPath)
+        const overwrite = String(mapping?.overwrite || 'ALWAYS').toUpperCase()
+        if (overwrite === 'IF_EMPTY' && !emptyValue(current)) continue
+        if (overwrite === 'CONFIRM' && !emptyValue(current) && current !== value) {
+          try {
+            await ElMessageBox.confirm(
+              `字段“${fieldName(targetPath)}”已有值，是否覆盖？`,
+              '确认回填',
+              { type: 'warning' }
+            )
+          } catch {
+            continue
+          }
+        }
+        setPath(entityData.value, targetPath, value)
+      }
+      continue
+    }
+    if (type === 'MESSAGE' && effect.message) {
+      ElMessage({
+        type: effect.level || 'success',
+        message: effect.message
+      })
+      continue
+    }
+    if (type === 'OPEN_ROUTE' && effect.route) {
+      await router.push(effect.route)
+      continue
+    }
+    if (type === 'CLOSE_FORM') {
+      processDialogVisible.value = false
+      continue
+    }
+    if (type === 'REFRESH_PARENT') {
+      emit('success')
+      continue
+    }
+    if (type === 'DOWNLOAD_TASK') {
+      ElMessage.success(effect.message || '下载任务已创建')
+    }
+  }
+  if (!effects.length && result?.data && typeof result.data === 'object') {
+    const patch = result.data.form || result.data.data || result.data
+    Object.entries(patch || {}).forEach(([key, value]) => {
+      entityData.value[key] = value
+    })
+  }
+}
+
+function resolvePath(source: any, path: string) {
+  return String(path || '')
+    .replace(/^form\./, '')
+    .replace(/^data\./, '')
+    .split('.')
+    .filter(Boolean)
+    .reduce((current, key) => current?.[key], source)
+}
+
+function setPath(target: Record<string, any>, path: string, value: any) {
+  const parts = String(path || '').split('.').filter(Boolean)
+  if (!parts.length) return
+  let current: Record<string, any> = target
+  parts.slice(0, -1).forEach(part => {
+    if (!current[part] || typeof current[part] !== 'object') {
+      current[part] = {}
+    }
+    current = current[part]
+  })
+  current[parts[parts.length - 1]] = value
+}
+
+function emptyValue(value: any) {
+  return value == null
+    || value === ''
+    || (Array.isArray(value) && value.length === 0)
+}
+
+function fieldName(path: string) {
+  const code = String(path || '').split('.')[0]
+  const field = props.entityFields.find((item: any) =>
+    String(item.fieldCode) === code)
+  return field?.fieldName || field?.fieldLabel || code
 }
 
 // 提交审批

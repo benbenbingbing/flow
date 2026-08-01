@@ -7,6 +7,11 @@ export const integrationApplicationApi = {
   list() {
     return request.get('/integration-applications')
   },
+  capabilities() {
+    return request.get('/integration-applications/capabilities', {
+      silentError: true
+    })
+  },
   create(data) {
     return request.post('/integration-applications', data)
   },

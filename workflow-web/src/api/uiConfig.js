@@ -63,6 +63,12 @@ export const uiEventBindingApi = {
   }
 }
 
+export const formActionRuntimeApi = {
+  resolve(data) {
+    return request.post('/ui-runtime/form-actions/resolve', data)
+  }
+}
+
 export const uiComponentTemplateApi = {
   list(params = {}) {
     return request.get('/ui-component-templates', { params })

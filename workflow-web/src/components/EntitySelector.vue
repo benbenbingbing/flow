@@ -631,13 +631,13 @@ function getEntityTypeLabel(type) {
 
 function getEntityTypeTag(type) {
   const map = {
-    'CUSTOM': '',
+    'CUSTOM': undefined,
     'USER': 'primary',
     'DEPT': 'success',
     'ROLE': 'warning',
     'GROUP': 'info'
   }
-  return map[type] || ''
+  return map[type]
 }
 
 function getEntityTypeDesc(type) {

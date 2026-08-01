@@ -17,6 +17,9 @@
         :entity-fields="entityFields"
         :context="context"
         :data-source-runtime="dataSourceRuntime"
+        :form-actions="formActions"
+        :action-loading-key="actionLoadingKey"
+        @form-action="emit('form-action', $event)"
       />
     </template>
     <template v-else>
@@ -103,10 +106,13 @@ const props = defineProps<{
   dataSourceRuntime?: any
   nodeRootParentId?: string | number
   excludedNodeIds?: Array<string | number>
+  formActions?: any[]
+  actionLoadingKey?: string
 }>()
 
 const emit = defineEmits<{
   'update:entityData': [val: any]
+  'form-action': [action: any]
 }>()
 
 const formPreviewRef = ref<any>()

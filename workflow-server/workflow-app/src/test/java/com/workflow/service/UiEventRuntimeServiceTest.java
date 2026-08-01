@@ -3,6 +3,7 @@ package com.workflow.service;
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.EntitySelectionRuntimeService;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -36,6 +37,8 @@ class UiEventRuntimeServiceTest {
     private SystemAuditPort auditPort;
     @Mock
     private EntityActionCapabilityService actionCapabilityService;
+    @Mock
+    private EntityFormActionService formActionService;
 
     private UiEventRuntimeService service;
 
@@ -47,7 +50,8 @@ class UiEventRuntimeServiceTest {
                 valueMapper,
                 selectionRuntimeService,
                 auditPort,
-                actionCapabilityService);
+                actionCapabilityService,
+                formActionService);
     }
 
     @Test
@@ -57,9 +61,7 @@ class UiEventRuntimeServiceTest {
 
         service.execute(request);
 
-        verify(actionCapabilityService).requireStandardPermission(
-                "expense",
-                EntityPermissionAction.UPDATE);
+        verify(formActionService).requireCustomButton(request);
     }
 
     @Test
