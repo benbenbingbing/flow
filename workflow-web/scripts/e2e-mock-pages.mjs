@@ -93,6 +93,7 @@ const bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>
 </bpmn:definitions>`
 
 const commonTab = { label: '常用', marker: '节点名称' }
+const collaborationTab = { label: '协同', marker: '启用知会' }
 const actionTab = { label: '流程动作', marker: '添加动作' }
 const advancedTab = { label: '高级', marker: '异步执行' }
 const processNodePanelPlans = [
@@ -100,7 +101,7 @@ const processNodePanelPlans = [
     id: 'StartEvent_1',
     name: '开始事件',
     type: '开始事件',
-    tabs: [commonTab, { label: '表单', marker: '表单来源' }, actionTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'EndEvent_1',
@@ -112,94 +113,49 @@ const processNodePanelPlans = [
     id: 'UserTask_1',
     name: '用户审批',
     type: '用户任务',
-    tabs: [
-      commonTab,
-      { label: '执行人', marker: '指定方式' },
-      { label: '表单', marker: '表单来源' },
-      { label: '审批', marker: '启用审批意见' },
-      { label: '知会', marker: '启用知会' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, collaborationTab, advancedTab, actionTab]
   },
   {
     id: 'ServiceTask_1',
     name: '服务任务',
     type: '服务任务',
-    tabs: [
-      commonTab,
-      { label: '服务', marker: '实现类型' },
-      { label: '知会', marker: '启用知会' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, collaborationTab, advancedTab, actionTab]
   },
   {
     id: 'SendTask_1',
     name: '发送任务',
     type: '发送任务',
-    tabs: [
-      commonTab,
-      { label: '发送', marker: '发送渠道' },
-      { label: '知会', marker: '启用知会' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, collaborationTab, advancedTab, actionTab]
   },
   {
     id: 'ReceiveTask_1',
     name: '接收任务',
     type: '接收任务',
-    tabs: [
-      commonTab,
-      { label: '接收', marker: '消息名称' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, advancedTab, actionTab]
   },
   {
     id: 'ManualTask_1',
     name: '手动任务',
     type: '手动任务',
-    tabs: [
-      commonTab,
-      { label: '手动', marker: '任务描述' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, advancedTab, actionTab]
   },
   {
     id: 'BusinessRuleTask_1',
     name: '业务规则任务',
     type: '业务规则任务',
-    tabs: [
-      commonTab,
-      { label: '规则', marker: '决策表Key' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, advancedTab, actionTab]
   },
   {
     id: 'ScriptTask_1',
     name: '脚本任务',
-    type: '脚本任务',
-    tabs: [
-      commonTab,
-      { label: '脚本', marker: '脚本类型' },
-      actionTab,
-      advancedTab
-    ]
+    type: '脚本任务（已禁用）',
+    tabs: [commonTab, advancedTab, actionTab]
   },
   {
     id: 'CallActivity_1',
     name: '调用活动',
     type: '调用活动',
-    tabs: [
-      commonTab,
-      { label: '子流程', marker: '子流程Key' },
-      actionTab,
-      advancedTab
-    ]
+    tabs: [commonTab, advancedTab, actionTab]
   },
   {
     id: 'SubProcess_1',
@@ -235,12 +191,7 @@ const processNodePanelPlans = [
     id: 'SequenceFlow_1',
     name: '审批连线',
     type: '顺序流',
-    tabs: [
-      commonTab,
-      { label: '实体状态', marker: '来源节点' },
-      { label: '条件', marker: '条件类型' },
-      actionTab
-    ]
+    tabs: [commonTab, actionTab]
   }
 ]
 
@@ -459,6 +410,12 @@ function apiData(pathname) {
   if (pathname === '/entity-form/e2e-form' || pathname.includes('/entity-form/e2e-form/fields')) return pathname.endsWith('/fields') ? entity.fields : { id: 'e2e-form', formName: '默认表单', fields: entity.fields }
   if (pathname.includes('/entity-list-config/entity/e2e-entity')) return [{ id: 'e2e-list', listName: '默认列表', listKey: 'default', isDefault: true }]
   if (pathname === '/entity-list-config/e2e-list') return { id: 'e2e-list', listName: '默认列表', listKey: 'default', fields: listFields, toolbarButtons: [], rowActionButtons: [] }
+  if (pathname === '/entity-lists/project/default/schema') {
+    return { id: 'e2e-list', listName: '默认列表', listKey: 'default', fields: listFields, toolbarButtons: [], rowActionButtons: [] }
+  }
+  if (pathname === '/entity-lists/project/default/query') {
+    return { list: [row], total: 1, pageNum: 1, pageSize: 10 }
+  }
   if (pathname.includes('/entity-data/entity/project/list-with-config') || pathname.includes('/entity-data/entity/project')) return [row]
   if (pathname.includes('/entity-status')) return [{ statusCode: 'DRAFT', statusName: '草稿' }, { statusCode: 'PENDING', statusName: '审批中' }]
   if (pathname.includes('/entity-code-rule')) return { prefix: 'D', enabled: true }
@@ -484,7 +441,7 @@ const expectedRouteText = new Map([
   ['/entity', ['实体管理']],
   ['/entity/design/e2e-entity', ['项目立项', '业务字段']],
   ['/entity/data/project', ['新增数据', '导出全部']],
-  ['/entity/list/project', ['演示数据', '优先级']],
+  ['/entity-list/project/default', ['演示数据', '优先级']],
   ['/entity-list-config/e2e-entity', ['实体列表配置']],
   ['/entity-list-config/design/e2e-list', ['列表配置设计']],
   ['/entity-form/list-by-entity/e2e-entity', ['表单管理', '默认表单']],
@@ -505,7 +462,7 @@ const expectedRouteText = new Map([
 const interactionPlans = new Map([
   ['/process', [{ click: '新建流程', expect: ['新建流程'] }]],
   ['/entity', [{ click: '新建实体', expect: ['实体名称'] }]],
-  ['/entity/list/project', [{ click: '新增数据', expect: ['新增数据', '名称'] }]],
+  ['/entity-list/project/default', [{ click: '新增数据', expect: ['新增数据', '名称'] }]],
   ['/entity-list-config/design/e2e-list', [
     { click: '工具栏按钮', expect: ['工具栏按钮'] },
     { click: '操作列按钮', expect: ['操作列按钮'] }
@@ -637,7 +594,7 @@ async function runProcessNodePanelChecks(client, routePath) {
         const type = panel?.querySelector('.node-config-panel__meta .el-tag')?.textContent || '';
         const selected = document.querySelector('.djs-element.selected')?.getAttribute('data-element-id') || '';
         const tabs = panel
-          ? [...panel.querySelectorAll('.config-tabs > .el-tabs__header .el-tabs__item')].map(el => normalize(el.textContent))
+          ? [...panel.querySelectorAll('.config-tabs > .config-tab-nav [role="tab"]')].map(el => normalize(el.textContent))
           : [];
         return { exists: Boolean(panel), header: normalize(header), type: normalize(type), selected, tabs };
       })()`,
@@ -679,7 +636,7 @@ async function runProcessNodePanelChecks(client, routePath) {
           const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
           const panel = document.querySelector('aside.node-config-panel');
           const target = panel
-            ? [...panel.querySelectorAll('.config-tabs > .el-tabs__header .el-tabs__item')]
+            ? [...panel.querySelectorAll('.config-tabs > .config-tab-nav [role="tab"]')]
               .find(el => normalize(el.textContent) === normalize(label))
             : null;
           if (!target) return { clicked: false };
@@ -693,14 +650,11 @@ async function runProcessNodePanelChecks(client, routePath) {
         expression: `(() => {
           const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
           const panel = document.querySelector('aside.node-config-panel');
-          const activeTab = panel?.querySelector('.config-tabs > .el-tabs__header .el-tabs__item.is-active');
-          const content = panel?.querySelector('.config-tabs > .el-tabs__content');
-          const activePane = content
-            ? [...content.children].find(el => el.classList.contains('el-tab-pane') && getComputedStyle(el).display !== 'none')
-            : null;
+          const activeTab = panel?.querySelector('.config-tabs > .config-tab-nav .config-tab-button.active');
+          const content = panel?.querySelector('.config-tabs > .config-tab-content');
           return {
             activeTab: normalize(activeTab?.textContent),
-            activePaneText: normalize(activePane?.textContent)
+            activePaneText: normalize(content?.textContent)
           };
         })()`,
         returnByValue: true
@@ -719,17 +673,14 @@ async function runProcessNodePanelChecks(client, routePath) {
         })
       })
 
-      if (plan.id === 'UserTask_1' && tab.label === '执行人') {
+      if (plan.id === 'UserTask_1' && tab.label === '常用') {
         const toggleResult = await client.send('Runtime.evaluate', {
           expression: `(() => {
             const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
             const panel = document.querySelector('aside.node-config-panel');
-            const content = panel?.querySelector('.config-tabs > .el-tabs__content');
-            const activePane = content
-              ? [...content.children].find(el => el.classList.contains('el-tab-pane') && getComputedStyle(el).display !== 'none')
-              : null;
-            const label = activePane
-              ? [...activePane.querySelectorAll('.el-form-item__label')]
+            const content = panel?.querySelector('.config-tabs > .config-tab-content');
+            const label = content
+              ? [...content.querySelectorAll('.el-form-item__label')]
                 .find(el => normalize(el.textContent) === '启用多实例')
               : null;
             const control = label?.closest('.el-form-item')?.querySelector('.el-switch');
@@ -743,11 +694,8 @@ async function runProcessNodePanelChecks(client, routePath) {
           expression: `(() => {
             const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
             const panel = document.querySelector('aside.node-config-panel');
-            const content = panel?.querySelector('.config-tabs > .el-tabs__content');
-            const activePane = content
-              ? [...content.children].find(el => el.classList.contains('el-tab-pane') && getComputedStyle(el).display !== 'none')
-              : null;
-            if (!content || !activePane) return { exists: false };
+            const content = panel?.querySelector('.config-tabs > .config-tab-content');
+            if (!content) return { exists: false };
             const previousStyles = {
               flex: content.style.flex,
               height: content.style.height
@@ -763,7 +711,7 @@ async function runProcessNodePanelChecks(client, routePath) {
               maxScroll,
               scrollTop: content.scrollTop,
               overflowY: getComputedStyle(content).overflowY,
-              lowerConfigRendered: normalize(activePane.textContent).includes('技术参数')
+              lowerConfigRendered: normalize(content.textContent).includes('技术参数')
             };
             content.style.flex = previousStyles.flex;
             content.style.height = previousStyles.height;
@@ -773,7 +721,7 @@ async function runProcessNodePanelChecks(client, routePath) {
         })
         const scrollState = scrollResult.result.value || {}
         checks.push({
-          name: '用户任务·执行人纵向滚动',
+          name: '用户任务·常用纵向滚动',
           passed: Boolean(toggleResult.result.value?.found)
             && scrollState.exists
             && scrollState.maxScroll > 0
