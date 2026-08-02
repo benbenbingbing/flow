@@ -108,6 +108,8 @@ public class WebhookHttpClient {
         Map<String, String> headers = Map.of(
                 "Content-Type", "application/cloudevents+json",
                 "Flow-Webhook-Id", delivery.eventId(),
+                "Flow-Webhook-Key-Id",
+                Long.toString(delivery.signingSecretVersion()),
                 "Flow-Webhook-Timestamp", Long.toString(timestamp),
                 "Flow-Webhook-Signature", signature,
                 "X-Trace-Id", delivery.traceId() == null

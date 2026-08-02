@@ -1,5 +1,4 @@
 package com.workflow.process.instance.application;
-
 import com.workflow.entity.form.api.response.FormConfigDTO;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -43,7 +42,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-
 /**
  * 流程进度运行时服务
  * 负责组装流程进度视图，包含流程状态、BPMN XML、已完成节点、已执行连线、
@@ -54,7 +52,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProcessProgressRuntimeService {
-
     private final RuntimeService runtimeService;
     private final HistoryService historyService;
     private final RepositoryService repositoryService;
@@ -72,10 +69,8 @@ public class ProcessProgressRuntimeService {
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
     private final ProcessNodeApprovalOptionService approvalOptionService;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
-
     /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
     /**
      * 将日期格式化为 "yyyy-MM-dd HH:mm:ss" 字符串。
      *
@@ -88,7 +83,6 @@ public class ProcessProgressRuntimeService {
         }
         return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
     }
-
     /**
      * 获取流程进度视图。
      * <p>
@@ -102,12 +96,10 @@ public class ProcessProgressRuntimeService {
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
         ProcessProgressDTO progress = new ProcessProgressDTO();
         progress.setProcessInstanceId(processInstanceId);
-        
         // 1. 获取流程实例信息
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
-        
         final String startUserId;
         HistoricProcessInstance historicInstance = null;
         if (processInstance != null) {
@@ -128,7 +120,6 @@ public class ProcessProgressRuntimeService {
                 progress.setStatus("COMPLETED");
             }
         }
-        
         // 2. 获取流程定义信息
         String processDefinitionId = progress.getProcessDefinitionId();
         if (processDefinitionId == null) {
@@ -142,14 +133,12 @@ public class ProcessProgressRuntimeService {
                 progress.setProcessDefinitionId(processDefinitionId);
             }
         }
-        
         if (processDefinitionId != null) {
             ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
                     .processDefinitionId(processDefinitionId)
                     .singleResult();
             if (processDefinition != null) {
                 progress.setProcessKey(processDefinition.getKey());
-                
                 // 获取 BPMN XML（从 Flowable 获取完整的 XML，包含 DI 图形信息）
                 try {
                     org.flowable.engine.repository.Model model = repositoryService.getModel(processDefinition.getId());
@@ -162,7 +151,6 @@ public class ProcessProgressRuntimeService {
                 } catch (Exception e) {
                     log.debug("无法从 Model 获取 BPMN XML，尝试从资源获取", e);
                 }
-                
                 // 如果无法从 Model 获取，尝试从部署资源获取
                 if (progress.getBpmnXml() == null) {
                     try {
@@ -184,7 +172,6 @@ public class ProcessProgressRuntimeService {
                         log.warn("从 Flowable 获取 BPMN XML 失败", e);
                     }
                 }
-                
                 // 获取流程名称
                 ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processDefinition.getKey()).orElse(null);
                 if (config != null) {
@@ -198,13 +185,11 @@ public class ProcessProgressRuntimeService {
                 }
             }
         }
-        
         // 3. 获取历史活动记录
         List<HistoricActivityInstance> historicActivities = historyService.createHistoricActivityInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .orderByHistoricActivityInstanceStartTime().asc()
                 .list();
-        
         // 4. 提取已完成的节点
         List<String> completedNodes = historicActivities.stream()
                 .filter(h -> h.getEndTime() != null)
@@ -212,7 +197,6 @@ public class ProcessProgressRuntimeService {
                 .distinct()
                 .collect(Collectors.toList());
         progress.setCompletedNodes(completedNodes);
-        
         // 5. 提取已执行的连线
         List<String> executedFlows = historicActivities.stream()
                 .filter(h -> "sequenceFlow".equals(h.getActivityType()))
@@ -220,13 +204,11 @@ public class ProcessProgressRuntimeService {
                 .distinct()
                 .collect(Collectors.toList());
         progress.setExecutedSequenceFlows(executedFlows);
-        
         // 6. 获取当前活动节点
         if (processInstance != null) {
             List<Execution> executions = runtimeService.createExecutionQuery()
                     .processInstanceId(processInstanceId)
                     .list();
-            
             List<String> activeNodes = executions.stream()
                     .filter(e -> e.getActivityId() != null)
                     .map(Execution::getActivityId)
@@ -236,7 +218,6 @@ public class ProcessProgressRuntimeService {
         } else {
             progress.setActiveNodes(new ArrayList<>());
         }
-        
         // 6.1 终止流程：识别被终止时正在执行的节点
         if ("TERMINATED".equals(progress.getStatus())) {
             historicInstance = historyService.createHistoricProcessInstanceQuery()
@@ -259,7 +240,6 @@ public class ProcessProgressRuntimeService {
         } else {
             progress.setTerminatedNodes(new ArrayList<>());
         }
-        
         // 7. 构建节点历史记录
         List<ProcessProgressDTO.NodeHistoryDTO> nodeHistory = historicActivities.stream()
                 .filter(h -> !"sequenceFlow".equals(h.getActivityType())) // 排除连线
@@ -297,7 +277,6 @@ public class ProcessProgressRuntimeService {
                     dto.setEndTime(h.getEndTime() != null ? formatDate(h.getEndTime()) : null);
                     dto.setDuration(h.getDurationInMillis());
                     dto.setStatus(h.getEndTime() != null ? "COMPLETED" : "ACTIVE");
-                    
                     // 查询该节点关联的历史变量（快照）
                     java.util.List<org.flowable.variable.api.history.HistoricVariableInstance> nodeVars = null;
                     if (h.getTaskId() != null) {
@@ -313,7 +292,6 @@ public class ProcessProgressRuntimeService {
                         for (var v : nodeVars) vars.put(v.getVariableName(), v.getValue());
                         dto.setVariables(vars);
                     }
-                    
                     // 获取任务处理方式
                     if (h.getEndTime() != null && "userTask".equals(h.getActivityType())) {
                         // 查询任务评论判断处理方式
@@ -363,11 +341,9 @@ public class ProcessProgressRuntimeService {
                             dto.setAction("APPROVED");
                         }
                     }
-                    
                     return dto;
                 })
                 .collect(Collectors.toList());
-        
         // 7.1 合并转办记录到审批历史中
         try {
             List<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog> transferLogs = operationLogMapper
@@ -375,7 +351,6 @@ public class ProcessProgressRuntimeService {
                             .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getProcessInstanceId, processInstanceId)
                             .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationType, "TRANSFER")
                             .orderByAsc(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationTime));
-            
             for (com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog log : transferLogs) {
                 // 通过 taskId 查找节点信息
                 String nodeId = null;
@@ -395,7 +370,6 @@ public class ProcessProgressRuntimeService {
                         }
                     }
                 }
-                
                 ProcessProgressDTO.NodeHistoryDTO dto = new ProcessProgressDTO.NodeHistoryDTO();
                 dto.setNodeId(nodeId != null ? nodeId : log.getTaskId());
                 dto.setNodeName(nodeName != null ? nodeName : "任务转办");
@@ -408,7 +382,6 @@ public class ProcessProgressRuntimeService {
                 dto.setStartTime(opTime);
                 dto.setEndTime(opTime);
                 dto.setStatus("COMPLETED");
-                
                 // 插入到对应节点的最终完成记录之前
                 int insertIndex = -1;
                 for (int i = 0; i < nodeHistory.size(); i++) {
@@ -427,7 +400,6 @@ public class ProcessProgressRuntimeService {
         } catch (Exception e) {
             log.warn("合并转办记录失败", e);
         }
-        
         // 7.2 合并终止记录到审批历史中
         try {
             List<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog> terminateLogs = operationLogMapper
@@ -435,7 +407,6 @@ public class ProcessProgressRuntimeService {
                             .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getProcessInstanceId, processInstanceId)
                             .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationType, "TERMINATE")
                             .orderByAsc(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationTime));
-            
             for (com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog log : terminateLogs) {
                 ProcessProgressDTO.NodeHistoryDTO dto = new ProcessProgressDTO.NodeHistoryDTO();
                 dto.setNodeId("TERMINATE_" + log.getId());
@@ -454,15 +425,12 @@ public class ProcessProgressRuntimeService {
         } catch (Exception e) {
             log.warn("合并终止记录失败", e);
         }
-        
         progress.setNodeHistory(nodeHistory);
-        
         // 8. 获取当前任务信息
         if (processInstance != null) {
             List<Task> tasks = taskService.createTaskQuery()
                     .processInstanceId(processInstanceId)
                     .list();
-            
             List<ProcessProgressDTO.TaskInfoDTO> taskInfos = tasks.stream()
                     .map(t -> {
                         ProcessProgressDTO.TaskInfoDTO dto = new ProcessProgressDTO.TaskInfoDTO();
@@ -477,16 +445,12 @@ public class ProcessProgressRuntimeService {
                     .collect(Collectors.toList());
             progress.setTasks(taskInfos);
         }
-        
         // 9. 构建节点处理人映射（用于前端悬停显示）
         buildNodeAssigneeMap(progress, processInstanceId);
-        
         // 10. 获取实体数据和表单配置
         loadEntityDataAndFormConfig(progress, processInstanceId, progress.getProcessKey());
-        
         return progress;
     }
-
     /**
      * 构建节点处理人映射
      * 包含已完成节点的审批人信息和当前节点的处理人信息
@@ -494,16 +458,13 @@ public class ProcessProgressRuntimeService {
     private void buildNodeAssigneeMap(ProcessProgressDTO progress, String processInstanceId) {
         Map<String, ProcessProgressDTO.AssigneeInfoDTO> assigneeMap = new HashMap<>();
         Map<String, List<ProcessProgressDTO.AssigneeInfoDTO>> assigneesMap = new HashMap<>();
-        
         // 1. 查询历史任务（已完成的任务）
         List<HistoricTaskInstance> historicTasks = historyService.createHistoricTaskInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .finished()
                 .list();
-        
         for (HistoricTaskInstance task : historicTasks) {
             String nodeId = task.getTaskDefinitionKey();
-            
             ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
             String userId = task.getAssignee();
             String displayName = sysUserService.getDisplayName(userId);
@@ -540,7 +501,6 @@ public class ProcessProgressRuntimeService {
             info.setAction(normalizeAction(action));
             info.setActionLabel(actionLabel);
             info.setComment(comment);
-            
             // 单节点处理人映射：保留最新的
             if (!assigneeMap.containsKey(nodeId) || 
                 (task.getEndTime() != null && 
@@ -548,21 +508,17 @@ public class ProcessProgressRuntimeService {
                   formatDate(task.getEndTime()).compareTo(assigneeMap.get(nodeId).getHandleTime()) > 0))) {
                 assigneeMap.put(nodeId, info);
             }
-            
             // 多实例节点处理人列表：保留所有子任务
             assigneesMap.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(info);
         }
-        
         // 2. 查询当前活动任务
         List<Task> activeTasks = taskService.createTaskQuery()
                 .processInstanceId(processInstanceId)
                 .list();
-        
         for (Task task : activeTasks) {
             String nodeId = task.getTaskDefinitionKey();
             ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
             String userId = task.getAssignee();
-            
             if (userId == null || userId.isEmpty()) {
                 // 尝试从候选组/候选人中解析
                 try {
@@ -602,20 +558,16 @@ public class ProcessProgressRuntimeService {
                 info.setAssigneeId(userId);
                 info.setAssigneeName(displayName);
             }
-            
             info.setHandleTime(task.getCreateTime() != null ? formatDate(task.getCreateTime()) : null);
             info.setStatus("PROCESSING");
             info.setAction("PROCESSING"); // 处理中
             info.setComment("待处理");
-            
             assigneeMap.put(nodeId, info);
             assigneesMap.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(info);
         }
-        
         progress.setNodeAssigneeMap(assigneeMap);
         progress.setNodeAssigneesMap(assigneesMap);
     }
-    
     /**
      * 加载实体数据和表单配置
      */
@@ -626,23 +578,19 @@ public class ProcessProgressRuntimeService {
             String entityDataId = null;
             String formKey = null;
             String currentNodeId = null;
-            
             // 优先从已加载的任务信息中获取当前节点ID（比execution查询更准确）
             if (progress.getTasks() != null && !progress.getTasks().isEmpty()) {
                 currentNodeId = progress.getTasks().get(0).getNodeId();
                 log.debug("从任务信息获取当前节点: nodeId={}", currentNodeId);
             }
-            
             // 从流程变量获取
             ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                     .processInstanceId(processInstanceId)
                     .singleResult();
-            
             if (processInstance != null) {
                 entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
                 entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
                 formKey = (String) runtimeService.getVariable(processInstanceId, "formKey");
-                
                 // 如果任务信息中没有获取到当前节点，再从execution查询
                 if (currentNodeId == null) {
                     List<Execution> executions = runtimeService.createExecutionQuery()
@@ -662,20 +610,17 @@ public class ProcessProgressRuntimeService {
                         .variableName("entityCode")
                         .singleResult();
                 if (entityCodeVar != null) entityCode = (String) entityCodeVar.getValue();
-                
                 var entityDataIdVar = historyService.createHistoricVariableInstanceQuery()
                         .processInstanceId(processInstanceId)
                         .variableName("entityDataId")
                         .singleResult();
                 if (entityDataIdVar != null) entityDataId = (String) entityDataIdVar.getValue();
-                
                 var formKeyVar = historyService.createHistoricVariableInstanceQuery()
                         .processInstanceId(processInstanceId)
                         .variableName("formKey")
                         .singleResult();
                 if (formKeyVar != null) formKey = (String) formKeyVar.getValue();
             }
-            
             // 2. 加载实体数据
             if (entityDataId != null && entityCode != null) {
                 try {
@@ -688,7 +633,6 @@ public class ProcessProgressRuntimeService {
                     log.debug("获取实体数据失败: {}", e.getMessage());
                 }
             }
-            
             // 3. 加载表单配置
             if (entityCode != null && entityDataId != null) {
                 // 优先使用已部署的BPMN XML解析，如果解析不到，尝试从数据库获取最新的BPMN XML作为fallback
@@ -710,19 +654,16 @@ public class ProcessProgressRuntimeService {
                 }
                 loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey, bpmnXml, fallbackBpmnXml, processKey);
             }
-            
             // 4. 加载审批配置
             if (currentNodeId != null) {
                 loadApprovalConfig(progress, currentNodeId, progress.getBpmnXml(), processKey);
             }
-            
         } catch (FormConfigResolutionException exception) {
             throw exception;
         } catch (Exception e) {
             log.warn("加载实体数据和表单配置失败: {}", e.getMessage());
         }
     }
-
     /**
      * 将实体数据 DTO 转为运行时表单模型，自定义字段与系统字段使用同一层级。
      */
@@ -768,7 +709,6 @@ public class ProcessProgressRuntimeService {
         putIfNotNull(result, "updatedBy", entityData.getUpdatedBy());
         return result;
     }
-
     private void putIfNotNull(
             Map<String, Object> target,
             String key,
@@ -777,7 +717,6 @@ public class ProcessProgressRuntimeService {
             target.put(key, value);
         }
     }
-
     /**
      * 加载表单配置
      */
@@ -791,10 +730,8 @@ public class ProcessProgressRuntimeService {
                 log.warn("加载表单配置失败: 实体不存在, entityCode={}", entityCode);
                 return;
             }
-            
             // 2. 确定要加载表单的节点ID
             String targetNodeId = currentNodeId;
-            
             // 流程已结束：优先取最后一个完成的用户任务，避免网关被误当成表单节点。
             if (targetNodeId == null && progress.getCompletedNodes() != null && !progress.getCompletedNodes().isEmpty()) {
                 List<String> completed = progress.getCompletedNodes();
@@ -803,10 +740,8 @@ public class ProcessProgressRuntimeService {
                         bpmnXml,
                         fallbackBpmnXml);
             }
-            
             // 3. 加载表单详情（优先级：流程发布快照 > 默认）
             List<ProcessProgressDTO.FormConfigDTO> formConfigs = new ArrayList<>();
-            
             // 3a. 最高优先级：从流程发布快照查询节点表单绑定
             if (progress.getProcessDefinitionId() != null
                     && !progress.getProcessDefinitionId().isEmpty()
@@ -846,7 +781,6 @@ public class ProcessProgressRuntimeService {
                         targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
                 }
             }
-            
             // 3b. 映射表中没有表单绑定，使用默认表单兜底。
             if (formConfigs.isEmpty()) {
                 com.workflow.entity.form.infrastructure.persistence.record.EntityForm entityForm =
@@ -860,18 +794,15 @@ public class ProcessProgressRuntimeService {
                             entityForm.getId());
                 }
             }
-            
             if (formConfigs.isEmpty()) {
                 log.debug("节点未绑定可用表单: entityId={}, nodeId={}", entityDef.getId(), targetNodeId);
                 return;
             }
-
             progress.setFormConfigs(formConfigs);
             progress.setFormConfig(formConfigs.get(0));
             log.debug("表单配置加载成功: entityCode={}, formCount={}, firstFormKey={}, firstFieldsCount={}",
                 entityCode, formConfigs.size(), formConfigs.get(0).getFormKey(),
                 formConfigs.get(0).getFields() != null ? formConfigs.get(0).getFields().size() : 0);
-            
         } catch (Exception e) {
             throw new FormConfigResolutionException(
                     "加载流程发布表单失败: processDefinitionId="
@@ -881,7 +812,6 @@ public class ProcessProgressRuntimeService {
                     e);
         }
     }
-
     private String resolveLastCompletedUserTaskId(
             List<String> completedNodeIds,
             String bpmnXml,
@@ -914,7 +844,6 @@ public class ProcessProgressRuntimeService {
                         exception.getMessage());
             }
         }
-
         for (int index = completedNodeIds.size() - 1; index >= 0; index--) {
             String nodeId = completedNodeIds.get(index);
             if (userTaskIds.contains(nodeId)) {
@@ -931,17 +860,14 @@ public class ProcessProgressRuntimeService {
         }
         return completedNodeIds.get(completedNodeIds.size() - 1);
     }
-
     private static final class FormConfigResolutionException
             extends RuntimeException {
-
         private FormConfigResolutionException(
                 String message,
                 Throwable cause) {
             super(message, cause);
         }
     }
-
     /**
      * 根据实体表单与节点表单绑定构建进度表单配置 DTO。
      * <p>
@@ -974,7 +900,6 @@ public class ProcessProgressRuntimeService {
                 entityForm.getHotfixApplied());
         formConfig.setReleaseResolutionToken(
                 entityForm.getReleaseResolutionToken());
-
         if (entityForm.getFields() != null) {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             List<Map<String, Object>> fields = new ArrayList<>();
@@ -991,10 +916,8 @@ public class ProcessProgressRuntimeService {
                     new com.fasterxml.jackson.core.type.TypeReference<
                             List<Map<String, Object>>>() {}));
         }
-
         return formConfig;
     }
-    
     /**
      * 从 BPMN XML 解析表单绑定
      * 支持格式：
@@ -1010,7 +933,6 @@ public class ProcessProgressRuntimeService {
             factory.setNamespaceAware(true);
             javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
             org.w3c.dom.Document doc = builder.parse(new java.io.ByteArrayInputStream(bpmnXml.getBytes("UTF-8")));
-            
             // 查找指定 id 的 userTask 元素
             org.w3c.dom.NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
             for (int i = 0; i < userTasks.getLength(); i++) {
@@ -1034,7 +956,6 @@ public class ProcessProgressRuntimeService {
                             }
                         }
                     }
-                    
                     // 2. 回退：解析 userTask 标签上的 formKey 属性（flowable:formKey 或 formKey）
                     String formKey = userTask.getAttribute("formKey");
                     if (formKey == null || formKey.isEmpty()) {
@@ -1051,7 +972,6 @@ public class ProcessProgressRuntimeService {
             return null;
         }
     }
-    
     /**
      * 加载审批配置（只从 process_node_approval 映射表读取）
      */
@@ -1069,7 +989,6 @@ public class ProcessProgressRuntimeService {
                         ProcessProgressDTO.ApprovalConfigDTO approvalConfig = new ProcessProgressDTO.ApprovalConfigDTO();
                         approvalConfig.setEnabled(nodeApproval.getEnabled() != null && nodeApproval.getEnabled() == 1);
                         approvalConfig.setCommentLabel(nodeApproval.getCommentLabel() != null ? nodeApproval.getCommentLabel() : "审批意见");
-                        
                         List<Map<String, Object>> optionConfigs =
                                 approvalOptionService.findOptions(nodeApproval.getId());
                         if (!optionConfigs.isEmpty()) {
@@ -1089,7 +1008,6 @@ public class ProcessProgressRuntimeService {
                             }
                             approvalConfig.setOptions(options);
                         }
-                        
                         progress.setApprovalConfig(approvalConfig);
                         log.debug("从映射表加载审批配置成功: nodeId={}, optionsCount={}", 
                             currentNodeId, approvalConfig.getOptions() != null ? approvalConfig.getOptions().size() : 0);
@@ -1097,13 +1015,11 @@ public class ProcessProgressRuntimeService {
                     }
                 }
             }
-            
             log.debug("映射表中未找到审批配置: nodeId={}", currentNodeId);
         } catch (Exception e) {
             log.warn("加载审批配置失败: {}", e.getMessage());
         }
     }
-    
     /**
      * 从 BPMN XML 解析审批配置（fallback）
      */
@@ -1121,13 +1037,11 @@ public class ProcessProgressRuntimeService {
                 return;
             }
             String content = matcher.group(2);
-            
             // 从 flowable:Properties 中解析 approvalConfig
             java.util.regex.Pattern propPattern = java.util.regex.Pattern.compile(
                 "<(?:flowable:|camunda:)?property[^>]*name=\"approvalConfig\"[^>]*value=\"([^\"]*)\"",
                 java.util.regex.Pattern.CASE_INSENSITIVE);
             java.util.regex.Matcher propMatcher = propPattern.matcher(content);
-            
             // 如果失败，尝试 value 在前、name 在后的顺序
             if (!propMatcher.find()) {
                 propPattern = java.util.regex.Pattern.compile(
@@ -1135,12 +1049,10 @@ public class ProcessProgressRuntimeService {
                     java.util.regex.Pattern.CASE_INSENSITIVE);
                 propMatcher = propPattern.matcher(content);
             }
-            
             if (!propMatcher.find()) {
                 log.debug("BPMN中未找到审批配置: nodeId={}", currentNodeId);
                 return;
             }
-            
             String approvalConfigJson = propMatcher.group(1);
             // 处理 XML 命名实体和数字字符引用
             approvalConfigJson = approvalConfigJson.replace("&quot;", "\"")
@@ -1152,14 +1064,11 @@ public class ProcessProgressRuntimeService {
                                                    .replace("&gt;", ">")
                                                    .replace("&#62;", ">")
                                                    .replace("&#39;", "'");
-            
             com.fasterxml.jackson.databind.JsonNode config = 
                 new com.fasterxml.jackson.databind.ObjectMapper().readTree(approvalConfigJson);
-            
             ProcessProgressDTO.ApprovalConfigDTO approvalConfig = new ProcessProgressDTO.ApprovalConfigDTO();
             approvalConfig.setEnabled(config.has("enabled") ? config.get("enabled").asBoolean() : true);
             approvalConfig.setCommentLabel(config.has("commentLabel") ? config.get("commentLabel").asText() : "审批意见");
-            
             if (config.has("options") && config.get("options").isArray()) {
                 List<ProcessProgressDTO.ApprovalOptionDTO> options = new ArrayList<>();
                 for (com.fasterxml.jackson.databind.JsonNode optNode : config.get("options")) {
@@ -1172,7 +1081,6 @@ public class ProcessProgressRuntimeService {
                 }
                 approvalConfig.setOptions(options);
             }
-            
             progress.setApprovalConfig(approvalConfig);
             log.info("从BPMN加载审批配置成功: nodeId={}, optionsCount={}", currentNodeId, 
                 approvalConfig.getOptions() != null ? approvalConfig.getOptions().size() : 0);
@@ -1180,7 +1088,6 @@ public class ProcessProgressRuntimeService {
             log.warn("从BPMN加载审批配置失败: {}", e.getMessage());
         }
     }
-
     /**
      * 获取组成员显示名称列表（去重）
      */
@@ -1207,14 +1114,12 @@ public class ProcessProgressRuntimeService {
             return groupCode;
         }
     }
-
     /**
      * 根据用户ID/用户名列表获取统一显示名称列表
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
         return sysUserService.getDisplayNames(idsOrNames);
     }
-
     /**
      * 规范化任务 action 为显示状态码；自定义 action 保留原始值
      */

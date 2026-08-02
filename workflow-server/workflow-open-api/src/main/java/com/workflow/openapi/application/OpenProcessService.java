@@ -1,12 +1,8 @@
 package com.workflow.openapi.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenApplicationActor;
-import com.workflow.contracts.process.open.OpenBusinessReference;
 import com.workflow.contracts.process.open.OpenProcessCancelCommand;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
@@ -22,7 +18,6 @@ import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenCorrelateMessageRequest;
 import com.workflow.openapi.api.request.OpenCancelProcessRequest;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
-import com.workflow.openapi.api.response.OpenBusinessReferenceView;
 import com.workflow.openapi.api.response.OpenMessageCorrelationView;
 import com.workflow.openapi.api.response.OpenPage;
 import com.workflow.openapi.api.response.OpenPageMetadata;
@@ -38,15 +33,11 @@ import com.workflow.openapi.infrastructure.persistence.record.IntegrationWorkflo
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,9 +49,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class OpenProcessService {
 
-    private static final TypeReference<List<String>> STRING_LIST =
-            new TypeReference<>() {
-            };
     private static final int DEFAULT_LIMIT = 50;
     private static final int MAX_LIMIT = 200;
     private static final Pattern PUBLIC_ID = Pattern.compile(
@@ -70,6 +58,8 @@ public class OpenProcessService {
 
     private final IntegrationProcessGrantMapper grantMapper;
     private final IntegrationWorkflowScenarioMapper scenarioMapper;
+    private final OpenProcessScenarioSupport scenarioSupport;
+    private final OpenProcessResponseAssembler responseAssembler;
     private final IntegrationProcessBindingMapper bindingMapper;
     private final OpenProcessCatalogPort catalogPort;
     private final OpenProcessRuntimePort runtimePort;
@@ -77,7 +67,6 @@ public class OpenProcessService {
     private final OpenIdempotencyService idempotencyService;
     private final OpenCursorCodec cursorCodec;
     private final OpenProcessEventPort eventPort;
-    private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
@@ -141,6 +130,10 @@ public class OpenProcessService {
             Clock clock) {
         this.grantMapper = grantMapper;
         this.scenarioMapper = scenarioMapper;
+        this.scenarioSupport = new OpenProcessScenarioSupport(
+                scenarioMapper, variableSchemaService, objectMapper);
+        this.responseAssembler = new OpenProcessResponseAssembler(
+                scenarioMapper, scenarioSupport, objectMapper);
         this.bindingMapper = bindingMapper;
         this.catalogPort = catalogPort;
         this.runtimePort = runtimePort;
@@ -148,7 +141,6 @@ public class OpenProcessService {
         this.idempotencyService = idempotencyService;
         this.cursorCodec = cursorCodec;
         this.eventPort = eventPort;
-        this.objectMapper = objectMapper;
         this.transactionTemplate =
                 new TransactionTemplate(transactionManager);
         this.clock = clock;
@@ -185,7 +177,7 @@ public class OpenProcessService {
         List<OpenProcessDefinitionView> items = definitions
                 .subList(offset, end)
                 .stream()
-                .map(definition -> toDefinitionView(
+                .map(definition -> responseAssembler.toDefinitionView(
                         definition,
                         contractsByKey.get(definition.processKey())))
                 .toList();
@@ -207,7 +199,7 @@ public class OpenProcessService {
                     400, "INVALID_REQUEST",
                     "processKey is required when scenarioKey is omitted");
         }
-        IntegrationWorkflowScenarioRecord scenario = resolveScenario(
+        IntegrationWorkflowScenarioRecord scenario = scenarioSupport.resolve(
                 actor.applicationId(), request.scenarioKey());
         String processKey = scenario == null
                 ? request.processKey()
@@ -216,10 +208,12 @@ public class OpenProcessService {
                 actor.applicationId(),
                 processKey,
                 true);
-        validateVariables(scenario == null
-                ? contract.inputSchemaJson()
-                : scenario.getInputSchemaJson(), request.variables());
-        String externalInitiatorId = resolveExternalInitiator(
+        if (scenario == null) {
+            validateVariables(contract, request.variables());
+        } else {
+            scenarioSupport.validateVariables(scenario, request.variables());
+        }
+        String externalInitiatorId = scenarioSupport.resolveInitiator(
                 scenario, request);
         OpenIdempotencyService.Claim claim =
                 idempotencyService.claim(
@@ -244,7 +238,7 @@ public class OpenProcessService {
                                 new OpenProcessStartCommand(
                                         processKey,
                                         bindingId,
-                                        toBusinessReference(
+                                        responseAssembler.toBusinessReference(
                                                 request),
                                         externalInitiatorId,
                                         request.variables(),
@@ -253,17 +247,31 @@ public class OpenProcessService {
                                                 ? null
                                                 : scenario.getProcessDefinitionVersion()));
                         if (scenario == null) {
-                            bindingMapper.insert(
-                                    bindingId,
-                                    actor.applicationId(),
-                                    request.businessReference().system(),
-                                    request.businessReference().type(),
-                                    request.businessReference().id(),
-                                    process.processInstanceId(),
-                                    process.processKey(),
-                                    now());
+                            if (request.businessReference().version() == null) {
+                                bindingMapper.insert(
+                                        bindingId,
+                                        actor.applicationId(),
+                                        request.businessReference().system(),
+                                        request.businessReference().type(),
+                                        request.businessReference().id(),
+                                        process.processInstanceId(),
+                                        process.processKey(),
+                                        now());
+                            } else {
+                                bindingMapper.insertWithVersion(
+                                        bindingId,
+                                        actor.applicationId(),
+                                        request.businessReference().system(),
+                                        request.businessReference().type(),
+                                        request.businessReference().id(),
+                                        request.businessReference().version(),
+                                        process.processInstanceId(),
+                                        process.processKey(),
+                                        now());
+                            }
                         } else {
-                            String snapshot = writeSnapshot(request.variables());
+                            String snapshot = scenarioSupport.snapshot(
+                                    request.variables());
                             bindingMapper.insertScenario(
                                     bindingId,
                                     actor.applicationId(),
@@ -274,24 +282,30 @@ public class OpenProcessService {
                                     request.businessReference().system(),
                                     request.businessReference().type(),
                                     request.businessReference().id(),
+                                    request.businessReference().version(),
                                     process.processInstanceId(),
                                     process.processKey(),
                                     snapshot,
-                                    sha256(snapshot),
+                                    scenarioSupport.sha256(snapshot),
                                     scenario.getOutcomeMappingJson(),
                                     scenario.getEventTypesJson(),
                                     externalInitiatorId,
+                                    scenario == null ? null
+                                            : scenarioSupport.namespace(scenario),
+                                    scenario == null ? null
+                                            : scenario.getIdentityMappingJson(),
                                     now());
                         }
                         publishInitialEvents(actor, process, externalInitiatorId);
-                        OpenProcessInstanceView view = toInstanceView(
+                        OpenProcessInstanceView view = responseAssembler.toInstanceView(
                                 process,
                                 request.businessReference().system(),
                                 request.businessReference().type(),
                                 request.businessReference().id(),
+                                request.businessReference().version(),
                                 scenario == null ? null : scenario.getScenarioKey(),
                                 scenario == null ? null : scenario.getRevision(),
-                                projectResult(process,
+                                scenarioSupport.projectResult(process,
                                         scenario == null
                                                 ? null
                                                 : scenario.getOutcomeMappingJson()));
@@ -383,7 +397,7 @@ public class OpenProcessService {
         } catch (RuntimeException exception) {
             throw unavailable(exception);
         }
-        return toInstanceView(process, binding);
+        return responseAssembler.toInstanceView(process, binding);
     }
 
     public OperationResult<OpenProcessInstanceView> cancel(
@@ -414,7 +428,7 @@ public class OpenProcessService {
                                         processInstanceId,
                                         request.reason().trim(),
                                         actor));
-                        OpenProcessInstanceView view = toInstanceView(
+                        OpenProcessInstanceView view = responseAssembler.toInstanceView(
                                 process, binding);
                         idempotencyService.completeInBusinessTransaction(
                                 claim, "PROCESS_INSTANCE", processInstanceId,
@@ -504,7 +518,7 @@ public class OpenProcessService {
                 actor.applicationId(),
                 binding.getProcessDefinitionKey(),
                 false);
-        if (!readMessageKeys(contract).contains(messageKey)) {
+        if (!responseAssembler.readMessageKeys(contract).contains(messageKey)) {
             throw new OpenApiException(
                     403,
                     "PROCESS_NOT_GRANTED",
@@ -633,217 +647,6 @@ public class OpenProcessService {
             IntegrationProcessGrantRecord contract,
             Map<String, Object> variables) {
         validateVariables(contract.inputSchemaJson(), variables);
-    }
-
-    private IntegrationWorkflowScenarioRecord resolveScenario(
-            String applicationId,
-            String scenarioKey) {
-        if (scenarioKey == null || scenarioKey.isBlank()) {
-            return null;
-        }
-        if (scenarioMapper == null) {
-            throw new OpenApiException(
-                    503,
-                    "INTEGRATION_TEMPORARILY_UNAVAILABLE",
-                    "Scenario configuration is unavailable");
-        }
-        IntegrationWorkflowScenarioRecord scenario =
-                scenarioMapper.findByApplicationAndKey(
-                        applicationId,
-                        scenarioKey);
-        if (scenario == null || !"ACTIVE".equals(scenario.getStatus())) {
-            throw new OpenApiException(
-                    404,
-                    "RESOURCE_NOT_FOUND",
-                    "Workflow scenario was not found");
-        }
-        return scenario;
-    }
-
-    private String resolveExternalInitiator(
-            IntegrationWorkflowScenarioRecord scenario,
-            OpenStartProcessRequest request) {
-        if (request.initiator() != null
-                && request.initiator().externalUserId() != null
-                && !request.initiator().externalUserId().isBlank()) {
-            return request.initiator().externalUserId();
-        }
-        if (scenario == null || scenario.getIdentityMappingJson() == null) {
-            return null;
-        }
-        try {
-            JsonNode mapping = objectMapper.readTree(
-                    scenario.getIdentityMappingJson());
-            String source = mapping.path("initiator").asText(null);
-            if (source == null || !source.startsWith("variables.")) {
-                return null;
-            }
-            Object value = request.variables().get(
-                    source.substring("variables.".length()));
-            return value instanceof String string && !string.isBlank()
-                    ? string
-                    : null;
-        } catch (JsonProcessingException exception) {
-            throw unavailable(exception);
-        }
-    }
-
-    private Set<String> readMessageKeys(
-            IntegrationProcessGrantRecord contract) {
-        try {
-            return new LinkedHashSet<>(objectMapper.readValue(
-                    contract.allowedMessageKeys(),
-                    STRING_LIST));
-        } catch (JsonProcessingException exception) {
-            throw unavailable(exception);
-        }
-    }
-
-    private OpenProcessDefinitionView toDefinitionView(
-            OpenProcessDefinition definition,
-            IntegrationProcessGrantRecord contract) {
-        if (contract == null) {
-            throw new IllegalStateException(
-                    "流程目录返回了未授权流程");
-        }
-        try {
-            JsonNode schema = objectMapper.readTree(
-                    contract.inputSchemaJson());
-            return new OpenProcessDefinitionView(
-                    definition.processKey(),
-                    definition.name(),
-                    definition.version(),
-                    definition.description(),
-                    schema,
-                    definition.publishedAt());
-        } catch (JsonProcessingException exception) {
-            throw unavailable(exception);
-        }
-    }
-
-    private OpenBusinessReference toBusinessReference(
-            OpenStartProcessRequest request) {
-        return new OpenBusinessReference(
-                request.businessReference().system(),
-                request.businessReference().type(),
-                request.businessReference().id());
-    }
-
-    private OpenProcessInstanceView toInstanceView(
-            OpenProcessView process,
-            IntegrationProcessBindingRecord binding) {
-        IntegrationWorkflowScenarioRecord scenario = binding.getScenarioId() == null
-                || scenarioMapper == null
-                ? null
-                : scenarioMapper.findById(binding.getScenarioId());
-        return toInstanceView(
-                process,
-                binding.getExternalSystem(),
-                binding.getBusinessType(),
-                binding.getBusinessId(),
-                binding.getScenarioKey(),
-                binding.getScenarioRevision(),
-                projectResult(process,
-                        binding.getOutcomeMappingSnapshotJson() == null
-                                && scenario != null
-                                ? scenario.getOutcomeMappingJson()
-                                : binding.getOutcomeMappingSnapshotJson()));
-    }
-
-    private OpenProcessInstanceView toInstanceView(
-            OpenProcessView process,
-            String externalSystem,
-            String businessType,
-            String businessId) {
-        return toInstanceView(
-                process,
-                externalSystem,
-                businessType,
-                businessId,
-                null,
-                null,
-                Map.of());
-    }
-
-    private OpenProcessInstanceView toInstanceView(
-            OpenProcessView process,
-            String externalSystem,
-            String businessType,
-            String businessId,
-            String scenarioKey,
-            Long scenarioRevision,
-            Map<String, Object> result) {
-        return new OpenProcessInstanceView(
-                process.processInstanceId(),
-                process.processKey(),
-                process.status(),
-                new OpenBusinessReferenceView(
-                        externalSystem,
-                        businessType,
-                        businessId),
-                process.createdAt(),
-                process.completedAt(),
-                scenarioKey,
-                scenarioRevision,
-                result);
-    }
-
-    private Map<String, Object> projectResult(
-            OpenProcessView process,
-            String outcomeMappingJson) {
-        if (outcomeMappingJson == null || process.variables() == null
-                || process.variables().isEmpty()) {
-            return Map.of();
-        }
-        try {
-            JsonNode mapping = objectMapper.readTree(
-                    outcomeMappingJson);
-            Map<String, Object> result = new LinkedHashMap<>();
-            mapping.fields().forEachRemaining(entry -> {
-                String source = entry.getValue().asText();
-                if (source.startsWith("variables.")) {
-                    source = source.substring("variables.".length());
-                }
-                if (process.variables().containsKey(source)) {
-                    Object value = process.variables().get(source);
-                    if (value != null) {
-                        result.put(entry.getKey(), value);
-                    }
-                }
-            });
-            return Map.copyOf(result);
-        } catch (JsonProcessingException exception) {
-            throw unavailable(exception);
-        }
-    }
-
-    private String writeSnapshot(Map<String, Object> variables) {
-        try {
-            return objectMapper.writeValueAsString(
-                    variables == null
-                            ? Map.of()
-                            : new LinkedHashMap<>(variables));
-        } catch (JsonProcessingException exception) {
-            throw new OpenApiException(
-                    422,
-                    "INVALID_REQUEST",
-                    "Input snapshot cannot be serialized");
-        }
-    }
-
-    private String sha256(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder result = new StringBuilder(64);
-            for (byte item : digest) {
-                result.append(String.format("%02x", item));
-            }
-            return result.toString();
-        } catch (Exception exception) {
-            throw new IllegalStateException(
-                    "Unable to hash input snapshot", exception);
-        }
     }
 
     private void requireAcquired(

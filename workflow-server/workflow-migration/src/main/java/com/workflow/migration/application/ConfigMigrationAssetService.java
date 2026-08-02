@@ -1,5 +1,4 @@
 package com.workflow.migration.application;
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,7 +63,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
@@ -81,24 +79,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-/**
- * 配置迁移资产服务。
- *
- * <p>实现 {@link MigrationAssetRecorder}，负责在实体/流程发布时记录可迁移快照资产、
- * 构建实体与流程的可移植快照(含依赖收集、敏感信息脱敏、数据源引用重写)、
- * 提供资产查询与标记能力，是配置迁移导出侧的核心服务。</p>
- */
 @Service
 @RequiredArgsConstructor
 public class ConfigMigrationAssetService implements MigrationAssetHandler {
-
-    public static final String ENTITY = "ENTITY";       // 资产类型：实体
-    public static final String PROCESS = "PROCESS";     // 资产类型：流程
+    public static final String ENTITY = "ENTITY";
+    public static final String PROCESS = "PROCESS";
     public static final String SYSTEM_ENTITY_UI =
-            "SYSTEM_ENTITY_UI";                         // 资产类型：系统实体UI
-    public static final String COMPLETE = "COMPLETE";   // 快照完整度：完整
-
+            "SYSTEM_ENTITY_UI";
+    public static final String COMPLETE = "COMPLETE";
     private static final int SNAPSHOT_SCHEMA_VERSION = 1;
     private static final DateTimeFormatter TAG_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final Set<String> TECHNICAL_KEYS = Set.of(
@@ -109,7 +97,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             "createdBy", "updatedBy", "deleted", "isPublished", "currentSeq", "seqDate");
     private static final Pattern SENSITIVE_XML = Pattern.compile(
             "(?i)(password|secret|token|apiKey)(\\s*=\\s*\")([^\"]*)(\")");
-
     private final ConfigMigrationAssetMapper assetMapper;
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
@@ -142,13 +129,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ObjectMapper objectMapper;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
-
-    /**
-     * 按条件查询迁移资产列表(按发布时间、创建时间倒序)。
-     *
-     * @param query 过滤条件(字段均可选)
-     * @return 资产列表
-     */
     @Transactional(readOnly = true)
     public List<ConfigMigrationAsset> query(ConfigMigrationAssetQuery query) {
         LambdaQueryWrapper<ConfigMigrationAsset> wrapper = new LambdaQueryWrapper<ConfigMigrationAsset>()
@@ -163,14 +143,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 .orderByDesc(ConfigMigrationAsset::getCreatedAt);
         return assetMapper.selectList(wrapper);
     }
-
-    /**
-     * 根据ID获取迁移资产，不存在抛异常。
-     *
-     * @param id 资产ID
-     * @return 迁移资产
-     * @throws IllegalArgumentException 资产不存在
-     */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset getRequired(String id) {
         ConfigMigrationAsset asset = assetMapper.selectById(id);
@@ -179,14 +151,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return asset;
     }
-
-    /**
-     * 查询指定类型与业务编码的最新版本迁移资产。
-     *
-     * @param assetType   资产类型
-     * @param businessKey 业务编码
-     * @return 最新资产，不存在返回 null
-     */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset findLatest(String assetType, String businessKey) {
         return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
@@ -195,14 +159,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 .orderByDesc(ConfigMigrationAsset::getSourceVersion)
                 .last("LIMIT 1"));
     }
-
-    /**
-     * 更新迁移资产的待导出标记与迁移标签(为空字段不修改)。
-     *
-     * @param id      资产ID
-     * @param request 标记请求
-     * @return 更新后的资产
-     */
     @Transactional
     @SystemAudit(
             module = AuditModule.MIGRATION,
@@ -225,16 +181,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         assetMapper.updateById(asset);
         return asset;
     }
-
-    /**
-     * 记录实体发布的迁移资产(系统实体不可迁移)。
-     *
-     * @param entity   实体定义
-     * @param history  发布历史
-     * @param request  发布请求(含迁移标签、版本描述等)
-     * @return 新建的迁移资产
-     * @throws IllegalArgumentException 实体为系统实体
-     */
     @Transactional
     public ConfigMigrationAsset recordEntity(EntityDefinition entity,
                                              EntityPublishHistory history,
@@ -258,17 +204,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 history.getPublishedAt(),
                 firstNonBlank(history.getPublishedByName(), history.getPublishedBy()));
     }
-
-    /**
-     * {@inheritDoc}
-     *
-     * <p>按实体ID与发布历史ID加载上下文后委托 {@link #recordEntity}。</p>
-     *
-     * @param entityId         实体ID
-     * @param publishHistoryId 发布历史ID
-     * @param request          发布请求
-     * @throws IllegalStateException 实体或发布历史不存在
-     */
     @Override
     @Transactional
     public void recordEntity(String entityId,
@@ -281,15 +216,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         recordEntity(entity, history, request);
     }
-
-    /**
-     * 记录流程发布的迁移资产。
-     *
-     * @param config  流程定义配置
-     * @param history 流程版本历史
-     * @param request 发布请求
-     * @return 新建的迁移资产
-     */
     @Transactional
     public ConfigMigrationAsset recordProcess(ProcessDefinitionConfig config,
                                               ProcessVersionHistory history,
@@ -310,17 +236,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 history.getPublishedAt(),
                 history.getPublishedBy());
     }
-
-    /**
-     * {@inheritDoc}
-     *
-     * <p>按流程ID与版本历史ID加载上下文后委托 {@link #recordProcess}。</p>
-     *
-     * @param processId        流程ID
-     * @param versionHistoryId 版本历史ID
-     * @param request          发布请求
-     * @throws IllegalStateException 流程或版本历史不存在
-     */
     @Override
     @Transactional
     public void recordProcess(String processId,
@@ -333,7 +248,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         recordProcess(process, history, request);
     }
-
     @Override
     @Transactional
     public void recordSystemEntityUi(
@@ -381,13 +295,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 release.getPublishedAt(),
                 release.getPublishedBy());
     }
-
-    /**
-     * 构建系统实体当前全部已发布UI配置的聚合快照。
-     *
-     * <p>快照只包含目标系统实体标识、实际使用的字段编码、表单、列表、
-     * 只读数据源及UI扩展，不包含系统表结构、系统数据、权限目录和菜单。</p>
-     */
     private Map<String, Object> buildSystemEntityUiSnapshot(
             EntityDefinition entity) {
         Map<String, Object> snapshot = baseSnapshot(
@@ -401,7 +308,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 "storageMode",
                 EntityDefinition.StorageMode.SYSTEM.name());
         snapshot.put("definition", definition);
-
         Map<String, EntityField> fieldsByCode = fieldMapper
                 .findByEntityId(entity.getId())
                 .stream()
@@ -413,7 +319,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         Set<String> referencedFields = new LinkedHashSet<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
-
         List<Map<String, Object>> forms = new ArrayList<>();
         for (EntityForm form :
                 formMapper.selectByEntityId(entity.getId())) {
@@ -429,7 +334,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             formSnapshot.putIfAbsent("formKey", form.getFormKey());
             formSnapshot.putIfAbsent("formName", form.getFormName());
             formSnapshot.put("publishedVersion", active.getVersion());
-
             List<Map<String, Object>> formFields = new ArrayList<>();
             for (Map<String, Object> value :
                     castList(releaseSnapshot.get("legacyFields"))) {
@@ -445,7 +349,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 formFields.add(field);
             }
             formSnapshot.put("fields", formFields);
-
             List<Map<String, Object>> rawNodes =
                     castList(releaseSnapshot.get("nodes"));
             Map<String, String> nodeKeysById =
@@ -487,7 +390,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             collectDataSourceIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
-
         List<Map<String, Object>> lists = new ArrayList<>();
         for (EntityListConfig list :
                 listConfigMapper.findByEntityId(entity.getId())) {
@@ -514,7 +416,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             listSnapshot.remove("customComponent");
             listSnapshot.remove("queryProviderCode");
             listSnapshot.remove("queryDataSourceId");
-
             List<Map<String, Object>> listFields =
                     new ArrayList<>();
             for (Map<String, Object> value :
@@ -539,7 +440,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
-
         Map<String, String> dataSourceCodes =
                 dataSourceCodesById(dataSourceIds);
         snapshot.put(
@@ -571,7 +471,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         snapshot.put("dependencies", List.of());
         return snapshot;
     }
-
     private boolean isSystemFieldReadable(
             EntityDefinition entity,
             Map<String, EntityField> fieldsByCode,
@@ -581,7 +480,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 && systemEntityFieldPolicy.isRuntimeReadable(
                         entity, field);
     }
-
     private String systemNodeFieldCode(
             Map<String, Object> node) {
         if ("ENTITY_FIELD".equalsIgnoreCase(
@@ -594,11 +492,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 ? text(map.get("fieldCode"))
                 : null;
     }
-
-    /**
-     * 构建实体的可迁移快照：定义、字段、关系、状态、编码规则、表单(优先取已发布版本)、
-     * 扩展清单、列表、数据源(重写为编码引用)、数据范围策略/绑定、菜单，并收集依赖清单。
-     */
     private Map<String, Object> buildEntitySnapshot(EntityDefinition entity) {
         Map<String, Object> snapshot = baseSnapshot(ENTITY, entity.getEntityCode(), entity.getEntityName());
         Map<String, Object> definition = new LinkedHashMap<>();
@@ -615,7 +508,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 ? processMapper.selectById(entity.getProcessDefinitionId()) : null;
         definition.put("processKey", process == null ? null : process.getProcessKey());
         snapshot.put("definition", definition);
-
         List<Map<String, Object>> fields = new ArrayList<>();
         Map<String, String> fieldCodesById = new LinkedHashMap<>();
         for (EntityField field : fieldMapper.findByEntityId(entity.getId())) {
@@ -633,10 +525,8 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         snapshot.put("fields", fields);
         snapshot.put("relations", portableList(relationMapper.selectByParentEntityId(entity.getId())));
         snapshot.put("statuses", portableList(statusMapper.findByEntityCode(entity.getEntityCode())));
-
         EntityCodeRule codeRule = codeRuleMapper.findByEntityCode(entity.getEntityCode()).orElse(null);
         snapshot.put("codeRule", codeRule == null ? null : portableMap(codeRule));
-
         List<Map<String, Object>> forms = new ArrayList<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
@@ -718,7 +608,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         snapshot.put(
                 "extensions",
                 extensionSnapshots(extensionReferences));
-
         List<EntityListConfig> listConfigs = listConfigMapper.findByEntityId(entity.getId());
         Map<String, String> listKeysById = new LinkedHashMap<>();
         List<Map<String, Object>> lists = new ArrayList<>();
@@ -749,7 +638,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         dataSourceIds,
                         entity.getId(),
                         entity.getEntityCode()));
-
         Map<String, String> policyKeysById = new LinkedHashMap<>();
         List<Map<String, Object>> policies = new ArrayList<>();
         listScopePolicyMapper.findByEntityCode(entity.getEntityCode())
@@ -758,7 +646,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                     policies.add(portableMap(policy));
                 });
         snapshot.put("scopePolicies", policies);
-
         List<Map<String, Object>> bindings = new ArrayList<>();
         listScopeBindingMapper.findByEntityCode(entity.getEntityCode())
                 .forEach(binding -> {
@@ -767,7 +654,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                     bindings.add(value);
                 });
         snapshot.put("scopeBindings", bindings);
-
         List<Map<String, Object>> menus = new ArrayList<>();
         menuMapper.selectList(new LambdaQueryWrapper<com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu>()
                         .eq(com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu::getEntityCode, entity.getEntityCode()))
@@ -780,7 +666,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                     menus.add(value);
                 });
         snapshot.put("menus", menus);
-
         List<Map<String, Object>> dependencies = new ArrayList<>();
         if (process != null) {
             addDependency(dependencies, PROCESS, process.getProcessKey(), true, "实体绑定流程");
@@ -797,7 +682,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
     }
-
     private List<Map<String, Object>> extensionSnapshots(
             Set<String> references) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -827,14 +711,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return result;
     }
-
-    private String extensionReference(
-            String type,
-            String key,
-            Integer version) {
-        return type + "|" + key + "|" + version;
-    }
-
+    private String extensionReference(String type, String key, Integer version) { return type + "|" + key + "|" + version; }
     private Map<String, String> dataSourceCodesById(Set<String> ids) {
         Map<String, String> result = new LinkedHashMap<>();
         for (String id : ids) {
@@ -849,7 +726,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return result;
     }
-
     private List<Map<String, Object>> dataSourceSnapshots(
             Set<String> ids,
             String entityId,
@@ -877,7 +753,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return result;
     }
-
     private void collectDataSourceIds(
             Object value,
             Set<String> result) {
@@ -902,7 +777,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             }
         }
     }
-
     private Object rewriteDataSourceReferences(
             Object value,
             Map<String, String> codesById) {
@@ -942,26 +816,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return value;
     }
-
-    /**
-     * 判断指定名称是否为数据源ID引用键(sourceId/dataSourceId/queryDataSourceId)。
-     *
-     * @param name 字段名
-     * @return 是否为数据源ID键
-     */
     static boolean isDataSourceIdKey(String name) {
         return Set.of(
                 "sourceId",
                 "dataSourceId",
                 "queryDataSourceId").contains(name);
     }
-
-    /**
-     * 将数据源ID键映射为导出用的数据源编码键。
-     *
-     * @param idKey 数据源ID键
-     * @return 对应的数据源编码键
-     */
     static String dataSourceCodeKey(String idKey) {
         return switch (idKey) {
             case "dataSourceId" -> "dataSourceCode";
@@ -969,27 +829,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             default -> "sourceCode";
         };
     }
-
     private Map<String, Object> mapValue(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return new LinkedHashMap<>();
-        }
+        if (!(value instanceof Map<?, ?> map)) return new LinkedHashMap<>();
         Map<String, Object> result = new LinkedHashMap<>();
-        map.forEach((key, child) ->
-                result.put(String.valueOf(key), child));
+        map.forEach((key, child) -> result.put(String.valueOf(key), child));
         return result;
     }
-
-    /**
-     * 从已发布快照中选取指定分区，缺失该分区时回退使用 fallback。
-     *
-     * <p>注意：若发布快照显式包含该分区但为空对象，则返回空 Map 而不回退。</p>
-     *
-     * @param releaseSnapshot 已发布快照
-     * @param section         分区名
-     * @param fallback        缺失分区时的回退值
-     * @return 选取结果
-     */
     static Map<String, Object> selectReleasedSection(
             Map<String, Object> releaseSnapshot,
             String section,
@@ -1008,23 +853,11 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return fallback;
     }
-
-    private String text(Object value) {
-        return value == null ? null : String.valueOf(value);
-    }
-
+    private String text(Object value) { return value == null ? null : String.valueOf(value); }
     private Integer integer(Object value) {
-        if (value == null
-                || !StringUtils.hasText(String.valueOf(value))) {
-            return null;
-        }
-        return Integer.parseInt(String.valueOf(value));
+        return value == null || !StringUtils.hasText(String.valueOf(value))
+                ? null : Integer.parseInt(String.valueOf(value));
     }
-
-    /**
-     * 构建流程的可迁移快照：定义、BPMN(表单/办理人引用替换为可移植 URI)、节点、
-     * 节点表单、节点审批、流程动作、状态映射，并收集办理人/表单/实体/处理器/子流程依赖。
-     */
     private Map<String, Object> buildProcessSnapshot(ProcessDefinitionConfig config, ProcessVersionHistory history) {
         Map<String, Object> snapshot = baseSnapshot(PROCESS, config.getProcessKey(), config.getProcessName());
         Map<String, Object> definition = new LinkedHashMap<>();
@@ -1033,7 +866,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         definition.put("description", config.getDescription());
         definition.put("category", config.getCategory());
         snapshot.put("definition", definition);
-
         List<ProcessNodeForm> nodeForms = nodeFormMapper.selectByProcessConfigId(config.getId());
         Map<String, String> portableForms = new LinkedHashMap<>();
         List<Map<String, Object>> nodeFormSnapshots = new ArrayList<>();
@@ -1072,7 +904,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         List<FlowAction> actions = flowActionMapper.findPublishedActionsByVersionId(history.getId());
         snapshot.put("flowActions", portableList(actions));
         snapshot.put("statusMappings", portableList(statusMappingMapper.findByProcessConfigId(config.getId())));
-
         List<Map<String, Object>> dependencies = new ArrayList<>();
         for (Map<String, Object> node : nodes) {
             for (Map<String, Object> assignee : castMapList(node.get("assignees"))) {
@@ -1106,7 +937,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
     }
-
     private Map<String, Object> baseSnapshot(String assetType, String businessKey, String assetName) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("schemaVersion", SNAPSHOT_SCHEMA_VERSION);
@@ -1115,13 +945,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         snapshot.put("assetName", assetName);
         return snapshot;
     }
-
-    /**
-     * 持久化一条迁移资产：若同一历史ID已存在则直接复用，否则计算内容哈希、
-     * 写入快照与依赖 JSON、清空依赖表后重新写入依赖记录。
-     *
-     * @return 新建或复用的迁移资产
-     */
     private ConfigMigrationAsset saveAsset(String assetType,
                                            String businessKey,
                                            String assetName,
@@ -1167,18 +990,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         assetDependencyService.replace(asset.getId(), dependencies);
         return asset;
     }
-
     private ConfigMigrationAsset findByHistory(String assetType, String sourceHistoryId) {
         return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
                 .eq(ConfigMigrationAsset::getAssetType, assetType)
                 .eq(ConfigMigrationAsset::getSourceHistoryId, sourceHistoryId)
                 .last("LIMIT 1"));
     }
-
     private boolean exists(String assetType, String sourceHistoryId) {
         return findByHistory(assetType, sourceHistoryId) != null;
     }
-
     private Map<String, Object> portableMap(Object source) {
         if (source == null) {
             return new LinkedHashMap<>();
@@ -1186,14 +1006,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         Map<String, Object> converted = objectMapper.convertValue(source, LinkedHashMap.class);
         return sanitizeMap(converted);
     }
-
     private List<Map<String, Object>> portableList(Collection<?> values) {
         if (values == null) {
             return List.of();
         }
         return values.stream().map(this::portableMap).toList();
     }
-
     private Map<String, Object> sanitizeMap(Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> {
@@ -1203,7 +1021,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         });
         return result;
     }
-
     private Object sanitizeValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> converted = new LinkedHashMap<>();
@@ -1215,7 +1032,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return value;
     }
-
     private String portableFormReference(String formId) {
         if (!StringUtils.hasText(formId)) {
             return null;
@@ -1228,7 +1044,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         String entityCode = entity == null ? "missing" : entity.getEntityCode();
         return "wf-form://" + entityCode + "/" + form.getFormKey();
     }
-
     private String portableAssigneeValue(AssigneeConfig assignee) {
         if (!StringUtils.hasText(assignee.getAssigneeValue()) || assignee.getAssigneeType() == null) {
             return assignee.getAssigneeValue();
@@ -1245,7 +1060,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return assignee.getAssigneeValue();
     }
-
     private String stripPortablePrefix(String value) {
         if (value == null) {
             return null;
@@ -1258,7 +1072,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return value;
     }
-
     private String replacePortableForms(String bpmnXml, Map<String, String> formReferences) {
         if (!StringUtils.hasText(bpmnXml)) {
             return bpmnXml;
@@ -1271,7 +1084,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return result;
     }
-
     private String redactSensitiveXml(String xml) {
         if (!StringUtils.hasText(xml)) {
             return xml;
@@ -1287,7 +1099,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         matcher.appendTail(buffer);
         return buffer.toString();
     }
-
     private void collectCalledProcesses(String bpmnXml, List<Map<String, Object>> dependencies) {
         if (!StringUtils.hasText(bpmnXml)) {
             return;
@@ -1300,7 +1111,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             }
         }
     }
-
     private void collectExtensionDependencies(Object value, List<Map<String, Object>> dependencies) {
         if (value instanceof Map<?, ?> map) {
             map.forEach((key, child) -> {
@@ -1325,7 +1135,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             }
         }
     }
-
     private void addDependency(List<Map<String, Object>> dependencies,
                                String type,
                                String key,
@@ -1341,7 +1150,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         dependency.put("source", source);
         dependencies.add(dependency);
     }
-
     private List<Map<String, Object>> deduplicateDependencies(List<Map<String, Object>> dependencies) {
         Map<String, Map<String, Object>> values = new LinkedHashMap<>();
         for (Map<String, Object> dependency : dependencies) {
@@ -1349,35 +1157,24 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return new ArrayList<>(values.values());
     }
-
     private String effectiveDescription(ConfigMigrationPublishRequest request, String fallback) {
         return request != null && StringUtils.hasText(request.getVersionDescription())
                 ? request.getVersionDescription().trim() : fallback;
     }
-
     private boolean effectiveMark(ConfigMigrationPublishRequest request) {
         return request == null || request.getMarkForExport() == null || request.getMarkForExport();
     }
-
     private String effectiveTag(ConfigMigrationPublishRequest request) {
         return request == null ? null : request.getMigrationTag();
     }
-
-    /**
-     * 生成默认迁移标签(REL-yyyyMMdd-HHmmss)。
-     *
-     * @return 迁移标签
-     */
     public String generateMigrationTag() {
         return "REL-" + LocalDateTime.now().format(TAG_FORMAT);
     }
-
     private String normalizeTag(String value) {
         String tag = StringUtils.hasText(value) ? value.trim() : generateMigrationTag();
         tag = tag.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9._-]", "-");
         return tag.length() > 100 ? tag.substring(0, 100) : tag;
     }
-
     private Object parseJson(String json, Object fallback) {
         if (!StringUtils.hasText(json)) {
             return fallback;
@@ -1388,7 +1185,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             return fallback;
         }
     }
-
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -1396,7 +1192,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             throw new IllegalStateException("配置迁移快照序列化失败", e);
         }
     }
-
     private String sha256(byte[] value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
@@ -1404,12 +1199,10 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             throw new IllegalStateException("配置迁移哈希计算失败", e);
         }
     }
-
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> castList(Object value) {
         return value instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
     }
-
     private List<Map<String, Object>> castMapList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return List.of();
@@ -1424,7 +1217,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         return result;
     }
-
     private String firstNonBlank(String first, String second) {
         return StringUtils.hasText(first) ? first : second;
     }

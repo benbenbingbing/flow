@@ -3,12 +3,34 @@ package com.workflow.openapi.webhook.security;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
+import java.time.Clock;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
 
 @Component
 public class WebhookSignatureService {
+
+    public boolean verify(
+            String eventId,
+            long unixTimestamp,
+            byte[] body,
+            String signingSecret,
+            String signature,
+            Clock clock,
+            long allowedSkewSeconds) {
+        if (clock == null || allowedSkewSeconds < 0
+                || Math.abs(clock.instant().getEpochSecond()
+                - unixTimestamp) > allowedSkewSeconds
+                || signature == null || !signature.startsWith("v1=")) {
+            return false;
+        }
+        String expected = sign(
+                eventId, unixTimestamp, body, signingSecret);
+        return java.security.MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                signature.getBytes(StandardCharsets.UTF_8));
+    }
 
     public String sign(
             String eventId,

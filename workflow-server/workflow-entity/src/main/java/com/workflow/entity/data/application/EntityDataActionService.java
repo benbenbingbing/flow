@@ -1,11 +1,9 @@
 package com.workflow.entity.data.application;
-
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
@@ -24,33 +22,28 @@ import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
-import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-
 /**
  * 实体数据功能权限、数据范围与按钮规则统一执行入口。
  */
 @Service
 @RequiredArgsConstructor
 public class EntityDataActionService {
-
     private static final Set<String> UPDATE_CONTEXT_FIELDS = Set.of(
             "entityCode",
             "entityName",
@@ -61,7 +54,6 @@ public class EntityDataActionService {
             "processVariables",
             "extData",
             "actionCapabilities");
-
     private final EntityDataDynamicService dynamicService;
     private final EntityMutationPort mutationPort;
     private final EntityListActionConfigService actionConfigService;
@@ -72,9 +64,8 @@ public class EntityDataActionService {
     private final UiEventRuntimeService eventRuntimeService;
     private final SystemEntityReadService systemEntityReadService;
     private final EntityDefinitionMapper definitionMapper;
-    private final EntityFormMapper formMapper;
     private final ObjectMapper objectMapper;
-
+    private final EntityDataActionEventSupport eventSupport;
     /**
      * 查询实体数据详情，前置校验列表查看按钮权限。
      *
@@ -88,7 +79,6 @@ public class EntityDataActionService {
     public EntityDataDTO getDetail(String entityCode, String id, String listKey) {
         return getDetail(entityCode, id, listKey, null);
     }
-
     /**
      * 只读取实体详情，不执行可能调用外部接口的 UI 事件链。
      */
@@ -102,7 +92,6 @@ public class EntityDataActionService {
                 EntityPermissionAction.VIEW);
         return findAuthorizedDetail(entityCode, id, listKey);
     }
-
     /**
      * 查询详情并允许指定表单覆盖 DETAIL_LOAD 事件。
      */
@@ -126,12 +115,12 @@ public class EntityDataActionService {
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.VIEW);
-        EventOrigin origin = eventOrigin(
+        EntityDataActionEventSupport.EventOrigin origin = eventSupport.resolve(
                 entityCode, listKey, formId);
         if (origin == null) {
             return findAuthorizedDetail(entityCode, id, listKey);
         }
-        UiEventExecuteRequest event = event(
+        UiEventExecuteRequest event = eventSupport.request(
                 "DETAIL_LOAD",
                 origin,
                 entityCode,
@@ -149,7 +138,6 @@ public class EntityDataActionService {
                 }).getData();
         return entityData(value, entityCode, id);
     }
-
     private EntityDataDTO findAuthorizedDetail(
             String entityCode,
             String id,
@@ -159,7 +147,6 @@ public class EntityDataActionService {
                 entityCode, listKey, "view", row);
         return row;
     }
-
     /**
      * 按流程实例ID查询可访问的实体数据详情。
      *
@@ -180,7 +167,6 @@ public class EntityDataActionService {
                 processInstanceId,
                 config == null ? null : config.getListKey());
     }
-
     /**
      * 新增实体数据，前置校验新增按钮权限并应用表单默认值。
      *
@@ -212,7 +198,7 @@ public class EntityDataActionService {
                                 dto.getEntityCode(),
                                 "mode",
                                 "create"));
-        EventOrigin origin = eventOrigin(
+        EntityDataActionEventSupport.EventOrigin origin = eventSupport.resolve(
                 dto.getEntityCode(),
                 dto.getListKey(),
                 dto.getFormId());
@@ -228,7 +214,7 @@ public class EntityDataActionService {
                     origin,
                     executionContext.businessTraceKey());
         }
-        UiEventExecuteRequest event = event(
+        UiEventExecuteRequest event = eventSupport.request(
                 "DATA_CREATE",
                 origin,
                 dto.getEntityCode(),
@@ -258,7 +244,6 @@ public class EntityDataActionService {
                 }).getData();
         return entityData(value, dto.getEntityCode(), null);
     }
-
     /**
      * 修改实体数据，前置校验编辑按钮权限并应用表单默认值。
      *
@@ -297,7 +282,7 @@ public class EntityDataActionService {
                                 id,
                                 "mode",
                                 "edit"));
-        EventOrigin origin = eventOrigin(
+        EntityDataActionEventSupport.EventOrigin origin = eventSupport.resolve(
                 entityCode,
                 listKey,
                 text(formData == null ? null : formData.get("formId")));
@@ -309,7 +294,7 @@ public class EntityDataActionService {
                     formData,
                     executionContext);
         }
-        UiEventExecuteRequest event = event(
+        UiEventExecuteRequest event = eventSupport.request(
                 "DATA_UPDATE",
                 origin,
                 entityCode,
@@ -349,7 +334,6 @@ public class EntityDataActionService {
                 }).getData();
         return entityData(value, entityCode, id);
     }
-
     private EntityDataDTO updateDefault(
             String entityCode,
             String id,
@@ -377,10 +361,9 @@ public class EntityDataActionService {
                 entityCode,
                 id,
                 updateRequest,
-                listEventOrigin(entityCode, listKey),
+                eventSupport.list(entityCode, listKey),
                 executionContext.businessTraceKey());
     }
-
     /**
      * 删除单条实体数据，前置校验删除按钮权限。
      *
@@ -401,7 +384,7 @@ public class EntityDataActionService {
         requireDynamicRuntime(entityCode);
         EntityDataDTO row = findAccessible(entityCode, id, listKey);
         capabilityService.requireRowAction(entityCode, listKey, "delete", row);
-        EventOrigin origin = listEventOrigin(entityCode, listKey);
+        EntityDataActionEventSupport.EventOrigin origin = eventSupport.list(entityCode, listKey);
         if (origin == null) {
             mutateDelete(
                     entityCode,
@@ -409,7 +392,7 @@ public class EntityDataActionService {
                     origin);
             return;
         }
-        UiEventExecuteRequest event = event(
+        UiEventExecuteRequest event = eventSupport.request(
                 "DATA_DELETE",
                 origin,
                 entityCode,
@@ -430,7 +413,6 @@ public class EntityDataActionService {
                     return Map.of("record", row);
                 });
     }
-
     /**
      * 批量删除实体数据，逐条校验批量删除按钮权限，任一不可用则整体拒绝。
      *
@@ -466,7 +448,7 @@ public class EntityDataActionService {
         if (!denied.isEmpty()) {
             throw new ForbiddenException("批量删除被阻止：" + String.join("；", denied));
         }
-        EventOrigin origin = listEventOrigin(entityCode, listKey);
+        EntityDataActionEventSupport.EventOrigin origin = eventSupport.list(entityCode, listKey);
         if (origin == null) {
             mutateBatchDelete(
                     entityCode,
@@ -474,7 +456,7 @@ public class EntityDataActionService {
                     origin);
             return;
         }
-        UiEventExecuteRequest event = event(
+        UiEventExecuteRequest event = eventSupport.request(
                 "DATA_BATCH_DELETE",
                 origin,
                 entityCode,
@@ -509,10 +491,9 @@ public class EntityDataActionService {
                                     .toList());
                 });
     }
-
     private EntityDataDTO mutateCreate(
             EntityDataDTO dto,
-            EventOrigin origin,
+            EntityDataActionEventSupport.EventOrigin origin,
             String traceKey) {
         EntityMutationContext context = mutationContext(
                 origin,
@@ -533,12 +514,11 @@ public class EntityDataActionService {
                 dto.getEntityCode(),
                 result.recordId());
     }
-
     private EntityDataDTO mutateUpdate(
             String entityCode,
             String id,
             Map<String, Object> updateRequest,
-            EventOrigin origin,
+            EntityDataActionEventSupport.EventOrigin origin,
             String traceKey) {
         EntityMutationResult result = mutationPort.execute(
                 EntityMutationCommand.update(
@@ -557,11 +537,10 @@ public class EntityDataActionService {
                 entityCode,
                 id);
     }
-
     private void mutateDelete(
             String entityCode,
             String id,
-            EventOrigin origin) {
+            EntityDataActionEventSupport.EventOrigin origin) {
         mutationPort.execute(
                 EntityMutationCommand.delete(
                         entityCode,
@@ -574,11 +553,10 @@ public class EntityDataActionService {
                                 entityCode,
                                 id)));
     }
-
     private void mutateBatchDelete(
             String entityCode,
             List<EntityDataDTO> rows,
-            EventOrigin origin) {
+            EntityDataActionEventSupport.EventOrigin origin) {
         String operationId =
                 java.util.UUID.randomUUID().toString();
         List<EntityMutationCommand> commands =
@@ -604,9 +582,8 @@ public class EntityDataActionService {
                         commands,
                         true));
     }
-
     private EntityMutationContext mutationContext(
-            EventOrigin origin,
+            EntityDataActionEventSupport.EventOrigin origin,
             String intentCode,
             String intentName,
             String traceKey,
@@ -635,7 +612,6 @@ public class EntityDataActionService {
         }
         return builder.build();
     }
-
     private EntityDataDTO findAccessible(String entityCode, String id, String listKey) {
         EntityListConfig config = actionConfigService.resolveListConfig(entityCode, listKey);
         try {
@@ -656,7 +632,6 @@ public class EntityDataActionService {
             throw exception;
         }
     }
-
     private EntityDefinition requireEntity(String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
             throw new IllegalArgumentException("实体编码不能为空");
@@ -665,7 +640,6 @@ public class EntityDataActionService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "实体不存在: " + entityCode));
     }
-
     private void requireDynamicRuntime(String entityCode) {
         EntityDefinition definition = requireEntity(entityCode);
         if (definition.getStorageMode()
@@ -676,7 +650,6 @@ public class EntityDataActionService {
                             + entityCode);
         }
     }
-
     private void requireConfiguredListPermission(
             EntityListConfig config) {
         if (config == null
@@ -694,7 +667,6 @@ public class EntityDataActionService {
                             + config.getListName());
         }
     }
-
     @SuppressWarnings("unchecked")
     private Map<String, Object> extractSubmittedData(Map<String, Object> formData) {
         if (formData == null || formData.isEmpty()) {
@@ -708,82 +680,6 @@ public class EntityDataActionService {
         UPDATE_CONTEXT_FIELDS.forEach(submittedData::remove);
         return submittedData;
     }
-
-    private EventOrigin eventOrigin(
-            String entityCode,
-            String listKey,
-            String requestedFormId) {
-        if (StringUtils.hasText(requestedFormId)) {
-            EntityForm form = formMapper.selectById(requestedFormId);
-            if (form == null) {
-                throw new IllegalArgumentException(
-                        "表单不存在: " + requestedFormId);
-            }
-            EntityDefinition entity =
-                    definitionMapper.selectById(form.getEntityId());
-            if (entity == null
-                    || !Objects.equals(
-                            entityCode,
-                            entity.getEntityCode())) {
-                throw new IllegalArgumentException(
-                        "表单与实体不匹配");
-            }
-            return new EventOrigin("FORM", form.getId());
-        }
-        EntityDefinition entity = definitionMapper
-                .findByEntityCode(entityCode)
-                .orElse(null);
-        if (entity != null) {
-            EntityForm form =
-                    formMapper.selectDefaultByEntityId(entity.getId());
-            if (form != null) {
-                return new EventOrigin("FORM", form.getId());
-            }
-        }
-        EntityListConfig list =
-                actionConfigService.resolveListConfig(
-                        entityCode, listKey);
-        return list == null
-                ? null : new EventOrigin("LIST", list.getId());
-    }
-
-    private EventOrigin listEventOrigin(
-            String entityCode,
-            String listKey) {
-        EntityListConfig list =
-                actionConfigService.resolveListConfig(
-                        entityCode,
-                        listKey);
-        return list == null
-                ? null : new EventOrigin("LIST", list.getId());
-    }
-
-    private UiEventExecuteRequest event(
-            String eventCode,
-            EventOrigin origin,
-            String entityCode,
-            String listKey,
-            String recordId,
-            Map<String, Object> input) {
-        UiEventExecuteRequest event =
-                new UiEventExecuteRequest();
-        event.setEventCode(eventCode);
-        event.setConfigType(origin.configType());
-        event.setConfigId(origin.configId());
-        event.setEntityCode(entityCode);
-        event.setListKey(listKey);
-        event.setRecordId(recordId);
-        event.setInput(input);
-        event.setContext(Map.of(
-                "formId",
-                "FORM".equals(origin.configType())
-                        ? origin.configId() : "",
-                "listId",
-                "LIST".equals(origin.configType())
-                        ? origin.configId() : ""));
-        return event;
-    }
-
     private Map<String, Object> createInput(EntityDataDTO dto) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("data", dto.getData() == null
@@ -795,7 +691,6 @@ public class EntityDataActionService {
                 ? Map.of() : dto.getProcessVariables());
         return input;
     }
-
     private Map<String, Object> updateInput(
             Map<String, Object> formData) {
         Map<String, Object> input = new LinkedHashMap<>();
@@ -807,7 +702,6 @@ public class EntityDataActionService {
         }
         return input;
     }
-
     private EntityDataDTO entityData(
             Object value,
             String entityCode,
@@ -832,7 +726,6 @@ public class EntityDataActionService {
         }
         return dto;
     }
-
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         if (value instanceof Map<?, ?> map) {
@@ -843,13 +736,7 @@ public class EntityDataActionService {
         }
         return new LinkedHashMap<>();
     }
-
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
-    }
-
-    private record EventOrigin(
-            String configType,
-            String configId) {
     }
 }

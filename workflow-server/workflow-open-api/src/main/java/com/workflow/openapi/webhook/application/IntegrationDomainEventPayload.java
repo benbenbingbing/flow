@@ -20,6 +20,10 @@ public record IntegrationDomainEventPayload(
         String taskDefinitionKey,
         String traceId,
         Instant occurredAt,
+        String scenarioKey,
+        Long bindingRevision,
+        String businessVersion,
+        String identityNamespace,
         Map<String, Object> attributes) {
 
     public IntegrationDomainEventPayload(
@@ -39,6 +43,7 @@ public record IntegrationDomainEventPayload(
         this(eventId, sourceEventKey, applicationId, eventType,
                 processInstanceId, processKey, externalSystem, businessType,
                 businessId, taskId, taskDefinitionKey, traceId, occurredAt,
+                null, null, null, null,
                 Map.of());
     }
 }

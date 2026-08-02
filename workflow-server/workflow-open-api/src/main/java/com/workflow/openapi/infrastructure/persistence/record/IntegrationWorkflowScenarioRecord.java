@@ -18,6 +18,8 @@ public class IntegrationWorkflowScenarioRecord {
     private String identityMappingJson;
     private String eventTypesJson;
     private Long revision;
+    private Long publishedRevision;
+    private Long draftRevision;
     private String configHash;
     private String createdBy;
     private String updatedBy;

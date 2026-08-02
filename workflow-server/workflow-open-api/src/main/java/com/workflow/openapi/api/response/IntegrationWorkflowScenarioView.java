@@ -16,6 +16,8 @@ public record IntegrationWorkflowScenarioView(
         JsonNode identityMapping,
         Set<String> eventTypes,
         long revision,
+        Long publishedRevision,
+        Long draftRevision,
         String configHash,
         Instant createTime,
         Instant updateTime) {

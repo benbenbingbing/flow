@@ -15,6 +15,7 @@ public class IntegrationProcessBindingRecord {
     private String externalSystem;
     private String businessType;
     private String businessId;
+    private String businessVersion;
     private String processInstanceId;
     private String processDefinitionKey;
     private String inputSnapshotJson;
@@ -22,6 +23,8 @@ public class IntegrationProcessBindingRecord {
     private String outcomeMappingSnapshotJson;
     private String eventTypesSnapshotJson;
     private String externalInitiatorId;
+    private String identityNamespace;
+    private String identityMappingSnapshotJson;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

@@ -44,7 +44,7 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("019", currentVersion());
+        assertEquals("022", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
@@ -57,7 +57,8 @@ class IntegrationApplicationMigrationTest {
                         "integration_application_scope",
                         "integration_process_grant",
                         "integration_rate_limit_bucket",
-                        "integration_workflow_scenario"),
+                        "integration_workflow_scenario",
+                        "integration_workflow_scenario_revision"),
                 integrationTables());
         assertEquals(
                 Set.of(
@@ -90,6 +91,12 @@ class IntegrationApplicationMigrationTest {
         assertTrue(columnExists(
                 "integration_process_binding",
                 "event_types_snapshot_json"));
+        assertTrue(columnExists(
+                "integration_workflow_scenario",
+                "published_revision"));
+        assertTrue(columnExists(
+                "integration_process_binding",
+                "identity_mapping_snapshot_json"));
         assertTrue(indexExists(
                 "storage_file_object",
                 "uk_storage_file_owner_idempotency"));
@@ -155,7 +162,7 @@ class IntegrationApplicationMigrationTest {
 
         flyway().migrate();
 
-        assertEquals("019", currentVersion());
+        assertEquals("022", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "

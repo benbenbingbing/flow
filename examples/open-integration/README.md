@@ -23,3 +23,18 @@ TLS 校验。
 固定流程版本和幂等重放。通过 `FLOW_SCENARIO_KEY`、`FLOW_INPUT_JSON` 和可选的
 `FLOW_BUSINESS_SYSTEM`、`FLOW_BUSINESS_TYPE`、`FLOW_BUSINESS_ID` 注入参数；脚本不依赖
 任何特定外部系统名称。
+
+## 通用参考外部系统
+
+`reference-external-system.mjs` 是仅用于契约验收的本地参考实现，不是 Flow 的运行时
+依赖，也不代表任何具体业务系统。它覆盖 Client Credentials、启动幂等、查询、取消以及
+Flow Webhook 的 HMAC 校验和事件去重，便于在没有真实外部系统时验证接入边界：
+
+```bash
+REFERENCE_EXTERNAL_SELF_TEST=1 node examples/open-integration/reference-external-system.mjs
+node examples/open-integration/reference-external-system.mjs
+```
+
+参考实现只监听 `127.0.0.1`，默认端口为 `9089`，凭据可通过
+`REFERENCE_CLIENT_ID`、`REFERENCE_CLIENT_SECRET` 和 `REFERENCE_WEBHOOK_SECRET` 覆盖。
+不要把它暴露到公网，也不要把默认凭据用于生产环境。

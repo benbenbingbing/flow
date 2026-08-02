@@ -50,7 +50,16 @@ class ProjectMemberChangeServiceTest {
                 new ProjectEntityMutationExecutor(
                         entityMutationPort,
                         objectMapper),
-                objectMapper);
+                new ProjectMemberChangeRuleSupport(
+                        entityDataService,
+                        objectMapper),
+                new ProjectMemberChangeTraceSupport(
+                        new ProjectEntityMutationExecutor(
+                                entityMutationPort,
+                                objectMapper),
+                        new ProjectMemberChangeRuleSupport(
+                                entityDataService,
+                                objectMapper)));
         when(entityDataService.findByCondition(
                 anyString(), anyMap()))
                 .thenReturn(List.of());

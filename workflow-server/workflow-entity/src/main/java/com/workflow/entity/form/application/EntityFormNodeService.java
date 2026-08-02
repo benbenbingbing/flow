@@ -1,5 +1,4 @@
 package com.workflow.entity.form.application;
-
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -40,7 +39,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
-
 /**
  * 实体表单节点服务，负责表单节点的创建、补丁、排序、删除、差异替换与树校验。
  *
@@ -50,12 +48,10 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class EntityFormNodeService {
-
     /** 节点排序步长，用于 orderKey 的稀疏分布以支持插入。 */
     public static final long ORDER_STEP = 1_000_000L;
     /** 表单节点最大嵌套深度。 */
     public static final int MAX_DEPTH = 8;
-
     private static final String ACTIVE_NODE_KEY_UNIQUE_INDEX =
             "uk_entity_form_node_active_key";
     private static final Pattern NODE_KEY =
@@ -100,7 +96,6 @@ public class EntityFormNodeService {
             "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
     private static final Set<String> SYSTEM_READ_ONLY_DATA_SOURCE_USAGES =
             Set.of("FORM_INIT", "FIELD_OPTIONS", "AFTER_LOAD");
-
     private final EntityFormMapper formMapper;
     private final EntityFormNodeMapper nodeMapper;
     private final EntityRelationMapper relationMapper;
@@ -110,7 +105,6 @@ public class EntityFormNodeService {
     private final EntityFieldMapper fieldMapper;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final JsonDocumentCodec codec;
-
     /**
      * 查询表单的所有节点。
      *
@@ -121,7 +115,6 @@ public class EntityFormNodeService {
         requireForm(formId);
         return nodeMapper.findByFormId(formId);
     }
-
     /**
      * 创建表单节点，校验配置合法性并落库。
      *
@@ -135,7 +128,6 @@ public class EntityFormNodeService {
     public EntityFormNode create(String formId, EntityFormNodeCreateRequest request) {
         return createInternal(formId, request, false);
     }
-
     private EntityFormNode createInternal(
             String formId,
             EntityFormNodeCreateRequest request,
@@ -193,7 +185,6 @@ public class EntityFormNodeService {
         touchForm(formId);
         return node;
     }
-
     /**
      * 按补丁请求更新节点属性，基于乐观锁更新并校验绑定状态。
      *
@@ -212,7 +203,6 @@ public class EntityFormNodeService {
         return patchInternal(
                 formId, nodeId, request, PatchMode.USER_PROPERTY);
     }
-
     private EntityFormNode patchInternal(
             String formId,
             String nodeId,
@@ -242,7 +232,6 @@ public class EntityFormNodeService {
         updated.setUpdatedAt(LocalDateTime.now());
         validateNode(updated, current.getId());
         validateSystemNode(updated);
-
         UpdateWrapper<EntityFormNode> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", nodeId)
                 .eq("form_id", formId)
@@ -277,7 +266,6 @@ public class EntityFormNodeService {
         touchForm(formId);
         return requireNode(formId, nodeId);
     }
-
     /**
      * 调整节点在同级中的排序位置，必要时自动重平衡 orderKey。
      *
@@ -317,7 +305,6 @@ public class EntityFormNodeService {
         return patchInternal(
                 formId, nodeId, patch, PatchMode.USER_REORDER);
     }
-
     /**
      * 删除表单节点，存在子节点时拒绝删除。
      *
@@ -352,7 +339,6 @@ public class EntityFormNodeService {
         }
         touchForm(formId);
     }
-
     /**
      * 按差异批量替换表单节点（系统导入模式，不校验表单版本号）。
      *
@@ -367,7 +353,6 @@ public class EntityFormNodeService {
                 null,
                 PatchMode.SYSTEM_IMPORT);
     }
-
     /**
      * 按差异批量替换表单节点（用户模式，校验表单版本号）。
      *
@@ -386,7 +371,6 @@ public class EntityFormNodeService {
                 expectedRevision,
                 PatchMode.USER_PROPERTY);
     }
-
     private void replaceByDiffInternal(
             String formId,
             List<EntityFormNode> incoming,
@@ -438,7 +422,6 @@ public class EntityFormNodeService {
         }
         validateTree(formId);
     }
-
     private List<EntityFormNode> missingNodesInDeletionOrder(
             List<EntityFormNode> existing,
             Set<String> retained) {
@@ -455,7 +438,6 @@ public class EntityFormNodeService {
                         .thenComparing(EntityFormNode::getId))
                 .toList();
     }
-
     private int resolveNodeDepth(
             EntityFormNode node,
             Map<String, EntityFormNode> byId,
@@ -490,7 +472,6 @@ public class EntityFormNodeService {
         }
         return depthById.get(node.getId());
     }
-
     /**
      * 校验表单节点树结构：父子类型兼容、循环引用、嵌套深度和子表单发布引用图。
      *
@@ -529,7 +510,6 @@ public class EntityFormNodeService {
         }
         validateReferencedForms(formId, nodes);
     }
-
     private void validateReferencedForms(
             String formId,
             List<EntityFormNode> currentDraftNodes) {
@@ -540,7 +520,6 @@ public class EntityFormNodeService {
                 new LinkedHashSet<>(),
                 new HashMap<>());
     }
-
     private void validateReferencedFormGraph(
             String formId,
             List<FormReleaseReference> references,
@@ -580,7 +559,6 @@ public class EntityFormNodeService {
         }
         path.remove(formId);
     }
-
     private List<FormReleaseReference> referencedFormReleases(
             List<EntityFormNode> nodes) {
         List<FormReleaseReference> references = new ArrayList<>();
@@ -595,7 +573,6 @@ public class EntityFormNodeService {
         }
         return references;
     }
-
     private List<FormReleaseReference> referencedFormReleases(
             UiConfigRelease release) {
         Map<String, Object> snapshot = codec.readObject(
@@ -622,7 +599,6 @@ public class EntityFormNodeService {
         }
         return references;
     }
-
     private Map<String, Object> readSnapshotNodeProps(Map<?, ?> node) {
         Object propsDocument = node.get("propsDocument");
         if (propsDocument instanceof String document
@@ -631,7 +607,6 @@ public class EntityFormNodeService {
         }
         return objectMap(node.get("props"), "子表单发布节点属性");
     }
-
     private void addFormReleaseReference(
             List<FormReleaseReference> references,
             FormReleaseReference reference) {
@@ -645,7 +620,6 @@ public class EntityFormNodeService {
             references.add(reference);
         }
     }
-
     private Map<String, Object> normalizeSubFormProps(
             String nodeType,
             Map<String, Object> source,
@@ -663,7 +637,6 @@ public class EntityFormNodeService {
                 objectMap(componentProps.get("subFormConfig"), "子表单配置");
         Map<String, Object> directConfig =
                 objectMap(props.get("subFormConfig"), "子表单配置");
-
         String formId = firstText(
                 explicitFormId,
                 props.get("childFormId"),
@@ -697,13 +670,11 @@ public class EntityFormNodeService {
                 nestedConfig.get("childFormReleaseVersion"),
                 nestedConfig.get("refFormReleaseVersion"),
                 nestedConfig.get("publishedFormReleaseVersion"));
-
         if (!StringUtils.hasText(formId)
                 && !StringUtils.hasText(releaseId)
                 && releaseVersion == null) {
             return props;
         }
-
         UiConfigRelease release;
         if (StringUtils.hasText(releaseId)) {
             release = releaseMapper.selectById(releaseId);
@@ -742,7 +713,6 @@ public class EntityFormNodeService {
                 release.getId(),
                 releaseVersion == null ? release.getVersion() : releaseVersion);
         release = requireReferencedRelease(reference);
-
         props.put("childFormId", release.getConfigId());
         props.put("refFormId", release.getConfigId());
         props.put("publishedFormId", release.getConfigId());
@@ -752,7 +722,6 @@ public class EntityFormNodeService {
         props.put("childFormReleaseVersion", release.getVersion());
         props.put("refFormReleaseVersion", release.getVersion());
         props.put("publishedFormReleaseVersion", release.getVersion());
-
         Map<String, Object> normalizedNestedConfig =
                 new LinkedHashMap<>(nestedConfig);
         normalizedNestedConfig.put("childFormId", release.getConfigId());
@@ -774,7 +743,6 @@ public class EntityFormNodeService {
         props.put("componentProps", componentProps);
         return props;
     }
-
     private Map<String, Object> clearSubFormBindings(
             Map<String, Object> source,
             Set<String> clearFields) {
@@ -810,25 +778,21 @@ public class EntityFormNodeService {
         }
         return props;
     }
-
     private void removeFormIdAliases(Map<String, Object> value) {
         value.remove("childFormId");
         value.remove("refFormId");
         value.remove("publishedFormId");
     }
-
     private void removeReleaseIdAliases(Map<String, Object> value) {
         value.remove("childFormReleaseId");
         value.remove("refFormReleaseId");
         value.remove("publishedFormReleaseId");
     }
-
     private void removeReleaseVersionAliases(Map<String, Object> value) {
         value.remove("childFormReleaseVersion");
         value.remove("refFormReleaseVersion");
         value.remove("publishedFormReleaseVersion");
     }
-
     private Map<String, Object> normalizeRelationBoundSubFormProps(
             EntityFormNode node) {
         EntityRelation relation = requireBoundRelation(node);
@@ -846,7 +810,6 @@ public class EntityFormNodeService {
                             + expectedNodeType
                             + " 节点");
         }
-
         Map<String, Object> props =
                 mutableMap(read(node.getPropsDocument(), "表单节点属性"));
         Map<String, Object> componentProps =
@@ -883,7 +846,6 @@ public class EntityFormNodeService {
         props.put("componentProps", componentProps);
         return props;
     }
-
     private void putCanonicalRelationValue(
             Map<String, Object> target,
             String key,
@@ -900,7 +862,6 @@ public class EntityFormNodeService {
             target.put(key, expected);
         }
     }
-
     private EntityRelation requireBoundRelation(EntityFormNode node) {
         EntityForm form = requireForm(node.getFormId());
         EntityRelation relation =
@@ -921,7 +882,6 @@ public class EntityFormNodeService {
         }
         return relation;
     }
-
     private void validateSubFormReleaseBinding(EntityFormNode node) {
         if (!Set.of("SUB_FORM", "REPEATER").contains(node.getNodeType())) {
             return;
@@ -935,7 +895,6 @@ public class EntityFormNodeService {
             validateRelationReleaseEntity(node, release);
         }
     }
-
     private void validateRelationReleaseEntity(
             EntityFormNode node,
             UiConfigRelease release) {
@@ -955,7 +914,6 @@ public class EntityFormNodeService {
                             + release.getConfigId());
         }
     }
-
     private FormReleaseReference readFormReleaseReference(
             Map<String, Object> props,
             String nodeLabel) {
@@ -1018,7 +976,6 @@ public class EntityFormNodeService {
                 releaseId.trim(),
                 releaseVersion);
     }
-
     private UiConfigRelease requireReferencedRelease(
             FormReleaseReference reference) {
         UiConfigRelease release = releaseMapper.selectById(reference.releaseId());
@@ -1049,13 +1006,11 @@ public class EntityFormNodeService {
         }
         return release;
     }
-
     private Map<String, Object> mutableMap(Map<String, Object> source) {
         return source == null
                 ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(source);
     }
-
     private Map<String, Object> objectMap(Object value, String label) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
@@ -1067,7 +1022,6 @@ public class EntityFormNodeService {
         }
         return new LinkedHashMap<>();
     }
-
     private String firstText(Object... values) {
         for (Object value : values) {
             String text = text(value);
@@ -1077,7 +1031,6 @@ public class EntityFormNodeService {
         }
         return null;
     }
-
     private Integer firstInteger(Object... values) {
         for (Object value : values) {
             if (value instanceof Number number) {
@@ -1094,17 +1047,14 @@ public class EntityFormNodeService {
         }
         return null;
     }
-
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
-
     private record FormReleaseReference(
             String formId,
             String releaseId,
             Integer releaseVersion) {
     }
-
     private void validateCreateConfiguration(
             EntityFormNodeCreateRequest request,
             String nodeType) {
@@ -1139,13 +1089,11 @@ public class EntityFormNodeService {
                 request.getTemplateVersion(),
                 request.getLocalOverrides());
     }
-
     private void normalizeAndValidateConfiguration(
             EntityFormNode node,
             boolean migrateUnsupported) {
         String nodeType = normalize(node.getNodeType(), "FIELD");
         Map<String, Object> inactive = new LinkedHashMap<>();
-
         EntityFormNodePropertyPolicy.NormalizedProps normalizedProps =
                 EntityFormNodePropertyPolicy.normalizeProps(
                         nodeType,
@@ -1156,7 +1104,6 @@ public class EntityFormNodeService {
         if (!normalizedProps.inactive().isEmpty()) {
             inactive.put("props", normalizedProps.inactive());
         }
-
         Map<String, Object> rules =
                 read(node.getRulesDocument(), "表单节点规则");
         try {
@@ -1179,7 +1126,6 @@ public class EntityFormNodeService {
             inactive.put("rules", rules);
             node.setRulesDocument(null);
         }
-
         Map<String, Object> bindings = read(
                 node.getDataSourceBindingsDocument(),
                 "表单节点数据源绑定");
@@ -1197,7 +1143,6 @@ public class EntityFormNodeService {
             inactive.put("dataSourceBindings", bindings);
             node.setDataSourceBindingsDocument(null);
         }
-
         try {
             EntityFormNodePropertyPolicy.validateExtension(
                     nodeType,
@@ -1219,7 +1164,6 @@ public class EntityFormNodeService {
             node.setComponentVersion(null);
             node.setSnapshotVersion(null);
         }
-
         Map<String, Object> localOverrides =
                 read(node.getLocalOverridesDocument(), "模板本地覆盖");
         try {
@@ -1243,7 +1187,6 @@ public class EntityFormNodeService {
             node.setTemplateVersion(null);
             node.setLocalOverridesDocument(null);
         }
-
         try {
             EntityFormNodePropertyPolicy.validateBinding(
                     nodeType,
@@ -1261,7 +1204,6 @@ public class EntityFormNodeService {
             node.setBindingType("NONE");
             node.setBindingRef(null);
         }
-
         if ("RELATION".equals(normalize(
                 node.getBindingType(), "NONE"))
                 && SUB_FORM_NODE_TYPES.contains(nodeType)) {
@@ -1269,10 +1211,8 @@ public class EntityFormNodeService {
                     normalizeRelationBoundSubFormProps(node),
                     "表单节点属性"));
         }
-
         mergeInactiveConfiguration(node, nodeType, inactive);
     }
-
     private void mergeInactiveConfiguration(
             EntityFormNode node,
             String nodeType,
@@ -1293,7 +1233,6 @@ public class EntityFormNodeService {
         legacy.put("inactiveNodeProperties", inactiveByType);
         node.setLegacyPropsDocument(write(legacy, "历史节点属性"));
     }
-
     private void validateNode(EntityFormNode node, String excludeId) {
         if (!StringUtils.hasText(node.getNodeKey())
                 || !NODE_KEY.matcher(node.getNodeKey()).matches()) {
@@ -1350,7 +1289,6 @@ public class EntityFormNodeService {
             }
         }
     }
-
     private void validateSystemNode(EntityFormNode node) {
         EntityForm form = formMapper.selectById(node.getFormId());
         EntityDefinition entity = form == null
@@ -1426,7 +1364,6 @@ public class EntityFormNodeService {
                     "平台系统表字段标识与字段目录不一致");
         }
     }
-
     private void validateParent(String formId, String nodeId, String parentId) {
         int parentDepth = 0;
         if (StringUtils.hasText(parentId)) {
@@ -1455,7 +1392,6 @@ public class EntityFormNodeService {
                     "表单嵌套层级不能超过 " + MAX_DEPTH + " 层");
         }
     }
-
     private int currentSubtreeHeight(String formId, String nodeId) {
         if (!StringUtils.hasText(nodeId)) {
             return 1;
@@ -1477,7 +1413,6 @@ public class EntityFormNodeService {
                 childrenByParent,
                 new HashSet<>());
     }
-
     private int currentSubtreeHeight(
             String nodeId,
             Map<String, List<EntityFormNode>> childrenByParent,
@@ -1498,7 +1433,6 @@ public class EntityFormNodeService {
         visiting.remove(nodeId);
         return height;
     }
-
     private void validateParentChildType(
             EntityFormNode child,
             EntityFormNode parent) {
@@ -1523,7 +1457,6 @@ public class EntityFormNodeService {
                             + " 节点");
         }
     }
-
     private void validateExistingChildren(EntityFormNode parent) {
         List<EntityFormNode> children =
                 nodeMapper.findSiblings(parent.getFormId(), parent.getId());
@@ -1531,7 +1464,6 @@ public class EntityFormNodeService {
             validateParentChildType(child, parent);
         }
     }
-
     private void applyPatch(EntityFormNode target, EntityFormNodePatchRequest request) {
         Set<String> clear = request.getClearFields() == null
                 ? Set.of() : request.getClearFields();
@@ -1633,7 +1565,6 @@ public class EntityFormNodeService {
                     ? null : write(request.getLocalOverrides(), "模板本地覆盖"));
         }
     }
-
     private void validatePatchConstraints(
             EntityFormNode current,
             EntityFormNodePatchRequest request) {
@@ -1654,7 +1585,6 @@ public class EntityFormNodeService {
                 request,
                 clear);
     }
-
     private void validateTechnicalIdentity(
             EntityFormNode current,
             EntityFormNodePatchRequest request,
@@ -1690,7 +1620,6 @@ public class EntityFormNodeService {
             validateBoundNodeIdentity(current, request, clear);
         }
     }
-
     private void validateBoundNodeIdentity(
             EntityFormNode current,
             EntityFormNodePatchRequest request,
@@ -1712,7 +1641,6 @@ public class EntityFormNodeService {
             validateBoundProps(current, request, clear);
         }
     }
-
     private void validateReadOnlyDisplayProps(
             EntityFormNode current,
             EntityFormNodePatchRequest request) {
@@ -1733,7 +1661,6 @@ public class EntityFormNodeService {
                     nodeType + " 节点显示标识由系统管理，不能直接修改");
         }
     }
-
     private void validateBoundProps(
             EntityFormNode current,
             EntityFormNodePatchRequest request,
@@ -1753,7 +1680,6 @@ public class EntityFormNodeService {
                 requestedProps,
                 IMMUTABLE_BOUND_PROP_KEYS,
                 "已绑定节点不能修改字段身份属性");
-
         Map<String, Object> currentComponentProps =
                 objectMap(
                         currentProps.get("componentProps"),
@@ -1786,7 +1712,6 @@ public class EntityFormNodeService {
                     "已绑定引用字段不能修改引用实体属性");
         }
     }
-
     private void requireSameMeaningfulValues(
             Map<String, Object> current,
             Map<String, Object> requested,
@@ -1803,7 +1728,6 @@ public class EntityFormNodeService {
             }
         }
     }
-
     private void validateRequestedPatchConfiguration(
             EntityFormNode current,
             String nodeType,
@@ -1865,7 +1789,6 @@ public class EntityFormNodeService {
                     nodeType + " 节点不支持数据绑定");
         }
     }
-
     private boolean hasValidBindingState(EntityFormNode node) {
         try {
             EntityFormNodePropertyPolicy.validateBinding(
@@ -1877,12 +1800,10 @@ public class EntityFormNodeService {
             return false;
         }
     }
-
     private boolean isBound(EntityFormNode node) {
         return !"NONE".equals(normalize(node.getBindingType(), "NONE"))
                 || StringUtils.hasText(node.getBindingRef());
     }
-
     private EntityFormNode copy(EntityFormNode source) {
         EntityFormNode target = new EntityFormNode();
         target.setId(source.getId());
@@ -1908,7 +1829,6 @@ public class EntityFormNodeService {
         target.setDeleted(source.getDeleted());
         return target;
     }
-
     private EntityFormNodeCreateRequest toCreateRequest(
             EntityFormNode source,
             long fallbackOrder) {
@@ -1935,7 +1855,6 @@ public class EntityFormNodeService {
                 read(source.getLocalOverridesDocument(), "模板本地覆盖"));
         return request;
     }
-
     private EntityFormNodePatchRequest toPatchRequest(
             EntityFormNode source,
             EntityFormNode current,
@@ -2013,7 +1932,6 @@ public class EntityFormNodeService {
         request.setClearFields(clear.isEmpty() ? null : clear);
         return request;
     }
-
     private void addClearIfMissing(
             Set<String> clear,
             String field,
@@ -2023,7 +1941,6 @@ public class EntityFormNodeService {
             clear.add(field);
         }
     }
-
     private boolean hasChanges(EntityFormNode source, EntityFormNode current) {
         return !Objects.equals(source.getParentId(), current.getParentId())
                 || !Objects.equals(source.getNodeKey(), current.getNodeKey())
@@ -2046,7 +1963,6 @@ public class EntityFormNodeService {
                         source.getLocalOverridesDocument(),
                         current.getLocalOverridesDocument());
     }
-
     private boolean requiresLegacyReleasePin(EntityFormNode node) {
         if (!Set.of("SUB_FORM", "REPEATER").contains(
                 normalize(node.getNodeType(), null))) {
@@ -2093,7 +2009,6 @@ public class EntityFormNodeService {
         return StringUtils.hasText(formId)
                 && (!StringUtils.hasText(releaseId) || releaseVersion == null);
     }
-
     private void requireExpectedRevision(Integer expected, EntityFormNode current) {
         if (expected == null) {
             throw new IllegalArgumentException("expectedRevision 不能为空");
@@ -2102,14 +2017,12 @@ public class EntityFormNodeService {
             throw new RevisionConflictException("节点已被其他人修改", current);
         }
     }
-
     private RevisionConflictException conflict(String formId, String nodeId) {
         EntityFormNode latest = nodeMapper.selectById(nodeId);
         return new RevisionConflictException(
                 "节点已被其他人修改，请刷新后重试",
                 latest != null && formId.equals(latest.getFormId()) ? latest : null);
     }
-
     private RevisionConflictException duplicateNodeKeyConflict(
             String formId,
             String nodeKey) {
@@ -2118,7 +2031,6 @@ public class EntityFormNodeService {
                         + nodeKey,
                 nodeMapper.findActiveByFormIdAndNodeKey(formId, nodeKey));
     }
-
     private RuntimeException translateNodeWriteException(
             String formId,
             String nodeKey,
@@ -2128,7 +2040,6 @@ public class EntityFormNodeService {
         }
         return exception;
     }
-
     private boolean containsConstraint(
             Throwable throwable,
             String constraintName) {
@@ -2142,7 +2053,6 @@ public class EntityFormNodeService {
         }
         return false;
     }
-
     private EntityForm requireForm(String formId) {
         EntityForm form = formMapper.selectById(formId);
         if (form == null) {
@@ -2152,7 +2062,6 @@ public class EntityFormNodeService {
                 form.getEntityId());
         return form;
     }
-
     private EntityForm requireFormForUpdate(
             String formId,
             Integer expectedRevision) {
@@ -2174,7 +2083,6 @@ public class EntityFormNodeService {
         }
         return form;
     }
-
     private EntityFormNode requireNode(String formId, String nodeId) {
         EntityFormNode node = nodeMapper.selectById(nodeId);
         if (node == null || !formId.equals(node.getFormId())
@@ -2183,7 +2091,6 @@ public class EntityFormNodeService {
         }
         return node;
     }
-
     private void touchForm(String formId) {
         UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", formId)
@@ -2192,14 +2099,12 @@ public class EntityFormNodeService {
                 .set("update_time", LocalDateTime.now());
         formMapper.update(null, wrapper);
     }
-
     private long nextOrderKey(String formId, String parentId) {
         List<EntityFormNode> siblings = nodeMapper.findSiblings(formId, parentId);
         return siblings.isEmpty()
                 ? ORDER_STEP
                 : siblings.get(siblings.size() - 1).getOrderKey() + ORDER_STEP;
     }
-
     private long resolveBoundary(
             String formId,
             String parentId,
@@ -2214,7 +2119,6 @@ public class EntityFormNodeService {
         }
         return node.getOrderKey();
     }
-
     private void rebalance(String formId, String parentId) {
         List<EntityFormNode> siblings =
                 new ArrayList<>(nodeMapper.findSiblings(formId, parentId));
@@ -2231,31 +2135,25 @@ public class EntityFormNodeService {
             order += ORDER_STEP;
         }
     }
-
     private String write(Map<String, Object> value, String label) {
         return value == null || value.isEmpty() ? null : codec.write(value, label);
     }
-
     private Map<String, Object> read(String value, String label) {
         return StringUtils.hasText(value) ? codec.readObject(value, label) : null;
     }
-
     private String normalize(String value, String fallback) {
         if (!StringUtils.hasText(value)) {
             return fallback;
         }
         return value.trim().toUpperCase(Locale.ROOT);
     }
-
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
-
     private enum PatchMode {
         USER_PROPERTY,
         USER_REORDER,
         SYSTEM_IMPORT;
-
         boolean userFacing() {
             return this != SYSTEM_IMPORT;
         }

@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataActionService;
+import com.workflow.entity.data.application.EntityDataActionEventSupport;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -97,6 +98,9 @@ class EntityDataActionServiceTest {
 
         @Spy
         private ObjectMapper objectMapper = new ObjectMapper();
+
+        @Mock
+        private EntityDataActionEventSupport eventSupport;
 
         @InjectMocks
         private EntityDataActionService service;

@@ -1,8 +1,6 @@
 package com.workflow.migration.application;
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -43,7 +41,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
@@ -60,7 +57,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-
 /**
  * 配置迁移包服务。
  *
@@ -70,9 +66,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ConfigMigrationPackageService {
-
     private static final DateTimeFormatter PACKAGE_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationPackageCodec packageCodec;
     private final ConfigMigrationAssetMapper assetMapper;
@@ -93,8 +87,7 @@ public class ConfigMigrationPackageService {
     private final SysOrganizationMapper organizationMapper;
     private final SysGroupMapper groupMapper;
     private final FlowActionCatalogPort flowActionCatalogPort;
-    private final ObjectMapper objectMapper;
-
+    private final ConfigMigrationPackageDocumentSupport documents;
     /**
      * 生成配置导出包。
      *
@@ -123,10 +116,8 @@ public class ConfigMigrationPackageService {
         String migrationTag = resolvePackageTag(request.getMigrationTag(), assets);
         String packageNo = "WFP-" + migrationTag + "-" + LocalDateTime.now().format(PACKAGE_TIME)
                 + "-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase(Locale.ROOT);
-
         ConfigMigrationPackageCodec.EncodedPackage encoded = packageCodec.encode(
                 packageNo, migrationTag, assets, request.getSelections());
-
         ConfigExportPackage exportPackage = new ConfigExportPackage();
         exportPackage.setPackageNo(packageNo);
         exportPackage.setMigrationTag(migrationTag);
@@ -141,7 +132,6 @@ public class ConfigMigrationPackageService {
         exportPackage.setDownloadCount(0);
         exportPackage.setDeleted(0);
         exportPackageMapper.insert(exportPackage);
-
         for (ConfigMigrationAsset asset : assets) {
             ConfigExportPackageItem item = new ConfigExportPackageItem();
             item.setPackageId(exportPackage.getId());
@@ -150,10 +140,9 @@ public class ConfigMigrationPackageService {
             item.setBusinessKey(asset.getBusinessKey());
             item.setSourceVersion(asset.getSourceVersion());
             item.setContentHash(asset.getContentHash());
-            item.setSelectionJson(writeJson(request.getSelections().get(asset.getId())));
+            item.setSelectionJson(documents.writeJson(request.getSelections().get(asset.getId())));
             item.setCreatedAt(LocalDateTime.now());
             exportItemMapper.insert(item);
-
             asset.setExportStatus("EXPORTED");
             asset.setLastExportAt(LocalDateTime.now());
             asset.setExportCount(Optional.ofNullable(asset.getExportCount()).orElse(0) + 1);
@@ -162,7 +151,6 @@ public class ConfigMigrationPackageService {
         }
         return exportSummary(exportPackage);
     }
-
     /**
      * 查询所有导出包摘要列表(按创建时间倒序)。
      *
@@ -174,7 +162,6 @@ public class ConfigMigrationPackageService {
                         .orderByDesc(ConfigExportPackage::getCreatedAt))
                 .stream().map(this::exportSummary).toList();
     }
-
     /**
      * 下载指定导出包并累加下载次数。
      *
@@ -202,7 +189,6 @@ public class ConfigMigrationPackageService {
         return new DownloadFile(exportPackage.getFileName(), "application/octet-stream",
                 exportPackage.getPackageData());
     }
-
     /**
      * 上传并导入 wfpack 发布包。
      *
@@ -235,7 +221,6 @@ public class ConfigMigrationPackageService {
             if (existing != null) {
                 return importSummary(existing);
             }
-
             ConfigImportPackage importPackage = new ConfigImportPackage();
             importPackage.setPackageNo(decoded.packageNo());
             importPackage.setSourceEnvironment(StringUtils.hasText(sourceEnvironment)
@@ -249,7 +234,6 @@ public class ConfigMigrationPackageService {
             importPackage.setImportedAt(LocalDateTime.now());
             importPackage.setDeleted(0);
             importPackageMapper.insert(importPackage);
-
             Set<String> packageAssets = decoded.assets().stream()
                     .map(asset -> asset.assetType() + ":" + asset.businessKey())
                     .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
@@ -261,8 +245,8 @@ public class ConfigMigrationPackageService {
                 item.setAssetName(asset.assetName());
                 item.setSourceVersion(asset.sourceVersion());
                 item.setSourceHash(asset.sourceHash());
-                item.setSnapshotJson(writeJson(asset.snapshot()));
-                item.setDependenciesJson(writeJson(asset.dependencies()));
+                item.setSnapshotJson(documents.writeJson(asset.snapshot()));
+                item.setDependenciesJson(documents.writeJson(asset.dependencies()));
                 item.setComparisonStatus(compare(item));
                 item.setMappingStatus(resolveDependencies(asset.dependencies(), packageAssets).resolved()
                         ? "RESOLVED" : "UNRESOLVED");
@@ -278,7 +262,6 @@ public class ConfigMigrationPackageService {
             throw new IllegalArgumentException("发布包导入失败: " + e.getMessage(), e);
         }
     }
-
     /**
      * 查询所有导入批次摘要列表(按导入时间倒序)。
      *
@@ -290,7 +273,6 @@ public class ConfigMigrationPackageService {
                         .orderByDesc(ConfigImportPackage::getImportedAt))
                 .stream().map(this::importSummary).toList();
     }
-
     /**
      * 查询指定导入批次的条目列表(按资产类型、业务编码排序)。
      *
@@ -304,7 +286,6 @@ public class ConfigMigrationPackageService {
                 .orderByAsc(ConfigImportItem::getAssetType)
                 .orderByAsc(ConfigImportItem::getBusinessKey));
     }
-
     /**
      * 对导入批次执行分析。
      *
@@ -332,10 +313,9 @@ public class ConfigMigrationPackageService {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         List<Map<String, Object>> reports = new ArrayList<>();
         boolean blocked = false;
-
         for (ConfigImportItem item : items) {
             item.setComparisonStatus(compare(item));
-            List<Map<String, Object>> dependencies = readMapList(item.getDependenciesJson());
+            List<Map<String, Object>> dependencies = documents.readMapList(item.getDependenciesJson());
             DependencyResolution dependencyResolution = resolveDependencies(dependencies, packageAssets);
             item.setMappingStatus(dependencyResolution.resolved() ? "RESOLVED" : "UNRESOLVED");
             List<Map<String, Object>> risks = analyzeRisks(item);
@@ -344,7 +324,6 @@ public class ConfigMigrationPackageService {
                     || "LOCAL_CHANGED".equals(item.getComparisonStatus())
                     || risks.stream().anyMatch(risk -> "BLOCKING".equals(risk.get("level")));
             blocked = blocked || itemBlocked;
-
             Map<String, Object> report = new LinkedHashMap<>();
             report.put("itemId", item.getId());
             report.put("assetType", item.getAssetType());
@@ -355,18 +334,16 @@ public class ConfigMigrationPackageService {
             report.put("risks", risks);
             report.put("blocked", itemBlocked);
             reports.add(report);
-
             item.setErrorMessage(itemBlocked ? summarizeFailure(dependencyResolution.missing(), risks,
                     item.getComparisonStatus()) : null);
             item.setUpdatedAt(LocalDateTime.now());
             importItemMapper.updateAnalysisResult(item);
         }
-
         Map<String, Object> validationReport = new LinkedHashMap<>();
         validationReport.put("analyzedAt", LocalDateTime.now());
         validationReport.put("blocked", blocked);
         validationReport.put("items", reports);
-        importPackage.setValidationReportJson(writeJson(validationReport));
+        importPackage.setValidationReportJson(documents.writeJson(validationReport));
         importPackage.setStatus(blocked ? "BLOCKED" : "ANALYZED");
         importPackage.setErrorMessage(blocked ? "存在冲突、缺失依赖或危险数据库变更" : null);
         importPackageMapper.updateAnalysisResult(
@@ -376,7 +353,6 @@ public class ConfigMigrationPackageService {
                 importPackage.getErrorMessage());
         return validationReport;
     }
-
     /**
      * 保存环境映射并在保存后重新触发导入批次分析。
      *
@@ -428,7 +404,6 @@ public class ConfigMigrationPackageService {
         }
         analyze(importId);
     }
-
     /**
      * 查询导入批次的比较结果(批次摘要、条目列表、校验报告)。
      *
@@ -441,10 +416,9 @@ public class ConfigMigrationPackageService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("package", importSummary(importPackage));
         result.put("items", listImportItems(importId));
-        result.put("validationReport", parseJson(importPackage.getValidationReportJson(), Map.of()));
+        result.put("validationReport", documents.parseJson(importPackage.getValidationReportJson(), Map.of()));
         return result;
     }
-
     /**
      * 展开所选资产的全部硬依赖(BFS)，返回去重后按类型+编码排序的资产列表。
      *
@@ -460,10 +434,9 @@ public class ConfigMigrationPackageService {
                 queue.add(asset);
             }
         }
-
         while (!queue.isEmpty()) {
             ConfigMigrationAsset asset = queue.removeFirst();
-            for (Map<String, Object> dependency : readMapList(asset.getDependenciesJson())) {
+            for (Map<String, Object> dependency : documents.readMapList(asset.getDependenciesJson())) {
                 if (!Boolean.parseBoolean(String.valueOf(dependency.getOrDefault("required", false)))) {
                     continue;
                 }
@@ -489,7 +462,6 @@ public class ConfigMigrationPackageService {
                         .thenComparing(ConfigMigrationAsset::getBusinessKey))
                 .toList();
     }
-
     /**
      * 根据依赖类型与编码查找对应的迁移资产(实体/流程/表单引用)。
      *
@@ -511,19 +483,16 @@ public class ConfigMigrationPackageService {
         }
         return null;
     }
-
     private void validateExportable(ConfigMigrationAsset asset) {
         if (!ConfigMigrationAssetService.COMPLETE.equals(asset.getSnapshotCompleteness())) {
             throw new IllegalArgumentException("历史资产 " + asset.getBusinessKey() + " 不是完整发布快照，请重新发布");
         }
     }
-
     private void ensureDependencyExists(String type, String key) {
         if (!isDependencyResolved(type, key, Set.of())) {
             throw new IllegalArgumentException("依赖仅校验失败: " + type + ":" + key);
         }
     }
-
     private String resolvePackageTag(String requested, List<ConfigMigrationAsset> assets) {
         if (StringUtils.hasText(requested)) {
             return normalizeTag(requested);
@@ -533,11 +502,9 @@ public class ConfigMigrationPackageService {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         return tags.size() == 1 ? tags.iterator().next() : assetService.generateMigrationTag();
     }
-
     private String normalizeTag(String value) {
         return value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9._-]", "-");
     }
-
     /**
      * 比较导入条目与目标环境当前资产，返回比较状态并写入目标前置版本/哈希。
      *
@@ -574,7 +541,6 @@ public class ConfigMigrationPackageService {
         }
         return sourceChanged ? "SOURCE_NEWER" : "CONSISTENT";
     }
-
     /**
      * 解析硬依赖，返回是否全部满足及缺失依赖列表。
      *
@@ -600,7 +566,6 @@ public class ConfigMigrationPackageService {
         }
         return new DependencyResolution(missing.isEmpty(), missing);
     }
-
     /**
      * 判断单个依赖在目标环境是否已满足：包内含或本地存在或存在环境映射。
      *
@@ -653,7 +618,6 @@ public class ConfigMigrationPackageService {
         }
         return true;
     }
-
     private String mappedKey(String type, String sourceKey) {
         ConfigEnvironmentMapping mapping = environmentMappingMapper.selectOne(
                 new LambdaQueryWrapper<ConfigEnvironmentMapping>()
@@ -663,14 +627,12 @@ public class ConfigMigrationPackageService {
                         .last("LIMIT 1"));
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
-
     private boolean hasMapping(String type, String key) {
         return environmentMappingMapper.selectCount(new LambdaQueryWrapper<ConfigEnvironmentMapping>()
                 .eq(ConfigEnvironmentMapping::getSourceType, type)
                 .eq(ConfigEnvironmentMapping::getSourceKey, key)
                 .eq(ConfigEnvironmentMapping::getEnabled, true)) > 0;
     }
-
     /**
      * 对实体资产识别字段层面的危险变更风险(均为 BLOCKING 级)。
      *
@@ -689,7 +651,7 @@ public class ConfigMigrationPackageService {
         if (!ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
             return risks;
         }
-        Map<String, Object> snapshot = readMap(item.getSnapshotJson());
+        Map<String, Object> snapshot = documents.readMap(item.getSnapshotJson());
         if (!snapshot.containsKey("fields")) {
             return risks;
         }
@@ -700,11 +662,10 @@ public class ConfigMigrationPackageService {
         Map<String, EntityField> currentFields = fieldMapper.findByEntityId(existing.getId()).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         EntityField::getFieldCode, value -> value, (left, right) -> left, LinkedHashMap::new));
-        Map<String, Map<String, Object>> incomingFields = readMapList(snapshot.get("fields")).stream()
+        Map<String, Map<String, Object>> incomingFields = documents.readMapList(snapshot.get("fields")).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         value -> String.valueOf(value.get("fieldCode")), value -> value,
                         (left, right) -> left, LinkedHashMap::new));
-
         for (EntityField current : currentFields.values()) {
             if (Boolean.TRUE.equals(current.getIsSystem())) {
                 continue;
@@ -720,25 +681,24 @@ public class ConfigMigrationPackageService {
                 risks.add(risk("BLOCKING", "FIELD_TYPE_CHANGED", current.getFieldCode(),
                         "字段类型从 " + current.getFieldType() + " 变更为 " + incomingType));
             }
-            Integer incomingLength = integerValue(incoming.get("fieldLength"));
+            Integer incomingLength = documents.integerValue(incoming.get("fieldLength"));
             if (current.getFieldLength() != null && incomingLength != null
                     && incomingLength < current.getFieldLength()) {
                 risks.add(risk("BLOCKING", "FIELD_LENGTH_NARROWED", current.getFieldCode(),
                         "字段长度从 " + current.getFieldLength() + " 收窄为 " + incomingLength));
             }
-            if (!Boolean.TRUE.equals(current.getIsRequired()) && booleanValue(incoming.get("isRequired"))) {
+            if (!Boolean.TRUE.equals(current.getIsRequired()) && documents.booleanValue(incoming.get("isRequired"))) {
                 risks.add(risk("BLOCKING", "FIELD_REQUIRED", current.getFieldCode(),
                         "已有字段改为必填，需要先完成数据治理"));
             }
-            if (!Boolean.TRUE.equals(current.getIsUnique()) && booleanValue(incoming.get("isUnique"))) {
+            if (!Boolean.TRUE.equals(current.getIsUnique()) && documents.booleanValue(incoming.get("isUnique"))) {
                 risks.add(risk("BLOCKING", "FIELD_UNIQUE", current.getFieldCode(),
                         "已有字段增加唯一约束，需要先检查重复数据"));
             }
         }
-
         for (Map<String, Object> incoming : incomingFields.values()) {
             String fieldCode = String.valueOf(incoming.get("fieldCode"));
-            if (!currentFields.containsKey(fieldCode) && booleanValue(incoming.get("isRequired"))
+            if (!currentFields.containsKey(fieldCode) && documents.booleanValue(incoming.get("isRequired"))
                     && !StringUtils.hasText(String.valueOf(incoming.getOrDefault("defaultValue", "")))) {
                 risks.add(risk("BLOCKING", "NEW_REQUIRED_WITHOUT_DEFAULT", fieldCode,
                         "新增必填字段没有默认值，历史数据无法安全回填"));
@@ -746,12 +706,11 @@ public class ConfigMigrationPackageService {
         }
         return risks;
     }
-
     private List<Map<String, Object>> analyzeSystemEntityUiRisks(
             ConfigImportItem item) {
         List<Map<String, Object>> risks = new ArrayList<>();
         Map<String, Object> snapshot =
-                readMap(item.getSnapshotJson());
+                documents.readMap(item.getSnapshotJson());
         Map<String, Object> definition =
                 snapshot.get("definition") instanceof Map<?, ?> map
                         ? map.entrySet().stream().collect(
@@ -832,7 +791,6 @@ public class ConfigMigrationPackageService {
         }
         return risks;
     }
-
     private void collectReferencedFieldCodes(
             Object value,
             Set<String> result) {
@@ -854,13 +812,12 @@ public class ConfigMigrationPackageService {
         if (value instanceof String text
                 && (text.trim().startsWith("{")
                 || text.trim().startsWith("["))) {
-            Object parsed = parseJson(text, null);
+            Object parsed = documents.parseJson(text, null);
             if (parsed != null) {
                 collectReferencedFieldCodes(parsed, result);
             }
         }
     }
-
     private Map<String, Object> risk(String level, String code, String fieldCode, String message) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("level", level);
@@ -869,7 +826,6 @@ public class ConfigMigrationPackageService {
         value.put("message", message);
         return value;
     }
-
     private String summarizeFailure(List<Map<String, Object>> missing,
                                     List<Map<String, Object>> risks,
                                     String comparisonStatus) {
@@ -886,7 +842,6 @@ public class ConfigMigrationPackageService {
         }
         return String.join("；", reasons);
     }
-
     private ConfigImportPackage requiredImport(String id) {
         ConfigImportPackage importPackage = importPackageMapper.selectById(id);
         if (importPackage == null) {
@@ -894,7 +849,6 @@ public class ConfigMigrationPackageService {
         }
         return importPackage;
     }
-
     private Map<String, Object> exportSummary(ConfigExportPackage value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
@@ -910,7 +864,6 @@ public class ConfigMigrationPackageService {
         result.put("lastDownloadAt", value.getLastDownloadAt());
         return result;
     }
-
     private Map<String, Object> importSummary(ConfigImportPackage value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
@@ -927,79 +880,6 @@ public class ConfigMigrationPackageService {
         result.put("errorMessage", value.getErrorMessage());
         return result;
     }
-
-    private Integer integerValue(Object value) {
-        if (value == null || !StringUtils.hasText(String.valueOf(value))) {
-            return null;
-        }
-        return Integer.parseInt(String.valueOf(value));
-    }
-
-    private boolean booleanValue(Object value) {
-        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value))
-                || "1".equals(String.valueOf(value));
-    }
-
-    private String writeJson(Object value) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (Exception e) {
-            throw new IllegalStateException("配置迁移 JSON 序列化失败", e);
-        }
-    }
-
-    private Object parseJson(String value, Object fallback) {
-        if (!StringUtils.hasText(value)) {
-            return fallback;
-        }
-        try {
-            return objectMapper.readValue(value, Object.class);
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    private Map<String, Object> readMap(String value) {
-        if (!StringUtils.hasText(value)) {
-            return new LinkedHashMap<>();
-        }
-        try {
-            return objectMapper.readValue(value, new TypeReference<>() {});
-        } catch (Exception e) {
-            throw new IllegalArgumentException("迁移快照 JSON 格式错误", e);
-        }
-    }
-
-    private List<Map<String, Object>> readMapList(String value) {
-        if (!StringUtils.hasText(value)) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(value, new TypeReference<>() {});
-        } catch (Exception e) {
-            throw new IllegalArgumentException("迁移依赖 JSON 格式错误", e);
-        }
-    }
-
-    private List<Map<String, Object>> readMapList(Object value) {
-        if (!(value instanceof Collection<?> collection)) {
-            return List.of();
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Object item : collection) {
-            if (item instanceof Map<?, ?> map) {
-                Map<String, Object> converted = new LinkedHashMap<>();
-                map.forEach((key, child) -> converted.put(String.valueOf(key), child));
-                result.add(converted);
-            }
-        }
-        return result;
-    }
-
-    /** 依赖解析结果：是否全部满足及缺失依赖列表。 */
     private record DependencyResolution(boolean resolved, List<Map<String, Object>> missing) {
     }
 }

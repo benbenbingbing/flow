@@ -61,6 +61,7 @@ public class OpenProcessAdapter
             "integrationBusinessSystem",
             "integrationBusinessType",
             "integrationBusinessId",
+            "integrationBusinessVersion",
             "integrationExternalInitiatorId");
 
     private final ProcessDefinitionConfigMapper processDefinitionMapper;
@@ -149,6 +150,11 @@ public class OpenProcessAdapter
         variables.put(
                 "integrationBusinessId",
                 command.businessReference().id());
+        if (StringUtils.hasText(command.businessReference().version())) {
+            variables.put(
+                    "integrationBusinessVersion",
+                    command.businessReference().version());
+        }
         if (StringUtils.hasText(command.externalInitiatorId())) {
             variables.put(
                     "integrationExternalInitiatorId",

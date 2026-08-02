@@ -18,6 +18,7 @@ import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplica
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioRevisionMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -30,6 +31,7 @@ class IntegrationWorkflowScenarioServiceTest {
 
     private ObjectMapper objectMapper;
     private IntegrationWorkflowScenarioMapper mapper;
+    private IntegrationWorkflowScenarioRevisionMapper revisionMapper;
     private IntegrationProcessGrantMapper grantMapper;
     private IntegrationApplicationMapper applicationMapper;
     private SystemAuditPort auditPort;
@@ -40,6 +42,7 @@ class IntegrationWorkflowScenarioServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper().findAndRegisterModules();
         mapper = mock(IntegrationWorkflowScenarioMapper.class);
+        revisionMapper = mock(IntegrationWorkflowScenarioRevisionMapper.class);
         grantMapper = mock(IntegrationProcessGrantMapper.class);
         applicationMapper = mock(IntegrationApplicationMapper.class);
         auditPort = mock(SystemAuditPort.class);
@@ -55,6 +58,7 @@ class IntegrationWorkflowScenarioServiceTest {
                                 "app-1", "generic_process", "{}", "[]"));
         service = new IntegrationWorkflowScenarioService(
                 mapper,
+                revisionMapper,
                 applicationMapper,
                 grantMapper,
                 new IntegrationVariableSchemaService(objectMapper),
@@ -73,10 +77,30 @@ class IntegrationWorkflowScenarioServiceTest {
     }
 
     @Test
+    void rejectsMissingIdentityMapping() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "app-1",
+                request(objectMapper.readTree("{\"status\":\"variables.status\"}"),
+                        objectMapper.readTree("{}"))));
+    }
+
+    @Test
+    void validatesWithoutPersistingConfiguration() throws Exception {
+        var result = service.validate("app-1", request(
+                objectMapper.readTree("{\"status\":\"variables.status\"}"),
+                objectMapper.readTree("{\"namespace\":\"external\",\"initiator\":\"variables.requesterId\"}")));
+
+        assertEquals(true, result.valid());
+        assertEquals("generic", result.scenarioKey());
+        verify(mapper, org.mockito.Mockito.never()).insert(any(), anyString(), any());
+        verify(revisionMapper, org.mockito.Mockito.never()).insertDraft(any(), anyString(), any());
+    }
+
+    @Test
     void validatesGrantAndPersistsHashedImmutableConfiguration() throws Exception {
         var result = service.create("app-1", request(
                 objectMapper.readTree("{\"status\":\"variables.status\",\"outcome\":\"variables.outcome\"}"),
-                objectMapper.readTree("{\"initiator\":\"external.userId\"}")));
+                objectMapper.readTree("{\"namespace\":\"external\",\"initiator\":\"variables.requesterId\"}")));
 
         assertEquals("generic", result.scenarioKey());
         org.mockito.ArgumentCaptor<com.workflow.openapi.infrastructure.persistence.record
@@ -84,6 +108,7 @@ class IntegrationWorkflowScenarioServiceTest {
                 org.mockito.ArgumentCaptor.forClass(com.workflow.openapi.infrastructure.persistence.record
                         .IntegrationWorkflowScenarioRecord.class);
         verify(mapper).insert(captor.capture(), anyString(), any());
+        verify(revisionMapper).insertDraft(any(), anyString(), any());
         assertEquals(64, captor.getValue().getConfigHash().length());
         assertEquals(1L, captor.getValue().getRevision());
     }
@@ -93,7 +118,8 @@ class IntegrationWorkflowScenarioServiceTest {
         var result = service.create("app-1", new CreateIntegrationWorkflowScenarioRequest(
                 "follow-latest", "Follow latest", "generic_process", null,
                 objectMapper.readTree("{\"type\":\"object\",\"maxProperties\":1,\"additionalProperties\":false}"),
-                objectMapper.readTree("{}"), objectMapper.readTree("{}"),
+                objectMapper.readTree("{}"),
+                objectMapper.readTree("{\"namespace\":\"tenant\",\"initiator\":\"variables.requesterId\"}"),
                 Set.of("com.flow.process.started.v1")));
 
         assertEquals("follow-latest", result.scenarioKey());

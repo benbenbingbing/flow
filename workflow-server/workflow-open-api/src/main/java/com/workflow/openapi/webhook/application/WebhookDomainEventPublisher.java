@@ -88,6 +88,10 @@ public class WebhookDomainEventPublisher
                                 ? eventId
                                 : event.traceId(),
                         event.occurredAt(),
+                        binding.getScenarioKey(),
+                        binding.getScenarioRevision(),
+                        binding.getBusinessVersion(),
+                        binding.getIdentityNamespace(),
                         event.attributes());
         outboxPublisher.publish(new OutboxPublishRequest(
                 TOPIC,

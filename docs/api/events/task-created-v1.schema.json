@@ -51,6 +51,10 @@
         "processKey": { "$ref": "#/$defs/key" },
         "status": { "const": "ACTIVE" },
         "businessReference": { "$ref": "#/$defs/businessReference" },
+        "scenarioKey": { "$ref": "#/$defs/key" },
+        "bindingRevision": { "type": "integer", "minimum": 1 },
+        "subjectVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "identityNamespace": { "$ref": "#/$defs/key" },
         "createdAt": { "type": "string", "format": "date-time" },
         "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "evidence": { "type": "string", "maxLength": 4096 },
@@ -76,7 +80,8 @@
       "properties": {
         "system": { "$ref": "#/$defs/key" },
         "type": { "$ref": "#/$defs/key" },
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
       }
     }
   }

@@ -108,7 +108,7 @@ class EntityListIncrementalConfigurationTest {
 
     /**
      * 测试字段补丁可显式清空可选绑定：
-     * 验证通过 copyMutableFieldProperties 将源字段为空的属性复制到目标后，相关绑定被清空为 null。
+     * 验证字段属性支持类将源字段为空的属性复制到目标后，相关绑定被清空为 null。
      */
     @Test
     void fieldPatchCanExplicitlyClearOptionalBindings() {
@@ -123,9 +123,12 @@ class EntityListIncrementalConfigurationTest {
         target.setTemplateVersion(3);
         target.setLocalOverridesDocument("{}");
 
-        ReflectionTestUtils.invokeMethod(
+        Object fieldProperties = ReflectionTestUtils.getField(
                 service,
-                "copyMutableFieldProperties",
+                "fieldProperties");
+        ReflectionTestUtils.invokeMethod(
+                fieldProperties,
+                "copyMutable",
                 source,
                 target,
                 Set.of(

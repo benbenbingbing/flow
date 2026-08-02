@@ -1,8 +1,9 @@
 # 外部流程场景配置
 
 外部系统不应把 Flow 的流程 Key、流程版本和变量结构散落在代码中。管理员为每个
-接入应用配置一个场景，外部系统只提交 `scenarioKey` 和业务输入；Flow 在服务端解析
-场景、校验输入并固定到配置中的流程定义版本。
+接入应用配置一个场景，场景先保存为草稿，校验通过后发布；外部系统只提交
+`scenarioKey` 和业务输入。Flow 在服务端解析已发布 revision、校验输入并固定到配置
+中的流程定义版本。
 
 ## 配置模型
 
@@ -14,8 +15,8 @@
 | `processKey` | 已授权给该应用的流程 Key |
 | `processDefinitionVersion` | 可选；填写后启动严格使用该版本，避免流程发布后语义漂移 |
 | `inputSchema` | JSON Schema 子集，限制对象大小、字段类型和必填字段 |
-| `outcomeMapping` | 仅允许 `status`、`outcome`、`actorId`、`evidence` 四个结果字段 |
-| `identityMapping` | 目前支持把 `initiator` 映射到 `variables.<field>` |
+| `outcomeMapping` | 仅允许 `status`、`outcomeCode`、`actorId`、`decidedAt`、`opinion`、`evidence`、`reasonCode`、`failureCode` 等声明式字段 |
+| `identityMapping` | 显式声明 `namespace` 和 `initiator`，身份值只能映射到 `variables.<field>` |
 | `eventTypes` | 六个已发布的 CloudEvents V1 类型白名单 |
 
 配置接口为管理端 API：
@@ -23,13 +24,19 @@
 ```text
 GET    /api/integration-applications/{applicationId}/scenarios
 POST   /api/integration-applications/{applicationId}/scenarios
+POST   /api/integration-applications/{applicationId}/scenarios/validate
 POST   /api/integration-applications/{applicationId}/scenarios/{scenarioKey}
+POST   /api/integration-applications/{applicationId}/scenarios/{scenarioKey}/publish
 POST   /api/integration-applications/{applicationId}/scenarios/{scenarioKey}/disable
 ```
 
-更新和停用必须携带 `expectedRevision`。每次变更都会递增 revision，Flow 在每个流程
-绑定上保存场景 revision、配置摘要、输入快照和输入摘要，因此历史运行不会被后续配置
-修改重新解释。
+更新、发布和停用必须携带 `expectedRevision`。更新只创建新的草稿 revision；发布只
+切换 `published_revision` 指针，已发布 revision 不会被覆盖。Flow 在每个流程绑定上
+保存场景 revision、配置摘要、输入快照和输入摘要，因此历史运行不会被后续配置修改
+重新解释。
+
+`/validate` 只执行授权、Schema、映射和事件白名单校验，返回配置摘要，不创建草稿；
+调用方可在保存前把它作为确定性的配置门禁。
 
 ## 外部调用
 
@@ -41,7 +48,8 @@ POST   /api/integration-applications/{applicationId}/scenarios/{scenarioKey}/dis
   "businessReference": {
     "system": "sample-system",
     "type": "request",
-    "id": "REQ-2026-0001"
+    "id": "REQ-2026-0001",
+    "version": "v3"
   },
   "variables": {
     "requesterId": "user-42",
@@ -51,8 +59,11 @@ POST   /api/integration-applications/{applicationId}/scenarios/{scenarioKey}/dis
 ```
 
 调用 `POST /api/open/v1/process-instances` 后，响应包含 `scenarioKey` 和
-`scenarioRevision`。完成状态中的 `result` 只包含场景配置允许的映射字段；完整业务
-数据仍需通过受保护的业务系统查询。未配置场景时，旧的 `processKey` 启动方式保持兼容。
+`scenarioRevision`。完成状态中的 `result` 只包含场景配置允许的映射字段；`status` 只
+表示 Flow 生命周期，`outcomeCode` 才表示业务决定，不能把 `COMPLETED` 推断成批准；
+完整业务数据仍需通过受保护的业务系统查询。未配置场景时，旧的 `processKey` 启动方式
+保持兼容。场景模式下身份主体严格由 `identityMapping.initiator` 从变量解析，请求体中的
+旧版 `initiator` 字段不会覆盖已发布场景配置。
 
 ## 生产部署要求
 

@@ -650,7 +650,7 @@ components:
           maxLength: 512
     BusinessReference:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required:
         - system
         - type
@@ -666,6 +666,12 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+        version:
+          type: string
+          description: External business subject version frozen on the binding
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]{1,128}$'
     ExternalInitiator:
       type: object
       additionalProperties: false
@@ -748,7 +754,7 @@ components:
           format: date-time
     ProcessInstance:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required:
         - processInstanceId
         - processKey
@@ -786,6 +792,10 @@ components:
             - integer
             - 'null'
           minimum: 1
+        result:
+          type: object
+          description: Only fields allowed by the published scenario result mapping
+          additionalProperties: true
     TaskSummary:
       type: object
       additionalProperties: false

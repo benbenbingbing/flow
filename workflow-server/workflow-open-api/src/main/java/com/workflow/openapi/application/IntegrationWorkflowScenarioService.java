@@ -18,10 +18,13 @@ import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.request.CreateIntegrationWorkflowScenarioRequest;
 import com.workflow.openapi.api.request.UpdateIntegrationWorkflowScenarioRequest;
 import com.workflow.openapi.api.response.IntegrationWorkflowScenarioView;
+import com.workflow.openapi.api.response.IntegrationWorkflowScenarioValidationView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioRevisionMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationWorkflowScenarioRecord;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationWorkflowScenarioRevisionRecord;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -57,14 +60,16 @@ public class IntegrationWorkflowScenarioService {
             "com.flow.process.terminated.v1",
             "com.flow.process.failed.v1");
     private static final Set<String> OUTCOME_KEYS = Set.of(
-            "status", "outcome", "actorId", "evidence");
+            "status", "outcomeCode", "outcome", "actorId", "decidedAt",
+            "opinion", "evidence", "reasonCode", "failureCode");
     private static final Set<String> IDENTITY_KEYS = Set.of(
-            "initiator", "subject", "tenant");
+            "namespace", "initiator", "subject", "tenant");
     private static final TypeReference<Set<String>> STRING_SET =
             new TypeReference<>() {
             };
 
     private final IntegrationWorkflowScenarioMapper mapper;
+    private final IntegrationWorkflowScenarioRevisionMapper revisionMapper;
     private final IntegrationApplicationMapper applicationMapper;
     private final IntegrationProcessGrantMapper grantMapper;
     private final IntegrationVariableSchemaService schemaService;
@@ -76,18 +81,20 @@ public class IntegrationWorkflowScenarioService {
     @Autowired
     public IntegrationWorkflowScenarioService(
             IntegrationWorkflowScenarioMapper mapper,
+            IntegrationWorkflowScenarioRevisionMapper revisionMapper,
             IntegrationApplicationMapper applicationMapper,
             IntegrationProcessGrantMapper grantMapper,
             IntegrationVariableSchemaService schemaService,
             CurrentActorProvider actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
-        this(mapper, applicationMapper, grantMapper, schemaService,
+        this(mapper, revisionMapper, applicationMapper, grantMapper, schemaService,
                 actorProvider, auditPort, objectMapper, Clock.systemUTC());
     }
 
     IntegrationWorkflowScenarioService(
             IntegrationWorkflowScenarioMapper mapper,
+            IntegrationWorkflowScenarioRevisionMapper revisionMapper,
             IntegrationApplicationMapper applicationMapper,
             IntegrationProcessGrantMapper grantMapper,
             IntegrationVariableSchemaService schemaService,
@@ -96,6 +103,7 @@ public class IntegrationWorkflowScenarioService {
             ObjectMapper objectMapper,
             Clock clock) {
         this.mapper = mapper;
+        this.revisionMapper = revisionMapper;
         this.applicationMapper = applicationMapper;
         this.grantMapper = grantMapper;
         this.schemaService = schemaService;
@@ -113,6 +121,20 @@ public class IntegrationWorkflowScenarioService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public IntegrationWorkflowScenarioValidationView validate(
+            String applicationId,
+            CreateIntegrationWorkflowScenarioRequest request) {
+        requireActiveApplication(applicationId);
+        IntegrationWorkflowScenarioRecord record = normalize(applicationId, request).record();
+        return new IntegrationWorkflowScenarioValidationView(
+                true,
+                record.getScenarioKey(),
+                record.getProcessKey(),
+                record.getProcessDefinitionVersion(),
+                record.getConfigHash());
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public IntegrationWorkflowScenarioView create(
             String applicationId,
@@ -124,15 +146,17 @@ public class IntegrationWorkflowScenarioService {
         record.setId(IdWorker.getIdStr());
         record.setApplicationId(applicationId);
         record.setRevision(1L);
-        record.setStatus("ACTIVE");
+        record.setStatus("DRAFT");
+        record.setDraftRevision(1L);
         try {
             mapper.insert(record, actor.userId(), now());
+            revisionMapper.insertDraft(toRevision(record), actor.userId(), now());
         } catch (DuplicateKeyException exception) {
             throw new BusinessConflictException(
                     "INTEGRATION_SCENARIO_ALREADY_EXISTS",
                     "场景标识已存在");
         }
-        recordAudit(AuditAction.CREATE, "创建外部流程场景", record, actor);
+        recordAudit(AuditAction.CREATE, "创建外部流程场景草稿", record, actor);
         return toView(record);
     }
 
@@ -152,27 +176,90 @@ public class IntegrationWorkflowScenarioService {
         if (!scenarioKey.equals(configuration.scenarioKey())) {
             throw new IllegalArgumentException("更新时不能修改场景标识");
         }
+        IntegrationWorkflowScenarioRecord current = mapper.findByApplicationAndKey(
+                applicationId, scenarioKey);
+        if (current == null || current.getRevision() == null
+                || !request.expectedRevision().equals(current.getRevision())) {
+            throw new BusinessConflictException(
+                    "INTEGRATION_SCENARIO_VERSION_CONFLICT",
+                    "场景已被其他管理员修改或已停用");
+        }
         Normalized normalized = normalize(applicationId, configuration);
         IntegrationWorkflowScenarioRecord record = normalized.record();
         record.setApplicationId(applicationId);
-        int updated;
+        record.setId(current.getId());
+        record.setRevision(current.getRevision() + 1);
+        record.setStatus(current.getStatus());
+        record.setDraftRevision(record.getRevision());
         try {
-            updated = mapper.update(record, actor.userId(),
-                    request.expectedRevision(), now());
+            revisionMapper.retireOtherDrafts(current.getId(), record.getRevision());
+            revisionMapper.insertDraft(toRevision(record), actor.userId(), now());
+            int updated = mapper.advanceDraft(
+                    applicationId, scenarioKey, record.getRevision(),
+                    request.expectedRevision(), record.getDisplayName(),
+                    record.getProcessKey(), record.getProcessDefinitionVersion(),
+                    record.getInputSchemaJson(), record.getOutcomeMappingJson(),
+                    record.getIdentityMappingJson(), record.getEventTypesJson(),
+                    record.getConfigHash(), actor.userId(), now());
+            if (updated != 1) {
+                throw new BusinessConflictException(
+                        "INTEGRATION_SCENARIO_VERSION_CONFLICT",
+                        "场景已被其他管理员修改或已停用");
+            }
         } catch (DuplicateKeyException exception) {
             throw new BusinessConflictException(
                     "INTEGRATION_SCENARIO_ALREADY_EXISTS",
                     "场景标识已存在");
         }
-        if (updated != 1) {
+        IntegrationWorkflowScenarioRecord updated =
+                mapper.findByApplicationAndKey(applicationId, scenarioKey);
+        recordAudit(AuditAction.CONFIGURE, "更新外部流程场景草稿", updated, actor);
+        return toView(updated);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public IntegrationWorkflowScenarioView publish(
+            String applicationId, String scenarioKey, long expectedRevision) {
+        CurrentActor actor = requireActor();
+        requireActiveApplication(applicationId);
+        IntegrationWorkflowScenarioRecord current = mapper.findByApplicationAndKey(
+                applicationId, scenarioKey);
+        if (current == null || current.getDraftRevision() == null
+                || current.getDraftRevision() != expectedRevision) {
             throw new BusinessConflictException(
                     "INTEGRATION_SCENARIO_VERSION_CONFLICT",
-                    "场景已被其他管理员修改或已停用");
+                    "没有可发布的最新草稿");
         }
-        IntegrationWorkflowScenarioRecord current =
-                mapper.findByApplicationAndKey(applicationId, scenarioKey);
-        recordAudit(AuditAction.CONFIGURE, "更新外部流程场景", current, actor);
-        return toView(current);
+        IntegrationWorkflowScenarioRevisionRecord draft =
+                revisionMapper.findByScenarioAndRevision(
+                        current.getId(), expectedRevision);
+        if (draft == null || !"DRAFT".equals(draft.getStatus())) {
+            throw new BusinessConflictException(
+                    "INTEGRATION_SCENARIO_VERSION_CONFLICT",
+                    "场景草稿不存在或已发布");
+        }
+        LocalDateTime now = now();
+        if (revisionMapper.publish(current.getId(), expectedRevision,
+                actor.userId(), now) != 1) {
+            throw new BusinessConflictException(
+                    "INTEGRATION_SCENARIO_VERSION_CONFLICT",
+                    "场景发布竞争失败，请重新加载");
+        }
+        revisionMapper.retireOtherPublished(current.getId(), expectedRevision);
+        if (mapper.publish(applicationId, scenarioKey, expectedRevision,
+                draft.getDisplayName(), draft.getProcessKey(),
+                draft.getProcessDefinitionVersion(), draft.getInputSchemaJson(),
+                draft.getOutcomeMappingJson(), draft.getIdentityMappingJson(),
+                draft.getEventTypesJson(), draft.getConfigHash(),
+                actor.userId(), now) != 1) {
+            throw new BusinessConflictException(
+                    "INTEGRATION_SCENARIO_VERSION_CONFLICT",
+                    "场景发布竞争失败，请重新加载");
+        }
+        IntegrationWorkflowScenarioRecord published = mapper.findByApplicationAndKey(
+                applicationId, scenarioKey);
+        recordAudit(AuditAction.CONFIGURE, "发布外部流程场景", published, actor);
+        return toView(published);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -195,7 +282,7 @@ public class IntegrationWorkflowScenarioService {
     public IntegrationWorkflowScenarioRecord requireActive(
             String applicationId, String scenarioKey) {
         IntegrationWorkflowScenarioRecord record =
-                mapper.findByApplicationAndKey(applicationId, scenarioKey);
+                mapper.findPublishedByApplicationAndKey(applicationId, scenarioKey);
         if (record == null || !"ACTIVE".equals(record.getStatus())) {
             throw new IllegalArgumentException("外部流程场景不存在或已停用");
         }
@@ -219,6 +306,7 @@ public class IntegrationWorkflowScenarioService {
                 "结果映射");
         JsonNode identity = requireMapping(request.identityMapping(), IDENTITY_KEYS,
                 "身份映射");
+        requireIdentityContract(identity);
         Set<String> events = request.eventTypes().stream()
                 .map(this::trim)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -264,6 +352,19 @@ public class IntegrationWorkflowScenarioService {
         return value;
     }
 
+    private void requireIdentityContract(JsonNode identity) {
+        JsonNode namespace = identity.get("namespace");
+        JsonNode initiator = identity.get("initiator");
+        if (namespace == null || !namespace.isTextual()
+                || namespace.asText().isBlank()
+                || initiator == null || !initiator.isTextual()
+                || !initiator.asText().startsWith("variables.")
+                || initiator.asText().length() <= "variables.".length()) {
+            throw new IllegalArgumentException(
+                    "身份映射必须定义 namespace，并将 initiator 映射到 variables.<field>");
+        }
+    }
+
     private IntegrationWorkflowScenarioView toView(
             IntegrationWorkflowScenarioRecord record) {
         try {
@@ -275,11 +376,30 @@ public class IntegrationWorkflowScenarioService {
                     objectMapper.readTree(record.getOutcomeMappingJson()),
                     objectMapper.readTree(record.getIdentityMappingJson()),
                     Set.copyOf(objectMapper.readValue(record.getEventTypesJson(), STRING_SET)),
-                    record.getRevision(), record.getConfigHash(),
+                    record.getRevision(), record.getPublishedRevision(),
+                    record.getDraftRevision(), record.getConfigHash(),
                     toInstant(record.getCreateTime()), toInstant(record.getUpdateTime()));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("场景配置损坏", exception);
         }
+    }
+
+    private IntegrationWorkflowScenarioRevisionRecord toRevision(
+            IntegrationWorkflowScenarioRecord record) {
+        IntegrationWorkflowScenarioRevisionRecord revision =
+                new IntegrationWorkflowScenarioRevisionRecord();
+        revision.setId(record.getId() + ":" + record.getRevision());
+        revision.setScenarioId(record.getId());
+        revision.setRevision(record.getRevision());
+        revision.setDisplayName(record.getDisplayName());
+        revision.setProcessKey(record.getProcessKey());
+        revision.setProcessDefinitionVersion(record.getProcessDefinitionVersion());
+        revision.setInputSchemaJson(record.getInputSchemaJson());
+        revision.setOutcomeMappingJson(record.getOutcomeMappingJson());
+        revision.setIdentityMappingJson(record.getIdentityMappingJson());
+        revision.setEventTypesJson(record.getEventTypesJson());
+        revision.setConfigHash(record.getConfigHash());
+        return revision;
     }
 
     private String write(Object value) {

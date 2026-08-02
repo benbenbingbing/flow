@@ -118,11 +118,26 @@ public class WebhookEventMaterializer
                 "processInstanceId",
                 payload.processInstanceId());
         data.put("processKey", payload.processKey());
+        if (payload.scenarioKey() != null) {
+            data.put("scenarioKey", payload.scenarioKey());
+        }
+        if (payload.bindingRevision() != null) {
+            data.put("bindingRevision", payload.bindingRevision());
+        }
+        if (payload.businessVersion() != null) {
+            data.put("subjectVersion", payload.businessVersion());
+        }
+        if (payload.identityNamespace() != null) {
+            data.put("identityNamespace", payload.identityNamespace());
+        }
         ObjectNode business = data.putObject(
                 "businessReference");
         business.put("system", payload.externalSystem());
         business.put("type", payload.businessType());
         business.put("id", payload.businessId());
+        if (payload.businessVersion() != null) {
+            business.put("version", payload.businessVersion());
+        }
         String type = payload.eventType();
         String schemaName = type.substring(
                 "com.flow.".length(),
@@ -177,9 +192,6 @@ public class WebhookEventMaterializer
             }
             case "com.flow.task.completed.v1" -> {
                 data.put("status", "COMPLETED");
-                if (!data.has("outcome")) {
-                    data.put("outcome", "completed");
-                }
                 data.put("completedAt", time);
             }
             case "com.flow.process.completed.v1" -> {

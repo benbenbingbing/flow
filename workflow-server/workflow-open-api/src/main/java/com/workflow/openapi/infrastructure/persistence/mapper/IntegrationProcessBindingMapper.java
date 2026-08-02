@@ -13,6 +13,28 @@ public interface IntegrationProcessBindingMapper {
     @Insert("""
             INSERT INTO integration_process_binding (
               id, application_id, external_system, business_type,
+              business_id, business_version, process_instance_id, process_definition_key,
+              create_time, update_time
+            ) VALUES (
+              #{id}, #{applicationId}, #{externalSystem}, #{businessType},
+              #{businessId}, #{businessVersion}, #{processInstanceId}, #{processDefinitionKey},
+              #{now}, #{now}
+            )
+            """)
+    int insertWithVersion(
+            @Param("id") String id,
+            @Param("applicationId") String applicationId,
+            @Param("externalSystem") String externalSystem,
+            @Param("businessType") String businessType,
+            @Param("businessId") String businessId,
+            @Param("businessVersion") String businessVersion,
+            @Param("processInstanceId") String processInstanceId,
+            @Param("processDefinitionKey") String processDefinitionKey,
+            @Param("now") LocalDateTime now);
+
+    @Insert("""
+            INSERT INTO integration_process_binding (
+              id, application_id, external_system, business_type,
               business_id, process_instance_id, process_definition_key,
               create_time, update_time
             ) VALUES (
@@ -35,17 +57,19 @@ public interface IntegrationProcessBindingMapper {
             INSERT INTO integration_process_binding (
               id, application_id, scenario_id, scenario_key,
               scenario_revision, scenario_config_hash, external_system,
-              business_type, business_id, process_instance_id,
+              business_type, business_id, business_version, process_instance_id,
               process_definition_key, input_snapshot_json, input_hash,
               outcome_mapping_snapshot_json, event_types_snapshot_json,
-              external_initiator_id, create_time, update_time
+              external_initiator_id, identity_namespace, identity_mapping_snapshot_json,
+              create_time, update_time
             ) VALUES (
               #{id}, #{applicationId}, #{scenarioId}, #{scenarioKey},
               #{scenarioRevision}, #{scenarioConfigHash}, #{externalSystem},
-              #{businessType}, #{businessId}, #{processInstanceId},
+              #{businessType}, #{businessId}, #{businessVersion}, #{processInstanceId},
               #{processDefinitionKey}, #{inputSnapshotJson}, #{inputHash},
               #{outcomeMappingSnapshotJson}, #{eventTypesSnapshotJson},
-              #{externalInitiatorId}, #{now}, #{now}
+              #{externalInitiatorId}, #{identityNamespace}, #{identityMappingSnapshotJson},
+              #{now}, #{now}
             )
             """)
     int insertScenario(
@@ -58,6 +82,7 @@ public interface IntegrationProcessBindingMapper {
             @Param("externalSystem") String externalSystem,
             @Param("businessType") String businessType,
             @Param("businessId") String businessId,
+            @Param("businessVersion") String businessVersion,
             @Param("processInstanceId") String processInstanceId,
             @Param("processDefinitionKey") String processDefinitionKey,
             @Param("inputSnapshotJson") String inputSnapshotJson,
@@ -65,6 +90,8 @@ public interface IntegrationProcessBindingMapper {
             @Param("outcomeMappingSnapshotJson") String outcomeMappingSnapshotJson,
             @Param("eventTypesSnapshotJson") String eventTypesSnapshotJson,
             @Param("externalInitiatorId") String externalInitiatorId,
+            @Param("identityNamespace") String identityNamespace,
+            @Param("identityMappingSnapshotJson") String identityMappingSnapshotJson,
             @Param("now") LocalDateTime now);
 
     @Select("""

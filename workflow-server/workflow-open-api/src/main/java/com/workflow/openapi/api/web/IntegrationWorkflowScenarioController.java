@@ -5,6 +5,7 @@ import com.workflow.core.security.RequiresPermission;
 import com.workflow.openapi.api.request.CreateIntegrationWorkflowScenarioRequest;
 import com.workflow.openapi.api.request.UpdateIntegrationWorkflowScenarioRequest;
 import com.workflow.openapi.api.response.IntegrationWorkflowScenarioView;
+import com.workflow.openapi.api.response.IntegrationWorkflowScenarioValidationView;
 import com.workflow.openapi.application.IntegrationWorkflowScenarioService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -38,6 +39,14 @@ public class IntegrationWorkflowScenarioController {
         return Result.success(service.create(applicationId, request));
     }
 
+    @PostMapping("/validate")
+    @RequiresPermission("system:integration:manage")
+    public Result<IntegrationWorkflowScenarioValidationView> validate(
+            @PathVariable String applicationId,
+            @Valid @RequestBody CreateIntegrationWorkflowScenarioRequest request) {
+        return Result.success(service.validate(applicationId, request));
+    }
+
     @PostMapping("/{scenarioKey}")
     @RequiresPermission("system:integration:manage")
     public Result<IntegrationWorkflowScenarioView> update(
@@ -55,6 +64,16 @@ public class IntegrationWorkflowScenarioController {
             @RequestBody @Valid ScenarioRevisionRequest request) {
         service.disable(applicationId, scenarioKey, request.expectedRevision());
         return Result.success(null);
+    }
+
+    @PostMapping("/{scenarioKey}/publish")
+    @RequiresPermission("system:integration:manage")
+    public Result<IntegrationWorkflowScenarioView> publish(
+            @PathVariable String applicationId,
+            @PathVariable String scenarioKey,
+            @RequestBody @Valid ScenarioRevisionRequest request) {
+        return Result.success(service.publish(
+                applicationId, scenarioKey, request.expectedRevision()));
     }
 
     public record ScenarioRevisionRequest(

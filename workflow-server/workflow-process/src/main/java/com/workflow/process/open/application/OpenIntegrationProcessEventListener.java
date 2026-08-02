@@ -119,13 +119,12 @@ public class OpenIntegrationProcessEventListener
             variables.putAll(process.getProcessVariables());
         }
         Map<String, Object> result = new LinkedHashMap<>();
+        copyVariable(variables, result, "outcomeCode");
         copyVariable(variables, result, "outcome");
-        copyVariable(variables, result, "approved");
-        if (!result.containsKey("outcome") && result.containsKey("approved")) {
-            result.put("outcome", result.remove("approved"));
-        }
         copyVariable(variables, result, "approver", "actorId");
         copyVariable(variables, result, "approvalEvidence", "evidence");
+        copyVariable(variables, result, "decidedAt");
+        copyVariable(variables, result, "opinion");
         copyVariable(variables, result, "reasonCode");
         copyVariable(variables, result, "failureCode");
         return Map.copyOf(result);

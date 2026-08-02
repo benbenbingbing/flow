@@ -35,7 +35,7 @@
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag size="small" :type="row.status === 'ACTIVE' ? 'success' : 'info'">
-            {{ row.status === 'ACTIVE' ? '启用' : '停用' }}
+            {{ row.status === 'ACTIVE' ? '已发布' : row.status === 'DRAFT' ? '草稿' : '已停用' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -43,6 +43,14 @@
       <el-table-column v-if="canManage" label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button
+            v-if="canManage && row.draftRevision"
+            link
+            type="success"
+            @click="publish(row)"
+          >
+            发布
+          </el-button>
           <el-button
             v-if="row.status === 'ACTIVE'"
             link
@@ -111,6 +119,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button :loading="validating" @click="validate">校验配置</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
@@ -139,6 +148,7 @@ const eventTypeOptions = [
 const scenarios = ref([])
 const loading = ref(false)
 const saving = ref(false)
+const validating = ref(false)
 const error = ref('')
 const dialogVisible = ref(false)
 const editing = ref(false)
@@ -178,7 +188,7 @@ function defaultForm() {
     expectedRevision: null,
     inputSchemaText: JSON.stringify({ type: 'object', maxProperties: 20, additionalProperties: false }, null, 2),
     outcomeMappingText: '{}',
-    identityMappingText: '{}',
+    identityMappingText: JSON.stringify({ namespace: 'external', initiator: 'variables.requesterId' }, null, 2),
     eventTypes: ['com.flow.process.started.v1', 'com.flow.task.completed.v1']
   }
 }
@@ -257,6 +267,37 @@ async function save() {
   }
 }
 
+async function validate() {
+  if (!await formRef.value?.validate().catch(() => false)) return
+  let inputSchema; let outcomeMapping; let identityMapping
+  try {
+    inputSchema = parseObject(form.inputSchemaText, '输入 Schema')
+    outcomeMapping = parseObject(form.outcomeMappingText, '结果映射')
+    identityMapping = parseObject(form.identityMappingText, '身份映射')
+  } catch (cause) {
+    ElMessage.error(cause.message)
+    return
+  }
+  validating.value = true
+  try {
+    const result = await integrationScenarioApi.validate(props.application.id, {
+      scenarioKey: form.scenarioKey.trim(),
+      displayName: form.displayName.trim(),
+      processKey: form.processKey.trim(),
+      processDefinitionVersion: form.processDefinitionVersion || null,
+      inputSchema,
+      outcomeMapping,
+      identityMapping,
+      eventTypes: form.eventTypes
+    })
+    ElMessage.success(`配置校验通过，摘要 ${result.configHash}`)
+  } catch (cause) {
+    ElMessage.error(cause.message || '配置校验失败')
+  } finally {
+    validating.value = false
+  }
+}
+
 async function disable(row) {
   await ElMessageBox.confirm('停用后不能再用此场景发起新流程，历史实例保留原配置。', '停用流程场景', { type: 'warning' })
   try {
@@ -265,6 +306,23 @@ async function disable(row) {
     ElMessage.success('流程场景已停用')
   } catch (cause) {
     ElMessage.error(cause.message || '停用失败')
+  }
+}
+
+async function publish(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确认发布场景 ${row.scenarioKey} 的 revision ${row.draftRevision}？`,
+      '发布流程场景',
+      { type: 'warning' }
+    )
+    await integrationScenarioApi.publish(props.application.id, row.scenarioKey, {
+      expectedRevision: row.draftRevision
+    })
+    ElMessage.success('流程场景已发布')
+    await load()
+  } catch (cause) {
+    if (cause !== 'cancel' && cause !== 'close') ElMessage.error(cause.message || '发布失败')
   }
 }
 </script>

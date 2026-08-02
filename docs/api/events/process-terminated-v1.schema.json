@@ -47,6 +47,10 @@
         "processKey": { "$ref": "#/$defs/key" },
         "status": { "const": "TERMINATED" },
         "businessReference": { "$ref": "#/$defs/businessReference" },
+        "scenarioKey": { "$ref": "#/$defs/key" },
+        "bindingRevision": { "type": "integer", "minimum": 1 },
+        "subjectVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "identityNamespace": { "$ref": "#/$defs/key" },
         "reasonCode": {
           "type": ["string", "null"],
           "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
@@ -55,7 +59,8 @@
         "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "evidence": { "type": "string", "maxLength": 4096 },
         "outcome": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$" },
-        "failureCode": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" }
+        "failureCode": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" },
+        "outcomeCode": { "$ref": "#/$defs/key" }
       }
     }
   },
@@ -75,7 +80,8 @@
       "properties": {
         "system": { "$ref": "#/$defs/key" },
         "type": { "$ref": "#/$defs/key" },
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
       }
     }
   }

@@ -1,5 +1,4 @@
 package com.workflow.entity.ui.application;
-
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.form.application.EntityFormService;
@@ -7,7 +6,6 @@ import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.list.application.EntityListConfigService;
-
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -58,7 +56,6 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -71,7 +68,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-
 /**
  * UI 配置发布服务，负责表单与列表草稿的快照构建、发布、激活、差异比对与运行时解析。
  *
@@ -83,7 +79,6 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 public class UiConfigReleaseService {
-
     /** 表单配置类型。 */
     public static final String FORM = "FORM";
     /** 列表配置类型。 */
@@ -141,7 +136,6 @@ public class UiConfigReleaseService {
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
     private final MigrationAssetHandler migrationAssetHandler;
-
     /**
      * 查询指定配置的所有发布历史记录。
      *
@@ -160,7 +154,6 @@ public class UiConfigReleaseService {
                         resolveRolloutStatus(release)));
         return releases;
     }
-
     private String resolveRolloutStatus(UiConfigRelease release) {
         List<UiConfigHotfixTarget> targets =
                 hotfixTargetMapper.findByHotfixReleaseId(
@@ -181,7 +174,6 @@ public class UiConfigReleaseService {
         return "ACTIVE".equals(release.getStatus())
                 ? "ACTIVE" : "SUPERSEDED";
     }
-
     private boolean hasRollbackAudit(String releaseId) {
         Long count = releaseAuditMapper.selectCount(
                 new LambdaQueryWrapper<UiConfigReleaseAudit>()
@@ -193,7 +185,6 @@ public class UiConfigReleaseService {
                                 "ROLLBACK_HOTFIX"));
         return count != null && count > 0;
     }
-
     /**
      * 查询指定配置当前激活的发布记录。
      *
@@ -205,7 +196,6 @@ public class UiConfigReleaseService {
         requireType(configType);
         return releaseMapper.findActive(configType, configId);
     }
-
     /**
      * 读取当前激活发布版本的快照 Map。
      *
@@ -219,7 +209,6 @@ public class UiConfigReleaseService {
                 ? null
                 : codec.readObject(release.getSnapshotDocument(), "UI发布快照");
     }
-
     /**
      * 解析表单运行时发布版本，返回发布元信息与已校验快照文档。
      *
@@ -239,7 +228,6 @@ public class UiConfigReleaseService {
                 expectedVersion,
                 null);
     }
-
     /**
      * 使用签名上下文令牌解析嵌套表单的有效发布快照。
      */
@@ -304,7 +292,6 @@ public class UiConfigReleaseService {
                         StringUtils.hasText(releaseId)),
                 verifiedSnapshot(release));
     }
-
     /**
      * 解析表单事件运行时必须使用的精确发布快照。
      *
@@ -367,7 +354,6 @@ public class UiConfigReleaseService {
                     resolved.effectiveReleaseId(),
                     resolved.hotfixApplied());
         }
-
         UiConfigRelease release =
                 releaseMapper.findActive(FORM, formId);
         if (release == null
@@ -397,7 +383,6 @@ public class UiConfigReleaseService {
                 release.getId(),
                 false);
     }
-
     private Map<String, Object> runtimeReleaseResult(
             ResolvedEntityFormRelease resolved,
             Map<String, Object> snapshot) {
@@ -413,7 +398,6 @@ public class UiConfigReleaseService {
         result.put("snapshotDocument", snapshot);
         return result;
     }
-
     private Map<String, Object> runtimeSnapshot(EntityForm form) {
         Map<String, Object> formDocument = objectMapper.convertValue(
                 form,
@@ -439,7 +423,6 @@ public class UiConfigReleaseService {
                         ? List.of() : form.getFields());
         return snapshot;
     }
-
     private boolean referencesChildRelease(
             EntityForm parent,
             String childFormId,
@@ -475,7 +458,6 @@ public class UiConfigReleaseService {
         }
         return false;
     }
-
     /**
      * 读取指定不可变表单发布中固定的直接子表单引用。
      */
@@ -508,7 +490,6 @@ public class UiConfigReleaseService {
         }
         return List.copyOf(references);
     }
-
     private void collectChildReferences(
             Object value,
             Set<UiPublishedFormReference> references) {
@@ -545,7 +526,6 @@ public class UiConfigReleaseService {
                     collectChildReferences(child, references));
         }
     }
-
     private Object documentValue(String document) {
         if (!StringUtils.hasText(document)) {
             return Map.of();
@@ -558,7 +538,6 @@ public class UiConfigReleaseService {
             return Map.of();
         }
     }
-
     private boolean matchesChildReference(
             Object value,
             String childFormId,
@@ -606,7 +585,6 @@ public class UiConfigReleaseService {
         }
         return false;
     }
-
     private String firstOptionalText(Object... values) {
         for (Object value : values) {
             String candidate = text(value);
@@ -616,7 +594,6 @@ public class UiConfigReleaseService {
         }
         return null;
     }
-
     private Integer firstOptionalInteger(Object... values) {
         for (Object value : values) {
             if (value != null) {
@@ -625,7 +602,6 @@ public class UiConfigReleaseService {
         }
         return null;
     }
-
     /**
      * 构建配置的草稿快照（不落库），用于差异比对与发布预览。
      *
@@ -637,7 +613,6 @@ public class UiConfigReleaseService {
     public Map<String, Object> draftSnapshot(String configType, String configId) {
         return buildDraftSnapshot(configType, configId);
     }
-
     /**
      * 比较草稿快照与当前激活发布快照的差异。
      *
@@ -689,7 +664,6 @@ public class UiConfigReleaseService {
                         : List.of())
                 .build();
     }
-
     private List<UiConfigDiffItemDTO> detailedChanges(
             String configType,
             Map<String, Object> draft,
@@ -715,7 +689,6 @@ public class UiConfigReleaseService {
                     true);
             return changes;
         }
-
         Map<String, Object> draftList = mapValue(draft.get("list"));
         Map<String, Object> activeList = mapValue(active.get("list"));
         appendObjectChange(
@@ -771,7 +744,6 @@ public class UiConfigReleaseService {
         }
         return changes;
     }
-
     private void appendObjectChange(
             List<UiConfigDiffItemDTO> changes,
             String section,
@@ -790,7 +762,6 @@ public class UiConfigReleaseService {
                 .changedFields(changedKeys(draft, active))
                 .build());
     }
-
     private void appendCollectionChanges(
             List<UiConfigDiffItemDTO> changes,
             String section,
@@ -836,7 +807,6 @@ public class UiConfigReleaseService {
                 "REMOVED",
                 List.of())));
     }
-
     private void appendValueCollectionChanges(
             List<UiConfigDiffItemDTO> changes,
             String section,
@@ -854,7 +824,6 @@ public class UiConfigReleaseService {
         activeValues.forEach(value -> changes.add(itemChange(
                 section, value, value, "REMOVED", List.of())));
     }
-
     private UiConfigDiffItemDTO itemChange(
             String section,
             String id,
@@ -869,7 +838,6 @@ public class UiConfigReleaseService {
                 .changedFields(changedFields)
                 .build();
     }
-
     private Map<String, Map<String, Object>> indexByStableId(
             List<Map<String, Object>> items,
             List<String> idKeys) {
@@ -885,7 +853,6 @@ public class UiConfigReleaseService {
         }
         return result;
     }
-
     private String itemLabel(
             Map<String, Object> item,
             List<String> labelKeys,
@@ -897,7 +864,6 @@ public class UiConfigReleaseService {
         labels.add(fallback);
         return firstText(labels.toArray(String[]::new));
     }
-
     private List<String> changedKeys(
             Map<String, Object> draft,
             Map<String, Object> active) {
@@ -911,7 +877,6 @@ public class UiConfigReleaseService {
                 .sorted()
                 .toList();
     }
-
     private Map<String, Object> withoutKeys(
             Map<String, Object> source,
             Set<String> ignoredKeys) {
@@ -919,7 +884,6 @@ public class UiConfigReleaseService {
         ignoredKeys.forEach(result::remove);
         return result;
     }
-
     private Map<String, Object> mapValue(Object source) {
         if (!(source instanceof Map<?, ?> map)) {
             return Map.of();
@@ -928,7 +892,6 @@ public class UiConfigReleaseService {
         map.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
     }
-
     private List<Map<String, Object>> mapList(Object source) {
         if (!(source instanceof List<?> list)) {
             return List.of();
@@ -942,7 +905,6 @@ public class UiConfigReleaseService {
         }
         return result;
     }
-
     private Set<String> textSet(Object source) {
         Set<String> result = new LinkedHashSet<>();
         if (!(source instanceof List<?> list)) {
@@ -956,7 +918,6 @@ public class UiConfigReleaseService {
         }
         return result;
     }
-
     /**
      * 发布预检。普通发布返回草稿差异；热修复同时执行风险分级、流程影响分析和逐版本试算。
      */
@@ -1008,7 +969,6 @@ public class UiConfigReleaseService {
                         ? List.of() : List.of("当前草稿与已发布版本一致"))
                 .build();
     }
-
     /**
      * 兼容旧调用方的普通发布入口。
      */
@@ -1022,7 +982,6 @@ public class UiConfigReleaseService {
         request.setReleaseMode(STANDARD);
         return publish(configType, configId, request);
     }
-
     /**
      * 按发布请求执行普通发布或兼容热修复。
      */
@@ -1037,7 +996,6 @@ public class UiConfigReleaseService {
         }
         return publishStandard(configType, configId, request);
     }
-
     private UiConfigRelease publishStandard(
             String configType,
             String configId,
@@ -1070,7 +1028,6 @@ public class UiConfigReleaseService {
         List<UiConfigRelease> releases = releaseMapper.findReleases(configType, configId);
         int nextVersion = releases.isEmpty() ? 1 : releases.get(0).getVersion() + 1;
         deactivate(configType, configId);
-
         UiConfigRelease release = new UiConfigRelease();
         release.setConfigType(configType);
         release.setConfigId(configId);
@@ -1101,7 +1058,6 @@ public class UiConfigReleaseService {
                 configType, configId, release, request);
         return release;
     }
-
     private UiConfigRelease publishHotfix(
             String configType,
             String configId,
@@ -1121,14 +1077,12 @@ public class UiConfigReleaseService {
                     "HOTFIX_NOT_COMPATIBLE",
                     String.join("；", preparation.preview().getBlockers()));
         }
-
         UiConfigRelease active = preparation.active();
         List<UiConfigRelease> releases =
                 releaseMapper.findReleases(configType, configId);
         int nextVersion =
                 releases.isEmpty() ? 1 : releases.get(0).getVersion() + 1;
         deactivate(configType, configId);
-
         UiConfigRelease release = new UiConfigRelease();
         release.setConfigType(configType);
         release.setConfigId(configId);
@@ -1148,7 +1102,6 @@ public class UiConfigReleaseService {
         release.setPublishedBy(UserContext.getUserId());
         release.setPublishedAt(LocalDateTime.now());
         releaseMapper.insert(release);
-
         for (PreparedHotfixTarget prepared : preparation.targets()) {
             UiConfigHotfixTarget previous = prepared.previous();
             if (previous != null) {
@@ -1184,7 +1137,6 @@ public class UiConfigReleaseService {
             target.setActivatedAt(LocalDateTime.now());
             hotfixTargetMapper.insert(target);
         }
-
         activateOnOwner(
                 configType,
                 configId,
@@ -1200,7 +1152,6 @@ public class UiConfigReleaseService {
                 auditDetail(preparation.preview()));
         return release;
     }
-
     private HotfixPreparation prepareHotfix(
             String configType,
             String configId,
@@ -1370,7 +1321,6 @@ public class UiConfigReleaseService {
                 List.copyOf(preparedTargets),
                 preview);
     }
-
     private UiConfigSemanticPatchService.PatchAnalysis
             enforceExtensionHotfixCapabilities(
                     Map<String, Object> draft,
@@ -1447,7 +1397,6 @@ public class UiConfigReleaseService {
                 riskLevel,
                 risks);
     }
-
     private boolean extensionSupportsHotfix(
             String extensionType,
             String componentName,
@@ -1465,7 +1414,6 @@ public class UiConfigReleaseService {
             return false;
         }
     }
-
     private Map<String, Object> pinnedSnapshot(
             String configType,
             String configId,
@@ -1487,7 +1435,6 @@ public class UiConfigReleaseService {
             return null;
         }
     }
-
     private Map<String, Object> verifiedTargetSnapshot(
             UiConfigHotfixTarget target,
             List<String> blockers) {
@@ -1509,7 +1456,6 @@ public class UiConfigReleaseService {
             return null;
         }
     }
-
     private void verifyExpectedState(
             UiConfigPublishRequest request,
             String actualDraftHash,
@@ -1550,7 +1496,6 @@ public class UiConfigReleaseService {
                     "热修复影响范围已变化，请重新预检");
         }
     }
-
     private String impactToken(
             String configType,
             String configId,
@@ -1569,7 +1514,6 @@ public class UiConfigReleaseService {
                 nullToEmpty(targetHash),
                 nullToEmpty(riskLevel)));
     }
-
     private String releaseMode(UiConfigPublishRequest request) {
         String value = request == null
                 ? STANDARD : normalize(request.getReleaseMode());
@@ -1588,11 +1532,9 @@ public class UiConfigReleaseService {
         }
         return value;
     }
-
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
     }
-
     private String maxRisk(String left, String right) {
         if (Set.of(
                 UiConfigSemanticPatchService.REVIEW,
@@ -1604,7 +1546,6 @@ public class UiConfigReleaseService {
         }
         return UiConfigSemanticPatchService.SAFE;
     }
-
     /**
      * 按最后发布顺序撤回热修复，不修改不可变发布记录。
      */
@@ -1711,7 +1652,6 @@ public class UiConfigReleaseService {
                 Map.of("targetCount", targets.size()));
         return release;
     }
-
     /**
      * 激活指定历史发布版本，校验快照完整性后切换激活状态。
      *
@@ -1757,7 +1697,6 @@ public class UiConfigReleaseService {
                 configType, configId, release, null);
         return release;
     }
-
     private void recordSystemEntityUiAsset(
             String configType,
             String configId,
@@ -1782,7 +1721,6 @@ public class UiConfigReleaseService {
                 release.getId(),
                 migrationRequest);
     }
-
     private EntityDefinition ownerEntity(
             String configType,
             String configId) {
@@ -1799,7 +1737,6 @@ public class UiConfigReleaseService {
                 ? entityDefinitionMapper.selectById(entityId)
                 : null;
     }
-
     private void lockOwner(String configType, String configId) {
         requireType(configType);
         if (FORM.equals(configType)) {
@@ -1812,7 +1749,6 @@ public class UiConfigReleaseService {
             throw new IllegalArgumentException("列表配置不存在");
         }
     }
-
     /**
      * 流程发布读取表单 ACTIVE 版本前锁定同一配置行，
      * 与热修复发布形成共同的串行化边界。
@@ -1824,7 +1760,6 @@ public class UiConfigReleaseService {
                     "流程节点表单不存在: " + formId);
         }
     }
-
     /**
      * 解析表单运行时发布版本对应的表单对象（取当前激活版本）。
      *
@@ -1834,7 +1769,6 @@ public class UiConfigReleaseService {
     public EntityForm resolveRuntimeForm(String formId) {
         return resolveRuntimeFormRelease(formId).form();
     }
-
     /**
      * 解析表单运行时发布版本信息（取当前激活版本，非钉定）。
      *
@@ -1852,7 +1786,6 @@ public class UiConfigReleaseService {
         }
         return resolvedRuntimeForm(release, false);
     }
-
     /**
      * 解析指定发布版本的表单运行时对象，支持版本号一致性校验。
      *
@@ -1871,7 +1804,6 @@ public class UiConfigReleaseService {
                 releaseId,
                 expectedVersion).form();
     }
-
     /**
      * 解析指定发布版本的表单运行时发布版本信息，支持版本号一致性校验。
      *
@@ -1897,7 +1829,6 @@ public class UiConfigReleaseService {
                 expectedVersion,
                 context);
     }
-
     /**
      * 按服务端可信流程上下文解析原始钉定或有效热修复表单。
      */
@@ -1983,7 +1914,6 @@ public class UiConfigReleaseService {
                 null,
                 purpose);
     }
-
     private ResolvedEntityFormRelease resolvedRuntimeForm(
             UiConfigRelease release,
             boolean pinned) {
@@ -1999,7 +1929,6 @@ public class UiConfigReleaseService {
                         ? UiRuntimePurpose.HISTORICAL
                         : UiRuntimePurpose.STANDALONE);
     }
-
     /**
      * 判断当前全局激活发布是否为该流程版本已批准的热修复。
      */
@@ -2029,7 +1958,6 @@ public class UiConfigReleaseService {
                         activeReleaseId,
                         target.getHotfixReleaseId());
     }
-
     private Map<String, Object> verifiedEffectiveTargetSnapshot(
             UiConfigHotfixTarget target) {
         Map<String, Object> snapshot = codec.readObject(
@@ -2046,7 +1974,6 @@ public class UiConfigReleaseService {
         }
         return snapshot;
     }
-
     private Map<String, Object> verifiedSnapshot(UiConfigRelease release) {
         Map<String, Object> snapshot = codec.readObject(
                 release.getSnapshotDocument(), "UI发布快照");
@@ -2058,7 +1985,6 @@ public class UiConfigReleaseService {
         }
         return snapshot;
     }
-
     /**
      * 校验并返回发布版本的快照 Map，确保内容哈希一致。
      *
@@ -2073,7 +1999,6 @@ public class UiConfigReleaseService {
         }
         return verifiedSnapshot(release);
     }
-
     public record ResolvedUiEventSnapshot(
             Map<String, Object> snapshot,
             String releaseId,
@@ -2081,7 +2006,6 @@ public class UiConfigReleaseService {
             String effectiveReleaseId,
             boolean hotfixApplied) {
     }
-
     private EntityForm runtimeForm(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"), EntityForm.class);
@@ -2093,7 +2017,6 @@ public class UiConfigReleaseService {
                 new TypeReference<List<EntityFormNode>>() {}));
         return form;
     }
-
     /**
      * 解析列表运行时配置，优先取激活发布快照，回退到数据库草稿配置。
      *
@@ -2107,7 +2030,6 @@ public class UiConfigReleaseService {
                 : objectMapper.convertValue(
                         snapshot.get("list"), EntityListConfigDTO.class);
     }
-
     private Map<String, Object> buildDraftSnapshot(
             String configType,
             String configId) {
@@ -2155,7 +2077,6 @@ public class UiConfigReleaseService {
                                 list.getEntityId())));
         return snapshot;
     }
-
     private Map<String, Object> formMetadata(EntityForm form) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("id", form.getId());
@@ -2180,7 +2101,6 @@ public class UiConfigReleaseService {
         metadata.put("viewConfig", form.getViewConfig());
         return metadata;
     }
-
     private List<EntityFormField> deriveRuntimeFields(EntityForm form) {
         List<EntityFormField> existing =
                 form.getFields() == null ? List.of() : form.getFields();
@@ -2287,7 +2207,6 @@ public class UiConfigReleaseService {
         }
         return runtimeFields.isEmpty() ? existing : runtimeFields;
     }
-
     private void validateForPublish(
             String configType,
             String configId,
@@ -2305,7 +2224,6 @@ public class UiConfigReleaseService {
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
     }
-
     private void validateSnapshotForActivation(
             String configType,
             String configId,
@@ -2324,7 +2242,6 @@ public class UiConfigReleaseService {
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
     }
-
     private void validateExtensionReferences(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"), EntityForm.class);
@@ -2359,7 +2276,6 @@ public class UiConfigReleaseService {
                     node.getSnapshotVersion());
         }
     }
-
     private void validateTemplateReferences(Map<String, Object> snapshot) {
         List<EntityFormNode> nodes = snapshotNodes(snapshot);
         for (EntityFormNode node : nodes) {
@@ -2413,7 +2329,6 @@ public class UiConfigReleaseService {
                     "节点 " + nodeLabel(node));
         }
     }
-
     private void validateListTemplateReferences(EntityListConfigDTO list) {
         if (list == null) {
             throw new IllegalArgumentException("列表发布快照不能为空");
@@ -2434,7 +2349,6 @@ public class UiConfigReleaseService {
                 list.getRowActionConfig(),
                 "行按钮");
     }
-
     private void validateListActionTemplateReferences(
             List<Map<String, Object>> actions,
             String positionLabel) {
@@ -2452,7 +2366,6 @@ public class UiConfigReleaseService {
                                     text(action.get("label"))));
         }
     }
-
     private void validateTemplateBinding(
             String templateId,
             Integer templateVersion,
@@ -2499,7 +2412,6 @@ public class UiConfigReleaseService {
         }
         verifyTemplateVersionIntegrity(version, referenceLabel);
     }
-
     private void verifyTemplateVersionIntegrity(
             UiComponentTemplateVersion version,
             String referenceLabel) {
@@ -2520,7 +2432,6 @@ public class UiConfigReleaseService {
                 version.getSnapshotDocument(),
                 "组件模板版本快照");
     }
-
     private void validateFormSnapshotTree(
             String formId,
             Map<String, Object> snapshot) {
@@ -2588,7 +2499,6 @@ public class UiConfigReleaseService {
         validatePublishedFormGraph(
                 formId, 1, new LinkedHashSet<>(), referenceCache);
     }
-
     private void validateSnapshotParentChild(
             EntityFormNode child,
             EntityFormNode parent) {
@@ -2613,7 +2523,6 @@ public class UiConfigReleaseService {
                             + " 节点");
         }
     }
-
     private void validatePublishedFormGraph(
             String formId,
             int depth,
@@ -2647,7 +2556,6 @@ public class UiConfigReleaseService {
         }
         path.remove(formId);
     }
-
     private List<String> activePublishedFormReferences(String formId) {
         UiConfigRelease release = releaseMapper.findActive(FORM, formId);
         if (release == null || !StringUtils.hasText(release.getSnapshotDocument())) {
@@ -2657,7 +2565,6 @@ public class UiConfigReleaseService {
                 release.getSnapshotDocument(), "子表单发布快照");
         return referencedFormIds(snapshotNodes(snapshot));
     }
-
     private List<String> referencedFormIds(List<EntityFormNode> nodes) {
         List<String> references = new ArrayList<>();
         for (EntityFormNode node : nodes) {
@@ -2678,32 +2585,27 @@ public class UiConfigReleaseService {
         }
         return references;
     }
-
     private List<EntityFormNode> snapshotNodes(Map<String, Object> snapshot) {
         return objectMapper.convertValue(
                 snapshot.getOrDefault("nodes", List.of()),
                 new TypeReference<List<EntityFormNode>>() {});
     }
-
     private String nodeLabel(EntityFormNode node) {
         return StringUtils.hasText(node.getNodeKey())
                 ? node.getNodeKey()
                 : node.getId();
     }
-
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : null;
     }
-
     private Map<String, Object> auditDetail(
             UiConfigPublishPreviewDTO preview) {
         return objectMapper.convertValue(
                 preview,
                 new TypeReference<Map<String, Object>>() {});
     }
-
     private void recordAudit(
             String configType,
             String configId,
@@ -2736,7 +2638,6 @@ public class UiConfigReleaseService {
         audit.setCreateTime(LocalDateTime.now());
         releaseAuditMapper.insert(audit);
     }
-
     private void deactivate(String configType, String configId) {
         UpdateWrapper<UiConfigRelease> update = new UpdateWrapper<>();
         update.eq("config_type", configType)
@@ -2745,7 +2646,6 @@ public class UiConfigReleaseService {
                 .set("status", "INACTIVE");
         releaseMapper.update(null, update);
     }
-
     private void activateOnOwner(
             String configType,
             String configId,
@@ -2768,21 +2668,17 @@ public class UiConfigReleaseService {
                 .set("update_time", LocalDateTime.now());
         listConfigMapper.update(null, update);
     }
-
     private void requireType(String configType) {
         if (!FORM.equals(configType) && !LIST.equals(configType)) {
             throw new IllegalArgumentException("配置类型只能是 FORM 或 LIST");
         }
     }
-
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
-
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
-
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -2791,7 +2687,6 @@ public class UiConfigReleaseService {
         }
         return "未命名项";
     }
-
     private Integer nullableInteger(Object value) {
         if (value == null) {
             return null;
@@ -2805,7 +2700,6 @@ public class UiConfigReleaseService {
             throw new IllegalArgumentException("模板版本必须是整数", exception);
         }
     }
-
     private Integer integer(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -2816,18 +2710,15 @@ public class UiConfigReleaseService {
             return fallback;
         }
     }
-
     private Integer booleanFlag(Object value) {
         return Boolean.TRUE.equals(value) ? 1 : 0;
     }
-
     private record PreparedHotfixTarget(
             UiHotfixProcessTarget target,
             UiConfigHotfixTarget previous,
             String effectiveDocument,
             String effectiveHash) {
     }
-
     private record HotfixPreparation(
             UiConfigRelease active,
             String draftDocument,

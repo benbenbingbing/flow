@@ -1,5 +1,4 @@
 package com.workflow.entity.form.application;
-
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
@@ -35,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-
 /**
  * 实体表单服务
  */
@@ -43,12 +41,10 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class EntityFormService {
-
     private enum SaveMode {
         USER_CAS,
         SYSTEM_IMPORT
     }
-    
     private final EntityFormMapper formMapper;
     private final EntityFormFieldMapper formFieldMapper;
     private final EntityFormNodeMapper formNodeMapper;
@@ -59,7 +55,6 @@ public class EntityFormService {
     private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final JsonDocumentCodec jsonDocumentCodec;
-    
     /**
      * 查询所有表单列表
      */
@@ -68,7 +63,6 @@ public class EntityFormService {
         forms.forEach(this::fillFormDetails);
         return forms;
     }
-    
     /**
      * 查询实体的表单列表
      */
@@ -77,7 +71,6 @@ public class EntityFormService {
         forms.forEach(this::fillFormDetails);
         return forms;
     }
-    
     /**
      * 根据ID查询表单
      */
@@ -98,12 +91,6 @@ public class EntityFormService {
         }
         return form;
     }
-
-    /**
-     * 兼容既有迁移模块的系统导入入口。
-     *
-     * 普通 HTTP 更新必须调用带 expectedRevision 的重载。
-     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -116,23 +103,14 @@ public class EntityFormService {
     public EntityForm saveForm(EntityForm form) {
         return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
     }
-
-    /**
-     * 普通整包表单保存，已有配置必须携带 expectedRevision。
-     */
     @Transactional(rollbackFor = Exception.class)
     public EntityForm saveForm(EntityForm form, Integer expectedRevision) {
         return saveFormInternal(form, expectedRevision, SaveMode.USER_CAS);
     }
-
-    /**
-     * 显式系统导入入口；系统导入会锁定当前草稿后按当前版本覆盖。
-     */
     @Transactional(rollbackFor = Exception.class)
     public EntityForm saveFormForImport(EntityForm form) {
         return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
     }
-
     private EntityForm saveFormInternal(
             EntityForm source,
             Integer expectedRevision,
@@ -164,7 +142,6 @@ public class EntityFormService {
             }
             BeanUtils.copyProperties(current, desired);
         }
-
         applyMutableFormProperties(source, desired, isNew, saveMode);
         desired.setFields(source.getFields());
         desired.setNodes(null);
@@ -176,7 +153,6 @@ public class EntityFormService {
                 source.getFields());
         configurationValidator.validateForm(desired);
         validateFormKey(desired);
-
         LocalDateTime now = LocalDateTime.now();
         desired.setUpdateTime(now);
         if (isNew) {
@@ -199,7 +175,6 @@ public class EntityFormService {
             }
             log.info("更新实体表单：{}", LogValue.safe(desired.getFormName()));
         }
-
         if (Boolean.TRUE.equals(desired.getIsDefault())) {
             clearOtherDefaultForm(desired.getEntityId(), desired.getId());
         }
@@ -211,7 +186,6 @@ public class EntityFormService {
         }
         return getById(desired.getId());
     }
-    
     /**
      * 将同一实体下的其他表单设为非默认
      */
@@ -232,10 +206,6 @@ public class EntityFormService {
             }
         }
     }
-    
-    /**
-     * 获取实体的默认表单
-     */
     public EntityForm getDefaultForm(String entityId) {
         EntityForm form = formMapper.selectDefaultByEntityId(entityId);
         if (form != null) {
@@ -253,7 +223,6 @@ public class EntityFormService {
         }
         return form;
     }
-
     /**
      * 删除表单
      */
@@ -270,15 +239,12 @@ public class EntityFormService {
         if (form == null) {
             throw new RuntimeException("表单不存在");
         }
-        
         // 删除字段
         formFieldMapper.deleteByFormId(id);
-        
         // 逻辑删除表单
         formMapper.deleteById(id);
         log.info("删除实体表单：{}", form.getFormName());
     }
-    
     /**
      * 仅更新表单初始化配置
      */
@@ -308,7 +274,6 @@ public class EntityFormService {
         formMapper.update(null, wrapper);
         log.info("更新表单初始化配置：{}", form.getFormName());
     }
-    
     /**
      * 普通字段整包保存，父表单 revision 作为聚合 CAS。
      */
@@ -335,7 +300,6 @@ public class EntityFormService {
         touchFormWithRevision(current);
         synchronizeFormFieldsByDiff(formId, fields, SaveMode.USER_CAS);
     }
-
     /**
      * 禁止旧调用在没有 expectedRevision 时覆盖整包字段。
      */
@@ -343,7 +307,6 @@ public class EntityFormService {
     public void saveFormFields(String formId, List<EntityFormField> fields) {
         throw new IllegalArgumentException("expectedRevision 不能为空");
     }
-
     /**
      * 系统导入入口：整包保存字段，锁定父表单后按当前版本覆盖。
      *
@@ -360,7 +323,6 @@ public class EntityFormService {
         touchFormWithRevision(current);
         synchronizeFormFieldsByDiff(formId, fields, SaveMode.SYSTEM_IMPORT);
     }
-
     private void synchronizeFormFieldsByDiff(
             String formId,
             List<EntityFormField> fields,
@@ -375,7 +337,6 @@ public class EntityFormService {
             }
         });
         Set<String> retainedIds = new HashSet<>();
-
         for (int i = 0; i < (fields == null ? 0 : fields.size()); i++) {
             EntityFormField source = fields.get(i);
             if (!StringUtils.hasText(source.getFieldCode())
@@ -457,7 +418,6 @@ public class EntityFormService {
             }
         }
     }
-
     private void validateSystemFormConfiguration(
             EntityForm form,
             List<EntityFormField> fields) {
@@ -507,7 +467,6 @@ public class EntityFormService {
             configured.setIsReadonly(1);
         }
     }
-
     private void applyMutableFormProperties(
             EntityForm source,
             EntityForm target,
@@ -531,7 +490,6 @@ public class EntityFormService {
         }
         target.setViewConfig(source.getViewConfig());
     }
-
     private void applyFormDefaults(EntityForm form) {
         if (!StringUtils.hasText(form.getLayoutType())) {
             form.setLayoutType("vertical");
@@ -543,7 +501,6 @@ public class EntityFormService {
             form.setIsDefault(false);
         }
     }
-
     private void validateFormKey(EntityForm form) {
         if (!StringUtils.hasText(form.getFormKey())) {
             return;
@@ -559,7 +516,6 @@ public class EntityFormService {
                     "表单标识已存在：" + form.getFormKey());
         }
     }
-
     private void setMutableFormColumns(
             UpdateWrapper<EntityForm> wrapper,
             EntityForm form) {
@@ -578,7 +534,6 @@ public class EntityFormService {
                         form.getDataSourceBindingsDocument())
                 .set("view_config", form.getViewConfig());
     }
-
     private UpdateWrapper<EntityForm> formRevisionCondition(
             String formId,
             EntityForm current) {
@@ -591,7 +546,6 @@ public class EntityFormService {
         }
         return wrapper;
     }
-
     private EntityForm lockForm(String formId) {
         EntityForm current = formMapper.selectByIdForUpdate(formId);
         if (current == null) {
@@ -599,7 +553,6 @@ public class EntityFormService {
         }
         return current;
     }
-
     private void touchFormWithRevision(EntityForm current) {
         UpdateWrapper<EntityForm> wrapper =
                 formRevisionCondition(current.getId(), current);
@@ -612,7 +565,6 @@ public class EntityFormService {
                     "表单已被其他人修改，请刷新后重试");
         }
     }
-
     private void requireExpectedRevision(
             Integer expectedRevision,
             EntityForm current,
@@ -626,17 +578,14 @@ public class EntityFormService {
                     getById(current.getId()));
         }
     }
-
     private int revisionOf(EntityForm form) {
         return form.getRevision() == null ? 0 : form.getRevision();
     }
-
     private RevisionConflictException formConflict(
             String formId,
             String message) {
         return new RevisionConflictException(message, getById(formId));
     }
-
     private void copyMutableFormFieldProperties(
             EntityFormField source,
             EntityFormField target) {
@@ -656,7 +605,6 @@ public class EntityFormService {
         target.setComponentProps(source.getComponentProps());
         target.setGridSpan(source.getGridSpan());
     }
-
     private UpdateWrapper<EntityFormField> formFieldSnapshotCondition(
             String formId,
             EntityFormField current) {
@@ -670,7 +618,6 @@ public class EntityFormService {
         }
         return wrapper;
     }
-
     private void setMutableFormFieldColumns(
             UpdateWrapper<EntityFormField> wrapper,
             EntityFormField field) {
@@ -690,7 +637,6 @@ public class EntityFormService {
                 .set("component_props", field.getComponentProps())
                 .set("grid_span", field.getGridSpan());
     }
-
     private boolean sameFormField(
             EntityFormField left,
             EntityFormField right) {
@@ -719,7 +665,6 @@ public class EntityFormService {
                 && Objects.equals(left.getGridSpan(), right.getGridSpan())
                 && Objects.equals(left.getSortOrder(), right.getSortOrder());
     }
-    
     /**
      * 获取表单字段
      */
@@ -733,7 +678,6 @@ public class EntityFormService {
         }
         return fields;
     }
-    
     /**
      * 根据实体ID和表单Key查询表单
      */
@@ -754,14 +698,12 @@ public class EntityFormService {
         }
         return form;
     }
-
     /**
      * 根据实体编码获取实体定义
      */
     public com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition getEntityByCode(String entityCode) {
         return entityMapper.findByEntityCode(entityCode).orElse(null);
     }
-    
     /**
      * 获取实体的字段列表（用于创建表单时选择）
      */
@@ -784,7 +726,6 @@ public class EntityFormService {
         });
         return fields;
     }
-
     /**
      * 补充表单字段的元数据（从 entity_field 查询）
      */
@@ -817,7 +758,6 @@ public class EntityFormService {
             field.setIsReadonly(0);
         }
     }
-
     private void enrichRelationMetadata(EntityFormField field, EntityField entityField) {
         if (entityField.getEntityId() == null || entityField.getFieldCode() == null) {
             return;
@@ -837,7 +777,6 @@ public class EntityFormService {
         field.setRefEntityId(relation.getChildEntityId());
         field.setRefFieldCode(relation.getChildRefFieldCode());
     }
-
     /**
      * 填充表单详情
      */
@@ -847,7 +786,6 @@ public class EntityFormService {
             form.setEntity(entity);
         }
     }
-    
     /**
      * 设置默认表单
      * @param formId 表单ID
@@ -858,18 +796,14 @@ public class EntityFormService {
         if (form == null) {
             throw new RuntimeException("表单不存在");
         }
-        
         // 设置为默认表单
         form.setIsDefault(true);
         form.setUpdateTime(LocalDateTime.now());
         formMapper.updateById(form);
-        
         // 将同一实体下的其他表单设为非默认
         clearOtherDefaultForm(form.getEntityId(), formId);
-        
         log.info("设置默认表单：{} (entityId={})", form.getFormName(), form.getEntityId());
     }
-    
     /**
      * 复制表单
      * @param sourceFormId 源表单ID
@@ -882,10 +816,8 @@ public class EntityFormService {
         if (sourceForm == null) {
             throw new RuntimeException("表单不存在");
         }
-        
         // 查询源表单字段
         List<EntityFormField> sourceFields = formFieldMapper.selectByFormId(sourceFormId);
-        
         // 创建新表单
         EntityForm newForm = new EntityForm();
         newForm.setEntityId(sourceForm.getEntityId());
@@ -904,10 +836,8 @@ public class EntityFormService {
         newForm.setRevision(1);
         newForm.setCreateTime(LocalDateTime.now());
         newForm.setUpdateTime(LocalDateTime.now());
-        
         // 保存新表单
         formMapper.insert(newForm);
-        
         // 复制字段
         if (sourceFields != null && !sourceFields.isEmpty()) {
             for (int i = 0; i < sourceFields.size(); i++) {
@@ -932,11 +862,9 @@ public class EntityFormService {
                 newField.setSortOrder(i);
                 newField.setCreateTime(LocalDateTime.now());
                 newField.setUpdateTime(LocalDateTime.now());
-                
                 formFieldMapper.insert(newField);
             }
         }
-
         List<com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode> sourceNodes =
                 formNodeMapper.findByFormId(sourceFormId);
         Map<String, String> copiedIds = new HashMap<>();
@@ -957,9 +885,7 @@ public class EntityFormService {
             newNode.setDeleted(0);
             formNodeMapper.insert(newNode);
         }
-        
         log.info("复制表单：{} -> {}", sourceForm.getFormName(), newForm.getFormName());
-        
         // 填充详情返回
         fillFormDetails(newForm);
         newForm.setFields(getFormFields(newForm.getId()));
