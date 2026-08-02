@@ -11,7 +11,8 @@
 2. 相同 `Idempotency-Key` 重放、四路并发启动、实例查询和任务分页。
 3. 幂等取消、缺少身份变量时的 422 拒绝。
 4. 参考接收端的令牌、请求幂等、Webhook HMAC 校验和事件去重。
-5. 可选的第二场景 revision 切换、接收端停止以及 Flow Server 滚动重启。
+5. 可选的第二场景 revision 切换、接收端停止以及 Flow Server 滚动重启。接收端停止
+   阶段只验证 Flow 核心接口，脚本会跳过需要接收端在线的参考系统契约。
 
 数据库连接中断、令牌过期和接入 Secret 轮换必须在目标集群执行。脚本不会主动破坏
 共享数据库或替换共享 Secret；这些场景应按发布审批执行并保存 Pod、应用日志、指标和
@@ -41,8 +42,10 @@ K3D_CLUSTER='crest-validation' \
 
 已有镜像时设置 `BUILD_REFERENCE_IMAGE=0`。Flow 或参考接收端不是本地集群时，分别用
 `FLOW_BASE_URL`、`REFERENCE_BASE_URL` 指定服务根地址；未指定时脚本只在当前 kubectl
-上下文创建端口转发。`REFERENCE_TOKEN_PATH` 默认 `/oauth/token`，Flow 令牌路径固定为
-`/oauth2/token`。
+上下文创建端口转发。若 `FLOW_BASE_URL` 是外部地址且故障阶段会滚动重启 Flow，设置
+`FLOW_RESTART_PORT_FORWARD=1` 让脚本在重启后重新建立本地端口转发；否则脚本要求外部
+地址自行恢复并在失败时退出。`REFERENCE_TOKEN_PATH` 默认 `/oauth/token`，Flow 令牌
+路径固定为 `/oauth2/token`。
 
 ## 通过标准与证据
 

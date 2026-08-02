@@ -11,6 +11,7 @@ flow_service=${FLOW_SERVICE:-flow-hardening-server}
 flow_deployment=${FLOW_DEPLOYMENT:-flow-hardening-server}
 flow_port=${FLOW_LOCAL_PORT:-18080}
 reference_port=${REFERENCE_LOCAL_PORT:-19089}
+flow_input_json=${FLOW_INPUT_JSON:-'{"requesterId":"reference-user"}'}
 
 : "${FLOW_CLIENT_ID:?FLOW_CLIENT_ID is required}"
 : "${FLOW_CLIENT_SECRET:?FLOW_CLIENT_SECRET is required}"
@@ -44,6 +45,7 @@ flow_base_url=${FLOW_BASE_URL:-}
 flow_port_forward_pid=
 reference_base_url=${REFERENCE_BASE_URL:-}
 reference_port_forward_pid=
+flow_restart_port_forward=${FLOW_RESTART_PORT_FORWARD:-0}
 fault_receiver_scaled=0
 restore_fault_receiver() {
   if [[ "$fault_receiver_scaled" == "1" ]]; then
@@ -65,7 +67,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-if [[ -z "$flow_base_url" ]]; then
+start_flow_port_forward() {
   kubectl -n "$flow_namespace" port-forward "service/$flow_service" "$flow_port:8080" \
     >/tmp/flow-open-integration-port-forward.log 2>&1 &
   flow_port_forward_pid=$!
@@ -77,6 +79,20 @@ if [[ -z "$flow_base_url" ]]; then
     sleep 1
   done
   : "${flow_base_url:?unable to establish Flow port-forward}"
+}
+
+wait_for_flow() {
+  for attempt in {1..30}; do
+    if curl --silent --fail "$flow_base_url/healthz" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+if [[ -z "$flow_base_url" ]]; then
+  start_flow_port_forward
 fi
 
 if [[ -z "$reference_base_url" ]]; then
@@ -99,7 +115,7 @@ FLOW_CLIENT_ID="$FLOW_CLIENT_ID" \
 FLOW_CLIENT_SECRET="$FLOW_CLIENT_SECRET" \
 FLOW_SCENARIO_KEY="$FLOW_SCENARIO_KEY" \
 FLOW_SCENARIO_KEY_V2="${FLOW_SCENARIO_KEY_V2:-}" \
-FLOW_INPUT_JSON="${FLOW_INPUT_JSON:-{\"requesterId\":\"reference-user\"}}" \
+FLOW_INPUT_JSON="$flow_input_json" \
 REFERENCE_CLIENT_ID="${REFERENCE_CLIENT_ID:-reference-client}" \
 REFERENCE_CLIENT_SECRET="${REFERENCE_CLIENT_SECRET:-reference-secret}" \
 REFERENCE_WEBHOOK_SECRET="${REFERENCE_WEBHOOK_SECRET:-reference-webhook-secret}" \
@@ -111,7 +127,8 @@ if [[ "${RUN_FAULT_SCENARIOS:-0}" == "1" ]]; then
   FLOW_BASE_URL="$flow_base_url" REFERENCE_BASE_URL='' \
     FLOW_CLIENT_ID="$FLOW_CLIENT_ID" FLOW_CLIENT_SECRET="$FLOW_CLIENT_SECRET" \
     FLOW_SCENARIO_KEY="$FLOW_SCENARIO_KEY" \
-    FLOW_INPUT_JSON="${FLOW_INPUT_JSON:-{\"requesterId\":\"reference-user\"}}" \
+    FLOW_INPUT_JSON="$flow_input_json" \
+    SKIP_REFERENCE_CONTRACT=1 \
     node "$repository_root/examples/open-integration/scenario-acceptance.mjs"
   kubectl -n "$acceptance_namespace" scale "deployment/$reference_deployment" --replicas=1
   kubectl -n "$acceptance_namespace" rollout status "deployment/$reference_deployment" --timeout=120s
@@ -119,10 +136,25 @@ if [[ "${RUN_FAULT_SCENARIOS:-0}" == "1" ]]; then
 
   kubectl -n "$flow_namespace" rollout restart "deployment/$flow_deployment"
   kubectl -n "$flow_namespace" rollout status "deployment/$flow_deployment" --timeout=180s
+  if [[ -n "$flow_port_forward_pid" ]]; then
+    kill "$flow_port_forward_pid" 2>/dev/null || true
+    flow_port_forward_pid=
+    flow_base_url=
+    start_flow_port_forward
+  elif [[ "$flow_restart_port_forward" == "1" ]]; then
+    flow_base_url=
+    start_flow_port_forward
+  else
+    if ! wait_for_flow; then
+      printf 'Flow endpoint did not recover after restart: %s\n' \
+        "$flow_base_url" >&2
+      exit 1
+    fi
+  fi
   FLOW_BASE_URL="$flow_base_url" REFERENCE_BASE_URL='' \
     FLOW_CLIENT_ID="$FLOW_CLIENT_ID" FLOW_CLIENT_SECRET="$FLOW_CLIENT_SECRET" \
     FLOW_SCENARIO_KEY="$FLOW_SCENARIO_KEY" \
-    FLOW_INPUT_JSON="${FLOW_INPUT_JSON:-{\"requesterId\":\"reference-user\"}}" \
+    FLOW_INPUT_JSON="$flow_input_json" \
     node "$repository_root/examples/open-integration/scenario-acceptance.mjs"
 fi
 

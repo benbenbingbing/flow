@@ -168,7 +168,7 @@ const runFlowContract = async () => {
 }
 
 const runReferenceContract = async () => {
-  if (!referenceBaseUrl) return
+  if (!referenceBaseUrl || process.env.SKIP_REFERENCE_CONTRACT === '1') return
   const referenceToken = await token(
     referenceBaseUrl,
     referenceClientId,
