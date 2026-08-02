@@ -41,7 +41,10 @@ const signatureMatches = (actual, expected) => {
 
 const stableId = value => createHash('sha256').update(value).digest('hex').slice(0, 24)
 
-export const createReferenceExternalSystem = ({ port = 0 } = {}) => {
+export const createReferenceExternalSystem = ({
+  port = 0,
+  host = '127.0.0.1'
+} = {}) => {
   const requests = new Map()
   const idempotency = new Map()
   const webhookEvents = new Set()
@@ -50,6 +53,14 @@ export const createReferenceExternalSystem = ({ port = 0 } = {}) => {
       const url = new URL(request.url || '/', 'http://reference.local')
       if (request.method === 'GET' && url.pathname === '/healthz') {
         return json(response, 200, { status: 'UP' })
+      }
+      if (request.method === 'GET' && url.pathname === '/test/state') {
+        if (!bearer(request)) return json(response, 401, { error: 'unauthorized' })
+        return json(response, 200, {
+          requestCount: requests.size,
+          webhookEventCount: webhookEvents.size,
+          requests: [...requests.values()].map(value => ({ id: value.id, status: value.status }))
+        })
       }
       if (request.method === 'POST' && url.pathname === '/oauth/token') {
         const authorization = request.headers.authorization || ''
@@ -112,7 +123,7 @@ export const createReferenceExternalSystem = ({ port = 0 } = {}) => {
   })
   return {
     server,
-    listen: () => new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server.address()))),
+    listen: () => new Promise(resolve => server.listen(port, host, () => resolve(server.address()))),
     close: () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
   }
 }
@@ -163,7 +174,10 @@ const selfTest = async () => {
 if (process.env.REFERENCE_EXTERNAL_SELF_TEST === '1') {
   await selfTest()
 } else {
-  const app = createReferenceExternalSystem({ port: Number(process.env.REFERENCE_EXTERNAL_PORT || 9089) })
+  const app = createReferenceExternalSystem({
+    port: Number(process.env.REFERENCE_EXTERNAL_PORT || 9089),
+    host: process.env.REFERENCE_EXTERNAL_HOST || '0.0.0.0'
+  })
   const address = await app.listen()
   console.log(`reference external system listening on http://127.0.0.1:${address.port}`)
   console.log('endpoints: /oauth/token, /api/requests, /api/requests/:id, /api/requests/:id/cancel, /webhooks/flow')

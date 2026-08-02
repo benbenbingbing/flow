@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: reference-external-system
+  labels:
+    app.kubernetes.io/name: reference-external-system
+    app.kubernetes.io/part-of: flow-open-integration-acceptance
+spec:
+  selector:
+    app.kubernetes.io/name: reference-external-system
+  ports:
+    - name: http
+      port: 9089
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reference-external-system
+  labels:
+    app.kubernetes.io/name: reference-external-system
+    app.kubernetes.io/part-of: flow-open-integration-acceptance
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: reference-external-system
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: reference-external-system
+        app.kubernetes.io/part-of: flow-open-integration-acceptance
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reference-external-system
+          image: flow-reference-external:local
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 9089
+          env:
+            - name: REFERENCE_EXTERNAL_HOST
+              value: 0.0.0.0
+            - name: REFERENCE_EXTERNAL_PORT
+              value: '9089'
+            - name: REFERENCE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: reference-external-credentials
+                  key: client-id
+            - name: REFERENCE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: reference-external-credentials
+                  key: client-secret
+            - name: REFERENCE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: reference-external-credentials
+                  key: webhook-secret
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

@@ -1,0 +1,70 @@
+# 通用外部流程接入 k3s 验收
+
+本文定义 Flow 与任意外部系统做开放集成时的最小可重复验收。参考系统只用于提供
+可控的接收端，不是 Flow 的业务依赖，也不包含任何 DevOps 专用逻辑。
+
+## 验收范围
+
+`examples/open-integration/k3s/acceptance.sh` 按以下顺序验证：
+
+1. Flow Client Credentials 令牌、场景启动和固定 revision 返回。
+2. 相同 `Idempotency-Key` 重放、四路并发启动、实例查询和任务分页。
+3. 幂等取消、缺少身份变量时的 422 拒绝。
+4. 参考接收端的令牌、请求幂等、Webhook HMAC 校验和事件去重。
+5. 可选的第二场景 revision 切换、接收端停止以及 Flow Server 滚动重启。
+
+数据库连接中断、令牌过期和接入 Secret 轮换必须在目标集群执行。脚本不会主动破坏
+共享数据库或替换共享 Secret；这些场景应按发布审批执行并保存 Pod、应用日志、指标和
+审计记录。
+
+## 前置条件
+
+- Kubernetes/k3s 上已部署 Flow，开放 API 已启用，且接入应用拥有：
+  `process.instance.start`、`process.instance.read`、`process.instance.cancel`、
+  `process.task.read`。
+- 已发布一个带输入契约和身份映射的场景。`FLOW_SCENARIO_KEY` 必须是调用方有权访问的
+  场景；需要版本切换时另提供 `FLOW_SCENARIO_KEY_V2`。
+- 本机有 `kubectl`、`curl`、Node.js 22+；默认构建参考镜像还需要 Docker。使用 k3d
+  导入镜像时还需要 `k3d`。
+- 参考接收端只在验收命名空间监听，默认凭据仅用于本地测试，禁止复用到生产。
+
+## 运行
+
+```bash
+FLOW_CLIENT_ID='...' \
+FLOW_CLIENT_SECRET='...' \
+FLOW_SCENARIO_KEY='generic-approval' \
+FLOW_INPUT_JSON='{"requesterId":"reference-user","amount":10}' \
+K3D_CLUSTER='crest-validation' \
+./examples/open-integration/k3s/acceptance.sh
+```
+
+已有镜像时设置 `BUILD_REFERENCE_IMAGE=0`。Flow 或参考接收端不是本地集群时，分别用
+`FLOW_BASE_URL`、`REFERENCE_BASE_URL` 指定服务根地址；未指定时脚本只在当前 kubectl
+上下文创建端口转发。`REFERENCE_TOKEN_PATH` 默认 `/oauth/token`，Flow 令牌路径固定为
+`/oauth2/token`。
+
+## 通过标准与证据
+
+每个场景必须保存命令退出码、开始/结束时间、脚本 JSON 输出、Flow Server/Worker Pod
+状态、应用错误日志、HTTP 5xx、数据库连接池和 OpenTelemetry 导出失败计数。并发启动
+必须全部返回 201，重放必须返回相同实例和 `Idempotent-Replay: true`；故障期间核心
+接口不得出现未预期的 5xx。
+
+| 场景 | 触发方式 | 通过条件 | 必留证据 |
+| --- | --- | --- | --- |
+| 正常闭环 | 默认运行 | 全部契约断言通过 | 脚本输出、Pod、HTTP 指标 |
+| 参考端停止 | `RUN_FAULT_SCENARIOS=1` | Flow 核心 API 仍可用，恢复后可继续接收 | 停止窗口、重启次数、错误率 |
+| Flow Server 滚动重启 | `RUN_FAULT_SCENARIOS=1` | 就绪副本始终满足发布策略，接口无非预期 5xx | rollout、PDB、请求指标 |
+| 数据库连接中断 | 目标集群按 runbook 执行 | 有界超时、错误可重试，恢复后新请求成功 | 数据库事件、应用日志、连接池 |
+| 令牌过期 | 提供 `FLOW_EXPIRED_ACCESS_TOKEN` | 返回 401，不泄漏业务数据 | 请求响应、审计日志 |
+| Secret 轮换 | 按 `integration-secret-rotation` 执行 | 新凭据生效，旧凭据按窗口失效 | Secret 版本、Pod checksum、审计 |
+
+本地参考接收端已验证镜像构建、非 root 运行、健康探针、Token、请求幂等、取消、
+Webhook 签名和去重。Flow 端到端结果必须在具备真实场景、接入应用和授权的集群上
+重新运行后填写到发布记录；不能以参考接收端自测代替 Flow 验收。
+
+## 清理
+
+验收结束后删除测试命名空间和端口转发进程。不要删除目标 Flow 命名空间、数据库卷或
+生产 Secret。

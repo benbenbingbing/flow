@@ -35,6 +35,44 @@ REFERENCE_EXTERNAL_SELF_TEST=1 node examples/open-integration/reference-external
 node examples/open-integration/reference-external-system.mjs
 ```
 
-参考实现只监听 `127.0.0.1`，默认端口为 `9089`，凭据可通过
+本地运行默认监听 `127.0.0.1:9089`；容器运行时通过
+`REFERENCE_EXTERNAL_HOST=0.0.0.0` 监听 Pod 网络。凭据可通过
 `REFERENCE_CLIENT_ID`、`REFERENCE_CLIENT_SECRET` 和 `REFERENCE_WEBHOOK_SECRET` 覆盖。
 不要把它暴露到公网，也不要把默认凭据用于生产环境。
+
+## 本地 k3s 验收
+
+`k3s/` 提供独立的 test-only receiver 清单，使用非 root 容器、健康探针和资源上限，
+不会修改 Flow 的业务配置。构建并导入本地镜像后创建测试 Secret：
+
+```bash
+docker build -f examples/open-integration/Dockerfile.reference \
+  -t flow-reference-external:local examples/open-integration
+kubectl apply -k examples/open-integration/k3s
+kubectl -n flow-open-integration create secret generic reference-external-credentials \
+  --from-literal=client-id=reference-client \
+  --from-literal=client-secret=reference-secret \
+  --from-literal=webhook-secret=reference-webhook-secret \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+在已配置场景、应用凭据和流程授权的 Flow 集群上运行闭环验收：
+
+```bash
+FLOW_CLIENT_ID='...' \
+FLOW_CLIENT_SECRET='...' \
+FLOW_SCENARIO_KEY='generic-approval' \
+FLOW_INPUT_JSON='{"requesterId":"reference-user","amount":10}' \
+K3D_CLUSTER='your-cluster' \
+./examples/open-integration/k3s/acceptance.sh
+```
+
+完整前置条件、通过标准、故障矩阵和证据要求见
+[`docs/testing/open-integration-k3s-acceptance.md`](../../docs/testing/open-integration-k3s-acceptance.md)。
+
+验收脚本覆盖 Token、场景启动、重复启动、并发启动、查询、任务查询、幂等取消、
+身份缺失拒绝，以及 receiver 的 Token、幂等、Webhook 签名与去重。设置
+`FLOW_SCENARIO_KEY_V2` 可额外验证 revision 切换；设置 `RUN_FAULT_SCENARIOS=1` 会
+在显式授权后验证 receiver 停止和 Flow Server 滚动重启期间核心接口仍可用。数据库
+连接中断、Token 过期和 Secret 轮换需要在目标集群按同一发布流程执行，脚本不会擅自
+破坏共享环境。

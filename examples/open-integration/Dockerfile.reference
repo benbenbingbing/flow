@@ -1,0 +1,10 @@
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+WORKDIR /app
+COPY reference-external-system.mjs /app/reference-external-system.mjs
+RUN addgroup -S -g 10001 reference \
+    && adduser -S -D -H -u 10001 -h /app -s /sbin/nologin -G reference reference
+USER 10001:10001
+ENV REFERENCE_EXTERNAL_HOST=0.0.0.0
+ENV REFERENCE_EXTERNAL_PORT=9089
+EXPOSE 9089
+CMD ["node", "/app/reference-external-system.mjs"]

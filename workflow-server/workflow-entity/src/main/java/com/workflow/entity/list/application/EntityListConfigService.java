@@ -22,6 +22,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -43,7 +44,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 public class EntityListConfigService {
     private static final Set<String> SYSTEM_QUERY_OPERATORS =
             Set.of(
@@ -96,6 +97,7 @@ public class EntityListConfigService {
                 entityUiConfigurationPolicy, jsonDocumentCodec, relationalConfigService,
                 new EntityListFieldPropertySupport());
     }
+
     /**
      * 查询实体的所有列表配置
      */
