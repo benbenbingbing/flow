@@ -77,6 +77,18 @@ class IntegrationWorkflowScenarioServiceTest {
     }
 
     @Test
+    void rejectsLifecycleStatusAsAnOutcomeMappingTarget() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> service.validate(
+                "app-1",
+                request(
+                        objectMapper.readTree(
+                                "{\"status\":\"variables.decision\"}"),
+                        objectMapper.readTree(
+                                "{\"namespace\":\"external\","
+                                        + "\"initiator\":\"variables.requesterId\"}"))));
+    }
+
+    @Test
     void rejectsMissingIdentityMapping() throws Exception {
         assertThrows(IllegalArgumentException.class, () -> service.create(
                 "app-1",
@@ -87,7 +99,7 @@ class IntegrationWorkflowScenarioServiceTest {
     @Test
     void validatesWithoutPersistingConfiguration() throws Exception {
         var result = service.validate("app-1", request(
-                objectMapper.readTree("{\"status\":\"variables.status\"}"),
+                objectMapper.readTree("{\"outcomeCode\":\"variables.outcome\"}"),
                 objectMapper.readTree("{\"namespace\":\"external\",\"initiator\":\"variables.requesterId\"}")));
 
         assertEquals(true, result.valid());
@@ -99,7 +111,7 @@ class IntegrationWorkflowScenarioServiceTest {
     @Test
     void validatesGrantAndPersistsHashedImmutableConfiguration() throws Exception {
         var result = service.create("app-1", request(
-                objectMapper.readTree("{\"status\":\"variables.status\",\"outcome\":\"variables.outcome\"}"),
+                objectMapper.readTree("{\"outcomeCode\":\"variables.outcome\"}"),
                 objectMapper.readTree("{\"namespace\":\"external\",\"initiator\":\"variables.requesterId\"}")));
 
         assertEquals("generic", result.scenarioKey());

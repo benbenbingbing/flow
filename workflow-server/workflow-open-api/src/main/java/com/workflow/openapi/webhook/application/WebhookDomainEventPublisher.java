@@ -111,21 +111,29 @@ public class WebhookDomainEventPublisher
     private Map<String, Object> projectAttributes(
             IntegrationProcessBindingRecord binding,
             Map<String, Object> attributes) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        if (attributes != null) {
-            result.putAll(attributes);
-        }
-        Object rawSources = result.remove(
+        Map<String, Object> supplied = attributes == null
+                ? Map.of()
+                : attributes;
+        Object rawSources = supplied.get(
                 OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES);
+        if (binding.getScenarioId() == null) {
+            Map<String, Object> legacy = new LinkedHashMap<>(supplied);
+            legacy.remove(OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES);
+            return Map.copyOf(legacy);
+        }
         if (!(rawSources instanceof Map<?, ?> sources)
                 || binding.getOutcomeMappingSnapshotJson() == null
                 || objectMapper == null) {
-            return Map.copyOf(result);
+            return Map.of();
         }
         try {
+            Map<String, Object> result = new LinkedHashMap<>();
             JsonNode mapping = objectMapper.readTree(
                     binding.getOutcomeMappingSnapshotJson());
             mapping.fields().forEachRemaining(entry -> {
+                if ("status".equals(entry.getKey())) {
+                    return;
+                }
                 String source = entry.getValue().asText();
                 if (source.startsWith("variables.")) {
                     source = source.substring("variables.".length());

@@ -15,7 +15,7 @@
 | `processKey` | 已授权给该应用的流程 Key |
 | `processDefinitionVersion` | 可选；填写后启动严格使用该版本，避免流程发布后语义漂移 |
 | `inputSchema` | JSON Schema 子集，限制对象大小、字段类型和必填字段 |
-| `outcomeMapping` | 仅允许 `status`、`outcomeCode`、`actorId`、`decidedAt`、`opinion`、`evidence`、`reasonCode`、`failureCode` 等声明式字段 |
+| `outcomeMapping` | 仅允许 `outcomeCode`、`actorId`、`decidedAt`、`opinion`、`evidence`、`reasonCode`、`failureCode` 等声明式字段；`status` 由 Flow 生命周期生成，禁止映射 |
 | `identityMapping` | 显式声明 `namespace` 和 `initiator`，身份值只能映射到 `variables.<field>` |
 | `eventTypes` | 六个已发布的 CloudEvents V1 类型白名单 |
 

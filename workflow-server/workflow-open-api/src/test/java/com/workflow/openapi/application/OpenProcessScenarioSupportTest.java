@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenBusinessReferenceRequest;
 import com.workflow.openapi.api.request.OpenExternalInitiatorRequest;
@@ -47,6 +48,31 @@ class OpenProcessScenarioSupportTest {
                         request(null, Map.of())));
 
         assertEquals("IDENTITY_NOT_RESOLVED", exception.getErrorCode());
+    }
+
+    @Test
+    void scenarioEventsExposeOnlyConfiguredMappingSources() {
+        Map<String, Object> attributes = support.projectEventAttributes(
+                Map.of(
+                        "decision", "APPROVED",
+                        "opinion", "must-not-leak",
+                        "outcomeCode", "must-not-leak"),
+                "{\"outcomeCode\":\"variables.decision\"}");
+
+        assertEquals(
+                Map.of("decision", "APPROVED"),
+                attributes.get(OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES));
+        assertEquals(false, attributes.containsKey("opinion"));
+        assertEquals(false, attributes.containsKey("outcomeCode"));
+    }
+
+    @Test
+    void historicalStatusMappingsCannotOverrideLifecycleStatus() {
+        Map<String, Object> attributes = support.projectEventAttributes(
+                Map.of("decision", "APPROVED"),
+                "{\"status\":\"variables.decision\"}");
+
+        assertEquals(Map.of(), attributes);
     }
 
     private IntegrationWorkflowScenarioRecord scenario(String mapping) {

@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class WebhookSignatureService {
 
+    private static final int SIGNATURE_LENGTH = 47;
+
     public boolean verify(
             String eventId,
             long unixTimestamp,
@@ -19,10 +21,17 @@ public class WebhookSignatureService {
             String signature,
             Clock clock,
             long allowedSkewSeconds) {
-        if (clock == null || allowedSkewSeconds < 0
-                || Math.abs(clock.instant().getEpochSecond()
-                - unixTimestamp) > allowedSkewSeconds
-                || signature == null || !signature.startsWith("v1=")) {
+        if (eventId == null || eventId.isBlank()
+                || body == null
+                || signingSecret == null || signingSecret.isBlank()
+                || clock == null || allowedSkewSeconds < 0
+                || signature == null
+                || signature.length() != SIGNATURE_LENGTH
+                || !signature.startsWith("v1=")
+                || !withinTimeWindow(
+                        clock.instant().getEpochSecond(),
+                        unixTimestamp,
+                        allowedSkewSeconds)) {
             return false;
         }
         String expected = sign(
@@ -30,6 +39,19 @@ public class WebhookSignatureService {
         return java.security.MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.UTF_8),
                 signature.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private boolean withinTimeWindow(
+            long currentTimestamp,
+            long receivedTimestamp,
+            long allowedSkewSeconds) {
+        try {
+            long difference = Math.subtractExact(
+                    currentTimestamp, receivedTimestamp);
+            return Math.absExact(difference) <= allowedSkewSeconds;
+        } catch (ArithmeticException exception) {
+            return false;
+        }
     }
 
     public String sign(

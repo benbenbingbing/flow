@@ -62,4 +62,25 @@ class WebhookSignatureServiceTest {
                         Instant.ofEpochSecond(1_785_316_600L), ZoneOffset.UTC),
                 30));
     }
+
+    @Test
+    void rejectsOverflowingTimestampsAndMalformedVerificationInputs() {
+        byte[] body = "payload".getBytes(StandardCharsets.UTF_8);
+        Clock clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
+        String minimumTimestampSignature = service.sign(
+                "event-123", Long.MIN_VALUE, body, "test-secret");
+
+        assertEquals(false, service.verify(
+                "event-123", Long.MIN_VALUE, body, "test-secret",
+                minimumTimestampSignature, clock, 30));
+        assertEquals(false, service.verify(
+                "", 0, body, "test-secret", "v1=" + "a".repeat(44),
+                clock, 30));
+        assertEquals(false, service.verify(
+                "event-123", 0, null, "test-secret",
+                "v1=" + "a".repeat(44), clock, 30));
+        assertEquals(false, service.verify(
+                "event-123", 0, body, "test-secret",
+                "v1=" + "a".repeat(10_000), clock, 30));
+    }
 }

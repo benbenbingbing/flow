@@ -94,8 +94,12 @@ class WebhookDomainEventPublisherTest {
     @Test
     void appliesTheImmutableOutcomeMappingBeforeWritingOutbox() {
         IntegrationProcessBindingRecord binding = binding();
+        binding.setScenarioId("scenario-01");
+        binding.setEventTypesSnapshotJson(
+                "[\"com.flow.process.completed.v1\"]");
         binding.setOutcomeMappingSnapshotJson(
-                "{\"outcomeCode\":\"variables.decision\"}");
+                "{\"outcomeCode\":\"variables.decision\","
+                        + "\"status\":\"variables.decision\"}");
         when(bindingMapper.findOwnerByProcessInstance(
                 "process-01")).thenReturn(binding);
         ArgumentCaptor<OutboxPublishRequest> captor =
@@ -111,6 +115,8 @@ class WebhookDomainEventPublisherTest {
                 "trace-01",
                 Instant.parse("2026-07-29T08:30:00Z"),
                 Map.of(
+                        "outcomeCode", "UNMAPPED_VALUE",
+                        "opinion", "must-not-leak",
                         OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES,
                         Map.of("decision", "APPROVED"))));
 
@@ -118,6 +124,10 @@ class WebhookDomainEventPublisherTest {
         IntegrationDomainEventPayload payload =
                 (IntegrationDomainEventPayload) captor.getValue().payload();
         assertEquals("APPROVED", payload.attributes().get("outcomeCode"));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                payload.attributes().containsKey("status"));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                payload.attributes().containsKey("opinion"));
         org.junit.jupiter.api.Assertions.assertFalse(
                 payload.attributes().containsKey(
                         OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES));

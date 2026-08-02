@@ -3,11 +3,12 @@ package com.workflow.openapi.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.process.open.OpenProcessEvent;
+import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationWorkflowScenarioRecord;
-import com.workflow.contracts.process.open.OpenProcessView;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
@@ -131,6 +132,9 @@ final class OpenProcessScenarioSupport {
             JsonNode mapping = objectMapper.readTree(mappingJson);
             Map<String, Object> result = new LinkedHashMap<>();
             mapping.fields().forEachRemaining(entry -> {
+                if ("status".equals(entry.getKey())) {
+                    return;
+                }
                 String source = entry.getValue().asText();
                 if (source.startsWith("variables.")) {
                     source = source.substring("variables.".length());
@@ -155,6 +159,42 @@ final class OpenProcessScenarioSupport {
             return Map.of();
         }
         Map<String, Object> result = new LinkedHashMap<>();
+        if (mappingJson == null || mappingJson.isBlank()) {
+            copyDefaultEventAttributes(variables, result);
+            return Map.copyOf(result);
+        }
+        try {
+            JsonNode mapping = objectMapper.readTree(mappingJson);
+            Map<String, Object> sourceValues = new LinkedHashMap<>();
+            mapping.fields().forEachRemaining(entry -> {
+                if ("status".equals(entry.getKey())) {
+                    return;
+                }
+                String source = entry.getValue().asText();
+                if (source.startsWith("variables.")) {
+                    source = source.substring("variables.".length());
+                }
+                Object value = variables.get(source);
+                if (isScalar(value)) {
+                    sourceValues.put(source, value);
+                }
+            });
+            if (!sourceValues.isEmpty()) {
+                result.put(
+                        OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES,
+                        Map.copyOf(sourceValues));
+            }
+            return Map.copyOf(result);
+        } catch (JsonProcessingException exception) {
+            throw new OpenApiException(
+                    503, "INTEGRATION_TEMPORARILY_UNAVAILABLE",
+                    "Scenario result mapping is unavailable");
+        }
+    }
+
+    private void copyDefaultEventAttributes(
+            Map<String, Object> variables,
+            Map<String, Object> result) {
         copyScalar(variables, result, "outcomeCode");
         copyScalar(variables, result, "outcome");
         copyScalar(variables, result, "approver", "actorId");
@@ -163,27 +203,6 @@ final class OpenProcessScenarioSupport {
         copyScalar(variables, result, "opinion");
         copyScalar(variables, result, "reasonCode");
         copyScalar(variables, result, "failureCode");
-        if (mappingJson == null || mappingJson.isBlank()) {
-            return Map.copyOf(result);
-        }
-        try {
-            JsonNode mapping = objectMapper.readTree(mappingJson);
-            mapping.fields().forEachRemaining(entry -> {
-                String source = entry.getValue().asText();
-                if (source.startsWith("variables.")) {
-                    source = source.substring("variables.".length());
-                }
-                Object value = variables.get(source);
-                if (isScalar(value)) {
-                    result.put(entry.getKey(), value);
-                }
-            });
-            return Map.copyOf(result);
-        } catch (JsonProcessingException exception) {
-            throw new OpenApiException(
-                    503, "INTEGRATION_TEMPORARILY_UNAVAILABLE",
-                    "Scenario result mapping is unavailable");
-        }
     }
 
     private void copyScalar(

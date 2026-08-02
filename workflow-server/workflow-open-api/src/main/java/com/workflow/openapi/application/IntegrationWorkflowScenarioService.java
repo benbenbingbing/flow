@@ -60,7 +60,7 @@ public class IntegrationWorkflowScenarioService {
             "com.flow.process.terminated.v1",
             "com.flow.process.failed.v1");
     private static final Set<String> OUTCOME_KEYS = Set.of(
-            "status", "outcomeCode", "outcome", "actorId", "decidedAt",
+            "outcomeCode", "outcome", "actorId", "decidedAt",
             "opinion", "evidence", "reasonCode", "failureCode");
     private static final Set<String> IDENTITY_KEYS = Set.of(
             "namespace", "initiator", "subject", "tenant");
