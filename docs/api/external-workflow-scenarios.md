@@ -63,7 +63,13 @@ POST   /api/integration-applications/{applicationId}/scenarios/{scenarioKey}/dis
 表示 Flow 生命周期，`outcomeCode` 才表示业务决定，不能把 `COMPLETED` 推断成批准；
 完整业务数据仍需通过受保护的业务系统查询。未配置场景时，旧的 `processKey` 启动方式
 保持兼容。场景模式下身份主体严格由 `identityMapping.initiator` 从变量解析，请求体中的
-旧版 `initiator` 字段不会覆盖已发布场景配置。
+旧版 `initiator` 字段不会覆盖已发布场景配置。解析出的外部主体必须通过对应命名空间的
+`ExternalIdentityResolver` SPI 映射为真实 Flow 用户；内置 `flow` 命名空间只做精确的
+用户 ID/用户名查找，其他命名空间必须由部署提供专用解析器。解析器不存在或没有匹配时
+启动返回 `422 IDENTITY_NOT_RESOLVED`，不会降级为任意审批人。
+
+流程在启动事务中会暂存生命周期事件，业务绑定写入后再释放事件。启动即完成的流程会在
+同一事务补发唯一的 completed、terminated 或 failed 事件，避免外部系统因竞态永久等待。
 
 ## 生产部署要求
 

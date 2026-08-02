@@ -9,11 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.contracts.process.open.OpenProcessEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.api.OutboxPublisher;
 import java.time.Instant;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -32,6 +34,8 @@ class WebhookDomainEventPublisherTest {
         outboxPublisher = Mockito.mock(OutboxPublisher.class);
         publisher = new WebhookDomainEventPublisher(
                 bindingMapper,
+                null,
+                new ObjectMapper().findAndRegisterModules(),
                 outboxPublisher);
     }
 
@@ -85,6 +89,38 @@ class WebhookDomainEventPublisherTest {
                 () -> publisher.publish(invalid));
         verify(bindingMapper, never())
                 .findOwnerByProcessInstance(any());
+    }
+
+    @Test
+    void appliesTheImmutableOutcomeMappingBeforeWritingOutbox() {
+        IntegrationProcessBindingRecord binding = binding();
+        binding.setOutcomeMappingSnapshotJson(
+                "{\"outcomeCode\":\"variables.decision\"}");
+        when(bindingMapper.findOwnerByProcessInstance(
+                "process-01")).thenReturn(binding);
+        ArgumentCaptor<OutboxPublishRequest> captor =
+                ArgumentCaptor.forClass(OutboxPublishRequest.class);
+
+        publisher.publish(new OpenProcessEvent(
+                "PROCESS_COMPLETED:process-01",
+                "com.flow.process.completed.v1",
+                "process-01",
+                null,
+                null,
+                null,
+                "trace-01",
+                Instant.parse("2026-07-29T08:30:00Z"),
+                Map.of(
+                        OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES,
+                        Map.of("decision", "APPROVED"))));
+
+        verify(outboxPublisher).publish(captor.capture());
+        IntegrationDomainEventPayload payload =
+                (IntegrationDomainEventPayload) captor.getValue().payload();
+        assertEquals("APPROVED", payload.attributes().get("outcomeCode"));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                payload.attributes().containsKey(
+                        OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES));
     }
 
     private OpenProcessEvent processEvent(String traceId) {

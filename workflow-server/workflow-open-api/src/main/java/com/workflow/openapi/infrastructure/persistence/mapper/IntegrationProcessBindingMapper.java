@@ -123,6 +123,23 @@ public interface IntegrationProcessBindingMapper {
     @Select("""
             SELECT *
               FROM integration_process_binding
+             WHERE application_id = #{applicationId}
+               AND external_system = #{externalSystem}
+               AND business_type = #{businessType}
+               AND business_id = #{businessId}
+               AND business_version <=> #{businessVersion}
+             LIMIT 1
+            """)
+    IntegrationProcessBindingRecord findByBusinessReferenceAndVersion(
+            @Param("applicationId") String applicationId,
+            @Param("externalSystem") String externalSystem,
+            @Param("businessType") String businessType,
+            @Param("businessId") String businessId,
+            @Param("businessVersion") String businessVersion);
+
+    @Select("""
+            SELECT *
+              FROM integration_process_binding
              WHERE process_instance_id = #{processInstanceId}
              LIMIT 1
             """)

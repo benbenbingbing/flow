@@ -251,6 +251,53 @@ class OpenProcessServiceTest {
                         any());
     }
 
+    @Test
+    void emitsTerminalEventWhenProcessCompletesDuringStart() {
+        when(grantMapper.findContract(
+                "application-01",
+                "change_process")).thenReturn(contract());
+        when(idempotencyService.claim(
+                anyString(),
+                anyString(),
+                anyString(),
+                any())).thenReturn(
+                new OpenIdempotencyService.Claim(
+                        "idempotency-01",
+                        3,
+                        true,
+                        false,
+                        false,
+                        0,
+                        null));
+        when(runtimePort.start(any())).thenReturn(
+                new OpenProcessView(
+                        "process-instance-01",
+                        "change_process",
+                        "COMPLETED",
+                        Instant.parse("2026-07-29T08:30:00Z"),
+                        Instant.parse("2026-07-29T08:30:01Z"),
+                        Map.of("decision", "APPROVED")));
+        when(runtimePort.listActiveTasks(
+                "process-instance-01",
+                0,
+                1000,
+                actor())).thenReturn(List.of());
+        ArgumentCaptor<OpenProcessEvent> events =
+                ArgumentCaptor.forClass(OpenProcessEvent.class);
+
+        service.start(actor(), "request-01", startRequest());
+
+        verify(runtimePort).releaseIntegrationEvents(
+                "process-instance-01", actor());
+        verify(eventPort, times(2)).publish(events.capture());
+        assertEquals(
+                "com.flow.process.started.v1",
+                events.getAllValues().get(0).eventType());
+        assertEquals(
+                "com.flow.process.completed.v1",
+                events.getAllValues().get(1).eventType());
+    }
+
     private IntegrationProcessGrantRecord contract() {
         return new IntegrationProcessGrantRecord(
                 "application-01",

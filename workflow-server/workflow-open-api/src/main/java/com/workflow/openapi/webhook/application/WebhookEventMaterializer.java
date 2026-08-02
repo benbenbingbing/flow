@@ -3,6 +3,7 @@ package com.workflow.openapi.webhook.application;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookDeliveryMapper;
 import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookEventMapper;
 import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookSubscriptionMapper;
@@ -152,6 +153,9 @@ public class WebhookEventMaterializer
         }
         (payload.attributes() == null ? java.util.Map.<String, Object>of()
                 : payload.attributes()).forEach((key, value) -> {
+            if (OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES.equals(key)) {
+                return;
+            }
             if (value != null && (value instanceof String
                     || value instanceof Number
                     || value instanceof Boolean)) {

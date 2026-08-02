@@ -16,6 +16,7 @@ import java.util.Map;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.common.engine.api.delegate.event.FlowableEntityEvent;
+import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,59 @@ class OpenIntegrationProcessEventListenerTest {
         assertEquals(
                 Instant.parse("2026-07-29T08:30:00Z"),
                 published.occurredAt());
+    }
+
+    @Test
+    void defersLifecycleEventsUntilTheOpenBindingIsStored() {
+        FlowableEntityEvent event = mock(
+                FlowableEntityEvent.class,
+                Mockito.withSettings().extraInterfaces(
+                        FlowableEngineEvent.class));
+        ProcessInstance process = mock(ProcessInstance.class);
+        when(event.getType()).thenReturn(
+                FlowableEngineEventType.PROCESS_STARTED);
+        when(((FlowableEngineEvent) event)
+                .getProcessInstanceId()).thenReturn("process-01");
+        when(event.getEntity()).thenReturn(process);
+        when(process.getProcessVariables()).thenReturn(
+                Map.of("integrationEventsDeferred", true));
+
+        listener.onEvent(event);
+
+        verify(eventPort, never()).publish(
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void exposesOnlyConfiguredOutcomeSourcesToTheEventPublisher() {
+        FlowableEntityEvent event = mock(
+                FlowableEntityEvent.class,
+                Mockito.withSettings().extraInterfaces(
+                        FlowableEngineEvent.class));
+        Task task = mock(Task.class);
+        when(event.getType()).thenReturn(
+                FlowableEngineEventType.TASK_COMPLETED);
+        when(((FlowableEngineEvent) event)
+                .getProcessInstanceId()).thenReturn("process-01");
+        when(event.getEntity()).thenReturn(task);
+        when(task.getId()).thenReturn("task-01");
+        when(task.getTaskDefinitionKey()).thenReturn("review");
+        when(task.getName()).thenReturn("Review");
+        when(task.getProcessVariables()).thenReturn(Map.of(
+                "integrationOutcomeMapping",
+                "{\"outcomeCode\":\"variables.decision\"}",
+                "decision", "APPROVED",
+                "secret", "must-not-leak"));
+        ArgumentCaptor<OpenProcessEvent> captor =
+                ArgumentCaptor.forClass(OpenProcessEvent.class);
+
+        listener.onEvent(event);
+
+        verify(eventPort).publish(captor.capture());
+        assertEquals(
+                Map.of("decision", "APPROVED"),
+                captor.getValue().attributes().get(
+                        OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES));
     }
 
     @Test

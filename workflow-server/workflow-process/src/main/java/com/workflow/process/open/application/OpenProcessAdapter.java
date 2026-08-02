@@ -12,6 +12,9 @@ import com.workflow.contracts.process.open.OpenProcessStartCommand;
 import com.workflow.contracts.process.open.OpenProcessStateConflictException;
 import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.contracts.process.open.OpenTaskView;
+import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedException;
+import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
+import com.workflow.contracts.identity.external.ExternalIdentityResolver;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
@@ -27,6 +30,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.HistoryService;
@@ -62,7 +66,10 @@ public class OpenProcessAdapter
             "integrationBusinessType",
             "integrationBusinessId",
             "integrationBusinessVersion",
-            "integrationExternalInitiatorId");
+            "integrationExternalInitiatorId",
+            "integrationExternalInitiatorNamespace",
+            "integrationOutcomeMapping",
+            "integrationEventsDeferred");
 
     private final ProcessDefinitionConfigMapper processDefinitionMapper;
     private final ProcessVersionHistoryMapper processVersionMapper;
@@ -73,6 +80,7 @@ public class OpenProcessAdapter
     private final WorkflowAutoSkipService autoSkipService;
     private final ProcessTaskService processTaskService;
     private final RepositoryService repositoryService;
+    private final List<ExternalIdentityResolver> externalIdentityResolvers;
 
     @Autowired
     public OpenProcessAdapter(
@@ -84,7 +92,8 @@ public class OpenProcessAdapter
             MultiInstanceCollectionListener multiInstanceListener,
             WorkflowAutoSkipService autoSkipService,
             ProcessTaskService processTaskService,
-            RepositoryService repositoryService) {
+            RepositoryService repositoryService,
+            List<ExternalIdentityResolver> externalIdentityResolvers) {
         this.processDefinitionMapper = processDefinitionMapper;
         this.processVersionMapper = processVersionMapper;
         this.runtimeService = runtimeService;
@@ -94,6 +103,9 @@ public class OpenProcessAdapter
         this.autoSkipService = autoSkipService;
         this.processTaskService = processTaskService;
         this.repositoryService = repositoryService;
+        this.externalIdentityResolvers = externalIdentityResolvers == null
+                ? List.of()
+                : List.copyOf(externalIdentityResolvers);
     }
 
     public OpenProcessAdapter(
@@ -108,6 +120,22 @@ public class OpenProcessAdapter
         this(processDefinitionMapper, processVersionMapper, runtimeService,
                 historyService, taskService, multiInstanceListener,
                 autoSkipService, processTaskService, null);
+    }
+
+    public OpenProcessAdapter(
+            ProcessDefinitionConfigMapper processDefinitionMapper,
+            ProcessVersionHistoryMapper processVersionMapper,
+            RuntimeService runtimeService,
+            HistoryService historyService,
+            org.flowable.engine.TaskService taskService,
+            MultiInstanceCollectionListener multiInstanceListener,
+            WorkflowAutoSkipService autoSkipService,
+            ProcessTaskService processTaskService,
+            RepositoryService repositoryService) {
+        this(processDefinitionMapper, processVersionMapper, runtimeService,
+                historyService, taskService, multiInstanceListener,
+                autoSkipService, processTaskService, repositoryService,
+                List.of());
     }
 
     @Override
@@ -160,6 +188,22 @@ public class OpenProcessAdapter
                     "integrationExternalInitiatorId",
                     command.externalInitiatorId());
         }
+        if (StringUtils.hasText(command.externalInitiatorNamespace())) {
+            variables.put(
+                    "integrationExternalInitiatorNamespace",
+                    command.externalInitiatorNamespace());
+        }
+        if (StringUtils.hasText(command.outcomeMappingJson())) {
+            variables.put(
+                    "integrationOutcomeMapping",
+                    command.outcomeMappingJson());
+        }
+        variables.put("integrationEventsDeferred", true);
+        String resolvedInitiator = resolveExternalInitiator(command);
+        if (resolvedInitiator != null) {
+            variables.put("startUserId", resolvedInitiator);
+            variables.put("initiator", resolvedInitiator);
+        }
         multiInstanceListener.prepareVariables(
                 definition.getId(),
                 variables);
@@ -192,6 +236,64 @@ public class OpenProcessAdapter
                 definition.getId());
         processTaskService.syncTasksFromFlowable(instance.getId());
         return get(instance.getId(), command.actor());
+    }
+
+    @Override
+    @Transactional
+    public void releaseIntegrationEvents(
+            String processInstanceId,
+            OpenApplicationActor actor) {
+        if (!StringUtils.hasText(processInstanceId)) {
+            return;
+        }
+        try {
+            runtimeService.setVariable(
+                    processInstanceId,
+                    "integrationEventsDeferred",
+                    false);
+        } catch (RuntimeException exception) {
+            // A process completed during start is covered by the explicit
+            // terminal event emitted after its binding is stored. An active
+            // process must fail instead of silently losing future events.
+            if (runtimeService.createProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult() != null) {
+                throw exception;
+            }
+        }
+    }
+
+    private String resolveExternalInitiator(OpenProcessStartCommand command) {
+        if (!StringUtils.hasText(command.externalInitiatorId())
+                || !StringUtils.hasText(command.externalInitiatorNamespace())) {
+            return null;
+        }
+        ExternalIdentityResolutionRequest request =
+                new ExternalIdentityResolutionRequest(
+                        command.externalInitiatorNamespace(),
+                        command.externalInitiatorId(),
+                        command.businessReference().system(),
+                        command.processKey(),
+                        command.businessKey(),
+                        command.actor(),
+                        command.variables());
+        List<ExternalIdentityResolver> candidates =
+                externalIdentityResolvers.stream()
+                        .filter(resolver -> resolver.supports(
+                                request.namespace()))
+                        .toList();
+        if (candidates.size() != 1) {
+            throw new OpenProcessIdentityNotResolvedException(
+                    "没有为身份命名空间注册唯一解析器: "
+                            + request.namespace());
+        }
+        Optional<String> resolved = candidates.get(0).resolve(request);
+        if (resolved.isEmpty() || !StringUtils.hasText(resolved.get())) {
+            throw new OpenProcessIdentityNotResolvedException(
+                    "外部发起人无法解析为 Flow 用户: "
+                            + request.namespace());
+        }
+        return resolved.get().trim();
     }
 
     @Override

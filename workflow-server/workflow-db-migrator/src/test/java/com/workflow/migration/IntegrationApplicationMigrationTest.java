@@ -44,7 +44,7 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("022", currentVersion());
+        assertEquals("023", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
@@ -97,6 +97,12 @@ class IntegrationApplicationMigrationTest {
         assertTrue(columnExists(
                 "integration_process_binding",
                 "identity_mapping_snapshot_json"));
+        assertTrue(columnExists(
+                "integration_process_binding",
+                "business_version_key"));
+        assertTrue(indexExists(
+                "integration_process_binding",
+                "uk_integration_binding_business"));
         assertTrue(indexExists(
                 "storage_file_object",
                 "uk_storage_file_owner_idempotency"));
@@ -162,7 +168,7 @@ class IntegrationApplicationMigrationTest {
 
         flyway().migrate();
 
-        assertEquals("022", currentVersion());
+        assertEquals("023", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "
@@ -305,6 +311,24 @@ class IntegrationApplicationMigrationTest {
                 "app-b",
                 "business-1",
                 "process-instance-a"));
+        insertBindingWithVersion(
+                "binding-a-v1",
+                "app-a",
+                "business-1",
+                "v1",
+                "process-instance-v1");
+        insertBindingWithVersion(
+                "binding-a-v2",
+                "app-a",
+                "business-1",
+                "v2",
+                "process-instance-v2");
+        assertThrows(SQLException.class, () -> insertBindingWithVersion(
+                "binding-a-v1-duplicate",
+                "app-a",
+                "business-1",
+                "v1",
+                "process-instance-v1-duplicate"));
     }
 
     @Test
@@ -676,6 +700,29 @@ class IntegrationApplicationMigrationTest {
                         id,
                         applicationId,
                         businessId,
+                        processInstanceId));
+    }
+
+    private void insertBindingWithVersion(
+            String id,
+            String applicationId,
+            String businessId,
+            String businessVersion,
+            String processInstanceId) throws Exception {
+        execute("""
+                INSERT INTO integration_process_binding (
+                  id, application_id, external_system, business_type,
+                  business_id, business_version, process_instance_id,
+                  process_definition_key
+                ) VALUES (
+                  '%s', '%s', 'project-system', 'change-request',
+                  '%s', '%s', '%s', 'project_change_process'
+                )
+                """.formatted(
+                        id,
+                        applicationId,
+                        businessId,
+                        businessVersion,
                         processInstanceId));
     }
 

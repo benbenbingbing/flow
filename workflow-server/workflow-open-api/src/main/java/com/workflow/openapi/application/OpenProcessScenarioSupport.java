@@ -148,6 +148,68 @@ final class OpenProcessScenarioSupport {
         }
     }
 
+    Map<String, Object> projectEventAttributes(
+            Map<String, Object> variables,
+            String mappingJson) {
+        if (variables == null || variables.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        copyScalar(variables, result, "outcomeCode");
+        copyScalar(variables, result, "outcome");
+        copyScalar(variables, result, "approver", "actorId");
+        copyScalar(variables, result, "approvalEvidence", "evidence");
+        copyScalar(variables, result, "decidedAt");
+        copyScalar(variables, result, "opinion");
+        copyScalar(variables, result, "reasonCode");
+        copyScalar(variables, result, "failureCode");
+        if (mappingJson == null || mappingJson.isBlank()) {
+            return Map.copyOf(result);
+        }
+        try {
+            JsonNode mapping = objectMapper.readTree(mappingJson);
+            mapping.fields().forEachRemaining(entry -> {
+                String source = entry.getValue().asText();
+                if (source.startsWith("variables.")) {
+                    source = source.substring("variables.".length());
+                }
+                Object value = variables.get(source);
+                if (isScalar(value)) {
+                    result.put(entry.getKey(), value);
+                }
+            });
+            return Map.copyOf(result);
+        } catch (JsonProcessingException exception) {
+            throw new OpenApiException(
+                    503, "INTEGRATION_TEMPORARILY_UNAVAILABLE",
+                    "Scenario result mapping is unavailable");
+        }
+    }
+
+    private void copyScalar(
+            Map<String, Object> source,
+            Map<String, Object> target,
+            String sourceKey) {
+        copyScalar(source, target, sourceKey, sourceKey);
+    }
+
+    private void copyScalar(
+            Map<String, Object> source,
+            Map<String, Object> target,
+            String sourceKey,
+            String targetKey) {
+        Object value = source.get(sourceKey);
+        if (isScalar(value)) {
+            target.put(targetKey, value);
+        }
+    }
+
+    private boolean isScalar(Object value) {
+        return value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean;
+    }
+
     String snapshot(Map<String, Object> variables) {
         try {
             return objectMapper.writeValueAsString(

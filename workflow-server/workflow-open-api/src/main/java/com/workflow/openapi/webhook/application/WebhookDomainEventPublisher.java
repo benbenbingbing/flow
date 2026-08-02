@@ -1,7 +1,9 @@
 package com.workflow.openapi.webhook.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.contracts.process.open.OpenProcessEventPort;
@@ -11,6 +13,8 @@ import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcess
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.api.OutboxPublisher;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,7 +96,9 @@ public class WebhookDomainEventPublisher
                         binding.getScenarioRevision(),
                         binding.getBusinessVersion(),
                         binding.getIdentityNamespace(),
-                        event.attributes());
+                        projectAttributes(
+                                binding,
+                                event.attributes()));
         outboxPublisher.publish(new OutboxPublishRequest(
                 TOPIC,
                 event.eventKey(),
@@ -100,6 +106,41 @@ public class WebhookDomainEventPublisher
                 event.processInstanceId(),
                 payload,
                 20));
+    }
+
+    private Map<String, Object> projectAttributes(
+            IntegrationProcessBindingRecord binding,
+            Map<String, Object> attributes) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (attributes != null) {
+            result.putAll(attributes);
+        }
+        Object rawSources = result.remove(
+                OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES);
+        if (!(rawSources instanceof Map<?, ?> sources)
+                || binding.getOutcomeMappingSnapshotJson() == null
+                || objectMapper == null) {
+            return Map.copyOf(result);
+        }
+        try {
+            JsonNode mapping = objectMapper.readTree(
+                    binding.getOutcomeMappingSnapshotJson());
+            mapping.fields().forEachRemaining(entry -> {
+                String source = entry.getValue().asText();
+                if (source.startsWith("variables.")) {
+                    source = source.substring("variables.".length());
+                }
+                Object value = sources.get(source);
+                if (value instanceof String || value instanceof Number
+                        || value instanceof Boolean) {
+                    result.put(entry.getKey(), value);
+                }
+            });
+            return Map.copyOf(result);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "结果映射快照损坏", exception);
+        }
     }
 
     private boolean scenarioAllows(

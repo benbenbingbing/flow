@@ -12,7 +12,9 @@ public record OpenProcessStartCommand(
         String externalInitiatorId,
         Map<String, Object> variables,
         OpenApplicationActor actor,
-        Integer processDefinitionVersion) {
+        Integer processDefinitionVersion,
+        String externalInitiatorNamespace,
+        String outcomeMappingJson) {
 
     public OpenProcessStartCommand(
             String processKey,
@@ -22,7 +24,19 @@ public record OpenProcessStartCommand(
             Map<String, Object> variables,
             OpenApplicationActor actor) {
         this(processKey, businessKey, businessReference, externalInitiatorId,
-                variables, actor, null);
+                variables, actor, null, null, null);
+    }
+
+    public OpenProcessStartCommand(
+            String processKey,
+            String businessKey,
+            OpenBusinessReference businessReference,
+            String externalInitiatorId,
+            Map<String, Object> variables,
+            OpenApplicationActor actor,
+            Integer processDefinitionVersion) {
+        this(processKey, businessKey, businessReference, externalInitiatorId,
+                variables, actor, processDefinitionVersion, null, null);
     }
 
     public OpenProcessStartCommand {

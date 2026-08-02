@@ -14,6 +14,7 @@ import com.workflow.contracts.process.open.OpenProcessRuntimePort;
 import com.workflow.contracts.process.open.OpenProcessStartCommand;
 import com.workflow.contracts.process.open.OpenProcessStateConflictException;
 import com.workflow.contracts.process.open.OpenProcessView;
+import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedException;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenCorrelateMessageRequest;
 import com.workflow.openapi.api.request.OpenCancelProcessRequest;
@@ -245,7 +246,13 @@ public class OpenProcessService {
                                         actor,
                                         scenario == null
                                                 ? null
-                                                : scenario.getProcessDefinitionVersion()));
+                                                : scenario.getProcessDefinitionVersion(),
+                                        scenario == null
+                                                ? null
+                                                : scenarioSupport.namespace(scenario),
+                                        scenario == null
+                                                ? null
+                                                : scenario.getOutcomeMappingJson()));
                         if (scenario == null) {
                             if (request.businessReference().version() == null) {
                                 bindingMapper.insert(
@@ -296,7 +303,15 @@ public class OpenProcessService {
                                             : scenario.getIdentityMappingJson(),
                                     now());
                         }
-                        publishInitialEvents(actor, process, externalInitiatorId);
+                        runtimePort.releaseIntegrationEvents(
+                                process.processInstanceId(), actor);
+                        publishInitialEvents(
+                                actor,
+                                process,
+                                externalInitiatorId,
+                                scenario == null
+                                        ? null
+                                        : scenario.getOutcomeMappingJson());
                         OpenProcessInstanceView view = responseAssembler.toInstanceView(
                                 process,
                                 request.businessReference().system(),
@@ -329,6 +344,12 @@ public class OpenProcessService {
                     409,
                     "PROCESS_STATE_CONFLICT",
                     "Business reference is already bound");
+        } catch (OpenProcessIdentityNotResolvedException exception) {
+            idempotencyService.failRetryable(claim);
+            throw new OpenApiException(
+                    422,
+                    "IDENTITY_NOT_RESOLVED",
+                    exception.getMessage());
         } catch (OpenProcessStateConflictException exception) {
             idempotencyService.failRetryable(claim);
             throw new OpenApiException(
@@ -347,11 +368,15 @@ public class OpenProcessService {
     private void publishInitialEvents(
             OpenApplicationActor actor,
             OpenProcessView process,
-            String externalInitiatorId) {
-        Map<String, Object> identity = externalInitiatorId == null
-                || externalInitiatorId.isBlank()
-                ? Map.of()
-                : Map.of("actorId", externalInitiatorId);
+            String externalInitiatorId,
+            String outcomeMappingJson) {
+        Map<String, Object> attributes = new LinkedHashMap<>(
+                scenarioSupport.projectEventAttributes(
+                        process.variables(), outcomeMappingJson));
+        if (externalInitiatorId != null
+                && !externalInitiatorId.isBlank()) {
+            attributes.put("actorId", externalInitiatorId);
+        }
         eventPort.publish(new OpenProcessEvent(
                 "OPEN_PROCESS_STARTED:"
                         + process.processInstanceId(),
@@ -362,7 +387,7 @@ public class OpenProcessService {
                 null,
                 actor.traceId(),
                 process.createdAt(),
-                identity));
+                attributes));
         runtimePort.listActiveTasks(
                         process.processInstanceId(),
                         0,
@@ -381,6 +406,32 @@ public class OpenProcessService {
                                 task.name(),
                                 actor.traceId(),
                                 task.createdAt())));
+        if (!"RUNNING".equals(process.status())) {
+            eventPort.publish(new OpenProcessEvent(
+                    "OPEN_PROCESS_TERMINAL:"
+                            + process.processInstanceId()
+                            + ":"
+                            + process.status(),
+                    terminalEventType(process.status()),
+                    process.processInstanceId(),
+                    null,
+                    null,
+                    null,
+                    actor.traceId(),
+                    process.completedAt() == null
+                            ? clock.instant()
+                            : process.completedAt(),
+                    attributes));
+        }
+    }
+
+    private String terminalEventType(String status) {
+        return switch (status) {
+            case "COMPLETED" -> "com.flow.process.completed.v1";
+            case "TERMINATED" -> "com.flow.process.terminated.v1";
+            case "FAILED" -> "com.flow.process.failed.v1";
+            default -> "com.flow.process.failed.v1";
+        };
     }
 
     public OpenProcessInstanceView get(
