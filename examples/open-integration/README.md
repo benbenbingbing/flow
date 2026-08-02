@@ -38,7 +38,11 @@ node examples/open-integration/reference-external-system.mjs
 本地运行默认监听 `127.0.0.1:9089`；容器运行时通过
 `REFERENCE_EXTERNAL_HOST=0.0.0.0` 监听 Pod 网络。凭据可通过
 `REFERENCE_CLIENT_ID`、`REFERENCE_CLIENT_SECRET` 和 `REFERENCE_WEBHOOK_SECRET` 覆盖。
-不要把它暴露到公网，也不要把默认凭据用于生产环境。
+设置 `REFERENCE_EXTERNAL_TLS_CERT_FILE` 和 `REFERENCE_EXTERNAL_TLS_KEY_FILE` 可启用
+HTTPS；生产验收应使用真实 CA，测试 CA 必须加入 Flow 的 JVM 信任库。设置
+`REFERENCE_WEBHOOK_FAIL_COUNT` 可让接收端前 N 次 Webhook 返回失败，默认 503；用
+`REFERENCE_WEBHOOK_FAIL_STATUS=400` 可快速构造不可重试错误，仅用于验证重试、死信和
+人工重放。不要把它暴露到公网，也不要把默认凭据用于生产环境。
 
 ## 本地 k3s 验收
 

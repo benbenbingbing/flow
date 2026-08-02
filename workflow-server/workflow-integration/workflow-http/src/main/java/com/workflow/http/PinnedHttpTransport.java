@@ -38,13 +38,23 @@ public class PinnedHttpTransport {
         return execute(request, false);
     }
 
+    /**
+     * Executes an allowlisted request with an explicit private-address policy.
+     * The default entry point remains strict; callers must opt in deliberately.
+     */
+    public HttpTransportResult execute(
+            HttpTransportRequest request,
+            boolean allowPrivateAddresses) throws java.io.IOException {
+        return executeInternal(request, allowPrivateAddresses);
+    }
+
     HttpTransportResult executeLegacy(
             HttpTransportRequest request,
             boolean allowPrivateAddresses) throws java.io.IOException {
-        return execute(request, allowPrivateAddresses);
+        return executeInternal(request, allowPrivateAddresses);
     }
 
-    private HttpTransportResult execute(
+    private HttpTransportResult executeInternal(
             HttpTransportRequest request,
             boolean allowPrivateAddresses) throws java.io.IOException {
         validateRequest(request);

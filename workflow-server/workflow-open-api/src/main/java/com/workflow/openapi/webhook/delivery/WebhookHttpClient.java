@@ -117,16 +117,18 @@ public class WebhookHttpClient {
                         ? delivery.eventId()
                         : delivery.traceId(),
                 "User-Agent", "Flow-Webhook/1");
-        HttpTransportResult response = httpTransport.execute(
-                new HttpTransportRequest(
-                        "POST",
-                        endpoint,
-                        headers,
-                        new String(body, StandardCharsets.UTF_8),
-                        Math.toIntExact(requestTimeout.toMillis()),
-                        Set.copyOf(httpProperties.getAllowedHosts()),
-                        MAX_RESPONSE_BYTES,
-                        true));
+        HttpTransportRequest request = new HttpTransportRequest(
+                "POST",
+                endpoint,
+                headers,
+                new String(body, StandardCharsets.UTF_8),
+                Math.toIntExact(requestTimeout.toMillis()),
+                Set.copyOf(httpProperties.getAllowedHosts()),
+                MAX_RESPONSE_BYTES,
+                true);
+        HttpTransportResult response = httpProperties.isAllowPrivateAddresses()
+                ? httpTransport.execute(request, true)
+                : httpTransport.execute(request);
         String excerpt = response.statusCode() >= 200
                 && response.statusCode() < 300
                 ? null

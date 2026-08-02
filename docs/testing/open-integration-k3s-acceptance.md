@@ -47,6 +47,16 @@ K3D_CLUSTER='crest-validation' \
 地址自行恢复并在失败时退出。`REFERENCE_TOKEN_PATH` 默认 `/oauth/token`，Flow 令牌
 路径固定为 `/oauth2/token`。
 
+Webhook 目标默认必须是 HTTPS，且必须命中 `application.httpAllowedHosts`。只有在确实
+需要访问内部 HTTPS 服务、并已完成网络策略和证书信任配置的验收环境中，才显式设置
+`application.httpAllowPrivateAddresses=true`（环境变量
+`WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES=true`）。该开关默认关闭，不会绕过主机 allowlist、
+TLS 校验或重定向限制；生产配置应优先使用域名、NetworkPolicy 和真实 CA。
+
+参考接收端支持可控故障验收：`REFERENCE_WEBHOOK_FAIL_COUNT=N` 让前 N 次 Webhook
+返回失败，`REFERENCE_WEBHOOK_FAIL_STATUS=400` 可验证不可重试错误进入死信；这些变量
+仅用于测试，不得用于生产接收端。
+
 ## 通过标准与证据
 
 每个场景必须保存命令退出码、开始/结束时间、脚本 JSON 输出、Flow Server/Worker Pod
@@ -62,6 +72,8 @@ K3D_CLUSTER='crest-validation' \
 | 数据库连接中断 | 目标集群按 runbook 执行 | 有界超时、错误可重试，恢复后新请求成功 | 数据库事件、应用日志、连接池 |
 | 令牌过期 | 提供 `FLOW_EXPIRED_ACCESS_TOKEN` | 返回 401，不泄漏业务数据 | 请求响应、审计日志 |
 | Secret 轮换 | 按 `integration-secret-rotation` 执行 | 新凭据生效，旧凭据按窗口失效 | Secret 版本、Pod checksum、审计 |
+| HTTPS Webhook | 配置真实 CA 或测试 truststore | 注册、验签、投递和重试成功；非 HTTPS 或未 allowlist 地址被拒绝 | endpoint、delivery、证书和审计 |
+| 死信与人工重放 | 参考端返回 4xx 后恢复 | 不可重试事件进入 `DEAD`，重放成功且 eventId 不变 | 原始/重放 delivery、去重计数 |
 
 本地参考接收端已验证镜像构建、非 root 运行、健康探针、Token、请求幂等、取消、
 Webhook 签名和去重。Flow 端到端结果必须在具备真实场景、接入应用和授权的集群上

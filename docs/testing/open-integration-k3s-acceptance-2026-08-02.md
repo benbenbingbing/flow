@@ -4,9 +4,10 @@
 
 - Kubernetes context：`k3d-dev`
 - 隔离命名空间：`flow-open-integration`
-- Flow 镜像：`flow-hardening/server:external-p1-ef9d779`
+- Flow 镜像：由当前分支源码构建并导入 k3d，仅用于本次验收
 - 数据库和对象存储：复用本地 `flow-hardening` 测试服务，仅用于本次验收
-- 参考接收端：`flow-reference-external:local`，仅用于模拟外部系统
+- 参考接收端：`flow-reference-external:local`，仅用于模拟外部系统；本轮使用临时测试 CA
+  和 Java PKCS12 truststore 验证 HTTPS 链路
 
 本次未修改 DevOps 代码，也未修改生产部署值文件。隔离 Helm release 使用 Open API、
 Webhook worker、固定两副本，并关闭 HPA，避免单节点 k3s 的资源波动改变验收结果。
@@ -24,6 +25,12 @@ Webhook worker、固定两副本，并关闭 HPA，避免单节点 k3s 的资源
 | 场景 revision 切换 | 通过 | 第二场景发布后返回 revision 2，备用场景返回 revision 1 |
 | 令牌 Secret 轮换 | 通过 | 旧凭据轮换后 401，新凭据 200；无效/过期令牌 401 |
 | 数据库连接中断恢复 | 通过 | 临时移除 `local-mysql` Service 端点并缩容/拉起 Flow：健康检查为非 200；恢复端点后两副本 Ready，健康检查 200 |
+| 真实 HTTPS Webhook 注册 | 通过 | HTTPS 服务地址注册成功；私网地址默认拒绝，显式 allowlist 和测试开关后才允许 |
+| HTTPS Webhook 验证与业务事件 | 通过 | 管理 API 验证返回 `SUCCEEDED`；外部客户端真实启动、查询任务、取消实例，`process.started` 和 `task.created` 投递均返回 200 |
+| Receiver 故障与恢复重试 | 通过 | Receiver 缩容为 0 时 Flow 启动/取消仍成功；恢复后投递从 `RETRY` 变为 `SUCCEEDED`，attemptCount 为 2 |
+| 不可重试失败、死信与人工重放 | 通过 | Receiver 首次返回 400，投递进入 `DEAD`；恢复后重放两次均成功，重放事件保持同一 eventId，接收端去重计数未重复增加 |
+| 旧 Open API 兼容 | 通过 | OAuth Client Credentials 客户端调用 `/api/open/v1/process-definitions` 返回 200，既有流程定义可读 |
+| 后端真实流程闭环 | 通过 | `real-acceptance-preflight.mjs` 与 `e2e-real-workflow.mjs` 均通过，包含启动、审批、查询、完成和历史记录 |
 
 数据库中断使用 Service 端点切换完成，避免本地 MySQL 的临时 `emptyDir` 在 Pod 重建时
 丢失测试数据。曾验证到该测试限制：直接重启 `local-mysql` 会清空临时数据并导致应用
@@ -32,10 +39,12 @@ Webhook worker、固定两副本，并关闭 HPA，避免单节点 k3s 的资源
 
 ## 仍需在目标集群执行
 
-1. 使用真实 HTTPS 外部接收端完成 Flow Webhook 的注册、投递、重试和签名验收；本地
-   参考接收端使用 HTTP，管理 API 按设计拒绝非 HTTPS 地址（返回 400）。
+1. 使用真实 CA、真实 Ingress/NetworkPolicy 和目标域名重复 HTTPS 验收；本地测试通过
+   `application.httpAllowPrivateAddresses=true` 仅放行已配置 `httpAllowedHosts` 的内部
+   测试地址，生产默认值仍为 `false`。
 2. 在具备持久化数据库卷、真实 Ingress、TLS、Prometheus、Loki、Tempo/SkyWalking
    的目标 k3s/生产类集群执行长稳压测和数据库恢复演练。
 3. 将本记录中的脚本 JSON、Pod、HTTP 指标、连接池、导出失败计数和审计日志归档到
    发布证据目录。
 
+本地测试 CA、私钥和 truststore 均为临时文件，没有写入仓库；生产不得复用。

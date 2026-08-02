@@ -3,6 +3,14 @@
   "type": "object",
   "required": ["global", "server", "web", "database", "storage", "openApi"],
   "properties": {
+    "application": {
+      "type": "object",
+      "properties": {
+        "httpAllowPrivateAddresses": {
+          "type": "boolean"
+        }
+      }
+    },
     "global": {
       "type": "object",
       "required": ["existingSecret", "allowMutableImages"],

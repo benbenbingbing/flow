@@ -1,5 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
-import { createServer } from 'node:http'
+import { readFileSync } from 'node:fs'
+import { createServer as createHttpServer } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
 
 const CLIENT_ID = process.env.REFERENCE_CLIENT_ID || 'reference-client'
 const CLIENT_SECRET = process.env.REFERENCE_CLIENT_SECRET || 'reference-secret'
@@ -48,7 +50,13 @@ export const createReferenceExternalSystem = ({
   const requests = new Map()
   const idempotency = new Map()
   const webhookEvents = new Set()
-  const server = createServer(async (request, response) => {
+  let webhookFailuresRemaining = Number.parseInt(
+    process.env.REFERENCE_WEBHOOK_FAIL_COUNT || '0',
+    10)
+  const webhookFailureStatus = Number.parseInt(
+    process.env.REFERENCE_WEBHOOK_FAIL_STATUS || '503',
+    10)
+  const handleRequest = async (request, response) => {
     try {
       const url = new URL(request.url || '/', 'http://reference.local')
       if (request.method === 'GET' && url.pathname === '/healthz') {
@@ -102,6 +110,17 @@ export const createReferenceExternalSystem = ({
         return json(response, 200, document)
       }
       if (request.method === 'POST' && url.pathname === '/webhooks/flow') {
+        if (webhookFailuresRemaining > 0) {
+          webhookFailuresRemaining -= 1
+          return json(
+            response,
+            Number.isInteger(webhookFailureStatus)
+              && webhookFailureStatus >= 400
+              && webhookFailureStatus <= 599
+              ? webhookFailureStatus
+              : 503,
+            { error: 'configured_test_failure' })
+        }
         const { raw } = await readBody(request)
         const eventId = request.headers['flow-webhook-id']
         const timestamp = Number(request.headers['flow-webhook-timestamp'])
@@ -120,7 +139,19 @@ export const createReferenceExternalSystem = ({
     } catch (error) {
       return json(response, 400, { error: error instanceof Error ? error.message : 'invalid_request' })
     }
-  })
+  }
+  const tlsCertificate = process.env.REFERENCE_EXTERNAL_TLS_CERT_FILE
+  const tlsKey = process.env.REFERENCE_EXTERNAL_TLS_KEY_FILE
+  if (Boolean(tlsCertificate) !== Boolean(tlsKey)) {
+    throw new Error(
+      'REFERENCE_EXTERNAL_TLS_CERT_FILE and REFERENCE_EXTERNAL_TLS_KEY_FILE must be configured together')
+  }
+  const server = tlsCertificate || tlsKey
+    ? createHttpsServer({
+      cert: readFileSync(tlsCertificate || ''),
+      key: readFileSync(tlsKey || '')
+    }, handleRequest)
+    : createHttpServer(handleRequest)
   return {
     server,
     listen: () => new Promise(resolve => server.listen(port, host, () => resolve(server.address()))),
@@ -135,7 +166,8 @@ const assert = (condition, message) => {
 const selfTest = async () => {
   const app = createReferenceExternalSystem()
   const address = await app.listen()
-  const baseUrl = `http://127.0.0.1:${address.port}`
+  const protocol = process.env.REFERENCE_EXTERNAL_TLS_CERT_FILE ? 'https' : 'http'
+  const baseUrl = `${protocol}://127.0.0.1:${address.port}`
   try {
     const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
       method: 'POST',
@@ -179,6 +211,7 @@ if (process.env.REFERENCE_EXTERNAL_SELF_TEST === '1') {
     host: process.env.REFERENCE_EXTERNAL_HOST || '0.0.0.0'
   })
   const address = await app.listen()
-  console.log(`reference external system listening on http://127.0.0.1:${address.port}`)
+  const protocol = process.env.REFERENCE_EXTERNAL_TLS_CERT_FILE ? 'https' : 'http'
+  console.log(`reference external system listening on ${protocol}://127.0.0.1:${address.port}`)
   console.log('endpoints: /oauth/token, /api/requests, /api/requests/:id, /api/requests/:id/cancel, /webhooks/flow')
 }

@@ -89,6 +89,8 @@ spec:
               value: {{ .Values.application.trustForwardedHeaders | quote }}
             - name: WORKFLOW_HTTP_ALLOWED_HOSTS
               value: {{ .Values.application.httpAllowedHosts | quote }}
+            - name: WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES
+              value: {{ .Values.application.httpAllowPrivateAddresses | quote }}
             - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED
               value: {{ .Values.connector.http.enabled | quote }}
             - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION
