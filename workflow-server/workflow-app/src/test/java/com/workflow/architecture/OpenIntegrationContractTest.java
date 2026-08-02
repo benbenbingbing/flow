@@ -56,6 +56,7 @@ class OpenIntegrationContractTest {
                         "/api/open/v1/process-definitions",
                         "/api/open/v1/process-instances",
                         "/api/open/v1/process-instances/{processInstanceId}",
+                        "/api/open/v1/process-instances/{processInstanceId}/cancel",
                         "/api/open/v1/process-instances/{processInstanceId}/tasks",
                         "/api/open/v1/process-instances/{processInstanceId}"
                                 + "/messages/{messageKey}"),

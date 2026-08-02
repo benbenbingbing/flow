@@ -52,7 +52,11 @@
           "type": "string",
           "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
         },
-        "failedAt": { "type": "string", "format": "date-time" }
+        "failedAt": { "type": "string", "format": "date-time" },
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "evidence": { "type": "string", "maxLength": 4096 },
+        "outcome": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$" },
+        "reasonCode": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" }
       }
     }
   },

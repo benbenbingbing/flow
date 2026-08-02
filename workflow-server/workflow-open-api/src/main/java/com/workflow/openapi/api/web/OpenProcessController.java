@@ -2,6 +2,7 @@ package com.workflow.openapi.api.web;
 
 import com.workflow.openapi.api.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.request.OpenCorrelateMessageRequest;
+import com.workflow.openapi.api.request.OpenCancelProcessRequest;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import com.workflow.openapi.api.response.OpenMessageCorrelationView;
@@ -93,6 +94,22 @@ public class OpenProcessController {
                                 traceId),
                         processInstanceId),
                 traceId);
+    }
+
+    @PostMapping("/process-instances/{processInstanceId}/cancel")
+    public ResponseEntity<OpenApiResponse<OpenProcessInstanceView>> cancel(
+            @PathVariable String processInstanceId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody OpenCancelProcessRequest body,
+            Authentication authentication,
+            HttpServletRequest request) {
+        String traceId = OpenRequestTrace.get(request);
+        var result = service.cancel(
+                actorResolver.resolve(authentication, traceId),
+                processInstanceId,
+                idempotencyKey,
+                body);
+        return operationResponse(result, traceId);
     }
 
     @GetMapping("/process-instances/{processInstanceId}/tasks")

@@ -1,15 +1,19 @@
 package com.workflow.openapi.webhook.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.contracts.process.open.OpenProcessEventPort;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.api.OutboxPublisher;
 import java.time.Instant;
 import java.util.Set;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,12 +34,25 @@ public class WebhookDomainEventPublisher
             "com.flow.process.failed.v1");
 
     private final IntegrationProcessBindingMapper bindingMapper;
+    private final IntegrationWorkflowScenarioMapper scenarioMapper;
+    private final ObjectMapper objectMapper;
     private final OutboxPublisher outboxPublisher;
 
     public WebhookDomainEventPublisher(
             IntegrationProcessBindingMapper bindingMapper,
             OutboxPublisher outboxPublisher) {
+        this(bindingMapper, null, null, outboxPublisher);
+    }
+
+    @Autowired
+    public WebhookDomainEventPublisher(
+            IntegrationProcessBindingMapper bindingMapper,
+            IntegrationWorkflowScenarioMapper scenarioMapper,
+            ObjectMapper objectMapper,
+            OutboxPublisher outboxPublisher) {
         this.bindingMapper = bindingMapper;
+        this.scenarioMapper = scenarioMapper;
+        this.objectMapper = objectMapper;
         this.outboxPublisher = outboxPublisher;
     }
 
@@ -47,6 +64,9 @@ public class WebhookDomainEventPublisher
                 bindingMapper.findOwnerByProcessInstance(
                         event.processInstanceId());
         if (binding == null) {
+            return;
+        }
+        if (!scenarioAllows(binding, event.eventType())) {
             return;
         }
         String eventId = IdWorker.getIdStr();
@@ -67,7 +87,8 @@ public class WebhookDomainEventPublisher
                                 || event.traceId().isBlank()
                                 ? eventId
                                 : event.traceId(),
-                        event.occurredAt());
+                        event.occurredAt(),
+                        event.attributes());
         outboxPublisher.publish(new OutboxPublishRequest(
                 TOPIC,
                 event.eventKey(),
@@ -75,6 +96,39 @@ public class WebhookDomainEventPublisher
                 event.processInstanceId(),
                 payload,
                 20));
+    }
+
+    private boolean scenarioAllows(
+            IntegrationProcessBindingRecord binding,
+            String eventType) {
+        if (binding.getScenarioId() == null || objectMapper == null) {
+            return true;
+        }
+        if (binding.getEventTypesSnapshotJson() != null) {
+            try {
+                return objectMapper.readValue(
+                        binding.getEventTypesSnapshotJson(),
+                        new TypeReference<Set<String>>() {
+                        }).contains(eventType);
+            } catch (Exception exception) {
+                throw new IllegalStateException("运行事件白名单快照损坏", exception);
+            }
+        }
+        if (scenarioMapper == null) {
+            return false;
+        }
+        var scenario = scenarioMapper.findById(binding.getScenarioId());
+        if (scenario == null || !"ACTIVE".equals(scenario.getStatus())) {
+            return false;
+        }
+        try {
+            return objectMapper.readValue(
+                    scenario.getEventTypesJson(),
+                    new TypeReference<Set<String>>() {
+                    }).contains(eventType);
+        } catch (Exception exception) {
+            throw new IllegalStateException("场景事件白名单损坏", exception);
+        }
     }
 
     private void validate(OpenProcessEvent event) {

@@ -47,7 +47,12 @@
         "processKey": { "$ref": "#/$defs/key" },
         "status": { "const": "RUNNING" },
         "businessReference": { "$ref": "#/$defs/businessReference" },
-        "startedAt": { "type": "string", "format": "date-time" }
+        "startedAt": { "type": "string", "format": "date-time" },
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "evidence": { "type": "string", "maxLength": 4096 },
+        "outcome": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$" },
+        "reasonCode": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" },
+        "failureCode": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" }
       }
     }
   },

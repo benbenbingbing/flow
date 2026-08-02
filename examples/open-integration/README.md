@@ -18,3 +18,8 @@ export FLOW_CLIENT_SECRET=replace-me
 Node.js 22+ 示例；任一步拿不到令牌、收到非 2xx 响应或响应不符合 V1 包装结构时都会
 非零退出。测试环境使用自签名证书时，应把 CA 加入 Java 和操作系统信任库，不要关闭
 TLS 校验。
+
+配置场景后，可用 Node.js 22+ 运行 `scenario-smoke.mjs` 验证场景模式、输入契约、
+固定流程版本和幂等重放。通过 `FLOW_SCENARIO_KEY`、`FLOW_INPUT_JSON` 和可选的
+`FLOW_BUSINESS_SYSTEM`、`FLOW_BUSINESS_TYPE`、`FLOW_BUSINESS_ID` 注入参数；脚本不依赖
+任何特定外部系统名称。

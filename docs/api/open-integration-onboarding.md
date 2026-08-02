@@ -12,6 +12,10 @@
 接入双方先确认业务系统负责人、Flow 流程负责人、业务关联键、需要的 Scope、允许访问
 的流程 Key、来源网段和 Webhook 出口。生产应用应只授予实际使用的能力：
 
+通用场景配置、固定流程版本和输入契约见
+[`external-workflow-scenarios.md`](external-workflow-scenarios.md)。推荐外部系统使用场景
+模式，避免把流程版本和变量规则固化在调用方代码中。
+
 | 操作 | Scope |
 | --- | --- |
 | 读取流程目录 | `process.definition.read` |
@@ -19,6 +23,7 @@
 | 查询流程状态 | `process.instance.read` |
 | 查询活动任务 | `process.task.read` |
 | 关联消息 | `process.message.correlate` |
+| 取消流程 | `process.instance.cancel` |
 
 管理员在“系统管理 > 开放集成”创建应用。Client Secret 只展示一次；接入方应立即写入
 受控 Secret 管理系统，不得放入源码、镜像、工单或聊天记录。来源网段应使用实际出口

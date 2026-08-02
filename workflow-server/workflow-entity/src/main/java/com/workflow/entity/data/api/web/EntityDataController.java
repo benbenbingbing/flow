@@ -25,7 +25,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/entity-data")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityDataController {
     
     private final EntityDataDynamicService entityDataDynamicService;

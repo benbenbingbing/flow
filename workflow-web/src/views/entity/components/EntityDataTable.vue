@@ -270,6 +270,12 @@ const formatDate = (date: string) => {
 const handleSelectionChange = (selection: any[]) => {
   if (restoringPageSelection.value) return
 
+  // Keep the incoming selection visible to toolbar capability checks before
+  // reconciling cross-page selections for MULTIPLE mode.
+  if (props.selectionMode !== 'MULTIPLE') {
+    selectedRows.value = selection
+  }
+
   if (props.selectionMode === 'SINGLE') {
     const nextSelection = selection.length
       ? [selection[selection.length - 1]]

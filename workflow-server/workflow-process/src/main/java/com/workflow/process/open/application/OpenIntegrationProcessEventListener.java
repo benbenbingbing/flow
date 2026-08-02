@@ -5,6 +5,8 @@ import com.workflow.contracts.process.open.OpenProcessEventPort;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
@@ -82,7 +84,8 @@ public class OpenIntegrationProcessEventListener
                 task == null ? null : task.getTaskDefinitionKey(),
                 task == null ? null : task.getName(),
                 traceId,
-                clock.instant()));
+                clock.instant(),
+                attributes(rawEvent, task)));
     }
 
     private String traceId(FlowableEvent event, Task task) {
@@ -102,6 +105,47 @@ public class OpenIntegrationProcessEventListener
         return value instanceof String text && !text.isBlank()
                 ? text
                 : null;
+    }
+
+    private Map<String, Object> attributes(
+            FlowableEvent event,
+            Task task) {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        if (task != null && task.getProcessVariables() != null) {
+            variables.putAll(task.getProcessVariables());
+        } else if (event instanceof FlowableEntityEvent entity
+                && entity.getEntity() instanceof ProcessInstance process
+                && process.getProcessVariables() != null) {
+            variables.putAll(process.getProcessVariables());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        copyVariable(variables, result, "outcome");
+        copyVariable(variables, result, "approved");
+        if (!result.containsKey("outcome") && result.containsKey("approved")) {
+            result.put("outcome", result.remove("approved"));
+        }
+        copyVariable(variables, result, "approver", "actorId");
+        copyVariable(variables, result, "approvalEvidence", "evidence");
+        copyVariable(variables, result, "reasonCode");
+        copyVariable(variables, result, "failureCode");
+        return Map.copyOf(result);
+    }
+
+    private void copyVariable(Map<String, Object> source,
+                              Map<String, Object> target,
+                              String sourceKey) {
+        copyVariable(source, target, sourceKey, sourceKey);
+    }
+
+    private void copyVariable(Map<String, Object> source,
+                              Map<String, Object> target,
+                              String sourceKey,
+                              String targetKey) {
+        Object value = source.get(sourceKey);
+        if (value instanceof String || value instanceof Number
+                || value instanceof Boolean) {
+            target.put(targetKey, value);
+        }
     }
 
     private String externalType(FlowableEngineEventType type) {

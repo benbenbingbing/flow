@@ -33,7 +33,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/process-cc")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ProcessCcController {
     
     private final ProcessCcService ccService;

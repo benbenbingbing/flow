@@ -15,7 +15,6 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/workbench")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class WorkbenchController {
 
     /**

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.contracts.process.open.OpenBusinessReference;
+import com.workflow.contracts.process.open.OpenProcessCancelCommand;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
@@ -19,6 +20,7 @@ import com.workflow.contracts.process.open.OpenProcessStateConflictException;
 import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenCorrelateMessageRequest;
+import com.workflow.openapi.api.request.OpenCancelProcessRequest;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
 import com.workflow.openapi.api.response.OpenBusinessReferenceView;
 import com.workflow.openapi.api.response.OpenMessageCorrelationView;
@@ -29,11 +31,15 @@ import com.workflow.openapi.api.response.OpenProcessInstanceView;
 import com.workflow.openapi.api.response.OpenTaskSummaryView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessGrantRecord;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationWorkflowScenarioRecord;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -63,6 +69,7 @@ public class OpenProcessService {
             "[A-Za-z][A-Za-z0-9._-]{0,127}");
 
     private final IntegrationProcessGrantMapper grantMapper;
+    private final IntegrationWorkflowScenarioMapper scenarioMapper;
     private final IntegrationProcessBindingMapper bindingMapper;
     private final OpenProcessCatalogPort catalogPort;
     private final OpenProcessRuntimePort runtimePort;
@@ -77,6 +84,7 @@ public class OpenProcessService {
     @Autowired
     public OpenProcessService(
             IntegrationProcessGrantMapper grantMapper,
+            IntegrationWorkflowScenarioMapper scenarioMapper,
             IntegrationProcessBindingMapper bindingMapper,
             OpenProcessCatalogPort catalogPort,
             OpenProcessRuntimePort runtimePort,
@@ -88,6 +96,7 @@ public class OpenProcessService {
             PlatformTransactionManager transactionManager) {
         this(
                 grantMapper,
+                scenarioMapper,
                 bindingMapper,
                 catalogPort,
                 runtimePort,
@@ -112,7 +121,26 @@ public class OpenProcessService {
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager,
             Clock clock) {
+        this(grantMapper, null, bindingMapper, catalogPort, runtimePort,
+                variableSchemaService, idempotencyService, cursorCodec,
+                eventPort, objectMapper, transactionManager, clock);
+    }
+
+    OpenProcessService(
+            IntegrationProcessGrantMapper grantMapper,
+            IntegrationWorkflowScenarioMapper scenarioMapper,
+            IntegrationProcessBindingMapper bindingMapper,
+            OpenProcessCatalogPort catalogPort,
+            OpenProcessRuntimePort runtimePort,
+            IntegrationVariableSchemaService variableSchemaService,
+            OpenIdempotencyService idempotencyService,
+            OpenCursorCodec cursorCodec,
+            OpenProcessEventPort eventPort,
+            ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager,
+            Clock clock) {
         this.grantMapper = grantMapper;
+        this.scenarioMapper = scenarioMapper;
         this.bindingMapper = bindingMapper;
         this.catalogPort = catalogPort;
         this.runtimePort = runtimePort;
@@ -173,11 +201,26 @@ public class OpenProcessService {
             OpenApplicationActor actor,
             String idempotencyKey,
             OpenStartProcessRequest request) {
+        if ((request.scenarioKey() == null || request.scenarioKey().isBlank())
+                && (request.processKey() == null || request.processKey().isBlank())) {
+            throw new OpenApiException(
+                    400, "INVALID_REQUEST",
+                    "processKey is required when scenarioKey is omitted");
+        }
+        IntegrationWorkflowScenarioRecord scenario = resolveScenario(
+                actor.applicationId(), request.scenarioKey());
+        String processKey = scenario == null
+                ? request.processKey()
+                : scenario.getProcessKey();
         IntegrationProcessGrantRecord contract = requireGrant(
                 actor.applicationId(),
-                request.processKey(),
+                processKey,
                 true);
-        validateVariables(contract, request.variables());
+        validateVariables(scenario == null
+                ? contract.inputSchemaJson()
+                : scenario.getInputSchemaJson(), request.variables());
+        String externalInitiatorId = resolveExternalInitiator(
+                scenario, request);
         OpenIdempotencyService.Claim claim =
                 idempotencyService.claim(
                         actor.applicationId(),
@@ -199,33 +242,59 @@ public class OpenProcessService {
                         String bindingId = IdWorker.getIdStr();
                         OpenProcessView process = runtimePort.start(
                                 new OpenProcessStartCommand(
-                                        request.processKey(),
+                                        processKey,
                                         bindingId,
                                         toBusinessReference(
                                                 request),
-                                        request.initiator() == null
-                                                ? null
-                                                : request.initiator()
-                                                .externalUserId(),
+                                        externalInitiatorId,
                                         request.variables(),
-                                        actor));
-                        bindingMapper.insert(
-                                bindingId,
-                                actor.applicationId(),
-                                request.businessReference().system(),
-                                request.businessReference().type(),
-                                request.businessReference().id(),
-                                process.processInstanceId(),
-                                process.processKey(),
-                                now());
-                        publishInitialEvents(
-                                actor,
-                                process);
+                                        actor,
+                                        scenario == null
+                                                ? null
+                                                : scenario.getProcessDefinitionVersion()));
+                        if (scenario == null) {
+                            bindingMapper.insert(
+                                    bindingId,
+                                    actor.applicationId(),
+                                    request.businessReference().system(),
+                                    request.businessReference().type(),
+                                    request.businessReference().id(),
+                                    process.processInstanceId(),
+                                    process.processKey(),
+                                    now());
+                        } else {
+                            String snapshot = writeSnapshot(request.variables());
+                            bindingMapper.insertScenario(
+                                    bindingId,
+                                    actor.applicationId(),
+                                    scenario.getId(),
+                                    scenario.getScenarioKey(),
+                                    scenario.getRevision(),
+                                    scenario.getConfigHash(),
+                                    request.businessReference().system(),
+                                    request.businessReference().type(),
+                                    request.businessReference().id(),
+                                    process.processInstanceId(),
+                                    process.processKey(),
+                                    snapshot,
+                                    sha256(snapshot),
+                                    scenario.getOutcomeMappingJson(),
+                                    scenario.getEventTypesJson(),
+                                    externalInitiatorId,
+                                    now());
+                        }
+                        publishInitialEvents(actor, process, externalInitiatorId);
                         OpenProcessInstanceView view = toInstanceView(
                                 process,
                                 request.businessReference().system(),
                                 request.businessReference().type(),
-                                request.businessReference().id());
+                                request.businessReference().id(),
+                                scenario == null ? null : scenario.getScenarioKey(),
+                                scenario == null ? null : scenario.getRevision(),
+                                projectResult(process,
+                                        scenario == null
+                                                ? null
+                                                : scenario.getOutcomeMappingJson()));
                         idempotencyService
                                 .completeInBusinessTransaction(
                                         claim,
@@ -263,7 +332,12 @@ public class OpenProcessService {
 
     private void publishInitialEvents(
             OpenApplicationActor actor,
-            OpenProcessView process) {
+            OpenProcessView process,
+            String externalInitiatorId) {
+        Map<String, Object> identity = externalInitiatorId == null
+                || externalInitiatorId.isBlank()
+                ? Map.of()
+                : Map.of("actorId", externalInitiatorId);
         eventPort.publish(new OpenProcessEvent(
                 "OPEN_PROCESS_STARTED:"
                         + process.processInstanceId(),
@@ -273,7 +347,8 @@ public class OpenProcessService {
                 null,
                 null,
                 actor.traceId(),
-                process.createdAt()));
+                process.createdAt(),
+                identity));
         runtimePort.listActiveTasks(
                         process.processInstanceId(),
                         0,
@@ -311,6 +386,61 @@ public class OpenProcessService {
         return toInstanceView(process, binding);
     }
 
+    public OperationResult<OpenProcessInstanceView> cancel(
+            OpenApplicationActor actor,
+            String processInstanceId,
+            String idempotencyKey,
+            OpenCancelProcessRequest request) {
+        validatePublicId(processInstanceId);
+        IntegrationProcessBindingRecord binding = requireBinding(
+                actor, processInstanceId);
+        OpenIdempotencyService.Claim claim = idempotencyService.claim(
+                actor.applicationId(),
+                "PROCESS_CANCEL",
+                idempotencyKey,
+                Map.of("processInstanceId", processInstanceId,
+                        "reason", request.reason()));
+        if (claim.replay()) {
+            return new OperationResult<>(200, true,
+                    idempotencyService.readReplay(
+                            claim, OpenProcessInstanceView.class));
+        }
+        requireAcquired(claim);
+        try {
+            OpenProcessInstanceView cancelled = transactionTemplate.execute(
+                    status -> {
+                        OpenProcessView process = runtimePort.cancel(
+                                new OpenProcessCancelCommand(
+                                        processInstanceId,
+                                        request.reason().trim(),
+                                        actor));
+                        OpenProcessInstanceView view = toInstanceView(
+                                process, binding);
+                        idempotencyService.completeInBusinessTransaction(
+                                claim, "PROCESS_INSTANCE", processInstanceId,
+                                200, view);
+                        return view;
+                    });
+            if (cancelled == null) {
+                throw new IllegalStateException("取消流程事务没有返回结果");
+            }
+            return new OperationResult<>(200, false, cancelled);
+        } catch (OpenProcessStateConflictException exception) {
+            idempotencyService.failRetryable(claim);
+            throw new OpenApiException(409, "PROCESS_STATE_CONFLICT",
+                    exception.getMessage());
+        } catch (OpenProcessNotFoundException exception) {
+            idempotencyService.failRetryable(claim);
+            throw notFound();
+        } catch (OpenApiException exception) {
+            idempotencyService.failRetryable(claim);
+            throw exception;
+        } catch (RuntimeException exception) {
+            idempotencyService.failRetryable(claim);
+            throw unavailable(exception);
+        }
+    }
+
     public OpenPage<OpenTaskSummaryView> listTasks(
             OpenApplicationActor actor,
             String processInstanceId,
@@ -334,7 +464,10 @@ public class OpenProcessService {
                             task.taskDefinitionKey(),
                             task.name(),
                             task.status(),
-                            task.createdAt()))
+                            task.createdAt(),
+                            task.assignee(),
+                            task.candidateUserIds(),
+                            task.candidateGroupIds()))
                     .toList();
             return new OpenPage<>(
                     items,
@@ -480,11 +613,11 @@ public class OpenProcessService {
     }
 
     private void validateVariables(
-            IntegrationProcessGrantRecord contract,
+            String schemaJson,
             Map<String, Object> variables) {
         List<IntegrationVariableSchemaService.Violation> violations =
                 variableSchemaService.validateVariables(
-                        contract.inputSchemaJson(),
+                        schemaJson,
                         variables);
         if (!violations.isEmpty()) {
             throw new OpenApiException(
@@ -493,6 +626,65 @@ public class OpenProcessService {
                     "Process variables are invalid",
                     Map.of("violations", violations),
                     null);
+        }
+    }
+
+    private void validateVariables(
+            IntegrationProcessGrantRecord contract,
+            Map<String, Object> variables) {
+        validateVariables(contract.inputSchemaJson(), variables);
+    }
+
+    private IntegrationWorkflowScenarioRecord resolveScenario(
+            String applicationId,
+            String scenarioKey) {
+        if (scenarioKey == null || scenarioKey.isBlank()) {
+            return null;
+        }
+        if (scenarioMapper == null) {
+            throw new OpenApiException(
+                    503,
+                    "INTEGRATION_TEMPORARILY_UNAVAILABLE",
+                    "Scenario configuration is unavailable");
+        }
+        IntegrationWorkflowScenarioRecord scenario =
+                scenarioMapper.findByApplicationAndKey(
+                        applicationId,
+                        scenarioKey);
+        if (scenario == null || !"ACTIVE".equals(scenario.getStatus())) {
+            throw new OpenApiException(
+                    404,
+                    "RESOURCE_NOT_FOUND",
+                    "Workflow scenario was not found");
+        }
+        return scenario;
+    }
+
+    private String resolveExternalInitiator(
+            IntegrationWorkflowScenarioRecord scenario,
+            OpenStartProcessRequest request) {
+        if (request.initiator() != null
+                && request.initiator().externalUserId() != null
+                && !request.initiator().externalUserId().isBlank()) {
+            return request.initiator().externalUserId();
+        }
+        if (scenario == null || scenario.getIdentityMappingJson() == null) {
+            return null;
+        }
+        try {
+            JsonNode mapping = objectMapper.readTree(
+                    scenario.getIdentityMappingJson());
+            String source = mapping.path("initiator").asText(null);
+            if (source == null || !source.startsWith("variables.")) {
+                return null;
+            }
+            Object value = request.variables().get(
+                    source.substring("variables.".length()));
+            return value instanceof String string && !string.isBlank()
+                    ? string
+                    : null;
+        } catch (JsonProcessingException exception) {
+            throw unavailable(exception);
         }
     }
 
@@ -540,11 +732,22 @@ public class OpenProcessService {
     private OpenProcessInstanceView toInstanceView(
             OpenProcessView process,
             IntegrationProcessBindingRecord binding) {
+        IntegrationWorkflowScenarioRecord scenario = binding.getScenarioId() == null
+                || scenarioMapper == null
+                ? null
+                : scenarioMapper.findById(binding.getScenarioId());
         return toInstanceView(
                 process,
                 binding.getExternalSystem(),
                 binding.getBusinessType(),
-                binding.getBusinessId());
+                binding.getBusinessId(),
+                binding.getScenarioKey(),
+                binding.getScenarioRevision(),
+                projectResult(process,
+                        binding.getOutcomeMappingSnapshotJson() == null
+                                && scenario != null
+                                ? scenario.getOutcomeMappingJson()
+                                : binding.getOutcomeMappingSnapshotJson()));
     }
 
     private OpenProcessInstanceView toInstanceView(
@@ -552,6 +755,24 @@ public class OpenProcessService {
             String externalSystem,
             String businessType,
             String businessId) {
+        return toInstanceView(
+                process,
+                externalSystem,
+                businessType,
+                businessId,
+                null,
+                null,
+                Map.of());
+    }
+
+    private OpenProcessInstanceView toInstanceView(
+            OpenProcessView process,
+            String externalSystem,
+            String businessType,
+            String businessId,
+            String scenarioKey,
+            Long scenarioRevision,
+            Map<String, Object> result) {
         return new OpenProcessInstanceView(
                 process.processInstanceId(),
                 process.processKey(),
@@ -561,7 +782,68 @@ public class OpenProcessService {
                         businessType,
                         businessId),
                 process.createdAt(),
-                process.completedAt());
+                process.completedAt(),
+                scenarioKey,
+                scenarioRevision,
+                result);
+    }
+
+    private Map<String, Object> projectResult(
+            OpenProcessView process,
+            String outcomeMappingJson) {
+        if (outcomeMappingJson == null || process.variables() == null
+                || process.variables().isEmpty()) {
+            return Map.of();
+        }
+        try {
+            JsonNode mapping = objectMapper.readTree(
+                    outcomeMappingJson);
+            Map<String, Object> result = new LinkedHashMap<>();
+            mapping.fields().forEachRemaining(entry -> {
+                String source = entry.getValue().asText();
+                if (source.startsWith("variables.")) {
+                    source = source.substring("variables.".length());
+                }
+                if (process.variables().containsKey(source)) {
+                    Object value = process.variables().get(source);
+                    if (value != null) {
+                        result.put(entry.getKey(), value);
+                    }
+                }
+            });
+            return Map.copyOf(result);
+        } catch (JsonProcessingException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    private String writeSnapshot(Map<String, Object> variables) {
+        try {
+            return objectMapper.writeValueAsString(
+                    variables == null
+                            ? Map.of()
+                            : new LinkedHashMap<>(variables));
+        } catch (JsonProcessingException exception) {
+            throw new OpenApiException(
+                    422,
+                    "INVALID_REQUEST",
+                    "Input snapshot cannot be serialized");
+        }
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(64);
+            for (byte item : digest) {
+                result.append(String.format("%02x", item));
+            }
+            return result.toString();
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "Unable to hash input snapshot", exception);
+        }
     }
 
     private void requireAcquired(

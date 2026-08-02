@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/entity-list-scopes")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityListScopeController {
 
     private final EntityListScopeService scopeService;

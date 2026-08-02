@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/entity-version-diff")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityVersionDiffController {
 
     private final EntityVersionDiffService versionDiffService;

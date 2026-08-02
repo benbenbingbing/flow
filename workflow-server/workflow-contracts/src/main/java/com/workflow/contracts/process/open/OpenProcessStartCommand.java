@@ -11,7 +11,19 @@ public record OpenProcessStartCommand(
         OpenBusinessReference businessReference,
         String externalInitiatorId,
         Map<String, Object> variables,
-        OpenApplicationActor actor) {
+        OpenApplicationActor actor,
+        Integer processDefinitionVersion) {
+
+    public OpenProcessStartCommand(
+            String processKey,
+            String businessKey,
+            OpenBusinessReference businessReference,
+            String externalInitiatorId,
+            Map<String, Object> variables,
+            OpenApplicationActor actor) {
+        this(processKey, businessKey, businessReference, externalInitiatorId,
+                variables, actor, null);
+    }
 
     public OpenProcessStartCommand {
         Objects.requireNonNull(processKey, "processKey");

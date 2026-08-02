@@ -135,6 +135,14 @@ public class WebhookEventMaterializer
                     "taskDefinitionKey",
                     payload.taskDefinitionKey());
         }
+        (payload.attributes() == null ? java.util.Map.<String, Object>of()
+                : payload.attributes()).forEach((key, value) -> {
+            if (value != null && (value instanceof String
+                    || value instanceof Number
+                    || value instanceof Boolean)) {
+                data.set(key, objectMapper.valueToTree(value));
+            }
+        });
         addStateFields(data, type, payload.occurredAt());
         CloudEvent cloudEvent = CloudEventBuilder.v1()
                 .withId(payload.eventId())
@@ -169,7 +177,9 @@ public class WebhookEventMaterializer
             }
             case "com.flow.task.completed.v1" -> {
                 data.put("status", "COMPLETED");
-                data.put("outcome", "completed");
+                if (!data.has("outcome")) {
+                    data.put("outcome", "completed");
+                }
                 data.put("completedAt", time);
             }
             case "com.flow.process.completed.v1" -> {
@@ -178,12 +188,16 @@ public class WebhookEventMaterializer
             }
             case "com.flow.process.terminated.v1" -> {
                 data.put("status", "TERMINATED");
-                data.putNull("reasonCode");
+                if (!data.has("reasonCode")) {
+                    data.putNull("reasonCode");
+                }
                 data.put("terminatedAt", time);
             }
             case "com.flow.process.failed.v1" -> {
                 data.put("status", "FAILED");
-                data.put("failureCode", "PROCESS_ENGINE_FAILURE");
+                if (!data.has("failureCode")) {
+                    data.put("failureCode", "PROCESS_ENGINE_FAILURE");
+                }
                 data.put("failedAt", time);
             }
             default -> throw new IllegalArgumentException(

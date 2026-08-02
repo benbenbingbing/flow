@@ -10,6 +10,8 @@ public interface OpenProcessRuntimePort {
             String processInstanceId,
             OpenApplicationActor actor);
 
+    OpenProcessView cancel(OpenProcessCancelCommand command);
+
     List<OpenTaskView> listActiveTasks(
             String processInstanceId,
             int offset,

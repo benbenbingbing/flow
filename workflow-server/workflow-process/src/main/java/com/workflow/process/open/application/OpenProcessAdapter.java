@@ -4,6 +4,7 @@ import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
 import com.workflow.contracts.process.open.OpenMessageCorrelationResult;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
+import com.workflow.contracts.process.open.OpenProcessCancelCommand;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
 import com.workflow.contracts.process.open.OpenProcessNotFoundException;
 import com.workflow.contracts.process.open.OpenProcessRuntimePort;
@@ -29,17 +30,20 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.HistoryService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.eventsubscription.api.EventSubscription;
 import org.flowable.task.api.Task;
+import org.flowable.identitylink.api.IdentityLink;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Component
-@RequiredArgsConstructor
 public class OpenProcessAdapter
         implements OpenProcessCatalogPort, OpenProcessRuntimePort {
 
@@ -67,6 +71,43 @@ public class OpenProcessAdapter
     private final MultiInstanceCollectionListener multiInstanceListener;
     private final WorkflowAutoSkipService autoSkipService;
     private final ProcessTaskService processTaskService;
+    private final RepositoryService repositoryService;
+
+    @Autowired
+    public OpenProcessAdapter(
+            ProcessDefinitionConfigMapper processDefinitionMapper,
+            ProcessVersionHistoryMapper processVersionMapper,
+            RuntimeService runtimeService,
+            HistoryService historyService,
+            org.flowable.engine.TaskService taskService,
+            MultiInstanceCollectionListener multiInstanceListener,
+            WorkflowAutoSkipService autoSkipService,
+            ProcessTaskService processTaskService,
+            RepositoryService repositoryService) {
+        this.processDefinitionMapper = processDefinitionMapper;
+        this.processVersionMapper = processVersionMapper;
+        this.runtimeService = runtimeService;
+        this.historyService = historyService;
+        this.taskService = taskService;
+        this.multiInstanceListener = multiInstanceListener;
+        this.autoSkipService = autoSkipService;
+        this.processTaskService = processTaskService;
+        this.repositoryService = repositoryService;
+    }
+
+    public OpenProcessAdapter(
+            ProcessDefinitionConfigMapper processDefinitionMapper,
+            ProcessVersionHistoryMapper processVersionMapper,
+            RuntimeService runtimeService,
+            HistoryService historyService,
+            org.flowable.engine.TaskService taskService,
+            MultiInstanceCollectionListener multiInstanceListener,
+            WorkflowAutoSkipService autoSkipService,
+            ProcessTaskService processTaskService) {
+        this(processDefinitionMapper, processVersionMapper, runtimeService,
+                historyService, taskService, multiInstanceListener,
+                autoSkipService, processTaskService, null);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -117,10 +158,29 @@ public class OpenProcessAdapter
                 definition.getId(),
                 variables);
 
-        ProcessInstance instance = runtimeService.startProcessInstanceByKey(
-                definition.getProcessKey(),
-                command.businessKey(),
-                variables);
+        ProcessInstance instance;
+        if (command.processDefinitionVersion() == null) {
+            instance = runtimeService.startProcessInstanceByKey(
+                    definition.getProcessKey(),
+                    command.businessKey(),
+                    variables);
+        } else {
+            if (repositoryService == null) {
+                throw new OpenProcessStateConflictException(
+                        "Pinned process versions are unavailable");
+            }
+            ProcessDefinition deployed = repositoryService
+                    .createProcessDefinitionQuery()
+                    .processDefinitionKey(definition.getProcessKey())
+                    .processDefinitionVersion(command.processDefinitionVersion())
+                    .singleResult();
+            if (deployed == null) {
+                throw new OpenProcessStateConflictException(
+                        "Pinned process definition version is not published");
+            }
+            instance = runtimeService.startProcessInstanceById(
+                    deployed.getId(), command.businessKey(), variables);
+        }
         autoSkipService.autoSkipNodes(
                 instance.getId(),
                 definition.getId());
@@ -143,7 +203,8 @@ public class OpenProcessAdapter
                     active.getProcessDefinitionKey(),
                     "RUNNING",
                     toInstant(active.getStartTime()),
-                    null);
+                    null,
+                    immutableVariables(runtimeService.getVariables(active.getId())));
         }
         HistoricProcessInstance historic = historyService
                 .createHistoricProcessInstanceQuery()
@@ -157,12 +218,33 @@ public class OpenProcessAdapter
                 : (StringUtils.hasText(historic.getDeleteReason())
                     ? "TERMINATED"
                     : "COMPLETED");
+        Map<String, Object> variables = new java.util.LinkedHashMap<>();
+        historyService.createHistoricVariableInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .list()
+                .forEach(variable -> variables.put(
+                        variable.getVariableName(), variable.getValue()));
         return new OpenProcessView(
                 historic.getId(),
                 historic.getProcessDefinitionKey(),
                 status,
                 toInstant(historic.getStartTime()),
-                toInstant(historic.getEndTime()));
+                toInstant(historic.getEndTime()),
+                immutableVariables(variables));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public OpenProcessView cancel(OpenProcessCancelCommand command) {
+        OpenProcessView current = get(
+                command.processInstanceId(), command.actor());
+        if (!"RUNNING".equals(current.status())) {
+            throw new OpenProcessStateConflictException(
+                    "Process is not running");
+        }
+        runtimeService.deleteProcessInstance(
+                command.processInstanceId(), command.reason());
+        return get(command.processInstanceId(), command.actor());
     }
 
     @Override
@@ -181,12 +263,25 @@ public class OpenProcessAdapter
                 .listPage(offset, limit);
         List<OpenTaskView> result = new ArrayList<>(tasks.size());
         for (Task task : tasks) {
+            List<IdentityLink> identityLinks = taskService
+                    .getIdentityLinksForTask(task.getId());
             result.add(new OpenTaskView(
                     task.getId(),
                     task.getTaskDefinitionKey(),
                     task.getName(),
                     task.isSuspended() ? "SUSPENDED" : "ACTIVE",
-                    toInstant(task.getCreateTime())));
+                    toInstant(task.getCreateTime()),
+                    task.getAssignee(),
+                    identityLinks.stream()
+                            .filter(link -> "candidate".equals(link.getType())
+                                    && link.getUserId() != null)
+                            .map(IdentityLink::getUserId)
+                            .toList(),
+                    identityLinks.stream()
+                            .filter(link -> "candidate".equals(link.getType())
+                                    && link.getGroupId() != null)
+                            .map(IdentityLink::getGroupId)
+                            .toList()));
         }
         return List.copyOf(result);
     }
@@ -232,6 +327,20 @@ public class OpenProcessAdapter
                 versionNumber,
                 definition.getDescription(),
                 publishedAt);
+    }
+
+    private Map<String, Object> immutableVariables(
+            Map<String, Object> variables) {
+        if (variables == null || variables.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        variables.forEach((key, value) -> {
+            if (key != null && value != null) {
+                result.put(key, value);
+            }
+        });
+        return Map.copyOf(result);
     }
 
     private int defaultVersion(Integer value) {

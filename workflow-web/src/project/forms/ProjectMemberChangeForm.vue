@@ -45,7 +45,6 @@
                   v-for="item in MEMBER_CHANGE_OPERATIONS"
                   :key="item.value"
                   :value="item.value"
-                  :label="item.value"
                 >
                   {{ item.label }}
                 </el-radio-button>

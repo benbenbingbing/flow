@@ -22,7 +22,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/process/{processId}/nodes")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class NodeConfigController {
 
     /**

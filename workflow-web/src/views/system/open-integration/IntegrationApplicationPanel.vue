@@ -85,6 +85,12 @@
     </div>
 
     <el-tabs v-model="activeTab" class="resource-tabs">
+      <el-tab-pane label="流程场景" name="scenarios">
+        <IntegrationScenarioPanel
+          :application="application"
+          :can-manage="canManage"
+        />
+      </el-tab-pane>
       <el-tab-pane label="Webhook" name="webhooks">
         <IntegrationWebhookPanel
           :application-id="application.id"
@@ -176,13 +182,15 @@ import { integrationApplicationApi } from '@/api/system/openIntegration'
 import IntegrationWebhookPanel from './IntegrationWebhookPanel.vue'
 import IntegrationSecretPanel from './IntegrationSecretPanel.vue'
 import IntegrationConnectorPanel from './IntegrationConnectorPanel.vue'
+import IntegrationScenarioPanel from './IntegrationScenarioPanel.vue'
 
 const scopeOptions = [
   'process.definition.read',
   'process.instance.start',
   'process.instance.read',
   'process.task.read',
-  'process.message.correlate'
+  'process.message.correlate',
+  'process.instance.cancel'
 ]
 
 const props = defineProps({

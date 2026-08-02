@@ -4,8 +4,10 @@ info:
   version: 1.0.0
   description: |
     Versioned machine-to-machine API for starting and observing authorized
-    Flow process instances. Internal administration and design APIs are not
-    part of this contract.
+    Flow process instances. External systems select an optional configured
+    scenario to bind input validation, a published process revision, stable
+    identity fields and event/result projections. Internal administration and
+    design APIs are not part of this contract.
 servers:
   - url: /
     description: Same origin as the Flow server
@@ -148,6 +150,50 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/TemporarilyUnavailable'
+  /api/open/v1/process-instances/{processInstanceId}/cancel:
+    post:
+      tags:
+        - Process instances
+      operationId: cancelProcessInstance
+      summary: Cancel an application-owned running process instance idempotently
+      security:
+        - clientCredentials:
+            - process.instance.cancel
+      parameters:
+        - $ref: '#/components/parameters/ProcessInstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelProcessRequest'
+      responses:
+        '200':
+          description: Process cancelled, or the original idempotent result
+          headers:
+            Idempotent-Replay:
+              schema:
+                type: boolean
+                const: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessInstanceResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '409':
+          $ref: '#/components/responses/ProcessStateConflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
   /api/open/v1/process-instances/{processInstanceId}/tasks:
     get:
       tags:
@@ -250,6 +296,7 @@ components:
             process.instance.read: Read application-owned process instances
             process.task.read: Read task summaries for owned process instances
             process.message.correlate: Correlate messages to owned process instances
+            process.instance.cancel: Cancel owned running process instances
   parameters:
     Cursor:
       name: cursor
@@ -633,12 +680,12 @@ components:
       type: object
       additionalProperties: false
       required:
-        - processKey
         - businessReference
         - variables
       properties:
         processKey:
           type: string
+          description: Required when scenarioKey is omitted; otherwise resolved from the scenario
           pattern: '^[A-Za-z][A-Za-z0-9._-]{0,99}$'
         businessReference:
           $ref: '#/components/schemas/BusinessReference'
@@ -648,6 +695,20 @@ components:
           type: object
           maxProperties: 100
           additionalProperties: true
+        scenarioKey:
+          type: string
+          description: Optional application-scoped scenario contract key
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,99}$'
+    CancelProcessRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
     CorrelateMessageRequest:
       type: object
       additionalProperties: false
@@ -716,6 +777,15 @@ components:
             - string
             - 'null'
           format: date-time
+        scenarioKey:
+          type:
+            - string
+            - 'null'
+        scenarioRevision:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
     TaskSummary:
       type: object
       additionalProperties: false
@@ -740,6 +810,18 @@ components:
         createdAt:
           type: string
           format: date-time
+        assignee:
+          type:
+            - string
+            - 'null'
+        candidateUserIds:
+          type: array
+          items:
+            type: string
+        candidateGroupIds:
+          type: array
+          items:
+            type: string
     MessageCorrelation:
       type: object
       additionalProperties: false

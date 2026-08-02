@@ -17,7 +17,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/entity-publish-history")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityPublishHistoryController {
 
     private final EntityPublishHistoryService historyService;

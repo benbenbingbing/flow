@@ -8,6 +8,7 @@ public enum IntegrationScope {
     PROCESS_DEFINITION_READ("process.definition.read"),
     PROCESS_INSTANCE_START("process.instance.start"),
     PROCESS_INSTANCE_READ("process.instance.read"),
+    PROCESS_INSTANCE_CANCEL("process.instance.cancel"),
     PROCESS_TASK_READ("process.task.read"),
     PROCESS_MESSAGE_CORRELATE("process.message.correlate");
 

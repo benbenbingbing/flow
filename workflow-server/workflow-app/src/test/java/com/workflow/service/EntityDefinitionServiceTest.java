@@ -9,6 +9,7 @@ import com.workflow.entity.definition.application.EntityFieldOptionService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 import com.workflow.entity.definition.application.EntitySchemaPublishLock;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.migration.MigrationAssetHandler;
@@ -106,6 +107,9 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private EntityFieldValidationRuleService fieldValidationRuleService;
+
+    @Mock
+    private SystemEntityFieldPolicy systemEntityFieldPolicy;
 
     @InjectMocks
     private EntityDefinitionService entityService;
