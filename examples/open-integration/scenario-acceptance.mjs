@@ -207,7 +207,35 @@ const runReferenceContract = async () => {
     method: 'POST', headers: webhookHeaders, body: event
   })
   assert(duplicate.body?.replayed === true, 'reference webhook deduplication failed')
-  console.log(JSON.stringify({ reference: 'passed', webhook: 'signed-and-deduplicated' }))
+
+  const outOfOrderEvents = [
+    { id: `${eventId}-task`, type: 'com.flow.task.completed.v1' },
+    { id: `${eventId}-process`, type: 'com.flow.process.started.v1' }
+  ]
+  for (const item of outOfOrderEvents) {
+    const outOfOrderTimestamp = Math.floor(Date.now() / 1000)
+    const outOfOrderEvent = Buffer.from(JSON.stringify(item))
+    const outOfOrderSignature = `v1=${createHmac('sha256', referenceWebhookSecret)
+      .update(`${item.id}.${outOfOrderTimestamp}.`)
+      .update(outOfOrderEvent)
+      .digest('base64')}`
+    const outOfOrder = await request(referenceBaseUrl, '/webhooks/flow', {
+      method: 'POST',
+      headers: {
+        ...webhookHeaders,
+        'flow-webhook-id': item.id,
+        'flow-webhook-timestamp': String(outOfOrderTimestamp),
+        'flow-webhook-signature': outOfOrderSignature
+      },
+      body: outOfOrderEvent
+    })
+    assert(outOfOrder.body?.accepted === true && outOfOrder.body?.replayed === false,
+      `reference webhook out-of-order event was rejected: ${item.type}`)
+  }
+  console.log(JSON.stringify({
+    reference: 'passed',
+    webhook: 'signed-deduplicated-and-out-of-order-safe'
+  }))
 }
 
 await runFlowContract()

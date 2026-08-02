@@ -74,6 +74,7 @@ TLS 校验或重定向限制；生产配置应优先使用域名、NetworkPolicy
 | Secret 轮换 | 按 `integration-secret-rotation` 执行 | 新凭据生效，旧凭据按窗口失效 | Secret 版本、Pod checksum、审计 |
 | HTTPS Webhook | 配置真实 CA 或测试 truststore | 注册、验签、投递和重试成功；非 HTTPS 或未 allowlist 地址被拒绝 | endpoint、delivery、证书和审计 |
 | 死信与人工重放 | 参考端返回 4xx 后恢复 | 不可重试事件进入 `DEAD`，重放成功且 eventId 不变 | 原始/重放 delivery、去重计数 |
+| 乱序事件 | 参考端按不同 eventId 逆序提交事件 | 每个事件独立验签、接收并去重，不依赖到达顺序 | 事件 ID、类型、接收时间 |
 
 本地参考接收端已验证镜像构建、非 root 运行、健康探针、Token、请求幂等、取消、
 Webhook 签名和去重。Flow 端到端结果必须在具备真实场景、接入应用和授权的集群上

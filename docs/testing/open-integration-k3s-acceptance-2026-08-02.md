@@ -29,6 +29,7 @@ Webhook worker、固定两副本，并关闭 HPA，避免单节点 k3s 的资源
 | HTTPS Webhook 验证与业务事件 | 通过 | 管理 API 验证返回 `SUCCEEDED`；外部客户端真实启动、查询任务、取消实例，`process.started` 和 `task.created` 投递均返回 200 |
 | Receiver 故障与恢复重试 | 通过 | Receiver 缩容为 0 时 Flow 启动/取消仍成功；恢复后投递从 `RETRY` 变为 `SUCCEEDED`，attemptCount 为 2 |
 | 不可重试失败、死信与人工重放 | 通过 | Receiver 首次返回 400，投递进入 `DEAD`；恢复后重放两次均成功，重放事件保持同一 eventId，接收端去重计数未重复增加 |
+| 重复与乱序 Webhook | 通过 | 相同 eventId 重放被去重；不同 eventId 的 task/process 事件逆序到达仍分别验签并接收 |
 | 旧 Open API 兼容 | 通过 | OAuth Client Credentials 客户端调用 `/api/open/v1/process-definitions` 返回 200，既有流程定义可读 |
 | 后端真实流程闭环 | 通过 | `real-acceptance-preflight.mjs` 与 `e2e-real-workflow.mjs` 均通过，包含启动、审批、查询、完成和历史记录 |
 

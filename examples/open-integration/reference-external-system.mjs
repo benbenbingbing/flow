@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
+import { pathToFileURL } from 'node:url'
 
 const CLIENT_ID = process.env.REFERENCE_CLIENT_ID || 'reference-client'
 const CLIENT_SECRET = process.env.REFERENCE_CLIENT_SECRET || 'reference-secret'
@@ -203,9 +204,12 @@ const selfTest = async () => {
   }
 }
 
-if (process.env.REFERENCE_EXTERNAL_SELF_TEST === '1') {
+const isMainModule = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (isMainModule && process.env.REFERENCE_EXTERNAL_SELF_TEST === '1') {
   await selfTest()
-} else {
+} else if (isMainModule) {
   const app = createReferenceExternalSystem({
     port: Number(process.env.REFERENCE_EXTERNAL_PORT || 9089),
     host: process.env.REFERENCE_EXTERNAL_HOST || '0.0.0.0'

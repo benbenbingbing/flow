@@ -1,6 +1,7 @@
 # Flow 生产可观测性验收记录
 
-> 分支：`main`
+> 分支：`main`（2026-07-30 历史验收记录；当前外部流程验收见
+> `docs/testing/open-integration-k3s-acceptance-2026-08-02.md`）
 > 记录时间：2026-07-30
 > 状态：核心链路、故障隔离、业务压测与静态门禁已通过本地 k3s 验收；120 分钟观察按验收方要求提前结束，不作为通过证据。
 
@@ -121,6 +122,7 @@
     - OTLP endpoint refused：`127.0.0.1:9`。
     - OTLP endpoint timeout：`10.255.255.1:4318`。
     - OTLP endpoint HTTP error：Prometheus `/v1/traces`。
+    - 未安装的可选 SkyWalking 组件记录为 `skipped/component_not_installed`，不把部署选择误判为业务故障。
   - 每项断言：故障期间 `flow-web` 到 `flow-server /healthz` 成功，业务 Deployment 保持可用。
 
 ### 业务压测
