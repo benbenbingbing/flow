@@ -15,37 +15,29 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 流程节点表单服务-多表单测试。
- *
- * <p>被测对象：{@link ProcessNodeFormService}，覆盖按节点查询多表单绑定并装配表单信息的场景。
+ * 流程节点单表单绑定服务测试。
  */
-class ProcessNodeFormServiceMultiFormTest {
+class ProcessNodeFormServiceSingleFormTest {
 
     /**
-     * 测试按节点 ID 查询返回全部节点表单及表单信息：
-     * 验证返回数量正确且每个节点表单已装配对应表单名称。
+     * 列表兼容接口最多返回当前节点的一条表单绑定。
      */
     @Test
-    void getListByNodeIdReturnsAllNodeFormsWithFormInfo() {
+    void getListByNodeIdReturnsSingleNodeFormWithFormInfo() {
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         ProcessNodeFormService service = new ProcessNodeFormService(nodeFormMapper, formMapper);
 
         ProcessNodeForm baseForm = nodeForm("bind-1", "base-form");
-        ProcessNodeForm detailForm = nodeForm("bind-2", "detail-form");
-
         EntityForm baseEntityForm = entityForm("base-form", "基础表单");
-        EntityForm detailEntityForm = entityForm("detail-form", "明细表单");
 
-        when(nodeFormMapper.selectListByNodeId("process-1", "task-1")).thenReturn(List.of(baseForm, detailForm));
+        when(nodeFormMapper.selectByNodeId("process-1", "task-1")).thenReturn(baseForm);
         when(formMapper.selectById("base-form")).thenReturn(baseEntityForm);
-        when(formMapper.selectById("detail-form")).thenReturn(detailEntityForm);
 
         List<ProcessNodeForm> result = service.getListByNodeId("process-1", "task-1");
 
-        assertEquals(2, result.size());
+        assertEquals(1, result.size());
         assertEquals("基础表单", result.get(0).getForm().getFormName());
-        assertEquals("明细表单", result.get(1).getForm().getFormName());
     }
 
     /** 构造一个绑定指定表单的节点表单对象 */

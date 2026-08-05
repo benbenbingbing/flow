@@ -162,7 +162,12 @@
                   :closable="false"
                   show-icon
                 />
-                <el-button type="success" plain @click="saveListMetadata">
+                <el-button
+                  type="success"
+                  plain
+                  :loading="queryBindingSaving"
+                  @click="saveListMetadata"
+                >
                   保存列表设置
                 </el-button>
               </div>
@@ -240,6 +245,12 @@
                     {{ configInfo.dataScopeMode === 'INHERIT' ? '继承实体范围' : '列表自定义范围' }}
                   </template>
                   <el-form-item label="数据范围模式">
+                    <template #label>
+                      <ConfigHelpLabel
+                        label="数据范围模式"
+                        help-key="entityList.dataScopeMode"
+                      />
+                    </template>
                     <el-select v-model="configInfo.dataScopeMode" style="width: 420px">
                       <el-option label="继承实体默认范围" value="INHERIT" />
                       <el-option v-if="!isSystemEntity" label="在实体范围内缩小" value="NARROW" />
@@ -278,6 +289,12 @@
                     {{ configInfo.selectionMode === 'NONE' ? '仅浏览' : '返回选择结果' }}
                   </template>
                   <el-form-item label="选择模式">
+                    <template #label>
+                      <ConfigHelpLabel
+                        label="选择模式"
+                        help-key="entityList.selectionMode"
+                      />
+                    </template>
                     <el-radio-group v-model="configInfo.selectionMode">
                       <el-radio-button value="NONE">不选择</el-radio-button>
                       <el-radio-button value="SINGLE">单选</el-radio-button>
@@ -317,11 +334,11 @@
 
                 <SettingsSection
                   title="查询实现"
-                  description="面向扩展开发的固定条件、可信上下文、Provider 和统一数据源"
+                  description="配置固定条件、可信上下文，以及替代平台查询的接口服务"
                   :default-expanded="false"
                 >
                   <template #summary>
-                    {{ configInfo.queryProviderCode || configInfo.queryDataSourceId ? '已配置扩展查询' : '平台默认查询' }}
+                    {{ queryInterfaceSummary }}
                   </template>
                   <el-form-item label="固定条件 JSON">
                     <template #label>
@@ -351,29 +368,163 @@
                       placeholder='扩展读取时例如 {"parentField":"project_id"}；默认查询请保持 {}'
                     />
                   </el-form-item>
-                  <el-form-item v-if="!isSystemEntity" label="安全查询提供者">
-                    <el-input
-                      v-model="configInfo.queryProviderCode"
-                      placeholder="留空使用平台动态表查询"
-                      style="width: 420px"
+                  <div
+                    v-if="!isSystemEntity"
+                    class="view-config-item--full list-query-interface"
+                  >
+                    <div class="list-query-interface__heading">
+                      <div>
+                        <div class="list-query-interface__title">列表查询接口</div>
+                        <div class="list-query-interface__description">
+                          直接配置会保存为 LIST_LOAD 的替代平台处理步骤。
+                        </div>
+                      </div>
+                      <el-button @click="openListEventBindings">
+                        高级事件链
+                      </el-button>
+                    </div>
+
+                    <el-alert
+                      v-if="listQueryBindingComplex"
+                      title="当前 LIST_LOAD 使用了复杂事件链"
+                      description="包含继承、多个步骤、条件或非标准执行位置，简化配置不会覆盖它，请进入高级事件链修改。"
+                      type="warning"
+                      :closable="false"
+                      show-icon
                     />
-                  </el-form-item>
-                  <el-form-item v-if="!isSystemEntity" label="统一查询数据源">
-                    <el-select
-                      v-model="configInfo.queryDataSourceId"
-                      clearable
-                      filterable
-                      placeholder="可选：LIST_QUERY 数据源"
-                      style="width: 420px"
-                    >
-                      <el-option
-                        v-for="source in listQuerySources"
-                        :key="source.id"
-                        :label="`${source.sourceName} (${source.sourceType})`"
-                        :value="source.id"
+                    <template v-else>
+                      <el-alert
+                        v-if="legacyQueryConfigured"
+                        :title="legacyQueryConflict
+                          ? '事件绑定已优先生效，仍检测到旧查询配置'
+                          : '当前仍在使用旧查询配置'"
+                        description="选择接口服务和查询操作后保存，将迁移为统一事件绑定并清除旧配置。"
+                        type="warning"
+                        :closable="false"
+                        show-icon
+                      >
+                        <template #default>
+                          <el-button
+                            v-if="configInfo.queryDataSourceId"
+                            size="small"
+                            type="warning"
+                            plain
+                            @click="migrateLegacyQuerySource"
+                          >
+                            填入旧接口服务
+                          </el-button>
+                        </template>
+                      </el-alert>
+                      <el-alert
+                        v-else-if="resolvedQuerySource === 'INHERITED' && !listQueryBinding"
+                        title="当前继承实体级 LIST_LOAD 配置"
+                        description="在这里选择接口后，将创建列表级覆盖；清空本级配置后恢复继承。"
+                        type="info"
+                        :closable="false"
+                        show-icon
                       />
-                    </el-select>
-                  </el-form-item>
+
+                      <div class="list-query-interface__grid">
+                        <el-form-item label="接口服务">
+                          <el-select
+                            v-model="listQueryEditor.serviceId"
+                            clearable
+                            filterable
+                            placeholder="留空使用继承配置或平台默认查询"
+                            @change="handleQueryServiceChange"
+                          >
+                            <el-option
+                              v-for="source in listQuerySources"
+                              :key="source.id"
+                              :label="`${source.sourceName} (${source.sourceCode})`"
+                              :value="source.id"
+                            />
+                          </el-select>
+                        </el-form-item>
+                        <el-form-item label="查询操作">
+                          <el-select
+                            v-model="listQueryEditor.operationCode"
+                            :disabled="!listQueryEditor.serviceId"
+                            filterable
+                            placeholder="选择只读查询操作"
+                          >
+                            <el-option
+                              v-for="operation in queryOperationOptions"
+                              :key="operation.code"
+                              :label="`${operation.name} (${operation.code})`"
+                              :value="operation.code"
+                            />
+                          </el-select>
+                        </el-form-item>
+                      </div>
+
+                      <el-collapse
+                        v-if="listQueryEditor.serviceId"
+                        class="list-query-interface__mappings"
+                      >
+                        <el-collapse-item title="输入参数映射" name="input">
+                          <div class="list-query-mapping-grid">
+                            <label>查询条件</label>
+                            <el-input
+                              v-model="listQueryEditor.inputTargets.filters"
+                              placeholder="接口参数名，例如 filters"
+                            />
+                            <label>当前页</label>
+                            <el-input
+                              v-model="listQueryEditor.inputTargets.pageNum"
+                              placeholder="接口参数名，例如 pageNum"
+                            />
+                            <label>每页条数</label>
+                            <el-input
+                              v-model="listQueryEditor.inputTargets.pageSize"
+                              placeholder="接口参数名，例如 pageSize"
+                            />
+                            <label>使用场景</label>
+                            <el-input
+                              v-model="listQueryEditor.inputTargets.scene"
+                              placeholder="接口参数名，例如 scene"
+                            />
+                            <label>运行上下文</label>
+                            <el-input
+                              v-model="listQueryEditor.inputTargets.context"
+                              placeholder="接口参数名，例如 context"
+                            />
+                          </div>
+                        </el-collapse-item>
+                        <el-collapse-item title="分页结果映射" name="output">
+                          <el-text
+                            class="list-query-mapping-hint"
+                            type="info"
+                            size="small"
+                          >
+                            接口已返回 records、total、pageNum、pageSize 时全部留空；仅在字段名不同或结果嵌套时配置。
+                          </el-text>
+                          <div class="list-query-mapping-grid">
+                            <label>数据列表路径</label>
+                            <el-input
+                              v-model="listQueryEditor.outputPaths.records"
+                              placeholder="例如 data.records 或 data.rows"
+                            />
+                            <label>总记录数路径</label>
+                            <el-input
+                              v-model="listQueryEditor.outputPaths.total"
+                              placeholder="例如 data.total"
+                            />
+                            <label>当前页路径</label>
+                            <el-input
+                              v-model="listQueryEditor.outputPaths.pageNum"
+                              placeholder="例如 data.pageNum 或 data.current"
+                            />
+                            <label>每页条数路径</label>
+                            <el-input
+                              v-model="listQueryEditor.outputPaths.pageSize"
+                              placeholder="例如 data.pageSize 或 data.size"
+                            />
+                          </div>
+                        </el-collapse-item>
+                      </el-collapse>
+                    </template>
+                  </div>
                 </SettingsSection>
 
                 <SettingsSection
@@ -577,6 +728,12 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="查询方式">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="查询方式"
+                    help-key="entityList.queryType"
+                  />
+                </template>
                 <el-select
                   v-model="editingField.queryType"
                   :disabled="!editingField.isQuery"
@@ -671,6 +828,12 @@
               />
               <el-form label-width="110px" size="small">
                 <el-form-item label="字段数据源">
+                  <template #label>
+                    <ConfigHelpLabel
+                      label="字段数据源"
+                      help-key="entityList.dataSourceType"
+                    />
+                  </template>
                   <el-select
                     v-model="editingField.dataSourceType"
                     :disabled="!isVirtualField(editingField)"
@@ -709,6 +872,12 @@
               <div class="field-config-subsection__title">单元格显示</div>
               <el-form label-width="110px" size="small">
                 <el-form-item label="渲染组件">
+                  <template #label>
+                    <ConfigHelpLabel
+                      label="渲染组件"
+                      help-key="entityList.renderComponent"
+                    />
+                  </template>
                   <el-select
                     v-model="editingField.renderComponent"
                     clearable
@@ -788,6 +957,7 @@
       :owner-id="String(configInfo.id || configId)"
       owner-label="列表"
       :field-options="eventFieldOptions"
+      @changed="handleEventBindingsChanged"
     />
     <UiConfigReleaseHistoryDialog
       ref="releaseHistoryDialogRef"
@@ -812,6 +982,7 @@ import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 import EntityDataSearchForm from '@/views/entity/components/EntityDataSearchForm.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
@@ -834,9 +1005,23 @@ import {
   listActionFingerprint as actionFingerprint,
   listMetadataDetailEntries,
   listMetadataFingerprint,
-  normalizeListActionForSave as normalizeActionForSave
+  normalizeListActionForSave as normalizeActionForSave,
+  resolveListButtonType,
+  withListButtonTypeDefault
 } from '@/shared/list-config-design'
-import { uiDataSourceApi, uiComponentTemplateApi } from '@/api/uiConfig'
+import {
+  buildListQueryBindingPayload,
+  createListQueryEditor,
+  findListLoadBinding,
+  isSimpleListQueryBinding,
+  listQueryEditorFingerprint
+} from '@/shared/list-query-binding'
+import {
+  uiDataSourceApi,
+  uiEventBindingApi,
+  uiComponentTemplateApi
+} from '@/api/uiConfig'
+import { serviceOperations } from '@/components/ui-config/interfaceServiceModel'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
@@ -874,6 +1059,11 @@ const previewPageSize = ref(10)
 const previewTotal = ref(0)
 const savingAll = ref(false)
 const unifiedDataSources = ref([])
+const listQueryBinding = ref(null)
+const resolvedListQueryBinding = ref({})
+const listQueryEditor = ref(createListQueryEditor())
+const listQueryBindingBaseline = ref('')
+const queryBindingSaving = ref(false)
 const eventFieldOptions = computed(() =>
   entityFields.value
     .filter(field => field.uiConfigurable !== false)
@@ -1004,8 +1194,61 @@ const listColumnSources = computed(() =>
 )
 
 const listQuerySources = computed(() =>
-  unifiedDataSources.value.filter(source => source.enabled !== false)
+  unifiedDataSources.value.filter(source =>
+    source.enabled !== false
+      && serviceOperations(source).some(operation =>
+        String(operation.kind || 'READ').toUpperCase() === 'READ'
+      )
+  )
 )
+
+const selectedQueryService = computed(() =>
+  listQuerySources.value.find(source =>
+    String(source.id) === String(listQueryEditor.value.serviceId))
+)
+
+const queryOperationOptions = computed(() =>
+  selectedQueryService.value
+    ? serviceOperations(selectedQueryService.value)
+        .filter(operation =>
+          String(operation.kind || 'READ').toUpperCase() === 'READ')
+    : []
+)
+
+const listQueryBindingComplex = computed(() =>
+  Boolean(listQueryBinding.value)
+    && !isSimpleListQueryBinding(listQueryBinding.value)
+)
+
+const resolvedQuerySource = computed(() =>
+  resolvedListQueryBinding.value?.source || 'PLATFORM'
+)
+
+const legacyQueryConfigured = computed(() =>
+  Boolean(
+    configInfo.value.queryDataSourceId
+      || configInfo.value.queryProviderCode
+  )
+)
+
+const legacyQueryConflict = computed(() =>
+  legacyQueryConfigured.value
+    && Boolean(resolvedListQueryBinding.value?.hasReplace)
+)
+
+const queryInterfaceSummary = computed(() => {
+  if (listQueryBindingComplex.value) return '高级事件链'
+  if (listQueryEditor.value.serviceId) {
+    const operation = queryOperationOptions.value.find(item =>
+      item.code === listQueryEditor.value.operationCode)
+    return operation?.name
+      || selectedQueryService.value?.sourceName
+      || '自定义查询接口'
+  }
+  if (legacyQueryConfigured.value) return '旧查询配置'
+  if (resolvedQuerySource.value === 'INHERITED') return '继承实体查询'
+  return '平台默认查询'
+})
 
 // 工具栏按钮配置
 const toolbarButtons = ref([])
@@ -1058,6 +1301,13 @@ function rememberMetadataBaseline() {
   )
 }
 
+function rememberListQueryBindingBaseline() {
+  listQueryBindingBaseline.value = listQueryEditorFingerprint(
+    listQueryEditor.value,
+    listQueryBindingComplex.value
+  )
+}
+
 function fieldFingerprint(field) {
   return JSON.stringify(normalizeFieldForSave(field))
 }
@@ -1075,6 +1325,7 @@ function rememberActionBaseline(button, position) {
 
 function rememberAllBaselines() {
   rememberMetadataBaseline()
+  rememberListQueryBindingBaseline()
   fieldBaselines.value = new Map()
   fieldConfigList.value.forEach(rememberFieldBaseline)
   actionBaselines.value = new Map()
@@ -1086,6 +1337,13 @@ function rememberAllBaselines() {
 const metadataDirty = computed(() =>
   baselinesReady.value
     && metadataBaseline.value !== listMetadataFingerprint(configInfo.value, viewConfig.value)
+)
+const queryBindingDirty = computed(() =>
+  baselinesReady.value
+    && listQueryBindingBaseline.value !== listQueryEditorFingerprint(
+      listQueryEditor.value,
+      listQueryBindingComplex.value
+    )
 )
 const dirtyMetadataItems = computed(() => {
   if (!metadataDirty.value) return []
@@ -1116,10 +1374,19 @@ const dirtyActions = computed(() => {
   )
 })
 const isDirty = computed(() =>
-  metadataDirty.value || dirtyFields.value.length > 0 || dirtyActions.value.length > 0
+  metadataDirty.value
+    || queryBindingDirty.value
+    || dirtyFields.value.length > 0
+    || dirtyActions.value.length > 0
 )
 const unsavedItems = computed(() => [
   ...dirtyMetadataItems.value,
+  ...(queryBindingDirty.value
+    ? [{
+        key: 'query-binding:LIST_LOAD',
+        label: '列表设置：列表查询接口'
+      }]
+    : []),
   ...dirtyFields.value.map(field => ({
     key: `field:${field.fieldId}`,
     label: `字段配置：${field.fieldName || field.fieldCode || '未命名字段'}`
@@ -1134,7 +1401,7 @@ const unsavedSummary = computed(() => {
 })
 
 useUnsavedChangesGuard(isDirty, {
-  message: '列表设置、字段或按钮有未保存修改，离开后这些修改将丢失。'
+  message: '列表设置、查询接口、字段或按钮有未保存修改，离开后这些修改将丢失。'
 })
 
 function refreshFieldTableLayout() {
@@ -1269,6 +1536,8 @@ async function loadData() {
       }
     }
 
+    await loadListQueryBinding()
+
     // 合并字段配置
     mergeFieldConfig(configRes?.fields || [])
 
@@ -1284,6 +1553,61 @@ async function loadData() {
     loadError.value = e?.message || '列表配置加载失败，请重试'
   } finally {
     pageLoading.value = false
+  }
+}
+
+async function loadListQueryBinding(options = {}) {
+  const ownerId = String(configInfo.value.id || configId || '')
+  if (!ownerId || isSystemEntity.value) {
+    listQueryBinding.value = null
+    resolvedListQueryBinding.value = { source: 'PLATFORM', steps: [] }
+    listQueryEditor.value = createListQueryEditor()
+    if (options.rememberBaseline) rememberListQueryBindingBaseline()
+    return
+  }
+  const [bindings, resolved] = await Promise.all([
+    uiEventBindingApi.list('LIST', ownerId).catch(() => []),
+    uiEventBindingApi.resolveDraft('LIST', ownerId, 'LIST_LOAD')
+      .catch(() => ({ source: 'PLATFORM', steps: [] }))
+  ])
+  listQueryBinding.value = findListLoadBinding(
+    Array.isArray(bindings) ? bindings : []
+  )
+  resolvedListQueryBinding.value = resolved || {
+    source: 'PLATFORM',
+    steps: []
+  }
+  listQueryEditor.value = createListQueryEditor(listQueryBinding.value)
+  if (options.rememberBaseline) rememberListQueryBindingBaseline()
+}
+
+function handleQueryServiceChange(serviceId) {
+  if (!serviceId) {
+    listQueryEditor.value.operationCode = ''
+    return
+  }
+  const operations = queryOperationOptions.value
+  listQueryEditor.value.operationCode = operations.length === 1
+    ? operations[0].code
+    : ''
+}
+
+function migrateLegacyQuerySource() {
+  const source = listQuerySources.value.find(item =>
+    String(item.id) === String(configInfo.value.queryDataSourceId))
+  if (!source) {
+    ElMessage.warning('旧接口服务不存在或未启用，请重新选择接口服务')
+    return
+  }
+  listQueryEditor.value.serviceId = source.id
+  const operations = serviceOperations(source)
+    .filter(operation =>
+      String(operation.kind || 'READ').toUpperCase() === 'READ')
+  listQueryEditor.value.operationCode = operations.length === 1
+    ? operations[0].code
+    : ''
+  if (operations.length > 1) {
+    ElMessage.info('旧接口服务包含多个查询操作，请选择本列表使用的操作')
   }
 }
 
@@ -1581,12 +1905,12 @@ function parseButtonConfig(configRes) {
   }
   const toolbar = safeJsonParse(configRes?.toolbarConfig)
   toolbarButtons.value = toolbar && toolbar.length > 0
-    ? toolbar
+    ? toolbar.map(withListButtonTypeDefault)
     : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b }))
 
   const rowActions = safeJsonParse(configRes?.rowActionConfig)
   rowActionButtons.value = rowActions && rowActions.length > 0
-    ? rowActions
+    ? rowActions.map(withListButtonTypeDefault)
     : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b }))
 }
 
@@ -1692,7 +2016,10 @@ function applySavedAction(button, saved) {
     type: saved.buttonType,
     label: saved.buttonLabel,
     icon: saved.icon || '',
-    buttonType: saved.styleType || 'default',
+    buttonType: resolveListButtonType({
+      key: saved.buttonKey,
+      buttonType: saved.styleType
+    }),
     link: saved.linkMode === true,
     customMode: saved.customMode || '',
     customHandler: saved.handlerCode || '',
@@ -1970,8 +2297,68 @@ async function refreshConfigRevision() {
   }
 }
 
+async function saveListQueryBinding(options = {}) {
+  if (listQueryBindingComplex.value) {
+    ElMessage.warning('复杂 LIST_LOAD 执行链只能在高级事件绑定中修改')
+    return false
+  }
+  queryBindingSaving.value = true
+  try {
+    const ownerId = String(configInfo.value.id || configId)
+    if (listQueryEditor.value.serviceId) {
+      if (!listQueryEditor.value.operationCode) {
+        ElMessage.warning('请选择查询操作')
+        return false
+      }
+      const payload = buildListQueryBindingPayload(
+        listQueryEditor.value,
+        ownerId,
+        listQueryBinding.value
+      )
+      listQueryBinding.value = listQueryBinding.value?.id
+        ? await uiEventBindingApi.update(
+            listQueryBinding.value.id,
+            payload
+          )
+        : await uiEventBindingApi.create(payload)
+    } else if (listQueryBinding.value?.id) {
+      await uiEventBindingApi.remove(
+        listQueryBinding.value.id,
+        listQueryBinding.value.revision
+      )
+      listQueryBinding.value = null
+    }
+    configInfo.value.queryDataSourceId = null
+    configInfo.value.queryProviderCode = ''
+    const resolved = await uiEventBindingApi.resolveDraft(
+      'LIST',
+      ownerId,
+      'LIST_LOAD'
+    ).catch(() => ({ source: 'PLATFORM', steps: [] }))
+    resolvedListQueryBinding.value = resolved
+    listQueryEditor.value = createListQueryEditor(
+      listQueryBinding.value
+    )
+    rememberListQueryBindingBaseline()
+    if (!options.silent) {
+      ElMessage.success('列表查询接口已保存，尚未发布')
+    }
+    return true
+  } catch (error) {
+    handleRevisionConflict(error, listQueryBinding.value)
+    await loadListQueryBinding({ rememberBaseline: true })
+      .catch(() => {})
+    return false
+  } finally {
+    queryBindingSaving.value = false
+  }
+}
+
 async function saveListMetadata(options = {}) {
   try {
+    if (queryBindingDirty.value) {
+      if (!await saveListQueryBinding({ silent: true })) return false
+    }
     const saved = await entityListConfigApi.patchMetadata(configId, {
       expectedRevision: configInfo.value.revision,
       listName: configInfo.value.listName,
@@ -2029,7 +2416,7 @@ async function saveAll() {
   savingAll.value = true
   let savedCount = 0
   try {
-    if (metadataDirty.value) {
+    if (metadataDirty.value || queryBindingDirty.value) {
       if (!await saveListMetadata({ silent: true })) return
       savedCount += 1
     }
@@ -2132,7 +2519,16 @@ async function showReleaseHistory() {
 }
 
 function openListEventBindings() {
+  if (queryBindingDirty.value) {
+    ElMessage.warning('请先保存列表查询接口，再进入高级事件链')
+    return
+  }
   eventBindingDialogRef.value?.openOwner(configInfo.value.listName || '')
+}
+
+async function handleEventBindingsChanged() {
+  await loadListQueryBinding({ rememberBaseline: true })
+  await loadDiff()
 }
 
 async function handleReleaseChanged() {
@@ -2201,6 +2597,69 @@ function goBack() {
 
 .view-config-form {
   width: 100%;
+}
+
+.list-query-interface {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.list-query-interface__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.list-query-interface__title {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.list-query-interface__description {
+  margin-top: 3px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.list-query-interface :deep(.el-alert) {
+  margin-bottom: 12px;
+}
+
+.list-query-interface__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+
+.list-query-interface__grid :deep(.el-select) {
+  width: 100%;
+}
+
+.list-query-interface__mappings {
+  margin-top: 4px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.list-query-mapping-grid {
+  display: grid;
+  grid-template-columns: 112px minmax(180px, 1fr) 112px minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+  padding: 4px 0 8px;
+}
+
+.list-query-mapping-hint {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.list-query-mapping-grid label {
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  text-align: right;
 }
 
 .view-config-form :deep(.settings-section__body > .el-form-item:last-child),
@@ -2417,6 +2876,15 @@ function goBack() {
 
   .field-toolbar {
     align-items: stretch;
+  }
+
+  .list-query-interface__grid,
+  .list-query-mapping-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .list-query-mapping-grid label {
+    text-align: left;
   }
 }
 

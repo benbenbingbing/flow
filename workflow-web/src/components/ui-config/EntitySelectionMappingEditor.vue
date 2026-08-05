@@ -69,6 +69,12 @@
         </template>
       </el-table-column>
       <el-table-column label="覆盖策略" width="150">
+        <template #header>
+          <ConfigHelpLabel
+            label="覆盖策略"
+            help-key="entitySelection.overwrite"
+          />
+        </template>
         <template #default="{ row }">
           <el-select v-model="row.overwrite">
             <el-option label="始终覆盖" value="ALWAYS" />
@@ -78,6 +84,12 @@
         </template>
       </el-table-column>
       <el-table-column label="来源为空" width="150">
+        <template #header>
+          <ConfigHelpLabel
+            label="来源为空"
+            help-key="entitySelection.clearOnEmpty"
+          />
+        </template>
         <template #default="{ row }">
           <el-select v-model="row.clearOnEmpty">
             <el-option label="清空目标字段" :value="true" />
@@ -118,6 +130,7 @@ import { Delete, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getEntityFields } from '@/api/entityForm'
 import { uiEventBindingApi } from '@/api/uiConfig'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import {
   areEntitySelectionTypesCompatible,
   buildEntitySelectionSourceFields,

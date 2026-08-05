@@ -134,6 +134,18 @@ const routes = [
         component: () => import('@/views/manual/ProcessManual.vue'),
         meta: { title: '流程管理手册' }
       },
+      {
+        path: '/manual/open-integration',
+        name: 'OpenIntegrationManual',
+        component: () => import('@/views/manual/OpenIntegrationManual.vue'),
+        meta: { title: '开放集成手册' }
+      },
+      {
+        path: '/manual/interface-service',
+        name: 'InterfaceServiceManual',
+        component: () => import('@/views/manual/InterfaceServiceManual.vue'),
+        meta: { title: '接口服务手册' }
+      },
       // 流程进度查看
       {
         path: '/process/progress/:instanceId',

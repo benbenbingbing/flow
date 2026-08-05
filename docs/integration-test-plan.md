@@ -242,8 +242,8 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
 | `formSource` | 表单来源 | `entity`（实体表单）/`custom`（自定义表单）/`none`（无表单） | 决定节点显示什么表单 | 选择不同来源时界面变化 |
-| `entityFormIds` | 实体表单 ID 列表 | 多选实体表单 | 绑定一个或多个实体表单到节点 | 字段正确加载；多表单按顺序展示 |
-| `entityFormId` | 单个实体表单 ID（兼容字段） | 字符串 | 旧数据兼容 | 与 `entityFormIds` 一致性 |
+| `entityFormId` | 实体表单 ID | 单选实体表单 | 一个节点绑定一个办理表单 | 字段正确加载 |
+| `entityFormIds` | 历史实体表单 ID 列表 | 只读兼容 | 旧配置存在多个值时只读取第一项 | 保存后收敛为 `entityFormId` |
 | `formKey` | 自定义表单 Key | 字符串 | 外部表单标识 | 自定义表单渲染 |
 | `isReadonly` | 是否只读 | `false`（默认） | `true` 时表单仅展示不可编辑 | 提交时跳过节点级字段校验 |
 
@@ -253,7 +253,7 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 2. `formSource=entity`，`isReadonly=true`，确认字段不可编辑，可正常提交。
 3. `formSource=custom`，填写 `formKey`，确认前端按 `formKey` 渲染自定义表单。
 4. `formSource=none`，确认节点无表单，仅显示审批操作。
-5. 选择多个 `entityFormIds`，确认多表单按顺序展示。
+5. 加载历史多个 `entityFormIds`，确认只展示第一项，重新保存后仅写入 `entityFormId`。
 
 #### 5.3.4 审批配置（approvalConfig）
 
@@ -628,23 +628,22 @@ Entity（实体定义）
 │   ├── EntityFormField（表单字段，引用 EntityField 的元数据）
 │   │   ├── 字段基本属性：fieldCode、fieldName、fieldLabel、fieldType
 │   │   ├── 表单级权限：isRequired、isReadonly、isHidden
-│   │   ├── 展示属性：componentType、componentProps、gridSpan、displayMode
+│   │   ├── 展示属性：componentType、componentProps、gridSpan
 │   │   └── 关联属性：refEntityType、refEntityId、relation（子表单关系）
 │   └── 表单属性：formName、formKey、layoutType、isDefault、customComponent
 │
 ProcessNodeForm（流程节点表单绑定）
 ├── 关联 processConfigId + nodeId + formId
 ├── isReadonly：节点级只读覆盖
-└── sortOrder：同一节点绑定多个表单时的排序
+└── 同一 processConfigId + nodeId 只允许一条绑定
 ```
 
 **关键关系说明**：
 
 1. **一对多**：一个 `Entity` 可创建多个 `EntityForm`，用于不同场景（申请单、审批单、详情页）。
-2. **多对多**：一个 `EntityForm` 可被绑定到多个流程节点的 `ProcessNodeForm`；一个节点也可绑定多个表单。
-3. **运行时合并**：节点绑定多个表单时，后端返回 `formConfigs` 数组，前端通过 `mergeRuntimeFormConfigs()` 合并为一个虚拟表单展示。
-4. **字段去重**：合并时按 `fieldCode` 去重，相同字段只展示一次。
-5. **字段排序**：合并后的字段顺序 = `表单序号 × 10000 + 字段在表单内的 sortOrder`。
+2. **节点唯一绑定**：一个 `EntityForm` 可被多个流程节点复用，但一个流程节点最多绑定一个表单。
+3. **运行时单表单**：后端保留 `formConfigs` 数组作为接口兼容字段，但最多返回一项；前端不再合并多个表单。
+4. **复杂布局归属表单设计器**：同一节点需要分区、页签或明细数据时，使用容器、页签和子表单配置。
 
 ### 5.16.2 实体表单设计（EntityForm / EntityFormField）
 
@@ -664,7 +663,6 @@ ProcessNodeForm（流程节点表单绑定）
 | `isReadonly` | 表单级只读 | `0`/`1` | 字段不可编辑 | 节点级只读可覆盖 |
 | `isHidden` | 表单级隐藏 | `0`/`1` | 字段不展示 | 隐藏字段不提交校验 |
 | `gridSpan` | 栅格宽度 | `1~24` | 字段占用的列宽 | 布局正确 |
-| `displayMode` | 子表单显示方式 | `embedded`（嵌入）/`tab`（Tab 页） | 子表单在前端的组织形式 | 见 5.16.5 |
 
 ### 5.16.3 流程节点表单绑定（ProcessNodeForm）
 
@@ -675,13 +673,13 @@ ProcessNodeForm（流程节点表单绑定）
 | `nodeName` | 节点名称快照 | 保存时的节点名 | 便于查看 | 修改节点名后此处是否同步 |
 | `formId` | 绑定的实体表单 ID | 必填 | 节点展示哪个实体表单 | 表单存在性 |
 | `isReadonly` | 节点级只读覆盖 | `0`/`1` | `1` 时该节点此表单所有字段只读，覆盖表单级 `isReadonly` | 优先级最高 |
-| `sortOrder` | 排序号 | 整数 | 同一节点多个表单时的展示顺序 | 数值越小越靠前 |
+| `sortOrder` | 兼容排序号 | 固定为 `0` | 保留数据库兼容性 | 新绑定固定为 0 |
 
 **绑定关系验证点**：
 
 1. 一个节点绑定 0 个表单：运行时回退到实体默认表单；无默认表单时回退到第一个可用表单。
 2. 一个节点绑定 1 个表单：直接展示该表单。
-3. 一个节点绑定 2 个表单：后端返回 2 个 `FormConfigDTO`，前端合并展示；重复字段去重；表单名称用 ` / ` 连接。
+3. 历史配置含多个表单：只读取第一项，重新保存后收敛为单表单配置。
 4. 同一表单绑定到多个节点：每个节点独立设置 `isReadonly`，互不影响。
 
 ### 5.16.4 表单加载优先级（运行时）
@@ -703,25 +701,14 @@ ProcessNodeForm（流程节点表单绑定）
 | FLP-004 | 完全无表单 | 实体无任何表单 | 详情页不展示表单，仅展示流程图和历史 |
 | FLP-005 | 发布后修改表单 | 发布后修改实体表单字段 | 旧流程实例仍使用发布快照中的表单定义 |
 
-### 5.16.5 多表单绑定与合并展示
+### 5.16.5 单表单展示与历史兼容
 
-#### 合并规则
-
-后端返回 `formConfigs: [FormConfigDTO, ...]`，前端 `mergeRuntimeFormConfigs()` 执行：
-
-1. **去重**：按 `fieldCode` 去重，第一个表单中的字段保留，后续重复字段忽略。
-2. **排序**：字段排序值 = `formIndex × 10000 + field.sortOrder`。
-3. **表单名连接**：多个表单的 `formName` 用 ` / ` 连接，作为合并后表单的标题。
-4. **只读覆盖**：每个表单独立维护自己的 `isReadonly`（来自 `ProcessNodeForm.isReadonly`），合并后字段的只读状态已在后端处理。
-
-#### 展示方式
+节点办理界面只加载一个实体表单。复杂界面应在该表单内部使用分组、页签、容器和子表单组织，不通过绑定多个完整表单拼接。
 
 | 场景 | 前端组件 | 展示效果 |
 |---|---|---|
 | 单表单、无 Tab 子表单 | `FormPreviewLinkage` | 平铺展示所有字段 |
 | 单表单、含 Tab 子表单 | `FormPreviewLinkage` | 普通字段在“基本信息”Tab，Tab 子表单各一个 Tab |
-| 多表单、无 Tab 子表单 | `FormPreviewLinkage` | 合并后的字段按排序平铺展示 |
-| 多表单、含 Tab 子表单 | `FormPreviewLinkage` | 合并后的普通字段在“基本信息”Tab，Tab 子表单各一个 Tab |
 | 审批弹窗外部接管 Tab | `EntityApprovalDialog` | `noInternalTabs=true`，基本信息一个 Tab，子表单各一个 Tab，再加“流程图”“审批历史”Tab |
 | 自定义组件表单 | `customComponent` | 完全由自定义组件渲染 |
 
@@ -729,11 +716,10 @@ ProcessNodeForm（流程节点表单绑定）
 
 | 用例编号 | 场景 | 操作步骤 | 预期结果 |
 |---|---|---|---|
-| FM-001 | 同一节点绑定两个表单 | 节点 A 绑定 F1（字段 a,b）和 F2（字段 c,d） | 审批页展示 a,b,c,d 四个字段 |
-| FM-002 | 多表单字段去重 | F1 和 F2 都包含字段 a | 字段 a 只展示一次 |
-| FM-003 | 多表单字段排序 | F1.sortOrder=1, F2.sortOrder=2；字段 b 在 F2 中 sortOrder=1 | 最终顺序：a(F1) < b(F2) < c(F1) < d(F2) |
-| FM-004 | 多表单表单名连接 | F1 名“基本信息”，F2 名“扩展信息” | 表单标题显示“基本信息 / 扩展信息” |
-| FM-005 | 多表单只读覆盖 | F1 节点绑定 readonly=false，F2 节点绑定 readonly=true | F1 字段可编辑，F2 字段只读（各自字段独立） |
+| FM-001 | 节点单选表单 | 节点 A 选择 F1 | 审批页只展示 F1 |
+| FM-002 | 历史多值兼容 | BPMN 中 `entityFormIds=[F1,F2]` | 只加载 F1 |
+| FM-003 | 保存收敛 | 打开历史多值节点并保存 | XML 仅保留 `entityFormId=F1` |
+| FM-004 | 复杂页面布局 | F1 配置分组、页签和子表单 | 所有内容在一个办理表单中正常展示 |
 
 ### 5.16.6 字段权限叠加规则
 
@@ -778,9 +764,9 @@ ProcessNodeForm（流程节点表单绑定）
 | FP-007 | 联动必填 | 配置“当类型=B 时备注必填” | 类型=B 时备注必填 |
 | FP-008 | 联动禁用 | 配置“当状态=完成时禁用备注” | 状态=完成时备注不可编辑 |
 
-### 5.16.7 子表单/关联实体展示方式
+### 5.16.7 子表单/关联实体关系与布局
 
-子表单字段通过 `EntityRelation` 定义父子实体关系，通过 `EntityFormField.displayMode` 控制展示。
+子表单字段通过 `EntityRelation` 定义父子实体关系。子记录采用分行或表格布局；需要页签展示时，由 `TAB_SET/TAB` 容器负责位置编排。
 
 #### 配置项
 
@@ -788,19 +774,19 @@ ProcessNodeForm（流程节点表单绑定）
 |---|---|---|---|---|
 | `refEntityType` | 引用实体类型 | `CUSTOM`（自定义实体）/`USER`/`DEPT`/`ROLE`/`GROUP` | 决定引用数据来源 | 对应数据加载 |
 | `refEntityId` | 关联实体 ID | 实体定义 ID | 自定义子实体时关联 | 实体存在性 |
-| `displayMode` | 子表单显示方式 | `embedded`（嵌入）/`tab`（Tab 页） | 前端组织形式 | 两种模式切换 |
+| `layout` | 子记录编辑布局 | `form`（分行）/`table`（表格） | 控制多条子记录的编辑形式 | 两种布局切换 |
 | `relation.type` | 关系类型 | `ONE_TO_ONE`/`ONE_TO_MANY` | 子表数据条数限制 | 一对一只能有一条 |
 | `relation.childEntityCode` | 子实体编码 | 对应动态表名 | 子表数据存储 | 一致性 |
 | `relation.childRefFieldCode` | 子表外键字段 | 子实体字段编码 | 关联父记录 | 数据回填 |
 | `relation.cascadeDelete` | 级联删除 | `true`/`false` | 删除父记录时是否删除子记录 | 级联行为 |
 | `relation.required` | 子表单必填 | `true`/`false` | 父记录提交时子表必须有数据 | 校验 |
 
-#### 展示效果
+#### 容器编排
 
-| `displayMode` | 适用场景 | 前端效果 |
+| 编排方式 | 适用场景 | 前端效果 |
 |---|---|---|
-| `embedded` | 子表字段少、需要与主表一起填写 | 子表直接嵌入在主表单中，可增删行 |
-| `tab` | 子表字段多、需要分 Tab 展示 | 子表作为一个独立 Tab 页，标签为 `fieldName` |
+| 直接放置 | 子表字段少、需要与主表一起填写 | 子表随所在容器顺序展示，可增删行 |
+| 放入 `TAB_SET/TAB` | 子表字段多、需要独立页签展示 | 子表随所属 Tab 展示，页签标题由 Tab 容器定义 |
 
 #### 数据回填
 
@@ -812,8 +798,8 @@ ProcessNodeForm（流程节点表单绑定）
 
 | 用例编号 | 场景 | 操作步骤 | 预期结果 |
 |---|---|---|---|
-| SF-001 | 嵌入子表单 | 子表字段 displayMode=embedded | 子表直接嵌入主表单 |
-| SF-002 | Tab 子表单 | 子表字段 displayMode=tab | 子表作为独立 Tab 展示 |
+| SF-001 | 正文子表单 | 将子表节点直接放入正文容器 | 子表随正文顺序展示 |
+| SF-002 | 页签子表单 | 将子表节点放入 `TAB_SET/TAB` 容器 | 子表在指定页签展示 |
 | SF-003 | 子表数据回填 | 编辑已有父记录 | 子表自动加载关联数据 |
 | SF-004 | 子表必填校验 | relation.required=true，子表为空 | 提交失败，提示子表必填 |
 | SF-005 | 子表级联删除 | cascadeDelete=true，删除父记录 | 子表关联数据同步删除 |
@@ -829,7 +815,7 @@ ProcessNodeForm（流程节点表单绑定）
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
 | `formSource` | 表单来源 | `entity`/`custom`/`none` | 同用户任务 | 开始事件通常用实体表单 |
-| `entityFormIds` | 实体表单 ID 列表 | 多选 | 发起时展示 | 同用户任务 |
+| `entityFormId` | 实体表单 ID | 单选 | 发起时展示 | 同用户任务 |
 
 **测试验证**：
 
@@ -888,8 +874,8 @@ ProcessNodeForm（流程节点表单绑定）
 | NEF-005 | 节点只读覆盖 | ProcessNodeForm.isReadonly=1 | 节点 A 所有字段只读 |
 | NEF-006 | 表单字段隐藏 | EntityFormField.isHidden=1 | 字段不展示 |
 | NEF-007 | 字段权限叠加 | 实体必填+表单非必填 | 字段必填 |
-| NEF-008 | 子表嵌入展示 | displayMode=embedded | 子表嵌入主表单 |
-| NEF-009 | 子表 Tab 展示 | displayMode=tab | 子表作为 Tab 页 |
+| NEF-008 | 子表正文展示 | 子表节点直接放入正文容器 | 子表随正文布局展示 |
+| NEF-009 | 子表页签展示 | 子表节点放入 `TAB_SET/TAB` 容器 | 子表作为指定 Tab 内容展示 |
 | NEF-010 | 子表数据回填 | 编辑已有数据 | 子表自动加载关联记录 |
 | NEF-011 | 引用字段只读 | 用户字段 isReadonly=1 | 显示当前用户，选择器不可变更 |
 | NEF-012 | 自定义组件表单 | customComponent=CustomForm | 使用自定义组件渲染 |
@@ -1100,7 +1086,7 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 | 配置项 | 含义 | 测试点 |
 |---|---|---|
 | `relation.type` | ONE_TO_ONE / ONE_TO_MANY | 控制可新增行数 |
-| `displayMode` | embedded / tab | 嵌入或 Tab 展示 |
+| `layout` | form / table | 控制分行或表格编辑 |
 | `cascadeDelete` | 级联删除 | 删除父记录时子记录行为 |
 | `required` | 子表必填 | 空表时拒绝提交 |
 
@@ -1150,8 +1136,8 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 | LY-002 | 水平布局 | layoutType=horizontal | 每行两个字段，标签在右侧 |
 | LY-003 | 网格布局 | layoutType=grid，字段 gridSpan=12/8/6 | 按栅格宽度排列 |
 | LY-004 | 网格布局整行 | gridSpan=24 | 字段占满整行 |
-| LY-005 | 子表单嵌入布局 | displayMode=embedded | 子表字段按主表布局排列 |
-| LY-006 | 子表单 Tab 布局 | displayMode=tab | 子表作为独立 Tab |
+| LY-005 | 子表单分行布局 | layout=form | 每条子记录按分行表单编辑 |
+| LY-006 | 子表单表格布局 | layout=table | 多条子记录按表格编辑 |
 
 ### 5.16.17 不同页面的表单展示差异
 
@@ -1286,8 +1272,8 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 | NEF-029 | 子表行内校验 | 子表字段必填 | 空行提交失败 |
 | NEF-030 | 审批弹窗只读 | ProcessNodeForm.isReadonly=1 | 表单只读，仅审批操作可提交 |
 | NEF-031 | 审批弹窗可编辑 | ProcessNodeForm.isReadonly=0 | 可修改字段并随审批提交 |
-| NEF-032 | Tab 子表单在审批弹窗 | displayMode=tab | 子表单作为独立 Tab，基本信息 separate |
-| NEF-033 | 多表单审批弹窗 | 节点绑定两个表单 | 合并后展示，子表单正确分离 |
+| NEF-032 | 页签子表单在审批弹窗 | 子表节点位于 `TAB_SET/TAB` 容器 | 审批弹窗按表单容器结构展示子表 |
+| NEF-033 | 历史多表单兼容 | 节点历史配置绑定两个表单 | 审批弹窗只展示第一项 |
 | NEF-034 | 自定义组件审批弹窗 | customComponent | 自定义组件接收 readonly=true |
 | NEF-035 | 表单版本隔离 | 发布后修改实体表单 | 旧实例仍用旧字段定义 |
 
@@ -1589,7 +1575,7 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 - [ ] 接收任务消息触发后继续。
 - [ ] 调用活动调用子流程成功。
 - [ ] 节点表单绑定正确加载（绑定表单 > 默认表单 > 第一个可用表单）。
-- [ ] 同一节点绑定多个表单时字段去重、排序、名称连接正确。
+- [ ] 同一节点只能选择一个表单，历史多值只读取第一项。
 - [ ] 节点级只读覆盖表单级只读。
 - [ ] 子表单 embedded/tab 两种展示方式正常。
 - [ ] 子表数据回填、级联删除、必填校验正常。
@@ -1671,9 +1657,9 @@ WHERE id = 'your_data_id';
 
 | 节点类型 | 主要配置页签 | 关键配置项 |
 |---|---|---|
-| 开始事件 | 基本信息、表单 | `node_name`、`formSource`、`entityFormIds` |
+| 开始事件 | 基本信息、表单 | `node_name`、`formSource`、`entityFormId` |
 | 结束事件 | 基本信息 | `node_name`、`terminate_end_event` |
-| 用户任务 | 基本信息、执行人、表单、审批、高级 | `assigneeType`、`assignee`、`isMultiInstance`、`multiInstanceType`、`entityFormIds`、`options`、`skipNode` |
+| 用户任务 | 基本信息、执行人、表单、审批、高级 | `assigneeType`、`assignee`、`isMultiInstance`、`multiInstanceType`、`entityFormId`、`options`、`skipNode` |
 | 服务任务 | 基本信息、服务 | `implementationType`、`implementation`、`restForm.*`、`resultVariable` |
 | 脚本任务 | 基本信息、脚本 | `scriptFormat`、`script`、`resultVariable`、`autoStoreVariables` |
 | 发送任务 | 基本信息、发送 | `channels`、`to`、`subject`、`content`、`templateKey` |
@@ -1686,4 +1672,4 @@ WHERE id = 'your_data_id';
 | 包容网关 | 条件、实体状态 | `conditionList` |
 | 事件网关 | 无 | BPMN 拓扑 + 后续事件 |
 | 顺序流 | 条件、实体状态、流程动作 | `conditionList`、`entityStatusCode`、`flow_action` |
-| 节点-实体-表单关系 | 实体表单、节点表单绑定、字段权限、子表单 | `EntityForm`、`ProcessNodeForm`、`EntityFormField`、`displayMode`、`isReadonly` | 详见 5.16 节 |
+| 节点-实体-表单关系 | 实体表单、节点表单绑定、字段权限、子表单 | `EntityForm`、`ProcessNodeForm`、`EntityFormField`、`TAB_SET/TAB`、`isReadonly` | 详见 5.16 节 |

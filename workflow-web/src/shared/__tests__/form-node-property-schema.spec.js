@@ -86,7 +86,6 @@ const expectedSchemas = {
     editable: [
       'label',
       'parentId',
-      'displayMode',
       'layout',
       'childFormRelease',
       'dataSource',
@@ -108,7 +107,6 @@ const expectedSchemas = {
     editable: [
       'label',
       'parentId',
-      'displayMode',
       'layout',
       'childFormRelease',
       'dataSource',
@@ -361,6 +359,8 @@ assert.deepEqual(fieldPayload.localOverrides, {
       fieldType: nodeType === 'SUB_FORM' ? 'SUB_FORM' : 'SUB_FORM_LIST',
       componentType: nodeType === 'SUB_FORM' ? 'sub_form' : 'sub_form_list',
       gridSpan: 24,
+      bindingType: 'ENTITY_FIELD',
+      bindingRef: 'items',
       relationCode: 'items_relation',
       childFormId: 'child-form-1',
       childFormReleaseId: 'child-release-3',
@@ -394,13 +394,10 @@ assert.deepEqual(fieldPayload.localOverrides, {
       dataSourceOutputMappingText: '{"rows":"items"}',
       templateId: 'subform-template',
       templateVersion: 2,
-      localOverrides: {
-        displayMode: 'embedded'
-      }
+      localOverrides: {}
     },
     {
       componentProps: {
-        displayMode: 'embedded',
         layout: 'table'
       }
     }
@@ -434,7 +431,26 @@ assert.deepEqual(fieldPayload.localOverrides, {
   assert.equal(payload.childFormId, 'child-form-1')
   assert.equal(payload.childFormReleaseId, 'child-release-3')
   assert.equal(payload.childFormReleaseVersion, 3)
+  assert.equal(
+    payload.bindingType,
+    'RELATION',
+    `${nodeType} must prefer relation metadata over stale field binding`
+  )
+  assert.equal(payload.bindingRef, 'items_relation')
 })
+
+const unboundRepeaterPayload = buildFormNodePayload({
+  id: 'unbound-repeater',
+  nodeType: 'REPEATER',
+  nodeKey: 'manual_items',
+  fieldId: 'legacy-field-id',
+  fieldCode: 'manual_items',
+  fieldType: 'SUB_FORM_LIST',
+  bindingType: 'ENTITY_FIELD',
+  bindingRef: 'manual_items'
+})
+assert.equal(unboundRepeaterPayload.bindingType, 'NONE')
+assert.equal(unboundRepeaterPayload.bindingRef, null)
 
 const collapsePatch = buildFormNodePayload(
   {

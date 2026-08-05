@@ -3,19 +3,18 @@
     <template v-if="hasConfiguredForm">
       <FormPreviewLinkage
         ref="formPreviewRef"
-        :form="approvalNormalForm"
+        :form="runtimeApprovalForm"
         :model-value="entityData"
         @update:model-value="(val) => emit('update:entityData', val)"
         :readonly="formReadonly"
         :mode="mode"
         :show-header="false"
-        :no-internal-tabs="true"
         :node-root-parent-id="nodeRootParentId"
         :excluded-node-ids="excludedNodeIds"
         :entity-code="entityCode"
         :entity-definition="entityDefinition"
-        :entity-fields="entityFields"
-        :context="context"
+        :entity-fields="runtimeEntityFields"
+        :context="runtimeContext"
         :data-source-runtime="dataSourceRuntime"
         :form-actions="formActions"
         :action-loading-key="actionLoadingKey"
@@ -71,7 +70,7 @@
               </div>
               <el-input
                 v-else
-                :model-value="formatReadonlyValue(value)"
+                :model-value="formatReadonlyFieldValue(key, value)"
                 :readonly="true"
               />
             </el-form-item>
@@ -93,6 +92,13 @@ import {
   isGroupedFileValue,
   resolveApprovalFieldLabel
 } from './entityApprovalDisplay.js'
+import {
+  buildEntityStatusMap,
+  isEntityStatusField,
+  resolveEntityStatusLabel,
+  withEntityStatusFieldOptions,
+  withEntityStatusRuntimeForm
+} from '@/shared/entity-status-runtime'
 
 const props = defineProps<{
   entityData: any
@@ -108,6 +114,7 @@ const props = defineProps<{
   excludedNodeIds?: Array<string | number>
   formActions?: any[]
   actionLoadingKey?: string
+  entityStatusOptions?: any[]
 }>()
 
 const emit = defineEmits<{
@@ -116,16 +123,43 @@ const emit = defineEmits<{
 }>()
 
 const formPreviewRef = ref<any>()
+const runtimeEntityFields = computed(() =>
+  (props.entityFields || []).map(field =>
+    withEntityStatusFieldOptions(field, props.entityStatusOptions || [])
+  )
+)
+const entityStatusMap = computed(() =>
+  buildEntityStatusMap(props.entityStatusOptions || [])
+)
+const runtimeContext = computed(() => ({
+  ...(props.context || {}),
+  entityStatusMap: entityStatusMap.value,
+  entityStatusOptions: props.entityStatusOptions || []
+}))
+const runtimeApprovalForm = computed(() =>
+  withEntityStatusRuntimeForm(
+    props.approvalNormalForm,
+    runtimeEntityFields.value,
+    props.entityStatusOptions || []
+  )
+)
 const hasConfiguredForm = computed(() =>
-  Boolean(props.approvalNormalForm) && (
-    (props.approvalNormalForm?.fields?.length || 0) > 0
-    || (props.approvalNormalForm?.nodes?.length || 0) > 0
-    || Boolean(props.approvalNormalForm?.customComponent)
+  Boolean(runtimeApprovalForm.value) && (
+    (runtimeApprovalForm.value?.fields?.length || 0) > 0
+    || (runtimeApprovalForm.value?.nodes?.length || 0) > 0
+    || Boolean(runtimeApprovalForm.value?.customComponent)
   )
 )
 
 function displayFieldLabel(fieldCode: string) {
-  return resolveApprovalFieldLabel(fieldCode, props.entityFields || [])
+  return resolveApprovalFieldLabel(fieldCode, runtimeEntityFields.value)
+}
+
+function formatReadonlyFieldValue(fieldCode: string, value: any) {
+  if (isEntityStatusField({ fieldCode })) {
+    return resolveEntityStatusLabel(value, entityStatusMap.value)
+  }
+  return formatReadonlyValue(value)
 }
 
 async function validate() {

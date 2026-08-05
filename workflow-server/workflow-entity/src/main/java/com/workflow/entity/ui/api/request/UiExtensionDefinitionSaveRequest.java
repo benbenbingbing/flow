@@ -23,6 +23,10 @@ public class UiExtensionDefinitionSaveRequest {
     private Integer version;
     /** 快照版本 */
     private Integer snapshotVersion;
+    /** 适用范围：GLOBAL/ENTITY */
+    private String visibilityScope;
+    /** 指定适用实体编码 */
+    private List<String> entityCodes;
     /** 支持的模式列表 */
     private List<String> supportedModes;
     /** 支持的节点类型列表 */

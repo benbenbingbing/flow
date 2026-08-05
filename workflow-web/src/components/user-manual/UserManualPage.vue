@@ -16,7 +16,7 @@
           v-model="keyword"
           size="large"
           clearable
-          placeholder="搜索功能、字段、选项、默认值或发布注意事项"
+          placeholder="搜索配置项、接口或错误码"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
@@ -148,6 +148,22 @@
                   </tbody>
                 </table>
               </div>
+
+              <div v-else-if="block.type === 'code'" class="manual-code">
+                <div class="manual-code__toolbar">
+                  <span>{{ block.title || block.language || '示例' }}</span>
+                  <el-button
+                    text
+                    size="small"
+                    aria-label="复制示例代码"
+                    @click="copyCode(block.code)"
+                  >
+                    <el-icon><DocumentCopy /></el-icon>
+                    复制
+                  </el-button>
+                </div>
+                <pre><code>{{ block.code }}</code></pre>
+              </div>
             </template>
           </article>
         </section>
@@ -168,7 +184,7 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Menu, Search } from '@element-plus/icons-vue'
+import { DocumentCopy, Menu, Search } from '@element-plus/icons-vue'
 
 const props = defineProps({
   manual: {
@@ -253,6 +269,15 @@ async function copyAnchor(id) {
     ElMessage.success('锚点链接已复制')
   } catch {
     scrollToAnchor(id)
+  }
+}
+
+async function copyCode(code) {
+  try {
+    await navigator.clipboard.writeText(String(code || ''))
+    ElMessage.success('示例已复制')
+  } catch {
+    ElMessage.warning('浏览器未允许复制，请手动选择代码')
   }
 }
 
@@ -665,6 +690,43 @@ onBeforeUnmount(() => observer?.disconnect())
 .manual-table th:last-child,
 .manual-table td:last-child {
   border-right: 0;
+}
+
+.manual-code {
+  margin: 16px 0;
+  overflow: hidden;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  background: #1f2329;
+}
+
+.manual-code__toolbar {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  background: #292e36;
+  color: #c9d1d9;
+  font-size: 12px;
+}
+
+.manual-code__toolbar .el-button {
+  color: #c9d1d9;
+}
+
+.manual-code pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  color: #f0f3f6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  tab-size: 2;
+  white-space: pre;
 }
 
 .manual-mobile-actions {

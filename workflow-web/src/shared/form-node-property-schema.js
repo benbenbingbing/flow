@@ -102,7 +102,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     editable: [
       'label',
       'parentId',
-      'displayMode',
       'layout',
       'childFormRelease',
       'dataSource',
@@ -121,7 +120,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     editable: [
       'label',
       'parentId',
-      'displayMode',
       'layout',
       'childFormRelease',
       'dataSource',
@@ -436,6 +434,53 @@ function buildClearFields(
   return [...clearFields]
 }
 
+export function resolveFormNodeBinding(field, nodeTypeValue) {
+  const nodeType = normalizeFormNodeType(
+    nodeTypeValue || field?.nodeType || field?.fieldType
+  )
+  const nodeSchema = getFormNodePropertySchema(nodeType)
+  if (!nodeSchema.binding) {
+    return {
+      bindingType: 'NONE',
+      bindingRef: null
+    }
+  }
+
+  const explicitBindingType = String(field?.bindingType || '')
+    .trim()
+    .toUpperCase()
+  const explicitBindingRef = field?.bindingRef || null
+  const relationRef = field?.relationCode
+    || (explicitBindingType === 'RELATION' ? explicitBindingRef : null)
+
+  // 子表单的数据语义来自实体关系；旧的 ENTITY_FIELD 绑定不能覆盖关系元数据。
+  if (nodeType === 'SUB_FORM' || nodeType === 'REPEATER') {
+    return relationRef
+      ? {
+          bindingType: 'RELATION',
+          bindingRef: relationRef
+        }
+      : {
+          bindingType: 'NONE',
+          bindingRef: null
+        }
+  }
+
+  const inferredBindingType = field?.relationCode
+    ? 'RELATION'
+    : (field?.fieldId ? 'ENTITY_FIELD' : 'NONE')
+  const bindingType = explicitBindingType || inferredBindingType
+  const inferredBindingRef = bindingType === 'RELATION'
+    ? field?.relationCode
+    : field?.fieldCode
+  return {
+    bindingType,
+    bindingRef: bindingType === 'NONE'
+      ? null
+      : (explicitBindingRef || inferredBindingRef || null)
+  }
+}
+
 export function buildFormNodePayload(
   field,
   {
@@ -445,17 +490,8 @@ export function buildFormNodePayload(
 ) {
   const nodeType = normalizeFormNodeType(field?.nodeType || field?.fieldType)
   const nodeSchema = getFormNodePropertySchema(nodeType)
-  const inferredBindingType = field.relationCode
-    ? 'RELATION'
-    : (field.fieldId ? 'ENTITY_FIELD' : 'NONE')
-  const explicitBindingType = String(field.bindingType || '').toUpperCase()
-  const bindingType = nodeSchema.binding
-    ? (explicitBindingType || inferredBindingType)
-    : 'NONE'
-  const inferredBindingRef = field.relationCode || field.fieldCode || null
-  const bindingRef = bindingType === 'NONE'
-    ? null
-    : (field.bindingRef || inferredBindingRef)
+  const { bindingType, bindingRef } =
+    resolveFormNodeBinding(field, nodeType)
   const childFormId = nodeSchema.childForm
     ? (field.childFormId || field.refFormId || '')
     : ''

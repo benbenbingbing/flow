@@ -41,7 +41,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(19, files.size());
+        assertEquals(22, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -160,6 +160,16 @@ class SchemaRequiredTablesTest {
                 "uk_ui_extension_version")) {
             assertTrue(sql.contains(index), "missing index: " + index);
         }
+    }
+
+    @Test
+    void uiExtensionScopeMigrationAddsEntityRangeColumns()
+            throws Exception {
+        String sql = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V021__ui_extension_entity_scope.sql"));
+        assertTrue(sql.contains("`visibility_scope`"));
+        assertTrue(sql.contains("`entity_codes_document`"));
+        assertTrue(sql.contains("DEFAULT 'GLOBAL'"));
     }
 
     @Test

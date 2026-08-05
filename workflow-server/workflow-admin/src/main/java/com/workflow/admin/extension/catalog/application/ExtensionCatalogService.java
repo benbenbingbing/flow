@@ -74,7 +74,8 @@ public class ExtensionCatalogService {
             String keyword,
             Integer limit,
             String processConfigId,
-            String usage) {
+            String usage,
+            String entityCode) {
         String normalizedType = normalize(capabilityType);
         String normalizedKeyword = lower(keyword);
         int max = limit == null ? 20 : Math.max(1, Math.min(limit, 100));
@@ -100,6 +101,7 @@ public class ExtensionCatalogService {
                         || normalizedType.equals(item.getCapabilityType()))
                 .filter(item -> "ACTIVE".equals(item.getStatus()))
                 .filter(item -> !Boolean.FALSE.equals(item.getAvailable()))
+                .filter(item -> matchesEntityScope(item, entityCode))
                 .filter(item -> matchesKeyword(item, normalizedKeyword))
                 .sorted(Comparator
                         .comparing(
@@ -208,8 +210,12 @@ public class ExtensionCatalogService {
         item.setConfigured(true);
         item.setAvailable(true);
         item.setEnabled("ACTIVE".equals(normalize(source.status())));
-        item.setVisibilityScope("GLOBAL");
-        item.setEntityCodes(List.of());
+        item.setVisibilityScope(StringUtils.hasText(source.visibilityScope())
+                ? normalize(source.visibilityScope())
+                : "GLOBAL");
+        item.setEntityCodes(source.entityCodes() == null
+                ? List.of()
+                : List.copyOf(source.entityCodes()));
         item.setSupportedModes(emptySet(source.supportedModes()));
         item.setSupportedNodeTypes(emptySet(source.supportedNodeTypes()));
         item.setSupportedBindings(emptySet(source.supportedBindings()));
@@ -222,6 +228,22 @@ public class ExtensionCatalogService {
                 capabilities.get("dynamicExtraParams")));
         item.setRevision(source.revision());
         return item;
+    }
+
+    private boolean matchesEntityScope(
+            ExtensionCatalogItem item,
+            String entityCode) {
+        if (!String.valueOf(item.getCapabilityType()).startsWith("UI_")
+                || !"ENTITY".equals(normalize(
+                        item.getVisibilityScope()))) {
+            return true;
+        }
+        if (!StringUtils.hasText(entityCode)) {
+            return false;
+        }
+        return item.getEntityCodes() != null
+                && item.getEntityCodes().stream().anyMatch(configured ->
+                        configured.equalsIgnoreCase(entityCode.trim()));
     }
 
     private String status(

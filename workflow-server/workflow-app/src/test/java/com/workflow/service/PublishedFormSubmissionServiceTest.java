@@ -4,20 +4,24 @@ import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,15 +51,8 @@ class PublishedFormSubmissionServiceTest {
                 mock(UiConfigReleaseService.class);
         UiDataSourceService dataSourceService =
                 mock(UiDataSourceService.class);
-        JsonDocumentCodec codec =
-                new JsonDocumentCodec(new ObjectMapper());
         PublishedFormSubmissionService service =
-                new PublishedFormSubmissionService(
-                        mock(EntityDefinitionMapper.class),
-                        mock(EntityFormMapper.class),
-                        releaseService,
-                        dataSourceService,
-                        codec);
+                service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -151,12 +148,7 @@ class PublishedFormSubmissionServiceTest {
         UiDataSourceService dataSourceService =
                 mock(UiDataSourceService.class);
         PublishedFormSubmissionService service =
-                new PublishedFormSubmissionService(
-                        mock(EntityDefinitionMapper.class),
-                        mock(EntityFormMapper.class),
-                        releaseService,
-                        dataSourceService,
-                        new JsonDocumentCodec(new ObjectMapper()));
+                service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -203,13 +195,7 @@ class PublishedFormSubmissionServiceTest {
         UiDataSourceService dataSourceService =
                 mock(UiDataSourceService.class);
         PublishedFormSubmissionService service =
-                new PublishedFormSubmissionService(
-                        mock(EntityDefinitionMapper.class),
-                        mock(EntityFormMapper.class),
-                        releaseService,
-                        dataSourceService,
-                        new JsonDocumentCodec(
-                                new ObjectMapper()));
+                service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -283,13 +269,7 @@ class PublishedFormSubmissionServiceTest {
         UiDataSourceService dataSourceService =
                 mock(UiDataSourceService.class);
         PublishedFormSubmissionService service =
-                new PublishedFormSubmissionService(
-                        mock(EntityDefinitionMapper.class),
-                        mock(EntityFormMapper.class),
-                        releaseService,
-                        dataSourceService,
-                        new JsonDocumentCodec(
-                                new ObjectMapper()));
+                service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -334,13 +314,7 @@ class PublishedFormSubmissionServiceTest {
         UiDataSourceService dataSourceService =
                 mock(UiDataSourceService.class);
         PublishedFormSubmissionService service =
-                new PublishedFormSubmissionService(
-                        mock(EntityDefinitionMapper.class),
-                        mock(EntityFormMapper.class),
-                        releaseService,
-                        dataSourceService,
-                        new JsonDocumentCodec(
-                                new ObjectMapper()));
+                service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -395,13 +369,7 @@ class PublishedFormSubmissionServiceTest {
         UiDataSourceService dataSourceService =
                 mock(UiDataSourceService.class);
         PublishedFormSubmissionService service =
-                new PublishedFormSubmissionService(
-                        mock(EntityDefinitionMapper.class),
-                        mock(EntityFormMapper.class),
-                        releaseService,
-                        dataSourceService,
-                        new JsonDocumentCodec(
-                                new ObjectMapper()));
+                service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -450,6 +418,202 @@ class PublishedFormSubmissionServiceTest {
                         "bindingOwner"));
     }
 
+    /**
+     * 测试子表单参数由服务端按父记录重算：验证伪造 params 被忽略、空字段初始化、
+     * 非空字段不覆盖、每条子行分别执行 BEFORE_SUBMIT 且幂等键互不相同。
+     */
+    @Test
+    void recursivelyProcessesSubFormRowsWithTrustedParameters() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
+        EntityDefinitionMapper definitionMapper =
+                mock(EntityDefinitionMapper.class);
+        PublishedFormSubmissionService service =
+                service(
+                        definitionMapper,
+                        releaseService,
+                        dataSourceService);
+
+        EntityForm childForm = new EntityForm();
+        childForm.setId("child-form");
+        childForm.setEntityId("child-entity");
+        childForm.setViewConfig(
+                """
+                {
+                  "inputParameterSchema": {
+                    "type": "object",
+                    "required": ["projectId"],
+                    "properties": {
+                      "projectId": {
+                        "type": "string",
+                        "title": "项目ID"
+                      }
+                    }
+                  }
+                }
+                """);
+        EntityFormField sourceDept = new EntityFormField();
+        sourceDept.setFieldCode("source_dept_id");
+        sourceDept.setFieldName("来源部门");
+        sourceDept.setFieldType("STRING");
+        sourceDept.setIsReadonly(0);
+        childForm.setFields(List.of(sourceDept));
+        EntityFormNode childBeforeSubmit = new EntityFormNode();
+        childBeforeSubmit.setId("child-before-submit");
+        childBeforeSubmit.setNodeType("FIELD");
+        childBeforeSubmit.setDataSourceBindingsDocument(
+                """
+                {
+                  "BEFORE_SUBMIT": {
+                    "sourceId": "child-source",
+                    "inputMapping": {
+                      "projectId": "params.projectId",
+                      "sourceDeptId": "data.source_dept_id",
+                      "parentRecordId": "parent.recordId",
+                      "rowIndex": "row.index"
+                    }
+                  }
+                }
+                """);
+        childForm.setNodes(List.of(childBeforeSubmit));
+
+        EntityForm parentForm = new EntityForm();
+        parentForm.setId("parent-form");
+        parentForm.setEntityId("parent-entity");
+        EntityFormNode subFormNode = new EntityFormNode();
+        subFormNode.setId("members-node");
+        subFormNode.setNodeKey("members");
+        subFormNode.setNodeType("REPEATER");
+        subFormNode.setPropsDocument(
+                """
+                {
+                  "fieldCode": "members",
+                  "componentProps": {
+                    "subFormConfig": {
+                      "childFormId": "child-form",
+                      "childFormReleaseId": "child-release",
+                      "childFormReleaseVersion": 1,
+                      "childEntityId": "child-entity",
+                      "childRefFieldCode": "parent_id",
+                      "relationType": "ONE_TO_MANY",
+                      "parameterContract": {
+                        "version": 1,
+                        "parameterMapping": {
+                          "projectId": "parent.data.project_id"
+                        },
+                        "fieldInitializationMapping": {
+                          "source_dept_id": "parent.data.dept_id"
+                        }
+                      }
+                    }
+                  }
+                }
+                """);
+        parentForm.setNodes(List.of(subFormNode));
+
+        when(releaseService.resolveRuntimeFormRelease(
+                "parent-form",
+                null,
+                null))
+                .thenReturn(resolution(
+                        parentForm,
+                        "parent-release",
+                        1));
+        when(releaseService.resolveRuntimeFormRelease(
+                "child-form",
+                "child-release",
+                1))
+                .thenReturn(resolution(
+                        childForm,
+                        "child-release",
+                        1,
+                        true));
+        EntityDefinition childDefinition =
+                new EntityDefinition();
+        childDefinition.setId("child-entity");
+        childDefinition.setEntityCode("project_member");
+        when(definitionMapper.selectById("child-entity"))
+                .thenReturn(childDefinition);
+        when(dataSourceService.execute(
+                eq("child-source"),
+                org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> {
+                    UiDataSourceExecuteRequest request =
+                            invocation.getArgument(1);
+                    return Map.of(
+                            "processedProject",
+                            request.getInput().get("projectId"));
+                });
+
+        Map<String, Object> first = new LinkedHashMap<>();
+        first.put("name", "甲");
+        first.put("source_dept_id", "");
+        Map<String, Object> second = new LinkedHashMap<>();
+        second.put("name", "乙");
+        second.put("source_dept_id", "manual-dept");
+        Map<String, Object> result = service.applyForm(
+                "parent-form",
+                "parent_entity",
+                "parent-record",
+                "edit",
+                Map.of(
+                        "project_id", "project-actual",
+                        "dept_id", "dept-from-parent",
+                        "params", Map.of(
+                                "projectId",
+                                "project-forged"),
+                        "members", List.of(first, second)),
+                executionContext("trace-subform"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> members =
+                (List<Map<String, Object>>) result.get("members");
+        assertEquals(
+                "dept-from-parent",
+                members.get(0).get("source_dept_id"));
+        assertEquals(
+                "manual-dept",
+                members.get(1).get("source_dept_id"));
+        assertEquals(
+                "project-actual",
+                members.get(0).get("processedProject"));
+        assertEquals(
+                "project-actual",
+                members.get(1).get("processedProject"));
+
+        ArgumentCaptor<UiDataSourceExecuteRequest> captor =
+                ArgumentCaptor.forClass(
+                        UiDataSourceExecuteRequest.class);
+        verify(dataSourceService, times(2))
+                .execute(
+                        eq("child-source"),
+                        captor.capture());
+        List<UiDataSourceExecuteRequest> requests =
+                captor.getAllValues();
+        assertEquals(
+                "project-actual",
+                requests.get(0).getInput().get("projectId"));
+        assertEquals(
+                "parent-record",
+                requests.get(0).getInput().get(
+                        "parentRecordId"));
+        assertEquals(
+                0,
+                requests.get(0).getInput().get("rowIndex"));
+        assertEquals(
+                1,
+                requests.get(1).getInput().get("rowIndex"));
+        assertNotEquals(
+                idempotencyKey(requests.get(0)),
+                idempotencyKey(requests.get(1)));
+        assertTrue(String.valueOf(
+                requests.get(0).getContext().get(
+                        "bindingOwner"))
+                .contains("members-node/row:0"));
+    }
+
     /** 构造带 beforeSubmit 数据源绑定的节点 */
     private EntityFormNode node(
             String id,
@@ -460,6 +624,30 @@ class PublishedFormSubmissionServiceTest {
                 "{\"BEFORE_SUBMIT\":{\"sourceId\":\""
                         + sourceId + "\"}}");
         return node;
+    }
+
+    private PublishedFormSubmissionService service(
+            UiConfigReleaseService releaseService,
+            UiDataSourceService dataSourceService) {
+        return service(
+                mock(EntityDefinitionMapper.class),
+                releaseService,
+                dataSourceService);
+    }
+
+    private PublishedFormSubmissionService service(
+            EntityDefinitionMapper definitionMapper,
+            UiConfigReleaseService releaseService,
+            UiDataSourceService dataSourceService) {
+        JsonDocumentCodec codec =
+                new JsonDocumentCodec(new ObjectMapper());
+        return new PublishedFormSubmissionService(
+                definitionMapper,
+                mock(EntityFormMapper.class),
+                releaseService,
+                dataSourceService,
+                codec,
+                new UiDataSourceDefinitionValidator(codec));
     }
 
     /** 构造携带 traceKey 的表单提交执行上下文 */

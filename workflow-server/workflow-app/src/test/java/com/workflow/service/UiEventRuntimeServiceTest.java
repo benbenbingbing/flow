@@ -19,6 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -88,6 +90,51 @@ class UiEventRuntimeServiceTest {
         verify(actionCapabilityService).requireStandardPermission(
                 "expense",
                 EntityPermissionAction.DELETE);
+    }
+
+    @Test
+    void listLoadPassesPaginationToInterfaceOperation() {
+        UiEventExecuteRequest request = request(
+                "LIST_LOAD",
+                null);
+        request.setTargetType("OWNER");
+        request.setInput(Map.of(
+                "filters", Map.of("status", "ACTIVE"),
+                "pageNum", 3,
+                "pageSize", 50));
+        when(bindingService.resolvePublished(request)).thenReturn(
+                new UiEventBindingService.ResolvedEventChain(
+                        List.of(Map.of(
+                                "strategy", "REPLACE",
+                                "serviceId", "service-1",
+                                "operationCode", "query",
+                                "inputMapping", Map.of(),
+                                "outputMapping", List.of())),
+                        "release-1",
+                        1,
+                        "entity-1",
+                        "expense",
+                        "default",
+                        Map.of()));
+        when(valueMapper.matches(any(), any())).thenReturn(true);
+        when(valueMapper.apply(any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        when(dataSourceService.executeOperation(
+                org.mockito.ArgumentMatchers.eq("service-1"),
+                org.mockito.ArgumentMatchers.eq("query"),
+                any())).thenReturn(Map.of("records", List.of()));
+
+        service.execute(request);
+
+        org.mockito.ArgumentCaptor<com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest>
+                captor = org.mockito.ArgumentCaptor.forClass(
+                        com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest.class);
+        verify(dataSourceService).executeOperation(
+                org.mockito.ArgumentMatchers.eq("service-1"),
+                org.mockito.ArgumentMatchers.eq("query"),
+                captor.capture());
+        assertEquals(3, captor.getValue().getPageNum());
+        assertEquals(50, captor.getValue().getPageSize());
     }
 
     private UiEventExecuteRequest request(String eventCode, String targetKey) {

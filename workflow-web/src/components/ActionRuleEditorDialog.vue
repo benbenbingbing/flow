@@ -7,6 +7,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="不满足时">
+        <template #label>
+          <ConfigHelpLabel
+            label="不满足时"
+            help-key="actionRule.unavailableBehavior"
+          />
+        </template>
         <el-radio-group v-model="rule.unavailableBehavior">
           <el-radio-button value="HIDE">隐藏按钮</el-radio-button>
           <el-radio-button value="DISABLE">禁用并说明</el-radio-button>
@@ -45,6 +51,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import ConfigHelpLabel from './ConfigHelpLabel.vue'
 import ActionRuleGroupEditor from './ActionRuleGroupEditor.vue'
 
 const props = defineProps({

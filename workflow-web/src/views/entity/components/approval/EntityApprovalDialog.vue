@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog" top="3vh">
+  <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog entity-approval-dialog" top="3vh">
     <div class="approval-dialog-body">
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
         <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
@@ -17,6 +17,7 @@
             :excludedNodeIds="approvalLiftedRootNodeIds"
             :form-actions="formActions"
             :action-loading-key="actionLoadingKey"
+            :entity-status-options="entityStatusOptions"
             @form-action="handleFormAction"
           />
         </el-tab-pane>
@@ -41,22 +42,8 @@
             :nodeRootParentId="tab.rootParentId"
             :form-actions="formActions"
             :action-loading-key="actionLoadingKey"
+            :entity-status-options="entityStatusOptions"
             @form-action="handleFormAction"
-          />
-        </el-tab-pane>
-
-        <el-tab-pane
-          v-for="(field, idx) in approvalTabSubForms"
-          :key="'approval-subform-' + idx"
-          :label="field.fieldName"
-          :name="'subform_' + idx"
-        >
-          <FormFieldRendererLinkage
-            :field="field"
-            v-model="entityData[getFieldKey(field)]"
-            :disabled="isRuntimeFieldReadonly(field, approvalFormReadonly, approvalRuntimeMode)"
-            :context="approvalRuntimeContext"
-            :data-source-runtime="dataSourceRuntime"
           />
         </el-tab-pane>
 
@@ -90,7 +77,6 @@
         v-if="!isViewMode && effectiveApprovalConfig.enabled !== false && isApprovalFormTab"
         class="approval-opinion-section"
       >
-        <el-divider />
         <div class="section-title">审批意见</div>
         <el-form :model="approveForm" label-width="80px">
           <el-form-item label="审批操作" required>
@@ -120,11 +106,13 @@
     </div>
 
     <template #footer>
-      <FormActionBar
-        :actions="footerActions"
-        :loading-key="actionLoadingKey"
-        @action="handleFormAction"
-      />
+      <div class="approval-dialog-footer">
+        <FormActionBar
+          :actions="footerActions"
+          :loading-key="actionLoadingKey"
+          @action="handleFormAction"
+        />
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -135,11 +123,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
-import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import {
-  getFieldKey,
-  isRuntimeFieldReadonly,
   isRuntimeFieldVisible,
   isRuntimeFormReadonly,
   createFormDataSourceRuntime,
@@ -159,6 +144,10 @@ import {
 } from '@/shared/form-action-runtime'
 import { footerFormActions } from '@/shared/form-actions'
 import { isWorkflowReady } from '@/shared/entity-design'
+import {
+  buildEntityStatusMap,
+  withEntityStatusRuntimeForm
+} from '@/shared/entity-status-runtime'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -166,12 +155,14 @@ const props = withDefaults(defineProps<{
   entityDefinition?: any
   entityFields?: any[]
   listKey?: string
+  entityStatusOptions?: any[]
 }>(), {
   entityCode: '',
   defaultForm: null,
   entityDefinition: () => ({}),
   entityFields: () => [],
-  listKey: ''
+  listKey: '',
+  entityStatusOptions: () => []
 })
 
 const emit = defineEmits<{
@@ -204,7 +195,6 @@ const {
   formConfig,
   formConfigs,
   approvalConfig,
-  isTabSubForm,
   getProcessStatusText,
   loadProcessDetail
 } = useProcessDetail()
@@ -231,6 +221,13 @@ const approvalFormReadonly = computed(() => {
 const effectiveFormConfig = computed(() =>
   resolveApprovalFormConfig(formConfig.value, props.defaultForm)
 )
+const statusAwareFormConfig = computed(() =>
+  withEntityStatusRuntimeForm(
+    effectiveFormConfig.value,
+    props.entityFields,
+    props.entityStatusOptions
+  )
+)
 const approvalRuntimeMode = computed(() => isViewMode.value ? 'view' : 'approve')
 const approvalRuntimeContext = computed(() => ({
   entityCode: props.entityCode,
@@ -238,6 +235,8 @@ const approvalRuntimeContext = computed(() => ({
   record: entityData.value,
   task: currentTask.value,
   processInstanceId: currentTask.value?.processInstanceId,
+  entityStatusMap: buildEntityStatusMap(props.entityStatusOptions),
+  entityStatusOptions: props.entityStatusOptions,
   releaseResolutionToken: effectiveFormConfig.value?.releaseResolutionToken
 }))
 const dataSourceRuntime = createFormDataSourceRuntime({
@@ -249,19 +248,11 @@ const dataSourceRuntime = createFormDataSourceRuntime({
   getForm: () => approvalNormalForm.value
 })
 
-// 审批弹窗中的 Tab 子表单字段
-const approvalTabSubForms = computed(() => {
-  const fields = effectiveFormConfig.value?.fields || []
-  return fields.filter((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value) && isTabSubForm(f))
-})
-
-// 审批弹窗中普通字段组成的 form（给 FormPreviewLinkage 用，不含 tab 子表单）
 const approvalNormalForm = computed(() => {
-  const sourceForm = effectiveFormConfig.value
+  const sourceForm = statusAwareFormConfig.value
   if (!sourceForm) return null
   const fields = (sourceForm.fields || [])
     .filter((f: any) => isRuntimeFieldVisible(f, approvalRuntimeMode.value))
-    .filter((f: any) => !isTabSubForm(f))
   return {
     ...sourceForm,
     fields
@@ -274,16 +265,13 @@ const approvalNodeTabs = computed(() => approvalTabLayout.value.tabs)
 const approvalLiftedRootNodeIds = computed(() =>
   approvalTabLayout.value.liftedRootNodeIds
 )
-const approvalHasFormTabs = computed(() =>
-  approvalNodeTabs.value.length > 0 || approvalTabSubForms.value.length > 0
-)
+const approvalHasFormTabs = computed(() => approvalNodeTabs.value.length > 0)
 const approvalShowBasicTab = computed(() =>
   approvalTabLayout.value.hasBaseContent || !approvalHasFormTabs.value
 )
 const approvalFormTabNames = computed(() => [
   ...(approvalShowBasicTab.value ? ['basic'] : []),
-  ...approvalNodeTabs.value.map(tab => tab.name),
-  ...approvalTabSubForms.value.map((_, idx) => `subform_${idx}`)
+  ...approvalNodeTabs.value.map(tab => tab.name)
 ])
 const firstApprovalFormTabName = computed(() =>
   approvalFormTabNames.value[0] || 'basic'
@@ -667,26 +655,47 @@ defineExpose({
 </script>
 
 <style scoped lang="scss">
-.entity-form-dialog {
-  --dialog-margin: 24px;
+:global(.el-dialog.entity-approval-dialog) {
+  --approval-dialog-margin: clamp(12px, 2.2vh, 24px);
   box-sizing: border-box;
-  margin-top: var(--dialog-margin) !important;
-  margin-bottom: var(--dialog-margin) !important;
-  height: calc(100vh - var(--dialog-margin) * 2);
-  max-height: calc(100vh - var(--dialog-margin) * 2);
+  margin-top: var(--approval-dialog-margin) !important;
+  margin-bottom: var(--approval-dialog-margin) !important;
+  height: calc(100vh - var(--approval-dialog-margin) * 2);
+  height: calc(100dvh - var(--approval-dialog-margin) * 2);
+  max-height: calc(100vh - var(--approval-dialog-margin) * 2);
+  max-height: calc(100dvh - var(--approval-dialog-margin) * 2);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
-.entity-form-dialog :deep(.el-dialog__body) {
-  flex: 1;
-  overflow-y: auto;
+
+:global(.entity-approval-dialog .el-dialog__header) {
+  flex: 0 0 auto;
+}
+
+:global(.entity-approval-dialog .el-dialog__body) {
+  flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+:global(.entity-approval-dialog .el-dialog__footer) {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid #e4e7ed;
+  background: #ffffff;
 }
 
 .approval-dialog-body {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -716,9 +725,36 @@ defineExpose({
 }
 
 .approval-opinion-section {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  max-height: min(280px, 34dvh);
+  overflow-y: auto;
   background: #ffffff;
-  padding: 0 0 8px;
+  padding: 12px 0 4px;
   border-top: 1px solid #e4e7ed;
+}
+
+.approval-opinion-section :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+.approval-opinion-section :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.approval-dialog-footer {
+  min-height: 32px;
+}
+
+@media (max-width: 900px) {
+  :global(.el-dialog.entity-approval-dialog) {
+    --approval-dialog-margin: 12px;
+    width: calc(100vw - 24px) !important;
+  }
+}
+
+@media (max-height: 760px) {
+  .approval-opinion-section {
+    max-height: 30dvh;
+  }
 }
 </style>

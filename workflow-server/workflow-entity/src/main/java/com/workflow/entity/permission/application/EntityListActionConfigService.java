@@ -284,6 +284,9 @@ public class EntityListActionConfigService {
                         new LinkedHashMap<>(original);
                 button.put("key", "view");
                 button.put("type", "built-in");
+                if (!StringUtils.hasText(asString(button.get("buttonType")))) {
+                    button.put("buttonType", defaultButtonType("view"));
+                }
                 button.put("perm", "");
                 button.put("enabled", true);
                 readOnly.add(button);
@@ -302,6 +305,9 @@ public class EntityListActionConfigService {
             String key = asString(button.get("key"));
             String type = asString(button.get("type"));
             boolean enabled = !Boolean.FALSE.equals(button.get("enabled"));
+            if (!StringUtils.hasText(asString(button.get("buttonType")))) {
+                button.put("buttonType", defaultButtonType(key));
+            }
             EntityPermissionAction action = EntityPermissionAction.fromButtonKey(key);
             if (action == EntityPermissionAction.APPROVE
                     && definition != null
@@ -513,9 +519,19 @@ public class EntityListActionConfigService {
         button.put("key", key);
         button.put("type", "built-in");
         button.put("label", label);
+        button.put("buttonType", defaultButtonType(key));
         button.put("sort", sort);
         button.put("enabled", true);
         return button;
+    }
+
+    private String defaultButtonType(String key) {
+        return switch (key) {
+            case "create", "view", "edit" -> "primary";
+            case "approve" -> "warning";
+            case "batchDelete", "delete" -> "danger";
+            default -> "default";
+        };
     }
 
     private EntityActionRuleDTO defaultRule(String buttonKey) {

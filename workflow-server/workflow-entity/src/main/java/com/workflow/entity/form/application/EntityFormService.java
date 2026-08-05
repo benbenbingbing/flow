@@ -816,9 +816,6 @@ public class EntityFormService {
         if (entityField.getRefEntityType() != null) {
             field.setRefEntityType(entityField.getRefEntityType().name());
         }
-        if (entityField.getDisplayMode() != null) {
-            field.setDisplayMode(entityField.getDisplayMode());
-        }
         if (entityField.getRefFieldCode() != null) {
             field.setRefFieldCode(entityField.getRefFieldCode());
         }

@@ -122,28 +122,35 @@ public class ProcessDefinitionNodeSyncService {
                 if (!usesExtensionBinding) {
                     entityFormIds = bpmnParser.parseFormIdList(bpmnParser.resolveFormKey(userTask));
                 }
+                String entityFormId = entityFormIds.stream()
+                        .findFirst()
+                        .orElse(null);
                 Integer configuredReadonly =
                         bpmnParser.isTruthy(extensionProperties.get("entityFormReadonly")) ? 1 : 0;
 
                 nodeFormMapper.deleteByProcessConfigIdAndNodeId(processConfigId, nodeId);
-                for (int sortOrder = 0; sortOrder < entityFormIds.size(); sortOrder++) {
-                    String formId = entityFormIds.get(sortOrder);
+                if (entityFormId != null) {
                     ProcessNodeForm nodeForm = new ProcessNodeForm();
                     nodeForm.setProcessConfigId(processConfigId);
                     nodeForm.setNodeId(nodeId);
                     nodeForm.setNodeName(nodeName);
-                    nodeForm.setFormId(formId);
+                    nodeForm.setFormId(entityFormId);
                     nodeForm.setIsReadonly(usesExtensionBinding
                             ? configuredReadonly
-                            : bpmnParser.existingReadonly(existingBindings, formId, configuredReadonly));
-                    nodeForm.setSortOrder(sortOrder);
+                            : bpmnParser.existingReadonly(
+                                    existingBindings,
+                                    entityFormId,
+                                    configuredReadonly));
+                    nodeForm.setSortOrder(0);
                     nodeForm.setCreateTime(LocalDateTime.now());
                     nodeForm.setUpdateTime(LocalDateTime.now());
                     nodeFormMapper.insert(nodeForm);
                 }
-                if (!entityFormIds.isEmpty()) {
-                    log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formIds={}",
-                            LogValue.safe(processConfigId), LogValue.safe(nodeId), LogValue.safe(entityFormIds));
+                if (entityFormId != null) {
+                    log.debug("同步节点表单绑定: processConfigId={}, nodeId={}, formId={}",
+                            LogValue.safe(processConfigId),
+                            LogValue.safe(nodeId),
+                            LogValue.safe(entityFormId));
                 }
             }
         } catch (Exception e) {

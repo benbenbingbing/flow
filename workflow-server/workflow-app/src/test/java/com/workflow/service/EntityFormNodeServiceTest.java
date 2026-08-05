@@ -331,6 +331,54 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper).update(isNull(), any());
     }
 
+    /** 测试用户整树保存允许调整父节点与排序：验证 Tab 内字段的位置变化通过 CAS 差异写入 */
+    @Test
+    void userReplaceByDiffAllowsParentAndOrderChanges() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode tabSet = typedNode("tabs", null, "TAB_SET");
+        EntityFormNode tab = typedNode("tab", "tabs", "TAB");
+        EntityFormNode current = typedNode("field", null, "FIELD");
+        EntityFormNode moved = typedNode("field", "tab", "FIELD");
+        current.setLegacyPropsDocument("{\"serverManaged\":true}");
+        moved.setLegacyPropsDocument("{}");
+        moved.setOrderKey(2_000_000L);
+
+        List<EntityFormNode> existing = List.of(tabSet, tab, current);
+        List<EntityFormNode> incoming = List.of(tabSet, tab, moved);
+        when(nodeMapper.findByFormId("form-1"))
+                .thenReturn(existing, incoming);
+        when(nodeMapper.selectById("tabs")).thenReturn(tabSet);
+        when(nodeMapper.selectById("tab")).thenReturn(tab);
+        when(nodeMapper.selectById("field")).thenReturn(current, moved);
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+
+        assertDoesNotThrow(
+                () -> service(nodeMapper).replaceByDiff(
+                        "form-1", incoming, 1));
+
+        verify(nodeMapper).update(isNull(), any());
+    }
+
+    /** 测试用户整树保存忽略历史兼容属性：验证仅序列化差异不会触发节点写入 */
+    @Test
+    void userReplaceByDiffPreservesServerManagedLegacyProps() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode current = typedNode("field", null, "FIELD");
+        EntityFormNode incoming = typedNode("field", null, "FIELD");
+        current.setLegacyPropsDocument("{\"serverManaged\":true}");
+        incoming.setLegacyPropsDocument("{}");
+
+        when(nodeMapper.findByFormId("form-1"))
+                .thenReturn(List.of(current), List.of(current));
+
+        assertDoesNotThrow(
+                () -> service(nodeMapper).replaceByDiff(
+                        "form-1", List.of(incoming), 1));
+
+        verify(nodeMapper, never()).update(isNull(), any());
+    }
+
     /** 测试拒绝第 9 层嵌套：验证 9 层 SECTION 嵌套时校验抛出 IllegalArgumentException */
     @Test
     void rejectsNinthLevelNesting() {
@@ -991,7 +1039,9 @@ class EntityFormNodeServiceTest {
         EntityForm form = new EntityForm();
         form.setId("form-1");
         form.setEntityId("entity-1");
+        form.setRevision(1);
         when(formMapper.selectById("form-1")).thenReturn(form);
+        when(formMapper.selectByIdForUpdate("form-1")).thenReturn(form);
         EntityForm childForm = new EntityForm();
         childForm.setId("form-2");
         childForm.setEntityId("entity-2");

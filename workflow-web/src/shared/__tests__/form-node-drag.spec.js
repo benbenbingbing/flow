@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   buildFormNodeDropPlan,
   getFormNodeDepth,
+  orderFormNodesParentFirst,
   validateFormNodeDrop
 } from '../form-node-drag.js'
 
@@ -78,6 +79,30 @@ assert.equal(
 assert.equal(
   validateFormNodeDrop(baseNodes, baseNodes[4], 'tab-set').valid,
   true
+)
+
+const unsortedTree = [
+  node('field', 'FIELD', 'tab'),
+  node('tab', 'TAB', 'tab-set'),
+  node('root-field', 'FIELD'),
+  node('tab-set', 'TAB_SET')
+]
+assert.deepEqual(
+  orderFormNodesParentFirst(unsortedTree).map(item => item.id),
+  ['root-field', 'tab-set', 'tab', 'field']
+)
+assert.throws(
+  () => orderFormNodesParentFirst([
+    node('field', 'FIELD', 'missing-parent')
+  ]),
+  /父级不存在/
+)
+assert.throws(
+  () => orderFormNodesParentFirst([
+    node('first', 'SECTION', 'second'),
+    node('second', 'SECTION', 'first')
+  ]),
+  /存在循环/
 )
 
 console.log('form-node-drag tests passed')

@@ -47,7 +47,7 @@ const routes = [
   ['07-real-entity-list', listRoute, [projectName, '新增项目', '负责人', '风险']],
   ['08-real-list-design', `/entity-list-config/design/${fixture.listConfigId}`, ['列表配置设计：', 'Demo项目卡片列表', '保存全部', '字段配置']],
   ['09-real-form-list', `/entity-form/list-by-entity/${fixture.entityId}`, [entityName, '表单管理', 'Demo项目定制表单', '新建表单']],
-  ['10-real-form-design', `/entity-form/design/${fixture.formId}?entityId=${fixture.entityId}`, ['表单设计 -', 'Demo项目定制表单', '表单设计（所见即所得）', '保存草稿']],
+  ['10-real-form-design', `/entity-form/design/${fixture.formId}?entityId=${fixture.entityId}`, ['表单设计 -', 'Demo项目定制表单', '表单设计（所见即所得）', '保存全部草稿']],
   ['11-real-process-design', `/process/design/${fixture.processId}`, [processName, '全局动作', '查看 XML', '保存草稿']],
   ['12-user', '/system/user', ['用户管理', '新增用户']],
   ['13-role', '/system/role', ['角色管理', '新增角色']],

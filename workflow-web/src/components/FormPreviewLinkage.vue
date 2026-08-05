@@ -6,7 +6,7 @@
 <template>
   <div
     class="linkage-form-preview"
-    :class="[form?.layoutType, { 'has-tabs': useTabLayout }]"
+    :class="form?.layoutType"
     :style="previewStyle"
   >
     <div class="preview-header" v-if="showHeader">
@@ -71,107 +71,40 @@
       :label-position="labelPosition"
       class="preview-form"
     >
-      <!-- 没有 Tab 子表单，或外部接管 tabs 时，只渲染普通字段 -->
-      <template v-if="tabSubForms.length === 0 || noInternalTabs">
-        <div
-          v-for="field in (noInternalTabs ? normalFields : processedFields)"
-          :key="field.id"
-          class="preview-field-wrapper"
-          :class="{ 'section-preview': isSectionField(field) }"
-          :style="isSectionField(field) ? { width: '100%' } : getFieldStyle(field)"
-          v-show="linkageState.visibility[getFieldKey(field)] !== false"
+      <div
+        v-for="field in processedFields"
+        :key="field.id"
+        class="preview-field-wrapper"
+        :class="{ 'section-preview': isSectionField(field) }"
+        :style="isSectionField(field) ? { width: '100%' } : getFieldStyle(field)"
+        v-show="linkageState.visibility[getFieldKey(field)] !== false"
+      >
+        <template v-if="isSectionField(field)">
+          <SectionField :field="field" />
+        </template>
+        <el-form-item
+          v-else
+          :label="field.fieldLabel || field.fieldName"
+          :prop="getFieldKey(field)"
+          :rules="getFieldRules(field)"
+          :required="isFieldRequired(field)"
         >
-          <template v-if="isSectionField(field)">
-            <SectionField :field="field" />
-          </template>
-          <el-form-item
-            v-else
-            :label="field.fieldLabel || field.fieldName"
-            :prop="getFieldKey(field)"
-            :rules="getFieldRules(field)"
-            :required="isFieldRequired(field)"
-          >
-            <FormFieldRendererLinkage
-              :field="field"
-              v-model="formData[getFieldKey(field)]"
-              :disabled="isFieldDisabled(field)"
-              :options="linkageState.options[getFieldKey(field)] || field.options"
-              :context="{ ...runtimeContext, field }"
-              :data-source-runtime="dataSourceRuntime"
-            />
-          </el-form-item>
-        </div>
-      </template>
-
-      <!-- 有 Tab 子表单时，整个表单用 Tab 组织 -->
-      <template v-else>
-        <div class="form-tabs-wrapper">
-          <el-tabs
-            v-model="activeTabSubForm"
-            type="border-card"
-          >
-            <!-- 普通字段放在"基本信息"Tab -->
-            <el-tab-pane
-              v-if="normalFields.length > 0"
-              label="基本信息"
-              name="basic"
-              key="pane-basic"
-            >
-              <div
-                v-for="field in normalFields"
-                :key="'basic-' + (field.id || field.fieldCode || field.fieldKey)"
-                class="preview-field-wrapper"
-                :class="{ 'section-preview': isSectionField(field) }"
-                :style="isSectionField(field) ? { width: '100%' } : getFieldStyle(field)"
-                v-show="linkageState.visibility[getFieldKey(field)] !== false"
-              >
-                <template v-if="isSectionField(field)">
-                  <SectionField :field="field" />
-                </template>
-                <el-form-item
-                  v-else
-                  :label="field.fieldLabel || field.fieldName"
-                  :prop="getFieldKey(field)"
-                  :rules="getFieldRules(field)"
-                  :required="isFieldRequired(field)"
-                >
-                  <FormFieldRendererLinkage
-                    :field="field"
-                    v-model="formData[getFieldKey(field)]"
-                    :disabled="isFieldDisabled(field)"
-                    :options="linkageState.options[getFieldKey(field)] || field.options"
-                    :context="{ ...runtimeContext, field }"
-                    :data-source-runtime="dataSourceRuntime"
-                  />
-                </el-form-item>
-              </div>
-            </el-tab-pane>
-
-            <!-- Tab 子表单 -->
-            <el-tab-pane
-              v-for="(field, idx) in tabSubForms"
-              :key="'pane-subform-' + idx + '-' + (field.id || field.fieldCode || field.fieldKey || '')"
-              :label="field.fieldLabel || field.fieldName"
-              :name="'tab_' + idx"
-            >
-              <FormFieldRendererLinkage
-                :field="field"
-                v-model="formData[getFieldKey(field)]"
-                :disabled="isFieldDisabled(field)"
-                :options="linkageState.options[getFieldKey(field)] || field.options"
-                :context="{ ...runtimeContext, field }"
-                :data-source-runtime="dataSourceRuntime"
-              />
-            </el-tab-pane>
-          </el-tabs>
-        </div>
-      </template>
+          <FormFieldRendererLinkage
+            :field="field"
+            v-model="formData[getFieldKey(field)]"
+            :disabled="isFieldDisabled(field)"
+            :options="linkageState.options[getFieldKey(field)] || field.options"
+            :context="{ ...runtimeContext, field }"
+            :data-source-runtime="dataSourceRuntime"
+          />
+        </el-form-item>
+      </div>
     </el-form>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import FormNodeRenderer from './FormNodeRenderer.vue'
 import FormActionBar from './FormActionBar.vue'
@@ -206,11 +139,6 @@ const props = defineProps({
   showHeader: {
     type: Boolean,
     default: true
-  },
-  // 是否禁用内部 Tab 组织（用于外部接管 tabs，如审批弹窗）
-  noInternalTabs: {
-    type: Boolean,
-    default: false
   },
   height: {
     type: String,
@@ -257,11 +185,9 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'form-action'])
 const formViewConfig = computed(() => safeParseConfig(props.form?.viewConfig))
 
-// 预览容器样式：支持自定义高度，默认 70vh
-// 无 tab 时整体滚动；有 tab 时只滚动 tab content，tab header 固定
 const previewStyle = computed(() => ({
   height: props.height,
-  overflowY: useTabLayout.value ? 'hidden' : 'auto'
+  overflowY: 'auto'
 }))
 
 // 自定义表单组件数据更新回调
@@ -280,7 +206,6 @@ const linkageState = ref({
   required: {},
   options: {}
 })
-const activeTabSubForm = ref('basic')
 const hasNodeTree = computed(() => Array.isArray(props.form?.nodes) && props.form.nodes.length > 0)
 const actionSlotKeys = computed(() =>
   (props.form?.nodes || [])
@@ -317,23 +242,6 @@ function isSectionField(field) {
     (field?.componentType || '').toLowerCase() === 'section'
 }
 
-function isTabSubForm(field) {
-  const type = (field.componentType || field.fieldType || '').toUpperCase()
-  const result = field.displayMode === 'tab' || (() => {
-    if (field.componentProps) {
-      try {
-        const compProps = typeof field.componentProps === 'string'
-          ? JSON.parse(field.componentProps)
-          : field.componentProps
-        return compProps.subFormConfig?.displayMode === 'tab'
-      } catch (e) {}
-    }
-    return false
-  })()
-  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
-  return result
-}
-
 // 同步外部数据（只在引用变化时同步，避免与内部 watcher 循环）
 watch(() => props.modelValue, (val) => {
   if (val === formData.value) return
@@ -355,34 +263,6 @@ const processedFields = computed(() => {
   return [...fields]
     .filter(field => isFieldVisibleForMode(field, props.mode))
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-})
-
-// 普通字段（嵌入表单或普通字段）
-const normalFields = computed(() => {
-  return processedFields.value.filter(f => !isTabSubForm(f))
-})
-
-// Tab 模式的子表单
-const tabSubForms = computed(() => {
-  return processedFields.value.filter(f => isTabSubForm(f))
-})
-
-const useTabLayout = computed(() =>
-  tabSubForms.value.length > 0 && !props.noInternalTabs && !hasNodeTree.value)
-
-// 自动设置第一个 tab 为激活状态
-watchEffect(() => {
-  const tabs = tabSubForms.value
-  const normals = normalFields.value
-  if (tabs.length > 0) {
-    const allTabNames = [
-      ...(normals.length > 0 ? ['basic'] : []),
-      ...tabs.map((_, i) => 'tab_' + i)
-    ]
-    if (!allTabNames.includes(activeTabSubForm.value)) {
-      activeTabSubForm.value = allTabNames[0] || ''
-    }
-  }
 })
 
 // 标签位置
@@ -578,50 +458,8 @@ defineExpose({
   flex-wrap: wrap;
 }
 
-.preview-form > .el-tabs {
-  width: 100%;
-}
-
 .preview-field-wrapper {
   transition: all 0.3s ease;
-}
-
-.form-tabs-wrapper {
-  width: 100%;
-  display: block;
-}
-
-/* 有 tab 时：整体 flex 布局，tab header 固定，tab body 滚动 */
-.linkage-form-preview.has-tabs {
-  display: flex;
-  flex-direction: column;
-}
-.linkage-form-preview.has-tabs .preview-form {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
-}
-.linkage-form-preview.has-tabs .form-tabs-wrapper {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.linkage-form-preview.has-tabs :deep(.el-tabs) {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.linkage-form-preview.has-tabs :deep(.el-tabs__header) {
-  flex-shrink: 0;
-}
-.linkage-form-preview.has-tabs :deep(.el-tabs__content) {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .preview-field-wrapper[v-show="false"] {

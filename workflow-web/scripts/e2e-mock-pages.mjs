@@ -9,6 +9,8 @@ const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 const appPort = 3300
 const debugPort = 9223
 const baseUrl = `http://127.0.0.1:${appPort}`
+const viewportWidth = Number(process.env.E2E_VIEWPORT_WIDTH || 1920)
+const viewportHeight = Number(process.env.E2E_VIEWPORT_HEIGHT || 1080)
 const userDataDir = mkdtempSync(path.join(tmpdir(), 'workflow-web-cdp-'))
 const bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
@@ -510,6 +512,36 @@ const interactionPlans = new Map([
     { click: '工具栏按钮', expect: ['工具栏按钮'] },
     { click: '操作列按钮', expect: ['操作列按钮'] }
   ]],
+  ['/entity-form/design/e2e-form', [
+    {
+      click: '表单设置',
+      expect: ['基本与布局', '按钮与操作', '数据与事件', '渲染与扩展']
+    },
+    {
+      click: '按钮与操作',
+      expect: [
+        '先确定按钮在哪些模式和位置出现',
+        '稳定编码',
+        '权限码',
+        '事件链'
+      ]
+    },
+    {
+      click: '新增按钮',
+      expect: ['自定义按钮']
+    },
+    {
+      click: '更多',
+      expect: [
+        '自定义按钮设置',
+        '图标',
+        '按钮样式',
+        '执行前校验',
+        '二次确认',
+        '适用条件'
+      ]
+    }
+  ]],
   ['/system/menu', [{ click: '创建顶级菜单', expect: ['菜单名称'] }]],
   ['/system/user', [{ click: '新增用户', expect: ['用户名'] }]],
   ['/system/role', [{ click: '新增角色', expect: ['角色名称'] }]],
@@ -607,6 +639,93 @@ async function runLayoutChecks(client, routePath) {
     returnByValue: true
   })
   return result.result.value || []
+}
+
+async function runFormDesignerChecks(client, routePath) {
+  if (routePath !== '/entity-form/design/e2e-form') return []
+
+  const hoverResult = await client.send('Runtime.evaluate', {
+    expression: `(() => {
+      const target = document.querySelector(
+        'button[aria-label="查看执行前校验配置说明"]'
+      );
+      if (!target) return { found: false };
+      target.dispatchEvent(new MouseEvent('mouseenter', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+      target.dispatchEvent(new MouseEvent('mouseover', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+      return { found: true };
+    })()`,
+    returnByValue: true
+  })
+  await delay(350)
+
+  const result = await client.send('Runtime.evaluate', {
+    expression: `(() => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0
+          && rect.height > 0
+          && style.display !== 'none'
+          && style.visibility !== 'hidden';
+      };
+      const fitsViewport = (el) => {
+        if (!isVisible(el)) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.left >= 0
+          && rect.top >= 0
+          && rect.right <= window.innerWidth
+          && rect.bottom <= window.innerHeight;
+      };
+      const drawer = [...document.querySelectorAll('.el-drawer')]
+        .find(isVisible);
+      const dialog = [...document.querySelectorAll('.el-dialog')]
+        .find(isVisible);
+      const helpButtons = [...document.querySelectorAll(
+        '.config-help-label__button'
+      )].filter(isVisible);
+      const tooltip = [...document.querySelectorAll(
+        '[role="tooltip"], .el-popper'
+      )].filter(isVisible).find((el) =>
+        (el.textContent || '').includes('先执行当前表单的必填和格式校验')
+      );
+      return {
+        drawerFits: fitsViewport(drawer),
+        dialogFits: fitsViewport(dialog),
+        helpButtonCount: helpButtons.length,
+        tooltipVisible: Boolean(tooltip),
+        viewport: { width: window.innerWidth, height: window.innerHeight }
+      };
+    })()`,
+    returnByValue: true
+  })
+  const state = result.result.value || {}
+  return [
+    {
+      name: '表单设置抽屉与按钮弹窗完整显示',
+      passed: state.drawerFits && state.dialogFits,
+      detail: JSON.stringify(state)
+    },
+    {
+      name: '自定义按钮问号悬浮说明',
+      passed: Boolean(hoverResult.result.value?.found)
+        && state.helpButtonCount >= 5
+        && state.tooltipVisible,
+      detail: JSON.stringify({
+        hoverTargetFound: hoverResult.result.value?.found,
+        helpButtonCount: state.helpButtonCount,
+        tooltipVisible: state.tooltipVisible
+      })
+    }
+  ]
 }
 
 async function runProcessNodePanelChecks(client, routePath) {
@@ -840,8 +959,8 @@ async function createPage(chrome, routePath) {
   await client.send('Network.enable')
   await client.send('Runtime.enable')
   await client.send('Emulation.setDeviceMetricsOverride', {
-    width: 1920,
-    height: 1080,
+    width: viewportWidth,
+    height: viewportHeight,
     deviceScaleFactor: 1,
     mobile: false
   })
@@ -875,6 +994,17 @@ async function createPage(chrome, routePath) {
     writeFileSync(process.env.E2E_SCREENSHOT_PATH, Buffer.from(screenshot.data, 'base64'))
   }
   const interactions = await runInteractionPlan(client, routePath)
+  const formDesignerChecks = await runFormDesignerChecks(client, routePath)
+  if (
+    process.env.E2E_SCREENSHOT_PATH
+    && process.env.E2E_SCREENSHOT_AFTER_INTERACTIONS === '1'
+  ) {
+    const screenshot = await client.send('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: false
+    })
+    writeFileSync(process.env.E2E_SCREENSHOT_PATH, Buffer.from(screenshot.data, 'base64'))
+  }
   const result = await client.send('Runtime.evaluate', {
     expression: `(() => ({ path: location.pathname, text: (document.body.textContent || '').trim().slice(0, 1000), title: document.title, errorMessage: document.querySelector('.el-message--error')?.textContent || '', html: document.body.innerHTML.slice(0, 300), appHtml: document.querySelector('#app')?.innerHTML.slice(0, 300) || '' }))()`,
     returnByValue: true
@@ -885,6 +1015,7 @@ async function createPage(chrome, routePath) {
     ...result.result.value,
     scriptRequests,
     layoutChecks,
+    formDesignerChecks,
     processNodePanelChecks,
     interactions,
     errors: errors.filter((error) => !String(error).includes('ResizeObserver'))
@@ -920,6 +1051,8 @@ try {
     result.missingTexts = missingTexts
     result.unexpectedTexts = unexpectedTexts
     result.failedLayoutChecks = (result.layoutChecks || []).filter((check) => !check.passed)
+    result.failedFormDesignerChecks = (result.formDesignerChecks || [])
+      .filter((check) => !check.passed)
     result.failedProcessNodePanelChecks = (result.processNodePanelChecks || []).filter((check) => !check.passed)
     const failedInteractions = (result.interactions || []).filter((interaction) => !interaction.clicked || interaction.missingTexts.length > 0)
     result.failedInteractions = failedInteractions
@@ -929,6 +1062,7 @@ try {
       || missingTexts.length > 0
       || unexpectedTexts.length > 0
       || result.failedLayoutChecks.length > 0
+      || result.failedFormDesignerChecks.length > 0
       || result.failedProcessNodePanelChecks.length > 0
       || failedInteractions.length > 0
   })
@@ -938,8 +1072,10 @@ try {
   assert.equal(failures.length, 0, 'mock page E2E found route failures')
   const interactionCount = results.reduce((sum, result) => sum + (result.interactions?.length || 0), 0)
   const layoutCheckCount = results.reduce((sum, result) => sum + (result.layoutChecks?.length || 0), 0)
+  const formDesignerCheckCount = results.reduce((sum, result) =>
+    sum + (result.formDesignerChecks?.length || 0), 0)
   const processNodePanelCheckCount = results.reduce((sum, result) => sum + (result.processNodePanelChecks?.length || 0), 0)
-  console.log(`mock page e2e passed: ${results.length} routes, ${interactionCount} interactions, ${layoutCheckCount} layout checks, ${processNodePanelCheckCount} process node panel checks`)
+  console.log(`mock page e2e passed: ${results.length} routes, ${interactionCount} interactions, ${layoutCheckCount} layout checks, ${formDesignerCheckCount} form designer checks, ${processNodePanelCheckCount} process node panel checks`)
 } finally {
   vite.kill('SIGTERM')
   chrome.kill('SIGTERM')

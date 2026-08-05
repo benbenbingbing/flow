@@ -2,11 +2,21 @@ import assert from 'node:assert/strict'
 import {
   calculateListActionOrderKey,
   describeListPublishChanges,
+  getListButtonDefaultType,
   listActionFingerprint,
   listMetadataDetailEntries,
   listMetadataFingerprint,
-  normalizeListActionForSave
+  normalizeListActionForSave,
+  resolveListButtonType,
+  withListButtonTypeDefault
 } from '../list-config-design.js'
+import {
+  buildListQueryBindingPayload,
+  createListQueryEditor,
+  findListLoadBinding,
+  isSimpleListQueryBinding,
+  listQueryEditorFingerprint
+} from '../list-query-binding.js'
 
 const config = {
   listName: '项目列表',
@@ -44,6 +54,27 @@ assert.deepEqual(action.actionParams, { targetEntityCode: 'project' })
 assert.deepEqual(action.clearFields, [
   'templateId', 'templateVersion', 'localOverridesDocument'
 ])
+assert.equal(getListButtonDefaultType('create'), 'primary')
+assert.equal(getListButtonDefaultType('batchDelete'), 'danger')
+assert.equal(getListButtonDefaultType('delete'), 'danger')
+assert.equal(resolveListButtonType({ key: 'delete', buttonType: 'success' }), 'success')
+assert.equal(withListButtonTypeDefault({ key: 'delete' }).buttonType, 'danger')
+assert.equal(
+  normalizeListActionForSave({
+    key: 'create',
+    type: 'built-in',
+    label: '新增数据'
+  }, 'TOOLBAR').styleType,
+  'primary'
+)
+assert.equal(
+  normalizeListActionForSave({
+    key: 'delete',
+    type: 'built-in',
+    label: '删除'
+  }, 'ROW').styleType,
+  'danger'
+)
 assert.equal(
   listActionFingerprint({ ...action, revision: 3, key: 'edit' }, 'ROW')
     .includes('expectedRevision'),
@@ -59,6 +90,64 @@ assert.equal(
     changedItems: [{ changeType: 'ADDED', label: '字段 A' }]
   }),
   '新增：字段 A'
+)
+
+const simpleListLoadBinding = {
+  id: 'binding-1',
+  revision: 2,
+  eventCode: 'LIST_LOAD',
+  targetType: 'OWNER',
+  inheritanceMode: 'REPLACE',
+  enabled: true,
+  stepsDocument: JSON.stringify([{
+    strategy: 'REPLACE',
+    serviceId: 'service-1',
+    operationCode: 'query',
+    condition: {},
+    inputMapping: {
+      criteria: 'input.filters',
+      current: 'input.pageNum',
+      size: 'input.pageSize'
+    },
+    outputMapping: [
+      { sourcePath: 'data.rows', targetPath: 'records' },
+      { sourcePath: 'data.count', targetPath: 'total' }
+    ],
+    failurePolicy: 'STOP'
+  }])
+}
+assert.equal(
+  findListLoadBinding([simpleListLoadBinding]),
+  simpleListLoadBinding
+)
+assert.equal(isSimpleListQueryBinding(simpleListLoadBinding), true)
+const queryEditor = createListQueryEditor(simpleListLoadBinding)
+assert.equal(queryEditor.serviceId, 'service-1')
+assert.equal(queryEditor.operationCode, 'query')
+assert.equal(queryEditor.inputTargets.filters, 'criteria')
+assert.equal(queryEditor.outputPaths.records, 'data.rows')
+const queryPayload = buildListQueryBindingPayload(
+  queryEditor,
+  'list-1',
+  simpleListLoadBinding
+)
+assert.equal(queryPayload.expectedRevision, 2)
+assert.equal(queryPayload.inheritanceMode, 'REPLACE')
+assert.equal(queryPayload.steps[0].inputMapping.criteria, 'input.filters')
+assert.equal(queryPayload.steps[0].outputMapping[0].targetPath, 'records')
+assert.equal(
+  listQueryEditorFingerprint(queryEditor),
+  listQueryEditorFingerprint(createListQueryEditor(simpleListLoadBinding))
+)
+assert.equal(
+  isSimpleListQueryBinding({
+    ...simpleListLoadBinding,
+    stepsDocument: JSON.stringify([
+      ...JSON.parse(simpleListLoadBinding.stepsDocument),
+      { strategy: 'AFTER', serviceId: 'service-2' }
+    ])
+  }),
+  false
 )
 
 console.log('list config design helper tests passed')

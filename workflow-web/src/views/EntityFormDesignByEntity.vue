@@ -15,20 +15,39 @@
           <el-icon><View /></el-icon>预览
         </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
-        <el-button v-if="!isSystemEntity" @click="openExtensionManagement">扩展管理</el-button>
-        <el-button
-          v-if="!isSystemEntity"
-          :disabled="!form.id"
-          @click="openUnifiedEventBindings('OWNER')"
-        >
-          事件绑定
-        </el-button>
         <el-button type="success" plain @click="handlePublish" :disabled="!isEdit">
           发布
         </el-button>
-        <el-button type="primary" @click="handleSave" :loading="saving">
-          <el-icon><Check /></el-icon>保存草稿
-        </el-button>
+        <div class="save-action-group">
+          <el-button type="primary" @click="handleSave" :loading="saving">
+            <el-icon><Check /></el-icon>保存全部草稿
+          </el-button>
+          <el-dropdown
+            trigger="click"
+            placement="bottom-end"
+            @command="handleSaveCommand"
+          >
+            <el-button
+              type="primary"
+              class="save-action-more"
+              :disabled="saving"
+              aria-label="更多保存方式"
+              title="更多保存方式"
+            >
+              <el-icon><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  command="CURRENT_NODE"
+                  :disabled="!selectedField"
+                >
+                  仅保存当前节点
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </div>
 
@@ -79,15 +98,13 @@
               <el-radio-button value="horizontal">水平</el-radio-button>
               <el-radio-button value="grid">网格</el-radio-button>
             </el-radio-group>
-            <el-button type="primary" size="small" style="margin-left: 12px" @click="addSection">
-              <el-icon><Plus /></el-icon>添加节
-            </el-button>
-            <el-dropdown trigger="click" @command="addContainerNode">
-              <el-button size="small" style="margin-left: 8px">
-                添加容器节点
+            <el-dropdown trigger="click" @command="handleAddNodeCommand">
+              <el-button type="primary" size="small" style="margin-left: 12px">
+                <el-icon><Plus /></el-icon>添加节点
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item command="SECTION_TITLE">节</el-dropdown-item>
                   <el-dropdown-item command="SECTION">区块</el-dropdown-item>
                   <el-dropdown-item command="GRID">栅格</el-dropdown-item>
                   <el-dropdown-item command="TAB_SET">Tab 集合</el-dropdown-item>
@@ -99,117 +116,10 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-button size="small" @click="openFormSettings('basic')">
+              <el-icon><Setting /></el-icon>表单设置
+            </el-button>
           </div>
-        </div>
-        
-        <div class="form-basic-info">
-          <div class="form-summary-row">
-            <el-form inline size="small" class="form-summary-main">
-              <el-form-item label="表单名称">
-                <el-input v-model="form.formName" placeholder="请输入表单名称" style="width: 220px" />
-              </el-form-item>
-            </el-form>
-            <div class="form-summary-meta">
-              <el-tag
-                size="small"
-                effect="plain"
-                class="form-summary-tag"
-                :type="form.formKey ? 'info' : 'warning'"
-              >
-                标识：{{ form.formKey || '未设置' }}
-              </el-tag>
-              <el-tag size="small" effect="plain" class="form-summary-tag">
-                渲染：{{ form.customComponent || '默认动态表单' }}
-              </el-tag>
-              <el-tag size="small" effect="plain">
-                标签 {{ viewConfig.labelWidth }}px
-              </el-tag>
-              <el-tag
-                size="small"
-                effect="plain"
-                :type="formDataSourceBindingCount ? 'success' : 'info'"
-              >
-                数据源 {{ formDataSourceBindingCount }} 项
-              </el-tag>
-              <el-button
-                text
-                type="primary"
-                size="small"
-                class="form-settings-trigger"
-                :aria-expanded="formSettingsExpanded"
-                @click="formSettingsExpanded = !formSettingsExpanded"
-              >
-                {{ formSettingsExpanded ? '收起设置' : '表单设置' }}
-                <el-icon :class="{ 'is-expanded': formSettingsExpanded }">
-                  <ArrowDown />
-                </el-icon>
-              </el-button>
-            </div>
-          </div>
-
-          <el-collapse-transition>
-            <div v-show="formSettingsExpanded" class="form-settings-panel">
-              <el-form inline size="small">
-                <el-form-item label="表单标识">
-                  <el-input
-                    v-model="form.formKey"
-                    placeholder="表单标识"
-                    :disabled="isEdit"
-                    style="width: 180px"
-                  />
-                </el-form-item>
-                <el-form-item v-if="!isSystemEntity" label="自定义组件">
-                  <ExtensionCapabilityPicker
-                    v-model="form.customComponent"
-                    placeholder="留空使用默认动态表单"
-                    capability-type="UI_FORM"
-                    :local-options="customFormOptions"
-                    :current-option="selectedCustomFormCatalogOption"
-                    style="width: 320px"
-                  />
-                </el-form-item>
-                <el-form-item v-if="!isSystemEntity && form.customComponent" label="组件版本">
-                  <el-tag>
-                    v{{ form.customComponentVersion || 1 }}
-                    / 快照 v{{ form.customComponentSnapshotVersion || 1 }}
-                  </el-tag>
-                </el-form-item>
-                <el-form-item label="标签宽度">
-                  <el-input-number v-model="viewConfig.labelWidth" :min="60" :max="240" />
-                </el-form-item>
-                <el-form-item v-if="selectedCustomFormSchema.length" label="组件参数">
-                  <el-button @click="showFormExtensionConfig = true">配置参数</el-button>
-                </el-form-item>
-                <el-form-item label="表单数据源">
-                  <el-button
-                    :disabled="!form.id"
-                    @click="openFormDataSourceConfig"
-                  >
-                    配置绑定
-                  </el-button>
-                  <el-tag
-                    v-if="formDataSourceBindingCount"
-                    type="success"
-                    style="margin-left: 8px"
-                  >
-                    {{ formDataSourceBindingCount }} 项
-                  </el-tag>
-                </el-form-item>
-                <el-form-item label="表单按钮">
-                  <el-button @click="showFormButtonConfig = true">
-                    配置操作栏
-                  </el-button>
-                  <el-tag
-                    v-if="customFormButtonCount"
-                    type="success"
-                    style="margin-left: 8px"
-                  >
-                    自定义 {{ customFormButtonCount }} 项
-                  </el-tag>
-                </el-form-item>
-              </el-form>
-            </div>
-          </el-collapse-transition>
         </div>
 
         <div class="form-canvas-wrapper">
@@ -271,34 +181,52 @@
       >
         <template v-if="selectedField">
           <div class="node-summary">
-            <strong>{{ selectedField.fieldLabel || selectedField.fieldName || selectedField.fieldCode }}</strong>
-            <span>{{ selectedNodeTypeLabel }}</span>
+            <div class="node-summary-heading">
+              <strong>{{ selectedField.fieldLabel || selectedField.fieldName || selectedField.fieldCode }}</strong>
+              <el-tag size="small" effect="plain">{{ selectedNodeTypeLabel }}</el-tag>
+              <el-tag
+                size="small"
+                :type="selectedNodeDirty ? 'warning' : 'success'"
+                effect="plain"
+              >
+                {{ selectedNodeDirty ? '未保存' : '已保存' }}
+              </el-tag>
+            </div>
+            <dl class="node-summary-meta">
+              <div>
+                <dt>绑定</dt>
+                <dd>{{ selectedNodeBindingLabel }}</dd>
+              </div>
+              <div>
+                <dt>编码</dt>
+                <dd>{{ selectedField.fieldCode || selectedField.nodeKey || '-' }}</dd>
+              </div>
+              <div>
+                <dt>父级</dt>
+                <dd>{{ selectedNodeParentLabel }}</dd>
+              </div>
+            </dl>
             <p>{{ selectedNodeLockMessage }}</p>
           </div>
-          <div class="linkage-config-header">
-            <el-button
-              type="success"
-              size="small"
-              :loading="savingNode"
-              @click="saveSelectedNode"
-            >
-              保存当前节点
-            </el-button>
-            <el-button
-              v-if="isFieldNode"
-              type="primary"
-              size="small"
-              @click="showLinkageConfig = true"
-            >
-              <el-icon><Connection /></el-icon> 字段联动配置
-            </el-button>
-          </div>
+          <el-tabs
+            v-model="activeNodeSettingsTab"
+            class="node-settings-tabs"
+            stretch
+          >
+            <el-tab-pane
+              v-for="tab in availableNodeSettingsTabs"
+              :key="tab.value"
+              :label="tab.label"
+              :name="tab.value"
+            />
+          </el-tabs>
           
-          <el-scrollbar height="calc(100vh - 180px)">
+          <el-scrollbar height="calc(100vh - 250px)">
             <el-form label-width="90px" size="small" class="property-form">
               <SettingsSection
-                title="常用属性"
-                description="当前节点最常修改的显示、组件和占位配置"
+                v-show="activeNodeSettingsTab === 'basic'"
+                title="基础属性"
+                description="当前节点最常修改的显示、组件、占位和层级配置"
                 :collapsible="false"
                 primary
               >
@@ -324,10 +252,6 @@
                 </el-form-item>
 
                 <template v-if="isFieldNode">
-                  <el-form-item label="绑定字段">
-                    <el-input :model-value="selectedField.fieldName || selectedField.fieldCode" disabled />
-                    <div class="form-tip">已绑定实体字段或关系的节点不可改变数据语义；如需替换，请新建节点。</div>
-                  </el-form-item>
                   <el-form-item label="组件类型">
                     <el-select v-model="selectedField.componentType" style="width: 100%" @change="handleCompatibleComponentChange">
                       <el-option
@@ -338,16 +262,6 @@
                       />
                     </el-select>
                   </el-form-item>
-                  <el-form-item label="属性">
-                    <div class="checkbox-group">
-                      <el-checkbox v-model="selectedField.isRequired" :true-label="1" :false-label="0">必填</el-checkbox>
-                      <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">只读</el-checkbox>
-                      <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">隐藏</el-checkbox>
-                    </div>
-                  </el-form-item>
-                  <el-form-item label="默认值">
-                    <el-input v-model="selectedField.defaultValue" placeholder="默认值" />
-                  </el-form-item>
                   <el-form-item label="占位提示">
                     <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
                   </el-form-item>
@@ -357,48 +271,6 @@
                   <el-slider v-model="selectedField.gridSpan" :min="1" :max="24" show-stops />
                   <span class="slider-value">{{ selectedField.gridSpan }}/24</span>
                 </el-form-item>
-              </SettingsSection>
-
-              <SettingsSection
-                title="布局与层级"
-                description="父容器、栅格跨度和容器展示方式"
-                :default-expanded="isTabNode || ['GRID', 'TAB_SET', 'COLLAPSE'].includes(selectedNodeType)"
-              >
-                <template #summary>
-                  <el-tag size="small" type="info">
-                    {{ selectedField.parentId ? '已嵌套' : '根节点' }}
-                  </el-tag>
-                </template>
-
-                <template v-if="hasNodeSpecificConfig">
-                <el-form-item v-if="selectedNodeType === 'GRID'" label="列间距">
-                  <el-input-number
-                    :model-value="Number(selectedNodeConfig.gutter || 16)"
-                    :min="0"
-                    :max="48"
-                    @update:model-value="updateSelectedNodeConfig('gutter', $event)"
-                  />
-                </el-form-item>
-                <el-form-item v-if="selectedNodeType === 'GRID'" label="默认跨度">
-                  <el-input-number
-                    :model-value="Number(selectedNodeConfig.defaultSpan || 12)"
-                    :min="1"
-                    :max="24"
-                    @update:model-value="updateSelectedNodeConfig('defaultSpan', $event)"
-                  />
-                </el-form-item>
-                <el-form-item v-if="selectedNodeType === 'TAB_SET'" label="页签位置">
-                  <el-select
-                    :model-value="selectedNodeConfig.tabPosition || 'top'"
-                    @update:model-value="updateSelectedNodeConfig('tabPosition', $event)"
-                  >
-                    <el-option label="顶部" value="top" />
-                    <el-option label="左侧" value="left" />
-                    <el-option label="右侧" value="right" />
-                    <el-option label="底部" value="bottom" />
-                  </el-select>
-                </el-form-item>
-                </template>
 
                 <el-form-item
                   :label="isTabNode ? '所属 Tab 集合' : '父容器'"
@@ -428,8 +300,47 @@
                     {{ selectedParentHelp }}
                   </div>
                 </el-form-item>
+              </SettingsSection>
 
-                <template v-if="hasNodeSpecificConfig">
+              <SettingsSection
+                v-if="hasNodeSpecificConfig"
+                v-show="activeNodeSettingsTab === 'basic'"
+                title="布局与层级"
+                description="栅格参数和容器展示方式"
+                :default-expanded="isTabNode || ['GRID', 'TAB_SET', 'COLLAPSE'].includes(selectedNodeType)"
+              >
+                <template #summary>
+                  <el-tag size="small" type="info">{{ selectedNodeTypeLabel }}</el-tag>
+                </template>
+
+                <el-form-item v-if="selectedNodeType === 'GRID'" label="列间距">
+                  <el-input-number
+                    :model-value="Number(selectedNodeConfig.gutter || 16)"
+                    :min="0"
+                    :max="48"
+                    @update:model-value="updateSelectedNodeConfig('gutter', $event)"
+                  />
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'GRID'" label="默认跨度">
+                  <el-input-number
+                    :model-value="Number(selectedNodeConfig.defaultSpan || 12)"
+                    :min="1"
+                    :max="24"
+                    @update:model-value="updateSelectedNodeConfig('defaultSpan', $event)"
+                  />
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'TAB_SET'" label="页签位置">
+                  <el-select
+                    :model-value="selectedNodeConfig.tabPosition || 'top'"
+                    @update:model-value="updateSelectedNodeConfig('tabPosition', $event)"
+                  >
+                    <el-option label="顶部" value="top" />
+                    <el-option label="左侧" value="left" />
+                    <el-option label="右侧" value="right" />
+                    <el-option label="底部" value="bottom" />
+                  </el-select>
+                </el-form-item>
+
                 <el-form-item v-if="selectedNodeType === 'COLLAPSE'" label="默认展开">
                   <el-switch
                     :model-value="selectedNodeConfig.defaultExpanded !== false"
@@ -443,91 +354,69 @@
                   />
                 </el-form-item>
                 <div class="form-tip">
-                  {{ isTabNode
-                    ? 'TAB 页仅允许选择有效的 Tab 集合；同级排序仍请在画布中调整。'
-                    : '父容器可在上方受限选择；同级排序请在画布中调整，技术标识和节点类型不可直接修改。' }}
+                  同级排序请在画布中调整，技术标识和节点类型不可直接修改。
                 </div>
-                </template>
               </SettingsSection>
 
-              <SettingsSection
-                v-if="canConfigureSelectedNodeDataSource"
-                title="数据源"
-                description="受控数据源、绑定位置和输入输出映射"
-              >
-                <template #summary>
-                  <el-tag size="small" :type="selectedField.dataSourceId ? 'success' : 'info'">
-                    {{ selectedField.dataSourceId ? '已配置数据源' : '未配置数据源' }}
-                  </el-tag>
-                </template>
+              <FormNodeDataSettings />
 
-                <el-form-item label="绑定位置">
-                  <el-select v-model="selectedField.dataSourceUsage" style="width: 100%">
-                    <el-option
-                      v-for="usage in availableNodeDataSourceUsages"
-                      :key="usage.value"
-                      :label="usage.label"
-                      :value="usage.value"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="数据源">
-                  <el-select
-                    v-model="selectedField.dataSourceId"
-                    clearable
-                    filterable
-                    placeholder="不绑定"
-                    style="width: 100%"
-                  >
-                    <el-option
-                      v-for="source in dataSources"
-                      :key="source.id"
-                      :label="`${source.sourceName} (${source.sourceType})`"
-                      :value="source.id"
-                    />
-                  </el-select>
-                  <div class="form-tip">仅可选择受控实体、字典、Provider 或 Connector。</div>
-                </el-form-item>
-                <details class="property-advanced">
-                  <summary>输入与输出映射</summary>
-                  <div class="property-advanced-body">
-                    <el-form-item>
-                      <template #label>
-                        <JsonConfigLabel
-                          label="输入映射"
-                          help-key="entityForm.dataSourceInputMapping"
-                        />
-                      </template>
-                      <el-input
-                        v-model="selectedField.dataSourceInputMappingText"
-                        type="textarea"
-                        :rows="3"
-                        placeholder='{"filters.ownerId":"data.ownerId"}'
-                      />
-                      <div class="form-tip">目标路径映射到 data/context/input 路径；也可使用 {"literal": 值}。</div>
-                    </el-form-item>
-                    <el-form-item>
-                      <template #label>
-                        <JsonConfigLabel
-                          label="输出映射"
-                          help-key="entityForm.dataSourceOutputMapping"
-                        />
-                      </template>
-                      <el-input
-                        v-model="selectedField.dataSourceOutputMappingText"
-                        type="textarea"
-                        :rows="3"
-                        placeholder='{"assigneeName":"data.user.name"}'
-                      />
-                      <div class="form-tip">目标字段映射到数据源返回路径；留空时使用原始返回值。</div>
-                    </el-form-item>
+              <SettingsSection
+                v-if="isFieldNode"
+                v-show="activeNodeSettingsTab === 'rules'"
+                title="默认状态"
+                description="定义没有模式覆盖或联动条件时的基础状态"
+                :collapsible="false"
+                primary
+              >
+                <el-form-item label="字段状态">
+                  <div class="checkbox-group">
+                    <el-checkbox
+                      v-model="selectedField.isRequired"
+                      :true-label="1"
+                      :false-label="0"
+                    >
+                      必填
+                    </el-checkbox>
+                    <el-checkbox
+                      v-model="selectedField.isReadonly"
+                      :true-label="1"
+                      :false-label="0"
+                    >
+                      只读
+                    </el-checkbox>
+                    <el-checkbox
+                      v-model="selectedField.isHidden"
+                      :true-label="1"
+                      :false-label="0"
+                    >
+                      隐藏
+                    </el-checkbox>
                   </div>
-                </details>
+                </el-form-item>
+                <el-alert
+                  type="info"
+                  :closable="false"
+                  title="显示：默认隐藏 → 模式显示权限 → 条件显示；编辑：整表只读 → 查看模式 → 默认只读 → 模式编辑权限 → 条件禁用；必填：配置条件必填时使用条件结果，否则使用默认必填。"
+                />
+                <div class="rule-bridge">
+                  <div>
+                    <strong>条件状态</strong>
+                    <p>条件显示、条件禁用和条件必填在统一联动编辑器中维护。</p>
+                  </div>
+                  <el-button
+                    type="primary"
+                    plain
+                    @click="openNodeInteractionTab('state')"
+                  >
+                    配置条件状态
+                  </el-button>
+                </div>
               </SettingsSection>
 
               <SettingsSection
                 v-if="canConfigureSelectedNodeValidation"
-                title="校验"
+                v-show="activeNodeSettingsTab === 'rules'"
+                title="校验规则"
                 description="仅显示当前字段数据类型支持的结构化规则"
               >
                 <template #summary>
@@ -595,7 +484,8 @@
 
               <SettingsSection
                 v-if="canConfigureSelectedNodeModeAccess"
-                title="模式与权限"
+                v-show="activeNodeSettingsTab === 'rules'"
+                title="运行模式权限"
                 description="分别控制新增、编辑、审批和查看模式下的显示与编辑"
               >
                 <template #summary>
@@ -623,180 +513,112 @@
               </SettingsSection>
 
               <SettingsSection
-                v-if="canConfigureSelectedNodeRelations"
-                title="关系与子表"
-                description="业务关系只读展示，允许配置子表展示或引用选择方式"
-              >
-                <template #summary>
-                  <el-tag size="small" type="info">
-                    {{ isSubFormField(selectedField) ? '子表关系' : '实体引用' }}
-                  </el-tag>
-                </template>
-
-                <!-- 子表单特殊配置 -->
-                <template v-if="isSubFormField(selectedField)">
-                  <div class="relation-summary">
-                    <div>
-                      <span>子实体</span>
-                      <strong>{{ getEntityNameById(selectedField.childEntityId || selectedField.refEntityId) || '-' }}</strong>
-                    </div>
-                    <div>
-                      <span>关系</span>
-                      <strong>{{ selectedField.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多' }}</strong>
-                    </div>
-                    <div>
-                      <span>外键</span>
-                      <strong>{{ selectedField.childRefFieldCode || selectedField.refFieldCode || '-' }}</strong>
-                    </div>
-                  </div>
-
-                  <el-form-item label="显示">
-                    <el-radio-group v-model="selectedField.displayMode">
-                      <el-radio-button value="embedded">嵌入</el-radio-button>
-                      <el-radio-button value="tab">页签</el-radio-button>
-                    </el-radio-group>
-                  </el-form-item>
-
-                  <el-form-item label="布局">
-                    <el-radio-group v-model="selectedField.layout">
-                      <el-radio-button value="form">分行</el-radio-button>
-                      <el-radio-button value="table">表格</el-radio-button>
-                    </el-radio-group>
-                  </el-form-item>
-
-                  <el-form-item label="子表表单">
-                    <el-select
-                      v-model="selectedField.refFormId"
-                      placeholder="默认表单"
-                      clearable
-                      style="width: 100%"
-                      @change="handleChildFormChange"
-                    >
-                      <el-option
-                        v-for="fm in formListByEntity"
-                        :key="fm.id"
-                        :label="fm.formName"
-                        :value="fm.id"
-                      />
-                    </el-select>
-                  </el-form-item>
-                  <el-form-item label="发布版本">
-                    <el-select
-                      v-model="selectedField.childFormReleaseId"
-                      placeholder="选择已发布版本"
-                      clearable
-                      filterable
-                      :disabled="!selectedField.refFormId"
-                      :loading="childFormReleaseLoading"
-                      style="width: 100%"
-                      @change="handleChildFormReleaseChange"
-                    >
-                      <el-option
-                        v-for="release in childFormReleases"
-                        :key="release.id"
-                        :label="formatChildFormReleaseLabel(release)"
-                        :value="release.id"
-                      />
-                    </el-select>
-                    <div class="form-tip">
-                      运行时固定读取所选 release 快照；子表单草稿不会影响已发布父表单。
-                    </div>
-                  </el-form-item>
-                </template>
-
-                <!-- 实体引用字段配置 -->
-                <template v-if="isReferenceFieldNode">
-                  <el-form-item label="引用类型">
-                    <el-select v-model="selectedField.refEntityType" :disabled="!!selectedField.fieldId" placeholder="选择引用类型" style="width: 100%">
-                      <el-option label="用户自定义实体" value="CUSTOM" />
-                      <el-option label="系统用户" value="USER" />
-                      <el-option label="系统部门" value="DEPT" />
-                      <el-option label="系统角色" value="ROLE" />
-                      <el-option label="系统用户组" value="GROUP" />
-                      <el-option label="系统菜单" value="MENU" />
-                      <el-option label="系统字典" value="DICT" />
-                      <el-option label="系统字典项" value="DICT_ITEM" />
-                    </el-select>
-                  </el-form-item>
-                  <el-form-item label="目标实体" v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'">
-                    <EntityDefinitionPicker
-                      v-model="selectedField.refEntityId"
-                      :disabled="!!selectedField.fieldId"
-                      placeholder="选择目标实体"
-                      value-key="id"
-                      title="选择目标实体"
-                      :query="{ status: 'PUBLISHED' }"
-                      @selected="handleReferenceEntitySelected"
-                      @resolved="rememberEntityOption"
-                    />
-                    <div class="form-tip">
-                      {{ getEntityReferenceSelectionHint(selectedField.fieldType || selectedField.componentType) }}
-                    </div>
-                    <div v-if="selectedField.refEntityId" class="form-tip">
-                      当前目标：{{ getEntityNameById(selectedField.refEntityId) }}
-                    </div>
-                  </el-form-item>
-                  <el-form-item label="选择列表" v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'">
-                    <el-select
-                      v-model="selectedField.refListKey"
-                      clearable
-                      placeholder="留空使用旧选择器"
-                      style="width: 100%"
-                    >
-                      <el-option
-                        v-for="list in referenceListOptions"
-                        :key="list.listKey"
-                        :label="`${list.listName || list.listKey} (${list.listKey})`"
-                        :value="list.listKey"
-                      />
-                    </el-select>
-                    <div class="form-tip">配置后使用统一列表运行时，字段、范围、排序和选择模式均继承该 listKey。</div>
-                  </el-form-item>
-                  <el-form-item label="数据接口">
-                    <el-input model-value="请使用上方统一数据源" disabled />
-                    <div class="form-tip">不再允许配置任意 URL，外部调用必须引用受控 Connector。</div>
-                  </el-form-item>
-                </template>
-              </SettingsSection>
-
-              <SettingsSection
-                v-if="isSingleEntityReferenceField"
-                title="选择后回填"
-                description="选择实体数据后，将关联实体字段回填到当前表单字段"
-              >
-                <template #summary>
-                  <el-tag size="small" type="success" effect="plain">
-                    表单级配置
-                  </el-tag>
-                </template>
-                <div class="selection-fill-summary">
-                  <div>
-                    <strong>ENTITY_SELECTED</strong>
-                    <span>规则只属于当前表单，并随发布、热发布和回滚版本生效。</span>
-                  </div>
-                  <el-button
-                    type="primary"
-                    plain
-                    @click="openEntitySelectionMapping"
-                  >
-                    <el-icon><Connection /></el-icon>
-                    配置回填字段
-                  </el-button>
-                </div>
-              </SettingsSection>
-
-              <SettingsSection
-                v-if="canConfigureNodeExtension || isEditableFieldNode || isFieldNode"
-                title="复用与扩展"
-                description="节点扩展、组件模板、低频组件参数和字段事件"
-                :default-expanded="!!selectedField.componentName || !!selectedField.templateId || hasEventConfig"
+                v-if="isFieldNode"
+                v-show="activeNodeSettingsTab === 'interaction'"
+                title="联动与事件"
+                description="集中配置状态、值、选择回填和事件执行链"
+                :collapsible="false"
+                primary
               >
                 <template #summary>
                   <el-tag
                     size="small"
-                    :type="selectedField.componentName || selectedField.templateId || hasEventConfig ? 'success' : 'info'"
+                    :type="hasEventConfig ? 'success' : 'info'"
+                    effect="plain"
                   >
-                    {{ selectedField.componentName || selectedField.templateId || hasEventConfig ? '已配置' : '未配置' }}
+                    {{ hasEventConfig ? '已配置事件' : '按需配置' }}
+                  </el-tag>
+                </template>
+
+                <el-tabs
+                  v-model="activeNodeInteractionTab"
+                  class="node-interaction-tabs"
+                >
+                  <el-tab-pane label="状态联动" name="state">
+                    <div class="interaction-entry">
+                      <p>根据其他字段动态控制当前字段显示、禁用或必填。</p>
+                      <el-button
+                        type="primary"
+                        plain
+                        @click="openLinkageConfig('display-state')"
+                      >
+                        配置状态联动
+                      </el-button>
+                    </div>
+                  </el-tab-pane>
+                  <el-tab-pane label="值与计算" name="value">
+                    <div class="interaction-entry">
+                      <p>配置字段值映射、计算公式、选项联动和历史兼容接口。</p>
+                      <el-button
+                        type="primary"
+                        plain
+                        @click="openLinkageConfig('value-calculation')"
+                      >
+                        配置值与计算
+                      </el-button>
+                    </div>
+                  </el-tab-pane>
+                  <el-tab-pane
+                    label="选择与回填"
+                    name="selection"
+                    :disabled="!isSingleEntityReferenceField"
+                  >
+                    <div class="interaction-entry">
+                      <p>
+                        使用 ENTITY_SELECTED 将关联记录字段回填到当前表单，也可以继续追加完整接口执行链。
+                      </p>
+                      <div class="interaction-actions">
+                        <el-button
+                          type="primary"
+                          plain
+                          @click="openEntitySelectionMapping"
+                        >
+                          配置快捷回填
+                        </el-button>
+                        <el-button
+                          plain
+                          @click="openUnifiedEventBindings('FIELD')"
+                        >
+                          配置选择事件链
+                        </el-button>
+                      </div>
+                    </div>
+                  </el-tab-pane>
+                  <el-tab-pane label="事件执行链" name="events">
+                    <div class="interaction-entry">
+                      <p>
+                        旧字段事件和统一接口链可以并存；接口链支持前置、替代、后置、条件、映射和失败策略。
+                      </p>
+                      <div class="interaction-actions">
+                        <el-button plain @click="openEventConfig">
+                          配置字段事件
+                        </el-button>
+                        <el-button
+                          type="primary"
+                          plain
+                          @click="openUnifiedEventBindings('FIELD')"
+                        >
+                          配置接口链
+                        </el-button>
+                      </div>
+                    </div>
+                  </el-tab-pane>
+                </el-tabs>
+              </SettingsSection>
+
+              <SettingsSection
+                v-if="canConfigureNodeExtension || isEditableFieldNode || isFieldNode"
+                v-show="activeNodeSettingsTab === 'extension'"
+                title="复用与扩展"
+                description="节点扩展、组件模板和组件参数"
+                :default-expanded="!!selectedField.componentName || !!selectedField.templateId"
+              >
+                <template #summary>
+                  <el-tag
+                    size="small"
+                    :type="selectedField.componentName || selectedField.templateId ? 'success' : 'info'"
+                  >
+                    {{ selectedField.componentName || selectedField.templateId ? '已配置' : '未配置' }}
                   </el-tag>
                 </template>
 
@@ -858,24 +680,6 @@
                     :schema="selectedComponentSchema"
                   />
                 </template>
-
-                <template v-if="isFieldNode">
-                  <div class="property-subheading">字段事件</div>
-                  <el-form-item>
-                    <el-button type="primary" text @click="openEventConfig">
-                      <el-icon><Edit /></el-icon>
-                      配置字段事件
-                    </el-button>
-                    <el-button
-                      type="primary"
-                      text
-                      @click="openUnifiedEventBindings('FIELD')"
-                    >
-                      绑定接口链
-                    </el-button>
-                    <el-tag v-if="hasEventConfig" type="success" size="small" style="margin-left: 8px">已配置</el-tag>
-                  </el-form-item>
-                </template>
               </SettingsSection>
             </el-form>
           </el-scrollbar>
@@ -891,23 +695,10 @@
       </el-drawer>
     </div>
 
-    <el-drawer
-      v-model="showFormButtonConfig"
-      title="表单按钮"
-      direction="rtl"
-      size="min(1180px, 94vw)"
-      append-to-body
-      destroy-on-close
-    >
-      <FormButtonConfigPanel
-        v-model="viewConfig.actionBar"
-        :entity-code="entityInfo.entityCode || ''"
-        :entity-fields="entityFields"
-        :form-id="form.id || ''"
-        :nodes="formFields"
-        :system-entity="isSystemEntity"
-      />
-    </el-drawer>
+    <FormDesignerSettingsDrawer
+      v-model="showFormSettings"
+      v-model:active-tab="activeFormSettingsTab"
+    />
 
     <el-dialog v-model="showPreview" title="表单预览" width="900px" destroy-on-close>
       <div class="preview-mode-toolbar">
@@ -948,6 +739,7 @@
         v-if="selectedField"
         :field="selectedField"
         :all-fields="entityFields.filter(f => f.uiConfigurable !== false)"
+        :initial-tab="linkageInitialTab"
         @save="handleSaveLinkage"
       />
     </el-dialog>
@@ -1009,15 +801,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowDown, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank, Setting } from '@element-plus/icons-vue'
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
-import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
@@ -1025,11 +816,11 @@ import EntitySelectionMappingDialog from '@/components/ui-config/EntitySelection
 import FormDataSourceCompatDialog from '@/components/ui-config/FormDataSourceCompatDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
-import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
-import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
-import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
+import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerSettingsDrawer.vue'
+import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
+import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
   getFormFieldComponentDescriptor,
@@ -1054,6 +845,7 @@ import {
   buildFormNodeDropPlan,
   getFormNodeDepth as getSharedFormNodeDepth,
   getFormNodeSubtreeHeight,
+  orderFormNodesParentFirst,
   validateFormNodeDrop
 } from '@/shared/form-node-drag'
 import {
@@ -1063,7 +855,8 @@ import {
   getFormFieldValidationCapabilities,
   getFormNodeDataSourceUsages,
   getFormNodePropertySchema,
-  normalizeFormFieldValidation
+  normalizeFormFieldValidation,
+  resolveFormNodeBinding
 } from '@/shared/form-node-property-schema'
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
@@ -1095,6 +888,7 @@ import {
   patchFormNode,
   deleteFormNode,
   reorderFormNode,
+  replaceFormNodes,
   getFormDiff,
   getFormReleases
 } from '@/api/entityForm'
@@ -1116,11 +910,12 @@ const reorderingNode = ref(false)
 const nodeBaselines = ref(new Map())
 const formBaseline = ref('')
 const showPreview = ref(false)
-const showFormButtonConfig = ref(false)
+const showFormSettings = ref(false)
+const activeFormSettingsTab = ref('basic')
 const previewMode = ref('create')
-const formSettingsExpanded = ref(false)
 const propertyDrawerVisible = ref(false)
 const showLinkageConfig = ref(false)
+const linkageInitialTab = ref('display-state')
 const showEventConfig = ref(false)
 const showFormExtensionConfig = ref(false)
 const formDataSourceDialogRef = ref(null)
@@ -1128,12 +923,15 @@ const eventBindingDialogRef = ref(null)
 const selectionMappingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
 const currentEventField = ref(null)
-const activeDesignTab = ref('')
+const activeNodeSettingsTab = ref('basic')
+const activeNodeInteractionTab = ref('state')
 const publishDialogVisible = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const dataSources = ref([])
 const extensionDefinitions = ref([])
+const selectableCustomFormCatalogOptions = ref([])
 const formNodes = ref([])
+const lastCustomFormComponent = ref('')
 const designChildrenMap = computed(() => {
   const result = new Map()
   formFields.value.forEach(node => {
@@ -1231,22 +1029,6 @@ const viewConfig = ref({
   actionBar: emptyFormActionBar()
 })
 
-// 判断是否为 Tab 模式的子表单
-function isTabSubForm(field) {
-  const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
-  if (field.displayMode === 'tab') return true
-  if (field.componentProps) {
-    try {
-      const compProps = typeof field.componentProps === 'string'
-        ? JSON.parse(field.componentProps)
-        : field.componentProps
-      return compProps.subFormConfig?.displayMode === 'tab'
-    } catch (e) {}
-  }
-  return false
-}
-
 const entityInfo = ref({})
 const isSystemEntity = computed(() => entityInfo.value?.storageMode === 'SYSTEM')
 watch(isSystemEntity, value => {
@@ -1278,12 +1060,6 @@ const eventFieldOptions = computed(() =>
       value: field.fieldCode
     }))
 )
-// Tab 模式的子表单字段（必须在 formFields 定义之后）
-const tabSubFormFields = ref([])
-watch(formFields, (fields) => {
-  tabSubFormFields.value = fields.filter(f => isTabSubForm(f))
-}, { deep: true, immediate: true })
-
 const form = ref({
   id: formId,
   entityId: entityId,
@@ -1314,12 +1090,10 @@ const customFormButtonCount = computed(() =>
 
 const availableNodeExtensionOptions = computed(() => {
   const nodeType = String(selectedField.value?.nodeType || '').toUpperCase()
-  const bindingType = String(
-    selectedField.value?.bindingType
-      || (selectedField.value?.relationCode
-        ? 'RELATION'
-        : (selectedField.value?.fieldId ? 'ENTITY_FIELD' : 'NONE'))
-  ).toUpperCase()
+  const { bindingType } = resolveFormNodeBinding(
+    selectedField.value,
+    nodeType
+  )
   return nodeExtensionOptions.value.filter(option =>
     (!option.nodeTypes?.length || option.nodeTypes.includes(nodeType))
       && (!option.supportedBindings?.length
@@ -1337,6 +1111,7 @@ watch(
       form.value.customComponentSnapshotVersion = null
       return
     }
+    lastCustomFormComponent.value = componentName
     const descriptor = customFormOptions.value.find(
       option => option.value === componentName
     ) || getCustomFormDescriptor(componentName)
@@ -1356,6 +1131,36 @@ function handleNodeExtensionChange(componentName) {
 
 function refreshExtensionCatalog() {
   loadExtensionDefinitions()
+}
+
+function openFormSettings(tab = 'basic') {
+  activeFormSettingsTab.value = tab
+  showFormSettings.value = true
+}
+
+function handleFormRendererModeChange(mode) {
+  if (mode === 'DEFAULT') {
+    if (form.value.customComponent) {
+      lastCustomFormComponent.value = form.value.customComponent
+    }
+    form.value.customComponent = ''
+    return
+  }
+  const selectableKeys = new Set(
+    selectableCustomFormCatalogOptions.value.map(option => option.key)
+  )
+  const fallback = selectableKeys.has(lastCustomFormComponent.value)
+    ? lastCustomFormComponent.value
+    : (selectableCustomFormCatalogOptions.value[0]?.key || '')
+  if (!fallback) {
+    ElMessage.info('当前实体暂无可用的自定义表单组件')
+    return
+  }
+  form.value.customComponent = fallback
+}
+
+function handleCustomFormCatalogLoaded(options = []) {
+  selectableCustomFormCatalogOptions.value = options
 }
 
 function openExtensionManagement() {
@@ -1553,6 +1358,91 @@ const isSingleEntityReferenceField = computed(() => {
 const canConfigureSelectedNodeRelations = computed(() =>
   selectedNodePropertySchema.value.childForm || isReferenceFieldNode.value
 )
+const canConfigureSelectedNodeExtension = computed(() =>
+  canConfigureNodeExtension.value
+    || isEditableFieldNode.value
+    || (isFieldNode.value && selectedComponentSchema.value.length > 0)
+)
+const availableNodeSettingsTabs = computed(() => {
+  const tabs = [{ value: 'basic', label: '基础与布局' }]
+  if (isFieldNode.value
+      && (canConfigureSelectedNodeValidation.value
+        || canConfigureSelectedNodeModeAccess.value)) {
+    tabs.push({ value: 'rules', label: '状态与校验' })
+  }
+  if (isFieldNode.value
+      || canConfigureSelectedNodeDataSource.value
+      || canConfigureSelectedNodeRelations.value) {
+    tabs.push({ value: 'data', label: '数据与关系' })
+  }
+  if (isFieldNode.value) {
+    tabs.push({ value: 'interaction', label: '联动与事件' })
+  }
+  if (canConfigureSelectedNodeExtension.value) {
+    tabs.push({ value: 'extension', label: '复用与扩展' })
+  }
+  return tabs
+})
+const selectedNodeDirty = computed(() => {
+  const field = selectedField.value
+  if (!field?.revision) return true
+  return nodeBaselines.value.get(field.id) !== nodeFingerprint(field)
+})
+const selectedNodeBindingLabel = computed(() => {
+  const field = selectedField.value
+  if (!field) return '-'
+  const { bindingType: type } = resolveFormNodeBinding(field)
+  if (type === 'RELATION') {
+    return field.relationName || field.relationCode || '实体关系'
+  }
+  if (type === 'ENTITY_FIELD' || field.fieldId) {
+    return field.fieldName || field.fieldCode || '实体字段'
+  }
+  return '无业务绑定'
+})
+const selectedNodeParentLabel = computed(() => {
+  const parentId = selectedField.value?.parentId
+  if (!parentId) return '表单根节点'
+  return nodeLabel(parentId)
+})
+const selectedNodeDataSourceBindingCount = computed(() => {
+  const field = selectedField.value
+  if (!field) return 0
+  const bindings = { ...parseDocument(field.dataSourceBindings) }
+  const usage = String(field.dataSourceUsage || '').toUpperCase()
+  if (usage) {
+    if (field.dataSourceId) {
+      bindings[usage] = {
+        ...(typeof bindings[usage] === 'object' ? bindings[usage] : {}),
+        sourceId: field.dataSourceId
+      }
+    } else {
+      delete bindings[usage]
+    }
+  }
+  return Object.values(bindings).filter(Boolean).length
+})
+const selectedNodeDataSourceUsageLabel = computed(() =>
+  availableNodeDataSourceUsages.value.find(
+    item => item.value === selectedField.value?.dataSourceUsage
+  )?.label || '当前用途'
+)
+
+watch(
+  [() => selectedField.value?.id, availableNodeSettingsTabs],
+  () => {
+    if (!availableNodeSettingsTabs.value.some(
+      tab => tab.value === activeNodeSettingsTab.value
+    )) {
+      activeNodeSettingsTab.value = 'basic'
+    }
+    if (!isSingleEntityReferenceField.value
+        && activeNodeInteractionTab.value === 'selection') {
+      activeNodeInteractionTab.value = 'state'
+    }
+  },
+  { immediate: true }
+)
 
 // 当前选中字段的事件配置值
 const currentEventValues = computed(() => {
@@ -1585,6 +1475,30 @@ const currentEventValues = computed(() => {
 const hasEventConfig = computed(() => {
   if (!selectedField.value) return false
   return Object.keys(selectedField.value).some(key => key.startsWith('eventOn') && selectedField.value[key])
+})
+
+provide(FORM_DESIGNER_CONTEXT_KEY, {
+  form, viewConfig, isEdit, isSystemEntity,
+  customFormButtonCount, entityInfo, entityFields, formFields,
+  formDataSourceBindingCount, eventFieldOptions,
+  selectedCustomFormSchema, customFormOptions,
+  selectedCustomFormCatalogOption, showFormExtensionConfig,
+  openFormDataSourceConfig, handleFormRendererModeChange,
+  handleCustomFormCatalogLoaded,
+  openExtensionManagement, refreshExtensionCatalog,
+  selectedField, activeNodeSettingsTab, isFieldNode,
+  canConfigureSelectedNodeDataSource,
+  selectedNodeDataSourceBindingCount, availableNodeDataSourceUsages,
+  isNodeDataSourceUsageConfigured, selectNodeDataSourceUsage,
+  selectedNodeDataSourceUsageLabel, dataSources,
+  clearSelectedNodeDataSourceBinding, canConfigureSelectedNodeRelations,
+  isSubFormField, getEntityNameById, formListByEntity,
+  handleChildFormChange, childFormReleases, childFormReleaseLoading,
+  handleChildFormReleaseChange, formatChildFormReleaseLabel,
+  isReferenceFieldNode, handleReferenceEntitySelected,
+  rememberEntityOption, getEntityReferenceSelectionHint,
+  referenceListOptions,
+  openLinkageConfig
 })
 
 // 预览数据
@@ -1980,6 +1894,88 @@ function parseDocument(value) {
   return safeParseConfig(value)
 }
 
+function isNodeDataSourceUsageConfigured(usage) {
+  const field = selectedField.value
+  if (!field) return false
+  if (field.dataSourceUsage === usage) {
+    return Boolean(field.dataSourceId)
+  }
+  const binding = parseDocument(field.dataSourceBindings)[usage]
+  return Boolean(
+    typeof binding === 'string'
+      ? binding
+      : binding?.sourceId || binding?.id
+  )
+}
+
+function syncNodeDataSourceBinding(field, { throwOnError = false } = {}) {
+  if (!field) return true
+  const usage = String(field.dataSourceUsage || '').trim().toUpperCase()
+  if (!usage) return true
+  try {
+    const bindings = { ...parseDocument(field.dataSourceBindings) }
+    if (!field.dataSourceId) {
+      delete bindings[usage]
+    } else {
+      const existing = bindings[usage]
+      bindings[usage] = {
+        ...(existing
+          && typeof existing === 'object'
+          && !Array.isArray(existing)
+          ? existing
+          : {}),
+        sourceId: field.dataSourceId,
+        inputMapping: parseJsonConfig(field.dataSourceInputMappingText, {
+          fieldName: `${field.fieldLabel || field.fieldCode || '当前节点'}数据源输入映射`
+        }),
+        outputMapping: parseJsonConfig(field.dataSourceOutputMappingText, {
+          fieldName: `${field.fieldLabel || field.fieldCode || '当前节点'}数据源输出映射`
+        })
+      }
+    }
+    field.dataSourceBindings = bindings
+    return true
+  } catch (error) {
+    if (throwOnError) throw error
+    ElMessage.error(error.message || '数据源映射格式不正确')
+    return false
+  }
+}
+
+function loadNodeDataSourceUsage(field, usage) {
+  if (!field) return
+  const binding = parseDocument(field.dataSourceBindings)[usage]
+  const normalized = typeof binding === 'string'
+    ? { sourceId: binding }
+    : (binding || {})
+  field.dataSourceUsage = usage
+  field.dataSourceId = normalized.sourceId || normalized.id || ''
+  field.dataSourceInputMappingText = stringifyConfig(
+    normalized.inputMapping || {}
+  )
+  field.dataSourceOutputMappingText = stringifyConfig(
+    normalized.outputMapping || {}
+  )
+}
+
+function selectNodeDataSourceUsage(usage) {
+  const field = selectedField.value
+  if (!field || field.dataSourceUsage === usage) return
+  if (!syncNodeDataSourceBinding(field)) return
+  loadNodeDataSourceUsage(field, usage)
+}
+
+function clearSelectedNodeDataSourceBinding() {
+  const field = selectedField.value
+  if (!field?.dataSourceUsage) return
+  const bindings = { ...parseDocument(field.dataSourceBindings) }
+  delete bindings[field.dataSourceUsage]
+  field.dataSourceBindings = bindings
+  field.dataSourceId = ''
+  field.dataSourceInputMappingText = '{}'
+  field.dataSourceOutputMappingText = '{}'
+}
+
 function openFormDataSourceConfig() {
   formDataSourceDialogRef.value?.open()
 }
@@ -2115,7 +2111,7 @@ function handleParentChange(value) {
   const targetLabel = parentId
     ? formatParentOptionLabel(nodeById(parentId))
     : '表单根节点'
-  ElMessage.success(`已移动到${targetLabel}，保存当前节点后写入草稿`)
+  ElMessage.success(`已移动到${targetLabel}，保存草稿后写入服务器`)
 }
 
 
@@ -2204,6 +2200,9 @@ function nodeToField(node, legacyField) {
       firstBinding[1]?.outputMapping || {}
     )
   }
+  const normalizedBinding = resolveFormNodeBinding(field, nodeType)
+  field.bindingType = normalizedBinding.bindingType
+  field.bindingRef = normalizedBinding.bindingRef || ''
   restoreFieldConfig(field)
   return field
 }
@@ -2306,7 +2305,6 @@ function restoreFieldConfig(field) {
     // 恢复子表单配置
     if (compProps.subFormConfig) {
       const subFormConfig = compProps.subFormConfig
-      field.displayMode = subFormConfig.displayMode || 'embedded'
       field.layout = subFormConfig.layout || 'form'
       field.refEntityId = subFormConfig.refEntityId || field.childEntityId || field.refEntityId || ''
       field.childFormId = field.childFormId
@@ -2366,9 +2364,11 @@ function buildSerializedFieldComponentProps(field) {
       const childFormReleaseVersion = field.childFormReleaseVersion == null
         ? null
         : Number(field.childFormReleaseVersion)
+      const subFormConfig = {
+        ...(compProps.subFormConfig || {})
+      }
       compProps.subFormConfig = {
-        ...(compProps.subFormConfig || {}),
-        displayMode: field.displayMode || 'embedded',
+        ...subFormConfig,
         layout: field.layout || 'form',
         refEntityId: field.childEntityId || field.refEntityId || '',
         childFormId,
@@ -2501,6 +2501,7 @@ function addField(entityField) {
   const nodeType = ['SUB_FORM', 'SUB_FORM_LIST'].includes(entityField.fieldType)
     ? (entityField.fieldType === 'SUB_FORM_LIST' ? 'REPEATER' : 'SUB_FORM')
     : 'FIELD'
+  const initialBinding = resolveFormNodeBinding(entityField, nodeType)
   const parentId = resolveDefaultParentId(nodeType)
   const placement = nextNodePlacement(parentId)
   const newField = {
@@ -2513,8 +2514,8 @@ function addField(entityField) {
     orderKey: placement.orderKey,
     formId: formId,
     fieldId: entityField.id,
-    bindingType: entityField.relationCode ? 'RELATION' : 'ENTITY_FIELD',
-    bindingRef: entityField.relationCode || entityField.fieldCode,
+    bindingType: initialBinding.bindingType,
+    bindingRef: initialBinding.bindingRef || '',
     relationCode: entityField.relationCode || '',
     fieldCode: entityField.fieldCode,
     fieldName: entityField.fieldName,
@@ -2554,7 +2555,6 @@ function addField(entityField) {
   // 子表单默认展示
   if (isSubFormField(newField)) {
     newField.layout = 'form'
-    newField.displayMode = 'embedded'
     newField.repeatable = newField.relationType !== 'ONE_TO_ONE'
     if (newField.refEntityId) {
       loadFormListByEntity(newField.refEntityId)
@@ -2595,6 +2595,14 @@ function addSection() {
       textStyle: 'SECTION_TITLE'
     }
   })
+}
+
+function handleAddNodeCommand(command) {
+  if (command === 'SECTION_TITLE') {
+    addSection()
+    return
+  }
+  addContainerNode(command)
 }
 
 function addContainerNode(nodeType, options = {}) {
@@ -2842,6 +2850,16 @@ function openEventConfig() {
   if (!selectedField.value) return
   currentEventField.value = selectedField.value
   showEventConfig.value = true
+}
+
+function openLinkageConfig(tab = 'display-state') {
+  linkageInitialTab.value = tab
+  showLinkageConfig.value = true
+}
+
+function openNodeInteractionTab(tab = 'state') {
+  activeNodeSettingsTab.value = 'interaction'
+  activeNodeInteractionTab.value = tab
 }
 
 function openUnifiedEventBindings(targetType) {
@@ -3211,13 +3229,19 @@ async function saveSelectedNode() {
 
 function validateNodeDataSourceMappings(field) {
   if (!field) return
+  syncNodeDataSourceBinding(field, { throwOnError: true })
   const label = field.fieldLabel || field.fieldName || field.fieldCode || '当前节点'
-  parseJsonConfig(field.dataSourceInputMappingText, {
-    fieldName: `${label}数据源输入映射`
-  })
-  parseJsonConfig(field.dataSourceOutputMappingText, {
-    fieldName: `${label}数据源输出映射`
-  })
+  Object.entries(parseDocument(field.dataSourceBindings)).forEach(
+    ([usage, binding]) => {
+      if (!binding || typeof binding === 'string') return
+      parseJsonConfig(binding.inputMapping || {}, {
+        fieldName: `${label}${usage}输入映射`
+      })
+      parseJsonConfig(binding.outputMapping || {}, {
+        fieldName: `${label}${usage}输出映射`
+      })
+    }
+  )
 }
 
 async function handlePublish() {
@@ -3278,6 +3302,12 @@ async function handleReleaseChanged() {
   await loadDiff()
 }
 
+async function handleSaveCommand(command) {
+  if (command === 'CURRENT_NODE') {
+    await saveSelectedNode()
+  }
+}
+
 // 保存表单
 async function handleSave() {
   if (!form.value.formName) {
@@ -3296,6 +3326,27 @@ async function handleSave() {
   
   if (formFields.value.length === 0) {
     ElMessage.warning('请至少添加一个字段')
+    return
+  }
+
+  let orderedFields
+  try {
+    for (const field of formFields.value) {
+      const label =
+        field.fieldLabel || field.fieldName || field.fieldCode || field.id
+      if (field.parentId) {
+        const parent = nodeById(field.parentId)
+        if (!isValidParentCandidate(parent, field)) {
+          throw new Error(`“${label}”的父容器不兼容`)
+        }
+      } else if (!canPlaceFormNodeAtRoot(nodeTypeOf(field))
+          || getSubtreeHeight(field.id) > FORM_NODE_MAX_DEPTH) {
+        throw new Error(`“${label}”不能放在表单根节点`)
+      }
+    }
+    orderedFields = orderFormNodesParentFirst(formFields.value)
+  } catch (error) {
+    ElMessage.warning(error.message || '表单节点父子关系无效')
     return
   }
   
@@ -3332,30 +3383,19 @@ async function handleSave() {
       draftChanged = true
     }
 
-    for (const field of formFields.value) {
+    for (const field of orderedFields) {
       if (isSystemEntity.value && field.fieldId) {
         field.isReadonly = 1
       }
       await ensureChildFormReleaseBinding(field)
       validateNodeDataSourceMappings(field)
-      const payload = fieldToNodePayload(field, {
-        forPatch: Boolean(field.revision)
-      })
-      let saved = null
-      if (!field.revision) {
-        saved = await createFormNode(currentFormId, payload)
-      } else if (nodeBaselines.value.get(field.id) !== nodeFingerprint(field)) {
-        saved = await patchFormNode(currentFormId, field.id, {
-          expectedRevision: field.revision,
-          ...payload
-        })
-      }
-      if (saved) {
-        Object.assign(field, nodeToField(saved, field))
-        rememberNodeBaseline(field)
-        draftChanged = true
-      }
     }
+    await replaceFormNodes(
+      currentFormId,
+      form.value.revision,
+      orderedFields.map(fieldToNodeEntity)
+    )
+    draftChanged = true
     await loadFormInfo()
     await loadFormFields()
     await loadDiff()
@@ -3431,36 +3471,30 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.save-action-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.save-action-group > .el-button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.save-action-more {
+  width: 34px;
+  padding: 8px;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 .title {
   font-size: 16px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.selection-fill-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  background: var(--el-fill-color-lighter);
-}
-
-.selection-fill-summary > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.selection-fill-summary span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .design-body {
@@ -3613,71 +3647,6 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.form-basic-info {
-  flex: 0 0 auto;
-  padding: 8px 16px;
-  background-color: #fff;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.form-summary-row {
-  display: flex;
-  min-height: 32px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.form-summary-main {
-  flex: 0 0 auto;
-}
-
-.form-summary-main :deep(.el-form-item) {
-  margin: 0;
-}
-
-.form-summary-meta {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.form-summary-tag {
-  max-width: 220px;
-}
-
-.form-summary-tag :deep(.el-tag__content) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.form-settings-trigger {
-  flex: 0 0 auto;
-}
-
-.form-settings-trigger .el-icon {
-  margin-left: 4px;
-  transition: transform 0.2s ease;
-}
-
-.form-settings-trigger .el-icon.is-expanded {
-  transform: rotate(180deg);
-}
-
-.form-settings-panel {
-  padding-top: 12px;
-  margin-top: 8px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.form-settings-panel :deep(.el-form-item) {
-  margin-bottom: 8px;
-}
-
 .form-canvas-wrapper {
   flex: 1;
   min-height: 0;
@@ -3736,18 +3705,74 @@ onMounted(async () => {
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-.node-summary strong,
-.node-summary span,
-.node-summary p {
-  display: block;
+.node-summary-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.node-summary span,
+.node-summary-heading strong {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-summary-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: 10px 0 0;
+}
+
+.node-summary-meta div {
+  min-width: 0;
+}
+
+.node-summary-meta dt,
+.node-summary-meta dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.node-summary-meta dt {
+  color: var(--el-text-color-secondary);
+}
+
+.node-summary-meta dd {
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .node-summary p {
   margin-top: 4px;
+  margin-bottom: 0;
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+}
+
+.node-settings-tabs {
+  padding: 0 12px;
+}
+
+.node-settings-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.node-settings-tabs :deep(.el-tabs__item) {
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.node-settings-tabs :deep(.el-tabs__content) {
+  display: none;
 }
 
 .checkbox-group {
@@ -3765,56 +3790,48 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-.property-advanced {
-  margin: 4px 0 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  background: var(--el-fill-color-extra-light);
+.interaction-entry {
+  padding: 8px 0 4px;
 }
 
-.property-advanced > summary {
-  padding: 10px 12px;
-  color: var(--el-text-color-regular);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.property-advanced-body {
-  padding: 12px 12px 0;
-  border-top: 1px solid var(--el-border-color-lighter);
-  background: #fff;
-}
-
-.relation-summary {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  padding: 8px 0 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.relation-summary div {
+.rule-bridge {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-lighter);
+}
+
+.rule-bridge strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--el-text-color-primary);
+}
+
+.rule-bridge p,
+.interaction-entry p {
+  margin: 0 0 12px;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
-  line-height: 20px;
+  line-height: 1.65;
 }
 
-.relation-summary span {
-  color: #909399;
+.rule-bridge p {
+  margin-bottom: 0;
 }
 
-.relation-summary strong {
-  max-width: 150px;
-  overflow: hidden;
-  color: #303133;
-  font-weight: 500;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.interaction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.node-interaction-tabs :deep(.el-tabs__item) {
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .slider-value {
@@ -3863,23 +3880,6 @@ onMounted(async () => {
     overflow: hidden;
   }
 
-  .form-basic-info {
-    padding: 8px 12px;
-  }
-
-  .form-summary-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .form-summary-meta {
-    justify-content: flex-start;
-  }
-
-  .form-settings-panel :deep(.el-form--inline .el-form-item) {
-    margin-right: 12px;
-  }
-
   .form-canvas-wrapper {
     min-height: 0;
     padding: 12px;
@@ -3912,6 +3912,7 @@ onMounted(async () => {
   .layout-selector {
     justify-content: flex-start;
   }
+
 }
 
 /* 预览容器 */

@@ -14,7 +14,7 @@
       :form="defaultForm"
       :entityCode="entityCode"
       :entityDefinition="entityDefinition"
-      :entityFields="entityFields"
+      :entityFields="runtimeEntityFields"
       :fields="runtimeFormFields"
       :linkageState="linkageState"
       v-model="formData.data"
@@ -26,30 +26,33 @@
         entityDefinition,
         mode: isEdit ? 'edit' : 'create',
         record: formData,
+        entityStatusMap,
+        entityStatusOptions,
         releaseResolutionToken: defaultForm?.releaseResolutionToken
       }"
       :data-source-runtime="dataSourceRuntime"
     />
   </div>
   <template v-else-if="hasConfiguredForm">
-    <!-- 有表单配置时：用 FormPreviewLinkage 渲染（支持 tab 子表单、联动） -->
+    <!-- 有表单配置时：用 FormPreviewLinkage 渲染节点树和联动 -->
     <FormPreviewLinkage
       ref="previewRef"
       :form="runtimeForm"
       v-model="formData.data"
       :show-header="false"
-      :no-internal-tabs="noInternalTabs"
       :node-root-parent-id="nodeRootParentId"
       :excluded-node-ids="excludedNodeIds"
       :mode="isEdit ? 'edit' : 'create'"
       :entity-code="entityCode"
       :entity-definition="entityDefinition"
-      :entity-fields="entityFields"
+      :entity-fields="runtimeEntityFields"
       :context="{
         entityCode,
         entityDefinition,
         mode: isEdit ? 'edit' : 'create',
         record: formData,
+        entityStatusMap,
+        entityStatusOptions,
         releaseResolutionToken: defaultForm?.releaseResolutionToken
       }"
       :data-source-runtime="dataSourceRuntime"
@@ -81,6 +84,8 @@
             form: defaultForm,
             mode: isEdit ? 'edit' : 'create',
             record: formData,
+            entityStatusMap,
+            entityStatusOptions,
             releaseResolutionToken: defaultForm?.releaseResolutionToken
           }"
         />
@@ -107,6 +112,11 @@ import {
 } from '@/shared/form-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { isWorkflowReady } from '@/shared/entity-design'
+import {
+  buildEntityStatusMap,
+  withEntityStatusFieldOptions,
+  withEntityStatusRuntimeForm
+} from '@/shared/entity-status-runtime'
 
 const props = defineProps<{
   entityCode: string
@@ -115,13 +125,13 @@ const props = defineProps<{
   defaultForm: any
   isEdit: boolean
   showStartProcess?: boolean
-  noInternalTabs?: boolean
   nodeRootParentId?: string | number
   excludedNodeIds?: Array<string | number>
   dataSourceRuntime?: any
   skipDataSourcePrevalidation?: boolean
   formActions?: any[]
   actionLoadingKey?: string
+  entityStatusOptions?: any[]
 }>()
 
 defineEmits<{
@@ -136,6 +146,10 @@ const customFormRef = ref()
 const dictOptionMap = ref<Record<string, any[]>>({})
 const dataSourceOptionMap = ref<Record<string, any[]>>({})
 const runtimeMode = computed(() => props.isEdit ? 'edit' : 'create')
+const entityStatusOptions = computed(() => props.entityStatusOptions || [])
+const entityStatusMap = computed(() =>
+  buildEntityStatusMap(entityStatusOptions.value)
+)
 const formViewConfig = computed(() => safeParseConfig(props.defaultForm?.viewConfig))
 const canStartProcess = computed(() => isWorkflowReady(props.entityDefinition))
 const workflowReadinessMessage = computed(() => {
@@ -388,27 +402,16 @@ const hasConfiguredForm = computed(() =>
   )
 )
 
-// 判断是否为 Tab 模式的子表单
-function isTabSubForm(field: any) {
-  if (!field) return false
-  const type = (field.componentType || field.fieldType || '').toUpperCase()
-  if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
-  if (field.displayMode === 'tab') return true
-  if (field.componentProps) {
-    try {
-      const compProps = typeof field.componentProps === 'string'
-        ? JSON.parse(field.componentProps)
-        : field.componentProps
-      return compProps.subFormConfig?.displayMode === 'tab'
-    } catch (e) {}
-  }
-  return false
-}
-
 // 表单字段（排除系统字段）
-const formFields = computed(() => {
-  return props.entityFields.filter((f: any) => f.runtimeReadable !== false)
-})
+const runtimeEntityFields = computed(() =>
+  props.entityFields
+    .filter((field: any) => field.runtimeReadable !== false)
+    .map((field: any) =>
+      withEntityStatusFieldOptions(field, entityStatusOptions.value)
+    )
+)
+
+const formFields = computed(() => runtimeEntityFields.value)
 
 const runtimeFormFields = computed(() =>
   (props.defaultForm?.fields || formFields.value)
@@ -418,30 +421,30 @@ const runtimeFormFields = computed(() =>
         item.fieldCode === field.fieldCode || item.id === field.fieldId)
       const dictType = field.dictType || entityField?.dictType
       const options = dictType ? dictOptionMap.value[dictType] : null
-      return options
+      const runtimeField = options
         ? { ...field, dictType, optionsJson: JSON.stringify(options) }
         : field
+      return withEntityStatusFieldOptions(
+        runtimeField,
+        entityStatusOptions.value
+      )
     })
 )
 
-const runtimeForm = computed(() => ({
-  ...(props.defaultForm || {}),
-  fields: runtimeFormFields.value
-}))
-
-// 普通字段（不含 tab 子表单）
-const normalFields = computed(() => {
-  return formFields.value.filter((f: any) => !isTabSubForm(f))
-})
-
-// tab 子表单字段
-const tabSubForms = computed(() => {
-  return formFields.value.filter((f: any) => isTabSubForm(f))
-})
+const runtimeForm = computed(() =>
+  withEntityStatusRuntimeForm(
+    {
+      ...(props.defaultForm || {}),
+      fields: runtimeFormFields.value
+    },
+    runtimeEntityFields.value,
+    entityStatusOptions.value
+  )
+)
 
 // 实际渲染的字段
 const renderFields = computed(() => {
-  return (props.noInternalTabs ? normalFields.value : formFields.value)
+  return formFields.value
     .filter((field: any) => isRuntimeFieldVisible(field, runtimeMode.value))
 })
 
@@ -477,10 +480,7 @@ function refreshLinkage() {
 
 defineExpose({
   validate,
-  refreshLinkage,
-  tabSubForms,
-  normalFields,
-  isTabSubForm
+  refreshLinkage
 })
 </script>
 

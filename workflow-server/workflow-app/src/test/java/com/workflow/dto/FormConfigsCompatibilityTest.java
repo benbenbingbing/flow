@@ -14,18 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * 表单配置兼容性单元测试。
  *
- * <p>验证流程进度 DTO 与任务详情 DTO 同时支持单个表单配置(getFormConfig)
- * 与多表单配置列表(getFormConfigs)的兼容设计。</p>
+ * <p>验证流程进度 DTO 与任务详情 DTO 保留列表字段兼容性，
+ * 但运行时只暴露一个节点办理表单。</p>
  */
 class FormConfigsCompatibilityTest {
 
     /**
-     * 流程进度 DTO 应保留单个表单配置并支持多表单配置列表。
-     *
-     * <p>断言 getFormConfig 返回首个表单，getFormConfigs 返回全部表单列表。</p>
+     * 流程进度 DTO 应将历史多表单输入收敛为首个表单。
      */
     @Test
-    void processProgressKeepsSingleFormConfigAndSupportsMultipleFormConfigs() {
+    void processProgressKeepsOnlyFirstFormConfig() {
         ProcessProgressDTO dto = new ProcessProgressDTO();
         ProcessProgressDTO.FormConfigDTO first = new ProcessProgressDTO.FormConfigDTO();
         first.setFormId("form-1");
@@ -36,16 +34,15 @@ class FormConfigsCompatibilityTest {
         dto.setFormConfigs(List.of(first, second));
 
         assertEquals("form-1", dto.getFormConfig().getFormId());
-        assertEquals(2, dto.getFormConfigs().size());
+        assertEquals(1, dto.getFormConfigs().size());
+        assertEquals("form-1", dto.getFormConfigs().get(0).getFormId());
     }
 
     /**
-     * 任务详情 DTO 应保留单个表单配置并支持多表单配置列表。
-     *
-     * <p>断言 getFormConfig 返回首个表单，getFormConfigs 返回全部表单列表。</p>
+     * 任务详情 DTO 应将历史多表单输入收敛为首个表单。
      */
     @Test
-    void taskDetailKeepsSingleFormConfigAndSupportsMultipleFormConfigs() {
+    void taskDetailKeepsOnlyFirstFormConfig() {
         TaskDetailDTO dto = new TaskDetailDTO();
         TaskDetailDTO.FormConfigDTO first = new TaskDetailDTO.FormConfigDTO();
         first.setEntityFormId("form-1");
@@ -56,6 +53,7 @@ class FormConfigsCompatibilityTest {
         dto.setFormConfigs(List.of(first, second));
 
         assertEquals("form-1", dto.getFormConfig().getEntityFormId());
-        assertEquals(2, dto.getFormConfigs().size());
+        assertEquals(1, dto.getFormConfigs().size());
+        assertEquals("form-1", dto.getFormConfigs().get(0).getEntityFormId());
     }
 }

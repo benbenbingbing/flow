@@ -2,9 +2,11 @@ package com.workflow.service.config;
 
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
+import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import org.junit.jupiter.api.Test;
@@ -23,11 +25,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class EntityFormConfigurationValidatorTest {
 
+    private static final ObjectMapper OBJECT_MAPPER =
+            new ObjectMapper();
+
     /** 被测表单配置校验器 */
     private final EntityFormConfigurationValidator validator =
             new EntityFormConfigurationValidator(
-                    new StructuredConfigValidator(new ObjectMapper()),
-                    new EntityFormActionConfigPolicy());
+                    new StructuredConfigValidator(OBJECT_MAPPER),
+                    new EntityFormActionConfigPolicy(),
+                    new UiDataSourceDefinitionValidator(
+                            new JsonDocumentCodec(
+                                    OBJECT_MAPPER)));
 
     /** 测试接受结构化校验与模式访问：验证合法校验规则与多模式扩展配置通过校验 */
     @Test
@@ -69,6 +77,56 @@ class EntityFormConfigurationValidatorTest {
         assertNull(form.getViewConfig());
         assertNull(field.getValidationRules());
         assertNull(field.getExtensionConfig());
+    }
+
+    /** 测试子表单输入参数 Schema 的编码、中文名、类型与默认值均受统一 Schema 校验。 */
+    @Test
+    void validatesSubFormInputParameterSchema() {
+        EntityForm form = new EntityForm();
+        form.setEntityId("entity-1");
+        form.setFormName("项目成员子表单");
+        form.setFormKey("projectMemberSubForm");
+        form.setViewConfig(
+                """
+                {
+                  "inputParameterSchema": {
+                    "type": "object",
+                    "required": ["projectId"],
+                    "properties": {
+                      "projectId": {
+                        "type": "string",
+                        "title": "项目ID"
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "title": "数量",
+                        "default": 1
+                      }
+                    }
+                  }
+                }
+                """);
+
+        assertDoesNotThrow(() -> validator.validateForm(form));
+
+        form.setViewConfig(
+                """
+                {
+                  "inputParameterSchema": {
+                    "type": "object",
+                    "properties": {
+                      "quantity": {
+                        "type": "integer",
+                        "title": "数量",
+                        "default": "one"
+                      }
+                    }
+                  }
+                }
+                """);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> validator.validateForm(form));
     }
 
     /** 构造基础测试表单字段 */

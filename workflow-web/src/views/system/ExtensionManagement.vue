@@ -293,6 +293,30 @@
                 </el-select>
               </el-form-item>
             </el-col>
+            <el-col v-if="editor.extensionType === 'FORM'" :span="24">
+              <el-form-item label="适用范围" required>
+                <el-segmented
+                  v-model="editor.visibilityScope"
+                  :options="visibilityOptions"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col
+              v-if="editor.extensionType === 'FORM'
+                && editor.visibilityScope === 'ENTITY'"
+              :span="24"
+            >
+              <el-form-item label="指定实体" required>
+                <EntityDefinitionPicker
+                  v-model="editor.entityCodes"
+                  multiple
+                  value-key="entityCode"
+                  title="选择表单组件适用实体"
+                  placeholder="选择一个或多个已发布实体"
+                  :query="{ status: 'PUBLISHED', storageMode: 'DYNAMIC' }"
+                />
+              </el-form-item>
+            </el-col>
             <el-col :span="24">
               <el-form-item label="配置 Schema">
                 <el-input v-model="editor.configSchemaText" type="textarea" :rows="6" />
@@ -438,7 +462,7 @@ function emptyEditor() {
     key: '',
     displayName: '',
     description: '',
-    visibilityScope: 'ENTITY',
+    visibilityScope: 'GLOBAL',
     entityCodes: [],
     enabled: false,
     supportedUsages: [],
@@ -523,6 +547,8 @@ function localOnlyRows(remoteKeys) {
       configured: false,
       available: true,
       enabled: false,
+      visibilityScope: 'GLOBAL',
+      entityCodes: [],
       supportedModes: item.supportedModes || [],
       supportedNodeTypes: [],
       supportedBindings: [],
@@ -610,6 +636,8 @@ async function openEdit(row) {
       extensionType: row.capabilityType.replace(/^UI_/, ''),
       implementationVersion: row.implementationVersion || 1,
       snapshotVersion: row.snapshotVersion || 1,
+      visibilityScope: row.visibilityScope || 'GLOBAL',
+      entityCodes: [...(row.entityCodes || [])],
       supportedModes: [...(row.supportedModes || [])],
       supportedNodeTypes: [...(row.supportedNodeTypes || [])],
       supportedBindings: [...(row.supportedBindings || [])],
@@ -657,12 +685,25 @@ async function saveEditor() {
         ElMessage.warning('请填写扩展注册名')
         return
       }
+      if (editor.extensionType === 'FORM'
+          && editor.visibilityScope === 'ENTITY'
+          && !editor.entityCodes.length) {
+        ElMessage.warning('指定实体范围至少选择一个实体')
+        return
+      }
       const payload = {
         extensionType: editor.extensionType,
         extensionKey: editor.key.trim(),
         displayName: editor.displayName.trim(),
         version: editor.implementationVersion,
         snapshotVersion: editor.snapshotVersion,
+        visibilityScope: editor.extensionType === 'FORM'
+          ? editor.visibilityScope
+          : 'GLOBAL',
+        entityCodes: editor.extensionType === 'FORM'
+          && editor.visibilityScope === 'ENTITY'
+          ? editor.entityCodes
+          : [],
         supportedModes: editor.supportedModes,
         supportedNodeTypes: editor.supportedNodeTypes,
         supportedBindings: editor.supportedBindings,
@@ -732,6 +773,12 @@ function scopeSummary(row) {
     return row.entityCodes?.length ? `${row.entityCodes.length} 个实体` : '尚未指定实体'
   }
   if (row.capabilityType === 'PERSON_RESOLVER') return '全局受控接口'
+  if (row.capabilityType === 'UI_FORM') {
+    if (row.visibilityScope !== 'ENTITY') return '全部实体'
+    return row.entityCodes?.length
+      ? `指定 ${row.entityCodes.length} 个实体`
+      : '尚未指定实体'
+  }
   return '前端构建范围'
 }
 
@@ -768,6 +815,8 @@ function contractDetail(row) {
     supportedModes: row.supportedModes || [],
     supportedNodeTypes: row.supportedNodeTypes || [],
     supportedBindings: row.supportedBindings || [],
+    visibilityScope: row.visibilityScope || 'GLOBAL',
+    entityCodes: row.entityCodes || [],
     dynamicExtraParams: row.dynamicExtraParams === true
   }
 }

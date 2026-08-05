@@ -80,6 +80,21 @@ function applyMapping(mapping, source, fallback) {
   return result
 }
 
+function mergeRuntimeContexts(base = {}, override = {}) {
+  return {
+    ...base,
+    ...override,
+    context: {
+      ...(base.context || {}),
+      ...(override.context || {})
+    },
+    input: {
+      ...(base.input || {}),
+      ...(override.input || {})
+    }
+  }
+}
+
 export function createFormDataSourceRuntime(options) {
   const initialized = new Set()
 
@@ -90,7 +105,10 @@ export function createFormDataSourceRuntime(options) {
   function baseContext(runtimeContext = {}) {
     const form = runtimeContext.form || options.getForm?.()
     return {
-      mode: options.getMode?.() || 'view',
+      mode: runtimeContext.mode
+        || runtimeContext.context?.mode
+        || options.getMode?.()
+        || 'view',
       formId: runtimeContext.formId || form?.id,
       entityId: runtimeContext.entityId
         || form?.entityId
@@ -118,12 +136,22 @@ export function createFormDataSourceRuntime(options) {
     const rawInput = {
       recordId: runtimeContext.recordId ?? options.getRecordId?.(),
       data: record,
+      params: runtimeContext.params || runtimeContext.context?.params || {},
       ...normalized.input,
       ...runtimeContext.input
     }
+    const mappingSource = {
+      data: record,
+      context,
+      input: rawInput,
+      parent: runtimeContext.parent || context.parent || {},
+      params: runtimeContext.params || context.params || {},
+      row: runtimeContext.row || context.row || {},
+      relation: runtimeContext.relation || context.relation || {}
+    }
     const input = applyMapping(
       normalized.inputMapping,
-      { data: record, context, input: rawInput },
+      mappingSource,
       rawInput
     )
     const executeDataSource = options.executeDataSource || uiDataSourceApi.execute
@@ -158,7 +186,8 @@ export function createFormDataSourceRuntime(options) {
     nodes = [],
     record: explicitRecord,
     recordId,
-    initializationKey: explicitInitializationKey
+    initializationKey: explicitInitializationKey,
+    runtimeContext: initialRuntimeContext = {}
   }) {
     const initializationKey = explicitInitializationKey || [
       form?.id || 'form',
@@ -169,11 +198,11 @@ export function createFormDataSourceRuntime(options) {
     initialized.add(initializationKey)
 
     const record = explicitRecord || currentRecord()
-    const runtimeContext = {
+    const runtimeContext = mergeRuntimeContexts(initialRuntimeContext, {
       form,
       record,
       recordId
-    }
+    })
     try {
       for (const result of await executeOwnerUsage(
         form,
@@ -226,11 +255,14 @@ export function createFormDataSourceRuntime(options) {
     }
   }
 
-  async function loadOptions(field) {
+  async function loadOptions(field, runtimeContext = {}) {
+    const record = runtimeContext.record || currentRecord()
     const [result] = await executeOwnerUsage(field, 'FIELD_OPTIONS', {
+      ...runtimeContext,
       input: {
+        ...(runtimeContext.input || {}),
         fieldCode: field?.fieldCode,
-        value: currentRecord()?.[field?.fieldCode]
+        value: record?.[field?.fieldCode]
       }
     })
     const value = result?.data ?? result
@@ -244,23 +276,71 @@ export function createFormDataSourceRuntime(options) {
     return Array.isArray(value?.rows) ? value.rows : []
   }
 
-  async function prevalidateBeforeSubmit({ form, fields = [], nodes = [] }) {
+  async function prevalidateBeforeSubmit({
+    form,
+    fields = [],
+    nodes = [],
+    runtimeContext = {}
+  }) {
     for (const owner of [form, ...fields, ...nodes]) {
       for (const binding of getClientBeforeSubmitBindings(owner)) {
-        await execute(binding, {
+        await execute(binding, mergeRuntimeContexts(runtimeContext, {
           usage: 'BEFORE_SUBMIT',
           context: {
+            ...(runtimeContext.context || {}),
             clientPrevalidate: true,
             sideEffectFree: true
           }
-        })
+        }))
       }
     }
-    return currentRecord()
+    return runtimeContext.record || currentRecord()
   }
 
   async function beforeSubmit(configuration) {
     return prevalidateBeforeSubmit(configuration)
+  }
+
+  function withContext(baseRuntimeContext = {}) {
+    const resolveBase = () => (
+      typeof baseRuntimeContext === 'function'
+        ? (baseRuntimeContext() || {})
+        : (baseRuntimeContext || {})
+    )
+    const scoped = runtimeContext =>
+      mergeRuntimeContexts(resolveBase(), runtimeContext || {})
+    return {
+      execute: (binding, runtimeContext = {}) =>
+        execute(binding, scoped(runtimeContext)),
+      executeOwnerUsage: (owner, usage, runtimeContext = {}) =>
+        executeOwnerUsage(owner, usage, scoped(runtimeContext)),
+      initialize: (configuration = {}) => initialize({
+        ...configuration,
+        runtimeContext: scoped(configuration.runtimeContext)
+      }),
+      loadOptions: (field, runtimeContext = {}) =>
+        loadOptions(field, scoped(runtimeContext)),
+      loadSubformRows: (owner, runtimeContext = {}) =>
+        loadSubformRows(owner, scoped(runtimeContext)),
+      prevalidateBeforeSubmit: (configuration = {}) =>
+        prevalidateBeforeSubmit({
+          ...configuration,
+          runtimeContext: scoped(configuration.runtimeContext)
+        }),
+      beforeSubmit: (configuration = {}) =>
+        prevalidateBeforeSubmit({
+          ...configuration,
+          runtimeContext: scoped(configuration.runtimeContext)
+        }),
+      withContext: nestedContext => withContext(() =>
+        mergeRuntimeContexts(
+          resolveBase(),
+          typeof nestedContext === 'function'
+            ? nestedContext()
+            : nestedContext
+        )
+      )
+    }
   }
 
   return {
@@ -270,7 +350,8 @@ export function createFormDataSourceRuntime(options) {
     loadOptions,
     loadSubformRows,
     prevalidateBeforeSubmit,
-    beforeSubmit
+    beforeSubmit,
+    withContext
   }
 }
 

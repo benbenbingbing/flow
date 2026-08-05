@@ -11,12 +11,12 @@
           :defaultForm="defaultForm"
           :isEdit="isEdit"
           :showStartProcess="canStartProcess"
-          :noInternalTabs="true"
           :excludedNodeIds="liftedRootNodeIds"
           :dataSourceRuntime="dataSourceRuntime"
           :skipDataSourcePrevalidation="true"
           :form-actions="formActions"
           :action-loading-key="actionLoadingKey"
+          :entity-status-options="entityStatusOptions"
           @form-action="handleFormAction"
         />
       </el-tab-pane>
@@ -35,24 +35,13 @@
           :defaultForm="defaultForm"
           :isEdit="isEdit"
           :showStartProcess="canStartProcess && !showBasicTab && idx === 0"
-          :noInternalTabs="true"
           :nodeRootParentId="tab.rootParentId"
           :dataSourceRuntime="dataSourceRuntime"
           :skipDataSourcePrevalidation="true"
           :form-actions="formActions"
           :action-loading-key="actionLoadingKey"
+          :entity-status-options="entityStatusOptions"
           @form-action="handleFormAction"
-        />
-      </el-tab-pane>
-      <el-tab-pane
-        v-for="(field, idx) in tabSubForms"
-        :key="'subform-' + idx + '-' + (field.id || field.fieldCode || field.fieldKey || '')"
-        :label="field.fieldLabel || field.fieldName"
-        :name="'subform_' + idx"
-      >
-        <FormFieldRendererLinkage
-          :field="field"
-          v-model="formData.data[getFieldKey(field)]"
         />
       </el-tab-pane>
       <el-tab-pane v-if="hasProcessInfo" label="流程图" name="diagram">
@@ -91,6 +80,7 @@
       :skipDataSourcePrevalidation="true"
       :form-actions="formActions"
       :action-loading-key="actionLoadingKey"
+      :entity-status-options="entityStatusOptions"
       @form-action="handleFormAction"
     />
 
@@ -116,12 +106,9 @@ import { useProcessDetail } from '@/composables/useProcessDetail'
 import {
   applyRuntimeFieldDefaults,
   createFormDataSourceRuntime,
-  getFieldKey,
-  isRuntimeFieldVisible,
   normalizeEntityRecordForForm,
   resolveRuntimeFormTabLayout
 } from '@/shared/form-runtime'
-import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import EntityDataFormFields from './EntityDataFormFields.vue'
 import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './approval/EntityApprovalDiagram.vue'
@@ -140,6 +127,7 @@ const props = defineProps<{
   entityFields: any[]
   defaultForm: any
   listKey?: string
+  entityStatusOptions?: any[]
 }>()
 
 const emit = defineEmits<{
@@ -188,25 +176,13 @@ const {
   bpmnXml,
   progressData,
   processHistory,
-  isTabSubForm,
   loadProcessDetail
 } = useProcessDetail()
 
-const formFields = computed(() =>
-  props.entityFields.filter((f: any) => f.runtimeReadable !== false)
-)
-const tabSubForms = computed(() => {
-  const fields = props.defaultForm?.fields || formFields.value
-  const mode = isEdit.value ? 'edit' : 'create'
-  return fields.filter((f: any) => isRuntimeFieldVisible(f, mode) && isTabSubForm(f))
-})
-const hasTabSubForms = computed(() => tabSubForms.value.length > 0)
 const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(props.defaultForm))
 const runtimeNodeTabs = computed(() => runtimeTabLayout.value.tabs)
 const liftedRootNodeIds = computed(() => runtimeTabLayout.value.liftedRootNodeIds)
-const hasRuntimeFormTabs = computed(() =>
-  runtimeNodeTabs.value.length > 0 || hasTabSubForms.value
-)
+const hasRuntimeFormTabs = computed(() => runtimeNodeTabs.value.length > 0)
 const showOuterTabs = computed(() => hasProcessInfo.value || hasRuntimeFormTabs.value)
 const showBasicTab = computed(() =>
   runtimeTabLayout.value.hasBaseContent
@@ -216,7 +192,6 @@ const showBasicTab = computed(() =>
 const firstFormTabName = computed(() => {
   if (showBasicTab.value) return 'basic'
   if (runtimeNodeTabs.value.length > 0) return runtimeNodeTabs.value[0].name
-  if (tabSubForms.value.length > 0) return 'subform_0'
   return 'form'
 })
 

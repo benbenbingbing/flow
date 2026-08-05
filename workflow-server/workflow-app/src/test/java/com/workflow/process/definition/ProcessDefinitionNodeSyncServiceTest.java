@@ -78,13 +78,10 @@ class ProcessDefinitionNodeSyncServiceTest {
     }
 
     /**
-     * 从 BPMN 同步节点表单时应按顺序持久化多个实体表单 ID。
-     *
-     * <p>场景：BPMN 中 task-1 绑定 form-a 与 form-b，
-     * 断言先删除旧记录再按 sortOrder 依次插入两条只读表单记录。</p>
+     * 历史 BPMN 中存在多个实体表单 ID 时只持久化第一项。
      */
     @Test
-    void syncNodeFormsFromBpmnPersistsMultipleEntityFormIdsInOrder() {
+    void syncNodeFormsFromBpmnUsesFirstLegacyEntityFormId() {
         ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
         ProcessDefinitionNodeSyncService service = service(null, null, null, null, null, null, nodeFormMapper, null);
 
@@ -92,14 +89,11 @@ class ProcessDefinitionNodeSyncServiceTest {
 
         verify(nodeFormMapper).deleteByProcessConfigIdAndNodeId("process-1", "task-1");
         ArgumentCaptor<ProcessNodeForm> captor = ArgumentCaptor.forClass(ProcessNodeForm.class);
-        verify(nodeFormMapper, org.mockito.Mockito.times(2)).insert(captor.capture());
-        List<ProcessNodeForm> inserted = captor.getAllValues();
-        assertEquals("form-a", inserted.get(0).getFormId());
-        assertEquals(0, inserted.get(0).getSortOrder());
-        assertEquals(1, inserted.get(0).getIsReadonly());
-        assertEquals("form-b", inserted.get(1).getFormId());
-        assertEquals(1, inserted.get(1).getSortOrder());
-        assertEquals(1, inserted.get(1).getIsReadonly());
+        verify(nodeFormMapper).insert(captor.capture());
+        ProcessNodeForm inserted = captor.getValue();
+        assertEquals("form-a", inserted.getFormId());
+        assertEquals(0, inserted.getSortOrder());
+        assertEquals(1, inserted.getIsReadonly());
     }
 
     /**
@@ -469,7 +463,7 @@ class ProcessDefinitionNodeSyncServiceTest {
         return nodeMapper;
     }
 
-    /** 构造包含多表单绑定扩展属性的 BPMN XML */
+    /** 构造包含历史多表单绑定扩展属性的 BPMN XML */
     private static String bpmnWithEntityFormIds() {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                 + "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\""

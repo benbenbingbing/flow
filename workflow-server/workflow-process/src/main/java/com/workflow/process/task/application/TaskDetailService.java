@@ -142,6 +142,7 @@ public class TaskDetailService {
                                 nodeForm,
                                 entityFieldCodeMap,
                                 formKey));
+                        break;
                     }
                 }
             } catch (Exception exception) {
@@ -230,8 +231,9 @@ public class TaskDetailService {
             empty.setIsReadonly(true);
             formConfigs.add(empty);
         }
-        dto.setFormConfigs(formConfigs);
-        dto.setFormConfig(formConfigs.get(0));
+        TaskDetailDTO.FormConfigDTO formConfig = formConfigs.get(0);
+        dto.setFormConfigs(List.of(formConfig));
+        dto.setFormConfig(formConfig);
         
         // 4. 获取实体数据
         String entityDataId = processTask.getEntityDataId();
@@ -419,9 +421,6 @@ public class TaskDetailService {
             }
             if (entityField.getRefEntityType() != null) {
                 f.setRefEntityType(entityField.getRefEntityType().name());
-            }
-            if (entityField.getDisplayMode() != null) {
-                f.setDisplayMode(entityField.getDisplayMode());
             }
             if (entityField.getRefFieldCode() != null) {
                 f.setRefFieldCode(entityField.getRefFieldCode());

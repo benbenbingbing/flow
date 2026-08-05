@@ -44,7 +44,7 @@ class IntegrationApplicationMigrationTest {
         Flyway flyway = flyway();
         flyway.migrate();
 
-        assertEquals("018", currentVersion());
+        assertEquals("022", currentVersion());
         assertEquals(
                 Set.of(
                         "integration_application",
@@ -83,6 +83,12 @@ class IntegrationApplicationMigrationTest {
         assertTrue(columnExists(
                 "storage_file_object",
                 "request_hash"));
+        assertTrue(columnExists(
+                "ui_extension_definition",
+                "visibility_scope"));
+        assertTrue(columnExists(
+                "ui_extension_definition",
+                "entity_codes_document"));
         assertTrue(indexExists(
                 "storage_file_object",
                 "uk_storage_file_owner_idempotency"));
@@ -148,7 +154,7 @@ class IntegrationApplicationMigrationTest {
 
         flyway().migrate();
 
-        assertEquals("018", currentVersion());
+        assertEquals("022", currentVersion());
         assertEquals(1, countRows(
                 "SELECT COUNT(*) FROM sys_dict "
                         + "WHERE id = 'upgrade-sentinel' "

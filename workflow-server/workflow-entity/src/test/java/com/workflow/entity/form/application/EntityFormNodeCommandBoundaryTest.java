@@ -168,7 +168,6 @@ class EntityFormNodeCommandBoundaryTest {
 
         EntityFormNodeCreateRequest valid =
                 relationCreateRequest(Map.of(
-                        "displayMode", "embedded",
                         "layout", "form"));
         EntityFormNode created =
                 fixture.service().create("form-1", valid);
@@ -188,7 +187,6 @@ class EntityFormNodeCommandBoundaryTest {
         EntityFormNodeCreateRequest forged =
                 relationCreateRequest(Map.of(
                         "childEntityId", "entity-evil",
-                        "displayMode", "embedded",
                         "layout", "form"));
         assertThrows(
                 IllegalArgumentException.class,
@@ -221,7 +219,6 @@ class EntityFormNodeCommandBoundaryTest {
 
         EntityFormNodeCreateRequest request =
                 relationCreateRequest(Map.of(
-                        "displayMode", "embedded",
                         "layout", "form"));
         request.setChildFormId("form-2");
         request.setChildFormReleaseId("release-2");
@@ -279,6 +276,54 @@ class EntityFormNodeCommandBoundaryTest {
                 () -> fixture.service().replaceByDiff(
                         "form-1", List.of(forged), 3));
         verify(fixture.nodeMapper(), never()).update(isNull(), any());
+    }
+
+    /**
+     * 验证用户整包保存可将历史 REPEATER + ENTITY_FIELD 非法绑定修复为关系绑定，
+     * 同时仍沿用节点技术标识和字段身份属性。
+     */
+    @Test
+    void userWholePackageRepairsLegacyRepeaterFieldBinding() {
+        Fixture fixture = fixture();
+        EntityForm currentForm = form("form-1", "entity-1", 3);
+        when(fixture.formMapper().selectByIdForUpdate("form-1"))
+                .thenReturn(currentForm);
+        when(fixture.relationMapper().selectActiveByBindingRef(
+                "entity-1", "details_relation"))
+                .thenReturn(relation(
+                        "details_relation",
+                        "entity-2",
+                        EntityRelation.RelationType.ONE_TO_MANY));
+
+        EntityFormNode current = node(
+                "details-1",
+                "REPEATER",
+                "ENTITY_FIELD",
+                "details",
+                null,
+                1);
+        current.setPropsDocument(fixture.codec().write(
+                Map.of(
+                        "fieldId", "details-field",
+                        "fieldCode", "details",
+                        "fieldType", "SUB_FORM_LIST",
+                        "componentType", "sub_form_list"),
+                "测试字段属性"));
+        EntityFormNode repaired = copy(current);
+        repaired.setBindingType("RELATION");
+        repaired.setBindingRef("details_relation");
+
+        when(fixture.nodeMapper().findByFormId("form-1"))
+                .thenReturn(List.of(current));
+        when(fixture.nodeMapper().selectById(current.getId()))
+                .thenReturn(current);
+        when(fixture.nodeMapper().update(isNull(), any()))
+                .thenReturn(1);
+
+        assertDoesNotThrow(() ->
+                fixture.service().replaceByDiff(
+                        "form-1", List.of(repaired), 3));
+        verify(fixture.nodeMapper()).update(isNull(), any());
     }
 
     /**

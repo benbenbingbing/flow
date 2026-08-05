@@ -155,12 +155,6 @@ public class EntityField {
     private RefEntityType refEntityType;
     
     /**
-     * 显示方式：embedded-嵌入, tab-Tab页（用于子表单）
-     */
-    @TableField("display_mode")
-    private String displayMode;
-    
-    /**
      * 关联字段编码（用于子表单数据关联）
      */
     @TableField("ref_field_code")

@@ -8,10 +8,13 @@ import com.workflow.entity.definition.api.request.EntityDefinitionOptionResolveR
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionOptionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
+import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.application.EntityDefinitionOptionService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
+import com.workflow.entity.definition.application.EntityFieldDefinitionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +46,9 @@ public class EntityDefinitionControllerTest {
 
     @MockitoBean
     private EntityDefinitionService entityService;
+
+    @MockitoBean
+    private EntityFieldDefinitionService fieldDefinitionService;
 
     @MockitoBean
     private EntityDefinitionOptionService entityOptionService;
@@ -181,6 +187,56 @@ public class EntityDefinitionControllerTest {
                 .andExpect(jsonPath("$.data.id").value("1"));
 
         verify(entityService, times(1)).update(eq("1"), any(EntityDefinitionDTO.class));
+    }
+
+    /** 测试新增单字段接口，只提交当前字段配置。 */
+    @Test
+    void testCreateField() throws Exception {
+        EntityFieldDTO field = new EntityFieldDTO();
+        field.setId("f1");
+        field.setFieldCode("amount");
+        field.setFieldName("金额");
+        field.setFieldType(EntityField.FieldType.DECIMAL);
+        when(fieldDefinitionService.createField(
+                eq("1"),
+                any(EntityFieldDTO.class))).thenReturn(field);
+
+        mockMvc.perform(post("/api/entity/1/fields")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(field)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("f1"))
+                .andExpect(jsonPath("$.data.fieldCode").value("amount"));
+
+        verify(fieldDefinitionService).createField(
+                eq("1"),
+                any(EntityFieldDTO.class));
+    }
+
+    /** 测试更新单字段接口，只提交指定字段配置。 */
+    @Test
+    void testUpdateField() throws Exception {
+        EntityFieldDTO field = new EntityFieldDTO();
+        field.setId("f1");
+        field.setFieldCode("name");
+        field.setFieldName("项目名称");
+        field.setFieldType(EntityField.FieldType.STRING);
+        when(fieldDefinitionService.updateField(
+                eq("1"),
+                eq("f1"),
+                any(EntityFieldDTO.class))).thenReturn(field);
+
+        mockMvc.perform(post("/api/entity/1/fields/f1/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(field)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("f1"))
+                .andExpect(jsonPath("$.data.fieldName").value("项目名称"));
+
+        verify(fieldDefinitionService).updateField(
+                eq("1"),
+                eq("f1"),
+                any(EntityFieldDTO.class));
     }
 
     /** 测试删除实体定义接口，断言返回 200 且 delete 方法被正确调用 */

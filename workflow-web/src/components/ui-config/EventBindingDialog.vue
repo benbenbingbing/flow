@@ -19,6 +19,7 @@
       :allowed-events="allowedEvents"
       :field-options="fieldOptions"
       :title="`${ownerLabel}执行链`"
+      @changed="emit('changed')"
     />
   </el-dialog>
 </template>
@@ -34,6 +35,7 @@ const props = defineProps({
   fieldOptions: { type: Array, default: () => [] },
   ownerEvents: { type: Array, default: () => [] }
 })
+const emit = defineEmits(['changed'])
 
 const visible = ref(false)
 const targetType = ref('OWNER')

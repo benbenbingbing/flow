@@ -1183,6 +1183,10 @@ public class ConfigMigrationImportApplyService {
             request.setVersion(version);
             request.setSnapshotVersion(integerObject(
                     value.get("snapshotVersion")));
+            request.setVisibilityScope(
+                    text(value.get("visibilityScope"), "GLOBAL"));
+            request.setEntityCodes(stringList(
+                    value.get("entityCodesDocument")));
             request.setSupportedModes(stringList(
                     value.get("supportedModesDocument")));
             request.setSupportedNodeTypes(stringList(

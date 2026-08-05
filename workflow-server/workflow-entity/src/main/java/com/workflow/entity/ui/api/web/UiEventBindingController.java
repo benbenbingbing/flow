@@ -41,6 +41,17 @@ public class UiEventBindingController {
         return Result.success(bindingService.list(ownerType, ownerId));
     }
 
+    @GetMapping("/resolved-draft")
+    public Result<Map<String, Object>> resolveDraft(
+            @RequestParam String ownerType,
+            @RequestParam String ownerId,
+            @RequestParam String eventCode) {
+        return Result.success(bindingService.resolveDraft(
+                ownerType,
+                ownerId,
+                eventCode));
+    }
+
     @PostMapping
     public Result<UiEventBinding> create(
             @RequestBody UiEventBindingSaveRequest request) {

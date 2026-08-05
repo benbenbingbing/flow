@@ -220,12 +220,14 @@ public class EntityFormNodeService {
             PatchMode mode) {
         EntityFormNode current = requireNode(formId, nodeId);
         requireExpectedRevision(request.getExpectedRevision(), current);
-        if (mode.userFacing() && !hasValidBindingState(current)) {
+        if (mode.userFacing()
+                && mode != PatchMode.USER_REPLACE
+                && !hasValidBindingState(current)) {
             throw new IllegalArgumentException(
                     "当前节点绑定配置不完整，请先通过配置迁移修复后再编辑");
         }
-        if (mode == PatchMode.USER_PROPERTY) {
-            validatePatchConstraints(current, request);
+        if (mode.userFacing()) {
+            validatePatchConstraints(current, request, mode);
         }
         EntityFormNode updated = copy(current);
         normalizeAndValidateConfiguration(updated, true);
@@ -384,7 +386,7 @@ public class EntityFormNodeService {
                 formId,
                 incoming,
                 expectedRevision,
-                PatchMode.USER_PROPERTY);
+                PatchMode.USER_REPLACE);
     }
 
     private void replaceByDiffInternal(
@@ -415,7 +417,8 @@ public class EntityFormNodeService {
                     ? existingById.get(source.getId())
                     : null;
             if (current == null) {
-                EntityFormNodeCreateRequest request = toCreateRequest(source, fallbackOrder);
+                EntityFormNodeCreateRequest request =
+                        toCreateRequest(source, fallbackOrder, mode);
                 EntityFormNode created = createInternal(
                         formId,
                         request,
@@ -425,7 +428,7 @@ public class EntityFormNodeService {
                 retained.add(current.getId());
                 EntityFormNodePatchRequest request =
                         toPatchRequest(source, current, mode);
-                if (hasChanges(source, current)
+                if (hasChanges(source, current, mode)
                         || requiresLegacyReleasePin(source)) {
                     patchInternal(formId, current.getId(), request, mode);
                 }
@@ -933,7 +936,33 @@ public class EntityFormNodeService {
             UiConfigRelease release =
                     requireReferencedRelease(reference);
             validateRelationReleaseEntity(node, release);
+            subFormParameterContractValidator().validateNode(
+                    requireForm(node.getFormId()),
+                    node,
+                    release);
         }
+    }
+
+    /**
+     * 校验发布快照中的子表单参数契约。
+     *
+     * <p>用于历史版本激活和热修复快照校验，避免只校验当前草稿节点而遗漏
+     * 快照中已经失效的参数或子字段映射。</p>
+     */
+    public void validateSnapshotSubFormParameterContracts(
+            EntityForm parentForm) {
+        subFormParameterContractValidator()
+                .validateSnapshot(parentForm);
+    }
+
+    private SubFormParameterContractReleaseValidator
+            subFormParameterContractValidator() {
+        return new SubFormParameterContractReleaseValidator(
+                formMapper,
+                fieldMapper,
+                relationMapper,
+                releaseMapper,
+                codec);
     }
 
     private void validateRelationReleaseEntity(
@@ -1636,7 +1665,8 @@ public class EntityFormNodeService {
 
     private void validatePatchConstraints(
             EntityFormNode current,
-            EntityFormNodePatchRequest request) {
+            EntityFormNodePatchRequest request,
+            PatchMode mode) {
         Set<String> clear = request.getClearFields() == null
                 ? Set.of() : request.getClearFields();
         for (String field : clear) {
@@ -1647,7 +1677,7 @@ public class EntityFormNodeService {
         String nodeType = request.getNodeType() == null
                 ? normalize(current.getNodeType(), "FIELD")
                 : normalize(request.getNodeType(), "FIELD");
-        validateTechnicalIdentity(current, request, clear);
+        validateTechnicalIdentity(current, request, clear, mode);
         validateRequestedPatchConfiguration(
                 current,
                 nodeType,
@@ -1658,7 +1688,8 @@ public class EntityFormNodeService {
     private void validateTechnicalIdentity(
             EntityFormNode current,
             EntityFormNodePatchRequest request,
-            Set<String> clear) {
+            Set<String> clear,
+            PatchMode mode) {
         if (request.getNodeKey() != null
                 && !Objects.equals(
                         request.getNodeKey(),
@@ -1673,7 +1704,8 @@ public class EntityFormNodeService {
             throw new IllegalArgumentException(
                     "节点类型由系统管理，不能通过属性 PATCH 修改");
         }
-        if (request.getOrderKey() != null
+        if (mode == PatchMode.USER_PROPERTY
+                && request.getOrderKey() != null
                 && !Objects.equals(
                         request.getOrderKey(),
                         current.getOrderKey())) {
@@ -1688,6 +1720,36 @@ public class EntityFormNodeService {
         validateReadOnlyDisplayProps(current, request);
         if (hasValidBindingState(current)) {
             validateBoundNodeIdentity(current, request, clear);
+        } else if (mode == PatchMode.USER_REPLACE) {
+            validateInvalidBindingRepair(current, request, clear);
+        }
+    }
+
+    private void validateInvalidBindingRepair(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        String bindingType = request.getBindingType() == null
+                ? normalize(current.getBindingType(), "NONE")
+                : normalize(request.getBindingType(), "NONE");
+        String bindingRef = clear.contains("bindingRef")
+                ? null
+                : request.getBindingRef() == null
+                        ? blankToNull(current.getBindingRef())
+                        : blankToNull(request.getBindingRef());
+        try {
+            EntityFormNodePropertyPolicy.validateBinding(
+                    current.getNodeType(),
+                    bindingType,
+                    bindingRef);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "保存全部草稿时必须修复当前节点的非法绑定: "
+                            + exception.getMessage(),
+                    exception);
+        }
+        if (isBound(current)) {
+            validateBoundProps(current, request, clear);
         }
     }
 
@@ -1911,7 +1973,8 @@ public class EntityFormNodeService {
 
     private EntityFormNodeCreateRequest toCreateRequest(
             EntityFormNode source,
-            long fallbackOrder) {
+            long fallbackOrder,
+            PatchMode mode) {
         EntityFormNodeCreateRequest request = new EntityFormNodeCreateRequest();
         request.setId(source.getId());
         request.setParentId(source.getParentId());
@@ -1926,7 +1989,10 @@ public class EntityFormNodeService {
         request.setRules(read(source.getRulesDocument(), "表单节点规则"));
         request.setDataSourceBindings(
                 read(source.getDataSourceBindingsDocument(), "表单节点数据源绑定"));
-        request.setLegacyProps(read(source.getLegacyPropsDocument(), "历史节点属性"));
+        if (mode == PatchMode.SYSTEM_IMPORT) {
+            request.setLegacyProps(
+                    read(source.getLegacyPropsDocument(), "历史节点属性"));
+        }
         request.setOrderKey(source.getOrderKey() == null
                 ? fallbackOrder : source.getOrderKey());
         request.setTemplateId(source.getTemplateId());
@@ -1960,11 +2026,6 @@ public class EntityFormNodeService {
         if (mode == PatchMode.SYSTEM_IMPORT) {
             request.setLegacyProps(
                     read(source.getLegacyPropsDocument(), "历史节点属性"));
-        } else if (!Objects.equals(
-                source.getLegacyPropsDocument(),
-                current.getLegacyPropsDocument())) {
-            throw new IllegalArgumentException(
-                    "历史兼容属性由服务端管理，整包更新不能修改");
         }
         request.setOrderKey(source.getOrderKey());
         request.setTemplateId(source.getTemplateId());
@@ -2024,7 +2085,10 @@ public class EntityFormNodeService {
         }
     }
 
-    private boolean hasChanges(EntityFormNode source, EntityFormNode current) {
+    private boolean hasChanges(
+            EntityFormNode source,
+            EntityFormNode current,
+            PatchMode mode) {
         return !Objects.equals(source.getParentId(), current.getParentId())
                 || !Objects.equals(source.getNodeKey(), current.getNodeKey())
                 || !Objects.equals(normalize(source.getNodeType(), "FIELD"), current.getNodeType())
@@ -2038,7 +2102,10 @@ public class EntityFormNodeService {
                 || !Objects.equals(
                         source.getDataSourceBindingsDocument(),
                         current.getDataSourceBindingsDocument())
-                || !Objects.equals(source.getLegacyPropsDocument(), current.getLegacyPropsDocument())
+                || mode == PatchMode.SYSTEM_IMPORT
+                        && !Objects.equals(
+                                source.getLegacyPropsDocument(),
+                                current.getLegacyPropsDocument())
                 || !Objects.equals(source.getOrderKey(), current.getOrderKey())
                 || !Objects.equals(source.getTemplateId(), current.getTemplateId())
                 || !Objects.equals(source.getTemplateVersion(), current.getTemplateVersion())
@@ -2254,6 +2321,7 @@ public class EntityFormNodeService {
     private enum PatchMode {
         USER_PROPERTY,
         USER_REORDER,
+        USER_REPLACE,
         SYSTEM_IMPORT;
 
         boolean userFacing() {

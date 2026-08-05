@@ -76,6 +76,50 @@ export function getFormNodeSubtreeHeight(nodes, nodeId, visiting = new Set()) {
   )
 }
 
+export function orderFormNodesParentFirst(nodes) {
+  const source = Array.isArray(nodes) ? nodes : []
+  const byId = new Map(
+    source
+      .filter(node => node?.id != null)
+      .map(node => [normalizeNodeId(node.id), node])
+  )
+  const depthById = new Map()
+
+  function resolveDepth(node, visiting = new Set()) {
+    const nodeId = normalizeNodeId(node?.id)
+    if (!nodeId) return 0
+    if (depthById.has(nodeId)) return depthById.get(nodeId)
+    if (visiting.has(nodeId)) {
+      throw new Error('表单节点父子关系存在循环')
+    }
+    const parentId = normalizeNodeId(node?.parentId)
+    if (!parentId) {
+      depthById.set(nodeId, 0)
+      return 0
+    }
+    const parent = byId.get(parentId)
+    if (!parent) {
+      throw new Error(`表单节点父级不存在: ${parentId}`)
+    }
+    const nextVisiting = new Set(visiting)
+    nextVisiting.add(nodeId)
+    const depth = resolveDepth(parent, nextVisiting) + 1
+    depthById.set(nodeId, depth)
+    return depth
+  }
+
+  return source
+    .map((node, index) => ({
+      node,
+      index,
+      depth: resolveDepth(node)
+    }))
+    .sort((left, right) =>
+      left.depth - right.depth || left.index - right.index
+    )
+    .map(item => item.node)
+}
+
 export function validateFormNodeDrop(
   nodes,
   node,

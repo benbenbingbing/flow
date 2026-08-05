@@ -13,6 +13,12 @@
         <el-input v-model="scenario.scenarioCode" :disabled="scenarioIndex >= 0" />
       </el-form-item>
       <el-form-item label="变更入口">
+        <template #label>
+          <ConfigHelpLabel
+            label="变更入口"
+            help-key="entityVersion.sourceTypes"
+          />
+        </template>
         <el-select v-model="scenario.sourceTypes" multiple filterable>
           <el-option
             v-for="item in sourceTypeOptions"
@@ -23,6 +29,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="操作类型">
+        <template #label>
+          <ConfigHelpLabel
+            label="操作类型"
+            help-key="entityVersion.operationTypes"
+          />
+        </template>
         <el-select v-model="scenario.operationTypes" multiple>
           <el-option
             v-for="item in operationTypeOptions"
@@ -71,6 +83,12 @@
         <el-input v-model="step.stepName" />
       </el-form-item>
       <el-form-item label="执行阶段" required>
+        <template #label>
+          <ConfigHelpLabel
+            label="执行阶段"
+            help-key="entityVersion.phase"
+          />
+        </template>
         <el-select v-model="step.phase" :disabled="step.stepType === 'MANAGED_INTERFACE'">
           <el-option
             v-for="item in phaseOptions"
@@ -81,6 +99,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="操作类型" required>
+        <template #label>
+          <ConfigHelpLabel
+            label="操作类型"
+            help-key="entityVersion.stepType"
+          />
+        </template>
         <el-select v-model="step.stepType" @change="handleStepTypeChange">
           <el-option
             v-for="item in stepTypeOptions"
@@ -170,6 +194,12 @@
         <el-input :model-value="`${targetEntityName} (${targetEntityCode})`" disabled />
       </el-form-item>
       <el-form-item label="解析方式" required>
+        <template #label>
+          <ConfigHelpLabel
+            label="解析方式"
+            help-key="entityVersion.resolverType"
+          />
+        </template>
         <el-segmented v-model="target.resolverType" :options="resolverTypeOptions" />
       </el-form-item>
       <el-form-item label="解析字段">
@@ -199,6 +229,12 @@
         <el-input v-model="target.failedPatchText" type="textarea" :rows="3" />
       </el-form-item>
       <el-form-item label="应用策略">
+        <template #label>
+          <ConfigHelpLabel
+            label="应用策略"
+            help-key="entityVersion.applyStrategy"
+          />
+        </template>
         <el-segmented
           v-model="target.applyStrategy"
           :options="[
@@ -265,6 +301,12 @@
   >
     <el-form label-width="110px">
       <el-form-item label="变更入口">
+        <template #label>
+          <ConfigHelpLabel
+            label="变更入口"
+            help-key="entityVersion.sourceTypes"
+          />
+        </template>
         <el-select v-model="simulationModel.sourceType">
           <el-option
             v-for="item in sourceTypeOptions"
@@ -275,6 +317,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="操作类型">
+        <template #label>
+          <ConfigHelpLabel
+            label="操作类型"
+            help-key="entityVersion.operationTypes"
+          />
+        </template>
         <el-select v-model="simulationModel.operationType">
           <el-option
             v-for="item in operationTypeOptions"
@@ -316,6 +364,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Search } from '@element-plus/icons-vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 
 const props = defineProps({

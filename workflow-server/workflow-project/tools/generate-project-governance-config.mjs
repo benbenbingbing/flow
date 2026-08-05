@@ -1266,14 +1266,12 @@ const projectFields = [
     fieldLength: 64,
     refEntityType: "CUSTOM",
     refEntityCode: "requirement_project_link",
-    displayMode: "embedded",
     refFieldCode: "project_id"
   }),
   field("initial_system_links", "初始系统范围", "SUB_FORM_LIST", "varchar(64)", false, 340, {
     fieldLength: 64,
     refEntityType: "CUSTOM",
     refEntityCode: "project_system_link",
-    displayMode: "embedded",
     refFieldCode: "project_id"
   }),
   ...workflowCommonFields(350)

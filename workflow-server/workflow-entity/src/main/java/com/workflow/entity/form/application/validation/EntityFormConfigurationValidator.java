@@ -5,11 +5,13 @@ import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -41,6 +43,7 @@ public class EntityFormConfigurationValidator {
 
     private final StructuredConfigValidator structuredConfigValidator;
     private final EntityFormActionConfigPolicy formActionConfigPolicy;
+    private final UiDataSourceDefinitionValidator dataSourceDefinitionValidator;
 
     /**
      * 校验表单整体配置。
@@ -84,6 +87,7 @@ public class EntityFormConfigurationValidator {
                 false,
                 Set.of(),
                 false);
+        validateInputParameterSchema(viewConfig);
         form.setViewConfig(blankToNull(form.getViewConfig()));
         structuredConfigValidator.parseObject(form.getInitConfig(), "表单初始化配置");
         structuredConfigValidator.parseObject(
@@ -93,6 +97,81 @@ public class EntityFormConfigurationValidator {
                 blankToNull(
                         form.getDataSourceBindingsDocument()));
         validateFields(form.getFields());
+    }
+
+    /** 校验表单作为子表单使用时声明的输入参数 Schema。 */
+    private void validateInputParameterSchema(
+            Map<String, Object> viewConfig) {
+        Object configured = viewConfig.get("inputParameterSchema");
+        if (configured == null) {
+            return;
+        }
+        if (!(configured instanceof Map<?, ?> rawSchema)) {
+            throw new IllegalArgumentException(
+                    "子表单输入参数契约必须为 Schema 对象");
+        }
+        Map<String, Object> schema = stringMap(rawSchema);
+        if (schema.isEmpty()) {
+            return;
+        }
+        Object type = schema.get("type");
+        if (type != null
+                && !"object".equalsIgnoreCase(
+                        String.valueOf(type).trim())) {
+            throw new IllegalArgumentException(
+                    "子表单输入参数契约根类型必须为 object");
+        }
+        Object propertiesValue = schema.get("properties");
+        if (propertiesValue != null
+                && !(propertiesValue instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException(
+                    "子表单输入参数 properties 必须为对象");
+        }
+        Map<String, Object> properties =
+                propertiesValue instanceof Map<?, ?> propertiesMap
+                        ? stringMap(propertiesMap)
+                        : Map.of();
+        for (Map.Entry<String, Object> entry
+                : properties.entrySet()) {
+            if (!FIELD_CODE.matcher(entry.getKey()).matches()) {
+                throw new IllegalArgumentException(
+                        "子表单输入参数编码不合法: "
+                                + entry.getKey());
+            }
+            if (!(entry.getValue()
+                    instanceof Map<?, ?> definition)) {
+                throw new IllegalArgumentException(
+                        "子表单输入参数定义必须为对象: "
+                                + entry.getKey());
+            }
+            Object title = definition.get("title");
+            if (!(title instanceof String text)
+                    || !StringUtils.hasText(text)) {
+                throw new IllegalArgumentException(
+                        "子表单输入参数中文名称不能为空: "
+                                + entry.getKey());
+            }
+        }
+        dataSourceDefinitionValidator.validateSchemaDefinition(
+                schema,
+                "子表单输入参数契约");
+
+        Map<String, Object> defaults = new LinkedHashMap<>();
+        properties.forEach((code, definitionValue) -> {
+            if (definitionValue instanceof Map<?, ?> definition
+                    && definition.containsKey("default")) {
+                defaults.put(code, definition.get("default"));
+            }
+        });
+        if (!defaults.isEmpty()) {
+            Map<String, Object> defaultValidationSchema =
+                    new LinkedHashMap<>(schema);
+            defaultValidationSchema.remove("required");
+            dataSourceDefinitionValidator.validateSchemaValue(
+                    defaultValidationSchema,
+                    defaults,
+                    "子表单输入参数默认值");
+        }
     }
 
     /**
@@ -209,5 +288,12 @@ public class EntityFormConfigurationValidator {
     /** 空白字符串转 null */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
+    }
+
+    private Map<String, Object> stringMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) ->
+                result.put(String.valueOf(key), value));
+        return result;
     }
 }

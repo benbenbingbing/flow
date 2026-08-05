@@ -58,9 +58,6 @@ public final class EntityFormFieldRuntimeMapper {
         if (field.getRefEntityType() != null) {
             result.put("refEntityType", field.getRefEntityType());
         }
-        if (field.getDisplayMode() != null) {
-            result.put("displayMode", field.getDisplayMode());
-        }
         if (field.getRefFieldCode() != null) {
             result.put("refFieldCode", field.getRefFieldCode());
         }

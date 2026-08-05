@@ -178,6 +178,11 @@ registerCustomFormComponent('ProjectWizardForm', ProjectWizardForm, {
   ]
 })</code></pre>
           </CodeCard>
+          <ul class="check-list">
+            <li>前端注册组件后，还要在“扩展管理”登记并启用同名 `UI_FORM` 扩展；不需要单独启动组件，组件代码随前端应用一起构建和启动。</li>
+            <li>扩展适用范围可选择“全部实体”，也可选择一个或多个已发布的动态实体。选择指定实体后，表单设计器只在这些实体中展示该组件。</li>
+            <li>表单发布时服务端会再次校验扩展状态、组件版本和实体适用范围，不能通过前端请求绕过范围限制。</li>
+          </ul>
           <el-alert
             title="整表单扩展适用于分步、矩阵或图形编辑器；如果只是一个字段、区块、子表或动作槽不同，应使用节点级扩展。整表单也必须读取已发布快照和平台数据源运行时。"
             type="warning"
@@ -416,8 +421,8 @@ const propertyRows = [
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', boundary: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限文本 text；普通说明或节标题由 textStyle 区分。', boundary: 'SECTION_TITLE 只改变展示样式；禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
   { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
-  { types: 'SUB_FORM', editable: '显示标签、父容器、展示模式、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；子实体、关系和外键绑定锁定。' },
-  { types: 'REPEATER', editable: '显示标签、父容器、展示模式、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于在表单树中放置稳定动作插槽。', boundary: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 

@@ -654,13 +654,12 @@ final class EntityFormNodePropertyPolicy {
                 objectMap(componentProps.get("subFormConfig"));
         requireEnum(
                 subFormConfig,
-                "displayMode",
-                Set.of("embedded", "tab"));
-        requireEnum(
-                subFormConfig,
                 "layout",
                 Set.of("form", "table"));
         requireBoolean(subFormConfig, "repeatable");
+        SubFormParameterContractPolicy.validateShape(
+                SubFormParameterContractPolicy.contract(
+                        Map.of("componentProps", componentProps)));
     }
 
     private static void moveUnsupportedValidation(

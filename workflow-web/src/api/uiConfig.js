@@ -47,6 +47,11 @@ export const uiEventBindingApi = {
       params: { ownerType, ownerId }
     })
   },
+  resolveDraft(ownerType, ownerId, eventCode) {
+    return request.get('/ui-event-bindings/resolved-draft', {
+      params: { ownerType, ownerId, eventCode }
+    })
+  },
   create(data) {
     return request.post('/ui-event-bindings', data)
   },

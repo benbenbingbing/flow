@@ -35,6 +35,12 @@
       <el-form label-width="96px" size="small">
         <div class="mapping-grid">
           <el-form-item label="绑定位置">
+            <template #label>
+              <ConfigHelpLabel
+                label="绑定位置"
+                help-key="formDataSource.usage"
+              />
+            </template>
             <el-select v-model="binding.usage" style="width: 100%">
               <el-option
                 v-for="usage in usages"
@@ -122,6 +128,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { patchFormMetadata } from '@/api/entityForm'
 import { uiDataSourceApi } from '@/api/uiConfig'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'

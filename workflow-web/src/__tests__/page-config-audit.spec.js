@@ -9,6 +9,7 @@ import {
 } from '../shared/form-node-hierarchy.js'
 
 const root = process.cwd()
+const backendRoot = path.resolve(root, '../workflow-server')
 const collectFiles = (directory, extension) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
   const fullPath = path.join(directory, entry.name)
   return entry.isDirectory()
@@ -75,6 +76,8 @@ assert.deepEqual(
 
 const documentationRoutes = {
   '/manual/entity': ['EntityManual.vue', '实体配置手册'],
+  '/manual/open-integration': ['OpenIntegrationManual.vue', '开放集成手册'],
+  '/manual/interface-service': ['InterfaceServiceManual.vue', '接口服务手册'],
   '/system/dev-guide': ['DevGuide.vue', '列表字段扩展'],
   '/system/custom-list-guide': ['CustomListGuide.vue', '自定义列表组件'],
   '/system/custom-form-guide': ['CustomFormGuide.vue', '自定义表单组件']
@@ -86,6 +89,25 @@ for (const [routePath, markers] of Object.entries(documentationRoutes)) {
     assert.ok(routeBlock.includes(marker), `手册或扩展指南入口缺少配置: ${routePath} -> ${marker}`)
   })
 }
+
+const interfaceServiceManualMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V022__interface_service_manual_menu.sql'
+  ),
+  'utf8'
+)
+;[
+  'user_manual_interface_service_001',
+  '/manual/interface-service',
+  'manual/InterfaceServiceManual',
+  'user-manual:interface-service:view'
+].forEach((marker) => {
+  assert.ok(
+    interfaceServiceManualMigration.includes(marker),
+    `接口服务用户手册菜单迁移缺少配置: ${marker}`
+  )
+})
 
 const dynamicRoutePaths = [...routerSource.matchAll(/path:\s*'([^']*:[^']+)'/g)]
   .map((match) => match[1])
@@ -458,10 +480,68 @@ const entityValidationRulesComposable = readFileSync(
   path.join(root, 'src/composables/useEntityValidationRules.js'),
   'utf8'
 )
-const entitySettingsImplementation = `${entitySettingsDesigner}\n${entityValidationRulesComposable}`
+const entityFieldDraftSaveComposable = readFileSync(
+  path.join(root, 'src/composables/useEntityFieldDraftSave.js'),
+  'utf8'
+)
+const entitySettingsImplementation = [
+  entitySettingsDesigner,
+  entityValidationRulesComposable,
+  entityFieldDraftSaveComposable
+].join('\n')
 ;['title="常用属性"', 'title="数据与约束"', 'title="类型专属配置"'].forEach((marker) => {
   assert.ok(entitySettingsDesigner.includes(marker), `实体字段设置缺少频率分组: ${marker}`)
 })
+;[
+  '保存当前属性',
+  'handleSaveSelectedField',
+  'isSelectedFieldDirty',
+  'entityApi.createField',
+  'entityApi.updateField',
+  '其他未保存修改仍保留'
+].forEach((marker) => {
+  assert.ok(
+    entitySettingsImplementation.includes(marker),
+    `实体属性配置缺少单字段保存能力: ${marker}`
+  )
+})
+;[
+  ':class="{ \'readonly-panel\': isSystemEntity }"',
+  'v-if="selectedField && !isSystemEntity"',
+  '系统属性 · 编码与类型锁定',
+  'if (!field || isSystemEntity.value) return false',
+  'if (!field || isSystemEntity.value) return'
+].forEach((marker) => {
+  assert.ok(
+    entitySettingsImplementation.includes(marker),
+    `系统属性应只锁定编码和类型，其他配置允许单字段保存: ${marker}`
+  )
+})
+assert.equal(
+  entityFieldDraftSaveComposable.includes(
+    'isSystemEntity.value || field.isSystem'
+  ),
+  false,
+  '系统属性不能被单字段保存逻辑整体禁用'
+)
+;[
+  'const initializeEntityDesign = async () => {',
+  'await loadEntity()',
+  'await loadCodeRule(entityData.value?.entityCode)',
+  'const buildCodeRuleSavePayload = () => ({',
+  'await codeRuleApi.save(payload, { silentError: true })',
+  'await loadCodeRule(payload.entityCode)'
+].forEach((marker) => {
+  assert.ok(
+    entitySettingsDesigner.includes(marker),
+    `实体编码规则缺少防止新实体保存主键冲突的处理: ${marker}`
+  )
+})
+assert.equal(
+  entitySettingsDesigner.includes('codeRuleApi.save(codeRule.value)'),
+  false,
+  '实体编码规则保存不得把客户端规则主键和序列状态原样回传'
+)
 ;[
   [entitySettingsDesigner, 'designMode', ['label="数据库列名"', '<EntityValidationRuleEditor']],
   [listDesigner, 'configMode', ['title="查询实现"', 'title="扩展渲染"', 'label="数据与显示"']]
@@ -545,9 +625,63 @@ const formDataSourceDialog = readFileSync(
   path.join(root, 'src/components/ui-config/FormDataSourceCompatDialog.vue'),
   'utf8'
 )
+const formSettingsDrawer = readFileSync(
+  path.join(root, 'src/components/form-designer/FormDesignerSettingsDrawer.vue'),
+  'utf8'
+)
+const formNodeDataSettings = readFileSync(
+  path.join(root, 'src/components/form-designer/FormNodeDataSettings.vue'),
+  'utf8'
+)
+const formButtonConfigPanel = readFileSync(
+  path.join(root, 'src/components/FormButtonConfigPanel.vue'),
+  'utf8'
+)
+const formDesignerSurface = [
+  formDesigner,
+  formSettingsDrawer,
+  formNodeDataSettings
+].join('\n')
 assert.equal(formDesigner.includes('designMode'), false, '表单设计器不得再按基础、高级或开发者模式隐藏配置')
-;['扩展管理', 'label="自定义组件"', 'title="数据源"', 'title="校验"', 'title="模式与权限"'].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `表单设计器缺少直接展示的配置项: ${marker}`)
+assert.equal(
+  formNodeDataSettings.includes('formNode.subFormDisplayMode'),
+  false,
+  '子表单页签位置应由 TAB_SET/TAB 容器控制，不应保留重复的显示模式配置'
+)
+assert.equal(
+  formNodeDataSettings.includes('v-model="selectedField.displayMode"'),
+  false,
+  '子表单属性面板不应继续编辑历史 displayMode'
+)
+assert.ok(
+  formNodeDataSettings.includes('formNode.subFormLayout'),
+  '子表单仍需保留分行或表格布局配置'
+)
+;[
+  '表单设置',
+  '基本与布局',
+  '按钮与操作',
+  '数据与事件',
+  '渲染与扩展',
+  '自定义组件',
+  '数据源绑定',
+  '校验规则',
+  '运行模式权限'
+].forEach((marker) => {
+  assert.ok(formDesignerSurface.includes(marker), `表单设计器缺少直接展示的配置项: ${marker}`)
+})
+;[
+  '先确定按钮在哪些模式和位置出现',
+  'label="稳定编码"',
+  'label="权限码"',
+  'label="执行前校验"',
+  'label="二次确认"',
+  'ConfigHelpLabel'
+].forEach((marker) => {
+  assert.ok(
+    formButtonConfigPanel.includes(marker),
+    `自定义按钮配置缺少引导或字段说明: ${marker}`
+  )
 })
 ;[
   "parseJsonConfig(row.inputMappingText",
@@ -604,35 +738,50 @@ assert.ok(
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单发布缺少版本生效提示或本地草稿保护: ${marker}`)
 })
-const formPropertyGroupPatterns = [
-  ['常用属性', /title="常用属性"/],
-  ['布局与层级', /title="布局与层级"/],
-  ['数据源', /title="数据源"/],
-  ['校验', /title="校验"/],
-  ['模式与权限', /title="模式与权限"/],
-  ['关系与子表', /title="关系与子表"/],
-  ['复用与扩展', /title="复用与扩展"/]
-]
-const formPropertyGroupPositions = formPropertyGroupPatterns.map(([label, pattern]) => {
-  const position = pattern.exec(formDesigner)?.index ?? -1
-  assert.ok(position >= 0, `表单属性抽屉缺少分组: ${label}`)
-  return position
+;[
+  'title="基础属性"',
+  'title="布局与层级"',
+  'title="字段数据"',
+  'title="数据源绑定"',
+  'title="默认状态"',
+  'title="校验规则"',
+  'title="运行模式权限"',
+  'title="实体关系与子表"',
+  'title="联动与事件"',
+  'title="复用与扩展"'
+].forEach((marker) => {
+  assert.ok(
+    formDesignerSurface.includes(marker),
+    `表单属性抽屉缺少配置区块: ${marker}`
+  )
 })
-assert.deepEqual(
-  formPropertyGroupPositions,
-  [...formPropertyGroupPositions].sort((left, right) => left - right),
-  '表单属性抽屉应按常用、布局、数据源、校验、模式权限、关系子表、复用扩展排序'
+const basicPropertiesIndex = formDesigner.indexOf('title="基础属性"')
+const parentSelectorIndex = formDesigner.indexOf(
+  ':label="isTabNode ? \'所属 Tab 集合\' : \'父容器\'"'
+)
+const layoutHierarchyIndex = formDesigner.indexOf('title="布局与层级"')
+assert.ok(
+  basicPropertiesIndex >= 0
+    && parentSelectorIndex > basicPropertiesIndex
+    && layoutHierarchyIndex > parentSelectorIndex,
+  '父容器应直接位于基础属性中，不能单独占用布局与层级分组'
 )
 ;[
-  'formSettingsExpanded',
-  'class="form-summary-meta"',
   '表单设置',
+  'showFormSettings',
+  'activeFormSettingsTab',
+  'activeNodeSettingsTab',
+  'availableNodeSettingsTabs',
+  '保存全部草稿',
+  '仅保存当前节点',
   'canConfigureSelectedNodeDataSource',
   'canConfigureSelectedNodeValidation',
   'canConfigureSelectedNodeModeAccess',
-  'canConfigureSelectedNodeRelations'
+  'canConfigureSelectedNodeRelations',
+  'selectedNodeDataSourceBindingCount',
+  '条件显示、条件禁用和条件必填'
 ].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `表单设计器缺少表单级摘要或节点类型动态分组: ${marker}`)
+  assert.ok(formDesignerSurface.includes(marker), `表单设计器缺少重组后的统一配置入口: ${marker}`)
 })
 
 const formNodeDesignItem = readFileSync(path.join(root, 'src/components/FormNodeDesignItem.vue'), 'utf8')
@@ -692,7 +841,22 @@ assert.match(
 assert.match(
   formDesigner,
   /command="SECTION">\s*区块\s*<\/el-dropdown-item>/,
-  '区块容器应位于“添加容器节点”菜单'
+  '区块容器应位于“添加节点”菜单'
+)
+assert.match(
+  formDesigner,
+  /@command="handleAddNodeCommand"[\s\S]{0,500}添加节点[\s\S]{0,500}command="SECTION_TITLE">\s*节\s*<\/el-dropdown-item>/,
+  '节应作为“添加节点”菜单中的节点类型'
+)
+assert.equal(
+  formDesigner.includes('@click="addSection"'),
+  false,
+  '节不应继续占用独立的工具栏按钮'
+)
+assert.match(
+  formDesigner,
+  /function handleAddNodeCommand\(command\)[\s\S]{0,300}command === 'SECTION_TITLE'[\s\S]{0,200}addSection\(\)/,
+  '添加节点菜单中的“节”应复用标准节标题创建逻辑'
 )
 assert.match(
   formDesigner,
@@ -1169,8 +1333,13 @@ assert.equal(
 )
 assert.match(
   nodeConfigPanel,
-  /if \(isUserTask\.value \|\| isStartEvent\.value\) \{[\s\S]{0,500}entityFormIds/,
+  /if \(isUserTask\.value \|\| isStartEvent\.value\) \{[\s\S]{0,800}entityFormId/,
   '默认实体表单只应绑定到开始事件或用户任务'
+)
+assert.equal(
+  nodeConfigPanel.includes('multiple\n                collapse-tags'),
+  false,
+  '流程节点办理表单应为单选'
 )
 assert.equal(
   nodeConfigPanel.includes("delegateExpression: '${ccNotificationDelegate}'"),
@@ -1315,6 +1484,36 @@ for (const [file, markers] of Object.entries(guideExpectations)) {
 }
 
 const configurationArchitectureExpectations = {
+  'src/data/user-manual/interfaceService.js': [
+    '什么时候使用',
+    '怎么配置',
+    'ENTITY_QUERY',
+    'REGISTERED_PROVIDER',
+    'INTEGRATION_CONNECTOR',
+    'STRUCTURED_COMPUTE',
+    'LIST_LOAD',
+    'ENTITY_SELECTED',
+    'BEFORE',
+    'REPLACE',
+    'AFTER',
+    '输入参数映射',
+    '结果回填',
+    '调试接口操作',
+    '保存后页面没有变化',
+    '上线检查清单'
+  ],
+  'src/data/user-manual/openIntegration.js': [
+    '开放集成解决什么问题',
+    'process.definition.read',
+    'process.message.correlate',
+    'Idempotency-Key',
+    'additionalProperties=false',
+    'Flow-Webhook-Signature',
+    'secret://integration/',
+    'INTEGRATION_CONNECTOR',
+    '$context.organizationId',
+    '上线检查清单'
+  ],
   'src/data/user-manual/entity.js': [
     '稳定节点 ID',
     '节点拖拽',
@@ -1341,7 +1540,7 @@ const configurationArchitectureExpectations = {
     '配置迁移幂等与兼容',
     '运行时回退',
     '常用配置优先',
-    '常用属性、布局与层级、数据源、校验、模式与权限、关系与子表、复用与扩展',
+    '基础与布局、状态与校验、数据与关系、联动与事件、复用与扩展',
     '访问范围、选择行为、查询实现',
     '显示与状态、值与计算、选项',
     '更多设置'

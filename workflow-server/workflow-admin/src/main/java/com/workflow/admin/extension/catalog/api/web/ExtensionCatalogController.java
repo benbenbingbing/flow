@@ -51,13 +51,15 @@ public class ExtensionCatalogController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String processConfigId,
-            @RequestParam(required = false) String usage) {
+            @RequestParam(required = false) String usage,
+            @RequestParam(required = false) String entityCode) {
         return Result.success(service.options(
                 capabilityType,
                 keyword,
                 limit,
                 processConfigId,
-                usage));
+                usage,
+                entityCode));
     }
 
     private void requireListAccess() {

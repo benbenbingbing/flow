@@ -1,4 +1,8 @@
 import { isSystemField } from '@/shared/form-runtime'
+import {
+  isEntityStatusField,
+  resolveEntityStatusLabel
+} from '@/shared/entity-status-runtime'
 
 export function parseJsonOptions(optionsJson) {
   if (!optionsJson) return []
@@ -71,7 +75,12 @@ function normalizeMultipleValue(value) {
   return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
-export function formatListFieldValue(row, field, refNameMap = {}) {
+export function formatListFieldValue(
+  row,
+  field,
+  refNameMap = {},
+  entityStatusMap = {}
+) {
   const fieldCode = field?.fieldCode
   if (!fieldCode) return '-'
 
@@ -84,6 +93,10 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
   )
   if (displayValue !== null && displayValue !== undefined && displayValue !== '') {
     return displayValue
+  }
+
+  if (isEntityStatusField(field)) {
+    return resolveEntityStatusLabel(value, entityStatusMap)
   }
 
   const fieldType = (field.fieldType || '').toUpperCase()
@@ -118,11 +131,14 @@ export function formatListFieldValue(row, field, refNameMap = {}) {
           ids = ids.split(',').filter(Boolean)
         }
       }
-      if (!Array.isArray(ids) || !ids.length) return value || '-'
-      return ids.map((id) => refNameMap[`${groupKey}:${id}`] || id).join(', ') || '-'
+      if (!Array.isArray(ids) || !ids.length) return '-'
+      const names = ids
+        .map((id) => refNameMap[`${groupKey}:${id}`])
+        .filter(Boolean)
+      return names.join(', ') || '-'
     }
 
-    return refNameMap[`${groupKey}:${value}`] || value
+    return refNameMap[`${groupKey}:${value}`] || '-'
   }
 
   // 选项类字段

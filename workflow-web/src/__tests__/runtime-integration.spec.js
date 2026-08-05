@@ -72,12 +72,31 @@ assert.equal(formatListFieldValue({ data: { tags: 'dev,qa' } }, multiOptionField
 
 const refField = { fieldCode: 'owner', fieldType: 'USER', refEntityType: 'USER', refEntityId: '' }
 assert.equal(formatListFieldValue({ data: { owner: 'u1' } }, refField, { 'USER::u1': '张三' }), '张三')
+assert.equal(formatListFieldValue({ data: { owner: 'u1' } }, refField), '-')
 
 const multiRefField = { fieldCode: 'reviewers', fieldType: 'MULTI_REFERENCE', refEntityType: 'USER', refEntityId: '' }
 assert.equal(formatListFieldValue({ data: { reviewers: '["u1","u2"]' } }, multiRefField, { 'USER::u1': '张三', 'USER::u2': '李四' }), '张三, 李四')
+assert.equal(formatListFieldValue({ data: { reviewers: '["u1","u2"]' } }, multiRefField), '-')
+assert.equal(
+  formatListFieldValue(
+    {
+      data: {
+        project_id: 'project-1',
+        project_id_display: '统一客户运营平台'
+      }
+    },
+    {
+      fieldCode: 'project_id',
+      fieldType: 'REFERENCE',
+      refEntityType: 'CUSTOM',
+      refEntityId: 'project-entity'
+    }
+  ),
+  '统一客户运营平台'
+)
 
 assert.equal(formatListFieldValue({ data: { lines: [{ id: 1 }, { id: 2 }] } }, { fieldCode: 'lines', fieldType: 'SUB_FORM' }), '2 行')
-assert.equal(formatListFieldValue({ status: 'DRAFT' }, { fieldCode: 'status' }), 'DRAFT')
+assert.equal(formatListFieldValue({ status: 'DRAFT' }, { fieldCode: 'status' }), '草稿')
 assert.equal(formatListFieldValue({ data: { missing: null } }, { fieldCode: 'missing' }), '-')
 
 assert.deepEqual(parseJsonOptions('[{"label":"是","value":true}]'), [{ label: '是', value: true }])
@@ -114,9 +133,8 @@ assert.equal(isRuntimeFieldReadonly({ isReadonly: 0 }, true), true)
 const configA = { fields: [{ fieldCode: 'name', formId: 'old' }, { fieldCode: 'amount' }], buttons: [{ key: 'save' }] }
 const configB = { fields: [{ fieldCode: 'name', formId: 'new' }, { fieldCode: 'remark' }], buttons: [{ key: 'submit' }] }
 assert.deepEqual(normalizeRuntimeFormConfigs({ formConfig: configA }), [configA])
-assert.deepEqual(normalizeRuntimeFormConfigs({ formConfigs: [configA, configB] }), [configA, configB])
-assert.deepEqual(mergeRuntimeFormConfigs([configA, configB]).fields.map((field) => field.fieldCode), ['name', 'amount', 'remark'])
-assert.deepEqual(mergeRuntimeFormConfigs([configA, configB]).buttons.map((button) => button.key), ['save', 'submit'])
+assert.deepEqual(normalizeRuntimeFormConfigs({ formConfigs: [configA, configB] }), [configA])
+assert.equal(mergeRuntimeFormConfigs([configA, configB]), configA)
 assert.deepEqual(
   normalizeEntityRecordForForm({
     id: 'data-1',

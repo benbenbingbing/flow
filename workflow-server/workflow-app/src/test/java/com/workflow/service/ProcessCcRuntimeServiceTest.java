@@ -19,6 +19,8 @@ import com.workflow.process.cc.application.CcRuntimeContext;
 import com.workflow.process.cc.application.ProcessCcConfigService;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import org.flowable.engine.TaskService;
+import org.flowable.task.api.Task;
+import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -134,5 +138,41 @@ class ProcessCcRuntimeServiceTest {
         assertEquals(0, service.trigger(context,
                 "{\"enabled\":true,\"timings\":[\"TASK_COMPLETE\"],\"recipientRules\":[]}"));
         verifyNoInteractions(ccService, notificationPublisher);
+    }
+
+    /** 测试节点 allowManualCc 配置：false 禁止人工知会，缺省配置保持向后兼容并允许 */
+    @Test
+    void manualCcAvailabilityUsesNodeConfiguration() {
+        ProcessCcRuntimeService service = new ProcessCcRuntimeService(
+                taskService,
+                processTaskMapper,
+                operationLogMapper,
+                ccService,
+                notificationPublisher,
+                configService,
+                userMapper,
+                roleMapper,
+                userRoleMapper,
+                groupMapper,
+                userGroupMapper,
+                organizationMapper,
+                new ObjectMapper(),
+                List.of(),
+                personResolverRuntimeService);
+        TaskQuery taskQuery = mock(TaskQuery.class);
+        Task task = mock(Task.class);
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+        when(task.getProcessDefinitionId()).thenReturn("definition-1");
+        when(task.getTaskDefinitionKey()).thenReturn("approve-node");
+
+        when(configService.findConfig("definition-1", "approve-node"))
+                .thenReturn("{\"allowManualCc\":false}");
+        assertFalse(service.isManualCcAllowed("task-1"));
+
+        when(configService.findConfig("definition-1", "approve-node"))
+                .thenReturn("{}");
+        assertTrue(service.isManualCcAllowed("task-1"));
     }
 }

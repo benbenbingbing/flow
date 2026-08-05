@@ -15,14 +15,8 @@
           :model-value="row"
           :readonly="isDisabled"
           :mode="context.mode || (isDisabled ? 'view' : 'edit')"
-          :context="{
-            ...context,
-            releaseResolutionToken: childFormDefinition?.releaseResolutionToken
-              || context.releaseResolutionToken,
-            parentField: field,
-            subFormRowIndex: index
-          }"
-          :data-source-runtime="dataSourceRuntime"
+          :context="childRenderContext(row, index)"
+          :data-source-runtime="childDataSourceRuntime(row, index)"
           @update:model-value="replaceNestedRow(row, $event)"
         />
       </template>
@@ -36,6 +30,15 @@ import SubFormRenderer from '@/components/SubFormRenderer.vue'
 import FormNodeRenderer from '@/components/FormNodeRenderer.vue'
 import { useFormField } from '../composables/useFormField.js'
 import { getEntityFields, getFormRuntimeRelease } from '@/api/entityForm'
+import { safeParseConfig } from '@/shared/config-runtime'
+import {
+  applySubFormFieldInitialization,
+  buildSubFormParentContext,
+  normalizeInputParameterSchema,
+  normalizeSubFormParameterContract,
+  resolveSubFormParameters,
+  validateSubFormParameters
+} from '@/shared/subform-parameter-contract'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -98,6 +101,7 @@ const childFormDefinition = ref(null)
 const childReleaseIdentity = ref('')
 let releaseLoadSequence = 0
 let childInitializationSequence = 0
+let childRuntimeCache = new WeakMap()
 
 watch(
   () => [
@@ -174,6 +178,13 @@ watch(
 )
 
 watch(
+  () => props.dataSourceRuntime,
+  () => {
+    childRuntimeCache = new WeakMap()
+  }
+)
+
+watch(
   () => [
     props.dataSourceRuntime,
     props.field?.dataSourceBindings,
@@ -185,7 +196,15 @@ watch(
     if (Array.isArray(current) && current.length > 0) return
     try {
       const rows = await props.dataSourceRuntime.loadSubformRows(props.field, {
-        context: props.context,
+        parent: parentContext.value,
+        params: resolvedParameters.value,
+        relation: subFormMeta.value,
+        context: {
+          ...props.context,
+          parent: parentContext.value,
+          params: resolvedParameters.value,
+          relation: subFormMeta.value
+        },
         input: {
           fieldCode: props.field?.fieldCode,
           relation: subFormMeta.value
@@ -330,6 +349,31 @@ const runtimeFields = computed(() => {
 })
 
 const hasNodeTree = computed(() => runtimeNodes.value.length > 0)
+const parentContext = computed(() =>
+  buildSubFormParentContext(props.context)
+)
+const parameterContract = computed(() =>
+  normalizeSubFormParameterContract(
+    parsedComponentProps.value.subFormConfig?.parameterContract
+  )
+)
+const childInputParameterSchema = computed(() => {
+  const viewConfig = safeParseConfig(
+    childFormDefinition.value?.viewConfig
+  )
+  return normalizeInputParameterSchema(viewConfig.inputParameterSchema)
+})
+const parameterSource = computed(() => ({
+  parent: parentContext.value,
+  context: props.context
+}))
+const resolvedParameters = computed(() =>
+  resolveSubFormParameters(
+    parameterContract.value,
+    parameterSource.value,
+    childInputParameterSchema.value
+  )
+)
 
 watch(
   [
@@ -349,16 +393,17 @@ watch(
 async function initializeChildRows() {
   const runtime = props.dataSourceRuntime
   const childForm = childFormDefinition.value
-  const rows = fieldValue.value
-  if (!runtime?.initialize || !childForm || !Array.isArray(rows)) return
+  const rows = relationRows(fieldValue.value)
+  if (!runtime?.initialize || !childForm || rows.length === 0) return
 
   const sequence = ++childInitializationSequence
-  const parentRecordId = props.context?.recordId || props.context?.id || 'new'
+  const parentRecordId = parentContext.value.recordId || 'new'
   const fieldCode = props.field?.fieldCode || props.field?.fieldKey || props.field?.id || 'subform'
   try {
     await Promise.all(rows.map(async (row, index) => {
       if (!row || typeof row !== 'object') return
-      await runtime.initialize({
+      const scopedRuntime = childDataSourceRuntime(row, index)
+      await scopedRuntime.initialize({
         form: childForm,
         fields: runtimeFields.value,
         nodes: runtimeNodes.value,
@@ -374,13 +419,119 @@ async function initializeChildRows() {
       })
     }))
     if (sequence === childInitializationSequence) {
-      handleChange(rows)
+      handleChange(fieldValue.value)
     }
   } catch (error) {
     if (sequence === childInitializationSequence) {
       console.warn('子表单数据源初始化失败:', error)
     }
   }
+}
+
+watch(
+  [
+    () => fieldValue.value,
+    parentContext,
+    parameterContract,
+    resolvedParameters
+  ],
+  () => {
+    applyConfiguredFieldInitializers()
+  },
+  { deep: true, flush: 'post', immediate: true }
+)
+
+function applyConfiguredFieldInitializers() {
+  const rows = relationRows(fieldValue.value)
+  if (rows.length === 0) return
+  let changed = false
+  rows.forEach((row, index) => {
+    changed = applySubFormFieldInitialization(
+      row,
+      parameterContract.value,
+      {
+        ...parameterSource.value,
+        params: resolvedParameters.value,
+        row: rowRuntimeContext(row, index)
+      },
+      ['id', subFormMeta.value.childRefFieldCode]
+    ) || changed
+  })
+  if (changed) handleChange(fieldValue.value)
+}
+
+function relationRows(value) {
+  if (Array.isArray(value)) return value
+  return value && typeof value === 'object' ? [value] : []
+}
+
+function rowRuntimeContext(row, index) {
+  return {
+    index,
+    id: row?.id || null,
+    isNew: !row?.id,
+    data: row
+  }
+}
+
+function childRenderContext(row, index) {
+  const rowContext = rowRuntimeContext(row, index)
+  const parameterErrors = validateSubFormParameters(
+    resolvedParameters.value,
+    childInputParameterSchema.value
+  )
+  return {
+    ...props.context,
+    form: childFormDefinition.value || props.context?.form,
+    entityId: childFormDefinition.value?.entityId
+      || subFormMeta.value.refEntityId,
+    recordId: row?.id || null,
+    record: {
+      id: row?.id || null,
+      data: row
+    },
+    releaseResolutionToken:
+      childFormDefinition.value?.releaseResolutionToken
+        || props.context?.releaseResolutionToken,
+    parent: parentContext.value,
+    params: resolvedParameters.value,
+    parameterErrors,
+    row: rowContext,
+    relation: subFormMeta.value,
+    parentField: props.field,
+    subFormRowIndex: index
+  }
+}
+
+function childDataSourceRuntime(row, index) {
+  const runtime = props.dataSourceRuntime
+  if (!runtime?.withContext || !row || typeof row !== 'object') {
+    return runtime
+  }
+  let scoped = childRuntimeCache.get(row)
+  if (!scoped) {
+    scoped = runtime.withContext(() => {
+      const currentIndex = relationRows(fieldValue.value).indexOf(row)
+      const context = childRenderContext(
+        row,
+        currentIndex >= 0 ? currentIndex : index
+      )
+      return {
+        form: childFormDefinition.value,
+        entityId: childFormDefinition.value?.entityId
+          || subFormMeta.value.refEntityId,
+        record: row,
+        recordId: row?.id || `${parentContext.value.recordId || 'new'}:${index}`,
+        parent: context.parent,
+        params: context.params,
+        row: context.row,
+        relation: context.relation,
+        context
+      }
+    })
+    childRuntimeCache.set(row, scoped)
+  }
+  return scoped
 }
 
 function deriveNodeRuntimeFields(nodes, sourceFields) {

@@ -217,36 +217,49 @@ public class EntityCodeGeneratorService {
         if (rule == null || rule.getEntityCode() == null || rule.getEntityCode().isBlank()) {
             throw new RuntimeException("实体编码不能为空");
         }
+        String entityCode = rule.getEntityCode().trim();
+        rule.setEntityCode(entityCode);
         if (rule.getPrefix() != null && rule.getPrefix().length() > EntityCodeRule.MAX_PREFIX_LENGTH) {
             throw new RuntimeException("编码前缀长度不能超过" + EntityCodeRule.MAX_PREFIX_LENGTH + "个字符");
         }
-        entityAccessPolicy.requireDynamicByCode(rule.getEntityCode());
+        entityAccessPolicy.requireDynamicByCodeForUpdate(entityCode);
 
         // 生成示例
         rule.setExample(previewCode(rule));
         
-        Optional<EntityCodeRule> existing = codeRuleMapper.findByEntityCode(rule.getEntityCode());
+        Optional<EntityCodeRule> existing = codeRuleMapper.findByEntityCode(entityCode);
         if (existing.isPresent()) {
             // 更新时保留当前序列号信息
             EntityCodeRule old = existing.get();
             rule.setId(old.getId());
             rule.setCurrentSeq(old.getCurrentSeq());
             rule.setSeqDate(old.getSeqDate());
+            rule.setCreatedAt(old.getCreatedAt());
+            rule.setUpdatedAt(null);
             codeRuleMapper.updateById(rule);
         } else {
+            // 新规则的主键只能由服务端生成，不能复用客户端或旧实体残留的ID。
+            rule.setId(null);
             rule.setCurrentSeq(0);
             rule.setSeqDate("");
+            rule.setCreatedAt(null);
+            rule.setUpdatedAt(null);
             codeRuleMapper.insert(rule);
         }
         
-        log.info("保存编码规则：entityCode={}", LogValue.safe(rule.getEntityCode()));
+        log.info("保存编码规则：entityCode={}", LogValue.safe(entityCode));
     }
     
     /**
      * 获取实体的编码规则
      */
     public EntityCodeRule getRule(String entityCode) {
-        return codeRuleMapper.findByEntityCode(entityCode)
-                .orElseGet(() -> EntityCodeRule.getDefault(entityCode));
+        if (entityCode == null || entityCode.isBlank()) {
+            throw new RuntimeException("实体编码不能为空");
+        }
+        String normalizedEntityCode = entityCode.trim();
+        entityAccessPolicy.requireDynamicByCode(normalizedEntityCode);
+        return codeRuleMapper.findByEntityCode(normalizedEntityCode)
+                .orElseGet(() -> EntityCodeRule.getDefault(normalizedEntityCode));
     }
 }

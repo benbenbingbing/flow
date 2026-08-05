@@ -263,6 +263,8 @@ const runtimeField = computed(() => {
     isRequired: nodeProps.required === true ? 1 : (linked?.isRequired || 0),
     isReadonly: nodeProps.readonly === true ? 1 : (linked?.isReadonly || 0),
     isHidden: nodeProps.hidden === true ? 1 : (linked?.isHidden || 0),
+    options: nodeProps.options ?? linked?.options,
+    optionsJson: nodeProps.optionsJson ?? linked?.optionsJson,
     componentProps: Object.keys(componentProps).length ? componentProps : linked?.componentProps,
     relationType: nodeProps.relationType
       || linked?.relationType

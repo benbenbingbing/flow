@@ -122,6 +122,12 @@
           </el-form-item>
 
           <el-form-item label="执行时机" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="执行时机"
+                help-key="process.actionTriggerTiming"
+              />
+            </template>
             <el-select
               v-model="editingAction.triggerTiming"
               :disabled="timingOptions.length === 1"
@@ -144,6 +150,12 @@
           </el-form-item>
 
           <el-form-item label="执行方式" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="执行方式"
+                help-key="process.actionExecutionMode"
+              />
+            </template>
             <el-radio-group v-model="editingAction.executionMode" @change="onExecutionModeChange">
               <el-radio-button
                 value="IN_TRANSACTION"
@@ -192,6 +204,12 @@
           </template>
 
           <el-form-item label="失败策略" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="失败策略"
+                help-key="process.actionFailurePolicy"
+              />
+            </template>
             <el-select v-model="editingAction.failurePolicy" style="width: 100%">
               <el-option
                 v-for="option in failurePolicyOptions"
@@ -300,6 +318,7 @@ import { ArrowDown, ArrowUp, Delete, Plus, Setting } from '@element-plus/icons-v
 import { processActionApi } from '@/api/processAction'
 import { extensionCatalogApi } from '@/api/system/extension'
 import { useUserStore } from '@/stores/user'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'

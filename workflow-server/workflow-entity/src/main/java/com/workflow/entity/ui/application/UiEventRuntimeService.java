@@ -332,6 +332,13 @@ public class UiEventRuntimeService {
                 execute.setListKey(chain.listKey());
                 execute.setInput(stringMap(inputMap));
                 execute.setContext(runtimeContext(request, state));
+                Integer pageNum = positiveInteger(
+                        mutableInput(state).get("pageNum"));
+                Integer pageSize = positiveInteger(
+                        mutableInput(state).get("pageSize"));
+                execute.setPageNum(pageNum);
+                execute.setPageSize(pageSize == null
+                        ? null : Math.min(200, pageSize));
                 execute.setServerIdempotencyKey(
                         request.getServerIdempotencyKey());
                 raw = dataSourceService.executeOperation(
@@ -502,5 +509,21 @@ public class UiEventRuntimeService {
             }
         }
         return null;
+    }
+
+    private Integer positiveInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return Math.max(1, number.intValue());
+        }
+        try {
+            return Math.max(
+                    1,
+                    Integer.parseInt(String.valueOf(value)));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

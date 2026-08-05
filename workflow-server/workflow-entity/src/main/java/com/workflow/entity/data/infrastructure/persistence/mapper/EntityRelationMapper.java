@@ -75,4 +75,22 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
      */
     @Delete("DELETE FROM entity_relation WHERE parent_entity_id = #{parentEntityId}")
     void deleteByParentEntityId(@Param("parentEntityId") String parentEntityId);
+
+    /**
+     * 根据父实体 ID 与父字段编码物理删除关系。
+     *
+     * <p>用于实体设计器单字段保存，只重建当前字段对应的关系，
+     * 不影响同一实体的其他子表单关系。</p>
+     *
+     * @param parentEntityId  父实体 ID
+     * @param parentFieldCode 父字段编码
+     */
+    @Delete("""
+            DELETE FROM entity_relation
+            WHERE parent_entity_id = #{parentEntityId}
+              AND parent_field_code = #{parentFieldCode}
+            """)
+    void deleteByParentField(
+            @Param("parentEntityId") String parentEntityId,
+            @Param("parentFieldCode") String parentFieldCode);
 }

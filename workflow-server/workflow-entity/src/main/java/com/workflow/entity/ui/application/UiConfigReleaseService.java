@@ -7,6 +7,7 @@ import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import com.workflow.entity.list.application.EntityListConfigService;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -131,6 +132,7 @@ public class UiConfigReleaseService {
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final EntityFormService formService;
     private final EntityFormNodeService formNodeService;
+    private final EntityFormConfigurationValidator formConfigurationValidator;
     private final UiExtensionDefinitionService extensionDefinitionService;
     private final EntityListConfigService listConfigService;
     private final EntityListConfigurationValidator listConfigurationValidator;
@@ -2295,6 +2297,7 @@ public class UiConfigReleaseService {
             Map<String, Object> snapshot) {
         if (FORM.equals(configType)) {
             formNodeService.validateTree(configId);
+            formConfigurationValidator.validateForm(runtimeForm(snapshot));
             validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
@@ -2315,6 +2318,10 @@ public class UiConfigReleaseService {
         requireType(configType);
         if (FORM.equals(configType)) {
             validateFormSnapshotTree(configId, snapshot);
+            EntityForm snapshotForm = runtimeForm(snapshot);
+            formConfigurationValidator.validateForm(snapshotForm);
+            formNodeService.validateSnapshotSubFormParameterContracts(
+                    snapshotForm);
             validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
@@ -2339,6 +2346,15 @@ public class UiConfigReleaseService {
                     "FORM",
                     form.getCustomComponent(),
                     form.getCustomComponentVersion());
+            EntityDefinition entity =
+                    entityDefinitionMapper.selectById(form.getEntityId());
+            if (entity == null) {
+                throw new IllegalArgumentException(
+                        "表单所属实体不存在: " + form.getEntityId());
+            }
+            extensionDefinitionService.validateEntityScope(
+                    definition,
+                    entity.getEntityCode());
             extensionDefinitionService.validateCompatibility(
                     definition,
                     null,

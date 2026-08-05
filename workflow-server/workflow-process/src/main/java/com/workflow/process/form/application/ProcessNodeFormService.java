@@ -15,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 流程节点表单绑定服务
@@ -49,12 +51,13 @@ public class ProcessNodeFormService {
     }
 
     /**
-     * 查询节点的全部表单绑定
+     * 查询节点表单绑定列表。
+     *
+     * <p>返回列表是为兼容已有接口，当前业务规则下最多返回一条。</p>
      */
     public List<ProcessNodeForm> getListByNodeId(String processConfigId, String nodeId) {
-        List<ProcessNodeForm> list = nodeFormMapper.selectListByNodeId(processConfigId, nodeId);
-        list.forEach(this::fillFormInfo);
-        return list;
+        ProcessNodeForm nodeForm = getByNodeId(processConfigId, nodeId);
+        return nodeForm == null ? List.of() : List.of(nodeForm);
     }
     
     /**
@@ -128,12 +131,15 @@ public class ProcessNodeFormService {
         
         // 保存新绑定
         if (nodeForms != null && !nodeForms.isEmpty()) {
-            for (int i = 0; i < nodeForms.size(); i++) {
-                ProcessNodeForm nodeForm = nodeForms.get(i);
-                nodeForm.setProcessConfigId(processConfigId);
-                if (nodeForm.getSortOrder() == null) {
-                    nodeForm.setSortOrder(i);
+            Map<String, ProcessNodeForm> bindingByNode = new LinkedHashMap<>();
+            for (ProcessNodeForm nodeForm : nodeForms) {
+                if (nodeForm != null && nodeForm.getNodeId() != null) {
+                    bindingByNode.putIfAbsent(nodeForm.getNodeId(), nodeForm);
                 }
+            }
+            for (ProcessNodeForm nodeForm : bindingByNode.values()) {
+                nodeForm.setProcessConfigId(processConfigId);
+                nodeForm.setSortOrder(0);
                 nodeForm.setCreateTime(LocalDateTime.now());
                 nodeForm.setUpdateTime(LocalDateTime.now());
                 nodeFormMapper.insert(nodeForm);

@@ -384,14 +384,13 @@ const props = defineProps({
   allFields: {
     type: Array,
     default: () => []
-  }
+  },
+  initialTab: { type: String, default: 'display-state' }
 })
 
 const emit = defineEmits(['save'])
-
 const activeTab = ref('display-state')
 
-// 配置数据
 const config = ref({
   // 显隐控制
   visibilityEnabled: false,
@@ -425,7 +424,6 @@ const config = ref({
   requiredCondition: ''
 })
 
-// 当前字段的 key
 const currentFieldKey = computed(() => props.field?.fieldKey || props.field?.fieldCode)
 
 // 可用的字段（排除当前字段）
@@ -654,8 +652,10 @@ function resetConfig() {
   valueMappingRules.value = []
 }
 
-// 监听字段变化，加载已有配置（兼容内存、componentProps、根属性）
-watch(() => props.field, (newField) => {
+watch([() => props.field, () => props.initialTab], ([newField, initialTab]) => {
+  if (['display-state', 'value-calculation', 'options'].includes(initialTab)) {
+    activeTab.value = initialTab
+  }
   const rules = LinkageEngine.getFieldLinkageRules(newField)
   if (Object.keys(rules).length > 0) {
     parseLinkageRules(rules)

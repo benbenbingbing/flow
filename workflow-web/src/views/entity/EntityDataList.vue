@@ -38,6 +38,8 @@
         :listFields="listFields"
         :queryFields="queryFields"
         :queryForm="queryForm"
+        :entityStatusMap="entityStatusMap"
+        :entityStatusOptions="entityStatusOptions"
         :dataList="dataList"
         :loading="loading"
         :tableLoading="tableLoading"
@@ -131,6 +133,7 @@
       :entityFields="entityFields"
       :defaultForm="defaultForm"
       :listKey="listConfig?.listKey"
+      :entity-status-options="entityStatusOptions"
       @success="loadDataList"
     />
 
@@ -141,6 +144,7 @@
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
       :listKey="listConfig?.listKey"
+      :entity-status-options="entityStatusOptions"
       @success="loadDataList"
     />
 
@@ -170,6 +174,13 @@ import {
 } from '@/utils/listButtonPermission'
 import { formatDateValue, getCellValue } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
+import { withListButtonTypeDefault } from '@/shared/list-config-design'
+import {
+  buildEntityStatusMap,
+  getEffectiveEntityStatusOptions,
+  resolveEntityStatusLabel,
+  withEntityStatusFieldOptions
+} from '@/shared/entity-status-runtime'
 import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
 import EntityDataFormDialog from './components/EntityDataFormDialog.vue'
@@ -272,7 +283,7 @@ const queryFields = computed(() => {
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
         const queryConfig = safeParseConfig(f.queryConfig)
-        return {
+        return withEntityStatusFieldOptions({
           ...f,
           componentType: queryConfig.componentType || originField?.componentType || f.componentType,
           placeholder: queryConfig.placeholder || f.placeholder,
@@ -282,15 +293,19 @@ const queryFields = computed(() => {
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId,
           queryType: f.queryType || 'LIKE'
-        }
+        }, entityStatusOptions.value)
       })
       .filter((f: any) => !['SUB_FORM', 'SUB_FORM_LIST'].includes((f.componentType || f.fieldType || '').toUpperCase()))
   }
-  return entityFields.value.filter((f: any) => {
-    const type = (f.componentType || f.fieldType || '').toUpperCase()
-    return f.runtimeReadable !== false
-      && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
-  })
+  return entityFields.value
+    .filter((f: any) => {
+      const type = (f.componentType || f.fieldType || '').toUpperCase()
+      return f.runtimeReadable !== false
+        && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
+    })
+    .map((field: any) =>
+      withEntityStatusFieldOptions(field, entityStatusOptions.value)
+    )
 })
 
 // 列表显示字段（使用列表配置）
@@ -332,7 +347,10 @@ const customListRuntime = computed(() => ({
   versions: handleVersions,
   exportData: handleExport,
   canAction,
-  getActionReason
+  getActionReason,
+  entityStatusMap: entityStatusMap.value,
+  entityStatusOptions: entityStatusOptions.value,
+  getStatusText
 }))
 
 function buttonOrder(button: any) {
@@ -354,6 +372,7 @@ const toolbarButtons = computed(() => {
   ]
   const config = safeParseConfig(listConfig.value?.toolbarConfig, null)
   const buttons = (config && config.length > 0 ? config : DEFAULT_TOOLBAR_BUTTONS.map((b: any) => ({ ...b })))
+    .map((button: any) => withListButtonTypeDefault(button))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
     .filter((b: any) => {
@@ -389,6 +408,7 @@ const rowActionButtons = computed(() => {
   ]
   const config = safeParseConfig(listConfig.value?.rowActionConfig, null)
   const buttons = (config && config.length > 0 ? config : DEFAULT_ROW_ACTION_BUTTONS.map((b: any) => ({ ...b })))
+    .map((button: any) => withListButtonTypeDefault(button))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
@@ -492,21 +512,20 @@ async function loadRefEntityNames() {
 }
 
 // 实体状态码 -> 状态名称映射
-const entityStatusMap = ref<Record<string, string>>({})
+const entityStatusOptions = ref<any[]>(getEffectiveEntityStatusOptions())
+const entityStatusMap = ref<Record<string, string>>(
+  buildEntityStatusMap(entityStatusOptions.value)
+)
 
 async function loadEntityStatusMap() {
   if (!entityCode.value) return
   try {
     const list = await getEntityStatusList(entityCode.value)
-    const map: Record<string, string> = {}
-    ;(list || []).forEach((s: any) => {
-      if (s.statusCode) {
-        map[s.statusCode] = s.statusName || s.statusCode
-      }
-    })
-    entityStatusMap.value = map
+    entityStatusOptions.value = getEffectiveEntityStatusOptions(list || [])
+    entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   } catch (e) {
-    entityStatusMap.value = {}
+    entityStatusOptions.value = getEffectiveEntityStatusOptions()
+    entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   }
 }
 
@@ -526,17 +545,7 @@ const getStatusType = (status: string) => {
 
 // 获取状态文本（优先读取实体状态配置）
 const getStatusText = (status: string) => {
-  if (!status) return ''
-  const builtIn: Record<string, string> = {
-    DRAFT: '草稿',
-    PENDING: '审批中',
-    APPROVED: '已通过',
-    REJECTED: '已驳回',
-    TERMINATED: '已终止',
-    WITHDRAWN: '已撤回',
-    COMPLETED: '已完成'
-  }
-  return entityStatusMap.value[status] || builtIn[status] || '未配置状态'
+  return resolveEntityStatusLabel(status, entityStatusMap.value)
 }
 
 // 格式化日期

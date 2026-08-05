@@ -16,6 +16,8 @@ public record UiExtensionCatalogItem(
         Integer version,
         Integer snapshotVersion,
         String status,
+        String visibilityScope,
+        Set<String> entityCodes,
         Set<String> supportedModes,
         Set<String> supportedNodeTypes,
         Set<String> supportedBindings,

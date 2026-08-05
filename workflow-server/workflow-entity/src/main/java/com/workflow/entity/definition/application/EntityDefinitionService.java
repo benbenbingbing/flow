@@ -7,7 +7,6 @@ import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.contracts.audit.AuditAction;
@@ -36,7 +35,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.stream.Collectors;
 /**
  * 实体定义服务
@@ -59,8 +57,8 @@ public class EntityDefinitionService {
     private final EntitySchemaPublishLock schemaPublishLock;
     private final EntityFieldFileItemService fileItemService;
     private final EntityFieldOptionService fieldOptionService;
-    private final ObjectMapper objectMapper;
     private final EntityFieldValidationRuleService fieldValidationRuleService;
+    private final EntityFieldDefinitionService fieldDefinitionService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
@@ -225,7 +223,10 @@ public class EntityDefinitionService {
                 field.setEntityId(entity.getId());
                 fieldMapper.insert(field);
             }
-            syncRelations(entity, dto.getFields(), fieldMapper.findByEntityId(entity.getId()));
+            fieldDefinitionService.syncRelations(
+                    entity,
+                    dto.getFields(),
+                    fieldMapper.findByEntityId(entity.getId()));
         }
 
         entityPermissionCatalogService.synchronizeEntity(entity);
@@ -526,78 +527,32 @@ public class EntityDefinitionService {
 
                 if (existingFieldMap.containsKey(fieldCode)) {
                     EntityField existingField = existingFieldMap.get(fieldCode);
-                    if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
-                        // 系统字段只允许更新部分属性（名称、必填、默认值、选项、排序等），不允许修改编码和类型
-                        existingField.setFieldName(fieldDTO.getFieldName());
-                        existingField.setIsRequired(fieldDTO.getIsRequired());
-                        existingField.setDefaultValue(fieldDTO.getDefaultValue());
-                        existingField.setOptionsJson(fieldDTO.getOptionsJson());
-                        existingField.setDictType(fieldDTO.getDictType());
-                        existingField.setValueStorage(resolveValueStorage(fieldDTO));
-                        existingField.setValidateRules(fieldDTO.getValidateRules());
-                        existingField.setSortOrder(fieldDTO.getSortOrder());
-                    } else {
-                        // 非系统字段，更新字段定义（仅更新元数据，不修改数据库列）
-                        existingField.setFieldName(fieldDTO.getFieldName());
-                        existingField.setFieldLength(fieldDTO.getFieldLength());
-                        existingField.setFieldPrecision(fieldDTO.getFieldPrecision());
-                        existingField.setIsRequired(fieldDTO.getIsRequired());
-                        existingField.setIsUnique(fieldDTO.getIsUnique());
-                        existingField.setDefaultValue(fieldDTO.getDefaultValue());
-                        existingField.setOptionsJson(fieldDTO.getOptionsJson());
-                        existingField.setDictType(fieldDTO.getDictType());
-                        existingField.setValueStorage(resolveValueStorage(fieldDTO));
-                        existingField.setValidateRules(fieldDTO.getValidateRules());
-                        existingField.setSortOrder(fieldDTO.getSortOrder());
-                        existingField.setDbColumnName(toSnakeCase(fieldDTO.getFieldCode()));
-                        existingField.setFileTypes(fieldDTO.getFileTypes());
-                        existingField.setFileMaxSize(fieldDTO.getFileMaxSize());
-                        existingField.setFileMaxCount(fieldDTO.getFileMaxCount());
-                        // 实体引用/子表单字段
-                        existingField.setRefEntityId(firstText(fieldDTO.getChildEntityId(), fieldDTO.getRefEntityId()));
-                        if (fieldDTO.getRefEntityType() != null && !fieldDTO.getRefEntityType().isEmpty()) {
-                            existingField.setRefEntityType(EntityField.RefEntityType.valueOf(fieldDTO.getRefEntityType()));
-                        } else if (isRelationField(fieldDTO)) {
-                            existingField.setRefEntityType(EntityField.RefEntityType.CUSTOM);
-                        } else {
-                            existingField.setRefEntityType(null);
-                        }
-                        existingField.setDisplayMode(fieldDTO.getDisplayMode());
-                        existingField.setRefFieldCode(firstText(fieldDTO.getChildRefFieldCode(), fieldDTO.getRefFieldCode()));
-                    }
-                    fieldMapper.updateById(existingField);
-                    synchronizeFieldOptions(existingField, fieldDTO);
-                    // 级联保存附件项配置
-                    fileItemService.saveFileItems(existingField.getId(), fieldDTO.getFileItems());
+                    fieldDefinitionService.updateDefinition(
+                            existingField,
+                            fieldDTO);
                 } else {
                     // 跳过系统字段的新增（系统字段已在初始化时创建）
                     if (Boolean.TRUE.equals(fieldDTO.getIsSystem())) {
                         continue;
                     }
                     // 新字段，添加到字段定义表（不立即同步到数据表，等发布时同步）
-                    EntityField field = convertToEntity(fieldDTO);
-                    field.setId(null);
-                    field.setEntityId(id);
-                    field.setIsSystem(false);
-                    field.setEditable(true);
-                    field.setIsPublished(false); // 新字段标记为未发布
-                    fieldMapper.insert(field);
-                    synchronizeFieldOptions(field, fieldDTO);
-                    // 级联保存附件项配置
-                    fileItemService.saveFileItems(field.getId(), fieldDTO.getFileItems());
+                    fieldDefinitionService.createDefinition(id, fieldDTO);
                     
                     // 注意：不再自动添加字段到数据表，只有点击发布时才同步
                 }
             }
 
-            syncRelations(existing, dto.getFields(), fieldMapper.findByEntityId(id));
+            fieldDefinitionService.syncRelations(
+                    existing,
+                    dto.getFields(),
+                    fieldMapper.findByEntityId(id));
             
             // Physical schema changes are applied only by the explicitly locked publish flow.
         }
         
         return convertToDTO(existing);
     }
-    
+
     /**
      * 删除实体定义
      */
@@ -902,72 +857,9 @@ public class EntityDefinitionService {
         return convertToDTO(entity, processName, process);
     }
 
-    private void syncRelations(EntityDefinition parent, List<EntityFieldDTO> fieldDtos, List<EntityField> savedFields) {
-        if (parent == null || parent.getId() == null) {
-            return;
-        }
-        relationMapper.deleteByParentEntityId(parent.getId());
-        if (fieldDtos == null || fieldDtos.isEmpty()) {
-            return;
-        }
-
-        Map<String, EntityField> fieldMap = savedFields == null ? new HashMap<>() : savedFields.stream()
-                .filter(field -> field.getFieldCode() != null)
-                .collect(Collectors.toMap(EntityField::getFieldCode, field -> field, (left, right) -> left));
-
-        for (EntityFieldDTO fieldDTO : fieldDtos) {
-            if (!isRelationField(fieldDTO)) {
-                continue;
-            }
-
-            String childEntityId = firstText(fieldDTO.getChildEntityId(), fieldDTO.getRefEntityId());
-            String childRefFieldCode = firstText(fieldDTO.getChildRefFieldCode(), fieldDTO.getRefFieldCode());
-            if (childEntityId == null) {
-                throw new RuntimeException("请选择子实体: " + fieldDTO.getFieldCode());
-            }
-            if (childRefFieldCode == null) {
-                throw new RuntimeException("请选择子表外键: " + fieldDTO.getFieldCode());
-            }
-
-            EntityDefinition child = entityMapper.selectById(childEntityId);
-            if (child == null) {
-                throw new RuntimeException("子实体不存在: " + childEntityId);
-            }
-
-            EntityField savedField = fieldMap.get(fieldDTO.getFieldCode());
-            EntityRelation relation = new EntityRelation();
-            relation.setParentEntityId(parent.getId());
-            relation.setParentEntityCode(parent.getEntityCode());
-            relation.setParentFieldId(savedField != null ? savedField.getId() : fieldDTO.getId());
-            relation.setParentFieldCode(fieldDTO.getFieldCode());
-            relation.setRelationCode(firstText(fieldDTO.getRelationCode(), parent.getEntityCode() + "_" + fieldDTO.getFieldCode()));
-            relation.setRelationName(firstText(fieldDTO.getRelationName(), fieldDTO.getFieldName()));
-            relation.setChildEntityId(child.getId());
-            relation.setChildEntityCode(child.getEntityCode());
-            relation.setChildRefFieldCode(childRefFieldCode);
-            relation.setRelationType(resolveRelationType(fieldDTO));
-            relation.setCascadeDelete(fieldDTO.getCascadeDelete() == null ? true : fieldDTO.getCascadeDelete());
-            relation.setRequired(fieldDTO.getRelationRequired() != null ? fieldDTO.getRelationRequired() : fieldDTO.getIsRequired());
-            relation.setEnabled(true);
-            relation.setDeleted(0);
-            relation.setSortOrder(fieldDTO.getSortOrder());
-            relationMapper.insert(relation);
-        }
-    }
-
     private boolean isRelationField(EntityFieldDTO fieldDTO) {
         return fieldDTO != null && (fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM
                 || fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM_LIST);
-    }
-
-    private EntityRelation.RelationType resolveRelationType(EntityFieldDTO fieldDTO) {
-        String relationType = firstText(fieldDTO.getRelationType(), null);
-        if (relationType != null) {
-            return EntityRelation.RelationType.valueOf(relationType);
-        }
-        return fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM
-                ? EntityRelation.RelationType.ONE_TO_ONE
-                : EntityRelation.RelationType.ONE_TO_MANY;
     }
 
     private String firstText(String first, String second) {
@@ -996,17 +888,26 @@ public class EntityDefinitionService {
             if (relation == null) {
                 continue;
             }
-            field.setRelationCode(relation.getRelationCode());
-            field.setRelationName(relation.getRelationName());
-            field.setChildEntityId(relation.getChildEntityId());
-            field.setChildEntityCode(relation.getChildEntityCode());
-            field.setChildRefFieldCode(relation.getChildRefFieldCode());
-            field.setRelationType(relation.getRelationType() != null ? relation.getRelationType().name() : null);
-            field.setCascadeDelete(relation.getCascadeDelete());
-            field.setRelationRequired(relation.getRequired());
-            field.setRefEntityId(relation.getChildEntityId());
-            field.setRefFieldCode(relation.getChildRefFieldCode());
+            applyRelationMetadata(field, relation);
         }
+    }
+
+    private void applyRelationMetadata(
+            EntityFieldDTO field,
+            EntityRelation relation) {
+        field.setRelationCode(relation.getRelationCode());
+        field.setRelationName(relation.getRelationName());
+        field.setChildEntityId(relation.getChildEntityId());
+        field.setChildEntityCode(relation.getChildEntityCode());
+        field.setChildRefFieldCode(relation.getChildRefFieldCode());
+        field.setRelationType(
+                relation.getRelationType() != null
+                        ? relation.getRelationType().name()
+                        : null);
+        field.setCascadeDelete(relation.getCascadeDelete());
+        field.setRelationRequired(relation.getRequired());
+        field.setRefEntityId(relation.getChildEntityId());
+        field.setRefFieldCode(relation.getChildRefFieldCode());
     }
 
     // 转换方法
@@ -1065,13 +966,6 @@ public class EntityDefinitionService {
         return dto;
     }
     
-    private EntityFieldDTO convertToDTO(EntityField field) {
-        EntityDefinition entity = field.getEntityId() == null
-                ? null
-                : entityMapper.selectById(field.getEntityId());
-        return convertToDTO(entity, field);
-    }
-
     private EntityFieldDTO convertToDTO(
             EntityDefinition entity,
             EntityField field) {
@@ -1122,7 +1016,6 @@ public class EntityDefinitionService {
                                 field.getFieldCode());
         dto.setRefEntityType(
                 referenceType == null ? null : referenceType.name());
-        dto.setDisplayMode(field.getDisplayMode());
         dto.setRefFieldCode(field.getRefFieldCode());
         // 加载文件字段的多组附件配置
         if (field.getFieldType() == EntityField.FieldType.FILE || field.getFieldType() == EntityField.FieldType.IMAGE) {
@@ -1136,21 +1029,6 @@ public class EntityDefinitionService {
         return dto;
     }
 
-    private void synchronizeFieldOptions(EntityField field, EntityFieldDTO dto) {
-        List<Map<String, Object>> options = dto.getOptions();
-        if (options == null && StringUtils.isNotBlank(dto.getOptionsJson())) {
-            options = fieldOptionService.parseDocument(dto.getOptionsJson());
-        }
-        if (options == null) {
-            return;
-        }
-        fieldOptionService.replace(field.getId(), options);
-        field.setOptionsJson(options.isEmpty()
-                ? null
-                : objectMapper.valueToTree(options).toString());
-        fieldMapper.updateById(field);
-    }
-    
     private EntityDefinition convertToEntity(EntityDefinitionDTO dto) {
         EntityDefinition entity = new EntityDefinition();
         entity.setId(dto.getId());
@@ -1202,7 +1080,6 @@ public class EntityDefinitionService {
         } else if (isRelationField(dto)) {
             field.setRefEntityType(EntityField.RefEntityType.CUSTOM);
         }
-        field.setDisplayMode(dto.getDisplayMode());
         field.setRefFieldCode(firstText(dto.getChildRefFieldCode(), dto.getRefFieldCode()));
         return field;
     }

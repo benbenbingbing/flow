@@ -37,6 +37,20 @@ class SystemEntityFieldPolicyTest {
     }
 
     @Test
+    void dynamicEntitySystemFieldsRemainAvailableToUiConfiguration() {
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("requirement");
+        entity.setStorageMode(
+                EntityDefinition.StorageMode.DYNAMIC);
+
+        EntityField field = field("status");
+        field.setIsSystem(true);
+
+        assertTrue(policy.isUiConfigurable(entity, field));
+        assertTrue(policy.isRuntimeReadable(entity, field));
+    }
+
+    @Test
     void relationshipTablesRequireBothEndpointPermissions() {
         assertEquals(
                 List.of(

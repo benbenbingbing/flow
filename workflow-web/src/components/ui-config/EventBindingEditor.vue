@@ -119,6 +119,12 @@
             </el-select>
           </el-form-item>
           <el-form-item label="继承方式" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="继承方式"
+                help-key="uiEvent.inheritanceMode"
+              />
+            </template>
             <el-segmented
               v-model="editor.inheritanceMode"
               :options="inheritanceOptions"
@@ -210,6 +216,12 @@
 
             <div class="step-grid">
               <el-form-item label="执行位置">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="执行位置"
+                    help-key="uiEvent.stepStrategy"
+                  />
+                </template>
                 <el-select v-model="step.strategy" @change="normalizeReplace(step)">
                   <el-option label="前置" value="BEFORE" />
                   <el-option label="替代平台处理" value="REPLACE" />
@@ -256,6 +268,12 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="失败策略">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="失败策略"
+                    help-key="uiEvent.failurePolicy"
+                  />
+                </template>
                 <el-select v-model="step.failurePolicy">
                   <el-option label="停止执行" value="STOP" />
                   <el-option label="记录后继续" value="CONTINUE" />
@@ -333,6 +351,7 @@ import {
   Refresh
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
 import { uiDataSourceApi, uiEventBindingApi } from '@/api/uiConfig'
 

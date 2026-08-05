@@ -54,6 +54,20 @@ export const entityApi = {
   },
 
   /**
+   * 新增单个实体字段，不提交其他字段草稿。
+   */
+  createField(entityId, data) {
+    return request.post(`/entity/${entityId}/fields`, data)
+  },
+
+  /**
+   * 更新单个实体字段，不提交其他字段草稿。
+   */
+  updateField(entityId, fieldId, data) {
+    return request.post(`/entity/${entityId}/fields/${fieldId}/update`, data)
+  },
+
+  /**
    * 删除实体定义
    */
   delete(id) {

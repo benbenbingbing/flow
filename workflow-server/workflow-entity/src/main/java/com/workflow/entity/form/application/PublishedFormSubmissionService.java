@@ -1,6 +1,7 @@
 package com.workflow.entity.form.application;
 
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceService;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -31,12 +32,12 @@ import java.util.Map;
 public class PublishedFormSubmissionService {
 
     private static final String BEFORE_SUBMIT = "BEFORE_SUBMIT";
-
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final EntityFormMapper formMapper;
     private final UiConfigReleaseService releaseService;
     private final UiDataSourceService dataSourceService;
     private final JsonDocumentCodec codec;
+    private final UiDataSourceDefinitionValidator schemaValidator;
 
     /**
      * 应用实体默认表单的默认值与前置数据源（使用独立执行上下文）。
@@ -211,10 +212,32 @@ public class PublishedFormSubmissionService {
                         releaseId,
                         releaseVersion,
                         resolutionContext);
+        return applyResolvedForm(
+                resolved,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext,
+                resolutionContext,
+                PublishedSubFormSubmissionProcessor.Context.root(),
+                0);
+    }
+
+    private Map<String, Object> applyResolvedForm(
+            ResolvedEntityFormRelease resolved,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext,
+            UiRuntimeResolutionContext resolutionContext,
+            PublishedSubFormSubmissionProcessor.Context nestedContext,
+            int depth) {
         EntityForm form = resolved.form();
         if (form == null) {
             throw new IllegalArgumentException(
-                    "已发布表单不存在: " + formId);
+                    "已发布表单不存在");
         }
         Map<String, Object> result = mutable(submittedData);
         Map<String, Object> formBindings =
@@ -233,7 +256,8 @@ public class PublishedFormSubmissionService {
                 mode,
                 result,
                 executionContext,
-                resolved);
+                resolved,
+                nestedContext);
         List<EntityFormNode> nodes =
                 form.getNodes() == null
                         ? List.of() : form.getNodes();
@@ -255,7 +279,20 @@ public class PublishedFormSubmissionService {
                         mode,
                         result,
                         executionContext,
-                        resolved);
+                        resolved,
+                        nestedContext);
+                subFormSubmissionProcessor().apply(
+                        node,
+                        form,
+                        entityCode,
+                        recordId,
+                        mode,
+                        result,
+                        executionContext,
+                        resolutionContext,
+                        nestedContext,
+                        depth,
+                        this::applyResolvedForm);
             }
         } else {
             for (EntityFormField field :
@@ -271,7 +308,8 @@ public class PublishedFormSubmissionService {
                         mode,
                         result,
                         executionContext,
-                        resolved);
+                        resolved,
+                        nestedContext);
             }
         }
         return result;
@@ -286,7 +324,8 @@ public class PublishedFormSubmissionService {
             String mode,
             Map<String, Object> record,
             FormSubmissionExecutionContext executionContext,
-            ResolvedEntityFormRelease resolved) {
+            ResolvedEntityFormRelease resolved,
+            PublishedSubFormSubmissionProcessor.Context nestedContext) {
         if (bindings == null) {
             return;
         }
@@ -304,15 +343,16 @@ public class PublishedFormSubmissionService {
                         "BEFORE_SUBMIT 数据源绑定缺少 sourceId");
             }
             FormSubmissionExecutionContext safeExecutionContext =
-                    executionContext == null
-                            ? FormSubmissionExecutionContext.standalone(
-                                    "FORM_" + normalizeOperation(mode))
-                            : executionContext;
+                    safeExecutionContext(
+                            executionContext,
+                            mode);
+            String effectiveOwnerKey =
+                    nestedContext.ownerKey(ownerKey);
             String idempotencyKey =
                     safeExecutionContext.bindingIdempotencyKey(
                             form.getId(),
                             resolved.releaseId(),
-                            ownerKey,
+                            effectiveOwnerKey,
                             sourceId,
                             bindingIndex);
             UiDataSourceExecuteRequest request =
@@ -336,6 +376,9 @@ public class PublishedFormSubmissionService {
                     "data",
                     new LinkedHashMap<>(record));
             rawInput.put(
+                    "params",
+                    nestedContext.params());
+            rawInput.put(
                     "businessTraceKey",
                     safeExecutionContext.businessTraceKey());
             rawInput.put(
@@ -348,16 +391,34 @@ public class PublishedFormSubmissionService {
                     mode == null ? "edit" : mode);
             context.put("formId", form.getId());
             context.put("entityId", form.getEntityId());
-            context.put("bindingOwner", ownerKey);
+            context.put(
+                    "bindingOwner",
+                    effectiveOwnerKey);
             context.put("bindingIndex", bindingIndex);
             context.put("sourceId", sourceId);
             context.put("idempotencyKey", idempotencyKey);
+            context.putAll(
+                    nestedContext.runtimeValues());
+            Map<String, Object> mappingSource =
+                    new LinkedHashMap<>();
+            mappingSource.put("data", record);
+            mappingSource.put("context", context);
+            mappingSource.put("input", rawInput);
+            mappingSource.put(
+                    "parent",
+                    nestedContext.parent());
+            mappingSource.put(
+                    "params",
+                    nestedContext.params());
+            mappingSource.put(
+                    "row",
+                    nestedContext.row());
+            mappingSource.put(
+                    "relation",
+                    nestedContext.relation());
             Object mappedInput = applyMapping(
                     mapping(value, "inputMapping"),
-                    Map.of(
-                            "data", record,
-                            "context", context,
-                            "input", rawInput),
+                    mappingSource,
                     rawInput);
             if (!(mappedInput instanceof Map<?, ?> inputMap)) {
                 throw new IllegalArgumentException(
@@ -391,6 +452,15 @@ public class PublishedFormSubmissionService {
         }
     }
 
+    private FormSubmissionExecutionContext safeExecutionContext(
+            FormSubmissionExecutionContext executionContext,
+            String mode) {
+        return executionContext == null
+                ? FormSubmissionExecutionContext.standalone(
+                        "FORM_" + normalizeOperation(mode))
+                : executionContext;
+    }
+
     private String nodeOwnerKey(EntityFormNode node) {
         if (StringUtils.hasText(node.getId())) {
             return "node:" + node.getId();
@@ -409,6 +479,15 @@ public class PublishedFormSubmissionService {
         return StringUtils.hasText(mode)
                 ? mode.trim().toUpperCase()
                 : "EDIT";
+    }
+
+    private PublishedSubFormSubmissionProcessor
+            subFormSubmissionProcessor() {
+        return new PublishedSubFormSubmissionProcessor(
+                entityDefinitionMapper,
+                releaseService,
+                schemaValidator,
+                codec);
     }
 
     private String sourceId(Object value) {
@@ -530,4 +609,5 @@ public class PublishedFormSubmissionService {
         }
         return new LinkedHashMap<>(source);
     }
+
 }

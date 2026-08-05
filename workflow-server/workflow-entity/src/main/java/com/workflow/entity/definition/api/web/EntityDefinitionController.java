@@ -9,11 +9,13 @@ import com.workflow.entity.definition.api.request.EntityDefinitionOptionResolveR
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionOptionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
+import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.api.request.EntityLifecycleModeRequest;
 import com.workflow.entity.definition.api.request.EntityWorkflowBindingRequest;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.application.EntityDefinitionOptionService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
+import com.workflow.entity.definition.application.EntityFieldDefinitionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +32,7 @@ import java.util.List;
 public class EntityDefinitionController {
     
     private final EntityDefinitionService entityService;
+    private final EntityFieldDefinitionService fieldDefinitionService;
     private final EntityDefinitionOptionService entityOptionService;
     
     /**
@@ -89,6 +92,31 @@ public class EntityDefinitionController {
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityDefinitionDTO> update(@PathVariable String id, @RequestBody EntityDefinitionDTO dto) {
         return ApiResponse.success(entityService.update(id, dto));
+    }
+
+    /**
+     * 新增单个实体字段，不提交实体中的其他字段草稿。
+     */
+    @PostMapping("/{entityId}/fields")
+    @RequiresPermission("entity:definition:manage")
+    public ApiResponse<EntityFieldDTO> createField(
+            @PathVariable String entityId,
+            @RequestBody EntityFieldDTO dto) {
+        return ApiResponse.success(
+                fieldDefinitionService.createField(entityId, dto));
+    }
+
+    /**
+     * 更新单个实体字段，不提交实体中的其他字段草稿。
+     */
+    @PostMapping("/{entityId}/fields/{fieldId}/update")
+    @RequiresPermission("entity:definition:manage")
+    public ApiResponse<EntityFieldDTO> updateField(
+            @PathVariable String entityId,
+            @PathVariable String fieldId,
+            @RequestBody EntityFieldDTO dto) {
+        return ApiResponse.success(
+                fieldDefinitionService.updateField(entityId, fieldId, dto));
     }
     
     /**

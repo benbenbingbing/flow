@@ -63,7 +63,7 @@ public class SystemEntityFieldPolicy {
             return false;
         }
         if (entity.getStorageMode() != EntityDefinition.StorageMode.SYSTEM) {
-            return !Boolean.TRUE.equals(field.getIsSystem());
+            return true;
         }
         return isRuntimeReadable(entity, field);
     }

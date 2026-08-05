@@ -22,23 +22,6 @@ export function useProcessDetail() {
   const formConfigs = ref([])
   const approvalConfig = ref(null)
 
-  // 判断是否为 Tab 模式的子表单
-  function isTabSubForm(field) {
-    if (!field) return false
-    const type = (field.componentType || field.fieldType || '').toUpperCase()
-    if (!['SUB_FORM', 'SUB_FORM_LIST'].includes(type)) return false
-    if (field.displayMode === 'tab') return true
-    if (field.componentProps) {
-      try {
-        const compProps = typeof field.componentProps === 'string'
-          ? JSON.parse(field.componentProps)
-          : field.componentProps
-        return compProps.subFormConfig?.displayMode === 'tab'
-      } catch (e) {}
-    }
-    return false
-  }
-
   // 获取流程状态显示文本
   function getProcessStatusText(status) {
     const textMap = {
@@ -164,7 +147,6 @@ export function useProcessDetail() {
     formConfig,
     formConfigs,
     approvalConfig,
-    isTabSubForm,
     getProcessStatusText,
     loadProcessDetail
   }

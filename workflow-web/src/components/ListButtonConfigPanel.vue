@@ -332,6 +332,7 @@ import SettingsSection from '@/components/SettingsSection.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
 import { safeParseConfig } from '@/shared/config-runtime'
+import { resolveListButtonType } from '@/shared/list-config-design'
 
 const props = defineProps({
   type: {
@@ -455,6 +456,7 @@ function configureButtonEvent(button) {
 }
 
 function openAdvancedSettings(row) {
+  row.buttonType = resolveListButtonType(row)
   advancedButton.value = row
   advancedDialogVisible.value = true
 }
@@ -628,6 +630,7 @@ function standardPermission(key) {
 
 function withDefaults(button) {
   const normalized = { ...button }
+  normalized.buttonType = resolveListButtonType(normalized)
   if (normalized.type === 'built-in') {
     normalized.perm = standardPermission(normalized.key)
   }
@@ -639,6 +642,9 @@ function withDefaults(button) {
 
 function normalizeButtons() {
   for (const button of buttons.value) {
+    if (!button.buttonType) {
+      button.buttonType = resolveListButtonType(button)
+    }
     if (button.type === 'built-in') {
       const permission = standardPermission(button.key)
       if (permission && button.perm !== permission) {

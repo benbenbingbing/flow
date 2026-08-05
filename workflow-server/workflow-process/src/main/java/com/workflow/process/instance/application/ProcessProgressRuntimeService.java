@@ -844,6 +844,7 @@ public class ProcessProgressRuntimeService {
                             nodeForm));
                     log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
                         targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
+                    break;
                 }
             }
             
@@ -866,10 +867,11 @@ public class ProcessProgressRuntimeService {
                 return;
             }
 
-            progress.setFormConfigs(formConfigs);
-            progress.setFormConfig(formConfigs.get(0));
-            log.debug("表单配置加载成功: entityCode={}, formCount={}, firstFormKey={}, firstFieldsCount={}",
-                entityCode, formConfigs.size(), formConfigs.get(0).getFormKey(),
+            ProcessProgressDTO.FormConfigDTO formConfig = formConfigs.get(0);
+            progress.setFormConfigs(List.of(formConfig));
+            progress.setFormConfig(formConfig);
+            log.debug("表单配置加载成功: entityCode={}, formKey={}, fieldsCount={}",
+                entityCode, formConfig.getFormKey(),
                 formConfigs.get(0).getFields() != null ? formConfigs.get(0).getFields().size() : 0);
             
         } catch (Exception e) {

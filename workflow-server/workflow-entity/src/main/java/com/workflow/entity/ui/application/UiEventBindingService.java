@@ -101,6 +101,75 @@ public class UiEventBindingService {
         return catalog;
     }
 
+    public Map<String, Object> resolveDraft(
+            String ownerType,
+            String ownerId,
+            String eventCode) {
+        String normalizedOwner = normalize(ownerType);
+        String normalizedEvent = normalize(eventCode);
+        requireOwner(normalizedOwner, ownerId);
+        requireOwnerAccess(normalizedOwner, ownerId);
+        if (!Set.of("FORM", "LIST").contains(normalizedOwner)) {
+            throw new IllegalArgumentException(
+                    "草稿事件解析只支持 FORM 或 LIST");
+        }
+        if (!EVENTS.contains(normalizedEvent)) {
+            throw new IllegalArgumentException(
+                    "不支持的事件编码: " + eventCode);
+        }
+        ConfigIdentity identity =
+                identity(normalizedOwner, ownerId);
+        List<Map<String, Object>> bindings =
+                mapper.findForSnapshot(
+                                normalizedOwner,
+                                ownerId,
+                                identity.entityId())
+                        .stream()
+                        .map(this::snapshotValue)
+                        .toList();
+        UiEventExecuteRequest request = new UiEventExecuteRequest();
+        request.setConfigType(normalizedOwner);
+        request.setConfigId(ownerId);
+        request.setEventCode(normalizedEvent);
+        request.setTargetType("OWNER");
+        ResolvedEventChain chain = resolve(
+                bindings,
+                identity,
+                request,
+                null,
+                null,
+                Map.of());
+        Map<String, Object> local = findBinding(
+                bindings,
+                normalizedOwner,
+                ownerId,
+                "OWNER",
+                null,
+                normalizedEvent);
+        Map<String, Object> inherited = findBinding(
+                bindings,
+                "ENTITY",
+                identity.entityId(),
+                "OWNER",
+                null,
+                normalizedEvent);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put(
+                "source",
+                local != null
+                        ? "LOCAL"
+                        : inherited != null
+                        ? "INHERITED"
+                        : "PLATFORM");
+        result.put("steps", chain.steps());
+        result.put("localBinding",
+                local == null ? Map.of() : local);
+        result.put("hasReplace", chain.steps().stream()
+                .anyMatch(step -> "REPLACE".equals(
+                        normalize(text(step.get("strategy"))))));
+        return result;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public UiEventBinding save(UiEventBindingSaveRequest request) {
         validate(request);
@@ -547,6 +616,12 @@ public class UiEventBindingService {
                 steps == null
                         ? List.<Map<String, Object>>of()
                         : steps) {
+            if ("LIST_LOAD".equals(eventCode)
+                    && "REPLACE".equals(normalize(text(
+                            step.get("strategy"))))) {
+                throw new IllegalArgumentException(
+                        "平台系统表列表不能替换可信只读查询");
+            }
             String serviceId = firstText(
                     step.get("serviceId"),
                     step.get("sourceId"));

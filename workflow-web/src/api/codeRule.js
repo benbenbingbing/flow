@@ -11,8 +11,8 @@ export const codeRuleApi = {
   /**
    * 保存编码规则
    */
-  save(data) {
-    return request.post('/entity-code-rule', data)
+  save(data, config) {
+    return request.post('/entity-code-rule', data, config)
   },
 
   /**

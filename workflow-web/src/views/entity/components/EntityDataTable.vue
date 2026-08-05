@@ -55,7 +55,14 @@
               v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
               :row="row"
               :field="field"
-              :context="{ entityCode, entityDefinition, refresh }"
+              :context="{
+                entityCode,
+                entityDefinition,
+                entityStatusMap,
+                getStatusText,
+                refresh,
+                refEntityNameMap
+              }"
             />
             <!-- 状态字段特殊渲染 -->
             <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
@@ -242,7 +249,12 @@ const getListFieldProp = (fieldCode: string) => {
 const getColumnConfig = (field: any) => safeParseConfig(field?.columnConfig)
 
 const getFieldDisplayValue = (row: any, field: any) => {
-  return formatListFieldValue(row, field, props.refEntityNameMap)
+  return formatListFieldValue(
+    row,
+    field,
+    props.refEntityNameMap,
+    props.entityStatusMap
+  )
 }
 
 const getStatusType = (status: string) => {

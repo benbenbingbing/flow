@@ -4,6 +4,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { getCellValue } from '@/shared/list-runtime'
 
 const props = defineProps({
   value: { type: [String, Number], default: '' },
@@ -13,9 +14,12 @@ const props = defineProps({
 })
 
 const size = computed(() => props.config?.size || 'small')
+const rawValue = computed(() =>
+  getCellValue(props.row, props.field, props.value)
+)
 
 const tagType = computed(() => {
-  const val = String(props.value || '').toLowerCase()
+  const val = String(rawValue.value || '').toLowerCase()
   const mapping = props.config?.statusMap || {}
   if (mapping[val]) return mapping[val]
   // 默认映射

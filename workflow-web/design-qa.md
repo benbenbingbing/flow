@@ -95,6 +95,34 @@ final result: passed
 
 ---
 
+# 表单节点父容器归并基础属性验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-37f3b535-628d-4fea-8981-d5da13634dcb.png`
+- Implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-node-properties.jpg`
+- Viewport: `1280 x 720` CSS pixels.
+- Source image: `970 x 1610` pixels; focused implementation image: `440 x 720` pixels.
+- Verified state: authenticated `form001` designer, field `名称` selected, node property drawer open on the basic tab.
+
+## Findings
+
+- The rendered drawer places `父容器` directly inside `基础属性`, after the field display controls.
+- An ordinary field node no longer renders a separate `布局与层级` group containing only the parent selector.
+- Container nodes still retain their actual grid, Tab set, or collapse-specific settings in the conditional `布局与层级` group.
+- Existing Element Plus typography, spacing, controls, colors, and interaction patterns are preserved; this change requires no new visual assets.
+- No P0, P1, or P2 issue was visible in the focused rendered implementation.
+
+## Verification
+
+- Browser DOM inspection confirmed the parent selector belongs to `基础属性` and the redundant group is absent for the selected field node.
+- `npm run test:page-config` passed.
+- `npm run build` passed.
+- `git diff --check` passed.
+- A same-input side-by-side visual comparison could not be created because the selected browser rejected the generated `data:` comparison URL. Per the visual QA contract, the formal comparison cannot be marked passed even though the rendered state was inspected successfully.
+
+final result: blocked
+
 # 开放集成能力状态验收
 
 ## Evidence
@@ -221,6 +249,58 @@ final result: blocked
 - `npm run build`: passed.
 - `git diff --check`: passed.
 - Authenticated browser interaction and focused screenshot comparison: passed.
+
+final result: passed
+
+---
+
+# 表单设计器系统字段恢复验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-c6bd0e6b-2f11-4983-ba7b-5b2c6f846ceb.png`
+- Source focused region: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-system-fields/source-field-panel-missing.png`
+- Implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-system-fields/form-designer-system-fields-restored.jpg`
+- Implementation focused region: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/.artifacts/qa-system-fields/implementation-field-panel-restored.jpg`
+- Browser viewport: `1280 x 720` CSS pixels at device scale factor `2`
+- Source pixels: `3088 x 1660`; implementation pixels: `1280 x 720`
+- Normalization: functional state comparison uses focused left-field-panel crops. The source crop is `520 x 1150`; the implementation crop is `260 x 560`. Density differs, but field visibility, order, labels, and component structure are directly comparable.
+- State: authenticated `form001` design page for dynamic workflow entity `ZDWREQ`, with the existing `req_desc` field already present on the canvas.
+
+## Findings
+
+- No actionable P0/P1/P2 differences remain.
+- Fonts and typography: restored field cards use the existing Element Plus/system font stack, hierarchy, code labels, and type tags.
+- Spacing and layout rhythm: the left field panel keeps its existing width, card spacing, scrolling behavior, and search control; restoring fields does not overlap or resize the canvas.
+- Colors and visual tokens: restored cards use the existing neutral borders, text tokens, and blue field-type tags.
+- Image quality and asset fidelity: the target area contains no application image assets; existing icon components remain unchanged.
+- Copy and content: system fields including `name`, `code`, `status`, process metadata, submitter metadata, department, business number, and current-task metadata are visible again. The business field `req_desc` remains present and marked as added.
+
+## Root Cause And Fix
+
+- Earlier state: dynamic entity system fields were returned with `uiConfigurable=false`, so the form designer filtered them from the available-field list.
+- Fix: `SystemEntityFieldPolicy` now applies the sensitive-field UI restriction only to true `SYSTEM` storage entities. Dynamic entity system fields remain UI-configurable and runtime-readable.
+- Security boundary: password, token, key, credential, salt, OTP, and other sensitive fields of platform system tables remain non-configurable and non-readable.
+
+## Interaction And Console Verification
+
+- Navigated from entity management to `ZDWREQ`, opened `form001`, and verified the restored system-field list in the real designer.
+- Existing form nodes and published-state indicators remained unchanged.
+- No save, publish, or form mutation action was executed during verification.
+- No application console errors or warnings appeared in the verified state.
+
+## Comparison History
+
+- Pass 1 source evidence showed only `req_desc`, with the system-field area empty.
+- After the policy correction and backend restart, browser evidence showed all applicable system fields restored while preserving `req_desc`.
+- No additional visual correction iteration was required.
+
+## Verification
+
+- `SystemEntityFieldPolicyTest`: passed, 4 tests.
+- `npm run test:page-config`: passed.
+- Full backend and frontend build through `./start.sh start`: passed.
+- `git diff --check`: passed before the QA report append.
 
 final result: passed
 
@@ -822,5 +902,50 @@ final result: passed
 - [x] Preserve required markers, form metadata, and existing control behavior.
 - [x] Prevent long-label wrapping at the verified desktop viewport.
 - [x] Add functional and UI configuration regression coverage.
+
+final result: passed
+
+---
+
+# 表单设计器添加节点菜单验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-ba04a8ec-09b0-4930-8779-108a8390cb15.png`
+- Implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-add-node-menu.jpg`
+- Focused same-input comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-add-node-comparison.jpg`
+- Viewport: `1280 x 720` CSS pixels at density `1`.
+- Source pixels: `1320 x 1226`; implementation pixels: `1280 x 720`.
+- Normalization: the changed toolbar region was cropped to `820 x 420` pixels for both source and implementation before the side-by-side comparison.
+- State: authenticated `form001` designer with the `添加节点` dropdown open.
+
+## Findings
+
+- No actionable P0/P1/P2 difference remains.
+- Fonts and typography continue to use the existing Element Plus/system font stack and established button/menu sizing.
+- Spacing and layout rhythm improve because the two adjacent add controls are consolidated into one primary dropdown without shifting the layout selector or form settings button.
+- Colors and visual tokens reuse the existing primary button, dropdown, border, and menu tokens.
+- The target region contains no image assets; the existing Element Plus `Plus` icon is retained.
+- Copy now matches the requested information architecture: the toolbar command is `添加节点`, and the first menu item is `节`.
+- The red rectangles in the source are request annotations and are intentionally absent from the implementation.
+
+## Interaction Verification
+
+- Opening `添加节点` shows `节`、`区块`、`栅格`、`Tab 集合`、`Tab 页`、`折叠面板`、`说明文本`、`明细表` and `动作插槽`.
+- Clicking `节` creates a `新节` node and opens its property drawer with node type `节`.
+- The created node remains an unsaved browser-only verification change; no draft save or publish action was executed.
+- No visible application error appeared during menu opening, closing, or section creation.
+
+## Comparison History
+
+- Pass 1 found no actionable P0/P1/P2 issue, so no visual correction iteration was required.
+
+## Implementation Checklist
+
+- [x] Remove the standalone `添加节` toolbar button.
+- [x] Rename the consolidated dropdown command to `添加节点`.
+- [x] Add `节` as the first menu item.
+- [x] Reuse the existing `SECTION_TITLE` creation behavior.
+- [x] Preserve all existing container-node menu actions.
 
 final result: passed

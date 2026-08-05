@@ -5,12 +5,13 @@ import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
+import com.workflow.entity.definition.application.EntityFieldDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldOptionService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 import com.workflow.entity.definition.application.EntitySchemaPublishLock;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
@@ -72,9 +73,6 @@ public class EntityDefinitionServiceTest {
     private MigrationAssetHandler migrationAssetHandler;
 
     @Mock
-    private ObjectMapper objectMapper;
-
-    @Mock
     private EntityDataDynamicMapper entityDataDynamicMapper;
 
     @Mock
@@ -106,6 +104,12 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private EntityFieldValidationRuleService fieldValidationRuleService;
+
+    @Mock
+    private EntityFieldDefinitionService fieldDefinitionService;
+
+    @Mock
+    private SystemEntityFieldPolicy systemEntityFieldPolicy;
 
     @InjectMocks
     private EntityDefinitionService entityService;
@@ -378,21 +382,14 @@ public class EntityDefinitionServiceTest {
 
         entityService.update("1", dto);
 
-        ArgumentCaptor<EntityField> fieldCaptor =
-                ArgumentCaptor.forClass(EntityField.class);
-        verify(fieldMapper).updateById(fieldCaptor.capture());
-        assertEquals(
-                fieldDTO.getValidateRules(),
-                fieldCaptor.getValue().getValidateRules());
+        verify(fieldDefinitionService).updateDefinition(
+                testField,
+                fieldDTO);
     }
 
     /** 测试更新时同步子表单关系：验证旧关系被删除并按 DTO 重新插入正确的关系记录 */
     @Test
     void testUpdateSyncsSubFormRelation() {
-        EntityDefinition child = new EntityDefinition();
-        child.setId("child-1");
-        child.setEntityCode("child");
-
         EntityField detailField = new EntityField();
         detailField.setId("field-detail");
         detailField.setEntityId("1");
@@ -416,25 +413,15 @@ public class EntityDefinitionServiceTest {
         dto.setFields(List.of(detailDTO));
 
         when(entityMapper.selectById("1")).thenReturn(testEntity);
-        when(entityMapper.selectById("child-1")).thenReturn(child);
         when(fieldMapper.findByEntityId("1")).thenReturn(List.of(detailField));
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         entityService.update("1", dto);
 
-        ArgumentCaptor<EntityRelation> relationCaptor = ArgumentCaptor.forClass(EntityRelation.class);
-        verify(relationMapper).deleteByParentEntityId("1");
-        verify(relationMapper).insert(relationCaptor.capture());
-        EntityRelation relation = relationCaptor.getValue();
-        assertEquals("1", relation.getParentEntityId());
-        assertEquals("test_entity", relation.getParentEntityCode());
-        assertEquals("field-detail", relation.getParentFieldId());
-        assertEquals("detailList", relation.getParentFieldCode());
-        assertEquals("child-1", relation.getChildEntityId());
-        assertEquals("child", relation.getChildEntityCode());
-        assertEquals("parentId", relation.getChildRefFieldCode());
-        assertEquals(EntityRelation.RelationType.ONE_TO_MANY, relation.getRelationType());
-        assertEquals(true, relation.getCascadeDelete());
+        verify(fieldDefinitionService).syncRelations(
+                testEntity,
+                List.of(detailDTO),
+                List.of(detailField));
     }
 
     /** 测试更新不存在的实体：验证抛出 RuntimeException 且消息包含对应 ID */

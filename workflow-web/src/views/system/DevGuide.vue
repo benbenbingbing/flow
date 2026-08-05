@@ -569,8 +569,8 @@ const nodePropertyRows = [
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', locked: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限说明内容 text；用于提示和静态文本。', locked: '禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
   { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', locked: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份不可改。' },
-  { types: 'SUB_FORM', editable: '显示标签、父容器、展示模式、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；子实体、关系与外键绑定不可改。' },
-  { types: 'REPEATER', editable: '显示标签、父容器、展示模式、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: 'Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT；不支持 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系与外键绑定不可改。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不支持 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于放置稳定的运行时动作插槽。', locked: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 

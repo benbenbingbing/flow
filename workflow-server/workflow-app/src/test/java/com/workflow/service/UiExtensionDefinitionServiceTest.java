@@ -4,6 +4,7 @@ import com.workflow.entity.ui.application.UiExtensionDefinitionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
@@ -100,11 +101,50 @@ class UiExtensionDefinitionServiceTest {
                         "FORM", "project-form", 1));
     }
 
+    /** 指定实体范围必须至少配置一个实体。 */
+    @Test
+    void rejectsEmptyEntityScope() {
+        UiExtensionDefinitionSaveRequest request =
+                validFormRequest();
+        request.setVisibilityScope("ENTITY");
+        request.setEntityCodes(List.of());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(mock(UiExtensionDefinitionMapper.class))
+                        .save(request));
+    }
+
+    /** 发布校验会拒绝把组件用于范围之外的实体。 */
+    @Test
+    void rejectsEntityOutsideConfiguredScope() {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setExtensionKey("project-form");
+        definition.setVisibilityScope("ENTITY");
+        definition.setEntityCodesDocument("[\"project\"]");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(mock(UiExtensionDefinitionMapper.class))
+                        .validateEntityScope(definition, "requirement"));
+    }
+
+    private UiExtensionDefinitionSaveRequest validFormRequest() {
+        UiExtensionDefinitionSaveRequest request =
+                new UiExtensionDefinitionSaveRequest();
+        request.setExtensionType("FORM");
+        request.setExtensionKey("project-form");
+        request.setDisplayName("项目表单");
+        request.setVersion(1);
+        return request;
+    }
+
     /** 装配带 Mock Mapper 的被测服务 */
     private UiExtensionDefinitionService service(
             UiExtensionDefinitionMapper mapper) {
         return new UiExtensionDefinitionService(
                 mapper,
+                mock(EntityDefinitionMapper.class),
                 new JsonDocumentCodec(new ObjectMapper()));
     }
 }

@@ -198,6 +198,12 @@
                   <el-option label="组织" value="ORGANIZATION" />
                 </el-select>
               </template>
+              <template #header>
+                <ConfigHelpLabel
+                  label="范围类型"
+                  help-key="workCalendar.scopeType"
+                />
+              </template>
             </el-table-column>
             <el-table-column label="范围 ID" min-width="190">
               <template #default="{ row }"><el-input v-model="row.scopeKey" /></template>
@@ -243,6 +249,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { workCalendarApi } from '@/api/sla'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 
 const loading = ref(false)
 const saving = ref(false)

@@ -9,6 +9,12 @@
   >
     <el-form label-width="96px">
       <el-form-item label="发布方式">
+        <template #label>
+          <ConfigHelpLabel
+            label="发布方式"
+            help-key="uiConfig.releaseMode"
+          />
+        </template>
         <el-radio-group v-model="form.releaseMode" @change="loadPreview">
           <el-radio-button value="STANDARD">普通发布</el-radio-button>
           <el-radio-button value="HOTFIX" :disabled="!canHotfix">
@@ -89,7 +95,13 @@
           max-height="220"
         >
           <el-table-column prop="section" label="区域" width="120" />
-          <el-table-column prop="path" label="修改项" min-width="220" />
+          <el-table-column label="修改项" min-width="220">
+            <template #default="{ row }">
+              <span :title="row.path">
+                {{ publishPathLabel(row.path) }}
+              </span>
+            </template>
+          </el-table-column>
           <el-table-column prop="riskLevel" label="风险" width="90">
             <template #default="{ row }">
               <el-tag :type="riskTagType(row.riskLevel)" size="small">
@@ -148,6 +160,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import {
   previewFormPublish,
   publishForm
@@ -262,6 +275,22 @@ function riskLabel(risk) {
     REVIEW: '需复核',
     BLOCKED: '需复核'
   }[risk] || '待评估'
+}
+
+function publishPathLabel(path) {
+  const raw = String(path || '').trim()
+  if (!raw) return '配置调整'
+  const labels = [
+    ['fieldInitializationMapping', '子字段初始化映射'],
+    ['parameterMapping', '子表单运行参数映射'],
+    ['parameterContract', '子表单参数传递契约'],
+    ['inputParameterSchema', '子表单输入参数契约'],
+    ['dataSourceBindingsDocument', '数据源绑定'],
+    ['extensionConfig', '扩展配置'],
+    ['viewConfig', '表单设置'],
+    ['propsDocument', '节点属性']
+  ]
+  return labels.find(([key]) => raw.includes(key))?.[1] || raw
 }
 </script>
 

@@ -59,7 +59,6 @@ public class EntityFieldDTO {
     // 实体引用/子表单相关字段
     private String refEntityId;     // 关联实体ID
     private String refEntityType;   // 引用实体类型（CUSTOM/USER/DEPT/ROLE/GROUP）
-    private String displayMode;     // 显示方式（embedded/tab）
     private String refFieldCode;    // 关联字段编码
 
     // 子表单关系配置

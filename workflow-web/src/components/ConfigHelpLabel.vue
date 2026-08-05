@@ -2,7 +2,8 @@
   <span class="config-help-label">
     <span>{{ label }}</span>
     <el-tooltip
-      :content="content"
+      v-if="resolvedContent"
+      :content="resolvedContent"
       placement="top"
       :show-after="200"
       :hide-after="50"
@@ -23,12 +24,19 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { QuestionFilled } from '@element-plus/icons-vue'
+import { getConfigFieldHelp } from '@/shared/config-field-help'
 
-defineProps({
+const props = defineProps({
   label: { type: String, required: true },
-  content: { type: String, required: true }
+  content: { type: String, default: '' },
+  helpKey: { type: String, default: '' }
 })
+
+const resolvedContent = computed(() =>
+  props.content || getConfigFieldHelp(props.helpKey)
+)
 </script>
 
 <style scoped>

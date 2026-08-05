@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
  */
 class EntityFormServiceMetadataTest {
 
-    /** 测试 getFormFields 从实体字段携带子表单关联元数据：验证解析后字段的 displayMode、refFieldCode、关系类型等元数据正确 */
+    /** 测试 getFormFields 从实体字段携带子表单关联元数据：验证关联字段、子实体和关系类型等元数据正确 */
     @Test
     void getFormFieldsCarriesSubFormAssociationMetadataFromEntityField() throws Exception {
         EntityFormFieldMapper formFieldMapper = mock(EntityFormFieldMapper.class);
@@ -63,7 +63,6 @@ class EntityFormServiceMetadataTest {
         entityField.setFieldType(EntityField.FieldType.SUB_FORM);
         entityField.setRefEntityId("child-entity");
         entityField.setRefEntityType(EntityField.RefEntityType.CUSTOM);
-        entityField.setDisplayMode("tab");
         entityField.setRefFieldCode("parent_id");
 
         EntityRelation relation = new EntityRelation();
@@ -83,7 +82,6 @@ class EntityFormServiceMetadataTest {
 
         assertEquals("items", resolved.getFieldCode());
         assertEquals("SUB_FORM", resolved.getFieldType());
-        assertEquals("tab", readBeanProperty(resolved, "displayMode"));
         assertEquals("parentId", readBeanProperty(resolved, "refFieldCode"));
         assertEquals("child-entity", readBeanProperty(resolved, "childEntityId"));
         assertEquals("ONE_TO_MANY", readBeanProperty(resolved, "relationType"));

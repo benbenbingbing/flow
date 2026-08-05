@@ -7,6 +7,8 @@ import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
 import com.workflow.contracts.ui.catalog.UiExtensionCatalogPort;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
@@ -42,10 +44,14 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
     /** 允许的运行模式。 */
     private static final Set<String> MODES =
             Set.of("CREATE", "EDIT", "APPROVE", "VIEW");
+    /** UI 表单扩展支持的实体范围。 */
+    private static final Set<String> VISIBILITY_SCOPES =
+            Set.of("GLOBAL", "ENTITY");
     private static final Pattern KEY =
             Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
 
     private final UiExtensionDefinitionMapper mapper;
+    private final EntityDefinitionMapper entityDefinitionMapper;
     private final JsonDocumentCodec codec;
 
     /**
@@ -164,6 +170,13 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         value.setSnapshotVersion(
                 request.getSnapshotVersion() == null
                         ? 1 : request.getSnapshotVersion());
+        String visibilityScope = visibilityScope(request);
+        List<String> entityCodes = resolveEntityCodes(
+                request, visibilityScope);
+        value.setVisibilityScope(visibilityScope);
+        value.setEntityCodesDocument(write(
+                entityCodes,
+                "扩展适用实体"));
         value.setSupportedModesDocument(write(
                 normalizeList(request.getSupportedModes()),
                 "扩展支持模式"));
@@ -197,6 +210,8 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                     .set("display_name", value.getDisplayName())
                     .set("version", value.getVersion())
                     .set("snapshot_version", value.getSnapshotVersion())
+                    .set("visibility_scope", value.getVisibilityScope())
+                    .set("entity_codes_document", value.getEntityCodesDocument())
                     .set("supported_modes_document", value.getSupportedModesDocument())
                     .set("supported_node_types_document", value.getSupportedNodeTypesDocument())
                     .set("supported_bindings_document", value.getSupportedBindingsDocument())
@@ -248,6 +263,34 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             throw new IllegalArgumentException(
                     "扩展配置快照版本高于服务端注册版本: "
                             + definition.getExtensionKey());
+        }
+    }
+
+    /**
+     * 校验表单扩展是否允许用于指定实体。
+     *
+     * @param definition 扩展定义
+     * @param entityCode 当前表单所属实体编码
+     */
+    public void validateEntityScope(
+            UiExtensionDefinition definition,
+            String entityCode) {
+        if (definition == null
+                || !"ENTITY".equals(normalize(
+                        definition.getVisibilityScope()))) {
+            return;
+        }
+        Set<String> entityCodes = readStringSet(
+                definition.getEntityCodesDocument(),
+                "扩展适用实体");
+        boolean matched = StringUtils.hasText(entityCode)
+                && entityCodes.stream().anyMatch(configured ->
+                        configured.equalsIgnoreCase(entityCode.trim()));
+        if (!matched) {
+            throw new IllegalArgumentException(
+                    "扩展组件不适用于当前实体: "
+                            + definition.getExtensionKey()
+                            + " -> " + entityCode);
         }
     }
 
@@ -308,6 +351,71 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                         "扩展运行模式不合法: " + mode);
             }
         }
+        String visibilityScope = visibilityScope(request);
+        if (!VISIBILITY_SCOPES.contains(visibilityScope)) {
+            throw new IllegalArgumentException("扩展适用范围不合法");
+        }
+        if ("ENTITY".equals(visibilityScope)
+                && normalizeEntityCodes(request.getEntityCodes()).isEmpty()) {
+            throw new IllegalArgumentException(
+                    "指定实体范围至少选择一个实体");
+        }
+    }
+
+    private String visibilityScope(
+            UiExtensionDefinitionSaveRequest request) {
+        if (!"FORM".equals(normalize(request.getExtensionType()))) {
+            return "GLOBAL";
+        }
+        return StringUtils.hasText(request.getVisibilityScope())
+                ? normalize(request.getVisibilityScope())
+                : "GLOBAL";
+    }
+
+    private List<String> resolveEntityCodes(
+            UiExtensionDefinitionSaveRequest request,
+            String visibilityScope) {
+        if (!"ENTITY".equals(visibilityScope)) {
+            return List.of();
+        }
+        return normalizeEntityCodes(request.getEntityCodes()).stream()
+                .map(code -> {
+                    EntityDefinition entity = entityDefinitionMapper
+                            .findByEntityCode(code)
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "适用实体不存在: " + code));
+                    if (entity.getStatus()
+                            != EntityDefinition.Status.PUBLISHED) {
+                        throw new IllegalArgumentException(
+                                "适用实体尚未发布: "
+                                        + entity.getEntityCode());
+                    }
+                    EntityDefinition.StorageMode storageMode =
+                            entity.getStorageMode() == null
+                                    ? EntityDefinition.StorageMode.DYNAMIC
+                                    : entity.getStorageMode();
+                    if (storageMode != EntityDefinition.StorageMode.DYNAMIC) {
+                        throw new IllegalArgumentException(
+                                "系统实体不支持整表单自定义组件: "
+                                        + entity.getEntityCode());
+                    }
+                    return entity.getEntityCode();
+                })
+                .toList();
+    }
+
+    private List<String> normalizeEntityCodes(List<String> values) {
+        if (values == null) {
+            return List.of();
+        }
+        Map<String, String> unique = new java.util.LinkedHashMap<>();
+        values.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .forEach(value -> unique.putIfAbsent(
+                        value.toLowerCase(Locale.ROOT), value));
+        return List.copyOf(unique.values());
     }
 
     private void requireSupported(
@@ -358,6 +466,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 definition.getVersion(),
                 definition.getSnapshotVersion(),
                 definition.getStatus(),
+                StringUtils.hasText(definition.getVisibilityScope())
+                        ? normalize(definition.getVisibilityScope())
+                        : "GLOBAL",
+                readStringSet(
+                        definition.getEntityCodesDocument(),
+                        "扩展适用实体"),
                 readStringSet(
                         definition.getSupportedModesDocument(),
                         "扩展支持模式"),

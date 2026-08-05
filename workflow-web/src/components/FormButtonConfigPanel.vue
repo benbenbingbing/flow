@@ -133,6 +133,18 @@
         </el-button>
       </div>
 
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        class="custom-button-guide"
+      >
+        <template #title>
+          先确定按钮在哪些模式和位置出现，再配置权限与显示条件，最后绑定事件链。
+          稳定编码发布后请保持不变。
+        </template>
+      </el-alert>
+
       <el-table :data="draft.customButtons" border size="small">
         <el-table-column label="启用" width="64" align="center">
           <template #default="{ row }">
@@ -145,6 +157,12 @@
           </template>
         </el-table-column>
         <el-table-column label="稳定编码" min-width="180">
+          <template #header>
+            <ConfigHelpLabel
+              label="稳定编码"
+              content="按钮的永久技术标识，用于事件绑定、发布差异和历史版本。以小写字母开头，仅支持小写字母、数字、下划线和短横线；发布后不要修改。"
+            />
+          </template>
           <template #default="{ row }">
             <el-input
               v-model="row.key"
@@ -158,6 +176,12 @@
           </template>
         </el-table-column>
         <el-table-column label="适用模式" min-width="180">
+          <template #header>
+            <ConfigHelpLabel
+              label="适用模式"
+              content="决定按钮在哪些运行场景出现。新增、编辑、审批和查看模式可同时选择多个。"
+            />
+          </template>
           <template #default="{ row }">
             <el-select
               v-model="row.modes"
@@ -176,6 +200,12 @@
           </template>
         </el-table-column>
         <el-table-column label="位置" min-width="160">
+          <template #header>
+            <ConfigHelpLabel
+              label="位置"
+              content="底部操作栏显示在表单底部；动作插槽显示在设计器中指定的 ACTION_SLOT 节点位置。"
+            />
+          </template>
           <template #default="{ row }">
             <el-select
               v-model="row.placement"
@@ -207,6 +237,12 @@
           </template>
         </el-table-column>
         <el-table-column label="权限码" min-width="220">
+          <template #header>
+            <ConfigHelpLabel
+              label="权限码"
+              content="运行时先校验当前用户是否拥有该权限。可以从实体权限中选择，也可以输入已注册的权限码；启用按钮时必填。"
+            />
+          </template>
           <template #default="{ row }">
             <el-select
               v-model="row.perm"
@@ -241,6 +277,12 @@
           </template>
         </el-table-column>
         <el-table-column label="配置" width="240" align="center" fixed="right">
+          <template #header>
+            <ConfigHelpLabel
+              label="配置"
+              content="事件链定义点击后执行什么；条件控制按钮何时显示或可用；更多中配置图标、样式、表单校验和二次确认。"
+            />
+          </template>
           <template #default="{ row }">
             <el-button
               link
@@ -312,6 +354,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="按钮样式">
+          <template #label>
+            <ConfigHelpLabel
+              label="按钮样式"
+              content="只影响视觉强调程度，不改变权限、条件或事件执行逻辑。危险操作建议使用“危险”样式并开启二次确认。"
+            />
+          </template>
           <el-select v-model="advancedButton.buttonType" style="width: 100%">
             <el-option
               v-for="option in buttonTypeOptions"
@@ -322,6 +370,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="执行前校验">
+          <template #label>
+            <ConfigHelpLabel
+              label="执行前校验"
+              content="开启后先执行当前表单的必填和格式校验；校验通过后才运行按钮事件链。"
+            />
+          </template>
           <el-switch v-model="advancedButton.validateBeforeExecute" />
           <span class="field-help">开启后先校验当前表单，再执行事件链。</span>
         </el-form-item>
@@ -338,6 +392,12 @@
           />
         </el-form-item>
         <el-form-item label="适用条件">
+          <template #label>
+            <ConfigHelpLabel
+              label="适用条件"
+              content="根据字段值、实体状态或运行上下文控制按钮显示和可用状态；未配置时始终可操作。"
+            />
+          </template>
           <el-button type="primary" text @click="configureCustomRule(advancedButton)">
             {{ ruleSummary(advancedButton) }}
           </el-button>
@@ -358,6 +418,7 @@ import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import {
   FORM_ACTION_MODES,
@@ -719,6 +780,10 @@ function cloneValue(value) {
 
 .section-alert {
   margin-top: 12px;
+}
+
+.custom-button-guide {
+  margin-bottom: 12px;
 }
 
 .validation-message {

@@ -342,6 +342,12 @@
                 primary
               >
                 <el-form-item label="执行方式">
+                  <template #label>
+                    <ConfigHelpLabel
+                      label="执行方式"
+                      help-key="process.multiInstanceType"
+                    />
+                  </template>
                   <el-radio-group v-model="assigneeForm.multiInstanceType">
                     <el-radio-button value="parallel">并行多实例</el-radio-button>
                     <el-radio-button value="sequential">串行多实例</el-radio-button>
@@ -350,6 +356,12 @@
                 </el-form-item>
 
                 <el-form-item label="人员来源">
+                  <template #label>
+                    <ConfigHelpLabel
+                      label="人员来源"
+                      help-key="process.multiInstanceSource"
+                    />
+                  </template>
                   <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
                     <el-radio-button value="variable">直接选择</el-radio-button>
                     <el-radio-button value="interface">人员接口</el-radio-button>
@@ -511,6 +523,12 @@
         >
           <el-form :model="serviceForm" label-width="100px" size="small">
           <el-form-item label="实现类型">
+            <template #label>
+              <ConfigHelpLabel
+                label="实现类型"
+                help-key="process.serviceImplementationType"
+              />
+            </template>
             <el-radio-group v-model="serviceForm.implementationType" @change="onServiceTypeChange">
               <el-radio-button value="class">Java类</el-radio-button>
               <el-radio-button value="expression">表达式</el-radio-button>
@@ -959,6 +977,12 @@
         >
           <el-form :model="conditionForm" label-width="100px" size="small">
           <el-form-item label="条件类型">
+            <template #label>
+              <ConfigHelpLabel
+                label="条件类型"
+                help-key="process.sequenceConditionType"
+              />
+            </template>
             <el-radio-group v-model="conditionForm.type" @change="onConditionTypeChange">
               <el-radio-button value="">无条件</el-radio-button>
               <el-radio-button value="expression">表达式</el-radio-button>
@@ -1063,14 +1087,10 @@
           <template v-if="formConfig.formSource === 'entity'">
             <el-form-item label="选择表单">
               <el-select
-                v-model="formConfig.entityFormIds"
-                placeholder="请选择一个或多个实体表单"
+                v-model="formConfig.entityFormId"
+                placeholder="请选择实体表单"
                 style="width: 100%"
                 filterable
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                :max-collapse-tags="2"
                 @change="onEntityFormChange"
               >
                 <el-option
@@ -1227,6 +1247,18 @@
             <el-form-item label="包含当前办理人">
               <el-switch v-model="ccForm.includeOperator" />
             </el-form-item>
+            <el-form-item v-if="isUserTask" label="允许手工知会">
+              <template #label>
+                <ConfigHelpLabel
+                  label="允许手工知会"
+                  help-key="process.allowManualCc"
+                />
+              </template>
+              <el-switch v-model="ccForm.allowManualCc" />
+              <div class="form-tip">
+                关闭后，办理人不能临时添加知会对象，只执行节点预配置的收件人规则。
+              </div>
+            </el-form-item>
             <SettingsSection
               title="收件人与展示"
               description="配置收件人规则及知会列表中的说明"
@@ -1378,6 +1410,12 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="日历来源">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="日历来源"
+                    help-key="process.slaCalendarSource"
+                  />
+                </template>
                 <el-select v-model="slaForm.calendarSource" style="width: 100%">
                   <el-option label="节点指定" value="NODE" />
                   <el-option label="流程指定" value="PROCESS" />
@@ -1512,6 +1550,7 @@ import {
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
@@ -1916,13 +1955,9 @@ function parseEntityFormIds(value) {
   return normalizeEntityFormIds(raw.split(','))
 }
 
-function getSelectedEntityFormIds() {
-  const ids = normalizeEntityFormIds(formConfig.value.entityFormIds)
-  return ids.length ? ids : normalizeEntityFormIds(formConfig.value.entityFormId)
-}
-
-function getPrimaryEntityFormId() {
-  return getSelectedEntityFormIds()[0] || ''
+function getSelectedEntityFormId() {
+  const directId = normalizeEntityFormIds(formConfig.value.entityFormId)[0]
+  return directId || normalizeEntityFormIds(formConfig.value.entityFormIds)[0] || ''
 }
 
 // 加载组列表
@@ -2485,7 +2520,9 @@ watch(() => props.element, async (newElement) => {
       // 从扩展属性中读取表单绑定信息
       const entityFormIds = parseEntityFormIds(extProps['entityFormIds'])
       const entityFormId = extProps['entityFormId']
-      const selectedEntityFormIds = entityFormIds.length ? entityFormIds : normalizeEntityFormIds(entityFormId)
+      const selectedEntityFormIds = (
+        entityFormIds.length ? entityFormIds : normalizeEntityFormIds(entityFormId)
+      ).slice(0, 1)
       const entityFormReadonly = extProps['entityFormReadonly'] === 'true'
       const entityCode = extProps['entityCode'] || ''
       
@@ -2527,7 +2564,7 @@ watch(() => props.element, async (newElement) => {
           loadFormFields(defaultForm.id)
           // 自动保存到BPMN
           updateExtensionProperty('entityFormId', defaultForm.id)
-          updateExtensionProperty('entityFormIds', JSON.stringify([defaultForm.id]))
+          updateExtensionProperty('entityFormIds', null)
           updateExtensionProperty('entityFormReadonly', 'false')
           updateExtensionProperty('entityCode', boundEntity.value.entityCode || '')
         } else {
@@ -2845,15 +2882,14 @@ function onFormSourceChange(source) {
   }
 }
 
-async function onEntityFormChange(formIds) {
-  const selectedIds = normalizeEntityFormIds(formIds)
-  const primaryFormId = selectedIds[0] || ''
-  formConfig.value.entityFormIds = selectedIds
-  formConfig.value.entityFormId = primaryFormId
+async function onEntityFormChange(formId) {
+  const selectedFormId = normalizeEntityFormIds(formId)[0] || ''
+  formConfig.value.entityFormIds = selectedFormId ? [selectedFormId] : []
+  formConfig.value.entityFormId = selectedFormId
 
-  if (primaryFormId) {
-    await loadFormFields(primaryFormId)
-    const selectedForm = entityFormOptions.value.find(f => f.id === primaryFormId)
+  if (selectedFormId) {
+    await loadFormFields(selectedFormId)
+    const selectedForm = entityFormOptions.value.find(f => f.id === selectedFormId)
     formConfig.value.entityCode = selectedForm?.entityCode || boundEntity.value?.entityCode || ''
   } else {
     selectedFormFields.value = []
@@ -2867,18 +2903,18 @@ function updateNodeFormBind() {
   const bo = rawElement.businessObject
   const modeling = getModeling()
   
-  const entityFormIds = getSelectedEntityFormIds()
+  const entityFormId = getSelectedEntityFormId()
 
-  if (formConfig.value.formSource === 'entity' && entityFormIds.length) {
+  if (formConfig.value.formSource === 'entity' && entityFormId) {
     // 实体表单绑定
-    formConfig.value.entityFormId = entityFormIds[0]
-    formConfig.value.entityFormIds = entityFormIds
+    formConfig.value.entityFormId = entityFormId
+    formConfig.value.entityFormIds = [entityFormId]
     if (modeling) {
       modeling.updateProperties(rawElement, { 'flowable:formKey': null, 'flowable:formData': null })
     }
     // 扩展属性存储表单绑定信息
-    updateExtensionProperty('entityFormId', entityFormIds[0])
-    updateExtensionProperty('entityFormIds', JSON.stringify(entityFormIds))
+    updateExtensionProperty('entityFormId', entityFormId)
+    updateExtensionProperty('entityFormIds', null)
     updateExtensionProperty('entityFormReadonly', formConfig.value.isReadonly ? 'true' : 'false')
     updateExtensionProperty('entityCode', formConfig.value.entityCode)
   } else if (formConfig.value.formSource === 'custom' && formConfig.value.formKey) {

@@ -71,6 +71,7 @@ public class EntityListRuntimeService {
     private final com.workflow.entity.permission.application.EntityListActionConfigService actionConfigService;
     private final EntityListRelationalConfigService relationalConfigService;
     private final EntityListPublishedRuntimeService publishedRuntimeService;
+    private final EntityListPageResultNormalizer pageResultNormalizer;
     private final UiDataSourceService uiDataSourceService;
     private final UiEventRuntimeService uiEventRuntimeService;
     private final CurrentUserRoleService currentUserRoleService;
@@ -214,7 +215,7 @@ public class EntityListRuntimeService {
                 Math.max(1, Math.min(200, safeRequest.getPageSize())));
         eventInput.put("scene", scene);
         event.setInput(eventInput);
-        return uiEventRuntimeService.execute(
+        Object result = uiEventRuntimeService.execute(
                 event,
                 input -> queryDefault(
                         config,
@@ -223,6 +224,10 @@ public class EntityListRuntimeService {
                         scene,
                         safeRequest,
                         input)).getData();
+        return pageResultNormalizer.normalize(
+                result,
+                Math.max(1, safeRequest.getPageNum()),
+                Math.max(1, Math.min(200, safeRequest.getPageSize())));
     }
 
     private Object queryDefault(

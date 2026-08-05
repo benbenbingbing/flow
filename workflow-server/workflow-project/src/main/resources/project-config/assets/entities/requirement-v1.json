@@ -43,8 +43,8 @@
     {"fieldCode":"version","fieldName":"业务版本","fieldType":"INTEGER","dbType":"int","isRequired":true,"defaultValue":"1","sortOrder":300},
     {"fieldCode":"submitted_at","fieldName":"业务提交时间","fieldType":"DATETIME","dbType":"datetime","isRequired":false,"sortOrder":310},
     {"fieldCode":"approved_at","fieldName":"批准时间","fieldType":"DATETIME","dbType":"datetime","isRequired":false,"sortOrder":320},
-    {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldType":"SUB_FORM_LIST","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_system_impact","displayMode":"embedded","refFieldCode":"requirement_id","sortOrder":330},
-    {"fieldCode":"requirement_relations","fieldName":"需求关系","fieldType":"SUB_FORM_LIST","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_relation","displayMode":"embedded","refFieldCode":"source_requirement_id","sortOrder":340}
+    {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldType":"SUB_FORM_LIST","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_system_impact","refFieldCode":"requirement_id","sortOrder":330},
+    {"fieldCode":"requirement_relations","fieldName":"需求关系","fieldType":"SUB_FORM_LIST","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_relation","refFieldCode":"source_requirement_id","sortOrder":340}
   ],
   "relations": [
     {

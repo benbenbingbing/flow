@@ -96,9 +96,15 @@ public class ProcessProgressDTO {
     private FormConfigDTO formConfig;
 
     /**
-     * 多表单配置列表。保留 formConfig 作为第一个表单的兼容字段。
+     * 表单配置列表兼容字段，当前最多包含一个表单。
      */
     private List<FormConfigDTO> formConfigs;
+
+    public void setFormConfigs(List<FormConfigDTO> formConfigs) {
+        this.formConfigs = formConfigs == null || formConfigs.isEmpty()
+                ? List.of()
+                : List.of(formConfigs.get(0));
+    }
     
     /**
      * 审批配置

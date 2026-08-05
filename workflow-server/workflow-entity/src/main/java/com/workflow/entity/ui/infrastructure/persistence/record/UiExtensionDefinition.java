@@ -31,6 +31,10 @@ public class UiExtensionDefinition {
     private Integer version;
     /** 当前激活的发布快照版本号 */
     private Integer snapshotVersion;
+    /** 适用范围：GLOBAL 表示全部实体，ENTITY 表示指定实体 */
+    private String visibilityScope;
+    /** 指定适用实体编码列表（JSON） */
+    private String entityCodesDocument;
     /** 支持的表单模式列表（JSON，如 view/edit） */
     private String supportedModesDocument;
     /** 支持的节点类型列表（JSON） */

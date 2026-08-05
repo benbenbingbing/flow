@@ -42,7 +42,7 @@
       title="实体设计加载失败"
       :description="loadError"
       retryable
-      @retry="loadEntity"
+      @retry="initializeEntityDesign"
     />
 
     <div v-else class="design-body">
@@ -93,7 +93,7 @@
               v-if="field.isSystem && (index === 0 || !displayFields[index - 1]?.isSystem)"
               class="field-section-label"
             >
-              系统字段 · 只读
+              系统属性 · 编码与类型锁定
             </div>
             <div
               class="field-item"
@@ -134,8 +134,27 @@
       </div>
 
       <!-- 字段属性配置 -->
-      <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity || selectedField?.isSystem }">
-        <div class="panel-title">属性配置</div>
+      <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity }">
+        <div class="panel-title">
+          <span>属性配置</span>
+          <el-tooltip
+            v-if="selectedField && !isSystemEntity"
+            content="只保存当前字段属性，不会提交其他字段或实体设置中的未保存修改"
+            placement="top"
+          >
+            <span>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="savingSelectedField"
+                :disabled="!isSelectedFieldDirty"
+                @click="handleSaveSelectedField"
+              >
+                <el-icon><Check /></el-icon>保存当前属性
+              </el-button>
+            </span>
+          </el-tooltip>
+        </div>
         <div v-if="selectedField" class="selected-field-summary">
           <div class="selected-field-summary__main">
             <div class="selected-field-summary__identity">
@@ -148,12 +167,28 @@
           </div>
           <div class="selected-field-summary__status">
             <el-tag
-              v-if="isSystemEntity || selectedField.isSystem"
+              v-if="isSelectedFieldDirty"
+              type="warning"
+              size="small"
+              effect="plain"
+            >
+              当前属性未保存
+            </el-tag>
+            <el-tag
+              v-if="isSystemEntity"
               type="info"
               size="small"
               effect="plain"
             >
-              系统锁定
+              平台系统表只读
+            </el-tag>
+            <el-tag
+              v-else-if="selectedField.isSystem"
+              type="info"
+              size="small"
+              effect="plain"
+            >
+              系统属性 · 编码与类型锁定
             </el-tag>
             <el-tag
               v-else-if="selectedField.isPublished"
@@ -519,7 +554,7 @@
       
       <template #footer>
         <el-button @click="codeRuleVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveCodeRule">保存</el-button>
+        <el-button type="primary" :loading="codeRuleSaving" @click="saveCodeRule">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -549,6 +584,12 @@
           </span>
         </el-form-item>
         <el-form-item v-if="entityData.teamVisibilityEnabled" label="权限覆盖级别">
+          <template #label>
+            <ConfigHelpLabel
+              label="权限覆盖级别"
+              help-key="entity.teamVisibilityLevel"
+            />
+          </template>
           <el-select v-model="entityData.teamVisibilityLevel" style="width: 260px">
             <el-option label="附加授权（列表收窄和拒绝仍生效）" value="ADDITIVE" />
             <el-option label="覆盖普通数据范围（拒绝仍生效）" value="OVERRIDE_SCOPE" />
@@ -668,6 +709,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="规则效果">
+          <template #label>
+            <ConfigHelpLabel
+              label="规则效果"
+              help-key="entity.permissionRuleEffect"
+            />
+          </template>
           <el-radio-group v-model="permissionForm.ruleEffect">
             <el-radio-button value="ALLOW">允许（放行并附加范围）</el-radio-button>
             <el-radio-button value="DENY">拒绝（排除数据范围）</el-radio-button>
@@ -688,6 +735,12 @@
         </template>
 
         <el-form-item label="逻辑关系">
+          <template #label>
+            <ConfigHelpLabel
+              label="逻辑关系"
+              help-key="entity.permissionMatchLogic"
+            />
+          </template>
           <el-radio-group v-model="permissionForm.matchLogic">
             <el-radio-button value="OR">满足任一条件</el-radio-button>
             <el-radio-button value="AND">满足所有条件</el-radio-button>
@@ -702,6 +755,12 @@
             </el-button>
           </div>
           <el-form-item label="范围类型" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="范围类型"
+                help-key="entity.permissionScopeType"
+              />
+            </template>
             <el-select v-model="cond.scopeType" placeholder="选择范围类型" style="width: 100%">
               <el-option label="全部用户" value="ALL_USERS" />
               <el-option label="指定用户" value="USER" />
@@ -935,8 +994,10 @@ import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import PageState from '@/components/PageState.vue'
+import { useEntityFieldDraftSave } from '@/composables/useEntityFieldDraftSave'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useEntityValidationRules } from '@/composables/useEntityValidationRules'
 import {
@@ -960,12 +1021,33 @@ const fields = ref([])
 const loadError = ref('')
 const showSystemFields = ref(true)
 const entityBaseline = ref('')
+const selectedField = ref(null)
+const isSystemEntity = computed(() => entityData.value?.storageMode === 'SYSTEM')
+const { handleFieldTypeChange, validateFieldRules } =
+  useEntityValidationRules(selectedField)
+const {
+  handleSaveSelectedField,
+  isSelectedFieldDirty,
+  normalizeFieldForEditing,
+  normalizeFieldForSave,
+  rememberAllFieldBaselines,
+  savingSelectedField,
+  validateEntityField
+} = useEntityFieldDraftSave({
+  entityId,
+  fields,
+  selectedField,
+  entityBaseline,
+  isSystemEntity,
+  validateFieldRules,
+  onSaved: field => selectField(field)
+})
 const entityFingerprint = () => JSON.stringify({
   entity: {
     ...entityData.value,
     fields: undefined
   },
-  fields: fields.value
+  fields: fields.value.map(normalizeFieldForSave)
 })
 const isDirty = computed(() =>
   Boolean(entityBaseline.value) && entityBaseline.value !== entityFingerprint()
@@ -975,7 +1057,6 @@ useUnsavedChangesGuard(isDirty, {
   message: '实体字段或属性有未保存修改，离开后这些修改将丢失。'
 })
 
-const isSystemEntity = computed(() => entityData.value?.storageMode === 'SYSTEM')
 const isWorkflowEntityMode = computed(() => entityData.value?.lifecycleMode === 'WORKFLOW')
 const lifecycleFields = computed(() =>
   filterEntityFieldsByLifecycle(entityData.value, fields.value)
@@ -989,7 +1070,6 @@ const displayFields = computed(() => {
     ? [...businessFields, ...systemFields]
     : businessFields
 })
-const selectedField = ref(null)
 const isSelectedFieldStructureLocked = computed(() => Boolean(
   selectedField.value
   && (isSystemEntity.value || selectedField.value.isPublished || selectedField.value.isSystem)
@@ -1003,15 +1083,17 @@ const quickDictSaving = ref(false)
 const quickDictForm = ref({ dictName: '', dictCode: '', itemsText: '' })
 
 // 编码规则配置
-const codeRuleVisible = ref(false)
-const codeRule = ref({
-  entityCode: '',
-  prefix: '',
+const createCodeRuleDraft = (entityCode = '') => ({
+  entityCode,
+  prefix: entityCode.toUpperCase(),
   dateFormat: 'yyyyMMdd',
   seqLength: 6,
   seqType: 'DAY',
   example: ''
 })
+const codeRuleVisible = ref(false)
+const codeRuleSaving = ref(false)
+const codeRule = ref(createCodeRuleDraft())
 
 // 数据权限配置
 const permissionVisible = ref(false)
@@ -1132,9 +1214,6 @@ const isReference = computed(() => {
   return selectedField.value && ['REFERENCE', 'MULTI_REFERENCE'].includes(selectedField.value.fieldType)
 })
 
-const { handleFieldTypeChange, validateFieldRules } =
-  useEntityValidationRules(selectedField)
-
 const loadDictOptions = async () => {
   try {
     dictOptions.value = await getDictList() || []
@@ -1183,33 +1262,9 @@ const loadEntity = async () => {
   try {
     const data = await entityApi.getById(entityId)
     entityData.value = data
-    fields.value = (data.fields || []).map(f => {
-      const field = {
-        ...f,
-        valueStorage: ['MULTI_SELECT', 'CHECKBOX', 'MULTI_REFERENCE'].includes(f.fieldType)
-          ? 'MULTI_TABLE'
-          : (f.valueStorage || 'SCALAR'),
-        childEntityId: f.childEntityId || f.refEntityId || '',
-        childRefFieldCode: f.childRefFieldCode || f.refFieldCode || '',
-        relationType: f.relationType || (f.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : f.fieldType === 'SUB_FORM_LIST' ? 'ONE_TO_MANY' : undefined),
-        cascadeDelete: f.cascadeDelete !== false,
-        // fileTypes 在数据库中是逗号分隔字符串，但 el-select multiple 需要数组
-        fileTypes: f.fileTypes ? (typeof f.fileTypes === 'string' ? f.fileTypes.split(',') : f.fileTypes) : []
-      }
-      // fileItems 中的 fileTypes 同样需要转换
-      if (field.fileItems && field.fileItems.length > 0) {
-        field.fileItems = field.fileItems.map(item => ({
-          ...item,
-          fileTypes: item.fileTypes ? (typeof item.fileTypes === 'string' ? item.fileTypes.split(',') : item.fileTypes) : []
-        }))
-      }
-      return field
-    })
-    // 设置编码规则的实体编码
-    if (data.entityCode) {
-      codeRule.value.entityCode = data.entityCode
-    }
+    fields.value = (data.fields || []).map(normalizeFieldForEditing)
     await nextTick()
+    rememberAllFieldBaselines()
     entityBaseline.value = entityFingerprint()
   } catch (error) {
     console.error(error)
@@ -1218,18 +1273,24 @@ const loadEntity = async () => {
 }
 
 // 加载编码规则
-const loadCodeRule = async () => {
+const loadCodeRule = async (entityCode) => {
+  const normalizedEntityCode = String(entityCode || '').trim()
+  if (!normalizedEntityCode) {
+    codeRule.value = createCodeRuleDraft()
+    return
+  }
+
+  codeRule.value = createCodeRuleDraft(normalizedEntityCode)
   try {
-    const data = await codeRuleApi.getByEntityCode(entityData.value.entityCode)
+    const data = await codeRuleApi.getByEntityCode(normalizedEntityCode)
     if (data) {
-      codeRule.value = { ...codeRule.value, ...data }
+      codeRule.value = {
+        ...createCodeRuleDraft(normalizedEntityCode),
+        ...data,
+        entityCode: normalizedEntityCode
+      }
     } else {
-      // 使用默认配置
-      codeRule.value.prefix = entityData.value.entityCode?.toUpperCase() || ''
-      codeRule.value.dateFormat = 'yyyyMMdd'
-      codeRule.value.seqLength = 6
-      codeRule.value.seqType = 'DAY'
-      previewCode()
+      await previewCode()
     }
   } catch (error) {
     console.error('加载编码规则失败:', error)
@@ -1256,16 +1317,39 @@ const previewCode = async () => {
   }
 }
 
+const buildCodeRuleSavePayload = () => ({
+  entityCode: String(entityData.value?.entityCode || '').trim(),
+  prefix: codeRule.value.prefix,
+  dateFormat: codeRule.value.dateFormat,
+  seqLength: codeRule.value.seqLength,
+  seqType: codeRule.value.seqType
+})
+
 // 保存编码规则
 const saveCodeRule = async () => {
+  const payload = buildCodeRuleSavePayload()
+  if (!payload.entityCode) {
+    ElMessage.error('实体编码不能为空')
+    return
+  }
+
+  codeRuleSaving.value = true
   try {
-    await codeRuleApi.save(codeRule.value)
+    await codeRuleApi.save(payload, { silentError: true })
+    await loadCodeRule(payload.entityCode)
     ElMessage.success('编码规则保存成功')
     codeRuleVisible.value = false
   } catch (error) {
     console.error(error)
-    ElMessage.error('保存失败')
+    ElMessage.error(error?.message || '编码规则保存失败')
+  } finally {
+    codeRuleSaving.value = false
   }
+}
+
+const initializeEntityDesign = async () => {
+  await loadEntity()
+  await loadCodeRule(entityData.value?.entityCode)
 }
 
 // 添加字段
@@ -1449,7 +1533,6 @@ const convertToFormField = (field) => {
     // 子表单/实体引用相关属性
     refEntityId: field.refEntityId,
     refEntityType: field.refEntityType,
-    displayMode: field.displayMode,
     refFieldCode: field.refFieldCode,
     childEntityId: field.childEntityId || field.refEntityId,
     childRefFieldCode: field.childRefFieldCode || field.refFieldCode,
@@ -1471,53 +1554,13 @@ const handleSave = async (options = {}) => {
   }
   // 验证字段
   for (const field of fields.value) {
-    if (!field.fieldName || !field.fieldCode) {
-      ElMessage.warning('请完善字段信息')
-      return false
-    }
-    if (['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType)) {
-      if (!field.childEntityId && !field.refEntityId) {
-        ElMessage.warning(`请选择子实体：${field.fieldName}`)
-        return false
-      }
-      if (!field.childRefFieldCode && !field.refFieldCode) {
-        ElMessage.warning(`请选择子表外键：${field.fieldName}`)
-        return false
-      }
-    }
-    if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)
-        && !field.dictType) {
-      ElMessage.warning(`请选择代码表：${field.fieldName}`)
-      return false
-    }
-    if (['REFERENCE', 'MULTI_REFERENCE'].includes(field.fieldType) && !field.refEntityId) {
-      ElMessage.warning(`请选择目标实体：${field.fieldName}`)
-      return false
-    }
-    if (!validateFieldRules(field)) return false
+    if (!validateEntityField(field, true)) return false
   }
 
   try {
     await entityApi.update(entityId, {
       ...entityData.value,
-      fields: fields.value.map(f => ({
-        ...f,
-        childEntityId: f.childEntityId || f.refEntityId || '',
-        childRefFieldCode: f.childRefFieldCode || f.refFieldCode || '',
-        refEntityId: f.refEntityId || f.childEntityId || '',
-        refFieldCode: f.refFieldCode || f.childRefFieldCode || '',
-        relationType: f.relationType || (f.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : f.fieldType === 'SUB_FORM_LIST' ? 'ONE_TO_MANY' : undefined),
-        cascadeDelete: f.cascadeDelete !== false,
-        // 移除临时ID
-        id: f.id?.startsWith('temp_') ? null : f.id,
-        // fileTypes 是数组，需要转为逗号分隔字符串传给后端
-        fileTypes: Array.isArray(f.fileTypes) ? f.fileTypes.join(',') : f.fileTypes,
-        // fileItems 中的 fileTypes 同样需要转换
-        fileItems: f.fileItems ? f.fileItems.map(item => ({
-          ...item,
-          fileTypes: Array.isArray(item.fileTypes) ? item.fileTypes.join(',') : item.fileTypes
-        })) : []
-      }))
+      fields: fields.value.map(normalizeFieldForSave)
     })
     await loadEntity()
     if (!silent) ElMessage.success('实体配置保存成功')
@@ -1895,10 +1938,11 @@ watch(showSystemFields, (visible) => {
   }
 })
 
-onMounted(() => {
-  loadEntity()
-  loadDictOptions()
-  loadCodeRule()
+onMounted(async () => {
+  await Promise.all([
+    initializeEntityDesign(),
+    loadDictOptions()
+  ])
 })
 </script>
 

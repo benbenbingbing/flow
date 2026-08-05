@@ -253,7 +253,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '无类型开始事件', meaning: '流程由平台 API 或业务入口直接启动。', notes: '可绑定一个或多个实体表单，并配置流程/节点动作。' },
+                { option: '无类型开始事件', meaning: '流程由平台 API 或业务入口直接启动。', notes: '可绑定一个实体表单，并配置流程/节点动作。' },
                 { option: '消息 / 定时 / 条件 / 信号开始事件', meaning: '由消息、时间、条件或广播信号触发实例。', notes: '当前平台没有专用事件参数表单，必须确认 XML 中事件定义完整并与 Flowable 部署能力一致。' },
                 { option: '中间捕获事件', meaning: '等待消息、定时器、条件、链接或信号。', notes: '会暂停或路由执行；事件名称、时间表达式需在 XML 中有效。' },
                 { option: '中间抛出事件', meaning: '发送消息、升级、链接、补偿或信号。', notes: '确认接收方和作用域，避免无消费者事件。' },
@@ -612,7 +612,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '实体表单 entity', meaning: '从流程绑定实体的表单中选择一个或多个。', notes: '流程未绑定实体时不可选；第一个表单作为主表单加载字段。' },
+                { option: '实体表单 entity', meaning: '从流程绑定实体的已发布表单中选择一个。', notes: '流程未绑定实体时不可选；节点未显式配置时尝试实体默认表单。' },
                 { option: '自定义表单 custom', meaning: '填写外部表单 Key。', notes: '目标运行页面必须能解析该 Key。' },
                 { option: '无表单 none', meaning: '节点不展示业务表单。', notes: '开始事件无表单时要确保流程仍有业务数据来源。' }
               ]
@@ -622,7 +622,7 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '所属实体', meaning: '显示当前流程绑定实体。', defaultLimit: '只读；未绑定时显示警告。', effect: '决定可选实体表单和实体字段条件。', publish: '先在实体管理绑定流程。' },
-                { field: '选择表单', meaning: '多选一个或多个实体表单。', defaultLimit: '可筛选；默认无显式配置时尝试实体默认表单。', effect: '运行节点展示多个表单，首个为主表单。', publish: '表单必须启用、字段已保存且目标环境存在。' },
+                { field: '选择表单', meaning: '单选一个实体表单。', defaultLimit: '可筛选；默认无显式配置时尝试实体默认表单。', effect: '运行节点只展示该表单。', publish: '表单必须启用、字段已保存且目标环境存在。' },
                 { field: '强制整表只读', meaning: '开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。', defaultLimit: '默认关闭。', effect: '写入 entityFormReadonly，作为节点级强制只读覆盖。', publish: '关闭时按表单字段的审批模式权限执行。' },
                 { field: '表单 Key', meaning: '自定义表单技术标识。', defaultLimit: '示例 leave_apply_form。', effect: '运行时打开外部表单。', publish: 'Key 在目标环境必须注册。' }
               ]

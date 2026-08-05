@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -277,6 +278,9 @@ public class ProcessTaskController {
         vo.setPriority(task.getPriority());
         vo.setResult(task.getAction());
         vo.setComment(task.getComment());
+        vo.setSlaStatus(task.getSlaStatus());
+        vo.setResponseDueTime(toUtcDate(task.getResponseDueTime()));
+        vo.setDueTime(toUtcDate(task.getDueTime()));
 
         // 扩展字段
         vo.setEntityCode(task.getEntityCode());
@@ -310,6 +314,12 @@ public class ProcessTaskController {
         }
 
         return vo;
+    }
+
+    private Date toUtcDate(java.time.LocalDateTime value) {
+        return value == null
+                ? null
+                : Date.from(value.toInstant(ZoneOffset.UTC));
     }
 
     private PageResult<TaskVO> page(List<TaskVO> tasks, Integer requestedPage, Integer requestedSize) {

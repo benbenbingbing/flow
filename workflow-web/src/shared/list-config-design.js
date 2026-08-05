@@ -45,6 +45,37 @@ export function listMetadataDetailEntries(config, viewConfig) {
   ]
 }
 
+const LIST_BUTTON_DEFAULT_TYPES = Object.freeze({
+  create: 'primary',
+  exportSelected: 'default',
+  exportAll: 'default',
+  batchDelete: 'danger',
+  view: 'primary',
+  edit: 'primary',
+  approve: 'warning',
+  delete: 'danger'
+})
+
+export function getListButtonDefaultType(buttonOrKey) {
+  const key = typeof buttonOrKey === 'string'
+    ? buttonOrKey
+    : buttonOrKey?.key || buttonOrKey?.buttonKey
+  return LIST_BUTTON_DEFAULT_TYPES[key] || 'default'
+}
+
+export function resolveListButtonType(button = {}) {
+  return button.buttonType
+    || button.styleType
+    || getListButtonDefaultType(button)
+}
+
+export function withListButtonTypeDefault(button = {}) {
+  return {
+    ...button,
+    buttonType: resolveListButtonType(button)
+  }
+}
+
 export function normalizeListActionForSave(button, position) {
   const actionParams = {}
   for (const key of [
@@ -60,7 +91,7 @@ export function normalizeListActionForSave(button, position) {
     buttonType: button.type,
     buttonLabel: button.label,
     icon: button.icon || '',
-    styleType: button.buttonType || 'default',
+    styleType: resolveListButtonType(button),
     linkMode: button.link === true,
     customMode: button.customMode || '',
     handlerCode: button.customHandler || '',

@@ -117,8 +117,14 @@ export const reorderFormNode = (formId: string, nodeId: string, data: any) => {
   return request.post(`/entity-forms/${formId}/nodes/${nodeId}/order`, data)
 }
 
-export const replaceFormNodes = (formId: string, nodes: any[]) => {
-  return request.post(`/entity-forms/${formId}/nodes/update`, nodes)
+export const replaceFormNodes = (
+  formId: string,
+  expectedRevision: number,
+  nodes: any[]
+) => {
+  return request.post(`/entity-forms/${formId}/nodes/update`, nodes, {
+    params: { expectedRevision }
+  })
 }
 
 export const getFormDiff = (id: string) => {

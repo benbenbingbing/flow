@@ -4,6 +4,7 @@ import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.ui.application.UiConfigDataSourceReferenceValidator;
 import com.workflow.entity.ui.application.UiConfigSnapshotSupport;
@@ -105,6 +106,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityDefinitionMapper.class),
                 formService,
                 mock(EntityFormNodeService.class),
+                mock(EntityFormConfigurationValidator.class),
                 mock(UiExtensionDefinitionService.class),
                 mock(EntityListConfigService.class),
                 mock(EntityListConfigurationValidator.class),
@@ -389,6 +391,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityDefinitionMapper.class),
                 mock(EntityFormService.class),
                 mock(EntityFormNodeService.class),
+                mock(EntityFormConfigurationValidator.class),
                 mock(UiExtensionDefinitionService.class),
                 listConfigService,
                 mock(EntityListConfigurationValidator.class),
@@ -1235,6 +1238,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityDefinitionMapper.class),
                 formService,
                 mock(EntityFormNodeService.class),
+                mock(EntityFormConfigurationValidator.class),
                 mock(UiExtensionDefinitionService.class),
                 listConfigService,
                 mock(EntityListConfigurationValidator.class),

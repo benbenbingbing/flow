@@ -124,7 +124,7 @@ cd workflow-web && node src/utils/__tests__/calcEngine.spec.js
 | FLP-001 | 节点绑定表单 | `ProcessProgressRuntimeServiceTest`、`ProcessProgressRuntimeServiceFormTest` | 通过 | 从发布快照读取节点表单 |
 | FLP-002 ~ FLP-004 | 未绑定表单回退 | `ProcessProgressRuntimeServiceTest` 中 `findByEntityCode` 已 mock | 通过 | 回退到实体默认表单/第一个可用表单 |
 | FLP-005 | 发布后修改表单不影响旧实例 | `EntityPublishedSnapshotServiceTest` | 通过 | 快照机制隔离版本 |
-| FM-001 ~ FM-005 | 多表单绑定与合并 | `ProcessNodeFormServiceMultiFormTest` | 部分通过 | 后端返回多个表单；前端合并逻辑需手工验证 |
+| FM-001 ~ FM-004 | 节点单表单与历史兼容 | `ProcessNodeFormServiceSingleFormTest` | 已调整 | 节点只返回一个表单；历史多值取第一项 |
 | NEF-001 ~ NEF-035 | 实体/表单/字段权限/子表单 | `EntityDataDynamicServiceSubFormTest`、`EntityDataServiceTest`、`EntityDefinitionServiceTest` | 部分通过 | 子表单保存/加载/级联/必填已覆盖；布局、联动、只读选择器需前端验证 |
 | LK-001 ~ LK-015 | 字段联动 | `calcEngine.spec.js` | 部分通过 | 仅计算表达式覆盖；显隐/禁用/必填/选项联动需前端验证 |
 | VD-001 ~ VD-010 | 表单校验 | `EntityDataDynamicServiceSubFormTest#saveValidatesRequiredFieldsFromPublishedSnapshot` | 部分通过 | 后端必填校验覆盖；前端实时校验需手工验证 |
@@ -190,7 +190,7 @@ cd workflow-web && node src/utils/__tests__/calcEngine.spec.js
 | 接收任务消息触发后继续 | 待手工验证 | |
 | 调用活动调用子流程成功 | 待手工验证 | |
 | 节点表单绑定正确加载 | 通过 | `ProcessProgressRuntimeServiceTest` |
-| 同一节点多表单字段去重/排序/名称连接 | 部分通过 | 后端返回多表单，前端合并需验证 |
+| 同一节点单表单约束与历史多值首项兼容 | 已调整 | 不再执行多表单合并 |
 | 节点级只读覆盖表单级只读 | 部分通过 | `ProcessDefinitionNodeSyncServiceTest` 已验证 `isReadonly` 持久化 |
 | 子表单 embedded/tab 展示 | **通过（手工）** | 需求申请详情页“条目”Tab 正确展示子表区域 |
 | 子表数据回填/级联删除/必填校验 | 通过 | `EntityDataDynamicServiceSubFormTest` |
@@ -348,8 +348,8 @@ npm --prefix workflow-web run dev -- --port 5173 --strictPort
 | `EntityDataDynamicServiceSubFormTest` | 子表单保存/加载/嵌套/必填 | 4 |
 | `ProcessProgressRuntimeServiceTest` | 流程进度、节点历史、表单快照加载 | 2 |
 | `ProcessProgressRuntimeServiceFormTest` | BPMN 中 entityFormId 解析 | 3 |
-| `ProcessDefinitionNodeSyncServiceTest` | 节点同步、多表单绑定、实体状态映射 | 3 |
-| `ProcessNodeFormServiceMultiFormTest` | 同一节点多表单查询 | 1 |
+| `ProcessDefinitionNodeSyncServiceTest` | 节点同步、历史多值首项兼容、实体状态映射 | 3 |
+| `ProcessNodeFormServiceSingleFormTest` | 同一节点单表单查询 | 1 |
 | `EntityPublishedSnapshotServiceTest` | 发布快照版本隔离 | 3 |
 | `DataPermissionEngineTest` / `PermissionRuleMatcherTest` | 数据权限规则匹配 | 7 |
 | `EntityDataControllerTest` | 实体数据 CRUD 接口 | 6 |
