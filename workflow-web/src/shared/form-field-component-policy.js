@@ -17,7 +17,8 @@ export const FORM_FIELD_COMPONENT_SUPPORTED_TYPES = Object.freeze({
   cascader: freezeTypes(['STRING', 'MULTI_SELECT']),
   reference: freezeTypes(['REFERENCE', 'USER', 'DEPT', 'ROLE', 'GROUP']),
   multi_reference: freezeTypes(['MULTI_REFERENCE']),
-  sub_form: freezeTypes(['SUB_FORM', 'SUB_FORM_LIST']),
+  sub_form: freezeTypes(['SUB_FORM']),
+  sub_list: freezeTypes(['SUB_LIST']),
   section: freezeTypes(['SECTION'])
 })
 
@@ -39,7 +40,7 @@ export const DEFAULT_FORM_FIELD_COMPONENTS = Object.freeze({
   ROLE: 'reference',
   GROUP: 'reference',
   SUB_FORM: 'sub_form',
-  SUB_FORM_LIST: 'sub_form_list',
+  SUB_LIST: 'sub_list',
   REFERENCE: 'reference',
   MULTI_REFERENCE: 'multi_reference',
   SELECT: 'select',

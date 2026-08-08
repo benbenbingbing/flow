@@ -26,13 +26,27 @@ public class DatabaseOutboxPublisher implements OutboxPublisher {
     @Override
     @Transactional
     public void publish(OutboxPublishRequest request) {
+        publish(request, false);
+    }
+
+    @Override
+    @Transactional
+    public void publishOrRequeueFailed(
+            OutboxPublishRequest request) {
+        publish(request, true);
+    }
+
+    private void publish(
+            OutboxPublishRequest request,
+            boolean requeueFailed) {
         LocalDateTime now = LocalDateTime.now();
+        String payloadDocument = writePayload(request.payload());
         OutboxRecord record = new OutboxRecord();
         record.setTopic(request.topic());
         record.setEventKey(request.eventKey());
         record.setAggregateType(request.aggregateType());
         record.setAggregateId(request.aggregateId());
-        record.setPayloadDocument(writePayload(request.payload()));
+        record.setPayloadDocument(payloadDocument);
         record.setStatus("PENDING");
         record.setRetryCount(0);
         record.setMaxRetries(request.maxRetries());
@@ -42,6 +56,15 @@ public class DatabaseOutboxPublisher implements OutboxPublisher {
             mapper.insert(record);
         } catch (DuplicateKeyException ignored) {
             // (topic, event_key) 唯一约束保证重复发布幂等。
+            if (requeueFailed) {
+                mapper.requeueFailedOrDead(
+                        request.topic(),
+                        request.eventKey(),
+                        request.aggregateType(),
+                        request.aggregateId(),
+                        payloadDocument,
+                        request.maxRetries());
+            }
         }
     }
 

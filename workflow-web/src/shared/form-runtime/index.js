@@ -36,8 +36,51 @@ export function normalizeEntityRecordForForm(record = {}) {
   return result
 }
 
+export function filterRuntimeFormSubmissionData(
+  data = {},
+  form = {},
+  entityFields = []
+) {
+  const result = {
+    ...(data && typeof data === 'object' ? data : {})
+  }
+  const declaredFieldCodes = collectRuntimeFormFieldCodes(form)
+  entityFields
+    .filter(isRelationEntityField)
+    .map(getFieldKey)
+    .filter(Boolean)
+    .forEach((fieldCode) => {
+      if (!declaredFieldCodes.has(fieldCode)) {
+        delete result[fieldCode]
+      }
+    })
+  return result
+}
+
 export function getFieldKey(field) {
   return String(field?.fieldCode || field?.fieldKey || field?.fieldId || field?.id || '')
+}
+
+export function collectRuntimeFormFieldCodes(form = {}) {
+  const fieldCodes = new Set()
+  const addFieldCode = (value) => {
+    const fieldCode = String(value || '').trim()
+    if (fieldCode) fieldCodes.add(fieldCode)
+  }
+
+  ;(form?.fields || []).forEach((field) => {
+    addFieldCode(getFieldKey(field))
+  })
+  ;(form?.nodes || []).forEach((node) => {
+    const props = parseRuntimeObject(
+      node?.propsDocument || node?.props || node?.legacyPropsDocument
+    )
+    addFieldCode(props?.fieldCode)
+    if (String(node?.bindingType || '').toUpperCase() === 'ENTITY_FIELD') {
+      addFieldCode(node?.bindingRef)
+    }
+  })
+  return fieldCodes
 }
 
 export function parseRuntimeDefaultValue(value) {
@@ -87,6 +130,28 @@ export function isSystemField(fieldOrCode) {
 export function getFieldModelPath(fieldOrCode) {
   const fieldCode = typeof fieldOrCode === 'string' ? fieldOrCode : getFieldKey(fieldOrCode)
   return isSystemField(fieldCode) ? fieldCode : `data.${fieldCode}`
+}
+
+function isRelationEntityField(field = {}) {
+  return [
+    'SUB_FORM',
+    'SUBFORM',
+    'REPEATER'
+  ].includes(String(field?.fieldType || '').trim().toUpperCase())
+}
+
+function parseRuntimeObject(value) {
+  if (!value) return {}
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 export function isRuntimeFormReadonly(form) {

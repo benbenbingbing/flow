@@ -1206,7 +1206,11 @@ public class ConfigMigrationImportApplyService {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
         List<String> listIds = new ArrayList<>();
         for (Map<String, Object> value : values) {
-            EntityListConfigDTO dto = convert(value, EntityListConfigDTO.class);
+            Map<String, Object> resolvedValue =
+                    resolveListTargetFormReferences(value);
+            EntityListConfigDTO dto = convert(
+                    resolvedValue,
+                    EntityListConfigDTO.class);
             EntityListConfig existing = listConfigMapper.findByEntityIdAndListKey(entity.getId(), dto.getListKey());
             dto.setId(existing == null ? null : existing.getId());
             dto.setEntityId(entity.getId());
@@ -1228,6 +1232,37 @@ public class ConfigMigrationImportApplyService {
                 UiConfigReleaseService.LIST,
                 listIds,
                 "配置迁移导入列表初始发布");
+    }
+
+    private Map<String, Object> resolveListTargetFormReferences(
+            Map<String, Object> source) {
+        Map<String, Object> result = new LinkedHashMap<>(source);
+        for (String section : List.of(
+                "toolbarConfig",
+                "rowActionConfig")) {
+            List<Map<String, Object>> buttons = new ArrayList<>();
+            for (Map<String, Object> sourceButton :
+                    mapList(source.get(section))) {
+                Map<String, Object> button =
+                        new LinkedHashMap<>(sourceButton);
+                String formRef = text(
+                        button.get("targetFormRef"),
+                        null);
+                if (StringUtils.hasText(formRef)) {
+                    button.put(
+                            "targetFormId",
+                            resolveFormId(formRef));
+                    button.remove("targetFormRef");
+                    button.remove("targetFormReleaseId");
+                    button.remove("targetFormReleaseVersion");
+                }
+                buttons.add(button);
+            }
+            if (source.containsKey(section)) {
+                result.put(section, buttons);
+            }
+        }
+        return result;
     }
 
     private void publishImportedConfigurations(

@@ -50,7 +50,7 @@ export const ENTITY_VALIDATION_RULE_GROUPS = [
       'REFERENCE',
       'MULTI_REFERENCE',
       'SUB_FORM',
-      'SUB_FORM_LIST'
+      'SUB_LIST'
     ],
     rules: [],
     description: '暂无内置单字段验证规则。必填、唯一、附件限制、选项来源和关联关系请使用对应的独立配置项。',

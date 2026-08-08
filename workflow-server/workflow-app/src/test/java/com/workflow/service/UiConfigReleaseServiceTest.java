@@ -25,6 +25,7 @@ import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
@@ -38,6 +39,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTargetMapper;
@@ -47,6 +49,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefi
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -60,6 +63,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -74,6 +78,53 @@ import static org.mockito.Mockito.when;
  * 发布激活时的完整性校验、节点结构校验、跨表单嵌套校验、模板兼容性校验等场景。
  */
 class UiConfigReleaseServiceTest {
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listDraftSnapshotPinsExplicitTargetFormRelease() {
+        TestContext context = context();
+        EntityListConfigDTO list = new EntityListConfigDTO();
+        list.setId("list-1");
+        list.setEntityId("entity-1");
+        list.setToolbarConfig(List.of(Map.of(
+                "key", "create",
+                "type", "built-in",
+                "targetFormId", "form-2")));
+        list.setRowActionConfig(List.of());
+        when(context.listConfigService().findById("list-1"))
+                .thenReturn(list);
+
+        EntityForm targetForm = new EntityForm();
+        targetForm.setId("form-2");
+        targetForm.setEntityId("entity-1");
+        targetForm.setStatus(1);
+        targetForm.setActiveReleaseId("form-release-3");
+        when(context.formMapper().selectById("form-2"))
+                .thenReturn(targetForm);
+        UiConfigRelease formRelease = new UiConfigRelease();
+        formRelease.setId("form-release-3");
+        formRelease.setConfigType(UiConfigReleaseService.FORM);
+        formRelease.setConfigId("form-2");
+        formRelease.setVersion(3);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-2")).thenReturn(formRelease);
+
+        Map<String, Object> snapshot = ReflectionTestUtils.invokeMethod(
+                context.service(),
+                "buildDraftSnapshot",
+                UiConfigReleaseService.LIST,
+                "list-1");
+        Map<String, Object> snapshotList =
+                (Map<String, Object>) snapshot.get("list");
+        Map<String, Object> button =
+                (Map<String, Object>) ((List<?>) snapshotList.get(
+                        "toolbarConfig")).get(0);
+
+        assertEquals("form-release-3",
+                button.get("targetFormReleaseId"));
+        assertEquals(3, button.get("targetFormReleaseVersion"));
+    }
 
     /**
      * 测试与历史发布比较时忽略草稿修订号与时间戳字段：
@@ -348,6 +399,215 @@ class UiConfigReleaseServiceTest {
                         item.getPath())
                         && UiConfigSemanticPatchService.REVIEW.equals(
                                 item.getRiskLevel())));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void corruptPreviousHotfixFallsBackToValidatedFullSnapshot() {
+        TestContext context = context();
+        EntityForm draft = form();
+        when(context.formService().getById("form-1"))
+                .thenReturn(draft);
+
+        Map<String, Object> activeSnapshot =
+                context.codec().readObject(
+                        context.codec().write(
+                                context.service().draftSnapshot(
+                                        UiConfigReleaseService.FORM,
+                                        "form-1"),
+                                "测试强制热修复当前基线"),
+                        "测试强制热修复当前基线");
+        Map<String, Object> activeNode =
+                (Map<String, Object>) ((List<?>) activeSnapshot.get(
+                        "nodes")).get(0);
+        Map<String, Object> activeProps =
+                context.codec().readObject(
+                        String.valueOf(activeNode.get("propsDocument")),
+                        "测试强制热修复当前基线节点");
+        activeProps.put("label", "发布前标题");
+        activeNode.put(
+                "propsDocument",
+                context.codec().write(
+                        activeProps,
+                        "测试强制热修复当前基线节点"));
+        UiConfigRelease active = release(
+                context.codec(),
+                "release-2",
+                activeSnapshot);
+        active.setVersion(2);
+        active.setStatus("ACTIVE");
+
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-1",
+                formSnapshot(List.of(labelNode("原始标题"))));
+        UiConfigHotfixTarget previous = target(
+                context.codec(),
+                "target-broken",
+                "hotfix-2",
+                "release-1",
+                1,
+                formSnapshot(List.of(labelNode("旧热修复标题"))));
+        previous.setEffectiveContentHash("tampered");
+
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        when(context.releaseMapper().findReleases(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(List.of(active));
+        when(context.releaseMapper().selectById("release-1"))
+                .thenReturn(pinned);
+        when(context.hotfixTargetMapper().findActiveTarget(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                "history-1")).thenReturn(previous);
+        when(context.hotfixTargetMapper().update(any(), any()))
+                .thenReturn(1);
+        when(context.processImpactPort().analyzeFormImpact(
+                "form-1")).thenReturn(new UiHotfixProcessImpact(
+                        List.of(processTarget(
+                                "release-1",
+                                1)),
+                        1,
+                        1L,
+                        0L,
+                        "impact-force-1"));
+
+        AtomicReference<UiConfigHotfixTarget> savedTarget =
+                new AtomicReference<>();
+        doAnswer(invocation -> {
+            UiConfigRelease release = invocation.getArgument(0);
+            release.setId("hotfix-3");
+            return 1;
+        }).when(context.releaseMapper()).insert(
+                any(UiConfigRelease.class));
+        doAnswer(invocation -> {
+            UiConfigHotfixTarget target = invocation.getArgument(0);
+            target.setId("target-force-1");
+            savedTarget.set(target);
+            return 1;
+        }).when(context.hotfixTargetMapper()).insert(
+                any(UiConfigHotfixTarget.class));
+
+        UiConfigPublishRequest previewRequest =
+                new UiConfigPublishRequest();
+        previewRequest.setReleaseMode(
+                UiConfigReleaseService.HOTFIX);
+        UiConfigPublishPreviewDTO preview =
+                context.service().publishPreview(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        previewRequest);
+
+        assertTrue(preview.isCanPublish());
+        assertTrue(preview.getBlockers().isEmpty());
+        assertEquals(
+                UiConfigSemanticPatchService.REVIEW,
+                preview.getRiskLevel());
+        assertEquals(
+                "FULL_SNAPSHOT",
+                preview.getTargets().get(0).getApplicationMode());
+        assertTrue(preview.getTargets().get(0)
+                .getReviewNotes().stream().anyMatch(note ->
+                        note.contains("完整性校验失败")));
+
+        context.service().publish(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                hotfixPublishRequest(preview));
+
+        assertNull(savedTarget.get().getPreviousTargetId());
+        Map<String, Object> effective =
+                context.codec().readObject(
+                        savedTarget.get()
+                                .getEffectiveSnapshotDocument(),
+                        "测试强制热修复有效快照");
+        Map<String, Object> effectiveNode =
+                (Map<String, Object>) ((List<?>) effective.get(
+                        "nodes")).get(0);
+        assertEquals(
+                "名称",
+                context.codec().readObject(
+                        String.valueOf(
+                                effectiveNode.get("propsDocument")),
+                        "测试强制热修复有效快照节点").get("label"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void missingStableTargetEntryUsesFullSnapshotFallback() {
+        TestContext context = context();
+        EntityForm draft = form();
+        when(context.formService().getById("form-1"))
+                .thenReturn(draft);
+
+        Map<String, Object> activeSnapshot =
+                context.codec().readObject(
+                        context.codec().write(
+                                context.service().draftSnapshot(
+                                        UiConfigReleaseService.FORM,
+                                        "form-1"),
+                                "测试旧流程稳定条目基线"),
+                        "测试旧流程稳定条目基线");
+        Map<String, Object> activeNode =
+                (Map<String, Object>) ((List<?>) activeSnapshot.get(
+                        "nodes")).get(0);
+        Map<String, Object> activeProps =
+                context.codec().readObject(
+                        String.valueOf(activeNode.get("propsDocument")),
+                        "测试旧流程稳定条目基线节点");
+        activeProps.put("label", "发布前标题");
+        activeNode.put(
+                "propsDocument",
+                context.codec().write(
+                        activeProps,
+                        "测试旧流程稳定条目基线节点"));
+        UiConfigRelease active = release(
+                context.codec(),
+                "release-2",
+                activeSnapshot);
+        active.setVersion(2);
+        active.setStatus("ACTIVE");
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-1",
+                formSnapshot(List.of()));
+
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        when(context.releaseMapper().selectById("release-1"))
+                .thenReturn(pinned);
+        when(context.processImpactPort().analyzeFormImpact(
+                "form-1")).thenReturn(new UiHotfixProcessImpact(
+                        List.of(processTarget(
+                                "release-1",
+                                1)),
+                        1,
+                        1L,
+                        0L,
+                        "impact-force-2"));
+
+        UiConfigPublishRequest request =
+                new UiConfigPublishRequest();
+        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
+        UiConfigPublishPreviewDTO preview =
+                context.service().publishPreview(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        request);
+
+        assertTrue(preview.isCanPublish());
+        assertTrue(preview.getBlockers().isEmpty());
+        assertTrue(preview.getTargets().get(0).isCompatible());
+        assertEquals(
+                "FULL_SNAPSHOT",
+                preview.getTargets().get(0).getApplicationMode());
+        assertTrue(preview.getTargets().get(0)
+                .getReviewNotes().stream().anyMatch(note ->
+                        note.contains("缺少稳定条目")
+                                && note.contains("完整快照覆盖")));
     }
 
     /**
@@ -1045,6 +1305,120 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void rejectsActivationWhenSubListTargetIsNotPublished() {
+        TestContext context = context();
+        Map<String, Object> fieldNode =
+                node("embedded-list", null, "FIELD");
+        fieldNode.put(
+                "propsDocument",
+                context.codec().write(
+                        Map.of(
+                                "fieldCode", "embeddedList",
+                                "fieldName", "子列表",
+                                "fieldType", "SUB_LIST",
+                                "componentType", "sub_list",
+                                "componentProps", Map.of(
+                                        "subListConfig", Map.of(
+                                                "targetEntityId", "target-1",
+                                                "targetEntityCode", "target_entity",
+                                                "listKey", "default"))),
+                        "测试子列表节点属性"));
+        UiConfigRelease release = release(
+                context.codec(),
+                "release-sub-list",
+                formSnapshot(List.of(fieldNode)));
+        EntityDefinition target = new EntityDefinition();
+        target.setId("target-1");
+        target.setEntityCode("target_entity");
+        EntityListConfig draftList = new EntityListConfig();
+        draftList.setEntityId("target-1");
+        draftList.setEntityCode("target_entity");
+        draftList.setListKey("default");
+        draftList.setPublishedVersion(0);
+        when(context.releaseMapper().selectById("release-sub-list"))
+                .thenReturn(release);
+        when(context.entityDefinitionMapper().selectById("target-1"))
+                .thenReturn(target);
+        when(context.listConfigMapper().findByEntityIdAndListKey(
+                "target-1",
+                "default"))
+                .thenReturn(draftList);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> context.service().activate(
+                        "FORM",
+                        "form-1",
+                        "release-sub-list"));
+
+        assertTrue(exception.getMessage().contains("不存在或尚未发布"));
+    }
+
+    @Test
+    void rejectsActivationWhenSubListDoesNotAllowEmbeddedScene() {
+        TestContext context = context();
+        Map<String, Object> fieldNode =
+                node("embedded-list-scene", null, "FIELD");
+        fieldNode.put(
+                "propsDocument",
+                context.codec().write(
+                        Map.of(
+                                "fieldCode", "embeddedList",
+                                "fieldName", "子列表",
+                                "fieldType", "SUB_LIST",
+                                "componentType", "sub_list",
+                                "componentProps", Map.of(
+                                        "subListConfig", Map.of(
+                                                "targetEntityId", "target-1",
+                                                "targetEntityCode", "target_entity",
+                                                "listKey", "default"))),
+                        "测试子列表节点属性"));
+        UiConfigRelease formRelease = release(
+                context.codec(),
+                "release-sub-list-scene",
+                formSnapshot(List.of(fieldNode)));
+        EntityDefinition target = new EntityDefinition();
+        target.setId("target-1");
+        target.setEntityCode("target_entity");
+        EntityListConfig targetList = new EntityListConfig();
+        targetList.setId("target-list-1");
+        targetList.setEntityId("target-1");
+        targetList.setEntityCode("target_entity");
+        targetList.setListKey("default");
+        targetList.setPublishedVersion(1);
+        targetList.setActiveReleaseId("target-list-release-1");
+        UiConfigRelease listRelease = release(
+                context.codec(),
+                "target-list-release-1",
+                Map.of(
+                        "list",
+                        Map.of("allowedScenes", List.of("PAGE"))));
+        listRelease.setConfigType("LIST");
+        listRelease.setConfigId("target-list-1");
+        when(context.releaseMapper().selectById(
+                "release-sub-list-scene"))
+                .thenReturn(formRelease);
+        when(context.releaseMapper().selectById(
+                "target-list-release-1"))
+                .thenReturn(listRelease);
+        when(context.entityDefinitionMapper().selectById("target-1"))
+                .thenReturn(target);
+        when(context.listConfigMapper().findByEntityIdAndListKey(
+                "target-1",
+                "default"))
+                .thenReturn(targetList);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> context.service().activate(
+                        "FORM",
+                        "form-1",
+                        "release-sub-list-scene"));
+
+        assertTrue(exception.getMessage().contains("EMBEDDED"));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void formDraftSnapshotContainsFormScopedEntitySelectionBinding() {
         TestContext context = context();
@@ -1197,6 +1571,38 @@ class UiConfigReleaseServiceTest {
                 exception.getErrorCode());
     }
 
+    private UiHotfixProcessTarget processTarget(
+            String pinnedReleaseId,
+            Integer pinnedReleaseVersion) {
+        return new UiHotfixProcessTarget(
+                "history-1",
+                "process-1",
+                "expense-flow",
+                "费用审批",
+                1,
+                "deployment-1",
+                pinnedReleaseId,
+                pinnedReleaseVersion,
+                List.of("Task_Approve"),
+                true,
+                1L,
+                0L);
+    }
+
+    private UiConfigPublishRequest hotfixPublishRequest(
+            UiConfigPublishPreviewDTO preview) {
+        UiConfigPublishRequest request =
+                new UiConfigPublishRequest();
+        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
+        request.setRolloutScope(
+                UiConfigReleaseService.ACTIVE_AND_FUTURE);
+        request.setExpectedActiveReleaseId(
+                preview.getActiveReleaseId());
+        request.setExpectedDraftHash(preview.getDraftHash());
+        request.setImpactToken(preview.getImpactToken());
+        return request;
+    }
+
     /** 构造测试上下文，装配被测服务与各 Mock 依赖 */
     private TestContext context() {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -1212,6 +1618,10 @@ class UiConfigReleaseServiceTest {
         EntityListConfigService listConfigService =
                 mock(EntityListConfigService.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        EntityListConfigMapper listConfigMapper =
+                mock(EntityListConfigMapper.class);
+        EntityDefinitionMapper entityDefinitionMapper =
+                mock(EntityDefinitionMapper.class);
         UiHotfixProcessImpactPort processImpactPort =
                 mock(UiHotfixProcessImpactPort.class);
         UiEventBindingMapper eventBindingMapper =
@@ -1234,8 +1644,8 @@ class UiConfigReleaseServiceTest {
                 templateMapper,
                 templateVersionMapper,
                 formMapper,
-                mock(EntityListConfigMapper.class),
-                mock(EntityDefinitionMapper.class),
+                listConfigMapper,
+                entityDefinitionMapper,
                 formService,
                 mock(EntityFormNodeService.class),
                 mock(EntityFormConfigurationValidator.class),
@@ -1258,6 +1668,9 @@ class UiConfigReleaseServiceTest {
                 templateVersionMapper,
                 formService,
                 listConfigService,
+                formMapper,
+                listConfigMapper,
+                entityDefinitionMapper,
                 processImpactPort,
                 eventBindingMapper,
                 resolutionTokenService,
@@ -1445,6 +1858,9 @@ class UiConfigReleaseServiceTest {
             UiComponentTemplateVersionMapper templateVersionMapper,
             EntityFormService formService,
             EntityListConfigService listConfigService,
+            EntityFormMapper formMapper,
+            EntityListConfigMapper listConfigMapper,
+            EntityDefinitionMapper entityDefinitionMapper,
             UiHotfixProcessImpactPort processImpactPort,
             UiEventBindingMapper eventBindingMapper,
             UiReleaseResolutionTokenService resolutionTokenService,

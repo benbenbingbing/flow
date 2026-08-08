@@ -4,6 +4,7 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.audit.AuditAction;
@@ -20,6 +21,10 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
+import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +63,8 @@ public class EntityFormService {
     private final EntityFormConfigurationValidator configurationValidator;
     private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
+    private final EntityListActionMapper listActionMapper;
+    private final UiConfigReleaseMapper uiConfigReleaseMapper;
     private final JsonDocumentCodec jsonDocumentCodec;
     
     /**
@@ -270,6 +277,7 @@ public class EntityFormService {
         if (form == null) {
             throw new RuntimeException("表单不存在");
         }
+        requireNoListButtonReference(id);
         
         // 删除字段
         formFieldMapper.deleteByFormId(id);
@@ -277,6 +285,69 @@ public class EntityFormService {
         // 逻辑删除表单
         formMapper.deleteById(id);
         log.info("删除实体表单：{}", form.getFormName());
+    }
+
+    private void requireNoListButtonReference(String formId) {
+        List<EntityListAction> actions = listActionMapper.selectList(
+                new LambdaQueryWrapper<EntityListAction>()
+                        .eq(EntityListAction::getDeleted, 0));
+        boolean draftReferenced = actions.stream().anyMatch(action ->
+                containsTargetFormReference(
+                        action.getActionParamsDocument(),
+                        formId,
+                        "列表按钮参数"));
+        if (draftReferenced) {
+            throw new IllegalStateException(
+                    "表单仍被列表按钮草稿引用，请先清除按钮的打开表单配置");
+        }
+
+        List<UiConfigRelease> activeLists = uiConfigReleaseMapper.selectList(
+                new LambdaQueryWrapper<UiConfigRelease>()
+                        .eq(UiConfigRelease::getConfigType, "LIST")
+                        .eq(UiConfigRelease::getStatus, "ACTIVE"));
+        boolean publishedReferenced = activeLists.stream().anyMatch(release ->
+                containsTargetFormReference(
+                        release.getSnapshotDocument(),
+                        formId,
+                        "列表发布快照"));
+        if (publishedReferenced) {
+            throw new IllegalStateException(
+                    "表单仍被已发布列表按钮引用，请先发布移除引用后的列表版本");
+        }
+    }
+
+    private boolean containsTargetFormReference(
+            String document,
+            String formId,
+            String label) {
+        if (!StringUtils.hasText(document)) {
+            return false;
+        }
+        return containsTargetFormReference(
+                jsonDocumentCodec.readObject(document, label),
+                formId);
+    }
+
+    private boolean containsTargetFormReference(
+            Object value,
+            String formId) {
+        if (value instanceof Map<?, ?> map) {
+            if (Objects.equals(
+                    formId,
+                    String.valueOf(map.get("targetFormId")))) {
+                return true;
+            }
+            return map.values().stream().anyMatch(child ->
+                    containsTargetFormReference(child, formId));
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object child : iterable) {
+                if (containsTargetFormReference(child, formId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
     
     /**
@@ -818,6 +889,9 @@ public class EntityFormService {
         }
         if (entityField.getRefFieldCode() != null) {
             field.setRefFieldCode(entityField.getRefFieldCode());
+        }
+        if (entityField.getRefListKey() != null) {
+            field.setRefListKey(entityField.getRefListKey());
         }
         enrichRelationMetadata(field, entityField);
         // 系统可编辑字段强制非只读（避免表单设计器误设为只读导致无法交互）

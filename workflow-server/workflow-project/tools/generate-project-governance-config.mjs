@@ -1262,13 +1262,13 @@ const projectFields = [
     defaultValue: "false"
   }),
   field("initialization_summary", "初始化结果", "TEXT", "text", false, 320),
-  field("initial_requirement_links", "初始需求范围", "SUB_FORM_LIST", "varchar(64)", false, 330, {
+  field("initial_requirement_links", "初始需求范围", "SUB_FORM", "varchar(64)", false, 330, {
     fieldLength: 64,
     refEntityType: "CUSTOM",
     refEntityCode: "requirement_project_link",
     refFieldCode: "project_id"
   }),
-  field("initial_system_links", "初始系统范围", "SUB_FORM_LIST", "varchar(64)", false, 340, {
+  field("initial_system_links", "初始系统范围", "SUB_FORM", "varchar(64)", false, 340, {
     fieldLength: 64,
     refEntityType: "CUSTOM",
     refEntityCode: "project_system_link",
@@ -1452,13 +1452,13 @@ const projectApplicationFields = [
       requiredRule: "${data_involved_flag} == true"
     })
   }),
-  formField("initial_requirement_links", "初始需求范围", "SUB_FORM_LIST", 280, {
+  formField("initial_requirement_links", "初始需求范围", "SUB_FORM", 280, {
     required: true,
-    componentType: "sub_form_list",
+    componentType: "sub_form",
     gridSpan: 24
   }),
-  formField("initial_system_links", "初始系统范围", "SUB_FORM_LIST", 290, {
-    componentType: "sub_form_list",
+  formField("initial_system_links", "初始系统范围", "SUB_FORM", 290, {
+    componentType: "sub_form",
     gridSpan: 24,
     componentProps: linkage({
       visibilityRule: "${project_type} != 'RESEARCH'",
@@ -1550,14 +1550,14 @@ const project = baseEntity({
         componentType: "textarea",
         gridSpan: 24
       }),
-      formField("initial_requirement_links", "初始需求范围", "SUB_FORM_LIST", 110, {
+      formField("initial_requirement_links", "初始需求范围", "SUB_FORM", 110, {
         readonly: true,
-        componentType: "sub_form_list",
+        componentType: "sub_form",
         gridSpan: 24
       }),
-      formField("initial_system_links", "初始系统范围", "SUB_FORM_LIST", 120, {
+      formField("initial_system_links", "初始系统范围", "SUB_FORM", 120, {
         readonly: true,
-        componentType: "sub_form_list",
+        componentType: "sub_form",
         gridSpan: 24
       }),
       formField("pmo_review_summary", "PMO治理意见", "TEXT", 130, {

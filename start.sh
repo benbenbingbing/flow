@@ -12,6 +12,7 @@ WEB_LOG="$ROOT_DIR/workflow-web/web.log"
 SERVER_JAR="$ROOT_DIR/workflow-server/workflow-app/target/workflow-server-1.0.0.jar"
 MIGRATOR_JAR="$ROOT_DIR/workflow-server/workflow-db-migrator/target/workflow-db-migrator-1.0.0-exec.jar"
 WEB_EXECUTABLE="$ROOT_DIR/workflow-web/node_modules/.bin/vite"
+WEB_PROCESS_PATTERN="node_modules/.bin/vite"
 
 action="${1:-start}"
 environment_file="${FLOW_ENV_FILE:-$ROOT_DIR/.env}"
@@ -133,6 +134,12 @@ pid_command() {
     ps -p "$1" -o command= 2>/dev/null || true
 }
 
+pid_working_directory() {
+    lsof -a -p "$1" -d cwd -Fn 2>/dev/null |
+        sed -n 's/^n//p' |
+        head -n 1
+}
+
 pid_is_running() {
     local state
     kill -0 "$1" 2>/dev/null || return 1
@@ -140,11 +147,26 @@ pid_is_running() {
     [[ -n "$state" && "$state" != Z* ]]
 }
 
+pid_matches_service() {
+    local pid="$1"
+    local expected_pattern="$2"
+    local expected_working_directory="${3:-}"
+    local command working_directory
+
+    command="$(pid_command "$pid")"
+    [[ "$command" == *"$expected_pattern"* ]] || return 1
+    if [[ -n "$expected_working_directory" ]]; then
+        working_directory="$(pid_working_directory "$pid")"
+        [[ "$working_directory" == "$expected_working_directory" ]] || return 1
+    fi
+}
+
 stop_pid_file() {
     local pid_file="$1"
     local service_name="$2"
     local expected_pattern="$3"
-    local pid command
+    local expected_working_directory="${4:-}"
+    local pid command working_directory
 
     [[ -f "$pid_file" ]] || return 0
     pid="$(tr -d '[:space:]' <"$pid_file")"
@@ -154,8 +176,10 @@ stop_pid_file() {
     fi
 
     command="$(pid_command "$pid")"
-    if [[ "$command" != *"$expected_pattern"* ]]; then
-        fail "$service_name PID file points to an unrelated process ($pid): $command"
+    if ! pid_matches_service \
+        "$pid" "$expected_pattern" "$expected_working_directory"; then
+        working_directory="$(pid_working_directory "$pid")"
+        fail "$service_name PID file points to an unrelated process ($pid): $command (cwd: ${working_directory:-unknown})"
     fi
 
     log "Stopping $service_name (PID $pid)"
@@ -174,13 +198,16 @@ stop_owned_listener() {
     local port="$1"
     local service_name="$2"
     local expected_pattern="$3"
-    local pid command
+    local expected_working_directory="${4:-}"
+    local pid command working_directory
 
     while IFS= read -r pid; do
         [[ -n "$pid" ]] || continue
         command="$(pid_command "$pid")"
-        if [[ "$command" != *"$expected_pattern"* ]]; then
-            fail "$service_name port $port is used by an unrelated process ($pid): $command"
+        if ! pid_matches_service \
+            "$pid" "$expected_pattern" "$expected_working_directory"; then
+            working_directory="$(pid_working_directory "$pid")"
+            fail "$service_name port $port is used by an unrelated process ($pid): $command (cwd: ${working_directory:-unknown})"
         fi
         log "Stopping untracked $service_name listener (PID $pid)"
         kill "$pid"
@@ -200,11 +227,21 @@ wait_for_port_release() {
 }
 
 stop_application() {
-    stop_pid_file "$WEB_PID_FILE" "web" "$ROOT_DIR/workflow-web"
-    stop_pid_file "$SERVER_PID_FILE" "server" "workflow-server-1.0.0.jar"
-    stop_pid_file "$SCHEMA_WORKER_PID_FILE" "schema worker" "workflow-db-migrator-1.0.0-exec.jar"
-    stop_owned_listener "$WEB_PORT" "web" "$ROOT_DIR/workflow-web"
-    stop_owned_listener "$SERVER_PORT" "server" "workflow-server-1.0.0.jar"
+    stop_pid_file \
+        "$WEB_PID_FILE" "web" \
+        "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
+    stop_pid_file \
+        "$SERVER_PID_FILE" "server" \
+        "workflow-server-1.0.0.jar" "$ROOT_DIR"
+    stop_pid_file \
+        "$SCHEMA_WORKER_PID_FILE" "schema worker" \
+        "workflow-db-migrator-1.0.0-exec.jar" "$ROOT_DIR"
+    stop_owned_listener \
+        "$WEB_PORT" "web" \
+        "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
+    stop_owned_listener \
+        "$SERVER_PORT" "server" \
+        "workflow-server-1.0.0.jar" "$ROOT_DIR"
     wait_for_port_release "$WEB_PORT" "web"
     wait_for_port_release "$SERVER_PORT" "server"
 }

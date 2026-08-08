@@ -133,7 +133,11 @@
     >
       <template #summary>
         <el-tag size="small" type="info">
-          {{ isSubFormField(selectedField) ? '子表关系' : '实体引用' }}
+          {{ isSubFormField(selectedField)
+            ? '子表关系'
+            : isSubListField(selectedField)
+              ? '子列表'
+              : '实体引用' }}
         </el-tag>
       </template>
 
@@ -219,6 +223,87 @@
         />
       </template>
 
+      <template v-if="isSubListField(selectedField)">
+        <div class="relation-summary">
+          <div>
+            <span>目标实体</span>
+            <strong>
+              {{ getEntityNameById(selectedField.refEntityId) || '-' }}
+            </strong>
+          </div>
+          <div>
+            <span>运行方式</span>
+            <strong>已发布列表</strong>
+          </div>
+        </div>
+
+        <el-form-item label="目标列表">
+          <el-select
+            v-model="selectedField.refListKey"
+            placeholder="选择已发布列表"
+            filterable
+            style="width: 100%"
+            :disabled="!selectedField.refEntityId"
+            @change="handleSubListChange"
+          >
+            <el-option
+              v-for="list in subListOptions"
+              :key="list.listKey"
+              :label="`${list.listName || list.listKey} (${list.listKey})`"
+              :value="list.listKey"
+            />
+          </el-select>
+          <div class="form-tip">
+            仅可选择允许“嵌入”场景的已发布列表。运行时复用其字段、排序、数据范围和访问权限，不向父表单写入列表数据。
+          </div>
+        </el-form-item>
+        <el-form-item label="参数传递" class="sub-list-parameter-item">
+          <SubListParameterMappingEditor
+            v-model="selectedSubListParameterContract"
+            :target-fields="subListTargetFields"
+            :parent-fields="entityFields"
+            :parent-entity-id="entityInfo.id || ''"
+            v-loading="subListTargetFieldsLoading"
+          />
+        </el-form-item>
+        <el-form-item label="显示查询">
+          <el-switch v-model="selectedField.subListShowSearch" />
+        </el-form-item>
+        <el-form-item label="显示分页">
+          <el-switch v-model="selectedField.subListShowPagination" />
+        </el-form-item>
+        <el-form-item label="显示工具栏">
+          <el-switch v-model="selectedField.subListShowToolbar" />
+          <div class="form-tip">
+            复用目标列表已发布的工具栏按钮及其权限配置；新增时会自动带入上方参数。
+          </div>
+        </el-form-item>
+        <el-form-item label="显示操作列">
+          <el-switch v-model="selectedField.subListShowRowActions" />
+          <div class="form-tip">
+            复用目标列表已发布的查看、编辑、审批、删除和自定义操作，仍受动作权限控制。
+          </div>
+        </el-form-item>
+        <el-form-item label="每页条数">
+          <el-input-number
+            v-model="selectedField.subListPageSize"
+            :min="1"
+            :max="200"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="最大高度">
+          <el-input-number
+            v-model="selectedField.subListMaxHeight"
+            :min="120"
+            :max="2000"
+            :step="20"
+            controls-position="right"
+          />
+          <span class="number-unit">px</span>
+        </el-form-item>
+      </template>
+
       <template v-if="isReferenceFieldNode">
         <el-form-item label="引用类型">
           <el-select
@@ -299,8 +384,10 @@ import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
+import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
+import { normalizeSubListParameterContract } from '@/shared/sub-list'
 import {
   getInputParameterDefinitions,
   getPublishedFormFields,
@@ -316,6 +403,7 @@ if (!context) {
 
 const {
   selectedField,
+  entityInfo,
   entityFields,
   activeNodeSettingsTab,
   isFieldNode,
@@ -329,6 +417,7 @@ const {
   clearSelectedNodeDataSourceBinding,
   canConfigureSelectedNodeRelations,
   isSubFormField,
+  isSubListField,
   getEntityNameById,
   formListByEntity,
   handleChildFormChange,
@@ -336,6 +425,10 @@ const {
   childFormReleaseLoading,
   handleChildFormReleaseChange,
   formatChildFormReleaseLabel,
+  subListOptions,
+  subListTargetFields,
+  subListTargetFieldsLoading,
+  handleSubListChange,
   isReferenceFieldNode,
   handleReferenceEntitySelected,
   rememberEntityOption,
@@ -361,7 +454,7 @@ const selectedChildInputParameters = computed(() =>
 const selectedChildFieldOptions = computed(() =>
   getPublishedFormFields(selectedChildRelease.value?.snapshotDocument)
     .filter(field =>
-      !['SUB_FORM', 'SUB_FORM_LIST'].includes(
+      !['SUB_FORM', 'SUB_LIST'].includes(
         String(field.fieldType || '').toUpperCase()
       )
     )
@@ -390,6 +483,30 @@ const selectedParameterContract = computed({
     })
   }
 })
+
+const selectedSubListParameterContract = computed({
+  get() {
+    const componentProps = safeParseConfig(
+      selectedField.value?.componentProps
+    )
+    return normalizeSubListParameterContract(
+      componentProps.subListConfig?.parameterContract
+    )
+  },
+  set(value) {
+    if (!selectedField.value) return
+    const componentProps = safeParseConfig(
+      selectedField.value.componentProps
+    )
+    selectedField.value.componentProps = stringifyConfig({
+      ...componentProps,
+      subListConfig: {
+        ...(componentProps.subListConfig || {}),
+        parameterContract: normalizeSubListParameterContract(value)
+      }
+    })
+  }
+})
 </script>
 
 <style scoped>
@@ -399,6 +516,16 @@ const selectedParameterContract = computed({
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.number-unit {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.sub-list-parameter-item :deep(.el-form-item__content) {
+  min-width: 0;
 }
 
 .property-advanced {

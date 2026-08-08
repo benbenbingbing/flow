@@ -24,5 +24,7 @@ public class UiConfigHotfixTargetPreviewDTO {
     long activeInstanceCount;
     long skippedHistoricalInstanceCount;
     boolean compatible;
+    String applicationMode;
+    List<String> reviewNotes;
     List<String> blockers;
 }

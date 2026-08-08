@@ -67,10 +67,12 @@
                 v-model="row.customMode"
                 size="small"
                 class="execution-config__choice"
+                @change="handleCustomModeChange(row)"
               >
                 <el-option label="函数" value="handler" />
                 <el-option label="组件" value="component" />
                 <el-option label="打开列表" value="open-list" />
+                <el-option label="打开表单" value="open-form" />
                 <el-option label="业务接口" value="event" />
               </el-select>
             </div>
@@ -96,12 +98,22 @@
               配置事件链
             </el-button>
             <el-input
-              v-else-if="row.type === 'custom'"
+              v-else-if="row.type === 'custom' && row.customMode !== 'open-form'"
               v-model="row.customHandler"
               size="small"
               class="execution-config__detail"
               :placeholder="row.customMode === 'component' ? '组件名' : '执行器名称'"
             />
+            <el-button
+              v-else-if="row.type === 'custom'"
+              size="small"
+              type="primary"
+              text
+              class="execution-config__detail execution-config__open-list"
+              @click="openAdvancedSettings(row)"
+            >
+              {{ targetFormSummary(row) }}
+            </el-button>
           </div>
         </template>
       </el-table-column>
@@ -187,6 +199,59 @@
         <el-form-item v-if="type === 'row'" label="Link 样式">
           <el-switch v-model="advancedButton.link" />
           <span class="field-help">开启后以文字链接样式显示行按钮</span>
+        </el-form-item>
+        <el-form-item v-if="canConfigureTargetForm(advancedButton)">
+          <template #label>
+            <span class="form-item-help-label">
+              打开表单
+              <el-tooltip
+                content="未选择时继续按流程节点表单、默认表单等平台原逻辑解析；列表发布时会固定所选表单的当前激活发布版本，后续表单发布不会改变该列表版本。"
+                placement="top"
+                :show-after="300"
+              >
+                <el-icon class="help-icon"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </span>
+          </template>
+          <div class="target-form-settings">
+            <el-select
+              v-model="advancedButton.targetFormId"
+              clearable
+              filterable
+              :loading="formOptionsLoading"
+              placeholder="未配置，按平台原逻辑解析"
+              style="width: 100%"
+              @change="handleTargetFormChange(advancedButton)"
+            >
+              <el-option
+                v-for="form in availableFormOptions"
+                :key="form.id"
+                :label="`${form.formName || form.formKey} (${form.formKey})`"
+                :value="String(form.id)"
+              >
+                <div class="form-option">
+                  <span>{{ form.formName || form.formKey }}</span>
+                  <small>{{ form.formKey }} · 已发布</small>
+                </div>
+              </el-option>
+            </el-select>
+            <div class="field-help target-form-help">
+              仅可选择当前实体下已启用且已有激活发布版本的表单。
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item
+          v-if="advancedButton.type === 'custom' && advancedButton.customMode === 'open-form'"
+          label="表单模式"
+        >
+          <el-radio-group
+            v-if="type === 'row'"
+            v-model="advancedButton.targetFormMode"
+          >
+            <el-radio-button value="VIEW">查看</el-radio-button>
+            <el-radio-button value="EDIT">编辑</el-radio-button>
+          </el-radio-group>
+          <el-tag v-else type="info">新增</el-tag>
         </el-form-item>
         <el-form-item label="组件模板">
           <div class="template-settings">
@@ -319,11 +384,12 @@
 <script setup>
 import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Rank } from '@element-plus/icons-vue'
+import { QuestionFilled, Rank } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { entityApi } from '@/api/entity'
+import { getFormsByEntity } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
@@ -341,6 +407,10 @@ const props = defineProps({
   },
   entityCode: {
     type: String,
+    default: ''
+  },
+  entityId: {
+    type: [String, Number],
     default: ''
   },
   entityFields: {
@@ -386,6 +456,8 @@ const buttonEventTarget = ref(null)
 const openListTargetButton = ref(null)
 const targetListOptions = ref([])
 const openListForm = ref(createOpenListForm())
+const formOptions = ref([])
+const formOptionsLoading = ref(false)
 let sortableInstance = null
 const eventFieldOptions = computed(() =>
   props.entityFields
@@ -398,6 +470,12 @@ const eventFieldOptions = computed(() =>
 
 const standardPermOptions = computed(() => permissionOptions.value.filter(option => option.category === 'STANDARD'))
 const customPermOptions = computed(() => permissionOptions.value.filter(option => option.category !== 'STANDARD'))
+const availableFormOptions = computed(() =>
+  formOptions.value.filter(form =>
+    Number(form?.status) === 1
+    && Boolean(form?.activeReleaseId)
+  )
+)
 
 const TOOLBAR_BUILTIN = {
   create: { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true },
@@ -446,6 +524,18 @@ function addCustom() {
   })
 }
 
+function handleCustomModeChange(row) {
+  if (row.customMode === 'open-form') {
+    row.customHandler = ''
+    row.targetFormMode = props.type === 'toolbar' ? 'CREATE' : 'VIEW'
+    return
+  }
+  delete row.targetFormMode
+  delete row.targetFormId
+  delete row.targetFormReleaseId
+  delete row.targetFormReleaseVersion
+}
+
 function configureButtonEvent(button) {
   if (!button.key) {
     ElMessage.warning('请先填写按钮稳定编码')
@@ -455,10 +545,64 @@ function configureButtonEvent(button) {
   buttonEventDialogVisible.value = true
 }
 
-function openAdvancedSettings(row) {
+async function openAdvancedSettings(row) {
   row.buttonType = resolveListButtonType(row)
+  normalizeTargetFormMode(row)
   advancedButton.value = row
+  if (canConfigureTargetForm(row)) {
+    await loadFormOptions()
+  }
   advancedDialogVisible.value = true
+}
+
+function canConfigureTargetForm(row) {
+  if (!row) return false
+  if (row.type === 'custom') {
+    return row.customMode === 'open-form'
+  }
+  if (props.type === 'toolbar') {
+    return row.key === 'create'
+  }
+  return ['view', 'edit', 'approve'].includes(row.key)
+}
+
+function normalizeTargetFormMode(row) {
+  if (row?.type !== 'custom' || row.customMode !== 'open-form') return
+  if (props.type === 'toolbar') {
+    row.targetFormMode = 'CREATE'
+  } else if (!['VIEW', 'EDIT'].includes(row.targetFormMode)) {
+    row.targetFormMode = 'VIEW'
+  }
+}
+
+async function loadFormOptions() {
+  if (!props.entityId || formOptionsLoading.value) return
+  formOptionsLoading.value = true
+  try {
+    const response = await getFormsByEntity(String(props.entityId))
+    formOptions.value = Array.isArray(response)
+      ? response
+      : response?.records || response?.list || response?.data || []
+  } catch (error) {
+    console.error('加载实体表单失败:', error)
+    formOptions.value = []
+    ElMessage.error(error?.message || '加载可选表单失败')
+  } finally {
+    formOptionsLoading.value = false
+  }
+}
+
+function handleTargetFormChange(row) {
+  delete row.targetFormReleaseId
+  delete row.targetFormReleaseVersion
+}
+
+function targetFormSummary(row) {
+  const form = availableFormOptions.value.find(item =>
+    String(item.id) === String(row.targetFormId || '')
+  )
+  if (form) return `表单：${form.formName || form.formKey}`
+  return row.targetFormId ? '已配置表单' : '配置表单'
 }
 
 async function handleTemplateChange(row, templateId) {
@@ -655,6 +799,7 @@ function normalizeButtons() {
         if (rule) button.availabilityRule = rule
       }
     }
+    normalizeTargetFormMode(button)
   }
 }
 
@@ -791,6 +936,38 @@ function ruleSummary(row) {
   margin-left: 10px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.form-item-help-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.help-icon {
+  color: var(--el-text-color-secondary);
+  cursor: help;
+}
+
+.target-form-settings {
+  width: 100%;
+}
+
+.target-form-help {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+.form-option {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.form-option small {
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  text-overflow: ellipsis;
 }
 
 .template-settings {

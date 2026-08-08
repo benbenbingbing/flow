@@ -88,6 +88,25 @@ public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
             @Param("errorMessage") String errorMessage);
 
     @Update("UPDATE workflow_outbox_event "
+            + "SET aggregate_type = #{aggregateType}, "
+            + "aggregate_id = #{aggregateId}, "
+            + "payload_document = #{payloadDocument}, "
+            + "status = 'PENDING', retry_count = 0, "
+            + "max_retries = #{maxRetries}, next_retry_time = NULL, "
+            + "error_message = NULL, owner_id = NULL, "
+            + "lease_until = NULL, processed_time = NULL, "
+            + "update_time = UTC_TIMESTAMP(6) "
+            + "WHERE topic = #{topic} AND event_key = #{eventKey} "
+            + "AND status IN ('FAILED','DEAD')")
+    int requeueFailedOrDead(
+            @Param("topic") String topic,
+            @Param("eventKey") String eventKey,
+            @Param("aggregateType") String aggregateType,
+            @Param("aggregateId") String aggregateId,
+            @Param("payloadDocument") String payloadDocument,
+            @Param("maxRetries") int maxRetries);
+
+    @Update("UPDATE workflow_outbox_event "
             + "SET status = 'FAILED', next_retry_time = UTC_TIMESTAMP(6), "
             + "error_message = 'EXECUTOR_REJECTED', owner_id = NULL, "
             + "lease_until = NULL, update_time = UTC_TIMESTAMP(6) "

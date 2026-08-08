@@ -75,6 +75,34 @@ assert.equal(
   }, 'ROW').styleType,
   'danger'
 )
+assert.deepEqual(
+  normalizeListActionForSave({
+    key: 'view',
+    type: 'built-in',
+    label: '查看',
+    targetFormId: 'form-1',
+    targetFormReleaseId: 'release-9',
+    targetFormReleaseVersion: 9
+  }, 'ROW').actionParams,
+  {
+    targetFormId: 'form-1'
+  },
+  '表单发布版本只能由列表发布快照生成'
+)
+assert.deepEqual(
+  normalizeListActionForSave({
+    key: 'custom_open',
+    type: 'custom',
+    customMode: 'open-form',
+    label: '打开编辑表单',
+    targetFormId: 'form-2',
+    targetFormMode: 'EDIT'
+  }, 'ROW').actionParams,
+  {
+    targetFormId: 'form-2',
+    targetFormMode: 'EDIT'
+  }
+)
 assert.equal(
   listActionFingerprint({ ...action, revision: 3, key: 'edit' }, 'ROW')
     .includes('expectedRevision'),

@@ -1,0 +1,526 @@
+{
+  "generatedAt": "2026-08-05T05:18:45.895Z",
+  "apiBase": "http://127.0.0.1:8080/api",
+  "entities": {
+    "parent": {
+      "id": "2084050094355812353",
+      "entityCode": "ZDWREQ",
+      "entityName": "zdw-需求管理"
+    },
+    "child": {
+      "id": "2084630423346180098",
+      "entityCode": "ZDWITEM",
+      "entityName": "ZDW 需求条目"
+    }
+  },
+  "steps": [
+    {
+      "name": "login",
+      "data": {
+        "id": "1",
+        "username": "admin"
+      }
+    },
+    {
+      "name": "reuseDictionary",
+      "data": {
+        "id": "2084825464362622977",
+        "dictCode": "zdw_e2e_options",
+        "dictName": "ZDW 全类型测试选项"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWITEM",
+        "fieldCode": "reqSingleId",
+        "fieldType": "REFERENCE",
+        "id": "2084825464555560961"
+      }
+    },
+    {
+      "name": "publishEntity",
+      "data": {
+        "entityCode": "ZDWITEM",
+        "id": "2084630423346180098",
+        "status": "PUBLISHED"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "contactEmail",
+        "fieldType": "STRING",
+        "id": "2084825474038882305"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "plainNote",
+        "fieldType": "TEXT",
+        "id": "2084825474206654466"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "estimatedCount",
+        "fieldType": "INTEGER",
+        "id": "2084825474395398145"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "budgetAmount",
+        "fieldType": "DECIMAL",
+        "id": "2084825474609307650"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "expectedDate",
+        "fieldType": "DATE",
+        "id": "2084825474793857026"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "reviewAt",
+        "fieldType": "DATETIME",
+        "id": "2084825474970017793"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "enabledFlag",
+        "fieldType": "BOOLEAN",
+        "id": "2084825475133595650"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "singleOption",
+        "fieldType": "SELECT",
+        "id": "2084825475259424769"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "multiOptions",
+        "fieldType": "MULTI_SELECT",
+        "id": "2084825475385253890"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "radioOption",
+        "fieldType": "RADIO",
+        "id": "2084825475523665922"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "checkboxOptions",
+        "fieldType": "CHECKBOX",
+        "id": "2084825475683049473"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "testFiles",
+        "fieldType": "FILE",
+        "id": "2084825475842433026"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "testImage",
+        "fieldType": "IMAGE",
+        "id": "2084825476018593793"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "ownerUser",
+        "fieldType": "USER",
+        "id": "2084825476203143170"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "ownerDept",
+        "fieldType": "DEPT",
+        "id": "2084825476349943809"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "primaryItem",
+        "fieldType": "REFERENCE",
+        "id": "2084825476496744450"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "relatedItems",
+        "fieldType": "MULTI_REFERENCE",
+        "id": "2084825476639350786"
+      }
+    },
+    {
+      "name": "updateField",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "fieldCode": "reqSingleForm",
+        "fieldType": "SUB_FORM",
+        "id": "2084825476781957122"
+      }
+    },
+    {
+      "name": "publishEntity",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "id": "2084050094355812353",
+        "status": "PUBLISHED"
+      }
+    },
+    {
+      "name": "configureParentFormMatrix",
+      "data": {
+        "formId": "2084057471894429698",
+        "formKey": "form001",
+        "publishedReleaseId": "3b5431607c182e40965968520d128208",
+        "nodeCount": 31,
+        "coveredNodeTypes": [
+          "ACTION_SLOT",
+          "COLLAPSE",
+          "FIELD",
+          "GRID",
+          "REPEATER",
+          "SECTION",
+          "SUB_FORM",
+          "TAB",
+          "TAB_SET",
+          "TEXT"
+        ],
+        "coveredFieldTypes": [
+          "BOOLEAN",
+          "CHECKBOX",
+          "DATE",
+          "DATETIME",
+          "DECIMAL",
+          "DEPT",
+          "FILE",
+          "IMAGE",
+          "INTEGER",
+          "MULTI_REFERENCE",
+          "MULTI_SELECT",
+          "RADIO",
+          "REFERENCE",
+          "RICH_TEXT",
+          "SELECT",
+          "STRING",
+          "SUB_FORM",
+          "SUB_FORM_LIST",
+          "TEXT",
+          "USER"
+        ],
+        "childForm": {
+          "formId": "2084631047114682370",
+          "releaseId": "65dd3732c4a54081c6d89f74be7e8743",
+          "releaseVersion": 1
+        },
+        "modeAccessCases": {
+          "readonlyApproval": "contactEmail",
+          "editableApproval": "expectedDate",
+          "hiddenApproval": "plainNote",
+          "readonlyAllModes": "ownerDept",
+          "hiddenAllModes": "status"
+        }
+      }
+    },
+    {
+      "name": "configureEntityList",
+      "data": {
+        "entityCode": "ZDWREQ",
+        "listId": "feb32aa2f2725871ff858335ccdc7180",
+        "listKey": "list001",
+        "publishedReleaseId": "8459907949e8d983e1e64b9a5a969639",
+        "publishedVersion": 3,
+        "fieldCount": 16,
+        "queryFields": [
+          {
+            "fieldCode": "name",
+            "queryType": "LIKE"
+          },
+          {
+            "fieldCode": "code",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "status",
+            "queryType": "IN"
+          },
+          {
+            "fieldCode": "contactEmail",
+            "queryType": "LIKE"
+          },
+          {
+            "fieldCode": "estimatedCount",
+            "queryType": "BETWEEN"
+          },
+          {
+            "fieldCode": "budgetAmount",
+            "queryType": "GE"
+          },
+          {
+            "fieldCode": "expectedDate",
+            "queryType": "BETWEEN"
+          },
+          {
+            "fieldCode": "reviewAt",
+            "queryType": "BETWEEN"
+          },
+          {
+            "fieldCode": "enabledFlag",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "singleOption",
+            "queryType": "IN"
+          },
+          {
+            "fieldCode": "multiOptions",
+            "queryType": "IN"
+          },
+          {
+            "fieldCode": "ownerUser",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "ownerDept",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "primaryItem",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "relatedItems",
+            "queryType": "IN"
+          }
+        ],
+        "viewConfig": {
+          "customComponentProps": {
+            "density": "compact",
+            "testMarker": "ZDWREQ_LIST_E2E"
+          },
+          "pagination": {
+            "pageSize": 20,
+            "pageSizes": [
+              10,
+              20,
+              50,
+              100
+            ]
+          },
+          "search": {
+            "collapsible": true,
+            "defaultVisibleCount": 5,
+            "labelWidth": 110
+          },
+          "table": {
+            "border": true,
+            "defaultSortDirection": "DESC",
+            "defaultSortField": "reviewAt",
+            "showIndex": true,
+            "size": "small",
+            "stripe": true
+          }
+        },
+        "selectionConfig": {
+          "returnMappings": [
+            {
+              "sourceField": "id",
+              "targetField": "requirementId"
+            },
+            {
+              "sourceField": "name",
+              "targetField": "requirementName"
+            },
+            {
+              "sourceField": "code",
+              "targetField": "requirementCode"
+            },
+            {
+              "sourceField": "contactEmail",
+              "targetField": "contactEmail"
+            }
+          ],
+          "selectionMode": "MULTIPLE",
+          "valueField": "id"
+        },
+        "allowedScenes": [
+          "MENU",
+          "PAGE",
+          "DIALOG",
+          "DRAWER",
+          "EMBEDDED",
+          "FORM_PICKER",
+          "SUB_TABLE"
+        ],
+        "contextBindingConfig": {},
+        "pageSizeCap": 200,
+        "illegalFilter": {
+          "status": 400,
+          "code": 400,
+          "errorCode": null,
+          "message": "字段未配置为可查询条件: notConfiguredField"
+        }
+      }
+    },
+    {
+      "name": "configureEntityList",
+      "data": {
+        "entityCode": "ZDWITEM",
+        "listId": "830a041069f8f607c6f76f185f0887ee",
+        "listKey": "list001",
+        "publishedReleaseId": "6bb28775698622614fdc63f38869db31",
+        "publishedVersion": 2,
+        "fieldCount": 6,
+        "queryFields": [
+          {
+            "fieldCode": "name",
+            "queryType": "LIKE"
+          },
+          {
+            "fieldCode": "code",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "status",
+            "queryType": "IN"
+          },
+          {
+            "fieldCode": "reqId",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "reqSingleId",
+            "queryType": "EQ"
+          },
+          {
+            "fieldCode": "deptId",
+            "queryType": "EQ"
+          }
+        ],
+        "viewConfig": {
+          "customComponentProps": {
+            "density": "compact",
+            "testMarker": "ZDWITEM_LIST_E2E"
+          },
+          "pagination": {
+            "pageSize": 10,
+            "pageSizes": [
+              10,
+              20,
+              50,
+              100
+            ]
+          },
+          "search": {
+            "collapsible": true,
+            "defaultVisibleCount": 4,
+            "labelWidth": 120
+          },
+          "table": {
+            "border": true,
+            "defaultSortDirection": "ASC",
+            "defaultSortField": "name",
+            "showIndex": true,
+            "size": "small",
+            "stripe": true
+          }
+        },
+        "selectionConfig": {
+          "returnMappings": [
+            {
+              "sourceField": "id",
+              "targetField": "itemId"
+            },
+            {
+              "sourceField": "name",
+              "targetField": "itemName"
+            },
+            {
+              "sourceField": "code",
+              "targetField": "itemCode"
+            },
+            {
+              "sourceField": "reqId",
+              "targetField": "requirementId"
+            }
+          ],
+          "selectionMode": "SINGLE",
+          "valueField": "id"
+        },
+        "allowedScenes": [
+          "MENU",
+          "PAGE",
+          "DIALOG",
+          "DRAWER",
+          "EMBEDDED",
+          "FORM_PICKER",
+          "SUB_TABLE"
+        ],
+        "contextBindingConfig": {
+          "parentField": "reqId",
+          "relationCode": "ZDWREQ_reqItemForm"
+        },
+        "pageSizeCap": 200,
+        "illegalFilter": {
+          "status": 400,
+          "code": 400,
+          "errorCode": null,
+          "message": "字段未配置为可查询条件: notConfiguredField"
+        }
+      }
+    }
+  ],
+  "result": "FAIL",
+  "error": {
+    "message": "子实体列表中的父需求引用无法批量解析\n+ actual - expected\n\n+ undefined\n- '903594a753e44ba793d57a6ef3f1af8b'\n"
+  }
+}

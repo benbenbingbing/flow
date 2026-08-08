@@ -22,6 +22,7 @@
       :mode="isEdit ? 'edit' : 'create'"
       :config="formViewConfig.customComponentProps || {}"
       :context="{
+        ...runtimeContext,
         entityCode,
         entityDefinition,
         mode: isEdit ? 'edit' : 'create',
@@ -47,6 +48,7 @@
       :entity-definition="entityDefinition"
       :entity-fields="runtimeEntityFields"
       :context="{
+        ...runtimeContext,
         entityCode,
         entityDefinition,
         mode: isEdit ? 'edit' : 'create',
@@ -79,6 +81,7 @@
           :disabled="isFieldDisabled(field)"
           :options="getFieldOptions(field)"
           :context="{
+            ...runtimeContext,
             entityCode,
             entityDefinition,
             form: defaultForm,
@@ -132,6 +135,7 @@ const props = defineProps<{
   formActions?: any[]
   actionLoadingKey?: string
   entityStatusOptions?: any[]
+  runtimeContext?: Record<string, any>
 }>()
 
 defineEmits<{
@@ -303,6 +307,11 @@ function getFieldOptions(field: any) {
 
 async function executeFieldDataSource(field: any, usage: string) {
   const [result] = await dataSourceRuntime.executeOwnerUsage(field, usage, {
+    ...(props.runtimeContext || {}),
+    params:
+      props.runtimeContext?.params
+      || props.runtimeContext?.parameters
+      || {},
     input: {
       fieldCode: field.fieldCode,
       value: formData.value?.data?.[field.fieldCode]
@@ -326,8 +335,22 @@ async function loadRuntimeDataSources(fields: any[]) {
   await dataSourceRuntime.initialize({
     form: props.defaultForm,
     fields,
-    nodes: props.defaultForm?.nodes || []
+    nodes: props.defaultForm?.nodes || [],
+    initializationKey:
+      props.runtimeContext?.initializationKey,
+    runtimeContext: {
+      ...(props.runtimeContext || {}),
+      params:
+        props.runtimeContext?.params
+        || props.runtimeContext?.parameters
+      || {}
+    }
   })
+  Object.entries(props.runtimeContext?.initialData || {}).forEach(
+    ([key, value]) => {
+      formData.value.data[key] = cloneRuntimeValue(value)
+    }
+  )
   const optionEntries = await Promise.all(
     (fields || []).map(async field => {
       try {
@@ -376,8 +399,11 @@ watch(
 )
 
 watch(
-  () => props.defaultForm?.fields,
-  (fields: any[]) => {
+  () => [
+    props.defaultForm?.fields,
+    props.runtimeContext?.initializationKey
+  ],
+  ([fields]: any[]) => {
     loadRuntimeDataSources(fields || [])
   },
   { immediate: true }
@@ -467,7 +493,14 @@ async function validate() {
     await dataSourceRuntime.prevalidateBeforeSubmit({
       form: props.defaultForm,
       fields: props.defaultForm?.fields || [],
-      nodes: props.defaultForm?.nodes || []
+      nodes: props.defaultForm?.nodes || [],
+      runtimeContext: {
+        ...(props.runtimeContext || {}),
+        params:
+          props.runtimeContext?.params
+          || props.runtimeContext?.parameters
+          || {}
+      }
     })
   }
   return true
@@ -482,6 +515,21 @@ defineExpose({
   validate,
   refreshLinkage
 })
+
+function cloneRuntimeValue(value: any) {
+  if (value === undefined) return undefined
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value)
+    } catch {
+      // Fall through for values unsupported by structuredClone.
+    }
+  }
+  if (value && typeof value === 'object') {
+    return JSON.parse(JSON.stringify(value))
+  }
+  return value
+}
 </script>
 
 <style scoped lang="scss">

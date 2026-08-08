@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 
 import {
   applyRuntimeFieldDefaults,
+  collectRuntimeFormFieldCodes,
   createFormDataSourceRuntime,
+  filterRuntimeFormSubmissionData,
   getClientBeforeSubmitBindings,
   getFieldKey,
   getFieldModelPath,
@@ -18,6 +20,7 @@ import {
   formatDateValue,
   formatListFieldValue,
   getCellValue,
+  isReferenceListField,
   parseDataSourceConfig,
   parseJsonOptions,
   toRuntimeFieldKey
@@ -73,6 +76,29 @@ assert.equal(formatListFieldValue({ data: { tags: 'dev,qa' } }, multiOptionField
 const refField = { fieldCode: 'owner', fieldType: 'USER', refEntityType: 'USER', refEntityId: '' }
 assert.equal(formatListFieldValue({ data: { owner: 'u1' } }, refField, { 'USER::u1': '张三' }), '张三')
 assert.equal(formatListFieldValue({ data: { owner: 'u1' } }, refField), '-')
+
+const customRefField = {
+  fieldCode: 'projectId',
+  fieldType: 'REFERENCE',
+  refEntityType: 'CUSTOM',
+  refEntityId: 'project-entity'
+}
+assert.equal(isReferenceListField(customRefField), true)
+assert.equal(
+  formatListFieldValue(
+    { data: { projectId: 'project-1' } },
+    customRefField,
+    { 'CUSTOM:project-entity:project-1': '统一客户运营平台' }
+  ),
+  '统一客户运营平台'
+)
+assert.equal(
+  formatListFieldValue(
+    { data: { projectId: 'project-1' } },
+    customRefField
+  ),
+  '-'
+)
 
 const multiRefField = { fieldCode: 'reviewers', fieldType: 'MULTI_REFERENCE', refEntityType: 'USER', refEntityId: '' }
 assert.equal(formatListFieldValue({ data: { reviewers: '["u1","u2"]' } }, multiRefField, { 'USER::u1': '张三', 'USER::u2': '李四' }), '张三, 李四')
@@ -149,6 +175,76 @@ assert.deepEqual(
     title: '费用申请',
     processInstanceId: 'pi-1',
     processStartTime: '2026-07-25T10:30:00'
+  }
+)
+
+const relationEntityFields = [
+  { fieldCode: 'name', fieldType: 'STRING' },
+  { fieldCode: 'reqItemForm', fieldType: 'SUB_FORM' },
+  { fieldCode: 'subList', fieldType: 'SUB_LIST' }
+]
+const subListOnlyForm = {
+  nodes: [
+    {
+      nodeType: 'FIELD',
+      bindingType: 'NONE',
+      propsDocument: JSON.stringify({
+        fieldCode: 'subList',
+        fieldType: 'SUB_LIST'
+      })
+    },
+    {
+      nodeType: 'FIELD',
+      bindingType: 'ENTITY_FIELD',
+      bindingRef: 'name',
+      propsDocument: JSON.stringify({
+        fieldCode: 'name'
+      })
+    }
+  ]
+}
+assert.deepEqual(
+  [...collectRuntimeFormFieldCodes(subListOnlyForm)].sort(),
+  ['name', 'subList']
+)
+assert.deepEqual(
+  filterRuntimeFormSubmissionData(
+    {
+      name: '4444',
+      subList: null,
+      reqItemForm: []
+    },
+    subListOnlyForm,
+    relationEntityFields
+  ),
+  {
+    name: '4444',
+    subList: null
+  }
+)
+assert.deepEqual(
+  filterRuntimeFormSubmissionData(
+    {
+      name: '4444',
+      reqItemForm: []
+    },
+    {
+      nodes: [
+        {
+          nodeType: 'REPEATER',
+          bindingType: 'RELATION',
+          bindingRef: 'ZDWREQ_reqItemForm',
+          propsDocument: JSON.stringify({
+            fieldCode: 'reqItemForm'
+          })
+        }
+      ]
+    },
+    relationEntityFields
+  ),
+  {
+    name: '4444',
+    reqItemForm: []
   }
 )
 
@@ -430,11 +526,18 @@ assert.deepEqual(
 )
 
 const validationRules = buildRuntimeFieldRules(
-  { validationRules: JSON.stringify({ minLength: 2, maxLength: 5, format: 'EMAIL' }) },
+  {
+    validationRules: JSON.stringify({
+      minLength: 2,
+      maxLength: 50,
+      format: 'EMAIL',
+      pattern: '^[^@]+@example\\.com$'
+    })
+  },
   true,
   '邮箱'
 )
-assert.equal(validationRules.length, 3)
+assert.equal(validationRules.length, 4)
 const entityValidationRules = buildRuntimeFieldRules(
   { validateRules: JSON.stringify({ min: 0, max: 100 }) },
   false,

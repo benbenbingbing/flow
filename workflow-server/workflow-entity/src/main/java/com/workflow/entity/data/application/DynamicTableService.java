@@ -424,7 +424,7 @@ public class DynamicTableService {
      */
     private boolean isSubFormField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SUB_FORM 
-                || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
+                || field.getFieldType() == EntityField.FieldType.SUB_LIST;
     }
 
     private boolean isMultiValueField(EntityField field) {

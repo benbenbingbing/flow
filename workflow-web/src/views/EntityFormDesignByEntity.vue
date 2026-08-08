@@ -11,6 +11,13 @@
         <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
           {{ diffInfo.changed ? '草稿有未发布修改' : '已与发布版本一致' }}
         </el-tag>
+        <el-button
+          :loading="runtimeCodeLoading"
+          :disabled="initializing"
+          @click="openRuntimeCode"
+        >
+          <el-icon><Document /></el-icon>查看最终代码
+        </el-button>
         <el-button @click="showPreview = true">
           <el-icon><View /></el-icon>预览
         </el-button>
@@ -18,36 +25,9 @@
         <el-button type="success" plain @click="handlePublish" :disabled="!isEdit">
           发布
         </el-button>
-        <div class="save-action-group">
-          <el-button type="primary" @click="handleSave" :loading="saving">
-            <el-icon><Check /></el-icon>保存全部草稿
-          </el-button>
-          <el-dropdown
-            trigger="click"
-            placement="bottom-end"
-            @command="handleSaveCommand"
-          >
-            <el-button
-              type="primary"
-              class="save-action-more"
-              :disabled="saving"
-              aria-label="更多保存方式"
-              title="更多保存方式"
-            >
-              <el-icon><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item
-                  command="CURRENT_NODE"
-                  :disabled="!selectedField"
-                >
-                  仅保存当前节点
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
+        <el-button type="primary" @click="handleSave" :loading="saving">
+          <el-icon><Check /></el-icon>保存全部草稿
+        </el-button>
       </div>
     </div>
 
@@ -160,6 +140,7 @@
                     :can-drop-node="canDropNode"
                     :drag-disabled="reorderingNode"
                     @select="selectField"
+                    @open-properties="openFieldProperties"
                     @move="moveNode"
                     @remove="removeNode"
                     @drop="handleNodeDrop"
@@ -175,7 +156,7 @@
         v-model="propertyDrawerVisible"
         title="节点属性"
         direction="rtl"
-        size="440px"
+        size="33.333333vw"
         append-to-body
         class="node-property-drawer"
       >
@@ -448,6 +429,15 @@
                   />
                 </el-form-item>
                 <el-form-item
+                  v-if="canConfigureSelectedWordLimit"
+                  label="显示字数"
+                >
+                  <el-switch
+                    :model-value="selectedWordLimitVisible"
+                    @update:model-value="updateSelectedNodeConfig('showWordLimit', $event)"
+                  />
+                </el-form-item>
+                <el-form-item
                   v-if="selectedValidationCapabilities.range"
                   label="最小值"
                 >
@@ -479,6 +469,24 @@
                     <el-option label="手机号" value="PHONE" />
                     <el-option label="URL" value="URL" />
                   </el-select>
+                </el-form-item>
+                <el-form-item
+                  v-if="selectedValidationCapabilities.pattern"
+                  :error="selectedPatternError"
+                >
+                  <template #label>
+                    <ConfigHelpLabel
+                      label="正则"
+                      content="输入 JavaScript/Java 通用的正则表达式本体，不要添加 / 包裹。需要校验完整内容时请使用 ^ 和 $；与“格式”同时配置时必须全部通过。"
+                    />
+                  </template>
+                  <el-input
+                    :model-value="selectedValidationConfig.pattern || ''"
+                    clearable
+                    :maxlength="500"
+                    placeholder="例如：^[A-Z][A-Z0-9_]*$"
+                    @update:model-value="updateValidationConfig('pattern', $event)"
+                  />
                 </el-form-item>
               </SettingsSection>
 
@@ -692,6 +700,18 @@
             </template>
           </el-empty>
         </div>
+        <template #footer>
+          <div v-if="selectedField" class="node-property-actions">
+            <span>只保存当前节点，其他未保存修改继续保留。</span>
+            <el-button
+              type="primary"
+              :loading="savingNode"
+              @click="saveSelectedNode"
+            >
+              <el-icon><Check /></el-icon>保存当前节点
+            </el-button>
+          </div>
+        </template>
       </el-drawer>
     </div>
 
@@ -796,6 +816,7 @@
       config-label="表单"
       @changed="handleReleaseChanged"
     />
+    <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
 
   </div>
 </template>
@@ -804,7 +825,7 @@
 import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowDown, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank, Setting } from '@element-plus/icons-vue'
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
@@ -816,10 +837,12 @@ import EntitySelectionMappingDialog from '@/components/ui-config/EntitySelection
 import FormDataSourceCompatDialog from '@/components/ui-config/FormDataSourceCompatDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerSettingsDrawer.vue'
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
+import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
@@ -855,13 +878,18 @@ import {
   getFormFieldValidationCapabilities,
   getFormNodeDataSourceUsages,
   getFormNodePropertySchema,
+  mergeFormNodeFieldMetadata,
   normalizeFormFieldValidation,
   resolveFormNodeBinding
 } from '@/shared/form-node-property-schema'
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
 } from '@/shared/form-field-component-policy'
-import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
+import {
+  getRuntimeRegexPatternError,
+  safeParseConfig,
+  stringifyConfig
+} from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   filterEntityFieldsByLifecycle,
@@ -869,14 +897,28 @@ import {
   isWorkflowReady
 } from '@/shared/entity-design'
 import {
+  isParentEntityReferenceTarget,
+  isPublishedSubListOption,
+  isSubListTargetFieldWritable,
+  normalizeSubListDisplayConfig,
+  normalizeSubListParameterContract,
+  SUB_LIST_ACTION_DISPLAY_VERSION
+} from '@/shared/sub-list'
+import {
   FORM_ACTION_MODES,
   emptyFormActionBar,
   footerFormActions,
   normalizeFormActionBar,
   resolveLocalFormActions
 } from '@/shared/form-actions'
+import {
+  buildFormDraftRuntimeSnapshot,
+  buildRuntimeCodeArtifact,
+  selectRuntimeRelease
+} from '@/shared/runtime-code-generator'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
+import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import {
   getFormById,
   createForm,
@@ -895,7 +937,8 @@ import {
 import {
   uiDataSourceApi,
   uiComponentTemplateApi,
-  uiExtensionApi
+  uiExtensionApi,
+  uiEventBindingApi
 } from '@/api/uiConfig'
 
 const route = useRoute()
@@ -904,6 +947,7 @@ const formId = route.params.id
 const entityId = route.query.entityId || ''
 
 const isEdit = ref(!!formId)
+const initializing = ref(true)
 const saving = ref(false)
 const savingNode = ref(false)
 const reorderingNode = ref(false)
@@ -922,6 +966,8 @@ const formDataSourceDialogRef = ref(null)
 const eventBindingDialogRef = ref(null)
 const selectionMappingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
+const runtimeCodeDialogRef = ref(null)
+const runtimeCodeLoading = ref(false)
 const currentEventField = ref(null)
 const activeNodeSettingsTab = ref('basic')
 const activeNodeInteractionTab = ref('state')
@@ -1048,10 +1094,15 @@ const formFields = ref([])
 const selectedField = ref(null)
 const fieldSearch = ref('')
 const entityNameById = ref({})
+const entityCodeById = ref({})
 const formListByEntity = ref([])
 const childFormReleases = ref([])
 const childFormReleaseLoading = ref(false)
 const referenceListOptions = ref([])
+const subListOptions = ref([])
+const subListTargetFields = ref([])
+const subListTargetFieldsLoading = ref(false)
+let subListTargetFieldLoadSequence = 0
 const eventFieldOptions = computed(() =>
   entityFields.value
     .filter(field => field.uiConfigurable !== false)
@@ -1204,6 +1255,14 @@ const selectedComponentConfig = computed({
     }
   }
 })
+const canConfigureSelectedWordLimit = computed(() =>
+  ['input', 'textarea'].includes(
+    String(selectedField.value?.componentType || '').toLowerCase()
+  )
+)
+const selectedWordLimitVisible = computed(() =>
+  selectedComponentConfig.value.showWordLimit !== false
+)
 
 const selectedNodeType = computed(() =>
   String(selectedField.value?.nodeType || legacyNodeType(selectedField.value) || 'FIELD').toUpperCase()
@@ -1314,10 +1373,13 @@ const hasSelectedValidationCapabilities = computed(() =>
   Object.values(selectedValidationCapabilities.value).some(Boolean)
 )
 const selectedValidationRuleCount = computed(() =>
-  ['minLength', 'maxLength', 'min', 'max', 'format'].filter(key => {
+  ['minLength', 'maxLength', 'min', 'max', 'format', 'pattern'].filter(key => {
     const value = selectedValidationConfig.value[key]
     return value !== undefined && value !== null && value !== ''
   }).length
+)
+const selectedPatternError = computed(() =>
+  getRuntimeRegexPatternError(selectedValidationConfig.value.pattern)
 )
 const canConfigureSelectedNodeDataSource = computed(() =>
   selectedNodePropertySchema.value.dataSourceUsages.length > 0
@@ -1356,7 +1418,9 @@ const isSingleEntityReferenceField = computed(() => {
     || componentType === 'REFERENCE'
 })
 const canConfigureSelectedNodeRelations = computed(() =>
-  selectedNodePropertySchema.value.childForm || isReferenceFieldNode.value
+  selectedNodePropertySchema.value.childForm
+    || isSubListField(selectedField.value)
+    || isReferenceFieldNode.value
 )
 const canConfigureSelectedNodeExtension = computed(() =>
   canConfigureNodeExtension.value
@@ -1492,9 +1556,11 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   isNodeDataSourceUsageConfigured, selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel, dataSources,
   clearSelectedNodeDataSourceBinding, canConfigureSelectedNodeRelations,
-  isSubFormField, getEntityNameById, formListByEntity,
+  isSubFormField, isSubListField, getEntityNameById, formListByEntity,
   handleChildFormChange, childFormReleases, childFormReleaseLoading,
   handleChildFormReleaseChange, formatChildFormReleaseLabel,
+  subListOptions, subListTargetFields, subListTargetFieldsLoading,
+  handleSubListChange,
   isReferenceFieldNode, handleReferenceEntitySelected,
   rememberEntityOption, getEntityReferenceSelectionHint,
   referenceListOptions,
@@ -1634,6 +1700,10 @@ function rememberEntityOption(entity) {
     ...entityNameById.value,
     [String(entity.id)]: entity.entityName || entity.entityCode || String(entity.id)
   }
+  entityCodeById.value = {
+    ...entityCodeById.value,
+    [String(entity.id)]: entity.entityCode || ''
+  }
 }
 
 async function resolveReferencedEntityNames() {
@@ -1651,6 +1721,15 @@ async function resolveReferencedEntityNames() {
       (options || []).map(item => [
         String(item.id),
         item.entityName || item.entityCode || String(item.id)
+      ])
+    )
+  }
+  entityCodeById.value = {
+    ...entityCodeById.value,
+    ...Object.fromEntries(
+      (options || []).map(item => [
+        String(item.id),
+        item.entityCode || ''
       ])
     )
   }
@@ -1777,8 +1856,273 @@ function isSubFormField(field) {
   const componentType = String(
     field?.componentType || field?.fieldType || ''
   ).toUpperCase()
-  return ['SUB_FORM', 'REPEATER', 'SUB_FORM_LIST'].includes(nodeType)
-    || ['SUB_FORM', 'SUB_FORM_LIST'].includes(componentType)
+  return ['SUB_FORM', 'REPEATER'].includes(nodeType)
+    || componentType === 'SUB_FORM'
+}
+
+function isSubListField(field) {
+  const fieldType = String(field?.fieldType || '').toUpperCase()
+  const componentType = String(field?.componentType || '').toLowerCase()
+  return fieldType === 'SUB_LIST'
+    || componentType === 'sub_list'
+}
+
+async function loadSubListOptions(targetEntityId, targetField = selectedField.value) {
+  if (!targetEntityId) {
+    subListOptions.value = []
+    if (targetField === selectedField.value) {
+      subListTargetFields.value = []
+    }
+    return []
+  }
+  try {
+    const options = await entityApi.resolveOptions({
+      ids: [String(targetEntityId)]
+    }).catch(() => [])
+    const entity = options?.[0]
+    rememberEntityOption(entity)
+    if (targetField) {
+      targetField.refEntityCode =
+        entity?.entityCode
+        || entityCodeById.value[String(targetEntityId)]
+        || targetField.refEntityCode
+        || ''
+    }
+    const response = await entityListConfigApi.getByEntityId(targetEntityId)
+    const lists = Array.isArray(response)
+      ? response
+      : response?.records || response?.list || response?.data || []
+    const published = lists.filter(isPublishedSubListOption)
+    if (targetField === selectedField.value) {
+      subListOptions.value = published
+    }
+    return published
+  } catch (error) {
+    if (targetField === selectedField.value) {
+      subListOptions.value = []
+    }
+    console.error('加载子列表配置失败:', error)
+    return []
+  }
+}
+
+async function loadSubListTargetFields(
+  targetEntityId,
+  listRef,
+  targetField = selectedField.value
+) {
+  const shouldUpdateUi =
+    Boolean(targetField) && targetField === selectedField.value
+  const sequence = shouldUpdateUi
+    ? ++subListTargetFieldLoadSequence
+    : subListTargetFieldLoadSequence
+  if (shouldUpdateUi) {
+    subListTargetFieldsLoading.value = true
+  }
+  const list = listRef && typeof listRef === 'object'
+    ? listRef
+    : { id: listRef }
+  if (!targetEntityId || (!list.id && !list.listKey)) {
+    if (shouldUpdateUi) {
+      subListTargetFields.value = []
+      subListTargetFieldsLoading.value = false
+    }
+    return []
+  }
+  try {
+    const targetEntityCode =
+      list.entityCode
+      || targetField?.refEntityCode
+      || entityCodeById.value[String(targetEntityId)]
+      || ''
+    const listConfigRequest =
+      targetEntityCode && list.listKey
+        ? entityListRuntimeApi.getSchema(
+            targetEntityCode,
+            list.listKey,
+            'EMBEDDED'
+          )
+        : entityListConfigApi.getById(list.id)
+    const [targetFieldsResponse, listConfig] = await Promise.all([
+      getEntityFields(targetEntityId),
+      listConfigRequest
+    ])
+    const targetFields = Array.isArray(targetFieldsResponse)
+      ? targetFieldsResponse
+      : targetFieldsResponse?.records
+        || targetFieldsResponse?.list
+        || targetFieldsResponse?.data
+        || []
+    const queryable = new Set(
+      (listConfig?.fields || [])
+        .filter(item => item.isQuery === true || item.isQuery === 1)
+        .map(item => String(item.fieldCode || '').trim())
+        .filter(Boolean)
+    )
+    const targetByCode = new Map(
+      targetFields
+        .filter(item => item.fieldCode)
+        .map(item => [String(item.fieldCode), item])
+    )
+    ;(listConfig?.fields || []).forEach(item => {
+      const code = String(item.fieldCode || '').trim()
+      if (code && !targetByCode.has(code)) {
+        targetByCode.set(code, item)
+      }
+    })
+    const options = [...targetByCode.values()].map(item => ({
+      ...item,
+      fieldCode: String(item.fieldCode || '').trim(),
+      fieldName: item.fieldName || item.fieldLabel || item.fieldCode,
+      queryable: queryable.has(String(item.fieldCode || '').trim()),
+      writable: isSubListTargetFieldWritable(item)
+    }))
+    if (shouldUpdateUi
+        && sequence === subListTargetFieldLoadSequence) {
+      subListTargetFields.value = options
+    }
+    return options
+  } catch (error) {
+    if (shouldUpdateUi
+        && sequence === subListTargetFieldLoadSequence) {
+      subListTargetFields.value = []
+    }
+    console.error('加载子列表目标字段失败:', error)
+    return []
+  } finally {
+    if (shouldUpdateUi
+        && sequence === subListTargetFieldLoadSequence) {
+      subListTargetFieldsLoading.value = false
+    }
+  }
+}
+
+async function handleSubListChange(listKey) {
+  const field = selectedField.value
+  if (!field) return
+  const selected = subListOptions.value.find(item =>
+    item.listKey === listKey
+  )
+  field.refListKey = selected?.listKey || ''
+  field.refListId = selected?.id || ''
+  field.refListReleaseId = selected?.activeReleaseId || ''
+  field.refListReleaseVersion = selected?.publishedVersion == null
+    ? null
+    : Number(selected.publishedVersion)
+  await loadSubListTargetFields(
+    field.refEntityId,
+    selected,
+    field
+  )
+}
+
+async function ensureSubListBinding(field) {
+  if (!isSubListField(field)) return
+  const targetEntityId = field.refEntityId
+  if (!targetEntityId) {
+    throw new Error('子列表必须选择目标实体')
+  }
+  if (!field.refListKey) {
+    throw new Error('子列表必须选择一个已发布列表')
+  }
+  const lists = await loadSubListOptions(targetEntityId, field)
+  const selected = lists.find(item =>
+    item.listKey === field.refListKey
+  )
+  if (!selected) {
+    throw new Error('子列表引用的列表不存在、尚未发布或已失效')
+  }
+  field.refEntityCode =
+    selected.entityCode
+    || entityCodeById.value[String(targetEntityId)]
+    || field.refEntityCode
+    || ''
+  if (!field.refEntityCode) {
+    throw new Error('子列表目标实体编码解析失败')
+  }
+  field.refListId = selected.id || ''
+  field.refListReleaseId = selected.activeReleaseId || ''
+  field.refListReleaseVersion = selected.publishedVersion == null
+    ? null
+    : Number(selected.publishedVersion)
+
+  const componentProps = safeParseConfig(field.componentProps)
+  const contract = normalizeSubListParameterContract(
+    componentProps.subListConfig?.parameterContract
+  )
+  if (contract.mappings.length === 0) return
+
+  const targets = await loadSubListTargetFields(
+    targetEntityId,
+    selected,
+    null
+  )
+  const targetByCode = new Map(
+    targets.map(item => [item.fieldCode, item])
+  )
+  const seenTargets = new Set()
+  for (const mapping of contract.mappings) {
+    if (seenTargets.has(mapping.targetField)) {
+      throw new Error(
+        `子列表参数“${mapping.targetFieldName || mapping.targetField}”重复配置`
+      )
+    }
+    seenTargets.add(mapping.targetField)
+    const target = targetByCode.get(mapping.targetField)
+    if (!target) {
+      throw new Error(
+        `子列表参数目标字段不存在: ${mapping.targetField}`
+      )
+    }
+    if (!target.queryable && !target.writable) {
+      throw new Error(
+        `目标字段“${target.fieldName}”未启用查询且不可新增，不能配置子列表参数`
+      )
+    }
+    if (isParentEntityReferenceTarget(
+      target,
+      form.value.entityId || entityId
+    ) && (
+      mapping.source !== 'parent.recordId'
+      || mapping.operator !== 'EQ'
+      || mapping.required !== true
+      || mapping.useForQuery !== true
+    )) {
+      throw new Error(
+        `目标字段“${target.fieldName}”指向当前主实体，必须使用父记录ID并以“等于”方式参与查询`
+      )
+    }
+    if (!mapping.useForQuery && !mapping.useForCreate) {
+      throw new Error(
+        `子列表参数“${mapping.targetFieldName || mapping.targetField}”至少选择查询或新增一种用途`
+      )
+    }
+    if (mapping.useForQuery && !target.queryable) {
+      throw new Error(
+        `目标列表字段“${target.fieldName}”未启用查询，不能作为子列表参数过滤条件`
+      )
+    }
+    if (mapping.useForCreate && !target.writable) {
+      throw new Error(
+        `目标实体字段“${target.fieldName}”不可写，不能作为新增初始值`
+      )
+    }
+    const source = mapping.source
+    if (typeof source === 'string' && !source.trim()) {
+      throw new Error(
+        `子列表参数“${mapping.targetFieldName || mapping.targetField}”未选择来源`
+      )
+    }
+    if (typeof source === 'string' && source.startsWith('parent.data.')) {
+      const parentFieldCode = source.slice('parent.data.'.length)
+      if (!entityFields.value.some(item =>
+        item.fieldCode === parentFieldCode)) {
+        throw new Error(
+          `子列表参数引用的父字段不存在: ${parentFieldCode}`
+        )
+      }
+    }
+  }
 }
 
 async function ensureChildFormReleaseBinding(field) {
@@ -1855,7 +2199,12 @@ async function loadEntityFields() {
   if (!eid) return
 
   try {
-    const loadedFields = await getEntityFields(eid)
+    const detailedFields = Array.isArray(entityInfo.value?.fields)
+      ? entityInfo.value.fields
+      : []
+    const loadedFields = detailedFields.length > 0
+      ? detailedFields
+      : await getEntityFields(eid)
     entityFields.value = filterEntityFieldsByLifecycle(
       entityInfo.value,
       loadedFields
@@ -1989,7 +2338,6 @@ function legacyNodeType(field) {
   const fieldType = String(field?.fieldType || '').toUpperCase()
   const componentType = String(field?.componentType || '').toUpperCase()
   if (fieldType === 'SECTION' || componentType === 'SECTION') return 'SECTION'
-  if (fieldType === 'SUB_FORM_LIST') return 'REPEATER'
   if (fieldType === 'SUB_FORM' || componentType === 'SUB_FORM') return 'SUB_FORM'
   return 'FIELD'
 }
@@ -2120,6 +2468,12 @@ function nodeToField(node, legacyField) {
   const rules = parseDocument(node.rulesDocument)
   const bindings = parseDocument(node.dataSourceBindingsDocument)
   const nodeType = normalizeFormNodeType(node.nodeType)
+  const sourceField = mergeFormNodeFieldMetadata(
+    entityFields.value,
+    legacyField,
+    props,
+    node.nodeKey
+  )
   const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType)
   const firstBinding = Object.entries(bindings)
     .find(([usage]) =>
@@ -2127,8 +2481,9 @@ function nodeToField(node, legacyField) {
     ) || []
   const componentConfig = extractFormNodeComponentConfig(nodeType, props)
   const rulesSupported = formNodeSupports(nodeType, 'rules')
+  const isChildFormNode = ['SUB_FORM', 'REPEATER'].includes(nodeType)
   const field = {
-    ...(legacyField || {}),
+    ...sourceField,
     id: node.id,
     nodeId: node.id,
     formId: node.formId,
@@ -2147,43 +2502,47 @@ function nodeToField(node, legacyField) {
     localOverrides: parseDocument(node.localOverridesDocument),
     legacyProps: parseDocument(node.legacyPropsDocument),
     dataSourceBindings: bindings,
-    fieldId: props.fieldId ?? legacyField?.fieldId,
+    fieldId: props.fieldId ?? sourceField.fieldId ?? sourceField.id,
     fieldCode: props.fieldCode || node.nodeKey,
-    fieldName: props.fieldName || props.label || legacyField?.fieldName || node.nodeKey,
-    fieldLabel: props.label || legacyField?.fieldLabel || node.nodeKey,
-    fieldType: props.fieldType || legacyField?.fieldType || node.nodeType,
-    componentType: props.componentType || legacyField?.componentType || node.nodeType.toLowerCase(),
-    placeholder: props.placeholder ?? legacyField?.placeholder,
-    defaultValue: props.defaultValue ?? legacyField?.defaultValue,
-    gridSpan: props.gridSpan ?? legacyField?.gridSpan ?? 24,
+    fieldName: props.fieldName || props.label || sourceField.fieldName || node.nodeKey,
+    fieldLabel: props.label || sourceField.fieldLabel || sourceField.fieldName || node.nodeKey,
+    fieldType: isChildFormNode
+      ? 'SUB_FORM'
+      : (props.fieldType || sourceField.fieldType || node.nodeType),
+    componentType: isChildFormNode
+      ? 'sub_form'
+      : (props.componentType || sourceField.componentType || node.nodeType.toLowerCase()),
+    placeholder: props.placeholder ?? sourceField.placeholder,
+    defaultValue: props.defaultValue ?? sourceField.defaultValue,
+    gridSpan: props.gridSpan ?? sourceField.gridSpan ?? 24,
     childFormId:
       props.childFormId
       || props.refFormId
       || props.publishedFormId
-      || legacyField?.childFormId
-      || legacyField?.refFormId
+      || sourceField.childFormId
+      || sourceField.refFormId
       || '',
     childFormReleaseId:
       props.childFormReleaseId
       || props.refFormReleaseId
       || props.publishedFormReleaseId
-      || legacyField?.childFormReleaseId
+      || sourceField.childFormReleaseId
       || '',
     childFormReleaseVersion:
       props.childFormReleaseVersion
       ?? props.refFormReleaseVersion
       ?? props.publishedFormReleaseVersion
-      ?? legacyField?.childFormReleaseVersion
+      ?? sourceField.childFormReleaseVersion
       ?? null,
     isRequired: Object.hasOwn(props, 'required')
       ? (props.required === true ? 1 : 0)
-      : (legacyField?.isRequired || 0),
+      : (sourceField.isRequired || 0),
     isReadonly: Object.hasOwn(props, 'readonly')
       ? (props.readonly === true ? 1 : 0)
-      : (legacyField?.isReadonly || 0),
+      : (sourceField.isReadonly || 0),
     isHidden: Object.hasOwn(props, 'hidden')
       ? (props.hidden === true ? 1 : 0)
-      : (legacyField?.isHidden || 0),
+      : (sourceField.isHidden || 0),
     componentProps: stringifyConfig(componentConfig),
     validationRules: rulesSupported
       ? stringifyConfig(rules.validation || rules)
@@ -2327,6 +2686,36 @@ function restoreFieldConfig(field) {
       field.childEntityId = field.childEntityId || field.refEntityId || ''
       field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
     }
+    if (compProps.subListConfig) {
+      const subListConfig = normalizeSubListDisplayConfig(
+        compProps.subListConfig
+      )
+      field.refEntityId =
+        subListConfig.targetEntityId
+        || field.refEntityId
+        || ''
+      field.refEntityCode =
+        subListConfig.targetEntityCode
+        || field.refEntityCode
+        || ''
+      field.refListKey =
+        subListConfig.listKey
+        || field.refListKey
+        || ''
+      field.refListId = subListConfig.listId || ''
+      field.refListReleaseId = subListConfig.listReleaseId || ''
+      field.refListReleaseVersion =
+        subListConfig.listReleaseVersion ?? null
+      field.subListShowSearch = subListConfig.showSearch
+      field.subListShowPagination = subListConfig.showPagination
+      field.subListShowToolbar = subListConfig.showToolbar
+      field.subListShowRowActions = subListConfig.showRowActions
+      field.subListPageSize = subListConfig.pageSize
+      field.subListMaxHeight =
+        Number(subListConfig.maxHeight) >= 120
+          ? Number(subListConfig.maxHeight)
+          : 420
+    }
     // 恢复实体引用配置
     if (compProps.refConfig) {
       field.refEntityType = compProps.refConfig.refEntityType || ''
@@ -2386,6 +2775,27 @@ function buildSerializedFieldComponentProps(field) {
       }
       delete compProps.fields
       delete compProps.subFields
+    }
+    if (isSubListField(field)) {
+      compProps.subListConfig = {
+        ...(compProps.subListConfig || {}),
+        targetEntityId: field.refEntityId || '',
+        targetEntityCode: field.refEntityCode || '',
+        listId: field.refListId || '',
+        listKey: field.refListKey || '',
+        listReleaseId: field.refListReleaseId || '',
+        listReleaseVersion: field.refListReleaseVersion == null
+          ? null
+          : Number(field.refListReleaseVersion),
+        actionDisplayVersion: SUB_LIST_ACTION_DISPLAY_VERSION,
+        showSearch: field.subListShowSearch !== false,
+        showPagination: field.subListShowPagination !== false,
+        showToolbar: field.subListShowToolbar !== false,
+        showRowActions: field.subListShowRowActions !== false,
+        pageSize: Number(field.subListPageSize) || 10,
+        maxHeight: Number(field.subListMaxHeight) || 420
+      }
+      delete compProps.subFormConfig
     }
     // 序列化实体引用配置
     if ((field.componentType || '').toUpperCase() === 'REFERENCE' || (field.componentType || '').toUpperCase() === 'MULTI_REFERENCE') {
@@ -2498,8 +2908,8 @@ function addField(entityField) {
   }
   
   const stableId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  const nodeType = ['SUB_FORM', 'SUB_FORM_LIST'].includes(entityField.fieldType)
-    ? (entityField.fieldType === 'SUB_FORM_LIST' ? 'REPEATER' : 'SUB_FORM')
+  const nodeType = entityField.fieldType === 'SUB_FORM'
+    ? 'SUB_FORM'
     : 'FIELD'
   const initialBinding = resolveFormNodeBinding(entityField, nodeType)
   const parentId = resolveDefaultParentId(nodeType)
@@ -2538,6 +2948,9 @@ function addField(entityField) {
   if (entityField.refEntityType) {
     newField.refEntityType = entityField.refEntityType
   }
+  if (entityField.refListKey) {
+    newField.refListKey = entityField.refListKey
+  }
   if (entityField.apiUrl) {
     newField.apiUrl = entityField.apiUrl
   }
@@ -2559,6 +2972,18 @@ function addField(entityField) {
     if (newField.refEntityId) {
       loadFormListByEntity(newField.refEntityId)
     }
+  } else if (isSubListField(newField)) {
+    newField.componentType = 'sub_list'
+    newField.refListKey = entityField.refListKey || ''
+    newField.subListShowSearch = true
+    newField.subListShowPagination = true
+    newField.subListShowToolbar = true
+    newField.subListShowRowActions = true
+    newField.subListPageSize = 10
+    newField.subListMaxHeight = 420
+    if (newField.refEntityId) {
+      loadSubListOptions(newField.refEntityId, newField)
+    }
   }
 
   // 复制选项数据（用于选项联动等）
@@ -2573,7 +2998,7 @@ function addField(entityField) {
   }
 
   formFields.value.push(newField)
-  selectField(newField)
+  openFieldProperties(newField)
   if (['REFERENCE', 'MULTI_REFERENCE'].includes((newField.componentType || '').toUpperCase())) {
     loadReferenceLists(newField.refEntityId, false)
   }
@@ -2645,9 +3070,9 @@ function addContainerNode(nodeType, options = {}) {
     fieldCode: stableId,
     fieldName: nodeLabel,
     fieldLabel: nodeLabel,
-    fieldType: nodeType === 'REPEATER' ? 'SUB_FORM_LIST' : nodeType,
+    fieldType: nodeType === 'REPEATER' ? 'SUB_FORM' : nodeType,
     componentType: nodeType === 'REPEATER'
-      ? 'sub_form_list'
+      ? 'sub_form'
       : nodeType.toLowerCase(),
     bindingType: 'NONE',
     bindingRef: null,
@@ -2661,7 +3086,7 @@ function addContainerNode(nodeType, options = {}) {
     sortOrder: placement.sortOrder
   }
   formFields.value.push(node)
-  selectField(node)
+  openFieldProperties(node)
   if (nodeType === 'TAB' && !node.parentId) {
     ElMessage.info('请选择“所属 Tab 集合”后再保存当前 Tab 页')
   } else {
@@ -2672,8 +3097,21 @@ function addContainerNode(nodeType, options = {}) {
 // 选择字段
 function selectField(field) {
   selectedField.value = field
+  if (propertyDrawerVisible.value) {
+    prepareFieldProperties(field)
+  }
+}
+
+// 双击已有节点或新增节点后打开属性
+function openFieldProperties(field) {
+  selectedField.value = field
   propertyDrawerVisible.value = true
+  prepareFieldProperties(field)
+}
+
+function prepareFieldProperties(field) {
   childFormReleases.value = []
+  subListOptions.value = []
   if (field && isSubFormField(field)) {
     field.childEntityId = field.childEntityId || field.refEntityId || ''
     field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
@@ -2687,6 +3125,34 @@ function selectField(field) {
         field,
         true
       )
+    }
+  } else if (field && isSubListField(field)) {
+    field.componentType = 'sub_list'
+    field.refListKey = field.refListKey || ''
+    field.subListShowSearch = field.subListShowSearch !== false
+    field.subListShowPagination =
+      field.subListShowPagination !== false
+    field.subListShowToolbar =
+      field.subListShowToolbar !== false
+    field.subListShowRowActions =
+      field.subListShowRowActions !== false
+    field.subListPageSize = Number(field.subListPageSize) || 10
+    field.subListMaxHeight = Number(field.subListMaxHeight) || 420
+    if (field.refEntityId) {
+      loadSubListOptions(field.refEntityId, field).then(lists => {
+        const selected = lists.find(item =>
+          item.listKey === field.refListKey
+        )
+        if (selected) {
+          loadSubListTargetFields(
+            field.refEntityId,
+            selected,
+            field
+          )
+        } else if (field === selectedField.value) {
+          subListTargetFields.value = []
+        }
+      })
     }
   }
   if (field && ['REFERENCE', 'MULTI_REFERENCE'].includes((field.componentType || '').toUpperCase())) {
@@ -2949,6 +3415,15 @@ function updateValidationConfig(key, value) {
   )
 }
 
+function validateNodeValidationRules(field) {
+  const config = safeParseConfig(field?.validationRules)
+  const patternError = getRuntimeRegexPatternError(config.pattern)
+  if (!patternError) return
+  const label =
+    field?.fieldLabel || field?.fieldName || field?.fieldCode || '当前字段'
+  throw new Error(`“${label}”${patternError}`)
+}
+
 function updateSelectedNodeConfig(key, value) {
   if (!selectedField.value) return
   selectedField.value.componentProps = stringifyConfig({
@@ -3192,10 +3667,17 @@ async function saveSelectedNode() {
     ElMessage.warning('当前节点不能放在根节点，或节点树超过 8 层')
     return
   }
+  try {
+    validateNodeValidationRules(selectedField.value)
+  } catch (error) {
+    ElMessage.warning(error.message)
+    return
+  }
   savingNode.value = true
   try {
     const currentFormId = await ensureFormMetadata()
     await ensureChildFormReleaseBinding(selectedField.value)
+    await ensureSubListBinding(selectedField.value)
     validateNodeDataSourceMappings(selectedField.value)
     const payload = fieldToNodePayload(selectedField.value, {
       forPatch: selectedField.value.revision > 0
@@ -3297,15 +3779,83 @@ async function showReleaseHistory() {
   await releaseHistoryDialogRef.value?.open()
 }
 
+async function openRuntimeCode() {
+  if (initializing.value) {
+    ElMessage.info('表单配置仍在加载，请稍候')
+    return
+  }
+  runtimeCodeLoading.value = true
+  try {
+    let orderedFields = [...formFields.value].sort((left, right) =>
+      Number(left.orderKey || left.sortOrder || 0)
+        - Number(right.orderKey || right.sortOrder || 0)
+    )
+    try {
+      orderedFields = orderFormNodesParentFirst(formFields.value)
+    } catch {
+      // Invalid local hierarchy is still inspectable in its current order.
+    }
+    const currentFormId = String(form.value.id || '')
+    const [eventBindings, releases] = await Promise.all([
+      currentFormId
+        ? uiEventBindingApi.list('FORM', currentFormId).catch(() => [])
+        : Promise.resolve([]),
+      currentFormId
+        ? getFormReleases(currentFormId)
+            .then(normalizeReleaseList)
+            .catch(() => [])
+        : Promise.resolve([])
+    ])
+    const draftSnapshot = buildFormDraftRuntimeSnapshot({
+      form: {
+        ...form.value,
+        entityId: form.value.entityId || entityId,
+        initConfig: safeParseConfig(form.value.initConfig),
+        viewConfig: viewConfig.value
+      },
+      legacyFields: orderedFields.map((field, index) =>
+        fieldToNodeEntity(field, index)
+      ),
+      nodes: orderedFields.map(field => fieldToNodePayload(field)),
+      eventBindings: Array.isArray(eventBindings) ? eventBindings : []
+    })
+    const activeRelease = selectRuntimeRelease(
+      releases,
+      form.value.activeReleaseId
+    )
+    const published = activeRelease?.snapshotDocument
+      ? buildRuntimeCodeArtifact({
+          configType: 'FORM',
+          configLabel: form.value.formName || form.value.formKey || '表单',
+          source: 'PUBLISHED',
+          version: activeRelease.version,
+          snapshot: safeParseConfig(activeRelease.snapshotDocument)
+        })
+      : null
+    runtimeCodeDialogRef.value?.open({
+      type: 'FORM',
+      label: form.value.formName || form.value.formKey || '新建表单',
+      draft: buildRuntimeCodeArtifact({
+        configType: 'FORM',
+        configLabel: form.value.formName || form.value.formKey || '表单',
+        source: 'DRAFT',
+        snapshot: draftSnapshot
+      }),
+      published,
+      dirty: hasUnsavedLocalChanges(),
+      changed: diffInfo.value.changed === true
+    })
+  } catch (error) {
+    console.error('生成表单最终代码失败:', error)
+    ElMessage.error(error?.message || '生成表单最终代码失败')
+  } finally {
+    runtimeCodeLoading.value = false
+  }
+}
+
 async function handleReleaseChanged() {
   await loadFormInfo()
   await loadDiff()
-}
-
-async function handleSaveCommand(command) {
-  if (command === 'CURRENT_NODE') {
-    await saveSelectedNode()
-  }
 }
 
 // 保存表单
@@ -3334,6 +3884,7 @@ async function handleSave() {
     for (const field of formFields.value) {
       const label =
         field.fieldLabel || field.fieldName || field.fieldCode || field.id
+      validateNodeValidationRules(field)
       if (field.parentId) {
         const parent = nodeById(field.parentId)
         if (!isValidParentCandidate(parent, field)) {
@@ -3388,6 +3939,7 @@ async function handleSave() {
         field.isReadonly = 1
       }
       await ensureChildFormReleaseBinding(field)
+      await ensureSubListBinding(field)
       validateNodeDataSourceMappings(field)
     }
     await replaceFormNodes(
@@ -3417,14 +3969,18 @@ async function handleSave() {
 }
 
 onMounted(async () => {
-  await loadEntityInfo()
-  await loadFormInfo()
-  await loadEntityFields()
-  await loadFormFields()
-  await loadDataSources()
-  await loadComponentTemplates()
-  await loadExtensionDefinitions()
-  await loadDiff()
+  try {
+    await loadEntityInfo()
+    await loadFormInfo()
+    await loadEntityFields()
+    await loadFormFields()
+    await loadDataSources()
+    await loadComponentTemplates()
+    await loadExtensionDefinitions()
+    await loadDiff()
+  } finally {
+    initializing.value = false
+  }
 })
 </script>
 
@@ -3469,24 +4025,6 @@ onMounted(async () => {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.save-action-group {
-  display: inline-flex;
-  align-items: stretch;
-}
-
-.save-action-group > .el-button {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.save-action-more {
-  width: 34px;
-  padding: 8px;
-  margin-left: -1px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
 }
 
 .title {
@@ -3755,6 +4293,21 @@ onMounted(async () => {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+}
+
+.node-property-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.node-property-actions span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
 }
 
 .node-settings-tabs {

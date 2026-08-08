@@ -35,6 +35,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useFormField } from '../composables/useFormField.js'
+import { resolveTextFieldMaxLength } from '@/shared/config-runtime'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -66,7 +67,7 @@ const textareaRows = computed(() => {
 })
 
 const maxlength = computed(() => {
-  return parsedComponentProps.value.maxlength || props.field?.fieldLength || undefined
+  return resolveTextFieldMaxLength(props.field, parsedComponentProps.value)
 })
 
 const showWordLimit = computed(() => {

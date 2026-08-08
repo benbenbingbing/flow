@@ -2,3 +2,7 @@ logging:
   structured:
     format:
       console: ecs
+
+mybatis-plus:
+  configuration:
+    log-impl: ${MYBATIS_LOG_IMPL:org.apache.ibatis.logging.nologging.NoLoggingImpl}

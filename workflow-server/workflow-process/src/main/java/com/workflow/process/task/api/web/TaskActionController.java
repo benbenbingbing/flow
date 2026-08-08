@@ -73,7 +73,10 @@ public class TaskActionController {
     public Result<Void> withdrawProcess(
             @PathVariable String processInstanceId,
             @RequestBody(required = false) Map<String, String> requestBody) {
-        String userId = UserContext.getUsername();
+        String userId = UserContext.getUserId();
+        if (userId == null || userId.isEmpty()) {
+            userId = UserContext.getUsername();
+        }
         if (userId == null || userId.isEmpty()) {
             throw new ForbiddenException("用户未登录");
         }

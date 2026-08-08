@@ -146,7 +146,7 @@ public class EntityDataMutationValidator {
         return field.getFieldType()
                 == EntityField.FieldType.SUB_FORM
                 || field.getFieldType()
-                == EntityField.FieldType.SUB_FORM_LIST;
+                == EntityField.FieldType.SUB_LIST;
     }
 
     private boolean isBlank(Object value) {

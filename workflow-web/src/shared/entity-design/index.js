@@ -18,7 +18,7 @@ export const ENTITY_FIELD_TYPES = [
   { value: 'REFERENCE', label: '实体记录单选', icon: 'Connection' },
   { value: 'MULTI_REFERENCE', label: '实体记录多选', icon: 'Share' },
   { value: 'SUB_FORM', label: '子表单', icon: 'Grid' },
-  { value: 'SUB_FORM_LIST', label: '子表单列表', icon: 'List' }
+  { value: 'SUB_LIST', label: '子列表', icon: 'List' }
 ]
 
 export const WORKFLOW_SYSTEM_FIELD_CODES = new Set([
@@ -81,7 +81,7 @@ export function getEntityFieldTypeTag(type) {
     REFERENCE: 'primary',
     MULTI_REFERENCE: 'primary',
     SUB_FORM: 'warning',
-    SUB_FORM_LIST: 'warning'
+    SUB_LIST: 'warning'
   }
   return tags[type] || 'info'
 }

@@ -7,8 +7,11 @@ import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.contracts.entity.mutation.EntityMutationSystemFields;
+import com.workflow.contracts.entity.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
+import com.workflow.entity.version.application.EntityMutationIsolationExecutor;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -19,10 +22,12 @@ import java.util.Map;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class EntityRecordMutationAdapter
         implements EntityRecordPort {
 
     private final EntityMutationPort mutationPort;
+    private final EntityMutationIsolationExecutor isolationExecutor;
     private final EntityRecordTeamService teamService;
 
     @Override
@@ -69,6 +74,7 @@ public class EntityRecordMutationAdapter
 
     @Override
     public void markProcessEnded(
+            String processInstanceId,
             String entityCode,
             String entityRecordId,
             String statusCategory,
@@ -78,38 +84,52 @@ public class EntityRecordMutationAdapter
         String key = String.join(
                 ":",
                 "process-end",
-                entityCode,
-                entityRecordId,
+                processInstanceId,
                 statusCategory == null
                         ? "UNKNOWN" : statusCategory);
-        mutationPort.execute(new EntityMutationCommand(
-                key,
-                entityCode,
-                entityRecordId,
-                EntityMutationOperationType.STATUS_CHANGE,
-                Map.of(
-                        EntityMutationSystemFields.MODE_KEY,
-                        EntityMutationSystemFields.PROCESS_END,
-                        "statusCategory",
-                        statusCategory == null
-                                ? "" : statusCategory,
-                        "fallbackStatus",
-                        fallbackStatus == null
-                                ? "" : fallbackStatus),
-                EntityMutationContext.builder(
-                                EntityMutationSourceType.PROCESS_RUNTIME,
-                                completed
-                                        ? "INITIAL_EFFECTIVE"
-                                        : "PROCESS_END_SYNC",
-                                completed
-                                        ? "初始审批生效"
-                                        : "流程结束同步")
-                        .sourceId(statusCategory)
-                        .sourceRecord(
-                                entityCode,
-                                entityRecordId)
-                        .trace(key, key)
-                        .build()));
+        try {
+            isolationExecutor.execute(new EntityMutationCommand(
+                    key,
+                    entityCode,
+                    entityRecordId,
+                    EntityMutationOperationType.STATUS_CHANGE,
+                    Map.of(
+                            EntityMutationSystemFields.MODE_KEY,
+                            EntityMutationSystemFields.PROCESS_END,
+                            "statusCategory",
+                            statusCategory == null
+                                    ? "" : statusCategory,
+                            "fallbackStatus",
+                            fallbackStatus == null
+                                    ? "" : fallbackStatus),
+                    EntityMutationContext.builder(
+                                    EntityMutationSourceType.PROCESS_RUNTIME,
+                                    completed
+                                            ? "INITIAL_EFFECTIVE"
+                                            : "PROCESS_END_SYNC",
+                                    completed
+                                            ? "初始审批生效"
+                                            : "流程结束同步")
+                            .sourceId(statusCategory)
+                            .sourceRecord(
+                                    entityCode,
+                                    entityRecordId)
+                            .process(
+                                    null,
+                                    processInstanceId,
+                                    null)
+                            .operator(
+                                    "system",
+                                    "流程引擎")
+                            .trace(key, key)
+                            .build()));
+        } catch (EntityMutationTargetNotFoundException exception) {
+            log.info(
+                    "流程结束状态同步跳过已删除实体: processInstanceId={}, entityCode={}, entityRecordId={}",
+                    processInstanceId,
+                    entityCode,
+                    entityRecordId);
+        }
     }
 
     @Override

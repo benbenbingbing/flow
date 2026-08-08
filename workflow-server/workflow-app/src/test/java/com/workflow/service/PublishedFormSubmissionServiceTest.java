@@ -9,6 +9,8 @@ import com.workflow.entity.ui.application.UiDataSourceService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -185,6 +187,115 @@ class PublishedFormSubmissionServiceTest {
                 .execute(
                         eq("source-1"),
                         org.mockito.ArgumentMatchers.any());
+    }
+
+    /** 当前发布表单未声明旧关系字段时，提交数据必须忽略该字段，避免空数组误删独立子列表数据 */
+    @Test
+    void removesRelationDataNotDeclaredByPublishedForm() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        EntityRelationMapper relationMapper =
+                mock(EntityRelationMapper.class);
+        PublishedFormSubmissionService service =
+                service(
+                        mock(EntityDefinitionMapper.class),
+                        relationMapper,
+                        releaseService,
+                        mock(UiDataSourceService.class));
+
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        EntityFormNode subList = new EntityFormNode();
+        subList.setId("node-sub-list");
+        subList.setNodeType("FIELD");
+        subList.setBindingType("NONE");
+        subList.setPropsDocument(
+                """
+                {"fieldCode":"subList","fieldType":"SUB_LIST"}
+                """);
+        form.setNodes(List.of(subList));
+
+        EntityRelation relation = new EntityRelation();
+        relation.setParentFieldCode("reqItemForm");
+        relation.setRelationCode("ZDWREQ_reqItemForm");
+        when(relationMapper.selectByParentEntityId("entity-1"))
+                .thenReturn(List.of(relation));
+        when(releaseService.resolveRuntimeFormRelease(
+                "form-1",
+                null,
+                null))
+                .thenReturn(resolution(
+                        form,
+                        "release-1",
+                        1));
+
+        Map<String, Object> result = service.applyForm(
+                "form-1",
+                "ZDWREQ",
+                "record-1",
+                "edit",
+                new LinkedHashMap<>(Map.of(
+                        "name", "4444",
+                        "reqItemForm", List.of())));
+
+        assertEquals(Map.of("name", "4444"), result);
+    }
+
+    /** 当前发布表单包含关系节点时保留空数组，维持用户显式清空子表单的既有语义 */
+    @Test
+    void keepsRelationDataDeclaredByPublishedForm() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        EntityRelationMapper relationMapper =
+                mock(EntityRelationMapper.class);
+        PublishedFormSubmissionService service =
+                service(
+                        mock(EntityDefinitionMapper.class),
+                        relationMapper,
+                        releaseService,
+                        mock(UiDataSourceService.class));
+
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        EntityFormNode relationNode = new EntityFormNode();
+        relationNode.setId("node-relation");
+        relationNode.setNodeType("REPEATER");
+        relationNode.setBindingType("RELATION");
+        relationNode.setBindingRef("ZDWREQ_reqItemForm");
+        relationNode.setPropsDocument(
+                """
+                {"fieldCode":"reqItemForm","fieldType":"SUB_FORM"}
+                """);
+        form.setNodes(List.of(relationNode));
+
+        EntityRelation relation = new EntityRelation();
+        relation.setParentFieldCode("reqItemForm");
+        relation.setRelationCode("ZDWREQ_reqItemForm");
+        when(relationMapper.selectByParentEntityId("entity-1"))
+                .thenReturn(List.of(relation));
+        when(releaseService.resolveRuntimeFormRelease(
+                "form-1",
+                null,
+                null))
+                .thenReturn(resolution(
+                        form,
+                        "release-1",
+                        1));
+
+        Map<String, Object> submitted =
+                new LinkedHashMap<>();
+        submitted.put("name", "4444");
+        submitted.put("reqItemForm", List.of());
+        Map<String, Object> result = service.applyForm(
+                "form-1",
+                "ZDWREQ",
+                "record-1",
+                "edit",
+                submitted);
+
+        assertEquals(submitted, result);
     }
 
     /** 测试同一业务提交复用绑定幂等键：验证重试时两节点的幂等键与首次一致且节点间互不相同 */
@@ -639,11 +750,24 @@ class PublishedFormSubmissionServiceTest {
             EntityDefinitionMapper definitionMapper,
             UiConfigReleaseService releaseService,
             UiDataSourceService dataSourceService) {
+        return service(
+                definitionMapper,
+                mock(EntityRelationMapper.class),
+                releaseService,
+                dataSourceService);
+    }
+
+    private PublishedFormSubmissionService service(
+            EntityDefinitionMapper definitionMapper,
+            EntityRelationMapper relationMapper,
+            UiConfigReleaseService releaseService,
+            UiDataSourceService dataSourceService) {
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         return new PublishedFormSubmissionService(
                 definitionMapper,
                 mock(EntityFormMapper.class),
+                relationMapper,
                 releaseService,
                 dataSourceService,
                 codec,

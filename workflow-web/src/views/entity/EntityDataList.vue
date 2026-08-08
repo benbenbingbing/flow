@@ -1,5 +1,5 @@
 <template>
-  <div class="entity-data-list">
+  <div class="entity-data-list" :class="{ embedded }">
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
     </div>
@@ -66,7 +66,7 @@
       />
       <template v-else-if="!dataError">
         <EntityDataSearchForm
-          v-if="queryFields.length > 0"
+          v-if="queryFields.length > 0 && (!embedded || showSearch)"
           v-model:form="queryForm"
           :fields="queryFields"
           :useListConfig="useListConfig"
@@ -93,8 +93,11 @@
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
           :viewConfig="viewConfig"
-          :showVersionAction="!selectionScene && !isSystemEntity"
+          :showVersionAction="!selectionScene && !isSystemEntity && !embedded"
+          :show-pagination="!embedded || showPagination"
+          :max-height="embedded ? maxHeight : undefined"
           :selection-mode="effectiveSelectionMode"
+          :runtime-context="context"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -156,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
@@ -166,15 +169,22 @@ import { applySelectionReturnMappings } from '@/utils/selectionReturnMappings'
 import { getFormForNewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
 import { getEntityStatusList } from '@/api/entityStatus'
+import { getItemTreeByDictCode } from '@/api/system/dict'
 import { getCustomListComponent, hasCustomListComponent } from '@/utils/customComponentRegistry.js'
 import {
   canExecuteAction,
   getActionCapabilityReason,
   hasButtonPermission
 } from '@/utils/listButtonPermission'
-import { formatDateValue, getCellValue } from '@/shared/list-runtime'
+import {
+  buildListRequestFilters,
+  formatDateValue,
+  getCellValue,
+  isReferenceListField
+} from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { withListButtonTypeDefault } from '@/shared/list-config-design'
+import { loadExplicitListButtonForm } from '@/shared/list-button-form-runtime'
 import {
   buildEntityStatusMap,
   getEffectiveEntityStatusOptions,
@@ -200,13 +210,40 @@ const props = withDefaults(defineProps<{
   context?: Record<string, any>
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
   initialSelectedRows?: any[]
+  embedded?: boolean
+  showSearch?: boolean
+  showPagination?: boolean
+  showToolbar?: boolean
+  showRowActions?: boolean
+  fixedFilters?: Record<string, any>
+  createInitialData?: Record<string, any>
+  createContext?: Record<string, any>
+  pageSize?: number
+  maxHeight?: number
 }>(), {
   entityCode: '',
   listKey: '',
   context: () => ({}),
   selectionMode: 'NONE',
-  initialSelectedRows: () => []
+  initialSelectedRows: () => [],
+  embedded: false,
+  showSearch: true,
+  showPagination: true,
+  showToolbar: true,
+  showRowActions: true,
+  fixedFilters: () => ({}),
+  createInitialData: () => ({}),
+  createContext: () => ({}),
+  pageSize: 10,
+  maxHeight: 420
 })
+
+const {
+  embedded,
+  showSearch,
+  showPagination,
+  maxHeight
+} = toRefs(props)
 
 const emit = defineEmits<{
   confirm: [rows: any[]]
@@ -266,6 +303,7 @@ const queryForm = reactive<Record<string, any>>({})
 
 const defaultForm = ref<any>(null)
 const createFormLoading = ref(false)
+const dictOptionMap = ref<Record<string, any[]>>({})
 
 const formDialogRef = ref<InstanceType<typeof EntityDataFormDialog>>()
 const approvalDialogRef = ref<InstanceType<typeof EntityApprovalDialog>>()
@@ -283,55 +321,94 @@ const queryFields = computed(() => {
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
         const queryConfig = safeParseConfig(f.queryConfig)
+        const dictType = originField?.dictType || f.dictType
+        const dictOptions = dictType ? dictOptionMap.value[dictType] : null
         return withEntityStatusFieldOptions({
           ...f,
           componentType: queryConfig.componentType || originField?.componentType || f.componentType,
           placeholder: queryConfig.placeholder || f.placeholder,
           defaultValue: queryConfig.defaultValue,
           fieldType: originField?.fieldType || f.fieldType || 'STRING',
-          optionsJson: originField?.optionsJson || f.optionsJson,
+          dictType,
+          optionsJson: dictOptions?.length
+            ? JSON.stringify(dictOptions)
+            : originField?.optionsJson || f.optionsJson,
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId,
           queryType: f.queryType || 'LIKE'
         }, entityStatusOptions.value)
       })
-      .filter((f: any) => !['SUB_FORM', 'SUB_FORM_LIST'].includes((f.componentType || f.fieldType || '').toUpperCase()))
+      .filter((f: any) => !['SUB_FORM', 'SUB_LIST'].includes((f.componentType || f.fieldType || '').toUpperCase()))
   }
   return entityFields.value
     .filter((f: any) => {
       const type = (f.componentType || f.fieldType || '').toUpperCase()
       return f.runtimeReadable !== false
-        && !['SUB_FORM', 'SUB_FORM_LIST'].includes(type)
+        && !['SUB_FORM', 'SUB_LIST'].includes(type)
     })
-    .map((field: any) =>
-      withEntityStatusFieldOptions(field, entityStatusOptions.value)
-    )
+    .map((field: any) => {
+      const dictOptions = field.dictType
+        ? dictOptionMap.value[field.dictType]
+        : null
+      return withEntityStatusFieldOptions(
+        dictOptions?.length
+          ? { ...field, optionsJson: JSON.stringify(dictOptions) }
+          : field,
+        entityStatusOptions.value
+      )
+    })
 })
 
 // 列表显示字段（使用列表配置）
 const listFields = computed(() => {
   if (listConfigFields.value.length > 0) {
     return listConfigFields.value
-      .filter((f: any) => f.showInList)
+      .filter((f: any) =>
+        f.showInList
+        && !['SUB_FORM', 'SUB_LIST'].includes(
+          String(f.fieldType || '').toUpperCase()
+        )
+      )
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
+        const dictType = originField?.dictType || f.dictType
+        const dictOptions = dictType ? dictOptionMap.value[dictType] : null
         return {
           ...f,
           fieldType: originField?.fieldType || 'STRING',
-          optionsJson: originField?.optionsJson,
+          dictType,
+          optionsJson: dictOptions?.length
+            ? JSON.stringify(dictOptions)
+            : originField?.optionsJson || f.optionsJson,
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId
         }
       })
   }
-  return entityFields.value.filter((f: any) => f.runtimeReadable !== false)
+  return entityFields.value
+    .filter((f: any) =>
+      f.runtimeReadable !== false
+      && !['SUB_FORM', 'SUB_LIST'].includes(
+        String(f.fieldType || '').toUpperCase()
+      )
+    )
+    .map((field: any) => {
+      const dictOptions = field.dictType
+        ? dictOptionMap.value[field.dictType]
+        : null
+      return dictOptions?.length
+        ? { ...field, optionsJson: JSON.stringify(dictOptions) }
+        : field
+    })
 })
 
 // 是否使用列表配置
 const useListConfig = computed(() => listConfigFields.value.length > 0)
 
 // 自定义列表组件名
-const customListComponent = computed(() => listConfig.value?.customComponent || '')
+const customListComponent = computed(() =>
+  props.embedded ? '' : (listConfig.value?.customComponent || '')
+)
 
 const customListRuntime = computed(() => ({
   version: 2,
@@ -364,6 +441,7 @@ function buttonOrder(button: any) {
 // 工具栏按钮（按配置 + 权限过滤）
 const toolbarButtons = computed(() => {
   if (selectionScene.value || isSystemEntity.value) return []
+  if (props.embedded && !props.showToolbar) return []
   const DEFAULT_TOOLBAR_BUTTONS = [
     { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
     { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
@@ -386,6 +464,7 @@ const toolbarButtons = computed(() => {
 // 操作列按钮（按配置 + 权限过滤）
 const rowActionButtons = computed(() => {
   if (selectionScene.value) return []
+  if (props.embedded && !props.showRowActions) return []
   if (isSystemEntity.value) {
     return [
       {
@@ -426,6 +505,36 @@ const showSelectionColumn = computed(() => {
 // 引用实体名称缓存
 const refEntityNameMap = ref<Record<string, string>>({})
 
+function flattenDictItems(items: any[]): any[] {
+  return (items || []).flatMap((item: any) => [
+    {
+      value: item.itemCode,
+      label: item.itemLabel,
+      disabled: item.status !== '0'
+    },
+    ...flattenDictItems(item.children || [])
+  ])
+}
+
+watch(
+  () => entityFields.value
+    .map((field: any) => field.dictType)
+    .filter(Boolean),
+  async (dictCodes: string[]) => {
+    const uniqueCodes = [...new Set(dictCodes)]
+    const entries = await Promise.all(uniqueCodes.map(async dictCode => {
+      try {
+        const items = await getItemTreeByDictCode(dictCode)
+        return [dictCode, flattenDictItems(items || [])]
+      } catch {
+        return [dictCode, []]
+      }
+    }))
+    dictOptionMap.value = Object.fromEntries(entries)
+  },
+  { immediate: true }
+)
+
 // 加载引用实体名称
 async function loadRefEntityNames() {
   if (!dataList.value.length) return
@@ -433,20 +542,8 @@ async function loadRefEntityNames() {
   const sourceFields = listFields.value.length > 0 ? listFields.value : entityFields.value
   if (!sourceFields.length) return
 
-  const refFields = sourceFields.filter((f: any) =>
-    [
-      'REFERENCE',
-      'MULTI_REFERENCE',
-      'DEPT',
-      'USER',
-      'ROLE',
-      'GROUP',
-      'MENU',
-      'DICT',
-      'DICT_ITEM'
-    ].includes(
-      String(f.refEntityType || f.fieldType || '').toUpperCase()
-    )
+  const refFields = sourceFields.filter((field: any) =>
+    isReferenceListField(field)
   )
   if (!refFields.length) return
 
@@ -565,15 +662,22 @@ const loadEntityDefinition = async () => {
   listConfig.value = null
   listConfigFields.value = []
   dataList.value = []
+  refEntityNameMap.value = {}
+  dictOptionMap.value = {}
   total.value = 0
   defaultForm.value = null
+  clearQueryForm()
   try {
     const res = await entityApi.getByCode(entityCode.value)
     entityDefinition.value = res || {}
     entityFields.value = res?.fields || []
     
     await loadListConfig()
-    await loadDefaultForm()
+    if (!props.embedded
+        || toolbarButtons.value.length > 0
+        || rowActionButtons.value.length > 0) {
+      await loadDefaultForm()
+    }
     await loadEntityStatusMap()
 
     queryFields.value.forEach((field: any) => {
@@ -601,7 +705,9 @@ const loadListConfig = async () => {
     listConfig.value = schema || null
     listConfigFields.value = schema?.fields || []
     const configuredPageSize = Number(safeParseConfig(schema?.viewConfig)?.pagination?.pageSize)
-    if (configuredPageSize > 0) {
+    if (props.embedded && Number(props.pageSize) > 0) {
+      pageSize.value = Number(props.pageSize)
+    } else if (configuredPageSize > 0) {
       pageSize.value = configuredPageSize
     }
   } catch (e) {
@@ -636,18 +742,7 @@ const loadDataList = async () => {
   tableLoading.value = true
   dataError.value = ''
   try {
-    const params: Record<string, any> = {}
-    Object.entries(queryForm).forEach(([key, value]) => {
-      if (value !== '' && value !== null && value !== undefined) {
-        params[key] = value
-      }
-    })
-    queryFields.value.forEach((field: any) => {
-      const code = field.fieldCode
-      if (code && params[code] !== undefined && field.queryType) {
-        params[code + '_op'] = field.queryType
-      }
-    })
+    const params = buildRequestFilters()
     const res = await entityListRuntimeApi.query(
       entityCode.value,
       runtimeListKey.value,
@@ -688,10 +783,9 @@ const handleSearch = () => {
 
 // 重置
 const handleReset = () => {
+  clearQueryForm()
   queryFields.value.forEach((field: any) => {
     queryForm[field.fieldCode] = field.defaultValue ?? ''
-    delete queryForm[field.fieldCode + '_start']
-    delete queryForm[field.fieldCode + '_end']
   })
   handleSearch()
 }
@@ -756,7 +850,7 @@ const handleBatchDelete = async () => {
 // 导出数据
 const handleExport = async (exportType: string) => {
   try {
-    const condition = { ...queryForm }
+    const condition = buildRequestFilters()
     const ids = exportType === 'SELECTED' ? selectedRows.value.map(r => r.id) : []
     const res = await entityDataApi.exportData(entityCode.value, {
       exportType,
@@ -808,6 +902,7 @@ const handleEventAction = async ({
         selectedRows: actionRows
       },
       context: {
+        ...(props.context || {}),
         listId: String(listConfig.value.id),
         scene: runtimeScene.value
       }
@@ -855,32 +950,66 @@ const getActionReason = (row: any, buttonKey: string) => {
 }
 
 // 打开新增弹窗
-const handleCreate = async () => {
+const handleCreate = async (button?: any) => {
   if (createFormLoading.value) return
   createFormLoading.value = true
   try {
-    const loaded = await loadDefaultForm(true)
-    if (!loaded) return
+    let form = null
+    if (button?.targetFormId) {
+      form = await loadExplicitListButtonForm(button)
+    } else {
+      const loaded = await loadDefaultForm(true)
+      if (!loaded) return
+    }
     await nextTick()
-    await formDialogRef.value?.openCreate()
+    await formDialogRef.value?.openCreate({
+      form,
+      initialData: props.createInitialData,
+      parameters: {
+        ...(props.context?.parameters || {}),
+        ...(props.createContext?.parameters || {}),
+        ...(props.createContext?.params || {})
+      },
+      context: {
+        ...(props.context || {}),
+        ...(props.createContext || {})
+      }
+    })
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载按钮指定表单失败')
   } finally {
     createFormLoading.value = false
   }
 }
 
 // 打开编辑弹窗
-const handleEdit = (row: any) => {
-  formDialogRef.value?.openEdit(row)
+const handleEdit = async (row: any, button?: any) => {
+  try {
+    const form = await loadExplicitListButtonForm(button)
+    await formDialogRef.value?.openEdit(row, { form })
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载按钮指定表单失败')
+  }
 }
 
 // 打开查看弹窗
-const handleView = (row: any) => {
-  approvalDialogRef.value?.openView(row)
+const handleView = async (row: any, button?: any) => {
+  try {
+    const form = await loadExplicitListButtonForm(button)
+    await approvalDialogRef.value?.openView(row, { form })
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载按钮指定表单失败')
+  }
 }
 
 // 打开审批弹窗
-const handleApprove = (row: any) => {
-  approvalDialogRef.value?.openApprove(row)
+const handleApprove = async (row: any, button?: any) => {
+  try {
+    const form = await loadExplicitListButtonForm(button)
+    await approvalDialogRef.value?.openApprove(row, { form })
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载按钮指定表单失败')
+  }
 }
 
 const handleVersions = (row: any) => {
@@ -904,11 +1033,62 @@ watch(() => [entityCode.value, runtimeListKey.value], () => {
     loadEntityDefinition()
   }
 }, { immediate: true })
+
+watch(
+  () => runtimeInputFingerprint(),
+  (value, previous) => {
+    if (value === previous
+        || loading.value
+        || !entityDefinition.value?.id) {
+      return
+    }
+    pageNum.value = 1
+    loadDataList()
+  }
+)
+
+function buildRequestFilters() {
+  return buildListRequestFilters(
+    queryForm,
+    queryFields.value,
+    props.fixedFilters
+  )
+}
+
+function clearQueryForm() {
+  Object.keys(queryForm).forEach(key => {
+    delete queryForm[key]
+  })
+}
+
+function runtimeInputFingerprint() {
+  try {
+    return JSON.stringify(props.fixedFilters || {})
+  } catch {
+    return 'unserializable-fixed-filters'
+  }
+}
+
+watch(
+  () => props.pageSize,
+  value => {
+    if (!props.embedded) return
+    const next = Number(value)
+    if (!Number.isFinite(next) || next <= 0 || next === pageSize.value) return
+    pageSize.value = next
+    pageNum.value = 1
+    if (entityDefinition.value?.id) loadDataList()
+  }
+)
 </script>
 
 <style scoped lang="scss">
 .entity-data-list {
   padding: 10px;
+
+  &.embedded {
+    padding: 0;
+  }
   
   .loading-container {
     padding: 10px;

@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-08-05T04:16:07.602Z",
+  "apiBase": "http://127.0.0.1:8080/api",
+  "result": "FAIL",
+  "error": {
+    "message": "一对一子表字段初始化未从 parent.data.name 取值\n+ actual - expected\n\n+ undefined\n- '子表单回归-1785903367430-2cfadd'\n"
+  },
+  "cleanupError": null,
+  "failureContext": {
+    "created": {
+      "parent": {
+        "estimatedCount": 1,
+        "contactEmail": "subform-1785903367430-2cfadd@example.com",
+        "radioOption": "B",
+        "budgetAmount": 0,
+        "singleOption": "A",
+        "reqSingleForm": {
+          "reqSingleId": "903594a753e44ba793d57a6ef3f1af8b",
+          "id": "980d075ea7c7497599455d836517ab93",
+          "code": "ZDWITEM20260805000004"
+        },
+        "enabledFlag": true,
+        "expectedDate": "2026-08-28",
+        "reqItemForm": [
+          {
+            "name": "显式子行-1785903367430-2cfadd",
+            "id": "deb4bfbc86374f57bc5158f9aa06e38b",
+            "code": "ZDWITEM20260805000003",
+            "reqId": "903594a753e44ba793d57a6ef3f1af8b"
+          },
+          {
+            "reqId": "903594a753e44ba793d57a6ef3f1af8b",
+            "id": "ff036687aacb43788cf6348b638be6f2",
+            "code": "ZDWITEM20260805000002"
+          }
+        ],
+        "id": "903594a753e44ba793d57a6ef3f1af8b",
+        "name": "子表单回归-1785903367430-2cfadd",
+        "code": "ZDWREQ20260805000002",
+        "status": "DRAFT"
+      },
+      "singleRows": [
+        {
+          "reqSingleId": "903594a753e44ba793d57a6ef3f1af8b",
+          "id": "980d075ea7c7497599455d836517ab93",
+          "code": "ZDWITEM20260805000004"
+        }
+      ],
+      "itemRows": [
+        {
+          "name": "显式子行-1785903367430-2cfadd",
+          "id": "deb4bfbc86374f57bc5158f9aa06e38b",
+          "code": "ZDWITEM20260805000003",
+          "reqId": "903594a753e44ba793d57a6ef3f1af8b"
+        },
+        {
+          "reqId": "903594a753e44ba793d57a6ef3f1af8b",
+          "id": "ff036687aacb43788cf6348b638be6f2",
+          "code": "ZDWITEM20260805000002"
+        }
+      ]
+    }
+  }
+}

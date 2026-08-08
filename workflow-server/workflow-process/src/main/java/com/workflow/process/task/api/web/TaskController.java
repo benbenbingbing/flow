@@ -104,8 +104,12 @@ public class TaskController {
     public Result<Void> withdrawProcess(@RequestBody Map<String, String> params) {
         String processInstanceId = params.get("processInstanceId");
         String reason = params.get("reason");
+        String currentUser = UserContext.getUserId();
+        if (currentUser == null || currentUser.isBlank()) {
+            currentUser = UserContext.getUsername();
+        }
         taskActionService.withdrawProcess(
-                processInstanceId, UserContext.getUsername(), reason);
+                processInstanceId, currentUser, reason);
         return Result.success();
     }
 

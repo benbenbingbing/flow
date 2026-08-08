@@ -7,6 +7,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormFiel
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * 实体表单字段运行时映射器测试。
@@ -36,5 +37,21 @@ class EntityFormFieldRuntimeMapperTest {
 
         assertEquals(1, EntityFormFieldRuntimeMapper.toMap(field, true, new ObjectMapper())
                 .get("isReadonly"));
+    }
+
+    /** 发布快照未显式配置只读时应保留空值，不能因条件表达式自动拆箱而报错 */
+    @Test
+    void nullReadonlyConfigurationDoesNotTriggerUnboxing() {
+        EntityFormField field = new EntityFormField();
+        field.setFieldCode("embeddedList");
+        field.setFieldType("SUB_LIST");
+        field.setRefListKey("published_list");
+
+        var runtime = EntityFormFieldRuntimeMapper.toMap(
+                field,
+                false,
+                new ObjectMapper());
+        assertNull(runtime.get("isReadonly"));
+        assertEquals("published_list", runtime.get("refListKey"));
     }
 }

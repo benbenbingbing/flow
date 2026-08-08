@@ -10,8 +10,9 @@
     }"
     :style="outerStyle"
     @click.stop="$emit('select', node)"
+    @dblclick.stop="$emit('open-properties', node)"
   >
-    <div class="node-actions" @click.stop>
+    <div class="node-actions" @click.stop @dblclick.stop>
       <span
         class="form-node-drag-handle"
         role="button"
@@ -56,6 +57,7 @@
           <FormNodeDesignItem
             v-bind="childItemProps(child, index)"
             @select="$emit('select', $event)"
+            @open-properties="$emit('open-properties', $event)"
             @move="$emit('move', $event)"
             @remove="$emit('remove', $event)"
             @drop="$emit('drop', $event)"
@@ -75,7 +77,8 @@
         role="button"
         tabindex="0"
         @click.stop="$emit('select', node)"
-        @keydown.enter.stop="$emit('select', node)"
+        @dblclick.stop="$emit('open-properties', node)"
+        @keydown.enter.stop="$emit('open-properties', node)"
       >
         <strong>栅格容器</strong>
         <span>{{ children.length }} 个节点</span>
@@ -97,6 +100,7 @@
             <FormNodeDesignItem
               v-bind="childItemProps(child, index, 'GRID')"
               @select="$emit('select', $event)"
+              @open-properties="$emit('open-properties', $event)"
               @move="$emit('move', $event)"
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
@@ -117,7 +121,8 @@
         role="button"
         tabindex="0"
         @click.stop="$emit('select', node)"
-        @keydown.enter.stop="$emit('select', node)"
+        @dblclick.stop="$emit('open-properties', node)"
+        @keydown.enter.stop="$emit('open-properties', node)"
       >
         <strong>Tab 集合</strong>
         <span>{{ children.length }} 个页签</span>
@@ -138,6 +143,7 @@
             data-node-type="TAB"
             :class="{ active: String(activeTabId) === String(tabNode.id) }"
             @click.stop
+            @dblclick.stop
           >
             <span
               class="form-node-drag-handle"
@@ -152,6 +158,7 @@
               type="button"
               class="design-tab-order-label"
               @click="selectTabNode(tabNode)"
+              @dblclick.stop="openTabNodeProperties(tabNode)"
             >
               {{ nodeLabelFor(tabNode) }}
             </button>
@@ -181,11 +188,13 @@
             class="tab-node-toolbar"
             :class="{ active: selectedNodeId === tabNode.id }"
             @click.stop
+            @dblclick.stop
           >
             <button
               type="button"
               class="tab-node-title"
               @click="$emit('select', tabNode)"
+              @dblclick.stop="openTabNodeProperties(tabNode)"
             >
               <span>Tab 页</span>
               <strong>{{ nodeLabelFor(tabNode) }}</strong>
@@ -226,6 +235,7 @@
               <FormNodeDesignItem
                 v-bind="childItemProps(child, childIndex, 'TAB')"
                 @select="$emit('select', $event)"
+                @open-properties="$emit('open-properties', $event)"
                 @move="$emit('move', $event)"
                 @remove="$emit('remove', $event)"
                 @drop="$emit('drop', $event)"
@@ -261,6 +271,7 @@
             <FormNodeDesignItem
               v-bind="childItemProps(child, index)"
               @select="$emit('select', $event)"
+              @open-properties="$emit('open-properties', $event)"
               @move="$emit('move', $event)"
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
@@ -324,6 +335,7 @@
             <FormNodeDesignItem
               v-bind="childItemProps(child, index)"
               @select="$emit('select', $event)"
+              @open-properties="$emit('open-properties', $event)"
               @move="$emit('move', $event)"
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
@@ -351,6 +363,7 @@
         <FormNodeDesignItem
           v-bind="childItemProps(child, index)"
           @select="$emit('select', $event)"
+          @open-properties="$emit('open-properties', $event)"
           @move="$emit('move', $event)"
           @remove="$emit('remove', $event)"
           @drop="$emit('drop', $event)"
@@ -393,7 +406,7 @@ const props = defineProps({
   dragDisabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'move', 'remove', 'drop'])
+const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop'])
 
 const containerTypes = new Set([
   'SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'ACTION_SLOT'
@@ -484,6 +497,11 @@ function handleTabClick(tab) {
 function selectTabNode(tabNode) {
   activeTabId.value = tabNode.id
   emit('select', tabNode)
+}
+
+function openTabNodeProperties(tabNode) {
+  activeTabId.value = tabNode.id
+  emit('open-properties', tabNode)
 }
 
 function childItemProps(child, index, parentNodeType = nodeType.value) {

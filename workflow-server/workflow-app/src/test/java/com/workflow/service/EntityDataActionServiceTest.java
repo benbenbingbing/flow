@@ -9,6 +9,8 @@ import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,6 +50,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -99,6 +103,16 @@ class EntityDataActionServiceTest {
 
         @InjectMocks
         private EntityDataActionService service;
+
+        @BeforeEach
+        void setUp() {
+                EntityDefinition asset = new EntityDefinition();
+                asset.setId("entity-asset");
+                asset.setEntityCode("asset");
+                asset.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+                lenient().when(definitionMapper.findByEntityCode("asset"))
+                                .thenReturn(Optional.of(asset));
+        }
 
         @Test
         void readOnlyDetailDoesNotExecuteUiEventChain() {
@@ -293,6 +307,70 @@ class EntityDataActionServiceTest {
         }
 
         /**
+         * 测试显式选择表单时按所选发布表单处理新增数据，而不是错误回退默认表单。
+         */
+        @Test
+        void createUsesExplicitlySelectedForm() {
+                EntityDataDTO dto = new EntityDataDTO();
+                dto.setEntityCode("asset");
+                dto.setFormId("form-1");
+                dto.setData(Map.of("name", "Laptop"));
+                EntityForm form = form("form-1", "entity-asset");
+                EntityDefinition asset = new EntityDefinition();
+                asset.setId("entity-asset");
+                asset.setEntityCode("asset");
+                when(formMapper.selectById("form-1")).thenReturn(form);
+                when(definitionMapper.selectById("entity-asset"))
+                                .thenReturn(asset);
+                FormSubmissionExecutionContext context =
+                                context("create-form-trace", "ENTITY_CREATE");
+                when(formSubmissionTraceService.current(
+                                eq("ENTITY_CREATE"),
+                                isNull(),
+                                anyMap())).thenReturn(context);
+                when(formSubmissionService.applyForm(
+                                "form-1",
+                                "asset",
+                                null,
+                                "create",
+                                Map.of("name", "Laptop"),
+                                context)).thenReturn(
+                                                Map.of(
+                                                                "name",
+                                                                "Laptop",
+                                                                "fromSelectedForm",
+                                                                true));
+                stubDefaultEventExecution();
+                when(mutationPort.execute(
+                                any(EntityMutationCommand.class)))
+                                .thenReturn(mutationResult(
+                                                "1",
+                                                EntityMutationOperationType.CREATE,
+                                                Map.of(
+                                                                "name",
+                                                                "Laptop",
+                                                                "fromSelectedForm",
+                                                                true)));
+
+                service.create(dto);
+
+                verify(formSubmissionService).applyForm(
+                                "form-1",
+                                "asset",
+                                null,
+                                "create",
+                                Map.of("name", "Laptop"),
+                                context);
+                verify(formSubmissionService, never())
+                                .applyDefaultForm(
+                                                anyString(),
+                                                isNull(),
+                                                anyString(),
+                                                anyMap(),
+                                                any());
+        }
+
+        /**
          * 测试更新数据时服务端 beforeSubmit 钩子恰好执行一次：
          * 验证默认表单处理与统一更新命令各执行一次，且载荷为规范化后的数据。
          */
@@ -390,12 +468,116 @@ class EntityDataActionServiceTest {
                                 command.payload());
         }
 
+        /**
+         * 测试显式选择表单时按所选发布表单处理更新数据。
+         */
+        @Test
+        void updateUsesExplicitlySelectedForm() {
+                EntityDataDTO existing = row("1", "A-1");
+                EntityListConfig config = new EntityListConfig();
+                config.setListKey("default");
+                when(actionConfigService.resolveListConfig(
+                                "asset",
+                                "default")).thenReturn(config);
+                when(dynamicService.findAccessibleById(
+                                "asset",
+                                "1",
+                                "default")).thenReturn(existing);
+                EntityForm form = form("form-1", "entity-asset");
+                EntityDefinition asset = new EntityDefinition();
+                asset.setId("entity-asset");
+                asset.setEntityCode("asset");
+                when(formMapper.selectById("form-1")).thenReturn(form);
+                when(definitionMapper.selectById("entity-asset"))
+                                .thenReturn(asset);
+                FormSubmissionExecutionContext context =
+                                context("update-form-trace", "ENTITY_UPDATE");
+                when(formSubmissionTraceService.current(
+                                eq("ENTITY_UPDATE"),
+                                isNull(),
+                                anyMap())).thenReturn(context);
+                when(formSubmissionService.applyForm(
+                                "form-1",
+                                "asset",
+                                "1",
+                                "edit",
+                                Map.of("name", "Laptop"),
+                                context)).thenReturn(
+                                                Map.of(
+                                                                "name",
+                                                                "Laptop",
+                                                                "fromSelectedForm",
+                                                                true));
+                stubDefaultEventExecution();
+                when(mutationPort.execute(
+                                any(EntityMutationCommand.class)))
+                                .thenReturn(mutationResult(
+                                                "1",
+                                                EntityMutationOperationType.UPDATE,
+                                                Map.of(
+                                                                "name",
+                                                                "Laptop",
+                                                                "fromSelectedForm",
+                                                                true)));
+
+                service.update(
+                                "asset",
+                                "1",
+                                "default",
+                                Map.of(
+                                                "formId",
+                                                "form-1",
+                                                "data",
+                                                Map.of(
+                                                                "name",
+                                                                "Laptop")));
+
+                verify(formSubmissionService).applyForm(
+                                "form-1",
+                                "asset",
+                                "1",
+                                "edit",
+                                Map.of("name", "Laptop"),
+                                context);
+                verify(formSubmissionService, never())
+                                .applyDefaultForm(
+                                                anyString(),
+                                                anyString(),
+                                                anyString(),
+                                                anyMap(),
+                                                any());
+        }
+
         /** 构造一条包含 id 与 dataNo 的实体数据 DTO */
         private EntityDataDTO row(String id, String dataNo) {
                 EntityDataDTO row = new EntityDataDTO();
                 row.setId(id);
                 row.setDataNo(dataNo);
                 return row;
+        }
+
+        private EntityForm form(String id, String entityId) {
+                EntityForm form = new EntityForm();
+                form.setId(id);
+                form.setEntityId(entityId);
+                return form;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void stubDefaultEventExecution() {
+                when(eventRuntimeService.execute(any(), any()))
+                                .thenAnswer(invocation -> {
+                                        Function<Map<String, Object>, Object> handler =
+                                                        invocation.getArgument(1);
+                                        Object data = handler.apply(
+                                                        invocation.<com.workflow.entity.ui.api.request.UiEventExecuteRequest>
+                                                                        getArgument(0)
+                                                                        .getInput());
+                                        UiEventExecutionResult result =
+                                                        new UiEventExecutionResult();
+                                        result.setData(data);
+                                        return result;
+                                });
         }
 
         /** 构造一个携带 traceKey 与操作的表单提交上下文 */

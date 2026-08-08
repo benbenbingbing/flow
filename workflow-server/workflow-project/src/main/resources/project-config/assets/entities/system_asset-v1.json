@@ -238,7 +238,7 @@
     {
       "fieldCode": "outbound_dependencies",
       "fieldName": "出向系统依赖",
-      "fieldType": "SUB_FORM_LIST",
+      "fieldType": "SUB_FORM",
       "dbType": "varchar(64)",
       "fieldLength": 64,
       "isRequired": false,
@@ -359,7 +359,7 @@
         {"fieldCode":"repository_url","fieldName":"代码仓库地址","fieldLabel":"代码仓库地址","fieldType":"STRING","sortOrder":220,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"input","gridSpan":24},
         {"fieldCode":"documentation_url","fieldName":"文档地址","fieldLabel":"文档地址","fieldType":"STRING","sortOrder":230,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"input","gridSpan":24},
         {"fieldCode":"source_application_id","fieldName":"来源系统申请","fieldLabel":"来源系统申请","fieldType":"REFERENCE","sortOrder":240,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"reference","gridSpan":24},
-        {"fieldCode":"outbound_dependencies","fieldName":"出向系统依赖","fieldLabel":"出向系统依赖","fieldType":"SUB_FORM_LIST","sortOrder":250,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"sub_form_list","gridSpan":24}
+        {"fieldCode":"outbound_dependencies","fieldName":"出向系统依赖","fieldLabel":"出向系统依赖","fieldType":"SUB_FORM","sortOrder":250,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"sub_form","gridSpan":24}
       ],
       "nodes": []
     }

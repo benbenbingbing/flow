@@ -1,0 +1,17 @@
+{
+  "result": "PASS",
+  "processKey": "action_timing_2608050514uco",
+  "entityCode": "action_timing_entity_2608050514uco",
+  "expectedTimings": [
+    "PROCESS_STARTED",
+    "PROCESS_COMPLETED",
+    "PROCESS_WITHDRAWN",
+    "PROCESS_TERMINATED",
+    "NODE_ENTERED",
+    "NODE_COMPLETED",
+    "TASK_CREATED",
+    "TASK_ASSIGNED",
+    "TASK_COMPLETING",
+    "TRANSITION_TAKEN"
+  ]
+}

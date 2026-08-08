@@ -1,11 +1,11 @@
 <template>
   <div class="sub-form-field">
     <SubFormRenderer
-      v-model="fieldValue"
+      :model-value="fieldValue"
       :config="subFormConfig"
       :readonly="isDisabled"
       :disabled="isDisabled"
-      @change="handleChange"
+      @update:model-value="handleSubFormUpdate"
     >
       <template v-if="hasNodeTree" #row="{ row, index }">
         <FormNodeRenderer
@@ -39,6 +39,7 @@ import {
   resolveSubFormParameters,
   validateSubFormParameters
 } from '@/shared/subform-parameter-contract'
+import { areSubFormValuesEqual } from '@/shared/subform-value-sync'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -184,43 +185,6 @@ watch(
   }
 )
 
-watch(
-  () => [
-    props.dataSourceRuntime,
-    props.field?.dataSourceBindings,
-    props.field?.dataSourceBindingsDocument
-  ],
-  async () => {
-    if (!props.dataSourceRuntime?.loadSubformRows) return
-    const current = fieldValue.value
-    if (Array.isArray(current) && current.length > 0) return
-    try {
-      const rows = await props.dataSourceRuntime.loadSubformRows(props.field, {
-        parent: parentContext.value,
-        params: resolvedParameters.value,
-        relation: subFormMeta.value,
-        context: {
-          ...props.context,
-          parent: parentContext.value,
-          params: resolvedParameters.value,
-          relation: subFormMeta.value
-        },
-        input: {
-          fieldCode: props.field?.fieldCode,
-          relation: subFormMeta.value
-        }
-      })
-      if (rows.length > 0) {
-        fieldValue.value = rows
-        handleChange(rows)
-      }
-    } catch (error) {
-      console.warn('子表数据源加载失败:', error)
-    }
-  },
-  { immediate: true }
-)
-
 function parseSnapshot(document) {
   if (document && typeof document === 'object') return document
   if (!document || typeof document !== 'string') {
@@ -258,7 +222,7 @@ function resolveSnapshotFields(snapshot) {
         fieldType: props.fieldType || node.nodeType,
         componentType:
           props.componentType
-          || (node.nodeType === 'REPEATER' ? 'sub_form_list' : node.nodeType),
+          || (node.nodeType === 'REPEATER' ? 'sub_form' : node.nodeType),
         placeholder: props.placeholder,
         defaultValue: props.defaultValue,
         gridSpan: props.gridSpan || 24,
@@ -376,6 +340,42 @@ const resolvedParameters = computed(() =>
 )
 
 watch(
+  () => [
+    props.dataSourceRuntime,
+    props.field?.dataSourceBindings,
+    props.field?.dataSourceBindingsDocument
+  ],
+  async () => {
+    if (!props.dataSourceRuntime?.loadSubformRows) return
+    const current = fieldValue.value
+    if (Array.isArray(current) && current.length > 0) return
+    try {
+      const rows = await props.dataSourceRuntime.loadSubformRows(props.field, {
+        parent: parentContext.value,
+        params: resolvedParameters.value,
+        relation: subFormMeta.value,
+        context: {
+          ...props.context,
+          parent: parentContext.value,
+          params: resolvedParameters.value,
+          relation: subFormMeta.value
+        },
+        input: {
+          fieldCode: props.field?.fieldCode,
+          relation: subFormMeta.value
+        }
+      })
+      if (rows.length > 0) {
+        handleSubFormUpdate(rows)
+      }
+    } catch (error) {
+      console.warn('子表数据源加载失败:', error)
+    }
+  },
+  { immediate: true }
+)
+
+watch(
   [
     () => fieldValue.value,
     childFormDefinition,
@@ -418,9 +418,6 @@ async function initializeChildRows() {
         ].join(':')
       })
     }))
-    if (sequence === childInitializationSequence) {
-      handleChange(fieldValue.value)
-    }
   } catch (error) {
     if (sequence === childInitializationSequence) {
       console.warn('子表单数据源初始化失败:', error)
@@ -457,7 +454,7 @@ function applyConfiguredFieldInitializers() {
       ['id', subFormMeta.value.childRefFieldCode]
     ) || changed
   })
-  if (changed) handleChange(fieldValue.value)
+  return changed
 }
 
 function relationRows(value) {
@@ -560,8 +557,8 @@ function deriveNodeRuntimeFields(nodes, sourceFields) {
         fieldCode: props.fieldCode || source.fieldCode || node.nodeKey,
         fieldName: props.fieldName || props.label || source.fieldName || node.nodeKey,
         fieldLabel: props.label || source.fieldLabel || source.fieldName || node.nodeKey,
-        fieldType: props.fieldType || source.fieldType || (repeater ? 'SUB_FORM_LIST' : node.nodeType),
-        componentType: props.componentType || source.componentType || (repeater ? 'sub_form_list' : String(node.nodeType).toLowerCase()),
+        fieldType: props.fieldType || source.fieldType || 'SUB_FORM',
+        componentType: props.componentType || source.componentType || 'sub_form',
         componentProps: props.componentProps || source.componentProps,
         dataSourceBindings: props.dataSourceBindings || source.dataSourceBindings,
         dataSourceBindingsDocument: node.dataSourceBindingsDocument
@@ -594,6 +591,11 @@ function replaceNestedRow(row, value) {
   Object.assign(row, value)
 }
 
+function handleSubFormUpdate(value) {
+  if (areSubFormValuesEqual(value, props.modelValue)) return
+  handleChange(value)
+}
+
 function mapFieldType(type) {
   const map = {
     string: 'TEXT',
@@ -606,7 +608,7 @@ function mapFieldType(type) {
     radio: 'SELECT',
     checkbox: 'SELECT'
   }
-  if (['sub_form', 'sub_form_list'].includes((type || '').toLowerCase())) {
+  if ((type || '').toLowerCase() === 'sub_form') {
     return 'SUB_FORM'
   }
   return map[(type || '').toLowerCase()] || 'TEXT'
@@ -614,7 +616,7 @@ function mapFieldType(type) {
 
 function mapComponentType(type) {
   const lower = (type || '').toLowerCase()
-  if (['sub_form', 'sub_form_list'].includes(lower)) return 'sub_form'
+  if (lower === 'sub_form') return 'sub_form'
   if (['string'].includes(lower)) return 'string'
   if (['text'].includes(lower)) return 'textarea'
   if (['integer', 'long', 'decimal', 'double', 'number'].includes(lower)) return 'number'

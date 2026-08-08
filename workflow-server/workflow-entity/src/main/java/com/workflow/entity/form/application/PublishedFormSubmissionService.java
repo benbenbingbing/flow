@@ -8,6 +8,8 @@ import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -18,8 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 已发布表单提交处理服务，在提交前应用表单默认值与 BEFORE_SUBMIT 数据源绑定。
@@ -34,6 +38,7 @@ public class PublishedFormSubmissionService {
     private static final String BEFORE_SUBMIT = "BEFORE_SUBMIT";
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final EntityFormMapper formMapper;
+    private final EntityRelationMapper entityRelationMapper;
     private final UiConfigReleaseService releaseService;
     private final UiDataSourceService dataSourceService;
     private final JsonDocumentCodec codec;
@@ -239,7 +244,10 @@ public class PublishedFormSubmissionService {
             throw new IllegalArgumentException(
                     "已发布表单不存在");
         }
-        Map<String, Object> result = mutable(submittedData);
+        Map<String, Object> result =
+                filterUndeclaredRelationData(
+                        form,
+                        submittedData);
         Map<String, Object> formBindings =
                 StringUtils.hasText(
                         form.getDataSourceBindingsDocument())
@@ -313,6 +321,96 @@ public class PublishedFormSubmissionService {
             }
         }
         return result;
+    }
+
+    private Map<String, Object> filterUndeclaredRelationData(
+            EntityForm form,
+            Map<String, Object> submittedData) {
+        Map<String, Object> result = mutable(submittedData);
+        if (form == null
+                || !StringUtils.hasText(form.getEntityId())) {
+            return result;
+        }
+        List<EntityRelation> relations =
+                entityRelationMapper.selectByParentEntityId(
+                        form.getEntityId());
+        if (relations == null || relations.isEmpty()) {
+            return result;
+        }
+        Set<String> declaredRelationFields =
+                declaredRelationFields(
+                        form,
+                        relations);
+        for (EntityRelation relation : relations) {
+            String fieldCode =
+                    relation.getParentFieldCode();
+            if (StringUtils.hasText(fieldCode)
+                    && !declaredRelationFields.contains(
+                            fieldCode)) {
+                result.remove(fieldCode);
+            }
+        }
+        return result;
+    }
+
+    private Set<String> declaredRelationFields(
+            EntityForm form,
+            List<EntityRelation> relations) {
+        Set<String> declared = new LinkedHashSet<>();
+        for (EntityFormField field :
+                form.getFields() == null
+                        ? List.<EntityFormField>of()
+                        : form.getFields()) {
+            if (StringUtils.hasText(field.getFieldCode())) {
+                declared.add(field.getFieldCode());
+            }
+        }
+        for (EntityFormNode node :
+                form.getNodes() == null
+                        ? List.<EntityFormNode>of()
+                        : form.getNodes()) {
+            Map<String, Object> props =
+                    nodeProperties(node);
+            Object fieldCodeValue =
+                    props.get("fieldCode");
+            String fieldCode =
+                    fieldCodeValue == null
+                            ? null
+                            : String.valueOf(fieldCodeValue);
+            if (StringUtils.hasText(fieldCode)) {
+                declared.add(fieldCode);
+            }
+            String bindingRef = node.getBindingRef();
+            if (!StringUtils.hasText(bindingRef)) {
+                continue;
+            }
+            for (EntityRelation relation : relations) {
+                if (bindingRef.equals(
+                                relation.getRelationCode())
+                        || bindingRef.equals(
+                                relation.getParentFieldCode())) {
+                    declared.add(
+                            relation.getParentFieldCode());
+                }
+            }
+        }
+        return declared;
+    }
+
+    private Map<String, Object> nodeProperties(
+            EntityFormNode node) {
+        if (node == null) {
+            return Map.of();
+        }
+        String document =
+                StringUtils.hasText(node.getPropsDocument())
+                        ? node.getPropsDocument()
+                        : node.getLegacyPropsDocument();
+        return StringUtils.hasText(document)
+                ? codec.readObject(
+                        document,
+                        "已发布表单节点属性")
+                : Map.of();
     }
 
     private void executeBindings(

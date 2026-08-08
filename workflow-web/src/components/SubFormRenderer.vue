@@ -192,6 +192,10 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'
+import {
+  areSubFormValuesEqual,
+  cloneSubFormValue
+} from '@/shared/subform-value-sync'
 
 const props = defineProps({
   config: {
@@ -276,28 +280,32 @@ function outputValue() {
 }
 
 function resetRowData(newVal) {
-  // 一对一模式下，如果传入的对象就是当前唯一行数据，避免重复深克隆导致循环更新
-  if (isOneToOne.value && rowData.value.length === 1 && rowData.value[0] === newVal) return
-  if (newVal === rowData.value) return
-  if (Array.isArray(newVal)) {
-    rowData.value = JSON.parse(JSON.stringify(newVal))
-  } else if (newVal && typeof newVal === 'object') {
-    rowData.value = [JSON.parse(JSON.stringify(newVal))]
-  } else {
-    rowData.value = []
+  const normalized = Array.isArray(newVal)
+    ? newVal
+    : (newVal && typeof newVal === 'object' ? [newVal] : [])
+  const comparable = isOneToOne.value
+    ? (normalized[0] || null)
+    : normalized
+  if (areSubFormValuesEqual(outputValue(), comparable)) {
+    ensureMinRows()
+    return
   }
+  rowData.value = cloneSubFormValue(normalized)
   ensureMinRows()
 }
 
 watch(() => props.modelValue, (newVal) => {
   resetRowData(newVal)
-}, { immediate: true })
+}, { immediate: true, deep: true })
 
 watch(() => [props.config.fields, props.config.fields?.length], ensureMinRows, { immediate: true })
 
 watch(rowData, (newVal) => {
-  if (newVal === props.modelValue) return
-  const value = outputValue()
+  const value = cloneSubFormValue(outputValue())
+  if (areSubFormValuesEqual(value, props.modelValue)) {
+    calculateSummary()
+    return
+  }
   emit('update:modelValue', value)
   emit('change', value)
   calculateSummary()
@@ -421,7 +429,6 @@ function addRow() {
     return
   }
   appendBlankRow()
-  emit('change', outputValue())
 }
 
 function appendBlankRow() {
@@ -445,7 +452,6 @@ function removeRow(index) {
   
   rowData.value.splice(index, 1)
   clearRowErrors(index)
-  emit('change', outputValue())
 }
 
 // 数字变化处理

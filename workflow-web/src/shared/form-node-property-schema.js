@@ -23,6 +23,7 @@ const RANGE_VALIDATION_FIELD_TYPES = new Set([
   'DOUBLE'
 ])
 const FORMAT_VALIDATION_FIELD_TYPES = new Set(['STRING', 'TEXT'])
+const PATTERN_VALIDATION_FIELD_TYPES = new Set(['STRING', 'TEXT'])
 
 const schema = ({
   editable = [],
@@ -215,7 +216,8 @@ export function getFormFieldValidationCapabilities(value) {
   return Object.freeze({
     length: LENGTH_VALIDATION_FIELD_TYPES.has(fieldType),
     range: RANGE_VALIDATION_FIELD_TYPES.has(fieldType),
-    format: FORMAT_VALIDATION_FIELD_TYPES.has(fieldType)
+    format: FORMAT_VALIDATION_FIELD_TYPES.has(fieldType),
+    pattern: PATTERN_VALIDATION_FIELD_TYPES.has(fieldType)
   })
 }
 
@@ -232,6 +234,14 @@ export function normalizeFormFieldValidation(fieldType, value) {
   }
   if (!capabilities.format) {
     delete normalized.format
+  }
+  if (!capabilities.pattern) {
+    delete normalized.pattern
+  } else if (normalized.pattern == null
+      || String(normalized.pattern).length === 0) {
+    delete normalized.pattern
+  } else {
+    normalized.pattern = String(normalized.pattern)
   }
   return normalized
 }
@@ -276,6 +286,44 @@ export function extractFormNodeComponentConfig(value, propsValue) {
   }, {})
 }
 
+export function mergeFormNodeFieldMetadata(
+  entityFieldsValue,
+  legacyFieldValue,
+  propsValue,
+  nodeKeyValue
+) {
+  const entityFields = Array.isArray(entityFieldsValue)
+    ? entityFieldsValue
+    : []
+  const legacyField = legacyFieldValue
+    && typeof legacyFieldValue === 'object'
+    && !Array.isArray(legacyFieldValue)
+    ? legacyFieldValue
+    : {}
+  const props = parseObject(propsValue)
+  const fieldIds = [props.fieldId, legacyField.fieldId]
+    .filter(value => value != null && value !== '')
+    .map(String)
+  const fieldCodes = [
+    props.fieldCode,
+    legacyField.fieldCode,
+    nodeKeyValue
+  ].filter(Boolean)
+
+  const entityField = entityFields.find(field =>
+    fieldIds.some(id =>
+      String(field?.id ?? field?.fieldId ?? '') === id
+    )
+  ) || entityFields.find(field =>
+    fieldCodes.includes(field?.fieldCode)
+  )
+
+  return {
+    ...(entityField || {}),
+    ...legacyField
+  }
+}
+
 function buildFieldProps(field, componentProps) {
   const source = {
     fieldId: field.fieldId,
@@ -314,8 +362,8 @@ function buildSubFormProps(field, componentProps) {
     fieldCode: field.fieldCode,
     fieldName: field.fieldName,
     label: field.fieldLabel,
-    fieldType: nodeType === 'REPEATER' ? 'SUB_FORM_LIST' : 'SUB_FORM',
-    componentType: nodeType === 'REPEATER' ? 'sub_form_list' : 'sub_form',
+    fieldType: 'SUB_FORM',
+    componentType: 'sub_form',
     gridSpan: field.gridSpan,
     componentProps
   }

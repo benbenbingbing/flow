@@ -51,8 +51,8 @@ class EntityFormNodePropertyPolicyTest {
                 "REPEATER", Map.of(
                         "fieldId", "r2",
                         "fieldCode", "items",
-                        "fieldType", "SUB_FORM_LIST",
-                        "componentType", "sub_form_list",
+                        "fieldType", "SUB_FORM",
+                        "componentType", "sub_form",
                         "componentProps", Map.of()),
                 "ACTION_SLOT", Map.of("label", "底部动作"));
 
@@ -173,6 +173,35 @@ class EntityFormNodePropertyPolicyTest {
                                 Map.of("min", 0, "max", 100)),
                         Map.of("fieldType", "DECIMAL"),
                         false).active());
+        assertEquals(
+                Map.of(
+                        "validation",
+                        Map.of("pattern", "^REQ-\\d{4}$")),
+                EntityFormNodePropertyPolicy.normalizeRules(
+                        "FIELD",
+                        Map.of(
+                                "validation",
+                                Map.of("pattern", "^REQ-\\d{4}$")),
+                        Map.of("fieldType", "STRING"),
+                        false).active());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> EntityFormNodePropertyPolicy.normalizeRules(
+                        "FIELD",
+                        Map.of(
+                                "validation",
+                                Map.of("pattern", "[unclosed")),
+                        Map.of("fieldType", "STRING"),
+                        false));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> EntityFormNodePropertyPolicy.normalizeRules(
+                        "FIELD",
+                        Map.of(
+                                "validation",
+                                Map.of("pattern", "^REQ-\\d+$")),
+                        Map.of("fieldType", "DECIMAL"),
+                        false));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> EntityFormNodePropertyPolicy.normalizeRules(

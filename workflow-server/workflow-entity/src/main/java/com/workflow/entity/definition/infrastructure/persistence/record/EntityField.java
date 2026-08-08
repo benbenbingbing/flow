@@ -98,6 +98,12 @@ public class EntityField {
     /** 多值字段的值存储方式（如 id/code/label 等） */
     @TableField("value_storage")
     private String valueStorage;
+
+    /**
+     * 子列表或实体引用默认使用的已发布列表编码。
+     */
+    @TableField("ref_list_key")
+    private String refListKey;
     
     /**
      * 验证规则（JSON格式）
@@ -212,8 +218,8 @@ public class EntityField {
         DEPT,           // 部门选择
         REFERENCE,      // 引用一个目标实体中的单条记录
         MULTI_REFERENCE,// 引用一个目标实体中的多条记录
-        SUB_FORM,       // 子表单（嵌入主表单）
-        SUB_FORM_LIST   // 子表单列表（数据列表形式）
+        SUB_FORM,       // 子表单（嵌入其他实体的表单）
+        SUB_LIST        // 子列表（嵌入其他实体的已发布列表）
     }
     
     /**

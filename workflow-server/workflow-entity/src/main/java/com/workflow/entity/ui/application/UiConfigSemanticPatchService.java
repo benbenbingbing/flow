@@ -50,6 +50,8 @@ public class UiConfigSemanticPatchService {
             "permissionCode", "queryType", "isQuery", "handlerCode",
             "actionCode", "customMode", "linkMode", "targetEntityCode",
             "targetListKey", "templateId", "templateVersion",
+            "targetFormId", "targetFormMode",
+            "targetFormReleaseId", "targetFormReleaseVersion",
             "childFormReleaseId", "childFormReleaseVersion",
             "refFormReleaseId", "refFormReleaseVersion",
             "publishedFormReleaseId", "publishedFormReleaseVersion",

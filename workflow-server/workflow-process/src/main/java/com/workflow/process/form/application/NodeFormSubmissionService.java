@@ -1,5 +1,7 @@
 package com.workflow.process.form.application;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
@@ -8,6 +10,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
@@ -24,6 +27,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +56,7 @@ public class NodeFormSubmissionService {
     private final PublishedFormSubmissionService formSubmissionService;
     /** 表单提交追踪服务 */
     private final FormSubmissionTraceService formSubmissionTraceService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 将任务提交的可编辑字段数据保存到实体与流程变量。
@@ -293,18 +298,199 @@ public class NodeFormSubmissionService {
                         nodeForm.getFormReleaseVersion()));
     }
 
-    /** 收集表单中非只读、非隐藏的字段编码到结果集合 */
+    /**
+     * 收集审批模式中允许编辑的字段编码。
+     *
+     * <p>递归节点存在时以节点配置为准；旧版表单没有 FIELD 节点时，
+     * 回退到扁平字段配置。这样节点的审批显隐和可编辑权限与前端运行时保持一致。</p>
+     */
     private void collectEditableFields(EntityForm form, Set<String> editableFieldCodes) {
-        if (form == null || form.getFields() == null) {
+        if (form == null) {
+            return;
+        }
+        List<EntityFormNode> fieldNodes = form.getNodes() == null
+                ? List.of()
+                : form.getNodes().stream()
+                        .filter(node -> "FIELD".equalsIgnoreCase(
+                                value(node.getNodeType())))
+                        .toList();
+        if (!fieldNodes.isEmpty()) {
+            Map<String, EntityFormField> fieldsByCode =
+                    new LinkedHashMap<>();
+            if (form.getFields() != null) {
+                for (EntityFormField field : form.getFields()) {
+                    if (StringUtils.hasText(field.getFieldCode())) {
+                        fieldsByCode.put(field.getFieldCode(), field);
+                    }
+                }
+            }
+            for (EntityFormNode node : fieldNodes) {
+                collectEditableNodeField(
+                        node,
+                        fieldsByCode,
+                        editableFieldCodes);
+            }
+            return;
+        }
+        if (form.getFields() == null) {
             return;
         }
         for (EntityFormField field : form.getFields()) {
-            if (!Integer.valueOf(1).equals(field.getIsReadonly())
-                    && !Integer.valueOf(1).equals(field.getIsHidden())
+            if (isLegacyFieldEditable(field)
                     && StringUtils.hasText(field.getFieldCode())) {
                 editableFieldCodes.add(field.getFieldCode());
             }
         }
+    }
+
+    private void collectEditableNodeField(
+            EntityFormNode node,
+            Map<String, EntityFormField> fieldsByCode,
+            Set<String> editableFieldCodes) {
+        Map<String, Object> props =
+                jsonObject(node.getPropsDocument());
+        String fieldCode = firstText(
+                props.get("fieldCode"),
+                node.getBindingRef(),
+                node.getNodeKey());
+        if (!StringUtils.hasText(fieldCode)) {
+            return;
+        }
+        EntityFormField legacyField =
+                fieldsByCode.get(fieldCode);
+        boolean hidden = booleanValue(
+                props.containsKey("hidden")
+                        ? props.get("hidden")
+                        : legacyField == null
+                                ? null : legacyField.getIsHidden());
+        boolean readonly = booleanValue(
+                props.containsKey("readonly")
+                        ? props.get("readonly")
+                        : legacyField == null
+                                ? null : legacyField.getIsReadonly());
+
+        Map<String, Object> approveAccess =
+                approvalModeAccess(
+                        legacyField,
+                        jsonObject(node.getRulesDocument()));
+        if (Boolean.FALSE.equals(
+                booleanObject(approveAccess.get("visible")))) {
+            hidden = true;
+        }
+        if (Boolean.FALSE.equals(
+                booleanObject(approveAccess.get("editable")))) {
+            readonly = true;
+        }
+        if (!hidden && !readonly) {
+            editableFieldCodes.add(fieldCode);
+        }
+    }
+
+    private boolean isLegacyFieldEditable(
+            EntityFormField field) {
+        if (Integer.valueOf(1).equals(field.getIsReadonly())
+                || Integer.valueOf(1).equals(field.getIsHidden())) {
+            return false;
+        }
+        Map<String, Object> approveAccess =
+                modeAccess(
+                        jsonObject(field.getExtensionConfig()),
+                        "approve");
+        return !Boolean.FALSE.equals(
+                        booleanObject(
+                                approveAccess.get("visible")))
+                && !Boolean.FALSE.equals(
+                        booleanObject(
+                                approveAccess.get("editable")));
+    }
+
+    private Map<String, Object> approvalModeAccess(
+            EntityFormField legacyField,
+            Map<String, Object> nodeRules) {
+        Map<String, Object> result =
+                new LinkedHashMap<>();
+        if (legacyField != null) {
+            result.putAll(
+                    modeAccess(
+                            jsonObject(
+                                    legacyField.getExtensionConfig()),
+                            "approve"));
+        }
+        result.putAll(
+                modeAccess(
+                        objectMap(nodeRules.get("extension")),
+                        "approve"));
+        return result;
+    }
+
+    private Map<String, Object> modeAccess(
+            Map<String, Object> extension,
+            String mode) {
+        return objectMap(
+                objectMap(extension.get("modes"))
+                        .get(mode));
+    }
+
+    private Map<String, Object> jsonObject(
+            String document) {
+        if (!StringUtils.hasText(document)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    document,
+                    new TypeReference<Map<String, Object>>() {});
+        } catch (Exception exception) {
+            log.warn(
+                    "忽略无法解析的表单节点配置: failureType={}",
+                    exception.getClass().getSimpleName());
+            return Map.of();
+        }
+    }
+
+    private Map<String, Object> objectMap(
+            Object value) {
+        if (!(value instanceof Map<?, ?> source)) {
+            return Map.of();
+        }
+        Map<String, Object> result =
+                new LinkedHashMap<>();
+        source.forEach((key, item) ->
+                result.put(String.valueOf(key), item));
+        return result;
+    }
+
+    private boolean booleanValue(
+            Object value) {
+        return Boolean.TRUE.equals(
+                booleanObject(value));
+    }
+
+    private Boolean booleanObject(
+            Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        return Boolean.parseBoolean(
+                String.valueOf(value));
+    }
+
+    private String firstText(
+            Object... values) {
+        for (Object value : values) {
+            if (value != null
+                    && StringUtils.hasText(
+                            String.valueOf(value))) {
+                return String.valueOf(value);
+            }
+        }
+        return null;
     }
 
     /** 将提交数据扁平化：把内嵌的 data 节点展开合并到顶层 */

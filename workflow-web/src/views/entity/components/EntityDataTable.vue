@@ -7,6 +7,7 @@
           :is="getListButtonComponent(btn.customHandler)"
           mode="toolbar"
           :context="{
+            ...runtimeContext,
             selectedRows,
             entityCode: entityCode,
             entityDefinition: entityDefinition,
@@ -35,6 +36,7 @@
       :stripe="tableConfig.stripe !== false"
       :border="tableConfig.border === true"
       :size="tableConfig.size || 'default'"
+      :max-height="maxHeight"
       @selection-change="handleSelectionChange"
     >
       <el-table-column v-if="showSelectionColumn" type="selection" width="50" />
@@ -114,6 +116,7 @@
               mode="row"
               :row="row"
               :context="{
+                ...runtimeContext,
                 entityCode: entityCode,
                 entityDefinition: entityDefinition,
                 refresh,
@@ -138,7 +141,7 @@
     </el-table>
     
     <!-- 分页 -->
-    <div class="pagination-container">
+    <div v-if="showPagination !== false" class="pagination-container">
       <el-pagination
         :current-page="pageNum"
         :page-size="pageSize"
@@ -208,20 +211,23 @@ const props = defineProps<{
   viewConfig?: any
   showVersionAction?: boolean
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
+  showPagination?: boolean
+  maxHeight?: number
+  runtimeContext?: Record<string, any>
 }>()
 
 const tableConfig = computed(() => props.viewConfig?.table || {})
 const paginationConfig = computed(() => props.viewConfig?.pagination || {})
 
 const emit = defineEmits<{
-  create: []
+  create: [btn?: any]
   'export-selected': [btn: any]
   'export-all': [btn: any]
   'batch-delete': []
-  view: [row: any]
-  edit: [row: any]
-  approve: [row: any]
-  delete: [row: any]
+  view: [row: any, btn?: any]
+  edit: [row: any, btn?: any]
+  approve: [row: any, btn?: any]
+  delete: [row: any, btn?: any]
   versions: [row: any]
   'selection-change': [rows: any[]]
   'size-change': [val: number]
@@ -309,7 +315,7 @@ const handleSelectionChange = (selection: any[]) => {
 
 // 内置工具栏动作映射
 const BUILTIN_TOOLBAR_ACTIONS: Record<string, Function> = {
-  create: () => emit('create'),
+  create: (btn: any) => emit('create', btn),
   exportSelected: (btn: any) => emit('export-selected', btn),
   exportAll: (btn: any) => emit('export-all', btn),
   batchDelete: () => emit('batch-delete')
@@ -335,9 +341,14 @@ const onToolbarClick = (btn: any) => {
       openConfiguredList(btn)
       return
     }
+    if (btn.customMode === 'open-form') {
+      emit('create', btn)
+      return
+    }
     const handler = getListToolbarAction(btn.customHandler)
     if (handler) {
       handler({
+        ...(props.runtimeContext || {}),
         selectedRows: selectedRows.value,
         entityCode: props.entityCode,
         entityDefinition: props.entityDefinition,
@@ -352,10 +363,10 @@ const onToolbarClick = (btn: any) => {
 
 // 内置操作列动作映射
 const BUILTIN_ROW_ACTIONS: Record<string, Function> = {
-  view: (row: any) => emit('view', row),
-  edit: (row: any) => emit('edit', row),
-  approve: (row: any) => emit('approve', row),
-  delete: (row: any) => emit('delete', row)
+  view: (row: any, btn: any) => emit('view', row, btn),
+  edit: (row: any, btn: any) => emit('edit', row, btn),
+  approve: (row: any, btn: any) => emit('approve', row, btn),
+  delete: (row: any, btn: any) => emit('delete', row, btn)
 }
 
 // 操作列按钮点击分发
@@ -365,7 +376,7 @@ const onRowActionClick = (btn: any, row: any) => {
     return
   }
   if (btn.type === 'built-in') {
-    BUILTIN_ROW_ACTIONS[btn.key]?.(row)
+    BUILTIN_ROW_ACTIONS[btn.key]?.(row, btn)
   } else if (btn.type === 'custom') {
     if (btn.customMode === 'event') {
       emit('event-action', {
@@ -379,9 +390,18 @@ const onRowActionClick = (btn: any, row: any) => {
       openConfiguredList(btn, row)
       return
     }
+    if (btn.customMode === 'open-form') {
+      if (btn.targetFormMode === 'EDIT') {
+        emit('edit', row, btn)
+      } else {
+        emit('view', row, btn)
+      }
+      return
+    }
     const handler = getListRowAction(btn.customHandler)
     if (handler) {
       handler({
+        ...(props.runtimeContext || {}),
         row,
         entityCode: props.entityCode,
         entityDefinition: props.entityDefinition,
@@ -446,9 +466,16 @@ async function openConfiguredList(button: any, row?: any) {
     : 'NONE'
   openListState.title = button.openListTitle || button.label || '选择数据'
   openListState.context = {
+    ...(props.runtimeContext || {}),
     sourceEntityCode: props.entityCode,
     sourceRecordId: row?.id || null,
-    relationKey: button.relationKey || null
+    relationKey:
+      button.relationKey
+      || props.runtimeContext?.relationKey
+      || null,
+    parameters: {
+      ...(props.runtimeContext?.parameters || {})
+    }
   }
   await nextTick()
   entityListLauncherRef.value?.open()
@@ -465,6 +492,7 @@ function handleOpenListConfirm(rows: any[]) {
     return
   }
   handler({
+    ...(props.runtimeContext || {}),
     rows,
     row: pending.row,
     selectedRows: rows,

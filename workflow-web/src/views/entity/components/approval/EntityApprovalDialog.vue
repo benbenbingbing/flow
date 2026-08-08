@@ -178,6 +178,7 @@ const formActions = ref<any[]>([])
 const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
+const overrideForm = ref<any>(null)
 const basicInfoRef = ref<any>()
 const nodeTabRefs = ref<Record<string, any>>({})
 
@@ -214,13 +215,17 @@ const effectiveApprovalConfig = computed(() => {
   }
 })
 
-const approvalFormReadonly = computed(() => {
-  return isViewMode.value || isRuntimeFormReadonly(effectiveFormConfig.value)
-})
-
-const effectiveFormConfig = computed(() =>
+const workflowFormConfig = computed(() =>
   resolveApprovalFormConfig(formConfig.value, props.defaultForm)
 )
+const effectiveFormConfig = computed(() =>
+  overrideForm.value || workflowFormConfig.value
+)
+const approvalFormReadonly = computed(() => {
+  return isViewMode.value
+    || isRuntimeFormReadonly(workflowFormConfig.value)
+    || isRuntimeFormReadonly(effectiveFormConfig.value)
+})
 const statusAwareFormConfig = computed(() =>
   withEntityStatusRuntimeForm(
     effectiveFormConfig.value,
@@ -285,6 +290,9 @@ const footerActions = computed(() =>
   )
 )
 const runtimeForms = computed(() => {
+  if (overrideForm.value) {
+    return [approvalNormalForm.value].filter(Boolean)
+  }
   const configured = Array.isArray(formConfigs.value)
     ? formConfigs.value.filter(Boolean)
     : []
@@ -350,7 +358,15 @@ watch(activeDialogTab, (newVal) => {
 })
 
 // 打开审批弹窗
-const openApprove = async (row: any) => {
+interface OpenApproveOptions {
+  form?: any
+}
+
+const openApprove = async (
+  row: any,
+  options: OpenApproveOptions = {}
+) => {
+  overrideForm.value = options.form || null
   isViewMode.value = false
   currentTask.value = {
     taskId: row.currentTaskId || row.taskId,
@@ -385,6 +401,7 @@ const openApprove = async (row: any) => {
     ElMessage.error('加载最新流程表单失败，请重试')
     return
   }
+  await reloadExplicitFormDetail(row)
   await loadFormActions()
   processDialogVisible.value = true
 }
@@ -392,11 +409,13 @@ const openApprove = async (row: any) => {
 interface OpenViewOptions {
   defaultTab?: string
   startUserName?: string
+  form?: any
 }
 
 // 打开查看弹窗（只读模式）
 const openView = async (row: any, options: OpenViewOptions = {}) => {
-  const { defaultTab, startUserName } = options
+  const { defaultTab, startUserName, form } = options
+  overrideForm.value = form || null
   isViewMode.value = true
   currentTask.value = {
     processInstanceId: row.processInstanceId,
@@ -424,13 +443,20 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
       ElMessage.error('加载最新流程表单失败，请重试')
       return
     }
+    await reloadExplicitFormDetail(row)
   } else {
     try {
-      const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey)
+      const detail = await entityDataApi.getDetail(
+        props.entityCode,
+        row.id,
+        props.listKey,
+        overrideForm.value?.id
+      )
       entityData.value = normalizeEntityRecordForForm(detail)
-      if (props.defaultForm && props.defaultForm.fields && props.defaultForm.fields.length > 0) {
-        formConfig.value = props.defaultForm
-        formConfigs.value = [props.defaultForm]
+      const standaloneForm = overrideForm.value || props.defaultForm
+      if (standaloneForm?.fields?.length > 0 || standaloneForm?.nodes?.length > 0) {
+        formConfig.value = standaloneForm
+        formConfigs.value = [standaloneForm]
         activeDialogTab.value = firstApprovalFormTabName.value
       } else {
         formConfig.value = null
@@ -444,6 +470,27 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
   }
   await loadFormActions()
   processDialogVisible.value = true
+}
+
+async function reloadExplicitFormDetail(row: any) {
+  if (!overrideForm.value?.id || !row?.id) return
+  try {
+    const detail = await entityDataApi.getDetail(
+      props.entityCode,
+      row.id,
+      props.listKey,
+      overrideForm.value.id
+    )
+    entityData.value = {
+      ...(entityData.value || {}),
+      ...normalizeEntityRecordForForm(detail)
+    }
+  } catch (error: any) {
+    console.error('加载按钮指定表单详情失败:', error)
+    throw new Error(
+      error?.message || '加载按钮指定表单详情失败，请检查表单发布版本'
+    )
+  }
 }
 
 async function validateApprovalForms() {

@@ -559,8 +559,8 @@ final class SubFormParameterContractPolicy {
             case "INTEGER", "LONG" -> ValueType.INTEGER;
             case "DECIMAL", "DOUBLE" -> ValueType.NUMBER;
             case "BOOLEAN" -> ValueType.BOOLEAN;
-            case "MULTI_SELECT", "CHECKBOX", "MULTI_REFERENCE",
-                    "SUB_FORM_LIST" -> ValueType.ARRAY;
+            case "MULTI_SELECT", "CHECKBOX",
+                    "MULTI_REFERENCE" -> ValueType.ARRAY;
             case "SUB_FORM" -> ValueType.OBJECT;
             case "DATE", "DATETIME" -> ValueType.TEMPORAL;
             case "STRING", "TEXT", "RICH_TEXT", "SELECT", "RADIO",

@@ -217,7 +217,8 @@ public class EntityDataActionService {
                 dto.getListKey(),
                 dto.getFormId());
         if (origin == null) {
-            dto.setData(formSubmissionService.applyDefaultForm(
+            dto.setData(applySubmissionForm(
+                    null,
                     dto.getEntityCode(),
                     null,
                     "create",
@@ -240,7 +241,8 @@ public class EntityDataActionService {
         Object value = eventRuntimeService.execute(
                 event,
                 input -> {
-                    dto.setData(formSubmissionService.applyDefaultForm(
+                    dto.setData(applySubmissionForm(
+                            origin,
                             dto.getEntityCode(),
                             null,
                             "create",
@@ -326,7 +328,8 @@ public class EntityDataActionService {
                     capabilityService.requireRowAction(
                             entityCode, listKey, "edit", row);
                     Map<String, Object> safeData =
-                            formSubmissionService.applyDefaultForm(
+                            applySubmissionForm(
+                                    origin,
                                     entityCode,
                                     id,
                                     "edit",
@@ -360,7 +363,8 @@ public class EntityDataActionService {
         capabilityService.requireRowAction(
                 entityCode, listKey, "edit", row);
         Map<String, Object> safeData =
-                formSubmissionService.applyDefaultForm(
+                applySubmissionForm(
+                        null,
                         entityCode,
                         id,
                         "edit",
@@ -379,6 +383,37 @@ public class EntityDataActionService {
                 updateRequest,
                 listEventOrigin(entityCode, listKey),
                 executionContext.businessTraceKey());
+    }
+
+    /**
+     * 按本次请求实际选择的表单执行发布版提交处理。
+     *
+     * <p>表单来源在 {@link #eventOrigin(String, String, String)} 中完成实体归属校验；
+     * 没有表单来源时才回退实体默认表单，兼容未显式选择表单的调用方。</p>
+     */
+    private Map<String, Object> applySubmissionForm(
+            EventOrigin origin,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext) {
+        if (origin != null
+                && "FORM".equals(origin.configType())) {
+            return formSubmissionService.applyForm(
+                    origin.configId(),
+                    entityCode,
+                    recordId,
+                    mode,
+                    submittedData,
+                    executionContext);
+        }
+        return formSubmissionService.applyDefaultForm(
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext);
     }
 
     /**

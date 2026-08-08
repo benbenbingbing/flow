@@ -43,8 +43,8 @@
     {"fieldCode":"version","fieldName":"业务版本","fieldType":"INTEGER","dbType":"int","isRequired":true,"defaultValue":"1","sortOrder":300},
     {"fieldCode":"submitted_at","fieldName":"业务提交时间","fieldType":"DATETIME","dbType":"datetime","isRequired":false,"sortOrder":310},
     {"fieldCode":"approved_at","fieldName":"批准时间","fieldType":"DATETIME","dbType":"datetime","isRequired":false,"sortOrder":320},
-    {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldType":"SUB_FORM_LIST","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_system_impact","refFieldCode":"requirement_id","sortOrder":330},
-    {"fieldCode":"requirement_relations","fieldName":"需求关系","fieldType":"SUB_FORM_LIST","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_relation","refFieldCode":"source_requirement_id","sortOrder":340}
+    {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldType":"SUB_FORM","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_system_impact","refFieldCode":"requirement_id","sortOrder":330},
+    {"fieldCode":"requirement_relations","fieldName":"需求关系","fieldType":"SUB_FORM","dbType":"varchar(64)","fieldLength":64,"isRequired":false,"refEntityType":"CUSTOM","refEntityCode":"requirement_relation","refFieldCode":"source_requirement_id","sortOrder":340}
   ],
   "relations": [
     {
@@ -132,7 +132,7 @@
         {"fieldCode":"security_involved_flag","fieldName":"是否涉及安全","fieldLabel":"是否涉及安全","fieldType":"BOOLEAN","sortOrder":230,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"switch","gridSpan":8},
         {"fieldCode":"system_impact_flag","fieldName":"是否涉及系统改造","fieldLabel":"是否涉及系统改造","fieldType":"BOOLEAN","sortOrder":240,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"switch","gridSpan":8},
         {"fieldCode":"initial_system_scope","fieldName":"初步系统范围","fieldLabel":"初步系统范围","fieldType":"TEXT","sortOrder":250,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24,"componentProps":"{\"linkageRules\":{\"visibilityRule\":\"${system_impact_flag} == true\",\"requiredRule\":\"${system_impact_flag} == true\"}}"},
-        {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldLabel":"系统影响明细","fieldType":"SUB_FORM_LIST","sortOrder":260,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"sub_form_list","gridSpan":24,"componentProps":"{\"linkageRules\":{\"visibilityRule\":\"${system_impact_flag} == true\",\"requiredRule\":\"${system_impact_flag} == true\"}}"}
+        {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldLabel":"系统影响明细","fieldType":"SUB_FORM","sortOrder":260,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"sub_form","gridSpan":24,"componentProps":"{\"linkageRules\":{\"visibilityRule\":\"${system_impact_flag} == true\",\"requiredRule\":\"${system_impact_flag} == true\"}}"}
       ],
       "nodes": []
     },
@@ -156,7 +156,7 @@
         {"fieldCode":"recommended_solution","fieldName":"建议方案","fieldLabel":"建议方案","fieldType":"TEXT","sortOrder":90,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"textarea","gridSpan":24},
         {"fieldCode":"planned_flag","fieldName":"是否建议纳入计划","fieldLabel":"是否建议纳入计划","fieldType":"BOOLEAN","sortOrder":100,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"switch","gridSpan":8},
         {"fieldCode":"initial_system_scope","fieldName":"初步系统范围","fieldLabel":"初步系统范围","fieldType":"TEXT","sortOrder":110,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"textarea","gridSpan":24},
-        {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldLabel":"系统影响明细","fieldType":"SUB_FORM_LIST","sortOrder":120,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"sub_form_list","gridSpan":24}
+        {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldLabel":"系统影响明细","fieldType":"SUB_FORM","sortOrder":120,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"sub_form","gridSpan":24}
       ],
       "nodes": []
     },
@@ -186,8 +186,8 @@
         {"fieldCode":"initial_system_scope","fieldName":"初步系统范围","fieldLabel":"初步系统范围","fieldType":"TEXT","sortOrder":150,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"textarea","gridSpan":24},
         {"fieldCode":"estimated_workload","fieldName":"预估工作量(人日)","fieldLabel":"预估工作量(人日)","fieldType":"DECIMAL","sortOrder":160,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"number","gridSpan":8},
         {"fieldCode":"recommended_solution","fieldName":"建议方案","fieldLabel":"建议方案","fieldType":"TEXT","sortOrder":170,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"textarea","gridSpan":24},
-        {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldLabel":"系统影响明细","fieldType":"SUB_FORM_LIST","sortOrder":180,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"sub_form_list","gridSpan":24},
-        {"fieldCode":"requirement_relations","fieldName":"需求关系","fieldLabel":"需求关系","fieldType":"SUB_FORM_LIST","sortOrder":190,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"sub_form_list","gridSpan":24}
+        {"fieldCode":"system_impacts","fieldName":"系统影响明细","fieldLabel":"系统影响明细","fieldType":"SUB_FORM","sortOrder":180,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"sub_form","gridSpan":24},
+        {"fieldCode":"requirement_relations","fieldName":"需求关系","fieldLabel":"需求关系","fieldType":"SUB_FORM","sortOrder":190,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"sub_form","gridSpan":24}
       ],
       "nodes": []
     }

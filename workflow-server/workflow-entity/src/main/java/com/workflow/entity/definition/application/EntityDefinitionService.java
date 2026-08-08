@@ -858,8 +858,8 @@ public class EntityDefinitionService {
     }
 
     private boolean isRelationField(EntityFieldDTO fieldDTO) {
-        return fieldDTO != null && (fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM
-                || fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM_LIST);
+        return fieldDTO != null
+                && fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM;
     }
 
     private String firstText(String first, String second) {
@@ -1017,6 +1017,7 @@ public class EntityDefinitionService {
         dto.setRefEntityType(
                 referenceType == null ? null : referenceType.name());
         dto.setRefFieldCode(field.getRefFieldCode());
+        dto.setRefListKey(field.getRefListKey());
         // 加载文件字段的多组附件配置
         if (field.getFieldType() == EntityField.FieldType.FILE || field.getFieldType() == EntityField.FieldType.IMAGE) {
             try {
@@ -1081,6 +1082,7 @@ public class EntityDefinitionService {
             field.setRefEntityType(EntityField.RefEntityType.CUSTOM);
         }
         field.setRefFieldCode(firstText(dto.getChildRefFieldCode(), dto.getRefFieldCode()));
+        field.setRefListKey(dto.getRefListKey());
         return field;
     }
 

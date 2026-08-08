@@ -36,7 +36,10 @@ public final class EntityFormFieldRuntimeMapper {
         result.put("fieldType", field.getFieldType());
         result.put("componentType", resolveComponentType(field));
         result.put("isRequired", field.getIsRequired());
-        result.put("isReadonly", Boolean.TRUE.equals(readonlyOverride) ? 1 : field.getIsReadonly());
+        Integer readonly = Boolean.TRUE.equals(readonlyOverride)
+                ? Integer.valueOf(1)
+                : field.getIsReadonly();
+        result.put("isReadonly", readonly);
         result.put("isHidden", field.getIsHidden());
         result.put("defaultValue", field.getDefaultValue());
         result.put("placeholder", field.getPlaceholder());
@@ -60,6 +63,9 @@ public final class EntityFormFieldRuntimeMapper {
         }
         if (field.getRefFieldCode() != null) {
             result.put("refFieldCode", field.getRefFieldCode());
+        }
+        if (field.getRefListKey() != null) {
+            result.put("refListKey", field.getRefListKey());
         }
         if (field.getRelationCode() != null) {
             result.put("relationCode", field.getRelationCode());

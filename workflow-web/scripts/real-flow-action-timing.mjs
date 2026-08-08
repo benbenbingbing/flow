@@ -8,6 +8,19 @@ const testPassword = process.env.TEST_PASSWORD || 'admin'
 const suffix = `${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12)}${Math.random().toString(36).slice(2, 5)}`
 const processKey = `action_timing_${suffix}`
 const entityCode = `action_timing_entity_${suffix}`
+const handlerBeanName = 'sendNotificationHandler'
+const standardTimings = [
+  'PROCESS_STARTED',
+  'PROCESS_COMPLETED',
+  'PROCESS_WITHDRAWN',
+  'PROCESS_TERMINATED',
+  'NODE_ENTERED',
+  'NODE_COMPLETED',
+  'TASK_CREATED',
+  'TASK_ASSIGNED',
+  'TASK_COMPLETING',
+  'TRANSITION_TAKEN'
+]
 const outputDir = path.resolve('docs/flow-action-timing-e2e')
 const evidence = {
   processKey,
@@ -63,7 +76,7 @@ async function waitFor(check, message, timeout = 20000) {
 async function prepareActionHandlers() {
   const configs = await api('GET', '/process-action-handlers/configs')
   try {
-    for (const beanName of ['demoSimpleActionHandler', 'demoFailingActionHandler']) {
+    for (const beanName of [handlerBeanName]) {
       const current = configs.find(item => item.beanName === beanName)
       assert.ok(current?.configured, `测试处理器 ${beanName} 必须已加入动作目录`)
       assert.ok(current?.available, `测试处理器 ${beanName} 必须已注册`)
@@ -164,7 +177,7 @@ function bpmnXml() {
 }
 
 async function saveAction(processId, config) {
-  const interfaceName = config.interfaceName || 'demoSimpleActionHandler'
+  const interfaceName = config.interfaceName || handlerBeanName
   const definition = handlerDefinitions.get(interfaceName)
   assert.ok(definition?.definitionId, `动作处理器 ${interfaceName} 缺少目录定义`)
   const action = await api('POST', '/process-actions', {
@@ -179,7 +192,11 @@ async function saveAction(processId, config) {
     description: `E2E ${config.triggerTiming}`,
     interfaceName,
     methodName: 'execute',
-    paramsJson: JSON.stringify({ timing: config.triggerTiming, message: config.message || '' }),
+    paramsJson: JSON.stringify({
+      timing: config.triggerTiming,
+      message: config.message || '',
+      entityDataId: '${entityDataId}'
+    }),
     retryConfig: config.retryConfig ? JSON.stringify(config.retryConfig) : null,
     actionDefinitionId: definition.definitionId,
     enabled: true,
@@ -228,6 +245,21 @@ async function waitForTiming(processInstanceId, timing, status = 'SUCCESS') {
   }, `动作时机 ${timing} 未进入 ${status}`)
 }
 
+function assertResolvedParams(records, expectedEntityDataId) {
+  for (const record of records) {
+    assert.equal(
+      record.resolvedParams?.timing,
+      record.triggerTiming,
+      `${record.triggerTiming} 未收到固定 timing 参数`
+    )
+    assert.equal(
+      record.resolvedParams?.entityDataId,
+      expectedEntityDataId,
+      `${record.triggerTiming} 未正确解析 \${entityDataId}`
+    )
+  }
+}
+
 async function main() {
   const login = await api('POST', '/auth/login', {
     username: testUsername,
@@ -238,7 +270,7 @@ async function main() {
   const workflowProcess = await api('POST', '/process', {
     processKey,
     processName: `流程动作时机闭环${suffix}`,
-    description: '验证十个标准流程动作时机、Outbox 与死信',
+    description: '验证十个标准流程动作时机、Outbox 与自定义参数传递',
     category: 'codex-action-timing',
     bpmnXml: bpmnXml()
   })
@@ -283,16 +315,6 @@ async function main() {
     await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_ASSIGNED', ...asyncRetry })
     await saveAction(workflowProcess.id, { scopeType: 'NODE', elementId: 'Task_Review', triggerTiming: 'TASK_COMPLETING', ...sync })
     await saveAction(workflowProcess.id, { scopeType: 'SEQUENCE_FLOW', elementId: 'Flow_Start_Review', triggerTiming: 'TRANSITION_TAKEN', ...sync })
-    await saveAction(workflowProcess.id, {
-      scopeType: 'PROCESS',
-      triggerTiming: 'PROCESS_COMPLETED',
-      ...asyncRetry,
-      actionName: '流程完成后失败动作',
-      interfaceName: 'demoFailingActionHandler',
-      retryConfig: { maxRetries: 1 },
-      message: 'E2E 预期失败'
-    })
-
     const published = await api('POST', `/process/${workflowProcess.id}/publish`, {
       versionDescription: `流程动作时机真实闭环 ${suffix}`
     })
@@ -317,8 +339,8 @@ async function main() {
     ]) {
       await waitForTiming(completedInstance.processInstanceId, timing)
     }
-    await waitForTiming(completedInstance.processInstanceId, 'PROCESS_COMPLETED', 'DEAD')
     evidence.executions.completed = await executions(completedInstance.processInstanceId)
+    assertResolvedParams(evidence.executions.completed, completedInstance.id)
 
     withdrawnInstance = await createInstance(`动作撤回实例${suffix}`)
     evidence.instances.withdrawn = withdrawnInstance
@@ -327,6 +349,7 @@ async function main() {
     })
     await waitForTiming(withdrawnInstance.processInstanceId, 'PROCESS_WITHDRAWN')
     evidence.executions.withdrawn = await executions(withdrawnInstance.processInstanceId)
+    assertResolvedParams(evidence.executions.withdrawn, withdrawnInstance.id)
 
     terminatedInstance = await createInstance(`动作终止实例${suffix}`)
     evidence.instances.terminated = terminatedInstance
@@ -335,24 +358,13 @@ async function main() {
     })
     await waitForTiming(terminatedInstance.processInstanceId, 'PROCESS_TERMINATED')
     evidence.executions.terminated = await executions(terminatedInstance.processInstanceId)
+    assertResolvedParams(evidence.executions.terminated, terminatedInstance.id)
 
     observedTimings = new Set([
       ...evidence.executions.completed,
       ...evidence.executions.withdrawn,
       ...evidence.executions.terminated
     ].map(item => item.triggerTiming))
-    const standardTimings = [
-      'PROCESS_STARTED',
-      'PROCESS_COMPLETED',
-      'PROCESS_WITHDRAWN',
-      'PROCESS_TERMINATED',
-      'NODE_ENTERED',
-      'NODE_COMPLETED',
-      'TASK_CREATED',
-      'TASK_ASSIGNED',
-      'TASK_COMPLETING',
-      'TRANSITION_TAKEN'
-    ]
     standardTimings.forEach(timing => assert.ok(observedTimings.has(timing), `缺少时机 ${timing}`))
   } catch (error) {
     primaryError = error

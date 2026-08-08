@@ -1,0 +1,191 @@
+{
+  "generatedAt": "2026-08-05T05:49:32.544Z",
+  "apiBase": "http://127.0.0.1:8080/api",
+  "result": "PASS",
+  "entity": {
+    "id": "2084050094355812353",
+    "entityCode": "ZDWREQ",
+    "entityName": "zdw-需求管理",
+    "processDefinitionId": "2084056633675358210"
+  },
+  "configuredForms": [
+    {
+      "id": "2084057471894429698",
+      "formKey": "form001",
+      "formName": "form001",
+      "activeReleaseId": "582073cb0d6e923056327ba3f58ef0eb"
+    },
+    {
+      "id": "2084441096519475201",
+      "formKey": "form001_copy_1785804459107",
+      "formName": "form001 copy",
+      "activeReleaseId": "e400c090490cfd9e272c3ff31ec78823"
+    }
+  ],
+  "cases": {
+    "group": {
+      "task": {
+        "taskId": "6db82c13-9091-11f1-ae22-5ebe07f55b33",
+        "taskName": "组长审批",
+        "processInstanceId": "6db10005-9091-11f1-ae22-5ebe07f55b33",
+        "entityDataId": "078a3216dba0445b979c9f85e6b95a9f"
+      },
+      "detailForm": {
+        "entityFormId": "2084057471894429698",
+        "formKey": "form001",
+        "formName": "form001",
+        "formReleaseId": "582073cb0d6e923056327ba3f58ef0eb",
+        "formReleaseVersion": 9,
+        "effectiveFormReleaseId": "582073cb0d6e923056327ba3f58ef0eb",
+        "isReadonly": false,
+        "fieldCount": 23,
+        "nodeCount": 31,
+        "nodeTypes": [
+          "ACTION_SLOT",
+          "COLLAPSE",
+          "FIELD",
+          "GRID",
+          "REPEATER",
+          "SECTION",
+          "SUB_FORM",
+          "TAB",
+          "TAB_SET",
+          "TEXT"
+        ]
+      },
+      "progressForm": {
+        "entityFormId": "2084057471894429698",
+        "formKey": "form001",
+        "formName": "form001",
+        "formReleaseId": "582073cb0d6e923056327ba3f58ef0eb",
+        "formReleaseVersion": 9,
+        "effectiveFormReleaseId": "582073cb0d6e923056327ba3f58ef0eb",
+        "isReadonly": false,
+        "fieldCount": 23,
+        "nodeCount": 31,
+        "nodeTypes": [
+          "ACTION_SLOT",
+          "COLLAPSE",
+          "FIELD",
+          "GRID",
+          "REPEATER",
+          "SECTION",
+          "SUB_FORM",
+          "TAB",
+          "TAB_SET",
+          "TEXT"
+        ]
+      },
+      "entityDataKeys": [
+        "budgetAmount",
+        "contactEmail",
+        "enabledFlag",
+        "estimatedCount",
+        "expectedDate",
+        "ownerDept",
+        "plainNote",
+        "radioOption",
+        "reqItemForm",
+        "reqSingleForm",
+        "singleOption"
+      ]
+    },
+    "manager": {
+      "task": {
+        "taskId": "6e3fd2bb-9091-11f1-ae22-5ebe07f55b33",
+        "taskName": "经理审批",
+        "processInstanceId": "6db10005-9091-11f1-ae22-5ebe07f55b33",
+        "entityDataId": "078a3216dba0445b979c9f85e6b95a9f"
+      },
+      "detailForm": {
+        "entityFormId": "2084441096519475201",
+        "formKey": "form001_copy_1785804459107",
+        "formName": "form001 copy",
+        "formReleaseId": "e400c090490cfd9e272c3ff31ec78823",
+        "formReleaseVersion": 1,
+        "effectiveFormReleaseId": "e400c090490cfd9e272c3ff31ec78823",
+        "isReadonly": false,
+        "fieldCount": 8,
+        "nodeCount": 8,
+        "nodeTypes": [
+          "FIELD"
+        ]
+      },
+      "progressForm": {
+        "entityFormId": "2084441096519475201",
+        "formKey": "form001_copy_1785804459107",
+        "formName": "form001 copy",
+        "formReleaseId": "e400c090490cfd9e272c3ff31ec78823",
+        "formReleaseVersion": 1,
+        "effectiveFormReleaseId": "e400c090490cfd9e272c3ff31ec78823",
+        "isReadonly": false,
+        "fieldCount": 8,
+        "nodeCount": 8,
+        "nodeTypes": [
+          "FIELD"
+        ]
+      },
+      "entityDataKeys": [
+        "budgetAmount",
+        "contactEmail",
+        "enabledFlag",
+        "estimatedCount",
+        "expectedDate",
+        "ownerDept",
+        "plainNote",
+        "radioOption",
+        "reqItemForm",
+        "reqSingleForm",
+        "singleOption"
+      ]
+    }
+  },
+  "process": {
+    "id": "2084056633675358210",
+    "processKey": "ZDWREQ",
+    "publishedVersion": 8
+  },
+  "modeAccess": {
+    "contactEmail": {
+      "visible": true,
+      "editable": false
+    },
+    "expectedDate": {
+      "visible": true,
+      "editable": true
+    },
+    "plainNote": {
+      "visible": false,
+      "editable": false
+    },
+    "ownerDeptReadonly": true,
+    "statusHidden": true
+  },
+  "submissionGuard": {
+    "submitted": {
+      "contactEmail": "tampered-1785908970886-1ba9f1@example.com",
+      "expectedDate": "2026-10-10",
+      "plainNote": "审批隐藏字段篡改-1785908970886-1ba9f1",
+      "ownerDept": "999999999"
+    },
+    "before": {
+      "contactEmail": "flow-1785908970886-1ba9f1@example.com",
+      "expectedDate": "2026-09-15",
+      "plainNote": "审批隐藏字段原值-1785908970886-1ba9f1",
+      "ownerDept": "2"
+    },
+    "after": {
+      "contactEmail": "flow-1785908970886-1ba9f1@example.com",
+      "expectedDate": "2026-10-10",
+      "plainNote": "审批隐藏字段原值-1785908970886-1ba9f1",
+      "ownerDept": "2"
+    }
+  },
+  "runtime": {
+    "entityDataId": "078a3216dba0445b979c9f85e6b95a9f",
+    "processInstanceId": "6db10005-9091-11f1-ae22-5ebe07f55b33",
+    "groupTaskId": "6db82c13-9091-11f1-ae22-5ebe07f55b33",
+    "managerTaskId": "6e3fd2bb-9091-11f1-ae22-5ebe07f55b33",
+    "cleaned": true
+  }
+}

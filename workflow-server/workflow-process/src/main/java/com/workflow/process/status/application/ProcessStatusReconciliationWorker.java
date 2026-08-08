@@ -52,7 +52,7 @@ public class ProcessStatusReconciliationWorker {
             return;
         }
         String category = category(historic.getDeleteReason());
-        publisher.publishProcessEnd(
+        publisher.republishProcessEnd(
                 link.getProcessInstanceId(),
                 link.getEntityCode(),
                 link.getEntityRecordId(),

@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -41,6 +42,8 @@ class UiDataSourceServiceWiringTest {
                     () -> mock(EntityListConfigMapper.class));
             context.registerBean(EntityDefinitionAccessPolicy.class,
                     () -> mock(EntityDefinitionAccessPolicy.class));
+            context.registerBean(EntityUiConfigurationPolicy.class,
+                    () -> mock(EntityUiConfigurationPolicy.class));
             context.registerBean(EntityDataDynamicService.class,
                     () -> mock(EntityDataDynamicService.class));
             context.registerBean(SysDictItemService.class,

@@ -14,11 +14,7 @@ export function normalizeEntityFieldForEditing(rawField = {}) {
     childEntityId: rawField.childEntityId || rawField.refEntityId || '',
     childRefFieldCode: rawField.childRefFieldCode || rawField.refFieldCode || '',
     relationType: rawField.relationType || (
-      rawField.fieldType === 'SUB_FORM'
-        ? 'ONE_TO_ONE'
-        : rawField.fieldType === 'SUB_FORM_LIST'
-          ? 'ONE_TO_MANY'
-          : undefined
+      rawField.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : undefined
     ),
     cascadeDelete: rawField.cascadeDelete !== false,
     fileTypes: rawField.fileTypes
@@ -51,11 +47,7 @@ export function normalizeEntityFieldForSave(source = {}) {
     refEntityId: field.refEntityId || field.childEntityId || '',
     refFieldCode: field.refFieldCode || field.childRefFieldCode || '',
     relationType: field.relationType || (
-      field.fieldType === 'SUB_FORM'
-        ? 'ONE_TO_ONE'
-        : field.fieldType === 'SUB_FORM_LIST'
-          ? 'ONE_TO_MANY'
-          : undefined
+      field.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : undefined
     ),
     cascadeDelete: field.cascadeDelete !== false,
     id: isTemporaryField(field) ? null : field.id,
@@ -123,13 +115,23 @@ export function useEntityFieldDraftSave({
         return false
       }
     }
-    if (['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType)) {
+    if (field.fieldType === 'SUB_FORM') {
       if (!field.childEntityId && !field.refEntityId) {
         ElMessage.warning(`请选择子实体：${field.fieldName}`)
         return false
       }
       if (!field.childRefFieldCode && !field.refFieldCode) {
         ElMessage.warning(`请选择子表外键：${field.fieldName}`)
+        return false
+      }
+    }
+    if (field.fieldType === 'SUB_LIST') {
+      if (!field.refEntityId) {
+        ElMessage.warning(`请选择目标实体：${field.fieldName}`)
+        return false
+      }
+      if (!field.refListKey) {
+        ElMessage.warning(`请选择已发布列表：${field.fieldName}`)
         return false
       }
     }

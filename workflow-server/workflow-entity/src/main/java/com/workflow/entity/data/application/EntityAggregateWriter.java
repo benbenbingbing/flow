@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationSystemFields;
+import com.workflow.contracts.entity.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import lombok.RequiredArgsConstructor;
@@ -37,8 +38,9 @@ public class EntityAggregateWriter {
                                 entityCode),
                         recordId);
         if (value == null) {
-            throw new IllegalArgumentException(
-                    "实体数据不存在: " + recordId);
+            throw new EntityMutationTargetNotFoundException(
+                    entityCode,
+                    recordId);
         }
     }
 

@@ -27,19 +27,19 @@ import static org.mockito.Mockito.when;
  * 流程终止服务单元测试。
  *
  * <p>被测对象为 {@link ProcessTerminationService}，验证终止流程时删除实例、
- * 更新实体状态与当前任务、写入操作日志，以及非发起人终止与已结束实例的拒绝逻辑。</p>
+ * 清理当前任务、写入操作日志，以及非发起人终止与已结束实例的拒绝逻辑。</p>
  */
 class ProcessTerminationServiceTest {
 
     /**
-     * 发起人终止运行中流程应删除实例并更新实体状态为 TERMINATED。
+     * 发起人终止运行中流程应删除实例并记录终止活动。
      *
      * <p>场景：mock 运行实例与实体状态映射，断言返回 200，
      * 验证 deleteProcessInstance、deleteTasksByProcessInstance、操作日志插入、
-     * 实体表 update(含 TERMINATED 状态)与 updateCurrentTask 均被调用。</p>
+     * 状态更新由流程结束监听器统一处理，命令服务仅记录终止活动。</p>
      */
     @Test
-    void terminateProcessDeletesInstanceAndUpdatesEntityStatus() {
+    void terminateProcessDeletesInstanceAndRecordsActivity() {
         Fixture fixture = new Fixture();
         fixture.runningProcess("starter");
         when(fixture.runtimeService.getVariable("pi-1", "entityCode")).thenReturn("expense");
@@ -53,8 +53,19 @@ class ProcessTerminationServiceTest {
         verify(fixture.processTaskService).deleteTasksByProcessInstance("pi-1");
         verify(fixture.operationLogMapper).insert(org.mockito.ArgumentMatchers.any(ProcessOperationLog.class));
 
-        verify(fixture.entityRecordPort)
-                .markProcessEnded("expense", "data-1", "TERMINATED", "TERMINATED");
+        verify(fixture.entityRecordPort).recordActivity(
+                "expense",
+                "data-1",
+                "TERMINATE",
+                "主动撤回",
+                "pi-1",
+                null);
+        verify(fixture.entityRecordPort, never()).markProcessEnded(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     /**

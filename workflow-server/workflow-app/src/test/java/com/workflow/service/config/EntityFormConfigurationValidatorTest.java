@@ -41,7 +41,10 @@ class EntityFormConfigurationValidatorTest {
     @Test
     void acceptsStructuredValidationAndModeAccess() {
         EntityFormField field = field();
-        field.setValidationRules("{\"minLength\":2,\"maxLength\":20,\"format\":\"EMAIL\"}");
+        field.setValidationRules(
+                "{\"minLength\":2,\"maxLength\":50,"
+                        + "\"format\":\"EMAIL\","
+                        + "\"pattern\":\"^[^@]+@example\\\\.com$\"}");
         field.setExtensionConfig("{\"modes\":{\"create\":{\"visible\":true,\"editable\":true},\"view\":{\"visible\":true,\"editable\":false}}}");
 
         assertDoesNotThrow(() -> validator.validateFields(List.of(field)));
@@ -57,6 +60,17 @@ class EntityFormConfigurationValidatorTest {
         field.setValidationRules("{}");
         field.setExtensionConfig("{\"modes\":{\"delete\":{\"visible\":true}}}");
         assertThrows(IllegalArgumentException.class, () -> validator.validateFields(List.of(field)));
+    }
+
+    /** 测试拒绝语法错误的表单正则表达式。 */
+    @Test
+    void rejectsInvalidRegexValidation() {
+        EntityFormField field = field();
+        field.setValidationRules("{\"pattern\":\"[unclosed\"}");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> validator.validateFields(List.of(field)));
     }
 
     /** 测试将空白 JSON 列归一化为 null：验证表单与字段的空白配置被置为 null */

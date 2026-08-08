@@ -45,6 +45,13 @@
         <el-button :loading="savingAll" type="primary" @click="saveAll">
           保存全部
         </el-button>
+        <el-button
+          :loading="runtimeCodeLoading"
+          :disabled="pageLoading"
+          @click="openRuntimeCode"
+        >
+          <el-icon><Document /></el-icon>查看最终代码
+        </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
         <el-button
           :disabled="!entityCode || !configInfo.listKey"
@@ -563,6 +570,7 @@
                 type="toolbar"
                 v-model="toolbarButtons"
                 :entityCode="entityCode"
+                :entity-id="entityId"
                 :entityFields="entityFields"
                 :owner-id="configInfo.id || configId"
                 :templates="buttonTemplates"
@@ -577,6 +585,7 @@
                 type="row"
                 v-model="rowActionButtons"
                 :entityCode="entityCode"
+                :entity-id="entityId"
                 :entityFields="entityFields"
                 :owner-id="configInfo.id || configId"
                 :templates="buttonTemplates"
@@ -966,6 +975,7 @@
       config-label="列表"
       @changed="handleReleaseChanged"
     />
+    <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
   </div>
 </template>
 
@@ -973,7 +983,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Delete, Rank, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Document, Rank, Plus } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
@@ -989,6 +999,7 @@ import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
+import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
 import { getFormFieldComponentOptions } from '@/components/form-fields'
@@ -1016,6 +1027,11 @@ import {
   isSimpleListQueryBinding,
   listQueryEditorFingerprint
 } from '@/shared/list-query-binding'
+import {
+  buildListDraftRuntimeSnapshot,
+  buildRuntimeCodeArtifact,
+  selectRuntimeRelease
+} from '@/shared/runtime-code-generator'
 import {
   uiDataSourceApi,
   uiEventBindingApi,
@@ -1045,6 +1061,8 @@ const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'S
 const publishDialogVisible = ref(false)
 const eventBindingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
+const runtimeCodeDialogRef = ref(null)
+const runtimeCodeLoading = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const pageLoading = ref(false)
 const loadError = ref('')
@@ -1524,7 +1542,10 @@ async function loadData() {
       entityFields.value = filterEntityFieldsByLifecycle(
         entityRes,
         entityRes.fields || []
-      ).filter(field => field.uiConfigurable !== false)
+      ).filter(field =>
+        field.uiConfigurable !== false
+        && String(field.fieldType || '').toUpperCase() !== 'SUB_LIST'
+      )
       if (isSystemEntity.value) {
         configInfo.value.dataScopeMode = 'INHERIT'
         configInfo.value.customComponent = ''
@@ -2516,6 +2537,118 @@ function handlePreviewReset() {
 
 async function showReleaseHistory() {
   await releaseHistoryDialogRef.value?.open()
+}
+
+async function openRuntimeCode() {
+  if (pageLoading.value) {
+    ElMessage.info('列表配置仍在加载，请稍候')
+    return
+  }
+  runtimeCodeLoading.value = true
+  try {
+    const ownerId = String(configInfo.value.id || configId || '')
+    const [savedBindings, releases] = await Promise.all([
+      ownerId
+        ? uiEventBindingApi.list('LIST', ownerId).catch(() => [])
+        : Promise.resolve([]),
+      ownerId
+        ? entityListConfigApi.getReleases(ownerId).catch(() => [])
+        : Promise.resolve([])
+    ])
+    const eventBindings = mergeCurrentListQueryBinding(
+      Array.isArray(savedBindings) ? savedBindings : [],
+      ownerId
+    )
+    const runtimeAction = (button, position) => {
+      const {
+        expectedRevision,
+        clearFields,
+        ...action
+      } = normalizeActionForSave(button, position)
+      return action
+    }
+    const draftSnapshot = buildListDraftRuntimeSnapshot({
+      list: configInfo.value,
+      viewConfig: viewConfig.value,
+      fields: fieldConfigList.value.map(normalizeFieldForSave),
+      toolbarActions: toolbarButtons.value.map(button =>
+        runtimeAction(button, 'TOOLBAR')
+      ),
+      rowActions: rowActionButtons.value.map(button =>
+        runtimeAction(button, 'ROW')
+      ),
+      scenes: sceneItems.value,
+      eventBindings
+    })
+    const releaseList = Array.isArray(releases)
+      ? releases
+      : Array.isArray(releases?.data)
+        ? releases.data
+        : []
+    const activeRelease = selectRuntimeRelease(
+      releaseList,
+      configInfo.value.activeReleaseId
+    )
+    const published = activeRelease?.snapshotDocument
+      ? buildRuntimeCodeArtifact({
+          configType: 'LIST',
+          configLabel: configInfo.value.listName
+            || configInfo.value.listKey
+            || '列表',
+          source: 'PUBLISHED',
+          version: activeRelease.version,
+          snapshot: safeParseConfig(activeRelease.snapshotDocument)
+        })
+      : null
+    runtimeCodeDialogRef.value?.open({
+      type: 'LIST',
+      label: configInfo.value.listName
+        || configInfo.value.listKey
+        || '列表',
+      draft: buildRuntimeCodeArtifact({
+        configType: 'LIST',
+        configLabel: configInfo.value.listName
+          || configInfo.value.listKey
+          || '列表',
+        source: 'DRAFT',
+        snapshot: draftSnapshot
+      }),
+      published,
+      dirty: isDirty.value,
+      changed: diffInfo.value.changed === true
+    })
+  } catch (error) {
+    console.error('生成列表最终代码失败:', error)
+    ElMessage.error(error?.message || '生成列表最终代码失败')
+  } finally {
+    runtimeCodeLoading.value = false
+  }
+}
+
+function mergeCurrentListQueryBinding(bindings, ownerId) {
+  if (!queryBindingDirty.value || listQueryBindingComplex.value) {
+    return bindings
+  }
+  const currentIndex = bindings.findIndex(binding =>
+    binding === findListLoadBinding(bindings)
+  )
+  if (!listQueryEditor.value.serviceId) {
+    return currentIndex < 0
+      ? bindings
+      : bindings.filter((_, index) => index !== currentIndex)
+  }
+  const draftBinding = {
+    ...(currentIndex >= 0 ? bindings[currentIndex] : {}),
+    ...buildListQueryBindingPayload(
+      listQueryEditor.value,
+      ownerId,
+      currentIndex >= 0 ? bindings[currentIndex] : null
+    )
+  }
+  if (currentIndex < 0) return [...bindings, draftBinding]
+  return bindings.map((binding, index) =>
+    index === currentIndex ? draftBinding : binding
+  )
 }
 
 function openListEventBindings() {

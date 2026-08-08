@@ -1,0 +1,495 @@
+{
+  "generatedAt": "2026-08-05T05:36:03.282Z",
+  "apiBase": "http://127.0.0.1:8080/api",
+  "result": "FAIL",
+  "error": {
+    "message": "流程测试数据清理失败\n+ actual - expected\n\n+ [\n+   {\n+     action: 'deleteEntityData',\n+     errorCode: null,\n+     message: '仅本人未流转草稿或已撤回数据可以删除',\n+     status: 403\n+   }\n+ ]\n- []\n",
+    "stack": "AssertionError [ERR_ASSERTION]: 流程测试数据清理失败\n+ actual - expected\n\n+ [\n+   {\n+     action: 'deleteEntityData',\n+     errorCode: null,\n+     message: '仅本人未流转草稿或已撤回数据可以删除',\n+     status: 403\n+   }\n+ ]\n- []\n\n    at main (file:///Users/dawei/Documents/ddup/ai/flow/workflow-web/scripts/real-zdw-process-runtime.mjs:415:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)"
+  },
+  "cleanupErrors": [],
+  "context": {
+    "groupForm": {
+      "entityFormId": "2084057471894429698",
+      "formKey": "form001",
+      "formName": "form001",
+      "formReleaseId": "582073cb0d6e923056327ba3f58ef0eb",
+      "formReleaseVersion": 9,
+      "effectiveFormReleaseId": "582073cb0d6e923056327ba3f58ef0eb",
+      "isReadonly": false,
+      "fieldCount": 23,
+      "nodeCount": 31,
+      "nodeTypes": [
+        "ACTION_SLOT",
+        "COLLAPSE",
+        "FIELD",
+        "GRID",
+        "REPEATER",
+        "SECTION",
+        "SUB_FORM",
+        "TAB",
+        "TAB_SET",
+        "TEXT"
+      ]
+    },
+    "contactEmailNode": {
+      "id": "zdw_e2e_field_contactEmail",
+      "formId": "2084057471894429698",
+      "parentId": "zdw_e2e_grid",
+      "nodeKey": "contactEmail",
+      "nodeType": "FIELD",
+      "bindingType": "ENTITY_FIELD",
+      "bindingRef": "contactEmail",
+      "componentName": null,
+      "componentVersion": null,
+      "snapshotVersion": null,
+      "propsDocument": "{\"fieldId\":\"2084825474038882305\",\"fieldCode\":\"contactEmail\",\"fieldName\":\"联系邮箱\",\"label\":\"联系邮箱\",\"fieldType\":\"STRING\",\"componentType\":\"input\",\"placeholder\":\"请填写联系邮箱\",\"defaultValue\":null,\"gridSpan\":12,\"required\":true,\"readonly\":false,\"hidden\":false,\"componentProps\":{\"maxlength\":120,\"showWordLimit\":true}}",
+      "rulesDocument": "{\"validation\":{\"minLength\":6,\"maxLength\":120,\"format\":\"EMAIL\"},\"extension\":{\"modes\":{\"create\":{\"visible\":true,\"editable\":true},\"edit\":{\"visible\":true,\"editable\":true},\"approve\":{\"visible\":true,\"editable\":false},\"view\":{\"visible\":true}}}}",
+      "dataSourceBindingsDocument": null,
+      "legacyPropsDocument": null,
+      "orderKey": 1000000,
+      "revision": null,
+      "templateId": null,
+      "templateVersion": null,
+      "localOverridesDocument": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "deleted": null
+    },
+    "expectedDateNode": {
+      "id": "zdw_e2e_field_expectedDate",
+      "formId": "2084057471894429698",
+      "parentId": "zdw_e2e_grid",
+      "nodeKey": "expectedDate",
+      "nodeType": "FIELD",
+      "bindingType": "ENTITY_FIELD",
+      "bindingRef": "expectedDate",
+      "componentName": null,
+      "componentVersion": null,
+      "snapshotVersion": null,
+      "propsDocument": "{\"fieldId\":\"2084825474793857026\",\"fieldCode\":\"expectedDate\",\"fieldName\":\"期望日期\",\"label\":\"期望日期\",\"fieldType\":\"DATE\",\"componentType\":\"date\",\"placeholder\":\"请填写期望日期\",\"defaultValue\":null,\"gridSpan\":12,\"required\":false,\"readonly\":false,\"hidden\":false,\"componentProps\":{\"valueFormat\":\"YYYY-MM-DD\"}}",
+      "rulesDocument": "{\"extension\":{\"modes\":{\"create\":{\"visible\":true,\"editable\":true},\"edit\":{\"visible\":true,\"editable\":true},\"approve\":{\"visible\":true,\"editable\":true},\"view\":{\"visible\":true}}}}",
+      "dataSourceBindingsDocument": null,
+      "legacyPropsDocument": null,
+      "orderKey": 5000000,
+      "revision": null,
+      "templateId": null,
+      "templateVersion": null,
+      "localOverridesDocument": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "deleted": null
+    },
+    "plainNoteNode": {
+      "id": "zdw_e2e_field_plainNote",
+      "formId": "2084057471894429698",
+      "parentId": "zdw_e2e_grid",
+      "nodeKey": "plainNote",
+      "nodeType": "FIELD",
+      "bindingType": "ENTITY_FIELD",
+      "bindingRef": "plainNote",
+      "componentName": null,
+      "componentVersion": null,
+      "snapshotVersion": null,
+      "propsDocument": "{\"fieldId\":\"2084825474206654466\",\"fieldCode\":\"plainNote\",\"fieldName\":\"纯文本说明\",\"label\":\"纯文本说明\",\"fieldType\":\"TEXT\",\"componentType\":\"textarea\",\"placeholder\":\"请填写纯文本说明\",\"defaultValue\":null,\"gridSpan\":24,\"required\":false,\"readonly\":false,\"hidden\":false,\"componentProps\":{\"rows\":4,\"maxlength\":2000}}",
+      "rulesDocument": "{\"validation\":{\"minLength\":2,\"maxLength\":2000},\"extension\":{\"modes\":{\"create\":{\"visible\":true,\"editable\":true},\"edit\":{\"visible\":true,\"editable\":true},\"approve\":{\"visible\":false,\"editable\":false},\"view\":{\"visible\":true}}}}",
+      "dataSourceBindingsDocument": null,
+      "legacyPropsDocument": null,
+      "orderKey": 2000000,
+      "revision": null,
+      "templateId": null,
+      "templateVersion": null,
+      "localOverridesDocument": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "deleted": null
+    },
+    "ownerDeptNode": {
+      "id": "zdw_e2e_field_ownerDept",
+      "formId": "2084057471894429698",
+      "parentId": "zdw_e2e_grid",
+      "nodeKey": "ownerDept",
+      "nodeType": "FIELD",
+      "bindingType": "ENTITY_FIELD",
+      "bindingRef": "ownerDept",
+      "componentName": null,
+      "componentVersion": null,
+      "snapshotVersion": null,
+      "propsDocument": "{\"fieldId\":\"2084825476349943809\",\"fieldCode\":\"ownerDept\",\"fieldName\":\"负责部门\",\"label\":\"负责部门\",\"fieldType\":\"DEPT\",\"componentType\":\"reference\",\"placeholder\":\"请填写负责部门\",\"defaultValue\":null,\"gridSpan\":12,\"required\":false,\"readonly\":true,\"hidden\":false,\"componentProps\":{\"refConfig\":{\"refEntityType\":\"DEPT\",\"refEntityId\":\"\",\"entityCode\":\"\",\"listKey\":\"\",\"apiUrl\":\"\"}}}",
+      "rulesDocument": "{\"extension\":{\"modes\":{\"create\":{\"visible\":true,\"editable\":true},\"edit\":{\"visible\":true,\"editable\":true},\"approve\":{\"visible\":true,\"editable\":false},\"view\":{\"visible\":true}}}}",
+      "dataSourceBindingsDocument": null,
+      "legacyPropsDocument": null,
+      "orderKey": 15000000,
+      "revision": null,
+      "templateId": null,
+      "templateVersion": null,
+      "localOverridesDocument": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "deleted": null
+    },
+    "contactEmailField": {
+      "componentType": "input",
+      "isRequired": 1,
+      "isReadonly": 0,
+      "fieldName": "联系邮箱",
+      "gridSpan": 12,
+      "validationRules": {
+        "minLength": 6,
+        "maxLength": 120,
+        "format": "EMAIL"
+      },
+      "extensionConfig": {
+        "modes": {
+          "create": {
+            "visible": true,
+            "editable": true
+          },
+          "edit": {
+            "visible": true,
+            "editable": true
+          },
+          "approve": {
+            "visible": true,
+            "editable": false
+          },
+          "view": {
+            "visible": true
+          }
+        }
+      },
+      "fieldCode": "contactEmail",
+      "defaultValue": null,
+      "componentProps": {
+        "maxlength": 120,
+        "showWordLimit": true
+      },
+      "isHidden": 0,
+      "fieldLabel": "联系邮箱",
+      "sortOrder": 6,
+      "id": "zdw_e2e_field_contactEmail",
+      "placeholder": "请填写联系邮箱",
+      "fieldType": "STRING",
+      "fieldId": "2084825474038882305"
+    },
+    "expectedDateField": {
+      "componentType": "date",
+      "isRequired": 0,
+      "isReadonly": 0,
+      "fieldName": "期望日期",
+      "gridSpan": 12,
+      "extensionConfig": {
+        "modes": {
+          "create": {
+            "visible": true,
+            "editable": true
+          },
+          "edit": {
+            "visible": true,
+            "editable": true
+          },
+          "approve": {
+            "visible": true,
+            "editable": true
+          },
+          "view": {
+            "visible": true
+          }
+        }
+      },
+      "fieldCode": "expectedDate",
+      "defaultValue": null,
+      "componentProps": {
+        "valueFormat": "YYYY-MM-DD"
+      },
+      "isHidden": 0,
+      "fieldLabel": "期望日期",
+      "sortOrder": 10,
+      "id": "zdw_e2e_field_expectedDate",
+      "placeholder": "请填写期望日期",
+      "fieldType": "DATE",
+      "fieldId": "2084825474793857026"
+    },
+    "plainNoteField": {
+      "componentType": "textarea",
+      "isRequired": 0,
+      "isReadonly": 0,
+      "fieldName": "纯文本说明",
+      "gridSpan": 24,
+      "validationRules": {
+        "minLength": 2,
+        "maxLength": 2000
+      },
+      "extensionConfig": {
+        "modes": {
+          "create": {
+            "visible": true,
+            "editable": true
+          },
+          "edit": {
+            "visible": true,
+            "editable": true
+          },
+          "approve": {
+            "visible": false,
+            "editable": false
+          },
+          "view": {
+            "visible": true
+          }
+        }
+      },
+      "fieldCode": "plainNote",
+      "defaultValue": null,
+      "componentProps": {
+        "rows": 4,
+        "maxlength": 2000
+      },
+      "isHidden": 0,
+      "fieldLabel": "纯文本说明",
+      "sortOrder": 7,
+      "id": "zdw_e2e_field_plainNote",
+      "placeholder": "请填写纯文本说明",
+      "fieldType": "TEXT",
+      "fieldId": "2084825474206654466"
+    },
+    "ownerDeptField": {
+      "componentType": "reference",
+      "isRequired": 0,
+      "isReadonly": 1,
+      "fieldName": "负责部门",
+      "gridSpan": 12,
+      "extensionConfig": {
+        "modes": {
+          "create": {
+            "visible": true,
+            "editable": true
+          },
+          "edit": {
+            "visible": true,
+            "editable": true
+          },
+          "approve": {
+            "visible": true,
+            "editable": false
+          },
+          "view": {
+            "visible": true
+          }
+        }
+      },
+      "fieldCode": "ownerDept",
+      "defaultValue": null,
+      "componentProps": {
+        "refConfig": {
+          "refEntityType": "DEPT",
+          "refEntityId": "",
+          "entityCode": "",
+          "listKey": "",
+          "apiUrl": ""
+        }
+      },
+      "refEntityType": "DEPT",
+      "isHidden": 0,
+      "fieldLabel": "负责部门",
+      "sortOrder": 20,
+      "id": "zdw_e2e_field_ownerDept",
+      "placeholder": "请填写负责部门",
+      "fieldType": "DEPT",
+      "fieldId": "2084825476349943809"
+    },
+    "nodeSamples": [
+      {
+        "id": "node_tab_set_1785850202735",
+        "formId": "2084057471894429698",
+        "parentId": null,
+        "nodeKey": "node_tab_set_1785850202735",
+        "nodeType": "TAB_SET",
+        "bindingType": "NONE",
+        "bindingRef": null,
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"label\":\"新 Tab 集合\"}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 1000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "zdw_e2e_section",
+        "formId": "2084057471894429698",
+        "parentId": null,
+        "nodeKey": "zdw_e2e_section",
+        "nodeType": "SECTION",
+        "bindingType": "NONE",
+        "bindingRef": null,
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"label\":\"全字段与属性测试\"}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 2000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "node_1785714470744_jehunh",
+        "formId": "2084057471894429698",
+        "parentId": "node_tab_1785850223991",
+        "nodeKey": "name",
+        "nodeType": "FIELD",
+        "bindingType": "ENTITY_FIELD",
+        "bindingRef": "name",
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"fieldId\":\"2084050094380978178\",\"fieldCode\":\"name\",\"fieldName\":\"名称\",\"label\":\"需求名称\",\"fieldType\":\"STRING\",\"componentType\":\"input\",\"defaultValue\":null,\"gridSpan\":24,\"required\":false,\"readonly\":false,\"hidden\":false,\"componentProps\":{},\"placeholder\":\"请输入需求名称\"}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 1000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "node_1785714474160_nm1i0n",
+        "formId": "2084057471894429698",
+        "parentId": "node_tab_1785850223991",
+        "nodeKey": "code",
+        "nodeType": "FIELD",
+        "bindingType": "ENTITY_FIELD",
+        "bindingRef": "code",
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"fieldId\":\"2084050094389366785\",\"fieldCode\":\"code\",\"fieldName\":\"数据编码\",\"label\":\"需求编码\",\"fieldType\":\"STRING\",\"componentType\":\"input\",\"defaultValue\":null,\"gridSpan\":24,\"required\":false,\"readonly\":true,\"hidden\":false,\"componentProps\":{}}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 2000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "node_1785714475986_83vny8",
+        "formId": "2084057471894429698",
+        "parentId": "node_tab_1785850223991",
+        "nodeKey": "status",
+        "nodeType": "FIELD",
+        "bindingType": "ENTITY_FIELD",
+        "bindingRef": "status",
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"fieldId\":\"2084050094389366786\",\"fieldCode\":\"status\",\"fieldName\":\"状态\",\"label\":\"流程状态\",\"fieldType\":\"STRING\",\"componentType\":\"input\",\"defaultValue\":\"DRAFT\",\"gridSpan\":24,\"required\":false,\"readonly\":true,\"hidden\":true,\"componentProps\":{}}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 3000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "node_1785713007103_r0aoip",
+        "formId": "2084057471894429698",
+        "parentId": "node_tab_1785850223991",
+        "nodeKey": "req_desc",
+        "nodeType": "FIELD",
+        "bindingType": "ENTITY_FIELD",
+        "bindingRef": "req_desc",
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"fieldId\":\"2084050803637784577\",\"fieldCode\":\"req_desc\",\"fieldName\":\"需求描述\",\"label\":\"需求描述（富文本）\",\"fieldType\":\"TEXT\",\"componentType\":\"rich_text\",\"defaultValue\":null,\"gridSpan\":24,\"required\":false,\"readonly\":false,\"hidden\":false,\"componentProps\":{\"height\":240}}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 4000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "node_1785891479121_8qnj94",
+        "formId": "2084057471894429698",
+        "parentId": "node_tab_1785850428303",
+        "nodeKey": "reqItemForm",
+        "nodeType": "REPEATER",
+        "bindingType": "RELATION",
+        "bindingRef": "ZDWREQ_reqItemForm",
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"fieldId\":\"2084632726430117889\",\"fieldCode\":\"reqItemForm\",\"fieldName\":\"reqItemForm\",\"label\":\"reqItemForm\",\"fieldType\":\"SUB_FORM_LIST\",\"componentType\":\"sub_form_list\",\"gridSpan\":24,\"componentProps\":{\"subFormConfig\":{\"layout\":\"form\",\"refEntityId\":\"2084630423346180098\",\"childFormId\":\"2084631047114682370\",\"refFormId\":\"2084631047114682370\",\"publishedFormId\":\"2084631047114682370\",\"childFormReleaseId\":\"65dd3732c4a54081c6d89f74be7e8743\",\"refFormReleaseId\":\"65dd3732c4a54081c6d89f74be7e8743\",\"publishedFormReleaseId\":\"65dd3732c4a54081c6d89f74be7e8743\",\"childFormReleaseVersion\":1,\"refFormReleaseVersion\":1,\"publishedFormReleaseVersion\":1,\"repeatable\":true,\"relationType\":\"ONE_TO_MANY\",\"childRefFieldCode\":\"reqId\",\"parameterContract\":{\"version\":1,\"parameterMapping\":{},\"fieldInitializationMapping\":{\"name\":\"parent.data.name\"}},\"relationCode\":\"ZDWREQ_reqItemForm\",\"childEntityId\":\"2084630423346180098\",\"refFieldCode\":\"reqId\"}},\"childFormId\":\"2084631047114682370\",\"refFormId\":\"2084631047114682370\",\"publishedFormId\":\"2084631047114682370\",\"childFormReleaseId\":\"65dd3732c4a54081c6d89f74be7e8743\",\"refFormReleaseId\":\"65dd3732c4a54081c6d89f74be7e8743\",\"publishedFormReleaseId\":\"65dd3732c4a54081c6d89f74be7e8743\",\"childFormReleaseVersion\":1,\"refFormReleaseVersion\":1,\"publishedFormReleaseVersion\":1}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 1000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      },
+      {
+        "id": "node_tab_1785850223991",
+        "formId": "2084057471894429698",
+        "parentId": "node_tab_set_1785850202735",
+        "nodeKey": "node_tab_1785850223991",
+        "nodeType": "TAB",
+        "bindingType": "NONE",
+        "bindingRef": null,
+        "componentName": null,
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"label\":\"tab2\"}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 1000000,
+        "revision": null,
+        "templateId": null,
+        "templateVersion": null,
+        "localOverridesDocument": null,
+        "createdAt": null,
+        "updatedAt": null,
+        "deleted": null
+      }
+    ]
+  }
+}

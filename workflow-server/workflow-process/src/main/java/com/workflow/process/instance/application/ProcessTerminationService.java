@@ -112,7 +112,6 @@ public class ProcessTerminationService {
                     LogValue.safe(processInstanceId),
                     LogValue.safe(userId),
                     LogValue.safe(deleteReason));
-            updateEntityStatus(entityCode, entityDataId);
             if (entityCode != null && entityDataId != null) {
                 entityRecordPort.recordActivity(
                         entityCode,
@@ -159,28 +158,4 @@ public class ProcessTerminationService {
         }
     }
 
-    private void updateEntityStatus(
-            String entityCode,
-            String entityDataId) {
-        try {
-            if (entityCode == null || entityDataId == null) {
-                return;
-            }
-            entityRecordPort.markProcessEnded(
-                    entityCode,
-                    entityDataId,
-                    "TERMINATED",
-                    "TERMINATED");
-            log.info(
-                    "流程终止，已更新实体数据状态: entityCode={}, entityDataId={}",
-                    entityCode,
-                    entityDataId);
-        } catch (Exception exception) {
-            log.warn(
-                    "终止流程后更新实体数据状态失败: entityCode={}, entityDataId={}",
-                    entityCode,
-                    entityDataId,
-                    exception);
-        }
-    }
 }

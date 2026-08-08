@@ -20,6 +20,7 @@ import SwitchField from './components/SwitchField.vue'
 import FileField from './components/FileField.vue'
 import EntityField from './components/EntityField.vue'
 import SubFormField from './components/SubFormField.vue'
+import SubListField from './components/SubListField.vue'
 import CascaderField from './components/CascaderField.vue'
 import SectionField from './components/SectionField.vue'
 import { normalizeExtensionDescriptor } from '@/shared/config-runtime'
@@ -41,6 +42,7 @@ export {
   FileField,
   EntityField,
   SubFormField,
+  SubListField,
   CascaderField,
   SectionField
 }
@@ -97,7 +99,8 @@ export const formFieldComponentMap = {
 
   // 子表单
   sub_form: SubFormField,
-  sub_form_list: SubFormField,
+  // 子列表
+  sub_list: SubListField,
 
   // 级联
   cascader: CascaderField,
@@ -113,13 +116,9 @@ const extensionRegistry = new Map()
 const supportedTypes = getBuiltInFormFieldSupportedTypes
 
 const builtInDescriptors = [
-  descriptor('input', '文本输入', TextField, supportedTypes('input'), [
-    { key: 'maxlength', label: '最大长度', type: 'number', min: 1, max: 10000 },
-    { key: 'showWordLimit', label: '显示字数', type: 'boolean', defaultValue: true }
-  ]),
+  descriptor('input', '文本输入', TextField, supportedTypes('input')),
   descriptor('textarea', '多行文本', TextField, supportedTypes('textarea'), [
-    { key: 'rows', label: '显示行数', type: 'number', min: 2, max: 20, defaultValue: 3 },
-    { key: 'maxlength', label: '最大长度', type: 'number', min: 1, max: 20000 }
+    { key: 'rows', label: '显示行数', type: 'number', min: 2, max: 20, defaultValue: 3 }
   ]),
   descriptor('rich_text', '富文本', RichTextField, supportedTypes('rich_text'), [
     { key: 'height', label: '编辑器高度', type: 'number', min: 120, max: 1000, defaultValue: 200 }
@@ -163,6 +162,7 @@ const builtInDescriptors = [
   descriptor('reference', '实体记录单选', EntityField, supportedTypes('reference')),
   descriptor('multi_reference', '实体记录多选', EntityField, supportedTypes('multi_reference')),
   descriptor('sub_form', '子表单', SubFormField, supportedTypes('sub_form')),
+  descriptor('sub_list', '子列表', SubListField, supportedTypes('sub_list')),
   descriptor('section', '分组标题', SectionField, supportedTypes('section'))
 ]
 
@@ -213,7 +213,10 @@ export function resolveFieldComponent(field) {
   const componentType = (field?.componentType || '').toLowerCase()
   const fieldType = (field?.fieldType || '').toLowerCase()
 
-  if (['sub_form', 'sub_form_list'].includes(componentType) || ['sub_form', 'sub_form_list'].includes(fieldType)) {
+  if (componentType === 'sub_list' || fieldType === 'sub_list') {
+    return SubListField
+  }
+  if (componentType === 'sub_form' || fieldType === 'sub_form') {
     return SubFormField
   }
 

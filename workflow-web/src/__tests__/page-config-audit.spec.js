@@ -193,12 +193,24 @@ assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/,
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 assert.match(entityDataList, /selectionScene[\s\S]*toolbarButtons[\s\S]*return \[\]/s, '选择型列表应隐藏业务工具栏动作')
 assert.ok(
-  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity"'),
+  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity && !embedded"'),
   '平台系统表只读列表不得显示数据版本入口'
+)
+assert.ok(
+  entityDataList.includes('props.embedded && !props.showToolbar')
+    && entityDataList.includes('props.embedded && !props.showRowActions')
+    && entityDataList.includes('props.createInitialData')
+    && entityDataList.includes('props.fixedFilters')
+    && entityDataList.includes(':show-pagination="!embedded || showPagination"'),
+  '嵌入式子列表应复用已发布按钮，并支持父参数查询和新增初始值'
 )
 const entityListConfigDesign = readFileSync(
   path.join(root, 'src/views/EntityListConfigDesign.vue'),
   'utf8'
+)
+assert.ok(
+  entityListConfigDesign.includes("String(field.fieldType || '').toUpperCase() !== 'SUB_LIST'"),
+  '子列表是表单嵌入节点，不得作为父实体普通列表字段配置'
 )
 assert.ok(
   entityListConfigDesign.includes('availableQueryTypeOptions')
@@ -207,7 +219,7 @@ assert.ok(
 )
 assert.match(
   entityDataList,
-  /const handleCreate = async[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*await formDialogRef\.value\?\.openCreate\(\)/,
+  /const handleCreate = async[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*await formDialogRef\.value\?\.openCreate\(\{[\s\S]*initialData:[\s\S]*parameters:[\s\S]*context:/,
   '新增实体数据前应重新加载最新发布表单，并等待子组件 props 更新后再打开弹窗'
 )
 assert.ok(
@@ -621,6 +633,32 @@ assert.deepEqual(
 )
 
 const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
+const runtimeCodeViewer = readFileSync(
+  path.join(root, 'src/components/RuntimeCodeViewerDialog.vue'),
+  'utf8'
+)
+const runtimeCodeGenerator = readFileSync(
+  path.join(root, 'src/shared/runtime-code-generator.js'),
+  'utf8'
+)
+;[
+  [formDesigner, 'buildFormDraftRuntimeSnapshot'],
+  [formDesigner, '查看最终代码'],
+  [listDesigner, 'buildListDraftRuntimeSnapshot'],
+  [listDesigner, '查看最终代码'],
+  [runtimeCodeViewer, '等价 Vue SFC'],
+  [runtimeCodeViewer, '@codemirror/lang-vue'],
+  [runtimeCodeViewer, 'vue()'],
+  [runtimeCodeViewer, '完整运行态 JSON'],
+  [runtimeCodeViewer, '逻辑索引'],
+  [runtimeCodeGenerator, 'selectRuntimeRelease'],
+  [runtimeCodeGenerator, 'eventBindings']
+].forEach(([source, marker]) => {
+  assert.ok(
+    source.includes(marker),
+    `表单/列表最终代码审查能力缺少内容: ${marker}`
+  )
+})
 const formDataSourceDialog = readFileSync(
   path.join(root, 'src/components/ui-config/FormDataSourceCompatDialog.vue'),
   'utf8'
@@ -721,6 +759,55 @@ assert.ok(
   formFieldRegistrySource.includes('getBuiltInFormFieldSupportedTypes'),
   '字段组件注册必须复用共享 supportedFieldTypes 策略'
 )
+assert.equal(
+  formFieldRegistrySource.includes("key: 'maxlength'"),
+  false,
+  '最大长度只能在状态与校验中配置，不能在复用与扩展中重复出现'
+)
+assert.equal(
+  formFieldRegistrySource.includes("key: 'showWordLimit'"),
+  false,
+  '显示字数应由状态与校验直接配置，不能继续留在组件参数中'
+)
+;[
+  'v-if="canConfigureSelectedWordLimit"',
+  'label="显示字数"',
+  "updateSelectedNodeConfig('showWordLimit', $event)"
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `状态与校验缺少字数显示配置: ${marker}`)
+})
+const validationMaxLengthIndex = formDesigner.indexOf(
+  "updateValidationConfig('maxLength', $event)"
+)
+const wordLimitIndex = formDesigner.indexOf('label="显示字数"')
+const regexIndex = formDesigner.indexOf('label="正则"')
+const extensionSettingsIndex = formDesigner.indexOf('title="复用与扩展"')
+assert.ok(
+  validationMaxLengthIndex >= 0
+    && wordLimitIndex > validationMaxLengthIndex
+    && regexIndex > wordLimitIndex
+    && extensionSettingsIndex > regexIndex,
+  '显示字数与正则应位于状态与校验中，并在复用与扩展之前'
+)
+;[
+  'getRuntimeRegexPatternError',
+  "updateValidationConfig('pattern', $event)",
+  '正则表达式本体',
+  'placeholder="例如：^[A-Z][A-Z0-9_]*$"'
+].forEach((marker) => {
+  assert.ok(
+    formDesigner.includes(marker),
+    `表单正则校验配置缺少内容: ${marker}`
+  )
+})
+const textFieldSource = readFileSync(
+  path.join(root, 'src/components/form-fields/components/TextField.vue'),
+  'utf8'
+)
+assert.ok(
+  textFieldSource.includes('resolveTextFieldMaxLength(props.field, parsedComponentProps.value)'),
+  '文本运行时必须优先使用状态与校验中的最大长度'
+)
 ;[
   'childFormReleaseId',
   'childFormReleaseVersion',
@@ -773,7 +860,7 @@ assert.ok(
   'activeNodeSettingsTab',
   'availableNodeSettingsTabs',
   '保存全部草稿',
-  '仅保存当前节点',
+  '保存当前节点',
   'canConfigureSelectedNodeDataSource',
   'canConfigureSelectedNodeValidation',
   'canConfigureSelectedNodeModeAccess',
@@ -783,6 +870,31 @@ assert.ok(
 ].forEach((marker) => {
   assert.ok(formDesignerSurface.includes(marker), `表单设计器缺少重组后的统一配置入口: ${marker}`)
 })
+const formDesignerHeader = formDesigner.slice(
+  formDesigner.indexOf('<div class="design-header">'),
+  formDesigner.indexOf('<el-alert')
+)
+const nodePropertyDrawer = formDesigner.slice(
+  formDesigner.indexOf('<el-drawer'),
+  formDesigner.indexOf('</el-drawer>') + '</el-drawer>'.length
+)
+assert.ok(
+  formDesignerHeader.includes('保存全部草稿')
+    && !formDesignerHeader.includes('保存当前节点')
+    && !formDesignerHeader.includes('更多保存方式'),
+  '表单设计器外层工具栏只能保留保存全部草稿'
+)
+assert.ok(
+  nodePropertyDrawer.includes('class="node-property-actions"')
+    && nodePropertyDrawer.includes('@click="saveSelectedNode"')
+    && nodePropertyDrawer.includes('保存当前节点'),
+  '保存当前节点必须位于节点属性抽屉内部'
+)
+assert.equal(
+  formDesigner.includes('handleSaveCommand'),
+  false,
+  '节点保存移入属性抽屉后不应保留外层保存方式下拉逻辑'
+)
 
 const formNodeDesignItem = readFileSync(path.join(root, 'src/components/FormNodeDesignItem.vue'), 'utf8')
 const formNodeDraggableList = readFileSync(path.join(root, 'src/components/FormNodeDraggableList.vue'), 'utf8')
@@ -891,7 +1003,8 @@ assert.match(
   'getFormFieldValidationCapabilities',
   'selectedValidationCapabilities.length',
   'selectedValidationCapabilities.range',
-  'selectedValidationCapabilities.format'
+  'selectedValidationCapabilities.format',
+  'selectedValidationCapabilities.pattern'
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `字段校验属性缺少类型兼容控制: ${marker}`)
 })
@@ -1043,6 +1156,10 @@ const subFormRenderer = readFileSync(
   path.join(root, 'src/components/SubFormRenderer.vue'),
   'utf8'
 )
+const checkboxField = readFileSync(
+  path.join(root, 'src/components/form-fields/components/CheckboxField.vue'),
+  'utf8'
+)
 assert.ok(
   subFormRenderer.includes("config.showHeaderTitle !== false"),
   '子表单渲染器应支持由外层表单项统一展示标题'
@@ -1050,6 +1167,27 @@ assert.ok(
 assert.ok(
   subFormField.includes('showHeaderTitle: false'),
   '节点树中的子表单不应重复展示内外两层标题'
+)
+assert.ok(
+  subFormField.indexOf('const parentContext = computed') <
+    subFormField.indexOf('props.dataSourceRuntime?.loadSubformRows'),
+  '子表数据源 immediate watcher 必须在父级上下文初始化后注册'
+)
+assert.ok(
+  subFormField.includes('@update:model-value="handleSubFormUpdate"')
+    && !subFormField.includes('v-model="fieldValue"'),
+  '子表单只允许通过单一 update:modelValue 通道回写父表单'
+)
+;[
+  'areSubFormValuesEqual(outputValue(), comparable)',
+  'areSubFormValuesEqual(value, props.modelValue)'
+].forEach((marker) => {
+  assert.ok(subFormRenderer.includes(marker), `子表单同步缺少递归更新保护: ${marker}`)
+})
+assert.ok(
+  checkboxField.includes(':value="opt.value"')
+    && !checkboxField.includes(':label="opt.value"'),
+  'Element Plus 复选框选项值应使用 value，避免 label 兼容警告'
 )
 ;[
   'childFormReleaseId',
@@ -1706,8 +1844,11 @@ const uiConfigPublishDialog = readFileSync(
 assert.ok(
   uiConfigPublishDialog.includes('所有通过发布校验的表单变更都可热修复')
     && uiConfigPublishDialog.includes('所有通过发布校验的列表变更都可热修复')
-    && uiConfigPublishDialog.includes('REVIEW 仅提示风险，不阻止发布'),
-  '列表和表单热修复界面应明确 REVIEW 仅提示且不阻止发布'
+    && uiConfigPublishDialog.includes('REVIEW 仅提示风险，不阻止发布')
+    && uiConfigPublishDialog.includes('强制发布热修复')
+    && uiConfigPublishDialog.includes('FULL_SNAPSHOT')
+    && uiConfigPublishDialog.includes('完整快照强制覆盖'),
+  '列表和表单热修复界面应明确 REVIEW 仅提示且支持完整快照强制覆盖'
 )
 assert.doesNotMatch(
   uiConfigPublishDialog,

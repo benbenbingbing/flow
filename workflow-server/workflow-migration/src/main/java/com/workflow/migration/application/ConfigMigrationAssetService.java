@@ -1038,7 +1038,19 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         List<Map<String, Object>> lists = new ArrayList<>();
         for (EntityListConfig listConfig : listConfigs) {
             listKeysById.put(listConfig.getId(), listConfig.getListKey());
-            Map<String, Object> listSnapshot = portableMap(listConfig);
+            UiConfigRelease active =
+                    configReleaseMapper.findActive("LIST", listConfig.getId());
+            Map<String, Object> listSnapshot;
+            if (active == null) {
+                listSnapshot = portableMap(listConfig);
+            } else {
+                Map<String, Object> releaseSnapshot = mapValue(parseJson(
+                        active.getSnapshotDocument(),
+                        Map.of()));
+                listSnapshot = sanitizeMap(mapValue(
+                        releaseSnapshot.get("list")));
+            }
+            rewriteTargetFormReferencesForExport(listSnapshot);
             listSnapshot.put("fields", portableList(listFieldMapper.findByListConfigId(listConfig.getId())));
             collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
@@ -1541,6 +1553,34 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         EntityDefinition entity = entityMapper.selectById(form.getEntityId());
         String entityCode = entity == null ? "missing" : entity.getEntityCode();
         return "wf-form://" + entityCode + "/" + form.getFormKey();
+    }
+
+    private void rewriteTargetFormReferencesForExport(
+            Map<String, Object> listSnapshot) {
+        for (String section : List.of(
+                "toolbarConfig",
+                "rowActionConfig")) {
+            List<Map<String, Object>> buttons = new ArrayList<>();
+            for (Map<String, Object> source :
+                    castMapList(listSnapshot.get(section))) {
+                Map<String, Object> button =
+                        new LinkedHashMap<>(source);
+                String targetFormId =
+                        text(button.get("targetFormId"));
+                if (StringUtils.hasText(targetFormId)) {
+                    button.put(
+                            "targetFormRef",
+                            portableFormReference(targetFormId));
+                    button.remove("targetFormId");
+                    button.remove("targetFormReleaseId");
+                    button.remove("targetFormReleaseVersion");
+                }
+                buttons.add(button);
+            }
+            if (listSnapshot.containsKey(section)) {
+                listSnapshot.put(section, buttons);
+            }
+        }
     }
 
     private String portableAssigneeValue(AssigneeConfig assignee) {

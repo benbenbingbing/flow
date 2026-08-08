@@ -345,11 +345,13 @@
           </SettingsSection>
 
           <SettingsSection
-            v-if="isSubForm || isAttachment || isReference"
+            v-if="isSubForm || isSubList || isAttachment || isReference"
             :key="`type-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
             title="类型专属配置"
             :description="isSubForm
               ? '配置子实体关系与级联行为'
+              : isSubList
+                ? '配置要嵌入的目标实体与已发布列表'
               : isAttachment
                 ? '配置附件项、格式与数量限制'
                 : '配置单一目标实体与记录显示字段'"
@@ -357,6 +359,7 @@
           >
             <template #summary>
               <span v-if="isSubForm">子表单关系</span>
+              <span v-else-if="isSubList">子列表引用</span>
               <span v-else-if="isAttachment">附件规则</span>
               <span v-else>实体记录引用</span>
             </template>
@@ -397,6 +400,40 @@
               </el-form-item>
               <el-form-item label="级联删除">
                 <el-switch v-model="selectedField.cascadeDelete" />
+              </el-form-item>
+            </template>
+
+            <!-- 子列表配置 -->
+            <template v-if="isSubList">
+              <el-form-item label="目标实体" required>
+                <EntityDefinitionPicker
+                  v-model="selectedField.refEntityId"
+                  placeholder="选择已发布实体"
+                  value-key="id"
+                  title="选择子列表目标实体"
+                  :query="{ status: 'PUBLISHED' }"
+                  @selected="onSubListEntitySelected"
+                  @resolved="onSubListEntityResolved"
+                />
+              </el-form-item>
+              <el-form-item label="目标列表" required>
+                <el-select
+                  v-model="selectedField.refListKey"
+                  filterable
+                  placeholder="选择已发布列表"
+                  style="width: 100%"
+                  :disabled="!selectedField.refEntityId"
+                >
+                  <el-option
+                    v-for="list in subListOptions"
+                    :key="list.listKey"
+                    :label="`${list.listName || list.listKey} (${list.listKey})`"
+                    :value="list.listKey"
+                  />
+                </el-select>
+                <div class="form-tip">
+                  子列表只嵌入目标实体中允许“嵌入”场景的已发布列表；字段、排序、数据范围和权限均沿用该列表配置。
+                </div>
               </el-form-item>
             </template>
 
@@ -1008,6 +1045,10 @@ import {
   getEntityFieldTypeTag,
   getEntityReferenceSelectionHint
 } from '@/shared/entity-design'
+import {
+  isPublishedSubListOption,
+  resolveSubListTargetSelection
+} from '@/shared/sub-list'
 
 const route = useRoute()
 const router = useRouter()
@@ -1077,6 +1118,7 @@ const isSelectedFieldStructureLocked = computed(() => Boolean(
 const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
+const subListOptions = ref([])
 const dictOptions = ref([])
 const quickDictVisible = ref(false)
 const quickDictSaving = ref(false)
@@ -1129,7 +1171,7 @@ const permissionSystemFields = computed(() => [
 const permissionRuleFieldOptions = computed(() => [
   ...permissionSystemFields.value,
   ...(fields.value || [])
-    .filter(field => field.fieldCode && !['SUB_FORM', 'SUB_FORM_LIST'].includes(field.fieldType))
+    .filter(field => field.fieldCode && !['SUB_FORM', 'SUB_LIST'].includes(field.fieldType))
     .filter(field => !permissionSystemFields.value.some(item => item.value === field.fieldCode))
     .map(field => ({
       label: `${field.fieldName} (${field.fieldCode})`,
@@ -1201,7 +1243,11 @@ const formatDbColumnName = (fieldCode) => {
 
 // 是否显示子表单配置
 const isSubForm = computed(() => {
-  return selectedField.value && ['SUB_FORM', 'SUB_FORM_LIST'].includes(selectedField.value.fieldType)
+  return selectedField.value?.fieldType === 'SUB_FORM'
+})
+
+const isSubList = computed(() => {
+  return selectedField.value?.fieldType === 'SUB_LIST'
 })
 
 // 是否显示附件配置
@@ -1365,12 +1411,16 @@ const handleAddField = (type) => {
     optionSource: ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type?.value) ? 'DICT' : undefined,
     dictType: ''
   }
-  if (['SUB_FORM', 'SUB_FORM_LIST'].includes(newField.fieldType)) {
-    newField.relationType = newField.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : 'ONE_TO_MANY'
+  if (newField.fieldType === 'SUB_FORM') {
+    newField.relationType = 'ONE_TO_ONE'
     newField.cascadeDelete = true
     newField.refEntityType = 'CUSTOM'
     newField.childEntityId = ''
     newField.childRefFieldCode = ''
+  } else if (newField.fieldType === 'SUB_LIST') {
+    newField.refEntityType = 'CUSTOM'
+    newField.refEntityId = ''
+    newField.refListKey = ''
   }
   fields.value.push(newField)
   selectField(newField)
@@ -1380,6 +1430,7 @@ const handleAddField = (type) => {
 const selectField = (field) => {
   selectedField.value = field
   refEntityFields.value = []
+  subListOptions.value = []
   if (showOptions.value) {
     field.optionSource = field.dictType ? 'DICT' : 'LEGACY_INLINE'
   }
@@ -1414,6 +1465,12 @@ const selectField = (field) => {
     syncRelationRefs()
     if (field.childEntityId) {
       onRefEntityChange(field.childEntityId)
+    }
+  } else if (isSubList.value) {
+    field.refEntityType = 'CUSTOM'
+    field.refListKey = field.refListKey || ''
+    if (field.refEntityId) {
+      loadSubListOptions(field.refEntityId)
     }
   } else if (isReference.value && field.refEntityId) {
     field.refEntityType = 'CUSTOM'
@@ -1477,6 +1534,40 @@ const onChildEntityChange = async (value) => {
   await onRefEntityChange(value)
 }
 
+const applySubListEntitySelection = async (entity, resetListKey) => {
+  if (!selectedField.value) return
+  const selection = resolveSubListTargetSelection(
+    selectedField.value,
+    entity,
+    { resetListKey }
+  )
+  Object.assign(selectedField.value, selection)
+  await loadSubListOptions(selection.refEntityId)
+}
+
+const onSubListEntitySelected = entity =>
+  applySubListEntitySelection(entity, true)
+
+const onSubListEntityResolved = entity =>
+  applySubListEntitySelection(entity, false)
+
+const loadSubListOptions = async (targetEntityId) => {
+  if (!targetEntityId) {
+    subListOptions.value = []
+    return
+  }
+  try {
+    const response = await entityListConfigApi.getByEntityId(targetEntityId)
+    const lists = Array.isArray(response)
+      ? response
+      : response?.records || response?.list || response?.data || []
+    subListOptions.value = lists.filter(isPublishedSubListOption)
+  } catch (error) {
+    console.error('加载子列表配置失败:', error)
+    subListOptions.value = []
+  }
+}
+
 const syncRelationRefs = () => {
   if (!selectedField.value) return
   selectedField.value.refEntityId = selectedField.value.childEntityId || selectedField.value.refEntityId || ''
@@ -1534,6 +1625,7 @@ const convertToFormField = (field) => {
     refEntityId: field.refEntityId,
     refEntityType: field.refEntityType,
     refFieldCode: field.refFieldCode,
+    refListKey: field.refListKey,
     childEntityId: field.childEntityId || field.refEntityId,
     childRefFieldCode: field.childRefFieldCode || field.refFieldCode,
     relationType: field.relationType,

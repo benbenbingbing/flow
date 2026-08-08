@@ -32,7 +32,7 @@ const entityFieldTypes = [
   { option: '实体记录单选 REFERENCE', meaning: '从一个目标实体中引用一条记录，也可引用系统用户、部门、角色或用户组。', notes: '配置阶段只选择一个目标实体；业务填写时选择一条数据。' },
   { option: '实体记录多选 MULTI_REFERENCE', meaning: '从一个目标实体中引用多条记录。', notes: '配置阶段仍只选择一个目标实体；业务填写时可跨页选择多条数据。' },
   { option: '子表单 SUB_FORM', meaning: '父记录关联一个子记录，默认关系为一对一。', notes: '必须选择子实体与子表外键；默认级联删除开启。' },
-  { option: '子表单列表 SUB_FORM_LIST', meaning: '父记录关联多条子记录，默认关系为一对多。', notes: '必须选择子实体与子表外键；大量明细需要控制一次加载数量。' }
+  { option: '子列表 SUB_LIST', meaning: '在表单中嵌入其他已发布实体列表，可把父表单字段、父记录ID、运行上下文或固定值作为参数传入。', notes: '参数可作为固定查询条件，并在子列表新增数据时初始化目标字段；子列表自身数据不随父表单提交。' }
 ]
 
 export default {
@@ -301,7 +301,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '类型', meaning: '父子关系基数。', defaultLimit: 'SUB_FORM 默认 ONE_TO_ONE；SUB_FORM_LIST 默认 ONE_TO_MANY。', effect: '决定父记录对应一条还是多条子记录。', publish: '变更关系类型前评估已有子数据。' },
+                { field: '类型', meaning: '父子关系基数。', defaultLimit: 'SUB_FORM 可配置 ONE_TO_ONE 或 ONE_TO_MANY；SUB_LIST 是嵌入列表，不创建实体关系。', effect: '决定子表单对应一条还是多条子记录。', publish: '变更关系类型前评估已有子数据。' },
                 { field: '子实体', meaning: '关系目标实体。', defaultLimit: '必填；不能选择当前实体。', effect: '运行时加载目标实体的表单和数据。', publish: '目标实体应先完成字段与表单配置，并建议先发布。' },
                 { field: '子表外键', meaning: '子实体中保存父记录引用的字段。', defaultLimit: '选择子实体字段；必填。', effect: '用于新增、更新、查询和级联删除子数据。', publish: '外键字段编码发布后应保持稳定；确认类型可容纳父 ID。' },
                 { field: '级联删除', meaning: '删除父记录时是否删除关联子记录。', defaultLimit: '默认开启。', effect: '开启后删除父记录会清理子数据。', publish: '审计型明细慎用；关闭时要处理孤儿数据。' }
@@ -582,7 +582,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '设计', meaning: '进入递归节点表单设计器。', notes: '顶部“保存全部草稿”保存表单和全部节点；附加菜单继续提供“仅保存当前节点”；拖拽排序仍使用独立保存接口。' },
+                { option: '设计', meaning: '进入递归节点表单设计器。', notes: '顶部只提供“保存全部草稿”；节点属性抽屉内可单独“保存当前节点”；拖拽排序仍使用独立保存接口。' },
                 { option: '编辑', meaning: '修改名称、布局、状态、描述。', notes: '顶层 PATCH 同样携带 expectedRevision，不覆盖节点草稿。' },
                 { option: '设为默认', meaning: '作为实体默认表单；流程节点无显式表单时会尝试使用。', notes: '一个实体应保持一个明确默认表单。' },
                 { option: '复制', meaning: '复制现有表单作为独立草稿。', notes: '复制后节点获得新的稳定 ID，与来源模板或表单不再联动。' },
@@ -659,7 +659,7 @@ export default {
                 { field: '流程详情页签', meaning: '发布表单的根级 TAB_SET 在实体查看、编辑和审批弹窗中提升为外层页签。', defaultLimit: '只提升根级 TAB_SET；区块、栅格或 Tab 页内部的嵌套 TAB_SET 继续在原位置递归显示。', effect: '自定义表单页签与流程图、审批历史、动作执行记录处于同一页签栏，不再套在“基本信息”里面。', publish: '页签使用稳定 nodeId 定位；调整标题或顺序发布后生效，不改变字段绑定和流程历史快照。' },
                 { field: '节点拖拽', meaning: '悬停或选中节点后，拖拽右上角手柄调整同级顺序，或移动到区块、栅格、Tab 页、折叠面板、子表和明细表等兼容容器。Tab 页使用 Tab 集合内的页签拖拽手柄。', defaultLimit: 'TAB 只能进入 TAB_SET；普通节点不能直接进入 TAB_SET；禁止放入自身、后代或形成超过 8 层的结构。排序保存期间暂时禁用再次拖拽。', effect: '已保存节点立即通过独立排序接口携带 expectedRevision 写入草稿；未保存节点先更新本地树，点击“保存草稿”后落库。失败或 409 时重新加载服务器节点和 revision。', publish: '拖拽只修改草稿位置，不影响当前激活发布版本；发布前应在草稿预览中核对嵌套布局。' },
                 { field: '表单设置四页签', meaning: '“表单设置”统一收纳基本与布局、按钮与操作、数据与事件、渲染与扩展。', defaultLimit: '关闭抽屉不清除编辑值；布局按钮和设置页读写同一个 layoutType。', effect: '表单身份、默认状态、按钮、生命周期数据源、事件、自定义渲染和扩展目录不再散落在画布顶部。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
-                { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；顶部只读展示名称、类型、绑定、编码、父级和保存状态。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '可从顶部保存组合按钮仅保存当前节点，也可一次保存全部草稿。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
+                { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；顶部只读展示名称、类型、绑定、编码、父级和保存状态。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '抽屉底部只保存当前节点；页面顶部只保存全部草稿，两个入口职责分离。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
                 { field: '节点类型动态页签', meaning: '属性按“基础与布局、状态与校验、数据与关系、联动与事件、复用与扩展”组织。', defaultLimit: '按 nodeType 能力 Schema 只显示适用页签；后台已有兼容配置不会因页签隐藏而删除。', effect: '字段可同时维护多个用途的数据源；条件状态、值计算、选择回填和事件链进入统一交互中心；扩展页只保留模板、组件和扩展能力。', publish: '分组和编辑方式不改变草稿、发布快照或运行时优先级。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
                 { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定；历史 RELATION 缺少 bindingRef 时先迁移修复，普通编辑不会自动解除绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
@@ -709,7 +709,7 @@ export default {
                 { option: 'TAB', meaning: '可编辑页签标题和所属 TAB_SET，用于承载该页签下的递归内容。', notes: '父级选择器只列出有效 TAB_SET；TAB 不能位于根节点，也不配置字段规则或数据源。' },
                 { option: 'COLLAPSE', meaning: '可编辑标题、父容器、默认展开 defaultExpanded 和手风琴 accordion，用于折叠一组内容。', notes: '展开和手风琴设置在设计器预览与发布运行时使用同一语义。' },
                 { option: 'TEXT', meaning: '可编辑父容器和受限文本 text；普通说明与竖线节标题由 textStyle 区分。', notes: 'SECTION_TITLE 只改变展示样式；不支持事件、实体绑定、字段规则、任意脚本或任意 HTML 执行。' },
-                { option: 'FIELD', meaning: '可编辑显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、字段事件、模板、节点扩展和受控数据源。', notes: '仅允许 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式只对 STRING、TEXT 显示，数值范围只对 INTEGER、LONG、DECIMAL、DOUBLE 显示；组件切换会清理不兼容参数、规则和绑定。' },
+                { option: 'FIELD', meaning: '可编辑显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、字段事件、模板、节点扩展和受控数据源。', notes: '仅允许 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度、格式和正则只对 STRING、TEXT 显示，数值范围只对 INTEGER、LONG、DECIMAL、DOUBLE 显示；组件切换会清理不兼容参数、规则和绑定。' },
                 { option: 'SUB_FORM', meaning: '可编辑显示标签、父容器、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源，用于引用一个子实体表单。', notes: '展示位置由父容器决定；仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
                 { option: 'REPEATER', meaning: '可编辑显示标签、父容器、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源，用于一对多重复明细。', notes: '展示位置由父容器决定；仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 的默认值、普通组件、字段校验、模式权限或字段事件。' },
                 { option: 'ACTION_SLOT', meaning: '仅可编辑父容器，用于在递归树中放置稳定的运行时动作插槽。', notes: '插槽标识只读；当前不开放动作、权限、位置、字段默认值、规则或数据源编辑。' }
@@ -748,8 +748,8 @@ export default {
               title: '内置组件及参数',
               columns: optionColumns,
               rows: [
-                { option: '文本输入 input', meaning: 'STRING；参数 maxlength 1–10000、showWordLimit 默认 true。', notes: '最大长度不要超过实体字段长度。' },
-                { option: '多行文本 textarea', meaning: 'STRING/TEXT；rows 2–20 默认 3，maxlength 1–20000。', notes: '长文本建议使用 TEXT。' },
+                { option: '文本输入 input', meaning: 'STRING；最大长度和显示字数在“状态与校验”中配置。', notes: '最大长度不要超过实体字段长度。' },
+                { option: '多行文本 textarea', meaning: 'STRING/TEXT；rows 2–20 默认 3，最大长度和显示字数在“状态与校验”中配置。', notes: '长文本建议使用 TEXT。' },
                 { option: '富文本 rich_text', meaning: 'TEXT；height 120–1000 默认 200。', notes: '注意内容安全与大字段性能。' },
                 { option: '数字 number', meaning: 'INTEGER/LONG/DECIMAL/DOUBLE；min、max、precision 0–10 默认 0、step 默认 1、controls 默认 true。', notes: 'precision 应与实体 DECIMAL 小数位一致。' },
                 { option: '日期 / 日期时间', meaning: 'DATE 使用 date，DATETIME 使用 datetime。', notes: '确认时区与格式。' },
@@ -773,6 +773,7 @@ export default {
                 { field: '最小长度 / 最大长度', meaning: 'STRING、TEXT 字段的字符串长度校验。', defaultLimit: '仅兼容字段显示；0–20000；可留空；最小不能大于最大。', effect: '提交前阻止不符合长度的数据。', publish: '应小于等于数据库字段长度；其他字段类型的手工请求由后端拒绝。' },
                 { field: '最小值 / 最大值', meaning: 'INTEGER、LONG、DECIMAL、DOUBLE 字段的数字范围校验。', defaultLimit: '仅兼容字段显示；可留空；最小不能大于最大。', effect: '限制数字输入。', publish: '与业务单位和小数精度一致；文本字段的手工数值规则由后端拒绝。' },
                 { field: '格式', meaning: 'STRING、TEXT 字段的预置格式校验。', defaultLimit: '仅兼容字段显示；EMAIL、PHONE、URL 或空。', effect: '校验常见文本格式。', publish: '格式仅校验形态，不验证邮箱/手机号真实存在。' },
+                { field: '正则', meaning: 'STRING、TEXT 字段的自定义正则表达式校验。', defaultLimit: '最多 500 字符；输入表达式本体，不添加 / 包裹；空值不执行。', effect: '字段失焦和表单提交时校验文本格式。', publish: '使用 JavaScript/Java 通用语法；完整匹配需自行添加 ^ 和 $。' },
                 { field: '新增 create', meaning: '新增记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制新增表单字段。', publish: '关键创建字段不可隐藏或只读。' },
                 { field: '编辑 edit', meaning: '编辑记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制编辑页面字段。', publish: '编码、流程字段等通常应只读。' },
                 { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '字段在审批办理时的默认编辑权限。', publish: '流程节点开启“强制整表只读”后，可编辑配置不生效。' },

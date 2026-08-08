@@ -60,6 +60,7 @@ public class EntityFieldDTO {
     private String refEntityId;     // 关联实体ID
     private String refEntityType;   // 引用实体类型（CUSTOM/USER/DEPT/ROLE/GROUP）
     private String refFieldCode;    // 关联字段编码
+    private String refListKey;      // 子列表或实体引用默认列表编码
 
     // 子表单关系配置
     private String relationCode;          // 关系编码

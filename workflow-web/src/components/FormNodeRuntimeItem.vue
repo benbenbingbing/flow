@@ -146,6 +146,7 @@ import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
 import {
   getFieldModeAccess,
+  resolveRuntimeNodeFieldRules,
   safeParseConfig
 } from '@/shared/config-runtime'
 import {
@@ -239,10 +240,14 @@ const runtimeField = computed(() => {
       || field.fieldCode === ref
   )
   const subFormConfig = componentProps.subFormConfig || nodeProps.subFormConfig || {}
+  const nodeFieldRules = resolveRuntimeNodeFieldRules(
+    linked || {},
+    props.node.rules
+  )
   const fallback = props.node.nodeType === 'REPEATER'
     ? {
-        fieldType: 'SUB_FORM_LIST',
-        componentType: 'sub_form_list'
+        fieldType: 'SUB_FORM',
+        componentType: 'sub_form'
       }
     : {
         fieldType: props.node.nodeType,
@@ -266,6 +271,8 @@ const runtimeField = computed(() => {
     options: nodeProps.options ?? linked?.options,
     optionsJson: nodeProps.optionsJson ?? linked?.optionsJson,
     componentProps: Object.keys(componentProps).length ? componentProps : linked?.componentProps,
+    validationRules: nodeFieldRules.validationRules,
+    extensionConfig: nodeFieldRules.extensionConfig,
     relationType: nodeProps.relationType
       || linked?.relationType
       || subFormConfig.relationType,
@@ -333,11 +340,8 @@ const options = computed(() =>
 const fieldRules = computed(() => {
   const field = runtimeField.value
   if (!field) return []
-  const rules = props.node.rules && Object.keys(props.node.rules).length
-    ? { ...safeParseConfig(field.validationRules), ...props.node.rules }
-    : safeParseConfig(field.validationRules)
   return buildRuntimeFieldRules(
-    { ...field, validationRules: rules },
+    field,
     required.value,
     props.node.props.label || field.fieldLabel || field.fieldName
   )

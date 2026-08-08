@@ -875,6 +875,11 @@ public class ProcessProgressRuntimeService {
                 formConfigs.get(0).getFields() != null ? formConfigs.get(0).getFields().size() : 0);
             
         } catch (Exception e) {
+            log.error(
+                    "加载流程发布表单配置异常: processDefinitionId={}, nodeId={}",
+                    progress.getProcessDefinitionId(),
+                    currentNodeId,
+                    e);
             throw new FormConfigResolutionException(
                     "加载流程发布表单失败: processDefinitionId="
                             + progress.getProcessDefinitionId()

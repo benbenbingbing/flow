@@ -96,6 +96,8 @@ public class UiConfigReleaseService {
     public static final String HOTFIX = "HOTFIX";
     /** 首期热修复固定生效范围。 */
     public static final String ACTIVE_AND_FUTURE = "ACTIVE_AND_FUTURE";
+    private static final String HOTFIX_PATCH = "PATCH";
+    private static final String HOTFIX_FULL_SNAPSHOT = "FULL_SNAPSHOT";
     private static final int MAX_FORM_DEPTH = 8;
     private static final Set<String> FORM_NODE_TYPES = Set.of(
             "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE",
@@ -1177,7 +1179,7 @@ public class UiConfigReleaseService {
             target.setPinnedReleaseVersion(
                     prepared.target().pinnedReleaseVersion());
             target.setPreviousTargetId(
-                    previous == null ? null : previous.getId());
+                    prepared.restorablePreviousTargetId());
             target.setEffectiveSnapshotDocument(
                     prepared.effectiveDocument());
             target.setEffectiveContentHash(
@@ -1242,9 +1244,12 @@ public class UiConfigReleaseService {
                 new ArrayList<>();
         for (UiHotfixProcessTarget target : impact.targets()) {
             List<String> targetBlockers = new ArrayList<>();
+            List<String> targetReviewNotes = new ArrayList<>();
             UiConfigHotfixTarget previous = null;
             String effectiveDocument = null;
             String effectiveHash = null;
+            String applicationMode = HOTFIX_PATCH;
+            String restorablePreviousTargetId = null;
             if (!StringUtils.hasText(target.pinnedReleaseId())
                     || target.pinnedReleaseVersion() == null) {
                 targetBlockers.add(
@@ -1254,15 +1259,54 @@ public class UiConfigReleaseService {
                         configType,
                         configId,
                         target.processVersionHistoryId());
-                Map<String, Object> baseSnapshot = previous == null
-                        ? pinnedSnapshot(
+                Map<String, Object> baseSnapshot;
+                if (previous == null) {
+                    baseSnapshot = pinnedSnapshot(
+                            configType,
+                            configId,
+                            target.pinnedReleaseId(),
+                            target.pinnedReleaseVersion(),
+                            targetBlockers);
+                } else {
+                    List<String> previousSnapshotProblems =
+                            new ArrayList<>();
+                    baseSnapshot = verifiedTargetSnapshot(
+                            previous,
+                            previousSnapshotProblems);
+                    if (baseSnapshot == null) {
+                        targetReviewNotes.addAll(
+                                previousSnapshotProblems);
+                        applicationMode = HOTFIX_FULL_SNAPSHOT;
+                        effectiveRisk = maxRisk(
+                                effectiveRisk,
+                                UiConfigSemanticPatchService.REVIEW);
+                        // 仍需确认原始钉定版本可用，保证强制发布可安全撤回。
+                        pinnedSnapshot(
                                 configType,
                                 configId,
                                 target.pinnedReleaseId(),
                                 target.pinnedReleaseVersion(),
-                                targetBlockers)
-                        : verifiedTargetSnapshot(previous, targetBlockers);
-                if (baseSnapshot != null && targetBlockers.isEmpty()) {
+                                targetBlockers);
+                    } else {
+                        restorablePreviousTargetId =
+                                previous.getId();
+                    }
+                }
+                if (HOTFIX_FULL_SNAPSHOT.equals(applicationMode)
+                        && targetBlockers.isEmpty()) {
+                    EffectiveHotfixSnapshot effective =
+                            prepareFullSnapshotFallback(
+                                    configType,
+                                    configId,
+                                    draft,
+                                    targetReviewNotes,
+                                    targetBlockers);
+                    if (effective != null) {
+                        effectiveDocument = effective.document();
+                        effectiveHash = effective.hash();
+                    }
+                } else if (baseSnapshot != null
+                        && targetBlockers.isEmpty()) {
                     UiConfigSemanticPatchService.PatchApplication application =
                             semanticPatchService.apply(
                                     baseSnapshot,
@@ -1273,22 +1317,44 @@ public class UiConfigReleaseService {
                                 effectiveRisk,
                                 UiConfigSemanticPatchService.REVIEW);
                     }
-                    targetBlockers.addAll(application.blockers());
                     if (application.compatible()) {
                         try {
-                            validateSnapshotForActivation(
-                                    configType,
-                                    configId,
-                                    application.snapshot());
-                            effectiveDocument =
-                                    snapshotSupport.canonical(
+                            EffectiveHotfixSnapshot effective =
+                                    validatedEffectiveSnapshot(
+                                            configType,
+                                            configId,
                                             application.snapshot());
-                            effectiveHash =
-                                    snapshotSupport.hash(effectiveDocument);
+                            effectiveDocument = effective.document();
+                            effectiveHash = effective.hash();
                         } catch (RuntimeException exception) {
-                            targetBlockers.add(
-                                    "有效快照校验失败："
+                            targetReviewNotes.add(
+                                    "增量合成快照校验失败，已改为完整快照覆盖："
                                             + exception.getMessage());
+                            applicationMode =
+                                    HOTFIX_FULL_SNAPSHOT;
+                        }
+                    } else {
+                        targetReviewNotes.add(
+                                "增量补丁无法对齐旧版本，已改为完整快照覆盖："
+                                        + String.join(
+                                                "；",
+                                                application.blockers()));
+                        applicationMode = HOTFIX_FULL_SNAPSHOT;
+                    }
+                    if (HOTFIX_FULL_SNAPSHOT.equals(applicationMode)) {
+                        effectiveRisk = maxRisk(
+                                effectiveRisk,
+                                UiConfigSemanticPatchService.REVIEW);
+                        EffectiveHotfixSnapshot effective =
+                                prepareFullSnapshotFallback(
+                                        configType,
+                                        configId,
+                                        draft,
+                                        targetReviewNotes,
+                                        targetBlockers);
+                        if (effective != null) {
+                            effectiveDocument = effective.document();
+                            effectiveHash = effective.hash();
                         }
                     }
                 }
@@ -1297,6 +1363,7 @@ public class UiConfigReleaseService {
                 preparedTargets.add(new PreparedHotfixTarget(
                         target,
                         previous,
+                        restorablePreviousTargetId,
                         effectiveDocument,
                         effectiveHash));
             } else {
@@ -1325,6 +1392,8 @@ public class UiConfigReleaseService {
                             .skippedHistoricalInstanceCount(
                                     target.completedInstanceCount())
                             .compatible(targetBlockers.isEmpty())
+                            .applicationMode(applicationMode)
+                            .reviewNotes(List.copyOf(targetReviewNotes))
                             .blockers(List.copyOf(targetBlockers))
                             .build());
         }
@@ -1372,6 +1441,44 @@ public class UiConfigReleaseService {
                 patch,
                 List.copyOf(preparedTargets),
                 preview);
+    }
+
+    private EffectiveHotfixSnapshot prepareFullSnapshotFallback(
+            String configType,
+            String configId,
+            Map<String, Object> draft,
+            List<String> reviewNotes,
+            List<String> blockers) {
+        try {
+            EffectiveHotfixSnapshot effective =
+                    validatedEffectiveSnapshot(
+                            configType,
+                            configId,
+                            draft);
+            reviewNotes.add(
+                    "该流程版本将使用当前草稿的完整快照强制覆盖，"
+                            + "发布后不再依赖异常或无法对齐的旧目标快照");
+            return effective;
+        } catch (RuntimeException exception) {
+            blockers.add(
+                    "完整快照覆盖校验失败："
+                            + exception.getMessage());
+            return null;
+        }
+    }
+
+    private EffectiveHotfixSnapshot validatedEffectiveSnapshot(
+            String configType,
+            String configId,
+            Map<String, Object> snapshot) {
+        validateSnapshotForActivation(
+                configType,
+                configId,
+                snapshot);
+        String document = snapshotSupport.canonical(snapshot);
+        return new EffectiveHotfixSnapshot(
+                document,
+                snapshotSupport.hash(document));
     }
 
     private UiConfigSemanticPatchService.PatchAnalysis
@@ -2145,6 +2252,7 @@ public class UiConfigReleaseService {
         if (list == null) {
             throw new IllegalArgumentException("列表配置不存在");
         }
+        pinListTargetFormReleases(list);
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("schemaVersion", 1);
         snapshot.put("configType", LIST);
@@ -2233,14 +2341,21 @@ public class UiConfigReleaseService {
                 field.setFieldType(text(props.get("fieldType")));
             }
             if (!StringUtils.hasText(field.getFieldType())) {
-                field.setFieldType("REPEATER".equals(node.getNodeType())
-                        ? "SUB_FORM_LIST" : node.getNodeType());
+                field.setFieldType(
+                        Set.of("SUB_FORM", "REPEATER")
+                                .contains(node.getNodeType())
+                                ? "SUB_FORM"
+                                : node.getNodeType());
             }
             if (props.containsKey("componentType")) {
                 field.setComponentType(text(props.get("componentType")));
             }
             if (!StringUtils.hasText(field.getComponentType())) {
-                field.setComponentType(node.getNodeType().toLowerCase());
+                field.setComponentType(
+                        Set.of("SUB_FORM", "REPEATER")
+                                .contains(node.getNodeType())
+                                ? "sub_form"
+                                : node.getNodeType().toLowerCase());
             }
             if (props.containsKey("placeholder")) {
                 field.setPlaceholder(text(props.get("placeholder")));
@@ -2298,6 +2413,7 @@ public class UiConfigReleaseService {
         if (FORM.equals(configType)) {
             formNodeService.validateTree(configId);
             formConfigurationValidator.validateForm(runtimeForm(snapshot));
+            validateSubListReferences(snapshot);
             validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
@@ -2307,8 +2423,160 @@ public class UiConfigReleaseService {
         EntityListConfigDTO list = objectMapper.convertValue(
                 snapshot.get("list"), EntityListConfigDTO.class);
         listConfigurationValidator.validate(list);
+        validatePinnedListTargetForms(list);
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
+    }
+
+    private void pinListTargetFormReleases(EntityListConfigDTO list) {
+        list.setToolbarConfig(pinListTargetFormReleases(
+                list,
+                "TOOLBAR",
+                list.getToolbarConfig()));
+        list.setRowActionConfig(pinListTargetFormReleases(
+                list,
+                "ROW",
+                list.getRowActionConfig()));
+    }
+
+    private List<Map<String, Object>> pinListTargetFormReleases(
+            EntityListConfigDTO list,
+            String position,
+            List<Map<String, Object>> buttons) {
+        if (buttons == null) {
+            return List.of();
+        }
+        List<Map<String, Object>> pinned = new ArrayList<>();
+        for (Map<String, Object> source : buttons) {
+            Map<String, Object> button = new LinkedHashMap<>(
+                    source == null ? Map.of() : source);
+            String targetFormId = text(button.get("targetFormId"));
+            if (!StringUtils.hasText(targetFormId)) {
+                button.remove("targetFormReleaseId");
+                button.remove("targetFormReleaseVersion");
+                pinned.add(button);
+                continue;
+            }
+            validateTargetFormButtonSemantics(button, position);
+            EntityForm form = requireTargetListForm(list, targetFormId);
+            UiConfigRelease release =
+                    releaseMapper.findActive(FORM, targetFormId);
+            if (release == null
+                    || !Objects.equals(
+                            form.getActiveReleaseId(),
+                            release.getId())) {
+                throw new IllegalArgumentException(
+                        "列表按钮目标表单没有可用的激活发布版本: "
+                                + targetFormId);
+            }
+            button.put("targetFormReleaseId", release.getId());
+            button.put("targetFormReleaseVersion", release.getVersion());
+            pinned.add(button);
+        }
+        return pinned;
+    }
+
+    private void validatePinnedListTargetForms(EntityListConfigDTO list) {
+        validatePinnedListTargetForms(
+                list,
+                "TOOLBAR",
+                list.getToolbarConfig());
+        validatePinnedListTargetForms(
+                list,
+                "ROW",
+                list.getRowActionConfig());
+    }
+
+    private void validatePinnedListTargetForms(
+            EntityListConfigDTO list,
+            String position,
+            List<Map<String, Object>> buttons) {
+        for (Map<String, Object> button :
+                buttons == null ? List.<Map<String, Object>>of() : buttons) {
+            String targetFormId = text(button.get("targetFormId"));
+            if (!StringUtils.hasText(targetFormId)) {
+                continue;
+            }
+            validateTargetFormButtonSemantics(button, position);
+            requireTargetListForm(list, targetFormId);
+            String releaseId = text(button.get("targetFormReleaseId"));
+            Integer releaseVersion =
+                    nullableInteger(button.get("targetFormReleaseVersion"));
+            if (!StringUtils.hasText(releaseId)
+                    || releaseVersion == null) {
+                throw new IllegalArgumentException(
+                        "列表按钮目标表单未固定发布版本: "
+                                + targetFormId);
+            }
+            UiConfigRelease release = releaseMapper.selectById(releaseId);
+            if (release == null
+                    || !FORM.equals(release.getConfigType())
+                    || !Objects.equals(targetFormId, release.getConfigId())
+                    || !Objects.equals(releaseVersion, release.getVersion())) {
+                throw new IllegalArgumentException(
+                        "列表按钮目标表单发布版本不存在或不匹配: "
+                                + targetFormId);
+            }
+        }
+    }
+
+    private EntityForm requireTargetListForm(
+            EntityListConfigDTO list,
+            String targetFormId) {
+        EntityForm form = formMapper.selectById(targetFormId);
+        if (form == null) {
+            throw new IllegalArgumentException(
+                    "列表按钮目标表单不存在: " + targetFormId);
+        }
+        if (!Objects.equals(list.getEntityId(), form.getEntityId())) {
+            throw new IllegalArgumentException(
+                    "列表按钮目标表单必须属于当前列表实体: "
+                            + targetFormId);
+        }
+        if (!Objects.equals(form.getStatus(), 1)) {
+            throw new IllegalArgumentException(
+                    "列表按钮目标表单未启用: " + targetFormId);
+        }
+        return form;
+    }
+
+    private void validateTargetFormButtonSemantics(
+            Map<String, Object> button,
+            String position) {
+        String buttonType = text(button.get("type"));
+        String buttonKey = text(button.get("key"));
+        String customMode = text(button.get("customMode"));
+        boolean customOpenForm =
+                "custom".equalsIgnoreCase(buttonType)
+                        && "open-form".equalsIgnoreCase(customMode);
+        boolean builtInTargetForm =
+                "built-in".equalsIgnoreCase(buttonType)
+                        && ("TOOLBAR".equals(position)
+                                ? "create".equals(buttonKey)
+                                : Set.of("view", "edit", "approve")
+                                        .contains(buttonKey));
+        if (!customOpenForm && !builtInTargetForm) {
+            throw new IllegalArgumentException(
+                    "当前列表按钮不支持配置打开表单: "
+                            + buttonKey);
+        }
+        if (!customOpenForm) {
+            return;
+        }
+        String mode = text(button.get("targetFormMode"));
+        mode = StringUtils.hasText(mode)
+                ? mode.toUpperCase(Locale.ROOT)
+                : ("TOOLBAR".equals(position) ? "CREATE" : "VIEW");
+        if ("TOOLBAR".equals(position) && !"CREATE".equals(mode)) {
+            throw new IllegalArgumentException(
+                    "工具栏打开表单按钮仅支持新增模式");
+        }
+        if ("ROW".equals(position)
+                && !Set.of("VIEW", "EDIT").contains(mode)) {
+            throw new IllegalArgumentException(
+                    "行打开表单按钮仅支持查看或编辑模式");
+        }
+        button.put("targetFormMode", mode);
     }
 
     private void validateSnapshotForActivation(
@@ -2322,6 +2590,7 @@ public class UiConfigReleaseService {
             formConfigurationValidator.validateForm(snapshotForm);
             formNodeService.validateSnapshotSubFormParameterContracts(
                     snapshotForm);
+            validateSubListReferences(snapshot);
             validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
@@ -2331,6 +2600,7 @@ public class UiConfigReleaseService {
         EntityListConfigDTO list = objectMapper.convertValue(
                 snapshot.get("list"), EntityListConfigDTO.class);
         listConfigurationValidator.validate(list);
+        validatePinnedListTargetForms(list);
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
     }
@@ -2377,6 +2647,108 @@ public class UiConfigReleaseService {
                     node.getBindingType(),
                     node.getSnapshotVersion());
         }
+    }
+
+    /**
+     * 子列表只允许绑定真实存在且已经发布的实体列表。
+     *
+     * <p>运行时按实体编码和 listKey 解析列表，不能信任客户端提交的任意标识，
+     * 因此在发布和激活时再次校验目标实体、实体编码以及列表发布状态。</p>
+     */
+    private void validateSubListReferences(Map<String, Object> snapshot) {
+        for (EntityFormNode node : snapshotNodes(snapshot)) {
+            if (!"FIELD".equals(normalize(node.getNodeType()))) {
+                continue;
+            }
+            Map<String, Object> props =
+                    StringUtils.hasText(node.getPropsDocument())
+                            ? codec.readObject(
+                                    node.getPropsDocument(),
+                                    "子列表节点属性")
+                            : Map.of();
+            String fieldType = normalize(text(props.get("fieldType")));
+            String componentType = text(props.get("componentType"));
+            if (!"SUB_LIST".equals(fieldType)
+                    && !"sub_list".equalsIgnoreCase(componentType)) {
+                continue;
+            }
+            Map<String, Object> componentProps =
+                    mapValue(props.get("componentProps"));
+            Map<String, Object> config =
+                    mapValue(componentProps.get("subListConfig"));
+            String targetEntityId = text(config.get("targetEntityId"));
+            String targetEntityCode = text(config.get("targetEntityCode"));
+            String listKey = text(config.get("listKey"));
+            String label = nodeLabel(node);
+            if (!StringUtils.hasText(targetEntityId)
+                    || !StringUtils.hasText(targetEntityCode)
+                    || !StringUtils.hasText(listKey)) {
+                throw new IllegalArgumentException(
+                        "子列表必须配置目标实体和已发布列表: " + label);
+            }
+            EntityDefinition target =
+                    entityDefinitionMapper.selectById(targetEntityId);
+            if (target == null) {
+                throw new IllegalArgumentException(
+                        "子列表目标实体不存在: " + label);
+            }
+            if (!targetEntityCode.equals(target.getEntityCode())) {
+                throw new IllegalArgumentException(
+                        "子列表目标实体编码与实体 ID 不一致: " + label);
+            }
+            EntityListConfig list =
+                    listConfigMapper.findByEntityIdAndListKey(
+                            targetEntityId,
+                            listKey);
+            if (list == null
+                    || !StringUtils.hasText(list.getActiveReleaseId())
+                    || list.getPublishedVersion() == null
+                    || list.getPublishedVersion() <= 0) {
+                throw new IllegalArgumentException(
+                        "子列表引用的列表不存在或尚未发布: "
+                                + targetEntityCode + "/" + listKey);
+            }
+            if (!supportsEmbeddedScene(list)) {
+                throw new IllegalArgumentException(
+                        "子列表引用的列表未开放 EMBEDDED 场景: "
+                                + targetEntityCode + "/" + listKey);
+            }
+        }
+    }
+
+    private boolean supportsEmbeddedScene(EntityListConfig list) {
+        UiConfigRelease active =
+                releaseMapper.selectById(list.getActiveReleaseId());
+        if (active == null
+                || !LIST.equals(active.getConfigType())
+                || !Objects.equals(list.getId(), active.getConfigId())) {
+            return false;
+        }
+        Map<String, Object> snapshot = codec.readObject(
+                active.getSnapshotDocument(),
+                "子列表发布快照");
+        Object configured =
+                mapValue(snapshot.get("list")).get("allowedScenes");
+        List<String> scenes = sceneValues(configured);
+        if (scenes.isEmpty() && StringUtils.hasText(list.getAllowedScenes())) {
+            scenes = sceneValues(codec.read(
+                    list.getAllowedScenes(),
+                    "子列表允许场景"));
+        }
+        return scenes.isEmpty()
+                || scenes.stream().anyMatch(
+                        "EMBEDDED"::equalsIgnoreCase);
+    }
+
+    private List<String> sceneValues(Object source) {
+        if (!(source instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .map(this::text)
+                .filter(StringUtils::hasText)
+                .map(value -> value.toUpperCase(Locale.ROOT))
+                .toList();
     }
 
     private void validateFormActions(Map<String, Object> snapshot) {
@@ -2883,8 +3255,14 @@ public class UiConfigReleaseService {
     private record PreparedHotfixTarget(
             UiHotfixProcessTarget target,
             UiConfigHotfixTarget previous,
+            String restorablePreviousTargetId,
             String effectiveDocument,
             String effectiveHash) {
+    }
+
+    private record EffectiveHotfixSnapshot(
+            String document,
+            String hash) {
     }
 
     private record HotfixPreparation(

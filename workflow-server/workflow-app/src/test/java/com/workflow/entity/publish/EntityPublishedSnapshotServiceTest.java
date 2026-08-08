@@ -78,6 +78,38 @@ class EntityPublishedSnapshotServiceTest {
         assertEquals("process-config-1", snapshot.getProcessDefinitionId());
     }
 
+    @Test
+    void getLatestByEntityCodeMapsLegacySubFormListType() {
+        EntityPublishHistoryMapper historyMapper =
+                mock(EntityPublishHistoryMapper.class);
+        when(historyMapper.findLatestByEntityCode("expense")).thenReturn(
+                history(
+                        "history-1",
+                        "entity-1",
+                        "expense",
+                        1,
+                        """
+                        [{
+                          "fieldCode": "details",
+                          "fieldName": "明细",
+                          "fieldType": "SUB_FORM_LIST"
+                        }]
+                        """));
+
+        EntityPublishedSnapshotService service =
+                new EntityPublishedSnapshotService(
+                        historyMapper,
+                        new ObjectMapper());
+
+        EntityPublishedSnapshot snapshot =
+                service.getLatestByEntityCode("expense");
+
+        assertEquals(1, snapshot.getFields().size());
+        assertEquals(
+                EntityField.FieldType.SUB_LIST,
+                snapshot.getFields().get(0).getFieldType());
+    }
+
     /**
      * 实体无发布快照时读取应抛出异常。
      *

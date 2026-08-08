@@ -259,7 +259,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
       ['REFERENCE', '单选实体', '引用另一实体的一条记录，保存其 ID'],
       ['MULTI_REFERENCE', '多选实体', '引用另一实体的多条记录'],
       ['SUB_FORM', '子表单', '嵌入一条结构化子记录'],
-      ['SUB_FORM_LIST', '子表单列表', '维护多条结构化明细']
+      ['SUB_LIST', '子列表', '嵌入其他实体的已发布列表']
     ]
   },
   {

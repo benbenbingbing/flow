@@ -90,7 +90,11 @@ class ProcessStatusSyncOutboxHandlerTest {
         fixture.handler.handle(fixture.event(payload));
 
         verify(fixture.entityRecordPort).markProcessEnded(
-                "expense", "record-1", "COMPLETED", "APPROVED");
+                "process-1",
+                "expense",
+                "record-1",
+                "COMPLETED",
+                "APPROVED");
         verify(fixture.linkMapper).closeActive("process-1", "APPROVED");
         verify(fixture.mapper).markApplied("event-1");
     }

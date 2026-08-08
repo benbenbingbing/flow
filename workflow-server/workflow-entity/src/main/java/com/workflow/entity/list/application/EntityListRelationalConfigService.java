@@ -14,6 +14,10 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListScen
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListSceneMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +55,8 @@ public class EntityListRelationalConfigService {
     private final EntityListActionMapper actionMapper;
     private final EntityListSceneMapper sceneMapper;
     private final EntityListConfigMapper configMapper;
+    private final EntityFormMapper formMapper;
+    private final UiConfigReleaseMapper releaseMapper;
     private final JsonDocumentCodec codec;
 
     /**
@@ -114,6 +120,7 @@ public class EntityListRelationalConfigService {
         if (!StringUtils.hasText(listConfigId)) {
             throw new IllegalArgumentException("列表配置ID不能为空");
         }
+        EntityListConfig listConfig = requireList(listConfigId);
         List<EntityListAction> existing =
                 actionMapper.findByListAndPosition(listConfigId, position);
         Map<String, EntityListAction> existingById = new LinkedHashMap<>();
@@ -134,6 +141,7 @@ public class EntityListRelationalConfigService {
                     : existingByKey.get(key);
             EntityListAction desired =
                     actionFromButton(listConfigId, position, button, fallbackSort);
+            validateAndSanitizeTargetForm(listConfig, desired);
             if (current == null) {
                 actionMapper.insert(desired);
                 retained.add(desired.getId());
@@ -221,11 +229,12 @@ public class EntityListRelationalConfigService {
     public EntityListAction createAction(
             String listConfigId,
             EntityListActionSaveRequest request) {
-        requireList(listConfigId);
+        EntityListConfig listConfig = requireList(listConfigId);
         EntityListAction action = new EntityListAction();
         applyAction(action, request);
         action.setListConfigId(listConfigId);
         action.setPosition(normalizedPosition(request.getPosition()));
+        validateAndSanitizeTargetForm(listConfig, action);
         action.setOrderKey(request.getOrderKey() == null
                 ? nextActionOrder(listConfigId, action.getPosition())
                 : request.getOrderKey());
@@ -264,6 +273,7 @@ public class EntityListRelationalConfigService {
         if (StringUtils.hasText(request.getPosition())) {
             updated.setPosition(normalizedPosition(request.getPosition()));
         }
+        validateAndSanitizeTargetForm(requireList(listConfigId), updated);
         updated.setRevision(current.getRevision() + 1);
         updated.setUpdatedAt(LocalDateTime.now());
         UpdateWrapper<EntityListAction> wrapper = new UpdateWrapper<>();
@@ -650,6 +660,94 @@ public class EntityListRelationalConfigService {
         if (!StringUtils.hasText(action.getButtonType())) action.setButtonType("built-in");
         if (action.getLinkMode() == null) action.setLinkMode(false);
         if (action.getEnabled() == null) action.setEnabled(true);
+    }
+
+    private void validateAndSanitizeTargetForm(
+            EntityListConfig listConfig,
+            EntityListAction action) {
+        Map<String, Object> params =
+                StringUtils.hasText(action.getActionParamsDocument())
+                        ? new LinkedHashMap<>(codec.readObject(
+                                action.getActionParamsDocument(),
+                                "列表按钮参数"))
+                        : new LinkedHashMap<>();
+        params.remove("targetFormReleaseId");
+        params.remove("targetFormReleaseVersion");
+
+        String targetFormId = text(params.get("targetFormId"), null);
+        boolean customOpenForm =
+                "custom".equalsIgnoreCase(action.getButtonType())
+                        && "open-form".equalsIgnoreCase(action.getCustomMode());
+        boolean builtInTargetForm =
+                "built-in".equalsIgnoreCase(action.getButtonType())
+                        && (TOOLBAR.equals(action.getPosition())
+                                ? "create".equals(action.getButtonKey())
+                                : Set.of("view", "edit", "approve")
+                                        .contains(action.getButtonKey()));
+
+        if (!StringUtils.hasText(targetFormId)) {
+            if (customOpenForm) {
+                throw new IllegalArgumentException(
+                        "自定义打开表单按钮必须选择目标表单");
+            }
+            params.remove("targetFormId");
+            params.remove("targetFormMode");
+            action.setActionParamsDocument(params.isEmpty()
+                    ? null
+                    : codec.write(params, "列表按钮参数"));
+            return;
+        }
+        if (!customOpenForm && !builtInTargetForm) {
+            throw new IllegalArgumentException(
+                    "当前按钮不支持配置打开表单");
+        }
+
+        EntityForm form = formMapper.selectById(targetFormId);
+        if (form == null) {
+            throw new IllegalArgumentException("目标表单不存在");
+        }
+        if (!Objects.equals(listConfig.getEntityId(), form.getEntityId())) {
+            throw new IllegalArgumentException(
+                    "目标表单必须属于当前列表实体");
+        }
+        if (!Objects.equals(form.getStatus(), 1)) {
+            throw new IllegalArgumentException("目标表单未启用");
+        }
+        UiConfigRelease activeRelease =
+                releaseMapper.findActive("FORM", targetFormId);
+        if (activeRelease == null
+                || !Objects.equals(
+                        form.getActiveReleaseId(),
+                        activeRelease.getId())) {
+            throw new IllegalArgumentException(
+                    "目标表单没有可用的激活发布版本");
+        }
+
+        if (customOpenForm) {
+            String mode = text(params.get("targetFormMode"), null);
+            mode = StringUtils.hasText(mode)
+                    ? mode.toUpperCase(java.util.Locale.ROOT)
+                    : (TOOLBAR.equals(action.getPosition())
+                            ? "CREATE"
+                            : "VIEW");
+            if (TOOLBAR.equals(action.getPosition())
+                    && !"CREATE".equals(mode)) {
+                throw new IllegalArgumentException(
+                        "工具栏打开表单按钮仅支持新增模式");
+            }
+            if (ROW.equals(action.getPosition())
+                    && !Set.of("VIEW", "EDIT").contains(mode)) {
+                throw new IllegalArgumentException(
+                        "行打开表单按钮仅支持查看或编辑模式");
+            }
+            params.put("targetFormMode", mode);
+        } else {
+            params.remove("targetFormMode");
+        }
+        params.put("targetFormId", targetFormId);
+        action.setActionParamsDocument(codec.write(
+                params,
+                "列表按钮参数"));
     }
 
     private EntityListConfig requireList(String listConfigId) {

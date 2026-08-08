@@ -7,6 +7,7 @@ import {
   getFormFieldValidationCapabilities,
   getFormNodeDataSourceUsages,
   getFormNodePropertySchema,
+  mergeFormNodeFieldMetadata,
   normalizeFormFieldValidation
 } from '../form-node-property-schema.js'
 import {
@@ -161,6 +162,43 @@ assert.deepEqual(
 )
 assert.equal(unknownSchema.fieldProperties, false)
 assert.equal(unknownSchema.binding, false)
+
+const mergedSubFormField = mergeFormNodeFieldMetadata(
+  [
+    {
+      id: 'entity-field-1',
+      fieldCode: 'items',
+      fieldName: '需求条目',
+      fieldType: 'SUB_FORM',
+      relationCode: 'REQ_items',
+      childEntityId: 'child-entity',
+      childRefFieldCode: 'reqId'
+    }
+  ],
+  {
+    fieldId: 'entity-field-1',
+    fieldCode: 'items',
+    fieldLabel: '条目明细',
+    componentType: 'sub_form'
+  },
+  {
+    fieldId: 'entity-field-1',
+    fieldCode: 'items'
+  },
+  'items'
+)
+assert.equal(
+  mergedSubFormField.relationCode,
+  'REQ_items',
+  'node loading must retain relation metadata from the entity field'
+)
+assert.equal(mergedSubFormField.childEntityId, 'child-entity')
+assert.equal(mergedSubFormField.childRefFieldCode, 'reqId')
+assert.equal(
+  mergedSubFormField.fieldLabel,
+  '条目明细',
+  'legacy form presentation metadata must override entity defaults'
+)
 
 assert.deepEqual(
   getFormNodeDataSourceUsages('FIELD'),
@@ -356,8 +394,8 @@ assert.deepEqual(fieldPayload.localOverrides, {
       fieldCode: 'items',
       fieldName: '明细',
       fieldLabel: nodeType === 'SUB_FORM' ? '子表' : '明细表',
-      fieldType: nodeType === 'SUB_FORM' ? 'SUB_FORM' : 'SUB_FORM_LIST',
-      componentType: nodeType === 'SUB_FORM' ? 'sub_form' : 'sub_form_list',
+      fieldType: 'SUB_FORM',
+      componentType: 'sub_form',
       gridSpan: 24,
       bindingType: 'ENTITY_FIELD',
       bindingRef: 'items',
@@ -445,7 +483,7 @@ const unboundRepeaterPayload = buildFormNodePayload({
   nodeKey: 'manual_items',
   fieldId: 'legacy-field-id',
   fieldCode: 'manual_items',
-  fieldType: 'SUB_FORM_LIST',
+  fieldType: 'SUB_FORM',
   bindingType: 'ENTITY_FIELD',
   bindingRef: 'manual_items'
 })
@@ -502,7 +540,8 @@ assert.deepEqual(
   {
     length: true,
     range: false,
-    format: true
+    format: true,
+    pattern: true
   }
 )
 assert.deepEqual(
@@ -510,7 +549,8 @@ assert.deepEqual(
   {
     length: false,
     range: true,
-    format: false
+    format: false,
+    pattern: false
   }
 )
 assert.deepEqual(
@@ -518,7 +558,8 @@ assert.deepEqual(
   {
     length: false,
     range: false,
-    format: false
+    format: false,
+    pattern: false
   }
 )
 assert.deepEqual(
@@ -528,6 +569,7 @@ assert.deepEqual(
     min: 0,
     max: 100,
     format: 'EMAIL',
+    pattern: '^REQ-\\d+$',
     customRule: 'keep'
   }),
   {
@@ -542,12 +584,14 @@ assert.deepEqual(
     maxLength: 10,
     min: 0,
     max: 100,
-    format: 'EMAIL'
+    format: 'EMAIL',
+    pattern: '^REQ-\\d+$'
   }),
   {
     minLength: 2,
     maxLength: 10,
-    format: 'EMAIL'
+    format: 'EMAIL',
+    pattern: '^REQ-\\d+$'
   }
 )
 

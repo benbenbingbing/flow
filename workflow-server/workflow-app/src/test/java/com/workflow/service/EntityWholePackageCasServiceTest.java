@@ -399,6 +399,8 @@ class EntityWholePackageCasServiceTest {
                 mock(EntityFormConfigurationValidator.class),
                 mock(EntityUiConfigurationPolicy.class),
                 mock(SystemEntityFieldPolicy.class),
+                mock(com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper.class),
+                mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
                 new JsonDocumentCodec(new ObjectMapper()));
         return new FormContext(
                 service,

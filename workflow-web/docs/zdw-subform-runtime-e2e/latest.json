@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-08-05T09:17:08.210Z",
+  "apiBase": "http://127.0.0.1:8080/api",
+  "result": "PASS",
+  "entities": {
+    "parent": {
+      "id": "2084050094355812353",
+      "entityCode": "ZDWREQ",
+      "entityName": "zdw-需求管理"
+    },
+    "child": {
+      "id": "2084630423346180098",
+      "entityCode": "ZDWITEM",
+      "entityName": "ZDW 需求条目"
+    }
+  },
+  "form": {
+    "id": "2084057471894429698",
+    "formKey": "form001",
+    "activeReleaseId": "90418ece86c38a8ae5902ddbaee33561"
+  },
+  "assertions": {
+    "oneToOneCreateAndForeignKey": true,
+    "oneToManyCreateAndForeignKey": true,
+    "emptyOnlyFieldInitialization": true,
+    "explicitValueNotOverwritten": true,
+    "detailRelationHydration": true,
+    "configuredListRelationQuery": true,
+    "childUpdateKeepsIdentity": true,
+    "omittedChildSoftDeleted": true,
+    "newChildInserted": true,
+    "emptyArrayClearsOneToMany": true,
+    "parentDeleteCascades": true
+  },
+  "runtime": {
+    "createdParentId": "b59ef1c3cfee4b3483ad9f6324b9b0b7",
+    "originalSingleId": "f45b00ca14c24e85b49a0ed69913e83d",
+    "keptItemId": "e195ed64b71d459eb350126a3e80a873",
+    "removedItemId": "a5dae27209cf437e8ae0492ca51970d7",
+    "insertedItemId": "ff4925cf634747839cceedba9a5d31d3"
+  }
+}

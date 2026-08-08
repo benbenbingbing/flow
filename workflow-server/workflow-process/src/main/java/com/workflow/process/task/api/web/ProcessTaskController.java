@@ -222,7 +222,10 @@ public class ProcessTaskController {
         }
 
         try {
-            String currentUser = UserContext.getUsername();
+            String currentUser = UserContext.getUserId();
+            if (currentUser == null || currentUser.isBlank()) {
+                currentUser = UserContext.getUsername();
+            }
             if (currentUser == null || currentUser.isBlank()) {
                 throw new ForbiddenException("用户未登录");
             }

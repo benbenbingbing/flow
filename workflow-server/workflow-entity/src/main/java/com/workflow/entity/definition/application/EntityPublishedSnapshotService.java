@@ -2,6 +2,7 @@ package com.workflow.entity.definition.application;
 
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -11,7 +12,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * 实体发布快照读取。
@@ -19,6 +23,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class EntityPublishedSnapshotService {
+
+    private static final Map<String, String> LEGACY_FIELD_TYPES =
+            Map.of("SUB_FORM_LIST", "SUB_LIST");
 
     private final EntityPublishHistoryMapper historyMapper;
     private final ObjectMapper objectMapper;
@@ -98,11 +105,41 @@ public class EntityPublishedSnapshotService {
             return List.of();
         }
         try {
-            return objectMapper.readValue(
+            List<Map<String, Object>> fields = objectMapper.readValue(
                     fieldsSnapshot,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, EntityField.class));
+                    new TypeReference<List<Map<String, Object>>>() {
+                    });
+            List<Map<String, Object>> normalized = fields.stream()
+                    .map(this::normalizeLegacyField)
+                    .toList();
+            return objectMapper.convertValue(
+                    normalized,
+                    objectMapper.getTypeFactory()
+                            .constructCollectionType(
+                                    List.class,
+                                    EntityField.class));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("实体发布快照解析失败: " + history.getEntityId(), e);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("实体发布快照解析失败: " + history.getEntityId(), e);
         }
+    }
+
+    private Map<String, Object> normalizeLegacyField(
+            Map<String, Object> source) {
+        Map<String, Object> field = new LinkedHashMap<>(source);
+        Object fieldType = field.get("fieldType");
+        if (fieldType == null) {
+            return field;
+        }
+        String normalizedType = String.valueOf(fieldType)
+                .trim()
+                .toUpperCase(Locale.ROOT);
+        field.put(
+                "fieldType",
+                LEGACY_FIELD_TYPES.getOrDefault(
+                        normalizedType,
+                        normalizedType));
+        return field;
     }
 }

@@ -32,7 +32,7 @@ const NON_TARGET_TYPES = new Set([
   'TAB',
   'COLLAPSE',
   'SUB_FORM',
-  'SUB_FORM_LIST',
+  'SUB_LIST',
   'REPEATER',
   'ACTION_SLOT'
 ])

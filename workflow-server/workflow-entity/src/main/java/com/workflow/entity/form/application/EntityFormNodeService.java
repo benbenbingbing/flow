@@ -1718,10 +1718,72 @@ public class EntityFormNodeService {
                     "历史兼容属性由服务端管理，不能直接修改");
         }
         validateReadOnlyDisplayProps(current, request);
-        if (hasValidBindingState(current)) {
+        if (mode == PatchMode.USER_REPLACE
+                && isUnboundSubFormRelationRepair(
+                        current, request, clear)) {
+            validateUnboundSubFormRelationRepair(
+                    current, request, clear);
+        } else if (hasValidBindingState(current)) {
             validateBoundNodeIdentity(current, request, clear);
         } else if (mode == PatchMode.USER_REPLACE) {
             validateInvalidBindingRepair(current, request, clear);
+        }
+    }
+
+    private boolean isUnboundSubFormRelationRepair(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        if (!SUB_FORM_NODE_TYPES.contains(
+                normalize(current.getNodeType(), "FIELD"))
+                || !"NONE".equals(
+                        normalize(current.getBindingType(), "NONE"))
+                || StringUtils.hasText(current.getBindingRef())) {
+            return false;
+        }
+        String requestedType = request.getBindingType() == null
+                ? "NONE"
+                : normalize(request.getBindingType(), "NONE");
+        String requestedRef = clear.contains("bindingRef")
+                ? null
+                : blankToNull(request.getBindingRef());
+        return "RELATION".equals(requestedType)
+                && StringUtils.hasText(requestedRef);
+    }
+
+    private void validateUnboundSubFormRelationRepair(
+            EntityFormNode current,
+            EntityFormNodePatchRequest request,
+            Set<String> clear) {
+        validateInvalidBindingRepair(current, request, clear);
+        EntityForm form = requireForm(current.getFormId());
+        EntityRelation relation =
+                relationMapper.selectActiveByBindingRef(
+                        form.getEntityId(),
+                        request.getBindingRef());
+        if (relation == null) {
+            throw new IllegalArgumentException(
+                    "表单节点绑定的实体关系不存在或已禁用: "
+                            + request.getBindingRef());
+        }
+        Map<String, Object> props = request.getProps() == null
+                ? read(current.getPropsDocument(), "表单节点属性")
+                : request.getProps();
+        String fieldId = blankToNull(
+                Objects.toString(props.get("fieldId"), null));
+        String fieldCode = blankToNull(
+                Objects.toString(props.get("fieldCode"), null));
+        if (StringUtils.hasText(relation.getParentFieldId())
+                && !Objects.equals(
+                        relation.getParentFieldId(), fieldId)) {
+            throw new IllegalArgumentException(
+                    "子表单节点字段与实体关系不匹配: fieldId");
+        }
+        if (StringUtils.hasText(relation.getParentFieldCode())
+                && !Objects.equals(
+                        relation.getParentFieldCode(), fieldCode)) {
+            throw new IllegalArgumentException(
+                    "子表单节点字段与实体关系不匹配: fieldCode");
         }
     }
 

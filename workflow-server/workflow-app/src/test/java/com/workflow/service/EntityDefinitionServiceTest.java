@@ -229,7 +229,7 @@ public class EntityDefinitionServiceTest {
         subField.setEntityId("1");
         subField.setFieldCode("detailList");
         subField.setFieldName("明细");
-        subField.setFieldType(EntityField.FieldType.SUB_FORM_LIST);
+        subField.setFieldType(EntityField.FieldType.SUB_FORM);
 
         EntityRelation relation = new EntityRelation();
         relation.setParentEntityId("1");
@@ -395,12 +395,12 @@ public class EntityDefinitionServiceTest {
         detailField.setEntityId("1");
         detailField.setFieldCode("detailList");
         detailField.setFieldName("明细");
-        detailField.setFieldType(EntityField.FieldType.SUB_FORM_LIST);
+        detailField.setFieldType(EntityField.FieldType.SUB_FORM);
 
         EntityFieldDTO detailDTO = new EntityFieldDTO();
         detailDTO.setFieldCode("detailList");
         detailDTO.setFieldName("明细");
-        detailDTO.setFieldType(EntityField.FieldType.SUB_FORM_LIST);
+        detailDTO.setFieldType(EntityField.FieldType.SUB_FORM);
         detailDTO.setChildEntityId("child-1");
         detailDTO.setChildRefFieldCode("parentId");
         detailDTO.setRelationType("ONE_TO_MANY");

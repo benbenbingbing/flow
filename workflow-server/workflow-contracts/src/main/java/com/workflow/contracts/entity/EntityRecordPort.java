@@ -18,6 +18,7 @@ public interface EntityRecordPort {
             String status);
 
     void markProcessEnded(
+            String processInstanceId,
             String entityCode,
             String entityRecordId,
             String statusCategory,

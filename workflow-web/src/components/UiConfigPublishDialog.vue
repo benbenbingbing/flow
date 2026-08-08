@@ -88,6 +88,15 @@
           class="publish-alert"
         />
 
+        <el-alert
+          v-if="hasForcedTargets"
+          :title="forceReviewText"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="publish-alert"
+        />
+
         <el-table
           v-if="preview.riskItems?.length"
           :data="preview.riskItems"
@@ -127,16 +136,20 @@
             label="跳过历史"
             width="90"
           />
-          <el-table-column label="兼容" width="80">
+          <el-table-column label="应用方式" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.compatible ? 'success' : 'danger'" size="small">
-                {{ row.compatible ? '是' : '否' }}
+              <el-tag :type="targetModeTagType(row)" size="small">
+                {{ targetModeLabel(row) }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="说明" min-width="220">
             <template #default="{ row }">
-              {{ row.blockers?.join('；') || '可原子应用' }}
+              {{
+                row.blockers?.join('；')
+                  || row.reviewNotes?.join('；')
+                  || '可原子应用'
+              }}
             </template>
           </el-table-column>
         </el-table>
@@ -151,7 +164,7 @@
         :disabled="!canSubmit"
         @click="submit"
       >
-        {{ form.releaseMode === 'HOTFIX' ? '发布兼容热修复' : '普通发布' }}
+        {{ submitLabel }}
       </el-button>
     </template>
   </el-dialog>
@@ -192,6 +205,24 @@ const canHotfix = computed(() =>
 const canSubmit = computed(() =>
   Boolean(preview.value?.changed && preview.value?.canPublish)
 )
+const forcedTargets = computed(() =>
+  (preview.value?.targets || []).filter(target =>
+    target.compatible && target.applicationMode === 'FULL_SNAPSHOT'
+  )
+)
+const hasForcedTargets = computed(() =>
+  form.releaseMode === 'HOTFIX' && forcedTargets.value.length > 0
+)
+const forceReviewText = computed(() =>
+  `${forcedTargets.value.length} 个流程版本无法安全增量对齐，`
+    + '将使用当前草稿的完整快照强制覆盖；新快照仍会完整校验并原子生效。'
+)
+const submitLabel = computed(() => {
+  if (form.releaseMode !== 'HOTFIX') return '普通发布'
+  return hasForcedTargets.value
+    ? '强制发布热修复'
+    : '发布兼容热修复'
+})
 
 function requestPayload(includePreviewState = false) {
   return {
@@ -246,7 +277,9 @@ async function submit() {
       : await entityListConfigApi.publish(props.configId, payload)
     ElMessage.success(
       form.releaseMode === 'HOTFIX'
-        ? '兼容热修复已原子生效'
+        ? hasForcedTargets.value
+          ? '强制热修复已通过完整快照原子生效'
+          : '兼容热修复已原子生效'
         : '普通发布成功'
     )
     emit('published', release)
@@ -275,6 +308,20 @@ function riskLabel(risk) {
     REVIEW: '需复核',
     BLOCKED: '需复核'
   }[risk] || '待评估'
+}
+
+function targetModeTagType(target) {
+  if (!target?.compatible) return 'danger'
+  return target.applicationMode === 'FULL_SNAPSHOT'
+    ? 'warning'
+    : 'success'
+}
+
+function targetModeLabel(target) {
+  if (!target?.compatible) return '不可应用'
+  return target.applicationMode === 'FULL_SNAPSHOT'
+    ? '强制覆盖'
+    : '增量'
 }
 
 function publishPathLabel(path) {

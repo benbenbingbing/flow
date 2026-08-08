@@ -2,18 +2,16 @@ package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.contracts.entity.mutation.EntityChangeTargetApplyCommand;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.EntityMutationSystemFields;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
+import org.flowable.common.engine.api.delegate.event.FlowableEngineEvent;
 import org.flowable.engine.HistoryService;
+import org.flowable.engine.delegate.event.FlowableCancelledEvent;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -26,8 +24,8 @@ import java.util.Map;
  * 流程结束监听器。
  *
  * <p>
- * 监听流程完成、取消与终止事件，在 Flowable 事务中写入状态同步 Outbox。
- * 实体状态保留与替换规则由异步消费端和实体模块统一判断。
+ * 监听流程完成、取消与终止事件，在 Flowable 事务中同步实体状态并写入状态同步 Outbox。
+ * 监听器与异步消费端使用相同的流程实例幂等键，补偿重放不会重复产生实体变更。
  * </p>
  */
 @Slf4j
@@ -36,19 +34,15 @@ import java.util.Map;
 public class ProcessEndListener implements FlowableEventListener {
 
         private final HistoryService historyService;
-        private final EntityMutationPort entityMutationPort;
+        private final EntityRecordPort entityRecordPort;
         private final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider;
         private final ProcessStatusSyncPublisher statusSyncPublisher;
 
         @Override
         public void onEvent(FlowableEvent event) {
-                if (!(event instanceof FlowableEntityEventImpl entityEvent)) {
-                        return;
-                }
-
-                String eventType = entityEvent.getType() == null
+                String eventType = event.getType() == null
                                 ? ""
-                                : entityEvent.getType().name();
+                                : event.getType().name();
                 if (!"PROCESS_COMPLETED".equals(eventType)
                                 && !"PROCESS_CANCELLED".equals(eventType)
                                 && !"PROCESS_COMPLETED_WITH_TERMINATE_END_EVENT".equals(eventType)
@@ -56,11 +50,14 @@ public class ProcessEndListener implements FlowableEventListener {
                                 && !"PROCESS_COMPLETED_WITH_ESCALATION_END_EVENT".equals(eventType)) {
                         return;
                 }
-                if (!(entityEvent.getEntity() instanceof ProcessInstance processInstance)) {
+                ProcessInstance processInstance = processInstance(event);
+                String processInstanceId = processInstance == null
+                                ? processInstanceId(event)
+                                : processInstance.getId();
+                if (processInstanceId == null || processInstanceId.isBlank()) {
                         return;
                 }
 
-                String processInstanceId = processInstance.getId();
                 try {
                         String entityCode = getHistoricVariable(
                                         processInstanceId,
@@ -82,8 +79,13 @@ public class ProcessEndListener implements FlowableEventListener {
                         String deleteReason = historicInstance == null
                                         ? null
                                         : historicInstance.getDeleteReason();
+                        if (event instanceof FlowableCancelledEvent cancelledEvent
+                                        && cancelledEvent.getCause() != null) {
+                                deleteReason = String.valueOf(
+                                                cancelledEvent.getCause());
+                        }
                         boolean withdrawn = deleteReason != null
-                                        && deleteReason.startsWith("发起人撤回");
+                                        && deleteReason.contains("撤回");
                         boolean terminated = (deleteReason != null
                                         && !deleteReason.isEmpty())
                                         || eventType.contains("_WITH_");
@@ -91,53 +93,19 @@ public class ProcessEndListener implements FlowableEventListener {
                                         ? "WITHDRAWN"
                                         : (terminated ? "TERMINATED" : "COMPLETED");
 
-                        String intentCode = "COMPLETED".equals(statusCategory)
-                                        ? "INITIAL_EFFECTIVE"
-                                        : ("WITHDRAWN".equals(statusCategory)
-                                                        ? "PROCESS_WITHDRAWN"
-                                                        : "PROCESS_TERMINATED");
-                        String intentName = "COMPLETED".equals(statusCategory)
-                                        ? "初始审批生效"
-                                        : ("WITHDRAWN".equals(statusCategory)
-                                                        ? "流程撤回"
-                                                        : "流程终止");
                         String idempotencyKey = String.join(
                                         ":",
                                         "process-end",
                                         processInstanceId,
                                         statusCategory);
-                        entityMutationPort.execute(
-                                        new EntityMutationCommand(
-                                                        idempotencyKey,
-                                                        entityCode,
-                                                        entityDataId,
-                                                        EntityMutationOperationType.STATUS_CHANGE,
-                                                        Map.of(
-                                                                        EntityMutationSystemFields.MODE_KEY,
-                                                                        EntityMutationSystemFields.PROCESS_END,
-                                                                        "statusCategory",
-                                                                        statusCategory,
-                                                                        "fallbackStatus",
-                                                                        defaultEndStatus(
-                                                                                        statusCategory)),
-                                                        EntityMutationContext.builder(
-                                                                        EntityMutationSourceType.PROCESS_RUNTIME,
-                                                                        intentCode,
-                                                                        intentName)
-                                                                        .sourceId(eventType)
-                                                                        .sourceRecord(
-                                                                                        entityCode,
-                                                                                        entityDataId)
-                                                                        .process(
-                                                                                        processInstance
-                                                                                                        .getProcessDefinitionId(),
-                                                                                        processInstanceId,
-                                                                                        null)
-                                                                        .trace(
-                                                                                        processInstanceId,
-                                                                                        idempotencyKey)
-                                                                        .build()));
-                        if ("COMPLETED".equals(statusCategory)) {
+                        entityRecordPort.markProcessEnded(
+                                        processInstanceId,
+                                        entityCode,
+                                        entityDataId,
+                                        statusCategory,
+                                        defaultEndStatus(statusCategory));
+                        if ("COMPLETED".equals(statusCategory)
+                                        && processInstance != null) {
                                 applyChangeTargets(
                                                 processInstance,
                                                 historicInstance,
@@ -164,6 +132,21 @@ public class ProcessEndListener implements FlowableEventListener {
                                                         + processInstanceId,
                                         exception);
                 }
+        }
+
+        private ProcessInstance processInstance(FlowableEvent event) {
+                if (event instanceof FlowableEntityEventImpl entityEvent
+                                && entityEvent.getEntity()
+                                                instanceof ProcessInstance instance) {
+                        return instance;
+                }
+                return null;
+        }
+
+        private String processInstanceId(FlowableEvent event) {
+                return event instanceof FlowableEngineEvent engineEvent
+                                ? engineEvent.getProcessInstanceId()
+                                : null;
         }
 
         private void applyChangeTargets(

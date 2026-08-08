@@ -47,12 +47,35 @@ public class ProcessStatusSyncPublisher {
                 fallbackStatus));
     }
 
+    public void republishProcessEnd(
+            String processInstanceId,
+            String entityCode,
+            String entityRecordId,
+            String statusCategory,
+            String fallbackStatus) {
+        publish(new ProcessStatusSyncPayload(
+                processInstanceId,
+                "PROCESS_END",
+                "END",
+                entityCode,
+                entityRecordId,
+                null,
+                statusCategory,
+                fallbackStatus), true);
+    }
+
     private void publish(ProcessStatusSyncPayload payload) {
+        publish(payload, false);
+    }
+
+    private void publish(
+            ProcessStatusSyncPayload payload,
+            boolean requeueFailed) {
         require(payload.processInstanceId(), "processInstanceId");
         require(payload.eventSequence(), "eventSequence");
         require(payload.entityCode(), "entityCode");
         require(payload.entityRecordId(), "entityRecordId");
-        outboxPublisher.publish(new OutboxPublishRequest(
+        OutboxPublishRequest request = new OutboxPublishRequest(
                 TOPIC,
                 payload.processInstanceId()
                         + ":" + payload.eventType()
@@ -60,7 +83,12 @@ public class ProcessStatusSyncPublisher {
                 "PROCESS_INSTANCE",
                 payload.processInstanceId(),
                 payload,
-                20));
+                20);
+        if (requeueFailed) {
+            outboxPublisher.publishOrRequeueFailed(request);
+        } else {
+            outboxPublisher.publish(request);
+        }
     }
 
     private void require(String value, String field) {

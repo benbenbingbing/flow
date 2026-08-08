@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  * 实体表单配置校验器
  * 
  * 对表单及表单字段配置进行保存前的合法性校验：表单标识/名称、自定义组件版本锁定、
- * 字段编码唯一性与格式、字段校验规则（min/max、minLength/maxLength、format）、
+ * 字段编码唯一性与格式、字段校验规则（范围、长度、格式、正则）、
  * 字段在不同运行模式（create/edit/approve/view）下的可见与可编辑权限、栅格宽度等。
  */
 @Component
@@ -219,7 +219,7 @@ public class EntityFormConfigurationValidator {
         }
     }
 
-    /** 校验字段校验规则：min/max、minLength/maxLength 区间合理性及 format 取值 */
+    /** 校验字段校验规则：区间、长度、格式与正则表达式 */
     private void validateValidationRules(Map<String, Object> validation) {
         if (validation.isEmpty()) {
             return;
@@ -237,6 +237,25 @@ public class EntityFormConfigurationValidator {
         String format = String.valueOf(validation.getOrDefault("format", "")).toUpperCase(Locale.ROOT);
         if (!FORMATS.contains(format)) {
             throw new IllegalArgumentException("不支持的字段格式校验: " + format);
+        }
+        Object patternValue = validation.get("pattern");
+        if (patternValue == null) {
+            return;
+        }
+        if (!(patternValue instanceof String pattern)) {
+            throw new IllegalArgumentException("字段校验正则必须为字符串");
+        }
+        if (pattern.length() > 500) {
+            throw new IllegalArgumentException("字段校验正则不能超过 500 个字符");
+        }
+        if (!pattern.isEmpty()) {
+            try {
+                Pattern.compile(pattern);
+            } catch (RuntimeException exception) {
+                throw new IllegalArgumentException(
+                        "字段校验正则表达式语法不正确",
+                        exception);
+            }
         }
     }
 

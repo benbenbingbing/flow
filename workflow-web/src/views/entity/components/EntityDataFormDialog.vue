@@ -8,7 +8,7 @@
           :entityCode="entityCode"
           :entityDefinition="entityDefinition"
           :entityFields="entityFields"
-          :defaultForm="defaultForm"
+          :defaultForm="runtimeForm"
           :isEdit="isEdit"
           :showStartProcess="canStartProcess"
           :excludedNodeIds="liftedRootNodeIds"
@@ -17,6 +17,7 @@
           :form-actions="formActions"
           :action-loading-key="actionLoadingKey"
           :entity-status-options="entityStatusOptions"
+          :runtime-context="launchRuntimeContext"
           @form-action="handleFormAction"
         />
       </el-tab-pane>
@@ -32,7 +33,7 @@
           :entityCode="entityCode"
           :entityDefinition="entityDefinition"
           :entityFields="entityFields"
-          :defaultForm="defaultForm"
+          :defaultForm="runtimeForm"
           :isEdit="isEdit"
           :showStartProcess="canStartProcess && !showBasicTab && idx === 0"
           :nodeRootParentId="tab.rootParentId"
@@ -41,6 +42,7 @@
           :form-actions="formActions"
           :action-loading-key="actionLoadingKey"
           :entity-status-options="entityStatusOptions"
+          :runtime-context="launchRuntimeContext"
           @form-action="handleFormAction"
         />
       </el-tab-pane>
@@ -73,7 +75,7 @@
       :entityCode="entityCode"
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
-      :defaultForm="defaultForm"
+      :defaultForm="runtimeForm"
       :isEdit="isEdit"
       :showStartProcess="canStartProcess"
       :dataSourceRuntime="dataSourceRuntime"
@@ -81,6 +83,7 @@
       :form-actions="formActions"
       :action-loading-key="actionLoadingKey"
       :entity-status-options="entityStatusOptions"
+      :runtime-context="launchRuntimeContext"
       @form-action="handleFormAction"
     />
 
@@ -106,6 +109,7 @@ import { useProcessDetail } from '@/composables/useProcessDetail'
 import {
   applyRuntimeFieldDefaults,
   createFormDataSourceRuntime,
+  filterRuntimeFormSubmissionData,
   normalizeEntityRecordForForm,
   resolveRuntimeFormTabLayout
 } from '@/shared/form-runtime'
@@ -151,6 +155,10 @@ const processInstanceId = ref('')
 const currentProcessStatus = ref('')
 const currentProcessName = ref('')
 const resetSnapshot = ref<any>(null)
+const launchRuntimeContext = ref<Record<string, any>>({})
+const activeForm = ref<any>(null)
+let launchSequence = 0
+const runtimeForm = computed(() => activeForm.value || props.defaultForm)
 
 const formData = reactive({
   id: '',
@@ -162,15 +170,26 @@ const formData = reactive({
 const hasProcessInfo = computed(() => !!processInstanceId.value)
 const canStartProcess = computed(() => !hasProcessInfo.value)
 const footerActions = computed(() => footerFormActions(formActions.value))
-const dataSourceRuntime = createFormDataSourceRuntime({
+const rootDataSourceRuntime = createFormDataSourceRuntime({
   entityCode: props.entityCode,
   getRecord: () => formData.data || {},
   getRecordId: () => formData.id,
   getListKey: () => props.listKey,
   getMode: () => isEdit.value ? 'edit' : 'create',
-  getForm: () => props.defaultForm,
+  getForm: () => runtimeForm.value,
   getEntityDefinition: () => props.entityDefinition
 })
+const dataSourceRuntime = rootDataSourceRuntime.withContext(() => ({
+  ...launchRuntimeContext.value,
+  context: {
+    ...(launchRuntimeContext.value?.context || {}),
+    ...launchRuntimeContext.value
+  },
+  params:
+    launchRuntimeContext.value?.params
+    || launchRuntimeContext.value?.parameters
+    || {}
+}))
 
 const {
   bpmnXml,
@@ -179,7 +198,7 @@ const {
   loadProcessDetail
 } = useProcessDetail()
 
-const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(props.defaultForm))
+const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(runtimeForm.value))
 const runtimeNodeTabs = computed(() => runtimeTabLayout.value.tabs)
 const liftedRootNodeIds = computed(() => runtimeTabLayout.value.liftedRootNodeIds)
 const hasRuntimeFormTabs = computed(() => runtimeNodeTabs.value.length > 0)
@@ -242,7 +261,7 @@ const resetForm = () => {
   fields.forEach((field: any) => {
     formData.data[field.fieldCode] = ''
   })
-  applyRuntimeFieldDefaults(formData.data, props.defaultForm, fields)
+  applyRuntimeFieldDefaults(formData.data, runtimeForm.value, fields)
 }
 
 function captureResetSnapshot() {
@@ -267,7 +286,7 @@ function restoreResetSnapshot() {
 }
 
 async function loadFormActions() {
-  formActions.value = await resolveRuntimeFormActions(props.defaultForm, {
+  formActions.value = await resolveRuntimeFormActions(runtimeForm.value, {
     entityCode: props.entityCode,
     listKey: props.listKey,
     mode: isEdit.value ? 'edit' : 'create',
@@ -279,10 +298,10 @@ async function loadFormActions() {
 }
 
 async function executeFormEvent(eventCode: string) {
-  if (!props.defaultForm?.id) return
+  if (!runtimeForm.value?.id) return
   const result = await uiEventBindingApi.execute(eventCode, {
     configType: 'FORM',
-    configId: String(props.defaultForm.id),
+    configId: String(runtimeForm.value.id),
     entityCode: props.entityCode,
     listKey: props.listKey,
     targetType: 'OWNER',
@@ -290,10 +309,15 @@ async function executeFormEvent(eventCode: string) {
     input: {
       mode: isEdit.value ? 'edit' : 'create',
       form: formData.data,
-      recordId: formData.id || undefined
+      recordId: formData.id || undefined,
+      params:
+        launchRuntimeContext.value?.params
+        || launchRuntimeContext.value?.parameters
+        || {}
     },
     context: {
-      formId: String(props.defaultForm.id),
+      ...launchRuntimeContext.value,
+      formId: String(runtimeForm.value.id),
       listKey: props.listKey || '',
       mode: isEdit.value ? 'edit' : 'create'
     }
@@ -405,7 +429,7 @@ async function handleFormAction(action: any) {
     }
     const result = await executeCustomFormAction(
       action,
-      props.defaultForm,
+      runtimeForm.value,
       {
         entityCode: props.entityCode,
         listKey: props.listKey,
@@ -470,24 +494,44 @@ async function handleReset() {
 }
 
 // 新增
-const openCreate = async () => {
+const openCreate = async (options: any = {}) => {
+  activeForm.value = options?.form || null
   isEdit.value = false
   processInstanceId.value = ''
   currentProcessStatus.value = ''
   currentProcessName.value = ''
   activeTab.value = firstFormTabName.value
+  const inputParameters = {
+    ...(options?.context?.parameters || {}),
+    ...(options?.context?.params || {}),
+    ...(options?.parameters || {})
+  }
+  const initialData =
+    options?.initialData && typeof options.initialData === 'object'
+      ? options.initialData
+      : {}
+  launchRuntimeContext.value = {
+    ...(options?.context || {}),
+    params: inputParameters,
+    parameters: inputParameters,
+    initialData,
+    initializationKey: `create:${++launchSequence}`
+  }
   resetForm()
-  dialogTitle.value = props.defaultForm?.formName
-    ? `新增数据 - ${props.defaultForm.formName}${props.defaultForm.formKey ? `（${props.defaultForm.formKey}）` : ''}`
+  dialogTitle.value = runtimeForm.value?.formName
+    ? `新增数据 - ${runtimeForm.value.formName}${runtimeForm.value.formKey ? `（${runtimeForm.value.formKey}）` : ''}`
     : '新增数据'
 
-  if (props.defaultForm?.initConfig) {
+  if (runtimeForm.value?.initConfig) {
     try {
-      const initData = await executeFormInitializer(props.defaultForm.initConfig, {
+      const initData = await executeFormInitializer(runtimeForm.value.initConfig, {
         entityCode: props.entityCode,
         entityDefinition: props.entityDefinition,
         routeQuery: route.query,
-        userStore: userStore
+        userStore: userStore,
+        params: inputParameters,
+        parent: launchRuntimeContext.value?.parent || {},
+        context: launchRuntimeContext.value
       })
       if (initData && typeof initData === 'object') {
         Object.entries(initData).forEach(([key, value]) => {
@@ -499,11 +543,14 @@ const openCreate = async () => {
     }
   }
 
+  applyCreateInitialData(initialData)
+
   try {
     await executeFormEvent('FORM_OPEN')
   } catch (error: any) {
     ElMessage.error(error.message || '表单打开事件执行失败')
   }
+  applyCreateInitialData(initialData)
   captureResetSnapshot()
   await loadFormActions()
   dialogVisible.value = true
@@ -513,14 +560,18 @@ const openCreate = async () => {
 }
 
 // 编辑
-const openEdit = async (row: any) => {
+const openEdit = async (row: any, options: any = {}) => {
+  activeForm.value = options?.form || null
   isEdit.value = true
+  launchRuntimeContext.value = {
+    initializationKey: `edit:${row?.id || 'record'}:${++launchSequence}`
+  }
   formData.startProcess = false
   const detail = await entityDataApi.getDetail(
     props.entityCode,
     row.id,
     props.listKey,
-    props.defaultForm?.id
+    runtimeForm.value?.id
   ).catch(() => row)
   formData.id = detail.id
   formData.name = detail.name
@@ -574,9 +625,9 @@ async function validateRuntimeForms() {
   }
 
   await dataSourceRuntime.prevalidateBeforeSubmit({
-    form: props.defaultForm,
-    fields: props.defaultForm?.fields || [],
-    nodes: props.defaultForm?.nodes || []
+    form: runtimeForm.value,
+    fields: runtimeForm.value?.fields || [],
+    nodes: runtimeForm.value?.nodes || []
   })
   return true
 }
@@ -588,13 +639,18 @@ const handleSubmit = async (startProcess = false) => {
 
   formData.startProcess = startProcess
   try {
+    const submittedData = filterRuntimeFormSubmissionData(
+      formData.data,
+      runtimeForm.value,
+      props.entityFields
+    )
     const data = {
       entityCode: props.entityCode,
       listKey: props.listKey,
-      formId: props.defaultForm?.id,
+      formId: runtimeForm.value?.id,
       id: formData.id,
-      name: formData.data?.name || formData.name,
-      data: formData.data,
+      name: submittedData?.name || formData.name,
+      data: submittedData,
       startProcess: formData.startProcess
     }
 
@@ -603,8 +659,8 @@ const handleSubmit = async (startProcess = false) => {
         props.entityCode,
         formData.id,
         {
-          data: formData.data,
-          formId: props.defaultForm?.id,
+          data: submittedData,
+          formId: runtimeForm.value?.id,
           startProcess: formData.startProcess
         },
         formData.startProcess,
@@ -627,6 +683,27 @@ defineExpose({
   openCreate,
   openEdit
 })
+
+function cloneRuntimeValue(value: any) {
+  if (value === undefined) return undefined
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value)
+    } catch {
+      // Fall through for values unsupported by structuredClone.
+    }
+  }
+  if (value && typeof value === 'object') {
+    return JSON.parse(JSON.stringify(value))
+  }
+  return value
+}
+
+function applyCreateInitialData(initialData: Record<string, any>) {
+  Object.entries(initialData || {}).forEach(([key, value]) => {
+    formData.data[key] = cloneRuntimeValue(value)
+  })
+}
 </script>
 
 <style scoped lang="scss">

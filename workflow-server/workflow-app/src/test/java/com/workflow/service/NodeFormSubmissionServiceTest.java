@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.entity.form.application.EntityFormService;
@@ -13,6 +14,7 @@ import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
@@ -58,7 +60,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
-                traceService);
+                traceService, new ObjectMapper());
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(
@@ -140,7 +142,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
-                traceService);
+                traceService, new ObjectMapper());
 
         Task task = task();
         when(runtimeService.getVariable("instance-1", "entityCode")).thenReturn("expense");
@@ -186,7 +188,8 @@ class NodeFormSubmissionServiceTest {
                         mock(EntityFormRuntimeService.class),
                         mock(EntityMutationPort.class),
                         mock(PublishedFormSubmissionService.class),
-                        mock(FormSubmissionTraceService.class));
+                        mock(FormSubmissionTraceService.class),
+                        new ObjectMapper());
         Task task = task();
         when(runtimeService.getVariable(
                 "instance-1",
@@ -211,6 +214,107 @@ class NodeFormSubmissionServiceTest {
                 exception.getMessage());
     }
 
+    @Test
+    void savesOnlyFieldsEditableInRecursiveApprovalNodes() {
+        RuntimeService runtimeService = mock(RuntimeService.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        EntityFormRuntimeService runtimeFormService =
+                mock(EntityFormRuntimeService.class);
+        EntityMutationPort mutationPort =
+                mock(EntityMutationPort.class);
+        PublishedFormSubmissionService submissionService =
+                mock(PublishedFormSubmissionService.class);
+        FormSubmissionTraceService traceService =
+                mock(FormSubmissionTraceService.class);
+        NodeFormSubmissionService service =
+                new NodeFormSubmissionService(
+                        runtimeService,
+                        snapshotService,
+                        mock(EntityFormService.class),
+                        runtimeFormService,
+                        mutationPort,
+                        submissionService,
+                        traceService,
+                        new ObjectMapper());
+        FormSubmissionExecutionContext executionContext =
+                executionContext();
+        when(traceService.current(
+                eq("PROCESS_APPROVAL_SUBMIT"),
+                eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(executionContext);
+        when(submissionService.applyForm(
+                eq("form-1"), eq("release-3"), eq(3),
+                eq("expense"), eq("data-1"),
+                eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation -> invocation.getArgument(6));
+
+        Task task = task();
+        when(runtimeService.getVariable(
+                "instance-1",
+                "entityCode")).thenReturn("expense");
+        when(runtimeService.getVariable(
+                "instance-1",
+                "entityDataId")).thenReturn("data-1");
+        ProcessNodeForm nodeForm =
+                new ProcessNodeForm();
+        nodeForm.setFormId("form-1");
+        nodeForm.setFormReleaseId("release-3");
+        nodeForm.setFormReleaseVersion(3);
+        nodeForm.setIsReadonly(0);
+        when(snapshotService
+                .getNodeFormsContextByProcessDefinitionId(
+                        "definition-1",
+                        "Task_Review"))
+                .thenReturn(published(nodeForm));
+
+        EntityForm form = new EntityForm();
+        form.setFields(List.of(
+                field("expectedDate", 0),
+                field("contactEmail", 0),
+                field("plainNote", 0),
+                field("ownerDept", 0)));
+        form.setNodes(List.of(
+                node("expectedDate", false, true, true),
+                node("contactEmail", false, true, false),
+                node("plainNote", false, false, false),
+                node("ownerDept", true, true, true)));
+        when(runtimeFormService.getByBinding(
+                nodeForm,
+                "history-1",
+                UiRuntimePurpose.ACTIVE_TASK))
+                .thenReturn(form);
+
+        service.applyEditableData(task, Map.of(
+                "expectedDate", "2026-08-20",
+                "contactEmail", "tampered@example.com",
+                "plainNote", "tampered",
+                "ownerDept", "dept-2"));
+
+        ArgumentCaptor<EntityMutationCommand> updateCaptor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(mutationPort).execute(
+                updateCaptor.capture());
+        assertEquals(
+                Map.of(
+                        "data",
+                        Map.of(
+                                "expectedDate",
+                                "2026-08-20")),
+                updateCaptor.getValue().payload());
+        verify(runtimeService).setVariables(
+                "instance-1",
+                Map.of(
+                        "expectedDate",
+                        "2026-08-20"));
+    }
+
     /** 构造测试 Flowable 任务 Mock，含 id、流程实例与定义 ID */
     private Task task() {
         Task task = mock(Task.class);
@@ -228,6 +332,45 @@ class NodeFormSubmissionServiceTest {
         field.setIsReadonly(readonly);
         field.setIsHidden(0);
         return field;
+    }
+
+    private EntityFormNode node(
+            String fieldCode,
+            boolean readonly,
+            boolean visible,
+            boolean editable) {
+        EntityFormNode node =
+                new EntityFormNode();
+        node.setNodeType("FIELD");
+        node.setBindingType("ENTITY_FIELD");
+        node.setBindingRef(fieldCode);
+        node.setNodeKey(fieldCode);
+        node.setPropsDocument(
+                """
+                {
+                  "fieldCode": "%s",
+                  "readonly": %s,
+                  "hidden": false
+                }
+                """.formatted(
+                        fieldCode,
+                        readonly));
+        node.setRulesDocument(
+                """
+                {
+                  "extension": {
+                    "modes": {
+                      "approve": {
+                        "visible": %s,
+                        "editable": %s
+                      }
+                    }
+                  }
+                }
+                """.formatted(
+                        visible,
+                        editable));
+        return node;
     }
 
     /** 构造任务提交的表单执行上下文 */

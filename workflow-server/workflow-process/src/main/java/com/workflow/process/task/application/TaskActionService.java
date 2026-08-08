@@ -554,11 +554,6 @@ public class TaskActionService {
             String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
             String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
-                entityRecordPort.markProcessEnded(
-                        entityCode,
-                        entityDataId,
-                        "WITHDRAWN",
-                        "WITHDRAWN");
                 entityRecordPort.recordActivity(
                         entityCode,
                         entityDataId,

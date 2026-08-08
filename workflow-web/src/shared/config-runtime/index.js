@@ -1,4 +1,5 @@
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+const RUNTIME_REGEX_MAX_LENGTH = 500
 
 export function safeParseConfig(value, fallback = {}) {
   if (!value) return cloneValue(fallback)
@@ -81,6 +82,71 @@ export function getFieldModeAccess(field, mode = 'view') {
   }
 }
 
+export function resolveRuntimeNodeFieldRules(field = {}, nodeRulesValue = {}) {
+  const nodeRules = safeParseConfig(nodeRulesValue)
+  const fieldValidation = safeParseConfig(field.validationRules)
+  const nodeValidation = safeParseConfig(nodeRules.validation)
+  const fieldExtension = safeParseConfig(field.extensionConfig)
+  const nodeExtension = safeParseConfig(nodeRules.extension)
+  const fieldModes = safeParseConfig(fieldExtension.modes)
+  const nodeModes = safeParseConfig(nodeExtension.modes)
+  const modes = {
+    ...fieldModes,
+    ...Object.fromEntries(
+      Object.entries(nodeModes).map(([mode, access]) => [
+        mode,
+        {
+          ...safeParseConfig(fieldModes[mode]),
+          ...safeParseConfig(access)
+        }
+      ])
+    )
+  }
+  return {
+    validationRules: {
+      ...fieldValidation,
+      ...nodeValidation
+    },
+    extensionConfig: {
+      ...fieldExtension,
+      ...nodeExtension,
+      ...(Object.keys(modes).length ? { modes } : {})
+    }
+  }
+}
+
+export function resolveTextFieldMaxLength(field = {}, componentPropsValue = {}) {
+  const validation = safeParseConfig(
+    field?.validationRules ?? field?.validateRules
+  )
+  const componentProps = safeParseConfig(componentPropsValue)
+  const candidates = [
+    validation.maxLength,
+    componentProps.maxlength,
+    field?.fieldLength
+  ]
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null || candidate === '') continue
+    const normalized = Number(candidate)
+    if (Number.isFinite(normalized) && normalized >= 0) return normalized
+  }
+  return undefined
+}
+
+export function getRuntimeRegexPatternError(value) {
+  if (value === undefined || value === null || value === '') return ''
+  if (typeof value !== 'string') return '正则表达式必须是字符串'
+  if (value.length > RUNTIME_REGEX_MAX_LENGTH) {
+    return `正则表达式不能超过 ${RUNTIME_REGEX_MAX_LENGTH} 个字符`
+  }
+  try {
+    new RegExp(value)
+    return ''
+  } catch {
+    return '正则表达式语法不正确'
+  }
+}
+
 export function isFieldVisibleForMode(field, mode = 'view') {
   return getFieldModeAccess(field, mode).visible
 }
@@ -141,6 +207,33 @@ export function buildRuntimeFieldRules(field, required, label) {
       message: `${displayLabel}不是合法的${formatLabels[format]}`,
       trigger: 'blur'
     })
+  }
+  if (config.pattern !== undefined
+      && config.pattern !== null
+      && config.pattern !== '') {
+    const patternError = getRuntimeRegexPatternError(config.pattern)
+    if (patternError) {
+      rules.push({
+        validator: (_rule, _value, callback) => {
+          callback(new Error(`${displayLabel}的${patternError}`))
+        },
+        trigger: 'blur'
+      })
+    } else {
+      const pattern = new RegExp(config.pattern)
+      rules.push({
+        validator: (_rule, value, callback) => {
+          if (value === '' || value === null || value === undefined) {
+            return callback()
+          }
+          pattern.lastIndex = 0
+          return pattern.test(String(value))
+            ? callback()
+            : callback(new Error(`${displayLabel}格式不符合正则要求`))
+        },
+        trigger: 'blur'
+      })
+    }
   }
   return rules
 }

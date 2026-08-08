@@ -147,6 +147,7 @@ public class EntityFieldDefinitionService {
         existingField.setRefFieldCode(firstText(
                 fieldDTO.getChildRefFieldCode(),
                 fieldDTO.getRefFieldCode()));
+        existingField.setRefListKey(fieldDTO.getRefListKey());
         fieldMapper.updateById(existingField);
         synchronizeFieldOptions(existingField, fieldDTO);
         fileItemService.saveFileItems(
@@ -377,6 +378,7 @@ public class EntityFieldDefinitionService {
         dto.setRefEntityType(
                 referenceType == null ? null : referenceType.name());
         dto.setRefFieldCode(field.getRefFieldCode());
+        dto.setRefListKey(field.getRefListKey());
         if (field.getFieldType() == EntityField.FieldType.FILE
                 || field.getFieldType() == EntityField.FieldType.IMAGE) {
             dto.setFileItems(fileItemService.findByFieldId(field.getId()));
@@ -464,14 +466,13 @@ public class EntityFieldDefinitionService {
         field.setRefFieldCode(firstText(
                 dto.getChildRefFieldCode(),
                 dto.getRefFieldCode()));
+        field.setRefListKey(dto.getRefListKey());
         return field;
     }
 
     private boolean isRelationField(EntityFieldDTO dto) {
         return dto != null
-                && (dto.getFieldType() == EntityField.FieldType.SUB_FORM
-                || dto.getFieldType()
-                == EntityField.FieldType.SUB_FORM_LIST);
+                && dto.getFieldType() == EntityField.FieldType.SUB_FORM;
     }
 
     private EntityRelation.RelationType resolveRelationType(

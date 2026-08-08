@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * 实体表单节点属性与规则的规范化、校验策略。
@@ -42,10 +44,12 @@ final class EntityFormNodePropertyPolicy {
             "INTEGER", "LONG", "DECIMAL", "DOUBLE");
     private static final Set<String> FORMAT_VALIDATION_FIELD_TYPES = Set.of(
             "STRING", "TEXT");
+    private static final Set<String> PATTERN_VALIDATION_FIELD_TYPES = Set.of(
+            "STRING", "TEXT");
     private static final Set<String> VALID_FORMATS = Set.of(
             "EMAIL", "PHONE", "URL");
     private static final Set<String> STRUCTURED_VALIDATION_KEYS = Set.of(
-            "minLength", "maxLength", "min", "max", "format");
+            "minLength", "maxLength", "min", "max", "format", "pattern");
     private static final Map<String, Set<String>>
             BUILT_IN_COMPONENT_FIELD_TYPES = Map.ofEntries(
                     Map.entry("input", Set.of("STRING")),
@@ -79,7 +83,10 @@ final class EntityFormNodePropertyPolicy {
                                     "ROLE", "GROUP")),
                     Map.entry(
                             "multi_reference",
-                            Set.of("MULTI_REFERENCE")));
+                            Set.of("MULTI_REFERENCE")),
+                    Map.entry(
+                            "sub_list",
+                            Set.of("SUB_LIST")));
 
     private static final Set<String> COMMON_CONTAINER_PROPS =
             Set.of("label");
@@ -267,6 +274,12 @@ final class EntityFormNodePropertyPolicy {
                 fieldType,
                 "format",
                 FORMAT_VALIDATION_FIELD_TYPES);
+        moveUnsupportedValidation(
+                validation,
+                inactiveValidation,
+                fieldType,
+                "pattern",
+                PATTERN_VALIDATION_FIELD_TYPES);
         validateValidationValues(validation);
         if (wrappedValidation) {
             if (validation.isEmpty()) {
@@ -620,6 +633,24 @@ final class EntityFormNodePropertyPolicy {
                             + " 不兼容字段类型 "
                             + fieldType);
         }
+        if ("sub_list".equals(componentType)) {
+            validateSubListConfig(props);
+        }
+    }
+
+    private static void validateSubListConfig(Map<String, Object> props) {
+        Map<String, Object> componentProps =
+                objectMap(props.get("componentProps"));
+        Map<String, Object> config =
+                objectMap(componentProps.get("subListConfig"));
+        requireText(config, "targetEntityId", 64);
+        requireText(config, "targetEntityCode", 100);
+        requireText(config, "listKey", 100);
+        requireBoolean(config, "showSearch");
+        requireBoolean(config, "showPagination");
+        requireBoolean(config, "showRowActions");
+        requireIntegerRange(config, "pageSize", 1, 200);
+        requireIntegerRange(config, "maxHeight", 120, 2000);
     }
 
     private static void validateSubFormProps(
@@ -628,10 +659,8 @@ final class EntityFormNodePropertyPolicy {
         requireText(props, "fieldCode", 200);
         requireText(props, "fieldName", 500);
         requireIntegerRange(props, "gridSpan", 1, 24);
-        String expectedFieldType = "REPEATER".equals(nodeType)
-                ? "SUB_FORM_LIST" : "SUB_FORM";
-        String expectedComponentType = "REPEATER".equals(nodeType)
-                ? "sub_form_list" : "sub_form";
+        String expectedFieldType = "SUB_FORM";
+        String expectedComponentType = "sub_form";
         if (props.containsKey("fieldType")
                 && !expectedFieldType.equals(
                         normalize(text(props.get("fieldType"))))) {
@@ -681,6 +710,17 @@ final class EntityFormNodePropertyPolicy {
         requireNumber(validation, "min");
         requireNumber(validation, "max");
         requireEnum(validation, "format", VALID_FORMATS);
+        requireText(validation, "pattern", 500);
+        if (validation.get("pattern") instanceof String pattern
+                && !pattern.isEmpty()) {
+            try {
+                Pattern.compile(pattern);
+            } catch (PatternSyntaxException exception) {
+                throw new IllegalArgumentException(
+                        "pattern 正则表达式语法不正确",
+                        exception);
+            }
+        }
         Integer minLength = integerValue(validation.get("minLength"));
         Integer maxLength = integerValue(validation.get("maxLength"));
         if (minLength != null

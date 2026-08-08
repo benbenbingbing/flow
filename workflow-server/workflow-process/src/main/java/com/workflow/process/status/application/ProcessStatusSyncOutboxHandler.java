@@ -56,6 +56,7 @@ public class ProcessStatusSyncOutboxHandler
                     payload.processInstanceId(),
                     payload.fallbackStatus()) == 1) {
                 entityRecordPort.markProcessEnded(
+                        payload.processInstanceId(),
                         payload.entityCode(),
                         payload.entityRecordId(),
                         payload.statusCategory(),

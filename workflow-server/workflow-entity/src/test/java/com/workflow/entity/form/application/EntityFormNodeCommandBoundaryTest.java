@@ -306,8 +306,58 @@ class EntityFormNodeCommandBoundaryTest {
                 Map.of(
                         "fieldId", "details-field",
                         "fieldCode", "details",
-                        "fieldType", "SUB_FORM_LIST",
-                        "componentType", "sub_form_list"),
+                        "fieldType", "SUB_FORM",
+                        "componentType", "sub_form"),
+                "测试字段属性"));
+        EntityFormNode repaired = copy(current);
+        repaired.setBindingType("RELATION");
+        repaired.setBindingRef("details_relation");
+
+        when(fixture.nodeMapper().findByFormId("form-1"))
+                .thenReturn(List.of(current));
+        when(fixture.nodeMapper().selectById(current.getId()))
+                .thenReturn(current);
+        when(fixture.nodeMapper().update(isNull(), any()))
+                .thenReturn(1);
+
+        assertDoesNotThrow(() ->
+                fixture.service().replaceByDiff(
+                        "form-1", List.of(repaired), 3));
+        verify(fixture.nodeMapper()).update(isNull(), any());
+    }
+
+    /**
+     * 验证历史 NONE 子表单节点也可在整包保存时恢复为其字段对应的关系绑定。
+     */
+    @Test
+    void userWholePackageRepairsLegacyRepeaterNoneBinding() {
+        Fixture fixture = fixture();
+        EntityForm currentForm = form("form-1", "entity-1", 3);
+        when(fixture.formMapper().selectByIdForUpdate("form-1"))
+                .thenReturn(currentForm);
+        EntityRelation relation = relation(
+                "details_relation",
+                "entity-2",
+                EntityRelation.RelationType.ONE_TO_MANY);
+        relation.setParentFieldId("details-field");
+        relation.setParentFieldCode("details");
+        when(fixture.relationMapper().selectActiveByBindingRef(
+                "entity-1", "details_relation"))
+                .thenReturn(relation);
+
+        EntityFormNode current = node(
+                "details-1",
+                "REPEATER",
+                "NONE",
+                null,
+                null,
+                1);
+        current.setPropsDocument(fixture.codec().write(
+                Map.of(
+                        "fieldId", "details-field",
+                        "fieldCode", "details",
+                        "fieldType", "SUB_FORM",
+                        "componentType", "sub_form"),
                 "测试字段属性"));
         EntityFormNode repaired = copy(current);
         repaired.setBindingType("RELATION");

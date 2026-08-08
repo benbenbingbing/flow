@@ -131,6 +131,10 @@ public class EntityFormField {
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refFieldCode;
 
+    /** 子列表或实体引用默认列表编码（非数据库字段，从 entity_field 补充） */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String refListKey;
+
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationCode;
 

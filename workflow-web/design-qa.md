@@ -93,7 +93,65 @@ final result: blocked
 
 final result: passed
 
----
+# 表单字段长度与字数显示配置归位验收
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-b53e7eb6-aa3c-4d11-9b46-ca0381221526.png`
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-bfb69e08-833f-43f8-b358-393c1f19256e.png`
+- Implementation screenshots:
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-node-validation-after.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-node-extension-after.png`
+- Comparison evidence:
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-node-validation-comparison.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-node-extension-comparison.png`
+- Validation viewport and implementation pixels: `962 x 2048`, density `1`.
+- Extension viewport and implementation pixels: `948 x 1318`, density `1`.
+- Source pixels: validation `962 x 2048`; extension `948 x 1318`.
+- State: authenticated `form001` designer, field `联系邮箱` selected, node property drawer open.
+
+## Findings
+
+- No actionable P0/P1/P2 differences remain.
+- `显示字数` now appears in `状态与校验 > 校验规则`, directly after `最大长度`.
+- `复用与扩展` no longer exposes the duplicate `最大长度` or `显示字数` component parameters.
+- Fonts and typography retain the existing Element Plus/system styles and established field-label sizing.
+- Spacing and layout rhythm are unchanged except for the requested relocation of the switch.
+- Colors, borders, switches, number inputs, and section tokens continue using the existing product theme.
+- The affected regions contain no image assets and introduce no replacement graphics.
+- Copy and information hierarchy now give maximum length a single configuration location and place its related word-count display option alongside it.
+- The red rectangles in the source screenshots are request annotations and are intentionally absent from the implementation.
+
+## Compatibility And Runtime Verification
+
+- Published and legacy `componentProps.maxlength` values remain readable as a compatibility fallback.
+- The validation rule `maxLength` has precedence over the legacy component parameter and entity field length.
+- Entity field length remains the final fallback when neither form-level value exists.
+- `showWordLimit` remains in the existing component configuration model, so current drafts and published snapshots do not require migration.
+- Text input and textarea both use the shared maximum-length resolver.
+
+## Interaction Verification
+
+- Selected a text input field and opened `状态与校验`.
+- Expanded `校验规则` and confirmed the order: `最小长度`、`最大长度`、`显示字数`、`格式`.
+- Opened `复用与扩展` and confirmed only node-extension and template-lock controls remain.
+- No form setting was changed or saved during visual verification.
+- Browser console errors after the verified interactions: `0`.
+
+## Automated Verification
+
+- `npm run test:unit`: passed.
+- `npm run test:page-config`: passed.
+- `npm run build`: passed.
+- `./start.sh start`: passed; backend and frontend started successfully.
+- `git diff --check`: passed for the scoped files.
+
+## Comparison History
+
+- Pass 1: full-view and focused comparisons found no actionable P0/P1/P2 issue, so no visual correction iteration was required.
+
+final result: passed
 
 # 表单节点父容器归并基础属性验收
 
@@ -947,5 +1005,56 @@ final result: passed
 - [x] Add `节` as the first menu item.
 - [x] Reuse the existing `SECTION_TITLE` creation behavior.
 - [x] Preserve all existing container-node menu actions.
+
+final result: passed
+
+---
+
+# 表单正则校验配置验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-a055720b-98a9-4f4f-a568-7f53b51d0eb1.png`
+- Clean implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-regex-validation-after.jpg`
+- Invalid-expression screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-regex-validation-error.jpg`
+- Focused same-input comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/form-regex-validation-comparison.jpg`
+- Viewport: `1280 x 720` CSS pixels at density `1`.
+- Source pixels: `844 x 1504`; implementation pixels: `1280 x 720`.
+- Normalization: source crop `(60, 646, 806, 1172)` and implementation crop `(840, 170, 1260, 463)` were normalized to `746 x 526` before side-by-side comparison.
+- State: authenticated `form001` designer, `联系邮箱` selected, `状态与校验` active, and `校验规则` expanded.
+
+## Findings
+
+- No actionable P0/P1/P2 difference remains.
+- Typography continues to use the existing Element Plus/system font stack and established form sizing.
+- The new `正则` row follows `格式` inside the existing validation card without overlap, clipping, or layout shift.
+- Colors, borders, help-icon states, and validation-error feedback reuse the existing design tokens.
+- The target region contains no image assets; the standard help icon is reused.
+- Copy explains that the input is the raw expression body, `/` wrappers are not used, `^` and `$` enable whole-value matching, and format plus regex rules must both pass.
+
+## Interaction And Runtime Verification
+
+- The rendered label includes a help button with accessible name `查看正则配置说明`.
+- Entering `[unclosed` immediately shows `正则表达式语法不正确` and marks the input invalid.
+- Clearing the value removes the error and does not count an empty regex as a configured rule.
+- No draft save or publish action was executed during browser verification.
+- Custom regex is available only for `STRING` and `TEXT`, is limited to 500 characters, and is checked by both frontend and backend configuration policies.
+- Runtime validation skips empty values, preserves required-field semantics, and runs the compiled expression on blur.
+- Browser application console errors: `0`. A separate host telemetry timeout was observed and is unrelated to the application.
+
+## Automated Verification
+
+- `npm run test:unit`: passed.
+- `npm run test:form-node-schema`: passed.
+- `npm run test:integration`: passed.
+- `npm run build`: passed.
+- Targeted Maven tests for node property policy and form configuration validation: passed.
+- Focused regex UI static audit: passed.
+- `npm run test:page-config` remains blocked by the pre-existing unrelated assertion `平台系统表只读列表不得显示数据版本入口`.
+
+## Comparison History
+
+- Pass 1: the source and implementation comparison showed the new row fitting the existing card with consistent spacing and no P0/P1/P2 issue.
+- Invalid-state pass: malformed syntax produced immediate inline feedback without moving or obscuring adjacent controls.
 
 final result: passed

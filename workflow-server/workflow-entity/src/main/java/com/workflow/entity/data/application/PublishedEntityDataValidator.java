@@ -42,7 +42,7 @@ final class PublishedEntityDataValidator {
 
     private static boolean isRelationField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SUB_FORM
-                || field.getFieldType() == EntityField.FieldType.SUB_FORM_LIST;
+                || field.getFieldType() == EntityField.FieldType.SUB_LIST;
     }
 
     private static boolean isBlank(Object value) {

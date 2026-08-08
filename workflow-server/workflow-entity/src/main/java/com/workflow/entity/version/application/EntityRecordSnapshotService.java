@@ -94,6 +94,10 @@ public class EntityRecordSnapshotService {
                         ? List.of()
                         : published.getFields();
         for (EntityField field : publishedFields) {
+            if (field.getFieldType()
+                    == EntityField.FieldType.SUB_LIST) {
+                continue;
+            }
             Map<String, Object> item =
                     captureBusinessField(field, customData);
             if (isRelation(field)) {
@@ -166,7 +170,7 @@ public class EntityRecordSnapshotService {
             Map<String, Object> customData) {
         Object value = customData.get(field.getFieldCode());
         String group = switch (field.getFieldType()) {
-            case SUB_FORM, SUB_FORM_LIST -> "SUBFORM";
+            case SUB_FORM -> "SUBFORM";
             case REFERENCE, MULTI_REFERENCE -> "RELATION";
             default -> "BUSINESS";
         };
@@ -366,8 +370,7 @@ public class EntityRecordSnapshotService {
 
     private boolean isRelation(EntityField field) {
         return switch (field.getFieldType()) {
-            case REFERENCE, MULTI_REFERENCE,
-                    SUB_FORM, SUB_FORM_LIST -> true;
+            case REFERENCE, MULTI_REFERENCE, SUB_FORM -> true;
             default -> false;
         };
     }

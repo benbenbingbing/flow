@@ -1,15 +1,13 @@
 package com.workflow.listener;
 
+import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
-
-import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.engine.HistoryService;
+import org.flowable.engine.delegate.event.FlowableCancelledEvent;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.history.HistoricProcessInstanceQuery;
@@ -56,7 +54,7 @@ class ProcessEndListenerTest {
     @Test
     void processCompletionPublishesDurableEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        EntityRecordPort entityRecordPort = mock(EntityRecordPort.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
                 mock(ObjectProvider.class);
@@ -88,12 +86,18 @@ class ProcessEndListenerTest {
         ProcessEndListener listener =
                 new ProcessEndListener(
                         historyService,
-                        mutationPort,
+                        entityRecordPort,
                         changeTargetPortProvider,
                         publisher);
 
         listener.onEvent(event);
 
+        verify(entityRecordPort).markProcessEnded(
+                "process-1",
+                "expense",
+                "record-1",
+                "COMPLETED",
+                "APPROVED");
         verify(publisher).publishProcessEnd(
                 "process-1",
                 "expense",
@@ -101,6 +105,60 @@ class ProcessEndListenerTest {
                 "COMPLETED",
                 "APPROVED");
         assertTrue(listener.isFailOnException());
+    }
+
+    @Test
+    void processCancellationPublishesWithdrawnEndEvent() {
+        HistoryService historyService = mock(HistoryService.class);
+        EntityRecordPort entityRecordPort = mock(EntityRecordPort.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
+                mock(ObjectProvider.class);
+        ProcessStatusSyncPublisher publisher =
+                mock(ProcessStatusSyncPublisher.class);
+        HistoricVariableInstanceQuery entityCodeQuery =
+                variableQuery("expense");
+        HistoricVariableInstanceQuery entityIdQuery =
+                variableQuery("record-1");
+        when(historyService.createHistoricVariableInstanceQuery())
+                .thenReturn(entityCodeQuery, entityIdQuery);
+        HistoricProcessInstanceQuery processQuery =
+                mock(HistoricProcessInstanceQuery.class);
+        HistoricProcessInstance historic =
+                mock(HistoricProcessInstance.class);
+        when(historyService.createHistoricProcessInstanceQuery())
+                .thenReturn(processQuery);
+        when(processQuery.processInstanceId("process-1"))
+                .thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(historic);
+
+        FlowableCancelledEvent event =
+                mock(FlowableCancelledEvent.class);
+        when(event.getType())
+                .thenReturn(FlowableEngineEventType.PROCESS_CANCELLED);
+        when(event.getProcessInstanceId()).thenReturn("process-1");
+        when(event.getCause()).thenReturn("发起人撤回: 测试撤回");
+        ProcessEndListener listener =
+                new ProcessEndListener(
+                        historyService,
+                        entityRecordPort,
+                        changeTargetPortProvider,
+                        publisher);
+
+        listener.onEvent(event);
+
+        verify(entityRecordPort).markProcessEnded(
+                "process-1",
+                "expense",
+                "record-1",
+                "WITHDRAWN",
+                "WITHDRAWN");
+        verify(publisher).publishProcessEnd(
+                "process-1",
+                "expense",
+                "record-1",
+                "WITHDRAWN",
+                "WITHDRAWN");
     }
 
     private HistoricVariableInstanceQuery variableQuery(Object value) {

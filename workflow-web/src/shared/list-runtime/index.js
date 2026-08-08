@@ -27,6 +27,58 @@ export function toRuntimeFieldKey(fieldCode = '') {
   return String(fieldCode).replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase())
 }
 
+export function toListFilterFieldCode(filterKey = '') {
+  const key = String(filterKey)
+  for (const suffix of ['_start', '_end', '_op']) {
+    if (key.endsWith(suffix)) {
+      return key.slice(0, -suffix.length)
+    }
+  }
+  return key
+}
+
+function hasFilterValue(value) {
+  return value !== '' && value !== null && value !== undefined
+}
+
+export function buildListRequestFilters(
+  queryForm = {},
+  queryFields = [],
+  fixedFilters = {}
+) {
+  const fields = queryFields || []
+  const allowedFieldCodes = new Set(
+    fields
+      .map(field => String(field?.fieldCode || '').trim())
+      .filter(Boolean)
+  )
+  const params = {}
+
+  Object.entries(queryForm || {}).forEach(([key, value]) => {
+    if (!allowedFieldCodes.has(toListFilterFieldCode(key))) return
+    if (hasFilterValue(value)) {
+      params[key] = value
+    }
+  })
+
+  fields.forEach(field => {
+    const code = String(field?.fieldCode || '').trim()
+    if (!code || !field?.queryType) return
+    const hasConfiguredValue = [code, `${code}_start`, `${code}_end`]
+      .some(key => params[key] !== undefined)
+    if (hasConfiguredValue) {
+      params[`${code}_op`] = field.queryType
+    }
+  })
+
+  Object.entries(fixedFilters || {}).forEach(([key, value]) => {
+    if (hasFilterValue(value)) {
+      params[key] = value
+    }
+  })
+  return params
+}
+
 function getContainerValue(container, fieldCode) {
   if (!container || typeof container !== 'object') return undefined
   if (fieldCode in container) return container[fieldCode]
@@ -75,6 +127,25 @@ function normalizeMultipleValue(value) {
   return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
+const REFERENCE_FIELD_TYPES = Object.freeze([
+  'REFERENCE',
+  'MULTI_REFERENCE',
+  'DEPT',
+  'USER',
+  'ROLE',
+  'GROUP',
+  'MENU',
+  'DICT',
+  'DICT_ITEM'
+])
+
+export function isReferenceListField(field = {}) {
+  const fieldType = String(field.fieldType || '').toUpperCase()
+  const refEntityType = String(field.refEntityType || '').toUpperCase()
+  return REFERENCE_FIELD_TYPES.includes(fieldType)
+    || REFERENCE_FIELD_TYPES.includes(refEntityType)
+}
+
 export function formatListFieldValue(
   row,
   field,
@@ -103,17 +174,7 @@ export function formatListFieldValue(
   const componentType = field.componentType || ''
 
   // 实体引用字段（含 DEPT/USER/ROLE/GROUP 等系统实体和自定义引用）
-  if ([
-    'REFERENCE',
-    'MULTI_REFERENCE',
-    'DEPT',
-    'USER',
-    'ROLE',
-    'GROUP',
-    'MENU',
-    'DICT',
-    'DICT_ITEM'
-  ].includes(String(field.refEntityType || fieldType).toUpperCase())) {
+  if (isReferenceListField(field)) {
     const entityType = field.refEntityType || field.fieldType || 'CUSTOM'
     const refEntityId = field.refEntityId || ''
     const groupKey = `${entityType}:${refEntityId}`
@@ -170,10 +231,11 @@ export function formatListFieldValue(
     return names.join(', ') || '-'
   }
 
-  // 子表单
-  if (['SUB_FORM', 'SUB_FORM_LIST'].includes(fieldType)) {
+  // 子表单数据由父表单聚合保存；子列表是独立列表展示，不读取父记录字段值。
+  if (fieldType === 'SUB_FORM') {
     return Array.isArray(value) && value.length > 0 ? `${value.length} 行` : '-'
   }
+  if (fieldType === 'SUB_LIST') return '-'
 
   // 普通系统字段兜底（无特殊转换的）
   if (isSystemField(fieldCode)) {

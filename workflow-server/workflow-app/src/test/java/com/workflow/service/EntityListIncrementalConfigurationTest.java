@@ -18,11 +18,18 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListFiel
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListSceneMapper;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -161,6 +168,8 @@ class EntityListIncrementalConfigurationTest {
                         actionMapper,
                         sceneMapper,
                         configMapper,
+                        mock(com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper.class),
+                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
                         null);
         EntityListActionSaveRequest request = new EntityListActionSaveRequest();
         request.setPosition("TOOLBAR");
@@ -173,5 +182,75 @@ class EntityListIncrementalConfigurationTest {
 
         assertEquals(9, saved.getSortOrder());
         assertEquals(10_000_000L, saved.getOrderKey());
+    }
+
+    @Test
+    void actionTargetFormMustBelongToListEntityAndBePublished() {
+        EntityListActionMapper actionMapper =
+                mock(EntityListActionMapper.class);
+        EntityListConfigMapper configMapper =
+                mock(EntityListConfigMapper.class);
+        EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        UiConfigReleaseMapper releaseMapper =
+                mock(UiConfigReleaseMapper.class);
+        JsonDocumentCodec codec =
+                new JsonDocumentCodec(new ObjectMapper());
+        EntityListConfig config = new EntityListConfig();
+        config.setId("list-1");
+        config.setEntityId("entity-1");
+        when(configMapper.selectById("list-1"))
+                .thenReturn(config);
+        when(actionMapper.findByListAndPosition(
+                "list-1",
+                "ROW"))
+                .thenReturn(List.of());
+
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        form.setStatus(1);
+        form.setActiveReleaseId("release-1");
+        when(formMapper.selectById("form-1")).thenReturn(form);
+        UiConfigRelease release = new UiConfigRelease();
+        release.setId("release-1");
+        release.setConfigType("FORM");
+        release.setConfigId("form-1");
+        release.setVersion(3);
+        when(releaseMapper.findActive("FORM", "form-1"))
+                .thenReturn(release);
+
+        EntityListRelationalConfigService service =
+                new EntityListRelationalConfigService(
+                        actionMapper,
+                        mock(EntityListSceneMapper.class),
+                        configMapper,
+                        formMapper,
+                        releaseMapper,
+                        codec);
+        EntityListActionSaveRequest request =
+                new EntityListActionSaveRequest();
+        request.setPosition("ROW");
+        request.setButtonKey("view");
+        request.setButtonType("built-in");
+        request.setButtonLabel("查看");
+        request.setActionParams(Map.of(
+                "targetFormId",
+                "form-1",
+                "targetFormReleaseId",
+                "client-release"));
+
+        EntityListAction saved =
+                service.createAction("list-1", request);
+        Map<String, Object> savedParams = codec.readObject(
+                saved.getActionParamsDocument(),
+                "test");
+        assertEquals("form-1", savedParams.get("targetFormId"));
+        assertTrue(!savedParams.containsKey("targetFormReleaseId"));
+
+        form.setEntityId("entity-2");
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createAction("list-1", request));
+        assertTrue(error.getMessage().contains("当前列表实体"));
     }
 }
