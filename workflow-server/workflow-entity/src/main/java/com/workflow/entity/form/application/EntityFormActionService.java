@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessCatalogPort;
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
@@ -23,6 +24,7 @@ import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -40,6 +42,7 @@ import java.util.Set;
  * 表单按钮的约定默认值、发布快照解析与运行时鉴权。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EntityFormActionService {
 
@@ -68,6 +71,17 @@ public class EntityFormActionService {
      */
     public List<FormActionRuntimeDTO> resolve(
             FormActionResolveRequest request) {
+        log.info(
+                "开始解析表单操作栏: formId={}, releaseId={}, releaseVersion={}, tokenPresent={}, mode={}, entityCode={}, recordId={}, listKey={}",
+                LogValue.safe(request.getFormId()),
+                LogValue.safe(request.getReleaseId()),
+                request.getReleaseVersion(),
+                StringUtils.hasText(
+                        request.getReleaseResolutionToken()),
+                LogValue.safe(request.getMode()),
+                LogValue.safe(request.getEntityCode()),
+                LogValue.safe(request.getRecordId()),
+                LogValue.safe(request.getListKey()));
         RuntimeSource source = loadSource(
                 request.getFormId(),
                 request.getReleaseId(),
@@ -97,6 +111,14 @@ public class EntityFormActionService {
                             mode),
                     EntityActionCapabilityDTO.allowed(),
                     false));
+            log.info(
+                    "表单操作栏解析完成: formId={}, entityCode={}, mode={}, buttonCount={}, visibleCount={}, enabledCount={}, systemEntity=true",
+                    LogValue.safe(source.form().getId()),
+                    LogValue.safe(definition.getEntityCode()),
+                    LogValue.safe(mode),
+                    result.size(),
+                    visibleCount(result),
+                    enabledCount(result));
             return result;
         }
 
@@ -149,6 +171,14 @@ public class EntityFormActionService {
         result.sort(Comparator.comparingInt(
                 item -> item.getSort() == null
                         ? 0 : item.getSort()));
+        log.info(
+                "表单操作栏解析完成: formId={}, entityCode={}, mode={}, buttonCount={}, visibleCount={}, enabledCount={}, systemEntity=false",
+                LogValue.safe(source.form().getId()),
+                LogValue.safe(definition.getEntityCode()),
+                LogValue.safe(mode),
+                result.size(),
+                visibleCount(result),
+                enabledCount(result));
         return result;
     }
 
@@ -196,6 +226,14 @@ public class EntityFormActionService {
                 text(button.get("perm")),
                 readRule(button),
                 row);
+        log.info(
+                "自定义表单按钮鉴权通过: formId={}, entityCode={}, buttonKey={}, mode={}, recordId={}, listKey={}",
+                LogValue.safe(source.form().getId()),
+                LogValue.safe(definition.getEntityCode()),
+                LogValue.safe(buttonKey),
+                LogValue.safe(mode),
+                LogValue.safe(request.getRecordId()),
+                LogValue.safe(request.getListKey()));
     }
 
     private RuntimeSource loadSource(
@@ -225,17 +263,41 @@ public class EntityFormActionService {
             EntityForm runtimeForm = objectMapper.convertValue(
                     snapshot.get("form"),
                     EntityForm.class);
+            log.info(
+                    "表单操作栏使用发布快照: formId={}, requestedReleaseId={}, requestedVersion={}, resolvedReleaseId={}, resolvedVersion={}, effectiveReleaseId={}, hotfixApplied={}",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    releaseVersion,
+                    LogValue.safe(resolved.releaseId()),
+                    resolved.releaseVersion(),
+                    LogValue.safe(resolved.effectiveReleaseId()),
+                    resolved.hotfixApplied());
             return new RuntimeSource(
                     runtimeForm,
                     readViewConfig(runtimeForm.getViewConfig()),
                     snapshotNodes(snapshot),
                     snapshotBindings(snapshot));
         }
+        log.info(
+                "表单操作栏使用草稿配置: formId={}, reason=NO_PUBLISHED_CONTEXT",
+                LogValue.safe(formId));
         return new RuntimeSource(
                 form,
                 readViewConfig(form.getViewConfig()),
                 formNodeMapper.findByFormId(formId),
                 List.of());
+    }
+
+    private long visibleCount(List<FormActionRuntimeDTO> actions) {
+        return actions.stream()
+                .filter(FormActionRuntimeDTO::isVisible)
+                .count();
+    }
+
+    private long enabledCount(List<FormActionRuntimeDTO> actions) {
+        return actions.stream()
+                .filter(FormActionRuntimeDTO::isEnabled)
+                .count();
     }
 
     private EntityDefinition requireDefinition(EntityForm form) {

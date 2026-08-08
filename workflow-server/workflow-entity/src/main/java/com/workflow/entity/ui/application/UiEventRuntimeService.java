@@ -75,6 +75,36 @@ public class UiEventRuntimeService {
                     result,
                     null,
                     startedAt);
+            log.info(
+                    "UI事件执行完成: configType={}, configId={}, releaseId={}, releaseVersion={}, eventCode={}, targetType={}, targetKey={}, recordId={}, defaultExecuted={}, replaced={}, traceCount={}, durationMs={}",
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getConfigType()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getConfigId()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getReleaseId()),
+                    request == null
+                            ? null : request.getReleaseVersion(),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getEventCode()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getTargetType()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getTargetKey()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getRecordId()),
+                    result.isDefaultExecuted(),
+                    result.isReplaced(),
+                    result.getTrace() == null
+                            ? 0 : result.getTrace().size(),
+                    (System.nanoTime() - startedAt) / 1_000_000);
             return result;
         } catch (RuntimeException exception) {
             recordExecution(
@@ -82,6 +112,33 @@ public class UiEventRuntimeService {
                     null,
                     exception,
                     startedAt);
+            log.info(
+                    "UI事件执行失败: configType={}, configId={}, releaseId={}, releaseVersion={}, eventCode={}, targetType={}, targetKey={}, recordId={}, failureType={}, durationMs={}",
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getConfigType()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getConfigId()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getReleaseId()),
+                    request == null
+                            ? null : request.getReleaseVersion(),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getEventCode()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getTargetType()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getTargetKey()),
+                    LogValue.safe(
+                            request == null
+                                    ? null : request.getRecordId()),
+                    LogValue.failureType(exception),
+                    (System.nanoTime() - startedAt) / 1_000_000);
             throw exception;
         }
     }

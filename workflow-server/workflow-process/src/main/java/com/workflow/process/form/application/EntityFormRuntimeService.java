@@ -1,6 +1,7 @@
 package com.workflow.process.form.application;
 
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -11,6 +12,7 @@ import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +25,7 @@ import java.util.Objects;
  * 供审批办理、详情展示等场景获取实际生效的表单配置。</p>
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EntityFormRuntimeService {
 
@@ -75,8 +78,20 @@ public class EntityFormRuntimeService {
             String processVersionHistoryId,
             UiRuntimePurpose purpose) {
         if (nodeForm == null || nodeForm.getFormId() == null) {
+            log.info(
+                    "流程节点表单运行时解析跳过: historyId={}, purpose={}, reason=EMPTY_BINDING",
+                    LogValue.safe(processVersionHistoryId),
+                    LogValue.safe(purpose));
             return null;
         }
+        log.info(
+                "开始解析流程节点表单运行时: formId={}, pinnedReleaseId={}, pinnedVersion={}, historyId={}, nodeId={}, purpose={}",
+                LogValue.safe(nodeForm.getFormId()),
+                LogValue.safe(nodeForm.getFormReleaseId()),
+                nodeForm.getFormReleaseVersion(),
+                LogValue.safe(processVersionHistoryId),
+                LogValue.safe(nodeForm.getNodeId()),
+                LogValue.safe(purpose));
         UiRuntimeResolutionContext context =
                 new UiRuntimeResolutionContext(
                         purpose,
@@ -104,6 +119,17 @@ public class EntityFormRuntimeService {
                             resolved.releaseVersion(),
                             0));
         }
+        log.info(
+                "流程节点表单运行时解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, historyId={}, nodeId={}, purpose={}, formPresent={}",
+                LogValue.safe(nodeForm.getFormId()),
+                LogValue.safe(resolved.releaseId()),
+                resolved.releaseVersion(),
+                LogValue.safe(resolved.effectiveReleaseId()),
+                resolved.hotfixApplied(),
+                LogValue.safe(processVersionHistoryId),
+                LogValue.safe(nodeForm.getNodeId()),
+                LogValue.safe(purpose),
+                form != null);
         return resolved;
     }
 
@@ -135,6 +161,12 @@ public class EntityFormRuntimeService {
                 UiConfigReleaseService.FORM,
                 nodeForm.getFormId());
         if (active == null) {
+            log.info(
+                    "新增流程数据节点表单校验失败: formId={}, pinnedReleaseId={}, pinnedVersion={}, historyId={}, reason=NO_ACTIVE_RELEASE",
+                    LogValue.safe(nodeForm.getFormId()),
+                    LogValue.safe(nodeForm.getFormReleaseId()),
+                    nodeForm.getFormReleaseVersion(),
+                    LogValue.safe(processVersionHistoryId));
             throw new BusinessConflictException(
                     "PROCESS_NODE_FORM_NOT_PUBLISHED",
                     "流程节点表单当前没有激活发布版本，请先发布表单并重新发布流程");
@@ -150,10 +182,26 @@ public class EntityFormRuntimeService {
                         nodeForm.getFormReleaseVersion(),
                         processVersionHistoryId,
                         active.getId())) {
+            log.info(
+                    "新增流程数据节点表单校验失败: formId={}, pinnedReleaseId={}, pinnedVersion={}, activeReleaseId={}, activeVersion={}, historyId={}, reason=STALE_BINDING",
+                    LogValue.safe(nodeForm.getFormId()),
+                    LogValue.safe(nodeForm.getFormReleaseId()),
+                    nodeForm.getFormReleaseVersion(),
+                    LogValue.safe(active.getId()),
+                    active.getVersion(),
+                    LogValue.safe(processVersionHistoryId));
             throw new BusinessConflictException(
                     "PROCESS_FORM_RELEASE_STALE",
                     "流程节点表单已发布新版本，请重新发布流程后再新增数据");
         }
+        log.info(
+                "新增流程数据节点表单校验通过: formId={}, pinnedReleaseId={}, pinnedVersion={}, activeReleaseId={}, activeVersion={}, historyId={}",
+                LogValue.safe(nodeForm.getFormId()),
+                LogValue.safe(nodeForm.getFormReleaseId()),
+                nodeForm.getFormReleaseVersion(),
+                LogValue.safe(active.getId()),
+                active.getVersion(),
+                LogValue.safe(processVersionHistoryId));
     }
 
     /**

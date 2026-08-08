@@ -3,9 +3,11 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -21,6 +23,7 @@ import java.util.Base64;
  * 嵌套表单发布解析上下文的短期签名令牌。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class UiReleaseResolutionTokenService {
 
@@ -45,6 +48,14 @@ public class UiReleaseResolutionTokenService {
                 || parentReleaseVersion == null
                 || depth < 0
                 || depth >= MAX_DEPTH) {
+            log.info(
+                    "跳过表单发布解析令牌签发: purpose={}, formId={}, releaseId={}, releaseVersion={}, depth={}, reason=INVALID_CONTEXT",
+                    LogValue.safe(
+                            context == null ? null : context.purpose()),
+                    LogValue.safe(parentFormId),
+                    LogValue.safe(parentReleaseId),
+                    parentReleaseVersion,
+                    depth);
             return null;
         }
         long now = Instant.now().getEpochSecond();
@@ -63,7 +74,19 @@ public class UiReleaseResolutionTokenService {
             String payload = Base64.getUrlEncoder()
                     .withoutPadding()
                     .encodeToString(objectMapper.writeValueAsBytes(claims));
-            return payload + "." + sign(payload);
+            String token = payload + "." + sign(payload);
+            log.info(
+                    "表单发布解析令牌签发完成: purpose={}, formId={}, releaseId={}, releaseVersion={}, historyId={}, nodeId={}, depth={}, userId={}, expiresAt={}",
+                    LogValue.safe(context.purpose()),
+                    LogValue.safe(parentFormId),
+                    LogValue.safe(parentReleaseId),
+                    parentReleaseVersion,
+                    LogValue.safe(context.processVersionHistoryId()),
+                    LogValue.safe(context.nodeId()),
+                    depth,
+                    LogValue.safe(UserContext.getUserId()),
+                    now + TOKEN_TTL_SECONDS);
+            return token;
         } catch (Exception exception) {
             throw new IllegalStateException(
                     "表单发布解析令牌签发失败",
@@ -101,6 +124,17 @@ public class UiReleaseResolutionTokenService {
                             UserContext.getUserId())) {
                 throw forbidden("表单发布解析令牌不属于当前用户");
             }
+            log.info(
+                    "表单发布解析令牌校验通过: purpose={}, formId={}, releaseId={}, releaseVersion={}, historyId={}, nodeId={}, depth={}, userId={}, expiresAt={}",
+                    LogValue.safe(claims.purpose()),
+                    LogValue.safe(claims.parentFormId()),
+                    LogValue.safe(claims.parentReleaseId()),
+                    claims.parentReleaseVersion(),
+                    LogValue.safe(claims.processVersionHistoryId()),
+                    LogValue.safe(claims.nodeId()),
+                    claims.depth(),
+                    LogValue.safe(claims.userId()),
+                    claims.expiresAt());
             return claims;
         } catch (BusinessForbiddenException exception) {
             throw exception;
@@ -121,6 +155,9 @@ public class UiReleaseResolutionTokenService {
     }
 
     private BusinessForbiddenException forbidden(String message) {
+        log.info(
+                "表单发布解析令牌校验失败: reason={}",
+                LogValue.safe(message));
         return new BusinessForbiddenException(
                 "INVALID_RELEASE_RESOLUTION_TOKEN",
                 message);

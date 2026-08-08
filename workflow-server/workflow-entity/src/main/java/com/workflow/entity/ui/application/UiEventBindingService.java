@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -21,6 +22,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMa
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -40,6 +42,7 @@ import java.util.Set;
  * 统一 UI 事件绑定目录与继承解析服务。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class UiEventBindingService {
 
@@ -285,6 +288,17 @@ public class UiEventBindingService {
     public ResolvedEventChain resolvePublished(
             UiEventExecuteRequest request) {
         String configType = normalize(request.getConfigType());
+        log.info(
+                "开始解析UI事件链: configType={}, configId={}, releaseId={}, releaseVersion={}, tokenPresent={}, eventCode={}, targetType={}, targetKey={}",
+                LogValue.safe(configType),
+                LogValue.safe(request.getConfigId()),
+                LogValue.safe(request.getReleaseId()),
+                request.getReleaseVersion(),
+                StringUtils.hasText(
+                        request.getReleaseResolutionToken()),
+                LogValue.safe(request.getEventCode()),
+                LogValue.safe(request.getTargetType()),
+                LogValue.safe(request.getTargetKey()));
         if (!Set.of("FORM", "LIST").contains(configType)
                 || !StringUtils.hasText(request.getConfigId())) {
             throw new IllegalArgumentException(
@@ -301,21 +315,38 @@ public class UiEventBindingService {
             ConfigIdentity identity = identity(
                     configType,
                     request.getConfigId());
-            return resolve(
+            ResolvedEventChain chain = resolve(
                     mapList(snapshot.get("eventBindings")),
                     identity,
                     request,
                     resolved.releaseId(),
                     resolved.releaseVersion(),
                     snapshot);
+            logResolvedChain(request, chain, "FORM_RELEASE");
+            return chain;
         }
         UiConfigRelease release = releaseMapper.findActive(
                 configType, request.getConfigId());
         if (release == null) {
-            return emptyChain(configType, request);
+            ResolvedEventChain chain =
+                    emptyChain(configType, request);
+            logResolvedChain(
+                    request,
+                    chain,
+                    "NO_ACTIVE_RELEASE");
+            return chain;
         }
         if (StringUtils.hasText(request.getReleaseId())
                 && !Objects.equals(request.getReleaseId(), release.getId())) {
+            log.info(
+                    "UI事件链版本冲突: configType={}, configId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, eventCode={}, reason=RELEASE_ID_MISMATCH",
+                    LogValue.safe(configType),
+                    LogValue.safe(request.getConfigId()),
+                    LogValue.safe(request.getReleaseId()),
+                    LogValue.safe(release.getId()),
+                    request.getReleaseVersion(),
+                    release.getVersion(),
+                    LogValue.safe(request.getEventCode()));
             throw new BusinessConflictException(
                     "UI_EVENT_RELEASE_CONFLICT",
                     "页面配置版本已过期，请刷新后重试");
@@ -324,6 +355,15 @@ public class UiEventBindingService {
                 && !Objects.equals(
                         request.getReleaseVersion(),
                         release.getVersion())) {
+            log.info(
+                    "UI事件链版本冲突: configType={}, configId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, eventCode={}, reason=RELEASE_VERSION_MISMATCH",
+                    LogValue.safe(configType),
+                    LogValue.safe(request.getConfigId()),
+                    LogValue.safe(request.getReleaseId()),
+                    LogValue.safe(release.getId()),
+                    request.getReleaseVersion(),
+                    release.getVersion(),
+                    LogValue.safe(request.getEventCode()));
             throw new BusinessConflictException(
                     "UI_EVENT_RELEASE_CONFLICT",
                     "页面配置版本已过期，请刷新后重试");
@@ -335,13 +375,49 @@ public class UiEventBindingService {
         ConfigIdentity identity = identity(
                 configType,
                 request.getConfigId());
-        return resolve(
+        ResolvedEventChain chain = resolve(
                 bindings,
                 identity,
                 request,
                 release.getId(),
                 release.getVersion(),
                 snapshot);
+        logResolvedChain(request, chain, "ACTIVE_RELEASE");
+        return chain;
+    }
+
+    private void logResolvedChain(
+            UiEventExecuteRequest request,
+            ResolvedEventChain chain,
+            String source) {
+        long beforeCount = chain.steps().stream()
+                .filter(step -> "BEFORE".equals(
+                        normalize(text(step.get("strategy")))))
+                .count();
+        long replaceCount = chain.steps().stream()
+                .filter(step -> "REPLACE".equals(
+                        normalize(text(step.get("strategy")))))
+                .count();
+        long afterCount = chain.steps().stream()
+                .filter(step -> "AFTER".equals(
+                        normalize(text(step.get("strategy")))))
+                .count();
+        log.info(
+                "UI事件链解析完成: configType={}, configId={}, releaseId={}, releaseVersion={}, eventCode={}, targetType={}, targetKey={}, stepCount={}, beforeCount={}, replaceCount={}, afterCount={}, entityCode={}, listKey={}, source={}",
+                LogValue.safe(request.getConfigType()),
+                LogValue.safe(request.getConfigId()),
+                LogValue.safe(chain.releaseId()),
+                chain.releaseVersion(),
+                LogValue.safe(request.getEventCode()),
+                LogValue.safe(request.getTargetType()),
+                LogValue.safe(request.getTargetKey()),
+                chain.steps().size(),
+                beforeCount,
+                replaceCount,
+                afterCount,
+                LogValue.safe(chain.entityCode()),
+                LogValue.safe(chain.listKey()),
+                LogValue.safe(source));
     }
 
     private ResolvedEventChain emptyChain(

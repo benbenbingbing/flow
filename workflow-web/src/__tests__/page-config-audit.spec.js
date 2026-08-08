@@ -222,14 +222,19 @@ assert.match(
   /const handleCreate = async[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*await formDialogRef\.value\?\.openCreate\(\{[\s\S]*initialData:[\s\S]*parameters:[\s\S]*context:/,
   '新增实体数据前应重新加载最新发布表单，并等待子组件 props 更新后再打开弹窗'
 )
+assert.match(
+  entityDataList,
+  /const handleEdit = async[\s\S]*button\?\.targetFormId[\s\S]*loadRuntimeButtonForm\(button, 'ROW'\)[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*openEdit\(row, \{ form \}\)/,
+  '编辑实体数据时，未显式指定表单的按钮应重新加载最新发布表单，避免嵌入子列表沿用过期 release'
+)
 assert.ok(
   entityDataList.includes("getFormForNewData(entityCode.value, { silentError: true })")
     && entityDataList.includes("ElMessage.error(e?.message || '加载最新发布表单失败，请稍后重试')"),
   '最新发布表单加载失败时不得继续打开旧缓存表单'
 )
 assert.ok(
-  entityDataFormDialog.includes('新增数据 - ${props.defaultForm.formName}')
-    && entityDataFormDialog.includes('props.defaultForm.formKey'),
+  entityDataFormDialog.includes('新增数据 - ${runtimeForm.value.formName}')
+    && entityDataFormDialog.includes('runtimeForm.value.formKey'),
   '新增实体数据弹窗应明确展示实际运行时表单名称和标识'
 )
 assert.ok(

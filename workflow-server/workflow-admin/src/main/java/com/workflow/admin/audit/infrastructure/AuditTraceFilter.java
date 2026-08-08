@@ -1,10 +1,12 @@
 package com.workflow.admin.audit.infrastructure;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.web.CorrelationContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -18,6 +20,7 @@ import java.io.IOException;
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
+@Slf4j
 public class AuditTraceFilter extends OncePerRequestFilter {
 
     public static final String TRACE_ID_HEADER =
@@ -37,9 +40,29 @@ public class AuditTraceFilter extends OncePerRequestFilter {
         MDC.put(CorrelationContext.REQUEST_ID_MDC_KEY, requestId);
         response.setHeader(TRACE_ID_HEADER, traceId);
         response.setHeader(CorrelationContext.REQUEST_ID_HEADER, requestId);
+        long startedAt = System.nanoTime();
+        Throwable failure = null;
         try {
             filterChain.doFilter(request, response);
+        } catch (ServletException | IOException | RuntimeException exception) {
+            failure = exception;
+            throw exception;
         } finally {
+            int responseStatus = response.getStatus();
+            int loggedStatus = failure != null && responseStatus < 400
+                    ? HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                    : responseStatus;
+            log.info(
+                    "HTTP请求完成: traceId={}, requestId={}, method={}, path={}, status={}, durationMs={}, failureType={}",
+                    LogValue.safe(traceId),
+                    LogValue.safe(requestId),
+                    LogValue.safe(request.getMethod()),
+                    LogValue.safe(request.getRequestURI()),
+                    loggedStatus,
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                    failure == null
+                            ? "NONE"
+                            : LogValue.failureType(failure));
             MDC.remove(TRACE_ID_MDC_KEY);
             MDC.remove(CorrelationContext.BUSINESS_TRACE_MDC_KEY);
             MDC.remove(CorrelationContext.REQUEST_ID_MDC_KEY);

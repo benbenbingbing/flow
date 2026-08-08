@@ -59,16 +59,32 @@ public class EntityFormResolveService {
      * 才回退到最新流程发布快照中首个用户任务绑定的表单。</p>
      */
     public Map<String, Object> resolveFormForNewData(String entityCode) {
+        log.info(
+                "开始解析新增数据表单: entityCode={}",
+                LogValue.safe(entityCode));
         EntityFormRuntimeContext context =
                 entityFormRuntimePort.findContext(entityCode).orElse(null);
         if (context == null) {
-            log.debug("未找到实体定义[{}]", LogValue.safe(entityCode));
+            log.info(
+                    "新增数据表单解析无结果: entityCode={}, reason=ENTITY_NOT_FOUND",
+                    LogValue.safe(entityCode));
             return null;
         }
         if (context.defaultForm() != null) {
+            log.info(
+                    "新增数据表单解析完成: entityCode={}, entityId={}, source=DEFAULT_FORM, formId={}",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(context.entityId()),
+                    LogValue.safe(context.defaultForm().get("id")));
             return context.defaultForm();
         }
         if (context.processDefinitionId() == null || !context.workflowEnabled()) {
+            log.info(
+                    "新增数据表单解析无结果: entityCode={}, entityId={}, workflowEnabled={}, processDefinitionId={}, reason=NO_DEFAULT_OR_WORKFLOW",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(context.entityId()),
+                    context.workflowEnabled(),
+                    LogValue.safe(context.processDefinitionId()));
             return null;
         }
 
@@ -76,6 +92,11 @@ public class EntityFormResolveService {
                 processDefinitionConfigMapper.selectById(
                         context.processDefinitionId());
         if (processConfig == null) {
+            log.info(
+                    "新增数据表单解析无结果: entityCode={}, entityId={}, processDefinitionId={}, reason=PROCESS_CONFIG_NOT_FOUND",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(context.entityId()),
+                    LogValue.safe(context.processDefinitionId()));
             return null;
         }
 
@@ -87,13 +108,21 @@ public class EntityFormResolveService {
                 firstUserTaskId,
                 UiRuntimePurpose.NEW_INSTANCE);
         if (nodeForm != null) {
-            log.debug(
-                    "实体未配置默认表单，新增数据回退使用首节点表单: processConfigId={}, nodeId={}, formId={}",
-                    processConfig.getId(),
-                    firstUserTaskId,
-                    nodeForm.get("id"));
+            log.info(
+                    "新增数据表单解析完成: entityCode={}, entityId={}, processConfigId={}, nodeId={}, formId={}, source=FIRST_PROCESS_NODE",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(context.entityId()),
+                    LogValue.safe(processConfig.getId()),
+                    LogValue.safe(firstUserTaskId),
+                    LogValue.safe(nodeForm.get("id")));
             return nodeForm;
         }
+        log.info(
+                "新增数据表单解析无结果: entityCode={}, entityId={}, processConfigId={}, nodeId={}, reason=NODE_FORM_NOT_FOUND",
+                LogValue.safe(entityCode),
+                LogValue.safe(context.entityId()),
+                LogValue.safe(processConfig.getId()),
+                LogValue.safe(firstUserTaskId));
         return null;
     }
 
@@ -105,13 +134,28 @@ public class EntityFormResolveService {
     public Map<String, Object> resolveFormForViewData(
             String entityCode,
             String entityDataId) {
+        log.info(
+                "开始解析查看数据表单: entityCode={}, recordId={}",
+                LogValue.safe(entityCode),
+                LogValue.safe(entityDataId));
         EntityFormRuntimeContext context =
                 entityFormRuntimePort.findContext(entityCode).orElse(null);
         if (context == null) {
-            log.debug("未找到实体定义[{}]", LogValue.safe(entityCode));
+            log.info(
+                    "查看数据表单解析无结果: entityCode={}, recordId={}, reason=ENTITY_NOT_FOUND",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(entityDataId));
             return null;
         }
         if (!context.workflowEnabled()) {
+            log.info(
+                    "查看数据表单解析完成: entityCode={}, recordId={}, formId={}, source=DEFAULT_FORM_NON_WORKFLOW",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(entityDataId),
+                    LogValue.safe(
+                            context.defaultForm() == null
+                                    ? null
+                                    : context.defaultForm().get("id")));
             return context.defaultForm();
         }
 
@@ -131,6 +175,14 @@ public class EntityFormResolveService {
                                     java.util.Comparator.naturalOrder())))
                     .orElse(null);
             if (historicInstance == null) {
+                log.info(
+                        "查看数据表单回退默认表单: entityCode={}, recordId={}, formId={}, reason=PROCESS_INSTANCE_NOT_FOUND",
+                        LogValue.safe(entityCode),
+                        LogValue.safe(entityDataId),
+                        LogValue.safe(
+                                context.defaultForm() == null
+                                        ? null
+                                        : context.defaultForm().get("id")));
                 return context.defaultForm();
             }
             HistoricTaskInstance historicTask = historyService
@@ -146,6 +198,15 @@ public class EntityFormResolveService {
                                     java.util.Comparator.naturalOrder())))
                     .orElse(null);
             if (historicTask == null) {
+                log.info(
+                        "查看数据表单回退默认表单: entityCode={}, recordId={}, processInstanceId={}, formId={}, reason=HISTORIC_TASK_NOT_FOUND",
+                        LogValue.safe(entityCode),
+                        LogValue.safe(entityDataId),
+                        LogValue.safe(historicInstance.getId()),
+                        LogValue.safe(
+                                context.defaultForm() == null
+                                        ? null
+                                        : context.defaultForm().get("id")));
                 return context.defaultForm();
             }
             Map<String, Object> nodeForm = getNodeBoundEntityForm(
@@ -153,6 +214,21 @@ public class EntityFormResolveService {
                     historicInstance.getProcessDefinitionId(),
                     historicTask.getTaskDefinitionKey(),
                     UiRuntimePurpose.HISTORICAL);
+            log.info(
+                    "查看数据表单解析完成: entityCode={}, recordId={}, processInstanceId={}, nodeId={}, formId={}, source={}",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(entityDataId),
+                    LogValue.safe(historicInstance.getId()),
+                    LogValue.safe(historicTask.getTaskDefinitionKey()),
+                    LogValue.safe(
+                            nodeForm == null
+                                    ? context.defaultForm() == null
+                                            ? null
+                                            : context.defaultForm().get("id")
+                                    : nodeForm.get("id")),
+                    nodeForm == null
+                            ? "DEFAULT_FORM"
+                            : "HISTORICAL_PROCESS_NODE");
             return nodeForm != null ? nodeForm : context.defaultForm();
         }
 
@@ -161,6 +237,15 @@ public class EntityFormResolveService {
                 .active()
                 .singleResult();
         if (currentTask == null) {
+            log.info(
+                    "查看数据表单回退默认表单: entityCode={}, recordId={}, processInstanceId={}, formId={}, reason=ACTIVE_TASK_NOT_FOUND",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(entityDataId),
+                    LogValue.safe(processInstance.getId()),
+                    LogValue.safe(
+                            context.defaultForm() == null
+                                    ? null
+                                    : context.defaultForm().get("id")));
             return context.defaultForm();
         }
 
@@ -169,6 +254,21 @@ public class EntityFormResolveService {
                 processInstance.getProcessDefinitionId(),
                 currentTask.getTaskDefinitionKey(),
                 UiRuntimePurpose.ACTIVE_TASK);
+        log.info(
+                "查看数据表单解析完成: entityCode={}, recordId={}, processInstanceId={}, nodeId={}, formId={}, source={}",
+                LogValue.safe(entityCode),
+                LogValue.safe(entityDataId),
+                LogValue.safe(processInstance.getId()),
+                LogValue.safe(currentTask.getTaskDefinitionKey()),
+                LogValue.safe(
+                        nodeForm == null
+                                ? context.defaultForm() == null
+                                        ? null
+                                        : context.defaultForm().get("id")
+                                : nodeForm.get("id")),
+                nodeForm == null
+                        ? "DEFAULT_FORM"
+                        : "ACTIVE_PROCESS_NODE");
         return nodeForm != null ? nodeForm : context.defaultForm();
     }
 
@@ -280,6 +380,16 @@ public class EntityFormResolveService {
 
         List<ProcessNodeForm> nodeForms = published.nodeForms();
         if (nodeForms == null || nodeForms.isEmpty()) {
+            log.info(
+                    "流程节点未绑定表单: processKey={}, processDefinitionId={}, historyId={}, nodeId={}, purpose={}",
+                    LogValue.safe(processKey),
+                    LogValue.safe(processDefinitionId),
+                    LogValue.safe(
+                            published.history() == null
+                                    ? null
+                                    : published.history().getId()),
+                    LogValue.safe(nodeId),
+                    LogValue.safe(purpose));
             return null;
         }
         EntityFormBinding binding = toBinding(nodeForms.get(0));
@@ -289,10 +399,24 @@ public class EntityFormResolveService {
                     binding,
                     processVersionHistoryId);
         }
-        return entityFormRuntimePort.findFormByBinding(
+        Map<String, Object> result =
+                entityFormRuntimePort.findFormByBinding(
                 binding,
                 processVersionHistoryId,
                 purpose);
+        log.info(
+                "流程节点表单解析完成: processKey={}, processDefinitionId={}, historyId={}, nodeId={}, boundFormId={}, pinnedReleaseId={}, pinnedVersion={}, resolvedFormId={}, purpose={}",
+                LogValue.safe(processKey),
+                LogValue.safe(processDefinitionId),
+                LogValue.safe(processVersionHistoryId),
+                LogValue.safe(nodeId),
+                LogValue.safe(binding.formId()),
+                LogValue.safe(binding.formReleaseId()),
+                binding.formReleaseVersion(),
+                LogValue.safe(
+                        result == null ? null : result.get("id")),
+                LogValue.safe(purpose));
+        return result;
     }
 
     private EntityFormBinding toBinding(ProcessNodeForm binding) {

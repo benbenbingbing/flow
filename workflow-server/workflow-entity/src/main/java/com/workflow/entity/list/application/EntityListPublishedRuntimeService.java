@@ -3,6 +3,7 @@ package com.workflow.entity.list.application;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
@@ -10,10 +11,12 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +27,7 @@ import java.util.Map;
  * 保证运行时与发布版本一致；无发布版本时回退到传入的草稿配置。</p>
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EntityListPublishedRuntimeService {
 
@@ -44,11 +48,21 @@ public class EntityListPublishedRuntimeService {
         UiConfigRelease active =
                 releaseService.active(UiConfigReleaseService.LIST, draft.getId());
         if (active == null) {
+            log.info(
+                    "列表运行时使用草稿配置: listId={}, listKey={}, reason=NO_ACTIVE_RELEASE",
+                    LogValue.safe(draft.getId()),
+                    LogValue.safe(draft.getListKey()));
             return draft;
         }
         EntityListConfigDTO snapshot =
                 releaseService.resolveRuntimeList(draft.getId());
         if (snapshot == null) {
+            log.info(
+                    "列表运行时回退草稿配置: listId={}, listKey={}, activeReleaseId={}, activeVersion={}, reason=EMPTY_RELEASE_SNAPSHOT",
+                    LogValue.safe(draft.getId()),
+                    LogValue.safe(draft.getListKey()),
+                    LogValue.safe(active.getId()),
+                    active.getVersion());
             return draft;
         }
         EntityListConfig config = new EntityListConfig();
@@ -64,6 +78,12 @@ public class EntityListPublishedRuntimeService {
         config.setActiveReleaseId(active.getId());
         config.setPublishedVersion(active.getVersion());
         config.setPublishedSnapshot(true);
+        log.info(
+                "列表运行时解析完成: listId={}, listKey={}, releaseId={}, releaseVersion={}, source=PUBLISHED",
+                LogValue.safe(config.getId()),
+                LogValue.safe(config.getListKey()),
+                LogValue.safe(active.getId()),
+                active.getVersion());
         return config;
     }
 
@@ -104,7 +124,10 @@ public class EntityListPublishedRuntimeService {
         List<Map<String, Object>> buttons =
                 snapshot == null || snapshot.getToolbarConfig() == null
                         ? fallback : snapshot.getToolbarConfig();
-        return authorizePinnedTargetForms(buttons);
+        return authorizePinnedTargetForms(
+                config.getId(),
+                "TOOLBAR",
+                buttons);
     }
 
     /**
@@ -125,7 +148,10 @@ public class EntityListPublishedRuntimeService {
         List<Map<String, Object>> buttons =
                 snapshot == null || snapshot.getRowActionConfig() == null
                         ? fallback : snapshot.getRowActionConfig();
-        return authorizePinnedTargetForms(buttons);
+        return authorizePinnedTargetForms(
+                config.getId(),
+                "ROW_ACTION",
+                buttons);
     }
 
     /**
@@ -152,40 +178,64 @@ public class EntityListPublishedRuntimeService {
     }
 
     private List<Map<String, Object>> authorizePinnedTargetForms(
+            String listId,
+            String buttonArea,
             List<Map<String, Object>> buttons) {
         if (buttons == null || buttons.isEmpty()) {
             return buttons == null ? List.of() : buttons;
         }
-        return buttons.stream()
-                .map(source -> {
-                    Map<String, Object> button =
-                            new java.util.LinkedHashMap<>(
-                                    source == null ? Map.of() : source);
-                    String formId = text(button.get("targetFormId"));
-                    String releaseId =
-                            text(button.get("targetFormReleaseId"));
-                    Integer releaseVersion =
-                            integer(button.get(
-                                    "targetFormReleaseVersion"));
-                    if (!StringUtils.hasText(formId)
-                            || !StringUtils.hasText(releaseId)
-                            || releaseVersion == null) {
-                        return button;
-                    }
-                    String token = resolutionTokenService.issue(
-                            UiRuntimeResolutionContext.standalone(),
-                            formId,
-                            releaseId,
-                            releaseVersion,
-                            0);
-                    if (StringUtils.hasText(token)) {
-                        button.put(
-                                "targetFormReleaseResolutionToken",
-                                token);
-                    }
-                    return button;
-                })
-                .toList();
+        List<Map<String, Object>> result =
+                new ArrayList<>(buttons.size());
+        int explicitFormCount = 0;
+        int authorizedCount = 0;
+        int incompleteCount = 0;
+        for (Map<String, Object> source : buttons) {
+            Map<String, Object> button =
+                    new java.util.LinkedHashMap<>(
+                            source == null ? Map.of() : source);
+            String formId = text(button.get("targetFormId"));
+            String releaseId =
+                    text(button.get("targetFormReleaseId"));
+            Integer releaseVersion =
+                    integer(button.get(
+                            "targetFormReleaseVersion"));
+            if (StringUtils.hasText(formId)) {
+                explicitFormCount++;
+            }
+            if (!StringUtils.hasText(formId)
+                    || !StringUtils.hasText(releaseId)
+                    || releaseVersion == null) {
+                if (StringUtils.hasText(formId)) {
+                    incompleteCount++;
+                }
+                result.add(button);
+                continue;
+            }
+            String token = resolutionTokenService.issue(
+                    UiRuntimeResolutionContext.standalone(),
+                    formId,
+                    releaseId,
+                    releaseVersion,
+                    0);
+            if (StringUtils.hasText(token)) {
+                button.put(
+                        "targetFormReleaseResolutionToken",
+                        token);
+                authorizedCount++;
+            }
+            result.add(button);
+        }
+        if (explicitFormCount > 0) {
+            log.info(
+                    "列表显式表单按钮授权完成: listId={}, area={}, buttonCount={}, explicitFormCount={}, authorizedCount={}, incompleteCount={}",
+                    LogValue.safe(listId),
+                    LogValue.safe(buttonArea),
+                    buttons.size(),
+                    explicitFormCount,
+                    authorizedCount,
+                    incompleteCount);
+        }
+        return List.copyOf(result);
     }
 
     private String text(Object value) {

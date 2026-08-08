@@ -253,10 +253,28 @@ public class UiConfigReleaseService {
             String releaseId,
             Integer expectedVersion,
             String releaseResolutionToken) {
+        log.info(
+                "开始解析表单运行时快照: formId={}, requestedReleaseId={}, requestedVersion={}, tokenPresent={}",
+                LogValue.safe(formId),
+                LogValue.safe(releaseId),
+                expectedVersion,
+                StringUtils.hasText(releaseResolutionToken));
         if (StringUtils.hasText(releaseResolutionToken)) {
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
                             releaseResolutionToken);
+            log.info(
+                    "使用签名上下文解析子表单: parentFormId={}, parentReleaseId={}, parentVersion={}, childFormId={}, childReleaseId={}, childVersion={}, purpose={}, historyId={}, nodeId={}, depth={}",
+                    LogValue.safe(claims.parentFormId()),
+                    LogValue.safe(claims.parentReleaseId()),
+                    claims.parentReleaseVersion(),
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    expectedVersion,
+                    LogValue.safe(claims.purpose()),
+                    LogValue.safe(claims.processVersionHistoryId()),
+                    LogValue.safe(claims.nodeId()),
+                    claims.depth());
             ResolvedEntityFormRelease parent =
                     resolveRuntimeFormRelease(
                             claims.parentFormId(),
@@ -268,6 +286,14 @@ public class UiConfigReleaseService {
                     formId,
                     releaseId,
                     expectedVersion)) {
+                log.info(
+                        "子表单发布引用校验失败: parentFormId={}, parentReleaseId={}, parentVersion={}, childFormId={}, childReleaseId={}, childVersion={}, reason=NOT_REFERENCED",
+                        LogValue.safe(claims.parentFormId()),
+                        LogValue.safe(parent.releaseId()),
+                        parent.releaseVersion(),
+                        LogValue.safe(formId),
+                        LogValue.safe(releaseId),
+                        expectedVersion);
                 throw new BusinessForbiddenException(
                         "CHILD_FORM_RELEASE_NOT_REFERENCED",
                         "请求的子表单发布版本不属于父表单有效快照");
@@ -289,6 +315,16 @@ public class UiConfigReleaseService {
                             child.releaseId(),
                             child.releaseVersion(),
                             claims.depth() + 1));
+            log.info(
+                    "子表单运行时快照解析完成: parentFormId={}, parentReleaseId={}, childFormId={}, childReleaseId={}, childVersion={}, effectiveReleaseId={}, hotfixApplied={}, depth={}",
+                    LogValue.safe(claims.parentFormId()),
+                    LogValue.safe(parent.releaseId()),
+                    LogValue.safe(formId),
+                    LogValue.safe(child.releaseId()),
+                    child.releaseVersion(),
+                    LogValue.safe(child.effectiveReleaseId()),
+                    child.hotfixApplied(),
+                    claims.depth() + 1);
             return result;
         }
         UiConfigRelease release = StringUtils.hasText(releaseId)
@@ -297,17 +333,46 @@ public class UiConfigReleaseService {
         if (release == null
                 || !FORM.equals(release.getConfigType())
                 || !Objects.equals(formId, release.getConfigId())) {
+            log.info(
+                    "表单运行时快照解析失败: formId={}, requestedReleaseId={}, requestedVersion={}, actualConfigType={}, actualConfigId={}, reason=RELEASE_NOT_FOUND",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    expectedVersion,
+                    LogValue.safe(
+                            release == null
+                                    ? null : release.getConfigType()),
+                    LogValue.safe(
+                            release == null
+                                    ? null : release.getConfigId()));
             throw new IllegalArgumentException("表单运行时发布版本不存在");
         }
         if (expectedVersion != null
                 && !Objects.equals(expectedVersion, release.getVersion())) {
+            log.info(
+                    "表单运行时快照解析失败: formId={}, releaseId={}, expectedVersion={}, actualVersion={}, reason=VERSION_MISMATCH",
+                    LogValue.safe(formId),
+                    LogValue.safe(release.getId()),
+                    expectedVersion,
+                    release.getVersion());
             throw new IllegalArgumentException("表单运行时发布版本号不一致");
         }
-        return runtimeReleaseResult(
+        ResolvedEntityFormRelease resolved =
                 resolvedRuntimeForm(
                         release,
-                        StringUtils.hasText(releaseId)),
+                        StringUtils.hasText(releaseId));
+        Map<String, Object> result = runtimeReleaseResult(
+                resolved,
                 verifiedSnapshot(release));
+        log.info(
+                "表单运行时快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, source={}",
+                LogValue.safe(formId),
+                LogValue.safe(resolved.releaseId()),
+                resolved.releaseVersion(),
+                LogValue.safe(resolved.effectiveReleaseId()),
+                resolved.hotfixApplied(),
+                StringUtils.hasText(releaseId)
+                        ? "PINNED" : "ACTIVE");
+        return result;
     }
 
     /**
@@ -321,6 +386,12 @@ public class UiConfigReleaseService {
             String releaseId,
             Integer expectedVersion,
             String releaseResolutionToken) {
+        log.info(
+                "开始解析表单事件快照: formId={}, requestedReleaseId={}, requestedVersion={}, tokenPresent={}",
+                LogValue.safe(formId),
+                LogValue.safe(releaseId),
+                expectedVersion,
+                StringUtils.hasText(releaseResolutionToken));
         if (StringUtils.hasText(releaseResolutionToken)) {
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
@@ -334,6 +405,14 @@ public class UiConfigReleaseService {
                     && !Objects.equals(
                             expectedVersion,
                             claims.parentReleaseVersion()))) {
+                log.info(
+                        "表单事件上下文校验失败: formId={}, requestedReleaseId={}, requestedVersion={}, tokenFormId={}, tokenReleaseId={}, tokenVersion={}, reason=CONTEXT_MISMATCH",
+                        LogValue.safe(formId),
+                        LogValue.safe(releaseId),
+                        expectedVersion,
+                        LogValue.safe(claims.parentFormId()),
+                        LogValue.safe(claims.parentReleaseId()),
+                        claims.parentReleaseVersion());
                 throw new BusinessForbiddenException(
                         "UI_EVENT_RELEASE_CONTEXT_MISMATCH",
                         "事件请求的表单发布版本与运行时上下文不一致");
@@ -365,6 +444,13 @@ public class UiConfigReleaseService {
                 }
                 snapshot = verifiedSnapshot(base);
             }
+            log.info(
+                    "表单事件快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, source=SIGNED_CONTEXT",
+                    LogValue.safe(formId),
+                    LogValue.safe(resolved.releaseId()),
+                    resolved.releaseVersion(),
+                    LogValue.safe(resolved.effectiveReleaseId()),
+                    resolved.hotfixApplied());
             return new ResolvedUiEventSnapshot(
                     snapshot,
                     resolved.releaseId(),
@@ -378,11 +464,23 @@ public class UiConfigReleaseService {
         if (release == null
                 || !FORM.equals(release.getConfigType())
                 || !Objects.equals(formId, release.getConfigId())) {
+            log.info(
+                    "表单事件快照解析失败: formId={}, requestedReleaseId={}, requestedVersion={}, reason=ACTIVE_RELEASE_NOT_FOUND",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    expectedVersion);
             throw new IllegalArgumentException(
                     "表单事件运行时发布版本不存在");
         }
         if (StringUtils.hasText(releaseId)
                 && !Objects.equals(releaseId, release.getId())) {
+            log.info(
+                    "表单事件快照版本冲突: formId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, reason=RELEASE_ID_MISMATCH",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    LogValue.safe(release.getId()),
+                    expectedVersion,
+                    release.getVersion());
             throw new BusinessConflictException(
                     "UI_EVENT_RELEASE_CONFLICT",
                     "页面配置版本已过期，请刷新后重试");
@@ -391,10 +489,23 @@ public class UiConfigReleaseService {
                 && !Objects.equals(
                         expectedVersion,
                         release.getVersion())) {
+            log.info(
+                    "表单事件快照版本冲突: formId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, reason=RELEASE_VERSION_MISMATCH",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    LogValue.safe(release.getId()),
+                    expectedVersion,
+                    release.getVersion());
             throw new BusinessConflictException(
                     "UI_EVENT_RELEASE_CONFLICT",
                     "页面配置版本已过期，请刷新后重试");
         }
+        log.info(
+                "表单事件快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied=false, source=ACTIVE",
+                LogValue.safe(formId),
+                LogValue.safe(release.getId()),
+                release.getVersion(),
+                LogValue.safe(release.getId()));
         return new ResolvedUiEventSnapshot(
                 verifiedSnapshot(release),
                 release.getId(),
@@ -1037,6 +1148,22 @@ public class UiConfigReleaseService {
             String configId,
             UiConfigPublishRequest request) {
         String releaseMode = releaseMode(request);
+        log.info(
+                "开始发布UI配置: configType={}, configId={}, releaseMode={}, expectedDraftHashPresent={}, expectedActiveReleaseId={}, impactTokenPresent={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(releaseMode),
+                request != null
+                        && StringUtils.hasText(
+                                request.getExpectedDraftHash()),
+                LogValue.safe(
+                        request == null
+                                ? null
+                                : request.getExpectedActiveReleaseId()),
+                request != null
+                        && StringUtils.hasText(
+                                request.getImpactToken()),
+                LogValue.safe(UserContext.getUserId()));
         if (HOTFIX.equals(releaseMode)) {
             return publishHotfix(configType, configId, request);
         }
@@ -1070,6 +1197,12 @@ public class UiConfigReleaseService {
                     active.getContentHash());
             recordSystemEntityUiAsset(
                     configType, configId, active, request);
+            log.info(
+                    "UI配置发布复用现有版本: configType={}, configId={}, releaseId={}, releaseVersion={}, releaseMode=STANDARD, reason=CONTENT_UNCHANGED",
+                    LogValue.safe(configType),
+                    LogValue.safe(configId),
+                    LogValue.safe(active.getId()),
+                    active.getVersion());
             return active;
         }
         List<UiConfigRelease> releases = releaseMapper.findReleases(configType, configId);
@@ -1104,6 +1237,16 @@ public class UiConfigReleaseService {
                         "contentHash", contentHash));
         recordSystemEntityUiAsset(
                 configType, configId, release, request);
+        log.info(
+                "UI配置标准发布完成: configType={}, configId={}, releaseId={}, releaseVersion={}, previousReleaseId={}, contentHash={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(release.getId()),
+                release.getVersion(),
+                LogValue.safe(
+                        active == null ? null : active.getId()),
+                LogValue.safe(contentHash),
+                LogValue.safe(UserContext.getUserId()));
         return release;
     }
 
@@ -1115,6 +1258,20 @@ public class UiConfigReleaseService {
         lockOwner(configType, configId);
         HotfixPreparation preparation =
                 prepareHotfix(configType, configId, request);
+        log.info(
+                "UI配置热发布预检完成: configType={}, configId={}, activeReleaseId={}, activeVersion={}, riskLevel={}, targetCount={}, processVersionCount={}, activeInstanceCount={}, canPublish={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(
+                        preparation.preview()
+                                .getActiveReleaseId()),
+                preparation.preview().getActiveVersion(),
+                LogValue.safe(
+                        preparation.preview().getRiskLevel()),
+                preparation.targets().size(),
+                preparation.preview().getProcessVersionCount(),
+                preparation.preview().getActiveInstanceCount(),
+                preparation.preview().isCanPublish());
         verifyExpectedState(
                 request,
                 preparation.preview().getDraftHash(),
@@ -1203,6 +1360,16 @@ public class UiConfigReleaseService {
                 preparation.preview().getRiskLevel(),
                 request.getDescription(),
                 auditDetail(preparation.preview()));
+        log.info(
+                "UI配置热发布完成: configType={}, configId={}, releaseId={}, releaseVersion={}, baseReleaseId={}, riskLevel={}, targetCount={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(release.getId()),
+                release.getVersion(),
+                LogValue.safe(release.getBaseReleaseId()),
+                LogValue.safe(release.getRiskLevel()),
+                preparation.targets().size(),
+                LogValue.safe(UserContext.getUserId()));
         return release;
     }
 
@@ -1724,6 +1891,13 @@ public class UiConfigReleaseService {
             String configId,
             String releaseId,
             String reason) {
+        log.info(
+                "开始撤回UI配置热发布: configType={}, configId={}, releaseId={}, reasonPresent={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(releaseId),
+                StringUtils.hasText(reason),
+                LogValue.safe(UserContext.getUserId()));
         configurationAccessService.requireHotfixAccess(false);
         lockOwner(configType, configId);
         UiConfigRelease release = releaseMapper.selectById(releaseId);
@@ -1819,6 +1993,15 @@ public class UiConfigReleaseService {
                 release.getRiskLevel(),
                 reason,
                 Map.of("targetCount", targets.size()));
+        log.info(
+                "UI配置热发布撤回完成: configType={}, configId={}, releaseId={}, baseReleaseId={}, targetCount={}, resultingStatus={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(releaseId),
+                LogValue.safe(release.getBaseReleaseId()),
+                targets.size(),
+                LogValue.safe(release.getStatus()),
+                LogValue.safe(UserContext.getUserId()));
         return release;
     }
 
@@ -1836,6 +2019,12 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             String releaseId) {
+        log.info(
+                "开始激活UI配置历史版本: configType={}, configId={}, releaseId={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(releaseId),
+                LogValue.safe(UserContext.getUserId()));
         lockOwner(configType, configId);
         UiConfigRelease release = releaseMapper.selectById(releaseId);
         if (release == null
@@ -1865,6 +2054,14 @@ public class UiConfigReleaseService {
         activateOnOwner(configType, configId, release, release.getContentHash());
         recordSystemEntityUiAsset(
                 configType, configId, release, null);
+        log.info(
+                "UI配置历史版本激活完成: configType={}, configId={}, releaseId={}, releaseVersion={}, contentHash={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(release.getId()),
+                release.getVersion(),
+                LogValue.safe(release.getContentHash()),
+                LogValue.safe(UserContext.getUserId()));
         return release;
     }
 
@@ -1955,12 +2152,22 @@ public class UiConfigReleaseService {
             String formId) {
         UiConfigRelease release = active(FORM, formId);
         if (release == null) {
+            log.info(
+                    "表单运行时使用草稿配置: formId={}, reason=NO_ACTIVE_RELEASE",
+                    LogValue.safe(formId));
             return new ResolvedEntityFormRelease(
                     formService.getById(formId),
                     null,
                     null);
         }
-        return resolvedRuntimeForm(release, false);
+        ResolvedEntityFormRelease resolved =
+                resolvedRuntimeForm(release, false);
+        log.info(
+                "表单运行时使用激活发布版本: formId={}, releaseId={}, releaseVersion={}",
+                LogValue.safe(formId),
+                LogValue.safe(resolved.releaseId()),
+                resolved.releaseVersion());
+        return resolved;
     }
 
     /**
@@ -2023,14 +2230,43 @@ public class UiConfigReleaseService {
         if (!StringUtils.hasText(releaseId)) {
             return resolveRuntimeFormRelease(formId);
         }
+        log.info(
+                "开始解析固定表单版本: formId={}, releaseId={}, expectedVersion={}, purpose={}, historyId={}, nodeId={}",
+                LogValue.safe(formId),
+                LogValue.safe(releaseId),
+                expectedVersion,
+                LogValue.safe(purpose),
+                LogValue.safe(
+                        context == null
+                                ? null
+                                : context.processVersionHistoryId()),
+                LogValue.safe(
+                        context == null ? null : context.nodeId()));
         UiConfigRelease release = releaseMapper.selectById(releaseId);
         if (release == null
                 || !FORM.equals(release.getConfigType())
                 || !Objects.equals(formId, release.getConfigId())) {
+            log.info(
+                    "固定表单版本解析失败: formId={}, releaseId={}, expectedVersion={}, actualConfigType={}, actualConfigId={}, reason=RELEASE_NOT_FOUND",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    expectedVersion,
+                    LogValue.safe(
+                            release == null
+                                    ? null : release.getConfigType()),
+                    LogValue.safe(
+                            release == null
+                                    ? null : release.getConfigId()));
             throw new IllegalArgumentException("表单发布版本不存在或不属于当前表单");
         }
         if (expectedVersion != null
                 && !Objects.equals(expectedVersion, release.getVersion())) {
+            log.info(
+                    "固定表单版本解析失败: formId={}, releaseId={}, expectedVersion={}, actualVersion={}, reason=VERSION_MISMATCH",
+                    LogValue.safe(formId),
+                    LogValue.safe(releaseId),
+                    expectedVersion,
+                    release.getVersion());
             throw new IllegalArgumentException("表单发布版本号与流程快照不一致");
         }
         if (Set.of(
@@ -2052,13 +2288,24 @@ public class UiConfigReleaseService {
                         || !Objects.equals(
                                 release.getVersion(),
                                 target.getPinnedReleaseVersion())) {
+                    log.info(
+                            "热修复表单版本解析失败: formId={}, historyId={}, targetId={}, requestedReleaseId={}, requestedVersion={}, targetPinnedReleaseId={}, targetPinnedVersion={}, reason=PINNED_RELEASE_MISMATCH",
+                            LogValue.safe(formId),
+                            LogValue.safe(
+                                    context.processVersionHistoryId()),
+                            LogValue.safe(target.getId()),
+                            LogValue.safe(release.getId()),
+                            release.getVersion(),
+                            LogValue.safe(target.getPinnedReleaseId()),
+                            target.getPinnedReleaseVersion());
                     throw new IllegalStateException(
                             "热修复目标与流程钉定表单版本不一致");
                 }
                 try {
                     Map<String, Object> snapshot =
                             verifiedEffectiveTargetSnapshot(target);
-                    return new ResolvedEntityFormRelease(
+                    ResolvedEntityFormRelease result =
+                            new ResolvedEntityFormRelease(
                             runtimeForm(snapshot),
                             release.getId(),
                             release.getVersion(),
@@ -2067,6 +2314,18 @@ public class UiConfigReleaseService {
                             target.getEffectiveContentHash(),
                             target.getId(),
                             purpose);
+                    log.info(
+                            "热修复表单版本解析完成: formId={}, pinnedReleaseId={}, pinnedVersion={}, effectiveReleaseId={}, hotfixTargetId={}, historyId={}, nodeId={}, purpose={}",
+                            LogValue.safe(formId),
+                            LogValue.safe(result.releaseId()),
+                            result.releaseVersion(),
+                            LogValue.safe(result.effectiveReleaseId()),
+                            LogValue.safe(target.getId()),
+                            LogValue.safe(
+                                    context.processVersionHistoryId()),
+                            LogValue.safe(context.nodeId()),
+                            LogValue.safe(purpose));
+                    return result;
                 } catch (RuntimeException exception) {
                     log.error(
                             "热修复运行时解析失败: "
@@ -2083,15 +2342,30 @@ public class UiConfigReleaseService {
         }
         ResolvedEntityFormRelease pinned =
                 resolvedRuntimeForm(release, true);
-        return new ResolvedEntityFormRelease(
-                pinned.form(),
-                pinned.releaseId(),
-                pinned.releaseVersion(),
-                true,
-                pinned.releaseId(),
-                release.getContentHash(),
-                null,
-                purpose);
+        ResolvedEntityFormRelease result =
+                new ResolvedEntityFormRelease(
+                        pinned.form(),
+                        pinned.releaseId(),
+                        pinned.releaseVersion(),
+                        true,
+                        pinned.releaseId(),
+                        release.getContentHash(),
+                        null,
+                        purpose);
+        log.info(
+                "固定表单版本解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied=false, purpose={}, historyId={}, nodeId={}",
+                LogValue.safe(formId),
+                LogValue.safe(result.releaseId()),
+                result.releaseVersion(),
+                LogValue.safe(result.effectiveReleaseId()),
+                LogValue.safe(purpose),
+                LogValue.safe(
+                        context == null
+                                ? null
+                                : context.processVersionHistoryId()),
+                LogValue.safe(
+                        context == null ? null : context.nodeId()));
+        return result;
     }
 
     private ResolvedEntityFormRelease resolvedRuntimeForm(

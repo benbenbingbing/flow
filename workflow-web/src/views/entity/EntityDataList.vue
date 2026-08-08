@@ -920,7 +920,14 @@ const handleCreate = async (button?: any) => {
 // 打开编辑弹窗
 const handleEdit = async (row: any, button?: any) => {
   try {
-    const form = await loadRuntimeButtonForm(button, 'ROW')
+    let form = null
+    if (button?.targetFormId) {
+      form = await loadRuntimeButtonForm(button, 'ROW')
+    } else {
+      const loaded = await loadDefaultForm(true)
+      if (!loaded) return
+      await nextTick()
+    }
     await formDialogRef.value?.openEdit(row, { form })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
