@@ -302,6 +302,18 @@ async function executeFormEvent(eventCode: string) {
   const result = await uiEventBindingApi.execute(eventCode, {
     configType: 'FORM',
     configId: String(runtimeForm.value.id),
+    releaseId:
+      runtimeForm.value.runtimeReleaseId
+      || runtimeForm.value.formReleaseId
+      || undefined,
+    releaseVersion:
+      runtimeForm.value.runtimeReleaseVersion
+      ?? runtimeForm.value.formReleaseVersion
+      ?? undefined,
+    releaseResolutionToken:
+      runtimeForm.value.releaseResolutionToken
+      || launchRuntimeContext.value?.releaseResolutionToken
+      || undefined,
     entityCode: props.entityCode,
     listKey: props.listKey,
     targetType: 'OWNER',

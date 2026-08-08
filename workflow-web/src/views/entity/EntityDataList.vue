@@ -892,7 +892,7 @@ const handleCreate = async (button?: any) => {
   try {
     let form = null
     if (button?.targetFormId) {
-      form = await loadExplicitListButtonForm(button)
+      form = await loadRuntimeButtonForm(button, 'TOOLBAR')
     } else {
       const loaded = await loadDefaultForm(true)
       if (!loaded) return
@@ -920,7 +920,7 @@ const handleCreate = async (button?: any) => {
 // 打开编辑弹窗
 const handleEdit = async (row: any, button?: any) => {
   try {
-    const form = await loadExplicitListButtonForm(button)
+    const form = await loadRuntimeButtonForm(button, 'ROW')
     await formDialogRef.value?.openEdit(row, { form })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
@@ -930,7 +930,7 @@ const handleEdit = async (row: any, button?: any) => {
 // 打开查看弹窗
 const handleView = async (row: any, button?: any) => {
   try {
-    const form = await loadExplicitListButtonForm(button)
+    const form = await loadRuntimeButtonForm(button, 'ROW')
     await approvalDialogRef.value?.openView(row, { form })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
@@ -940,11 +940,33 @@ const handleView = async (row: any, button?: any) => {
 // 打开审批弹窗
 const handleApprove = async (row: any, button?: any) => {
   try {
-    const form = await loadExplicitListButtonForm(button)
+    const form = await loadRuntimeButtonForm(button, 'ROW')
     await approvalDialogRef.value?.openApprove(row, { form })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
   }
+}
+
+async function loadRuntimeButtonForm(
+  button: any,
+  placement: 'TOOLBAR' | 'ROW'
+) {
+  if (!button?.targetFormId) {
+    return loadExplicitListButtonForm(button)
+  }
+  await loadListConfig()
+  const buttons = placement === 'TOOLBAR'
+    ? toolbarButtons.value
+    : rowActionButtons.value
+  const runtimeButton = buttons.find((candidate: any) =>
+    String(candidate?.key || '') === String(button?.key || '')
+    && String(candidate?.targetFormId || '')
+      === String(button?.targetFormId || '')
+  )
+  if (!runtimeButton) {
+    throw new Error('列表按钮运行时配置已更新，请刷新页面后重试')
+  }
+  return loadExplicitListButtonForm(runtimeButton)
 }
 
 const handleVersions = (row: any) => {

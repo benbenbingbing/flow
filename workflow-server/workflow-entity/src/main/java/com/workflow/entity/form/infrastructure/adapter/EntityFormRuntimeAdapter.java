@@ -53,7 +53,7 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
 
     @Override
     public Map<String, Object> findFormById(String formId) {
-        return toMap(releaseService.resolveRuntimeForm(formId));
+        return toMap(resolveStandaloneForm(formId));
     }
 
     @Override
@@ -129,7 +129,32 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
         EntityForm form = formMapper.selectDefaultByEntityId(entityId);
         return form == null
                 ? null
-                : releaseService.resolveRuntimeForm(form.getId());
+                : resolveStandaloneForm(form.getId());
+    }
+
+    private EntityForm resolveStandaloneForm(String formId) {
+        ResolvedEntityFormRelease resolved =
+                releaseService.resolveRuntimeFormRelease(formId);
+        EntityForm form = resolved.form();
+        if (form == null
+                || !StringUtils.hasText(resolved.releaseId())
+                || resolved.releaseVersion() == null) {
+            return form;
+        }
+        UiRuntimeResolutionContext context =
+                UiRuntimeResolutionContext.standalone();
+        form.setRuntimeReleaseId(resolved.releaseId());
+        form.setRuntimeReleaseVersion(resolved.releaseVersion());
+        form.setEffectiveReleaseId(resolved.effectiveReleaseId());
+        form.setHotfixApplied(resolved.hotfixApplied());
+        form.setReleaseResolutionToken(
+                resolutionTokenService.issue(
+                        context,
+                        form.getId(),
+                        resolved.releaseId(),
+                        resolved.releaseVersion(),
+                        0));
+        return form;
     }
 
     private Map<String, Object> toMap(EntityForm form) {

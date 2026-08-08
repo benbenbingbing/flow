@@ -7,7 +7,11 @@ export function hasExplicitListButtonForm(button) {
   return Boolean(button?.targetFormId)
 }
 
-export function normalizeRuntimeFormRelease(release, targetFormId) {
+export function normalizeRuntimeFormRelease(
+  release,
+  targetFormId,
+  releaseResolutionToken = null
+) {
   const snapshot = safeParseConfig(release?.snapshotDocument)
   const form = snapshot?.form
   if (!form || typeof form !== 'object') {
@@ -24,7 +28,10 @@ export function normalizeRuntimeFormRelease(release, targetFormId) {
     runtimeReleaseVersion: release.version,
     effectiveReleaseId: release.effectiveReleaseId || release.id,
     hotfixApplied: release.hotfixApplied === true,
-    releaseResolutionToken: release.releaseResolutionToken || null
+    releaseResolutionToken:
+      releaseResolutionToken
+      || release.releaseResolutionToken
+      || null
   }
 }
 
@@ -35,6 +42,11 @@ export async function loadExplicitListButtonForm(button) {
   const releaseVersion = Number(button.targetFormReleaseVersion)
   if (!releaseId || !Number.isInteger(releaseVersion) || releaseVersion <= 0) {
     throw new Error('按钮指定的表单未固定发布版本，请重新预检并发布列表')
+  }
+  const releaseResolutionToken =
+    button.targetFormReleaseResolutionToken || null
+  if (!releaseResolutionToken) {
+    throw new Error('列表按钮的表单发布授权已失效，请刷新列表后重试')
   }
   const cacheKey = `${formId}:${releaseId}:${releaseVersion}`
   if (!formReleaseCache.has(cacheKey)) {
@@ -48,6 +60,9 @@ export async function loadExplicitListButtonForm(button) {
         })
     )
   }
-  return formReleaseCache.get(cacheKey)
+  const form = await formReleaseCache.get(cacheKey)
+  return {
+    ...form,
+    releaseResolutionToken
+  }
 }
-

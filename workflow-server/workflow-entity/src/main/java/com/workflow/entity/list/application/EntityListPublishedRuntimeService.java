@@ -1,8 +1,10 @@
 package com.workflow.entity.list.application;
 
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
@@ -26,6 +28,7 @@ import java.util.Map;
 public class EntityListPublishedRuntimeService {
 
     private final UiConfigReleaseService releaseService;
+    private final UiReleaseResolutionTokenService resolutionTokenService;
     private final JsonDocumentCodec codec;
 
     /**
@@ -98,8 +101,10 @@ public class EntityListPublishedRuntimeService {
         }
         EntityListConfigDTO snapshot =
                 releaseService.resolveRuntimeList(config.getId());
-        return snapshot == null || snapshot.getToolbarConfig() == null
-                ? fallback : snapshot.getToolbarConfig();
+        List<Map<String, Object>> buttons =
+                snapshot == null || snapshot.getToolbarConfig() == null
+                        ? fallback : snapshot.getToolbarConfig();
+        return authorizePinnedTargetForms(buttons);
     }
 
     /**
@@ -117,8 +122,10 @@ public class EntityListPublishedRuntimeService {
         }
         EntityListConfigDTO snapshot =
                 releaseService.resolveRuntimeList(config.getId());
-        return snapshot == null || snapshot.getRowActionConfig() == null
-                ? fallback : snapshot.getRowActionConfig();
+        List<Map<String, Object>> buttons =
+                snapshot == null || snapshot.getRowActionConfig() == null
+                        ? fallback : snapshot.getRowActionConfig();
+        return authorizePinnedTargetForms(buttons);
     }
 
     /**
@@ -142,5 +149,60 @@ public class EntityListPublishedRuntimeService {
 
     private String write(Object value, String label) {
         return value == null ? null : codec.write(value, label);
+    }
+
+    private List<Map<String, Object>> authorizePinnedTargetForms(
+            List<Map<String, Object>> buttons) {
+        if (buttons == null || buttons.isEmpty()) {
+            return buttons == null ? List.of() : buttons;
+        }
+        return buttons.stream()
+                .map(source -> {
+                    Map<String, Object> button =
+                            new java.util.LinkedHashMap<>(
+                                    source == null ? Map.of() : source);
+                    String formId = text(button.get("targetFormId"));
+                    String releaseId =
+                            text(button.get("targetFormReleaseId"));
+                    Integer releaseVersion =
+                            integer(button.get(
+                                    "targetFormReleaseVersion"));
+                    if (!StringUtils.hasText(formId)
+                            || !StringUtils.hasText(releaseId)
+                            || releaseVersion == null) {
+                        return button;
+                    }
+                    String token = resolutionTokenService.issue(
+                            UiRuntimeResolutionContext.standalone(),
+                            formId,
+                            releaseId,
+                            releaseVersion,
+                            0);
+                    if (StringUtils.hasText(token)) {
+                        button.put(
+                                "targetFormReleaseResolutionToken",
+                                token);
+                    }
+                    return button;
+                })
+                .toList();
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value).trim();
+    }
+
+    private Integer integer(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (!StringUtils.hasText(text(value))) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

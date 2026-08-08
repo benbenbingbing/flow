@@ -139,6 +139,14 @@ watch(
           id: formId,
           entityId: refEntityId
         }
+        childFormDefinition.value.runtimeReleaseId =
+          release.id || releaseId || null
+        childFormDefinition.value.runtimeReleaseVersion =
+          release.version ?? releaseVersion ?? null
+        childFormDefinition.value.effectiveReleaseId =
+          release.effectiveReleaseId || release.id || releaseId || null
+        childFormDefinition.value.hotfixApplied =
+          release.hotfixApplied === true
         childFormDefinition.value.releaseResolutionToken =
           release.releaseResolutionToken || null
         childReleaseIdentity.value = `${formId}:${release.id || releaseId || 'active'}:${release.version || releaseVersion || 'latest'}`

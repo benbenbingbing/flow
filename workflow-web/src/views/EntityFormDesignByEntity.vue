@@ -4330,8 +4330,13 @@ onMounted(async () => {
 
 .checkbox-group {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  flex-flow: row nowrap;
+  gap: 24px;
+}
+
+.checkbox-group :deep(.el-checkbox) {
+  margin-right: 0;
 }
 
 .property-subheading {
